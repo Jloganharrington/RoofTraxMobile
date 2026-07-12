@@ -92,6 +92,7 @@ export default function TeamScreen() {
     updateUser.mutate(
       { userId, data: { role } },
       {
+        onSuccess: () => usersQuery.refetch(),
         onSettled: () => setBusyUserId(null),
         onError: () =>
           Alert.alert('Not allowed', 'You cannot make that role change.'),
@@ -105,6 +106,7 @@ export default function TeamScreen() {
     updateUser.mutate(
       { userId, data: { workflowAssignment } },
       {
+        onSuccess: () => Promise.all([usersQuery.refetch(), statsQuery.refetch()]),
         onSettled: () => setBusyUserId(null),
         onError: () =>
           Alert.alert('Not allowed', 'You cannot make that change.'),
