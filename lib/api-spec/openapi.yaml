@@ -10,6 +10,18 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: Auth
+    description: Browser and mobile authentication endpoints.
+  - name: Storage
+    description: Object storage upload and serving endpoints.
+  - name: Profile
+    description: Current user's role and workflow assignment.
+  - name: Pins
+    description: Field pin creation, listing, and bulk upload.
+  - name: Admin
+    description: Team management and overview stats (manager/admin only).
+  - name: Location
+    description: Live rep location tracking.
 paths:
   /healthz:
     get:
@@ -24,7 +36,562 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/user:
+    get:
+      tags: [Auth]
+      operationId: getCurrentAuthUser
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Auth status resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserEnvelope"
+  /login:
+    get:
+      tags: [Auth]
+      operationId: beginBrowserLogin
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          description: Relative path to redirect to after login (must start with `/`). Defaults to `/`.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the OIDC authorization endpoint.
+  /callback:
+    get:
+      tags: [Auth]
+      operationId: handleBrowserLoginCallback
+      summary: Complete the browser OIDC login flow
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: iss
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the `returnTo` path on success (defaults to `/`) or `/api/login` on failure.
+  /logout:
+    get:
+      tags: [Auth]
+      operationId: logoutBrowserSession
+      summary: Clear the session and begin OIDC logout
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+            default: /
+      responses:
+        "302":
+          description: Redirect to the OIDC provider logout URL with a post-logout redirect back to the validated `returnTo` path.
+  /mobile-auth/token-exchange:
+    post:
+      tags: [Auth]
+      operationId: exchangeMobileAuthorizationCode
+      summary: Exchange a mobile OIDC code for a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MobileTokenExchangeRequest"
+      responses:
+        "200":
+          description: Session created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileTokenExchangeSuccess"
+        "400":
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Token did not contain usable claims.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Token exchange failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /mobile-auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logoutMobileSession
+      summary: Delete a mobile session token
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+      responses:
+        "200":
+          description: Logout processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutSuccess"
+
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      description: |
+        Returns a presigned GCS URL for direct upload. The client sends JSON
+        metadata here, then uploads the file directly to the returned URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to generate upload URL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [Storage]
+      operationId: getPublicObject
+      summary: Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content streamed with correct Content-Type.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: File not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to serve public object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve an object entity from PRIVATE_OBJECT_DIR
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content streamed with correct Content-Type.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to serve object.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /profile/me:
+    get:
+      tags: [Profile]
+      operationId: getMyProfile
+      summary: Get the current user's role and workflow assignment
+      description: Creates a default profile (field_rep / insurance) on first access.
+      responses:
+        "200":
+          description: Profile resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins:
+    get:
+      tags: [Pins]
+      operationId: listPins
+      summary: List pins visible to the current user
+      description: Field reps see only their own pins; managers/admins see all pins.
+      responses:
+        "200":
+          description: Pins list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Pins]
+      operationId: createPin
+      summary: Drop a new pin
+      description: Server reverse-geocodes the coordinates into a display address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePinInput"
+      responses:
+        "201":
+          description: Pin created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinEnvelope"
+        "400":
+          description: Invalid pin payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /pins/bulk:
+    post:
+      tags: [Pins]
+      operationId: bulkCreatePins
+      summary: Create multiple Roof pins from drone photos with embedded GPS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkCreatePinsInput"
+      responses:
+        "201":
+          description: Pins created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinListEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /pins/{pinId}:
+    delete:
+      tags: [Pins]
+      operationId: deletePin
+      summary: Delete a pin
+      description: Owners may delete their own pins; managers/admins may delete any pin.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pin deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccess"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted to delete this pin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /admin/stats:
+    get:
+      tags: [Admin]
+      operationId: getAdminStats
+      summary: Get overview KPI stats
+      description: Manager/admin only.
+      responses:
+        "200":
+          description: Overview stats.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatsEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager/admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: listTeamUsers
+      summary: List all users with role, workflow assignment, and pin counts
+      description: Manager/admin only.
+      responses:
+        "200":
+          description: Team member list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamUserListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager/admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /admin/users/{userId}:
+    patch:
+      tags: [Admin]
+      operationId: updateTeamUser
+      summary: Update a team member's role and/or workflow assignment
+      description: |
+        Manager/admin only. Enforces role-hierarchy permission rules: nobody
+        can modify their own role, managers cannot modify other managers or
+        admins and cannot grant manager/admin, admins can manage everyone.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamUserInput"
+      responses:
+        "200":
+          description: Updated team member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamUserEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted to perform this update.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Admin]
+      operationId: removeTeamUser
+      summary: Remove a team member
+      description: Manager/admin only, subject to the same role-hierarchy rules as update.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccess"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted to remove this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /location/ping:
+    post:
+      tags: [Location]
+      operationId: pingLocation
+      summary: Report the current user's latest GPS position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationPingBody"
+      responses:
+        "200":
+          description: Location stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationPingSuccess"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /location/team:
+    get:
+      tags: [Location]
+      operationId: listTeamLocations
+      summary: List the latest known location of every team member
+      description: Manager/admin only.
+      responses:
+        "200":
+          description: Team locations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamLocationListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager/admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
+  parameters:
+    AuthorizationSessionHeader:
+      name: Authorization
+      in: header
+      required: false
+      description: Opaque session token — `Bearer <sid>`.
+      schema:
+        type: string
+    SessionCookie:
+      name: sid
+      in: cookie
+      required: false
+      description: Browser session cookie.
+      schema:
+        type: string
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +601,395 @@ components:
       required:
         - status
 
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    AuthUser:
+      type: object
+      required: [id, email, firstName, lastName, profileImageUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, "null"]
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        profileImageUrl:
+          type: [string, "null"]
+    AuthUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+    MobileTokenExchangeRequest:
+      type: object
+      required: [code, code_verifier, redirect_uri, state]
+      properties:
+        code:
+          type: string
+          minLength: 1
+        code_verifier:
+          type: string
+          minLength: 1
+        redirect_uri:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          minLength: 1
+        nonce:
+          type: string
+          minLength: 1
+    MobileTokenExchangeSuccess:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    LogoutSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
+
+    Role:
+      type: string
+      enum: [field_rep, manager, admin]
+    WorkflowAssignment:
+      type: string
+      enum: [retail, insurance, both]
+    PinWorkflow:
+      type: string
+      enum: [retail, insurance]
+    DamageType:
+      type: string
+      enum: [roof, siding, roof_and_siding]
+    DoorKnockResult:
+      type: string
+      enum: [no_answer, no_appointment, appointment]
+
+    Profile:
+      type: object
+      required: [userId, role, workflowAssignment]
+      properties:
+        userId:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+        workflowAssignment:
+          $ref: "#/components/schemas/WorkflowAssignment"
+    ProfileEnvelope:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          $ref: "#/components/schemas/Profile"
+
+    RetailData:
+      type: object
+      required:
+        [
+          ownerName1,
+          interestedRoof,
+          interestedSiding,
+          interestedWindows,
+          interestedDoors,
+        ]
+      properties:
+        ownerName1:
+          type: string
+          minLength: 1
+        ownerName2:
+          type: [string, "null"]
+        phone:
+          type: [string, "null"]
+        email:
+          type: [string, "null"]
+        interestedRoof:
+          type: boolean
+        interestedSiding:
+          type: boolean
+        interestedWindows:
+          type: boolean
+        interestedDoors:
+          type: boolean
+        interestNotes:
+          type: [string, "null"]
+        appointmentDate:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+
+    Pin:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          latitude,
+          longitude,
+          address,
+          workflow,
+          damageType,
+          photoUrl,
+          doorKnockResult,
+          retailData,
+          status,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        address:
+          type: [string, "null"]
+        workflow:
+          $ref: "#/components/schemas/PinWorkflow"
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/DamageType"
+            - type: "null"
+        photoUrl:
+          type: [string, "null"]
+        doorKnockResult:
+          oneOf:
+            - $ref: "#/components/schemas/DoorKnockResult"
+            - type: "null"
+        retailData:
+          oneOf:
+            - $ref: "#/components/schemas/RetailData"
+            - type: "null"
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    PinEnvelope:
+      type: object
+      required: [pin]
+      properties:
+        pin:
+          $ref: "#/components/schemas/Pin"
+    PinListEnvelope:
+      type: object
+      required: [pins]
+      properties:
+        pins:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pin"
+
+    CreatePinInput:
+      type: object
+      required: [latitude, longitude, workflow]
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+        workflow:
+          $ref: "#/components/schemas/PinWorkflow"
+        damageType:
+          $ref: "#/components/schemas/DamageType"
+        photoUrl:
+          type: string
+        doorKnockResult:
+          $ref: "#/components/schemas/DoorKnockResult"
+        retailData:
+          $ref: "#/components/schemas/RetailData"
+
+    BulkPinInput:
+      type: object
+      required: [latitude, longitude, photoUrl]
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+        photoUrl:
+          type: string
+          minLength: 1
+    BulkCreatePinsInput:
+      type: object
+      required: [pins]
+      properties:
+        pins:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/BulkPinInput"
+
+    DeleteSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
+
+    AdminStats:
+      type: object
+      required:
+        [
+          totalPins,
+          insurancePins,
+          retailPins,
+          appointments,
+          fieldRepCount,
+        ]
+      properties:
+        totalPins:
+          type: integer
+        insurancePins:
+          type: integer
+        retailPins:
+          type: integer
+        appointments:
+          type: integer
+        fieldRepCount:
+          type: integer
+    AdminStatsEnvelope:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          $ref: "#/components/schemas/AdminStats"
+
+    TeamUser:
+      type: object
+      required:
+        [
+          id,
+          email,
+          firstName,
+          lastName,
+          profileImageUrl,
+          role,
+          workflowAssignment,
+          pinCount,
+          joinedAt,
+        ]
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, "null"]
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        profileImageUrl:
+          type: [string, "null"]
+        role:
+          $ref: "#/components/schemas/Role"
+        workflowAssignment:
+          $ref: "#/components/schemas/WorkflowAssignment"
+        pinCount:
+          type: integer
+        joinedAt:
+          type: string
+          format: date-time
+    TeamUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/TeamUser"
+    TeamUserListEnvelope:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamUser"
+
+    UpdateTeamUserInput:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        workflowAssignment:
+          $ref: "#/components/schemas/WorkflowAssignment"
+
+    LocationPingBody:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+    LocationPingSuccess:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
+
+    TeamLocation:
+      type: object
+      required: [userId, firstName, lastName, latitude, longitude, updatedAt]
+      properties:
+        userId:
+          type: string
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        latitude:
+          type: number
+        longitude:
+          type: number
+        updatedAt:
+          type: string
+          format: date-time
+    TeamLocationListEnvelope:
+      type: object
+      required: [locations]
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamLocation"

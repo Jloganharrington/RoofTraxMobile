@@ -1,0 +1,344 @@
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Feather } from '@expo/vector-icons';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCreatePin } from '@workspace/api-client-react';
+import type { DamageType, DoorKnockResult, PinWorkflow } from '@workspace/api-client-react';
+import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
+import { uploadFile } from '@/lib/upload';
+
+const DAMAGE_TYPES: { value: DamageType; label: string }[] = [
+  { value: 'roof', label: 'Roof' },
+  { value: 'siding', label: 'Siding' },
+  { value: 'roof_and_siding', label: 'Roof & siding' },
+];
+
+const DOOR_KNOCK_RESULTS: { value: DoorKnockResult; label: string }[] = [
+  { value: 'no_answer', label: 'No answer' },
+  { value: 'no_appointment', label: 'No appointment' },
+  { value: 'appointment', label: 'Appointment' },
+];
+
+function ChoiceRow<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T | null;
+  onChange: (v: T) => void;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.choiceRow}>
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <Pressable
+            key={opt.value}
+            onPress={() => onChange(opt.value)}
+            style={[
+              styles.choiceChip,
+              {
+                backgroundColor: active ? colors.primary : colors.muted,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: active ? colors.primaryForeground : colors.foreground,
+                fontSize: 13,
+                fontWeight: '600',
+              }}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export default function PinNewScreen() {
+  const colors = useColors();
+  const { latitude, longitude } = useLocalSearchParams<{
+    latitude: string;
+    longitude: string;
+  }>();
+  const { workflowAssignment } = useProfile();
+  const createPin = useCreatePin();
+
+  const [workflow, setWorkflow] = useState<PinWorkflow>(
+    workflowAssignment === 'retail' ? 'retail' : 'insurance',
+  );
+  const [damageType, setDamageType] = useState<DamageType | null>(null);
+  const [doorKnockResult, setDoorKnockResult] = useState<DoorKnockResult | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const [ownerName1, setOwnerName1] = useState('');
+  const [ownerName2, setOwnerName2] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [interestedRoof, setInterestedRoof] = useState(false);
+  const [interestedSiding, setInterestedSiding] = useState(false);
+  const [interestedWindows, setInterestedWindows] = useState(false);
+  const [interestedDoors, setInterestedDoors] = useState(false);
+  const [interestNotes, setInterestNotes] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const isRetail = workflow === 'retail';
+  const canPickWorkflow = workflowAssignment === 'both';
+
+  async function handlePickPhoto() {
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.6,
+      mediaTypes: ['images'],
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    setPhotoUri(asset.uri);
+    setUploadingPhoto(true);
+    try {
+      const url = await uploadFile(asset.uri, asset.mimeType ?? 'image/jpeg');
+      setPhotoUrl(url);
+    } catch {
+      Alert.alert('Upload failed', 'Could not upload the photo. You can still save the pin.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  function handleSave() {
+    if (!latitude || !longitude) return;
+
+    createPin.mutate(
+      {
+        data: {
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+          workflow,
+          damageType: !isRetail ? damageType ?? undefined : undefined,
+          doorKnockResult: isRetail ? doorKnockResult ?? undefined : undefined,
+          photoUrl: photoUrl ?? undefined,
+          retailData: isRetail
+            ? {
+                ownerName1,
+                ownerName2: ownerName2 || undefined,
+                phone: phone || undefined,
+                email: email || undefined,
+                interestedRoof,
+                interestedSiding,
+                interestedWindows,
+                interestedDoors,
+                interestNotes: interestNotes || undefined,
+                notes: notes || undefined,
+              }
+            : undefined,
+        },
+      },
+      {
+        onSuccess: () => router.back(),
+        onError: () => Alert.alert('Error', 'Could not save this pin.'),
+      },
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+    >
+      <Text style={[styles.label, { color: colors.mutedForeground }]}>
+        Location: {Number(latitude).toFixed(5)}, {Number(longitude).toFixed(5)}
+      </Text>
+
+      {canPickWorkflow && (
+        <>
+          <Text style={[styles.label, { color: colors.foreground }]}>Workflow</Text>
+          <ChoiceRow
+            options={[
+              { value: 'insurance', label: 'Insurance' },
+              { value: 'retail', label: 'Retail' },
+            ]}
+            value={workflow}
+            onChange={setWorkflow}
+          />
+        </>
+      )}
+
+      {!isRetail ? (
+        <>
+          <Text style={[styles.label, { color: colors.foreground }]}>Damage type</Text>
+          <ChoiceRow options={DAMAGE_TYPES} value={damageType} onChange={setDamageType} />
+        </>
+      ) : (
+        <>
+          <Text style={[styles.label, { color: colors.foreground }]}>Door knock result</Text>
+          <ChoiceRow
+            options={DOOR_KNOCK_RESULTS}
+            value={doorKnockResult}
+            onChange={setDoorKnockResult}
+          />
+
+          <Text style={[styles.label, { color: colors.foreground }]}>Homeowner</Text>
+          <TextInput
+            placeholder="Owner name"
+            value={ownerName1}
+            onChangeText={setOwnerName1}
+            style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+            placeholderTextColor={colors.mutedForeground}
+          />
+          <TextInput
+            placeholder="Co-owner name (optional)"
+            value={ownerName2}
+            onChangeText={setOwnerName2}
+            style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+            placeholderTextColor={colors.mutedForeground}
+          />
+          <TextInput
+            placeholder="Phone"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+            placeholderTextColor={colors.mutedForeground}
+          />
+          <TextInput
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+            placeholderTextColor={colors.mutedForeground}
+          />
+
+          <Text style={[styles.label, { color: colors.foreground }]}>Interested in</Text>
+          {[
+            ['Roof', interestedRoof, setInterestedRoof],
+            ['Siding', interestedSiding, setInterestedSiding],
+            ['Windows', interestedWindows, setInterestedWindows],
+            ['Doors', interestedDoors, setInterestedDoors],
+          ].map(([label, val, setter]: any) => (
+            <View key={label} style={styles.switchRow}>
+              <Text style={{ color: colors.foreground }}>{label}</Text>
+              <Switch value={val} onValueChange={setter} />
+            </View>
+          ))}
+
+          <TextInput
+            placeholder="Interest notes"
+            value={interestNotes}
+            onChangeText={setInterestNotes}
+            style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+            placeholderTextColor={colors.mutedForeground}
+          />
+          <TextInput
+            placeholder="Notes"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            style={[
+              styles.input,
+              { borderColor: colors.border, color: colors.foreground, height: 80 },
+            ]}
+            placeholderTextColor={colors.mutedForeground}
+          />
+        </>
+      )}
+
+      <Pressable
+        onPress={handlePickPhoto}
+        style={[styles.photoButton, { borderColor: colors.border }]}
+      >
+        {uploadingPhoto ? (
+          <ActivityIndicator />
+        ) : (
+          <>
+            <Feather name="camera" size={18} color={colors.foreground} />
+            <Text style={{ color: colors.foreground }}>
+              {photoUri ? 'Retake photo' : 'Add photo'}
+            </Text>
+          </>
+        )}
+      </Pressable>
+
+      <Pressable
+        onPress={handleSave}
+        disabled={createPin.isPending || uploadingPhoto}
+        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+      >
+        {createPin.isPending ? (
+          <ActivityIndicator color={colors.primaryForeground} />
+        ) : (
+          <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 16 }}>
+            Save pin
+          </Text>
+        )}
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: {
+    padding: 16,
+    paddingTop: Platform.OS === 'web' ? 32 : 16,
+    paddingBottom: 60,
+    gap: 10,
+  },
+  label: { fontSize: 14, fontWeight: '600', marginTop: 8 },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choiceChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  photoButton: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  saveButton: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+});
