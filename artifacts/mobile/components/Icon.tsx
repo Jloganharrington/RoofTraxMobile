@@ -18,7 +18,9 @@ export type IconName =
   | 'smartphone'
   | 'upload'
   | 'check'
-  | 'plus';
+  | 'plus'
+  | 'user'
+  | 'log-out';
 
 type IconProps = {
   name: IconName;
@@ -109,6 +111,21 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
         <>
           <Rect x={5} y={2} width={14} height={20} rx={2} ry={2} {...strokeProps} />
           <Line x1={12} y1={18} x2={12.01} y2={18} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'user' && (
+        <>
+          <Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...strokeProps} />
+          <Circle cx={12} cy={7} r={4} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'log-out' && (
+        <>
+          <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" {...strokeProps} />
+          <Polyline points="16 17 21 12 16 7" {...strokeProps} />
+          <Line x1={21} y1={12} x2={9} y2={12} {...strokeProps} />
         </>
       )}
     </Svg>
