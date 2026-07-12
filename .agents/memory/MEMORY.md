@@ -7,3 +7,4 @@
 - [Expo web login fails against Replit OIDC](expo-web-oidc-redirect.md) — expo. preview domain isn't a trusted redirect_uri; exchange code server-side on the trusted domain and relay via postMessage.
 - [Expo vector-icons tofu-box glyphs on SDK 54](expo-vector-icons-sdk54-tofu.md) — nested expo-font version mismatch, not a load-order bug; pin exact version + pnpm override.
 - [One-off DB scripts fail standalone in this pnpm/ESM workspace](one-off-db-scripts-pnpm-esm.md) — tsx/esbuild ad-hoc scripts hit pg/module-resolution errors; use a temporary Express route instead.
+- [E2E testing api-server routes](api-server-e2e-testing.md) — no test framework existed; sessions are DB rows, so tests can mint a session directly and hit the Express app with supertest.
