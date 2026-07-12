@@ -9,7 +9,7 @@ import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canManageUser, isManagerOrAdmin } from '../lib/permissions';
+import { canManageUser, canSetWorkflow, isManagerOrAdmin } from '../lib/permissions';
 
 const router: IRouter = Router();
 
@@ -127,15 +127,18 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
   const targetRole = targetProfile?.role ?? 'field_rep';
 
   if (
-    !canManageUser(
-      actorRole,
-      req.user!.id,
-      userId,
-      targetRole,
-      parsed.data.role,
-    )
+    parsed.data.role !== undefined &&
+    !canManageUser(actorRole, req.user!.id, userId, targetRole, parsed.data.role)
   ) {
-    res.status(403).json({ error: 'Not permitted to perform this update' });
+    res.status(403).json({ error: 'Not permitted to change this role' });
+    return;
+  }
+
+  if (
+    parsed.data.workflowAssignment !== undefined &&
+    !canSetWorkflow(actorRole, req.user!.id, userId, targetRole)
+  ) {
+    res.status(403).json({ error: 'Not permitted to change this workflow assignment' });
     return;
   }
 

@@ -27,3 +27,23 @@ export function canManageUser(
 export function isManagerOrAdmin(role: Role): boolean {
   return role === 'manager' || role === 'admin';
 }
+
+// Workflow (Insurance/Retail) assignment rules:
+// - Admins can set anyone's workflow assignment, including their own.
+// - Managers can only set field reps' workflow assignment, never their own.
+// - Field reps cannot set anyone's workflow assignment.
+export function canSetWorkflow(
+  actorRole: Role,
+  actorId: string,
+  targetId: string,
+  targetRole: Role,
+): boolean {
+  if (actorRole === 'admin') return true;
+
+  if (actorRole === 'manager') {
+    if (actorId === targetId) return false;
+    return targetRole === 'field_rep';
+  }
+
+  return false;
+}

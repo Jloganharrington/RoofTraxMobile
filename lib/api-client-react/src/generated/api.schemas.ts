@@ -303,6 +303,13 @@ export type LogoutBrowserSessionParams = {
 returnTo?: string;
 };
 
+export type ListPinsParams = {
+/**
+ * Managers/admins only — filter to a single rep's pins.
+ */
+userId?: string;
+};
+
 export type ReverseGeocodeCoordinatesParams = {
 latitude: number;
 longitude: number;

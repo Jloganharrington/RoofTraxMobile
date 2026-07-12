@@ -29,6 +29,7 @@ import type {
   ErrorEnvelope,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
+  ListPinsParams,
   LocationPingBody,
   LocationPingSuccess,
   LogoutBrowserSessionParams,
@@ -929,21 +930,28 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
 
 
 
-export const getListPinsUrl = () => {
+export const getListPinsUrl = (params?: ListPinsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/pins`
+  return stringifiedParams.length > 0 ? `/api/pins?${stringifiedParams}` : `/api/pins`
 }
 
 /**
- * Field reps see only their own pins; managers/admins see all pins.
+ * Every role sees all pins. Field reps see other reps' pins as read-only context (rendered grey client-side). Managers/admins may pass `userId` to filter down to a single rep's pins.
  * @summary List pins visible to the current user
  */
-export const listPins = async ( options?: RequestInit): Promise<PinListEnvelope> => {
+export const listPins = async (params?: ListPinsParams, options?: RequestInit): Promise<PinListEnvelope> => {
 
-  return customFetch<PinListEnvelope>(getListPinsUrl(),
+  return customFetch<PinListEnvelope>(getListPinsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -956,23 +964,23 @@ export const listPins = async ( options?: RequestInit): Promise<PinListEnvelope>
 
 
 
-export const getListPinsQueryKey = () => {
+export const getListPinsQueryKey = (params?: ListPinsParams,) => {
     return [
-    `/api/pins`
+    `/api/pins`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListPinsQueryOptions = <TData = Awaited<ReturnType<typeof listPins>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPins>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListPinsQueryOptions = <TData = Awaited<ReturnType<typeof listPins>>, TError = ErrorType<ErrorEnvelope>>(params?: ListPinsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPins>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListPinsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListPinsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPins>>> = ({ signal }) => listPins({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPins>>> = ({ signal }) => listPins(params, { signal, ...requestOptions });
 
 
 
@@ -990,11 +998,11 @@ export type ListPinsQueryError = ErrorType<ErrorEnvelope>
  */
 
 export function useListPins<TData = Awaited<ReturnType<typeof listPins>>, TError = ErrorType<ErrorEnvelope>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPins>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListPinsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPins>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListPinsQueryOptions(options)
+  const queryOptions = getListPinsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

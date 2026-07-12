@@ -20,7 +20,8 @@ export type IconName =
   | 'check'
   | 'plus'
   | 'user'
-  | 'log-out';
+  | 'log-out'
+  | 'chevron-down';
 
 type IconProps = {
   name: IconName;
@@ -119,6 +120,10 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
           <Path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" {...strokeProps} />
           <Circle cx={12} cy={7} r={4} {...strokeProps} />
         </>
+      )}
+
+      {name === 'chevron-down' && (
+        <Polyline points="6 9 12 15 18 9" {...strokeProps} />
       )}
 
       {name === 'log-out' && (

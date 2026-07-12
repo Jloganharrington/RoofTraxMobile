@@ -15,6 +15,7 @@ import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
 import { useBulkCreatePins } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
 import { uploadFile } from '@/lib/upload';
 
 interface DroneAsset {
@@ -44,6 +45,7 @@ function extractGps(exif: Record<string, any> | null | undefined) {
 
 export default function BulkUploadScreen() {
   const colors = useColors();
+  const { role } = useProfile();
   const bulkCreate = useBulkCreatePins();
   const [assets, setAssets] = useState<DroneAsset[]>([]);
   const [skippedCount, setSkippedCount] = useState(0);
@@ -104,6 +106,16 @@ export default function BulkUploadScreen() {
       setIsUploading(false);
       Alert.alert('Upload failed', 'One of the photos could not be uploaded.');
     }
+  }
+
+  if (role === 'field_rep') {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+          Bulk pin upload is available to managers and admins only.
+        </Text>
+      </View>
+    );
   }
 
   return (

@@ -30,13 +30,19 @@ router.get('/pins', async (req: Request, res: Response) => {
   }
 
   const role = await getRole(req.user.id);
-  const rows = isManagerOrAdmin(role)
-    ? await db.select().from(pinsTable).orderBy(desc(pinsTable.createdAt))
-    : await db
-        .select()
-        .from(pinsTable)
-        .where(eq(pinsTable.userId, req.user.id))
-        .orderBy(desc(pinsTable.createdAt));
+  const filterUserId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+
+  // Every role can see every pin now (field reps see other reps' pins as
+  // read-only context, rendered grey client-side). Only managers/admins may
+  // narrow the list to a single rep via ?userId=.
+  const rows =
+    filterUserId && isManagerOrAdmin(role)
+      ? await db
+          .select()
+          .from(pinsTable)
+          .where(eq(pinsTable.userId, filterUserId))
+          .orderBy(desc(pinsTable.createdAt))
+      : await db.select().from(pinsTable).orderBy(desc(pinsTable.createdAt));
 
   res.json(ListPinsResponse.parse({ pins: rows }));
 });
@@ -104,6 +110,12 @@ router.post('/pins', async (req: Request, res: Response) => {
 router.post('/pins/bulk', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const role = await getRole(req.user.id);
+  if (!isManagerOrAdmin(role)) {
+    res.status(403).json({ error: 'Only managers/admins can bulk-upload pins' });
     return;
   }
 

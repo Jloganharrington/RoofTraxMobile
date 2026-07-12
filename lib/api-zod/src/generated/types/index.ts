@@ -22,6 +22,7 @@ export * from './doorKnockResult';
 export * from './errorEnvelope';
 export * from './handleBrowserLoginCallbackParams';
 export * from './healthStatus';
+export * from './listPinsParams';
 export * from './locationPingBody';
 export * from './locationPingSuccess';
 export * from './logoutBrowserSessionParams';

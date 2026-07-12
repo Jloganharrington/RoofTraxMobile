@@ -174,9 +174,13 @@ export const GetMyProfileResponse = zod.object({
 
 
 /**
- * Field reps see only their own pins; managers/admins see all pins.
+ * Every role sees all pins. Field reps see other reps' pins as read-only context (rendered grey client-side). Managers/admins may pass `userId` to filter down to a single rep's pins.
  * @summary List pins visible to the current user
  */
+export const ListPinsQueryParams = zod.object({
+  "userId": zod.coerce.string().optional().describe('Managers\/admins only — filter to a single rep\'s pins.')
+})
+
 
 
 

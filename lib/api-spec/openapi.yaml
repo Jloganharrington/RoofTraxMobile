@@ -282,7 +282,17 @@ paths:
       tags: [Pins]
       operationId: listPins
       summary: List pins visible to the current user
-      description: Field reps see only their own pins; managers/admins see all pins.
+      description: >-
+        Every role sees all pins. Field reps see other reps' pins as
+        read-only context (rendered grey client-side). Managers/admins may
+        pass `userId` to filter down to a single rep's pins.
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Managers/admins only — filter to a single rep's pins.
       responses:
         "200":
           description: Pins list.
