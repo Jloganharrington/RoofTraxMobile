@@ -95,7 +95,7 @@ export default function PinNewScreen() {
     latitude: string;
     longitude: string;
   }>();
-  const { workflowAssignment } = useProfile();
+  const { role, workflowAssignment } = useProfile();
   const createPin = useCreatePin();
   const geocodeParams = { latitude: Number(latitude), longitude: Number(longitude) };
   const geocode = useReverseGeocodeCoordinates(geocodeParams, {
@@ -130,7 +130,9 @@ export default function PinNewScreen() {
   const [notes, setNotes] = useState('');
 
   const isRetail = workflow === 'retail';
-  const canPickWorkflow = workflowAssignment === 'both';
+  // Admins can work either workflow regardless of their assigned default;
+  // everyone else only gets the picker when explicitly assigned 'both'.
+  const canPickWorkflow = workflowAssignment === 'both' || role === 'admin';
 
   async function handlePickPhoto() {
     const result = await ImagePicker.launchCameraAsync({
