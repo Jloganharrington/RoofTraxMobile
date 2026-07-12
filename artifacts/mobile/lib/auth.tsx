@@ -6,6 +6,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
+import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
@@ -58,9 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const discovery = AuthSession.useAutoDiscovery(ISSUER_URL);
 
   const redirectUri = AuthSession.makeRedirectUri();
-
-  // TEMP DEBUG - remove after diagnosing login issue
-  console.log('AUTH DEBUG render redirectUri', redirectUri);
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
@@ -117,10 +115,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // TEMP DEBUG - remove after diagnosing login issue
-        console.log('AUTH DEBUG exchange redirectUri', redirectUri);
-        console.log('AUTH DEBUG exchange location.href', typeof window !== 'undefined' ? window.location.href : 'n/a');
-
         const exchangeRes = await fetch(
           `${apiBase}/api/mobile-auth/token-exchange`,
           {
@@ -155,13 +149,74 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [response, request, redirectUri, fetchUser]);
 
+  const loginOnWeb = useCallback(async () => {
+    const apiBase = getApiBaseUrl();
+    if (!apiBase || typeof window === 'undefined') {
+      console.error('API base URL is not configured.');
+      return;
+    }
+
+    const webOrigin = window.location.origin;
+    const popup = window.open(
+      `${apiBase}/api/mobile-auth/web-login?origin=${encodeURIComponent(webOrigin)}`,
+      'roof-trax-login',
+      'width=500,height=650',
+    );
+
+    if (!popup) {
+      console.error('Login popup was blocked by the browser.');
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const apiOrigin = new URL(apiBase).origin;
+
+      const cleanup = () => {
+        window.removeEventListener('message', listener);
+        clearInterval(interval);
+      };
+
+      const listener = async (event: MessageEvent) => {
+        if (event.origin !== apiOrigin) return;
+        const data = event.data as
+          | { type?: string; token?: string; error?: string }
+          | undefined;
+
+        if (data?.type === 'mobile-auth-success' && data.token) {
+          cleanup();
+          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
+          setIsLoading(true);
+          await fetchUser();
+          resolve();
+        } else if (data?.type === 'mobile-auth-error') {
+          console.error('Login error:', data.error);
+          cleanup();
+          resolve();
+        }
+      };
+
+      const interval = setInterval(() => {
+        if (popup.closed) {
+          cleanup();
+          resolve();
+        }
+      }, 500);
+
+      window.addEventListener('message', listener);
+    });
+  }, [fetchUser]);
+
   const login = useCallback(async () => {
     try {
+      if (Platform.OS === 'web') {
+        await loginOnWeb();
+        return;
+      }
       await promptAsync();
     } catch (err) {
       console.error('Login error:', err);
     }
-  }, [promptAsync]);
+  }, [promptAsync, loginOnWeb]);
 
   const logout = useCallback(async () => {
     try {

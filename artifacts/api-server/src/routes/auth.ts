@@ -51,6 +51,17 @@ function setOidcCookie(res: Response, name: string, value: string) {
   });
 }
 
+function getAllowedMobileWebOrigins(): string[] {
+  const origins = new Set<string>();
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+  }
+  if (process.env.REPLIT_EXPO_DEV_DOMAIN) {
+    origins.add(`https://${process.env.REPLIT_EXPO_DEV_DOMAIN}`);
+  }
+  return Array.from(origins);
+}
+
 function getSafeReturnTo(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -242,6 +253,157 @@ router.get('/logout', async (req: Request, res: Response) => {
   res.redirect(endSessionUrl.href);
 });
 
+// Web build of the Expo app runs on a preview domain
+// ($REPLIT_EXPO_DEV_DOMAIN) that is not a trusted OIDC redirect target for
+// this app's client. These two routes perform the OIDC code exchange
+// server-side against this server's own trusted domain, then relay the
+// resulting session token back to the Expo web page via postMessage.
+router.get('/mobile-auth/web-login', async (req: Request, res: Response) => {
+  const allowedOrigins = getAllowedMobileWebOrigins();
+  const origin =
+    typeof req.query.origin === 'string' ? req.query.origin : '';
+
+  if (!allowedOrigins.includes(origin)) {
+    res.status(400).send('Invalid origin');
+    return;
+  }
+
+  const config = await getOidcConfig();
+  const callbackUrl = `${getOrigin(req)}/api/mobile-auth/web-callback`;
+
+  const state = oidc.randomState();
+  const nonce = oidc.randomNonce();
+  const codeVerifier = oidc.randomPKCECodeVerifier();
+  const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
+
+  const redirectTo = oidc.buildAuthorizationUrl(config, {
+    redirect_uri: callbackUrl,
+    scope: 'openid email profile offline_access',
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    prompt: 'login consent',
+    state,
+    nonce,
+  });
+
+  setOidcCookie(res, 'mw_code_verifier', codeVerifier);
+  setOidcCookie(res, 'mw_nonce', nonce);
+  setOidcCookie(res, 'mw_state', state);
+  setOidcCookie(res, 'mw_origin', origin);
+
+  res.redirect(redirectTo.href);
+});
+
+function renderMobileWebRelay(
+  res: Response,
+  origin: string,
+  payload: Record<string, unknown>,
+) {
+  const json = JSON.stringify(payload);
+  const safeOrigin = JSON.stringify(origin);
+  res.set('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html>
+<html>
+<body>
+<script>
+  (function () {
+    var payload = ${json};
+    var origin = ${safeOrigin};
+    if (window.opener) {
+      window.opener.postMessage(payload, origin);
+    }
+    window.close();
+  })();
+</script>
+</body>
+</html>`);
+}
+
+router.get(
+  '/mobile-auth/web-callback',
+  async (req: Request, res: Response) => {
+    const allowedOrigins = getAllowedMobileWebOrigins();
+    const origin = req.cookies?.mw_origin;
+    const codeVerifier = req.cookies?.mw_code_verifier;
+    const nonce = req.cookies?.mw_nonce;
+    const expectedState = req.cookies?.mw_state;
+
+    res.clearCookie('mw_code_verifier', { path: '/' });
+    res.clearCookie('mw_nonce', { path: '/' });
+    res.clearCookie('mw_state', { path: '/' });
+    res.clearCookie('mw_origin', { path: '/' });
+
+    if (!allowedOrigins.includes(origin)) {
+      res.status(400).send('Invalid origin');
+      return;
+    }
+
+    if (!codeVerifier || !expectedState) {
+      renderMobileWebRelay(res, origin, {
+        type: 'mobile-auth-error',
+        error: 'missing_session',
+      });
+      return;
+    }
+
+    const config = await getOidcConfig();
+    const callbackUrl = new URL(
+      `${getOrigin(req)}/api/mobile-auth/web-callback?${new URL(req.url, `http://${req.headers.host}`).searchParams}`,
+    );
+
+    try {
+      const tokens = await oidc.authorizationCodeGrant(config, callbackUrl, {
+        pkceCodeVerifier: codeVerifier,
+        expectedNonce: nonce,
+        expectedState,
+        idTokenExpected: true,
+      });
+
+      const claims = tokens.claims();
+      if (!claims) {
+        renderMobileWebRelay(res, origin, {
+          type: 'mobile-auth-error',
+          error: 'no_claims',
+        });
+        return;
+      }
+
+      const dbUser = await upsertUser(
+        claims as unknown as Record<string, unknown>,
+      );
+
+      const now = Math.floor(Date.now() / 1000);
+      const sessionData: SessionData = {
+        user: {
+          id: dbUser.id,
+          email: dbUser.email,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          profileImageUrl: dbUser.profileImageUrl,
+        },
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_at: tokens.expiresIn() ? now + tokens.expiresIn()! : claims.exp,
+      };
+
+      const sid = await createSession(sessionData);
+      renderMobileWebRelay(res, origin, {
+        type: 'mobile-auth-success',
+        token: sid,
+      });
+    } catch (err) {
+      req.log.error(
+        getSafeErrorMetadata(err),
+        'Mobile web token exchange error',
+      );
+      renderMobileWebRelay(res, origin, {
+        type: 'mobile-auth-error',
+        error: 'exchange_failed',
+      });
+    }
+  },
+);
+
 router.post(
   '/mobile-auth/token-exchange',
   async (req: Request, res: Response) => {
@@ -252,18 +414,6 @@ router.post(
     }
 
     const { code, code_verifier, redirect_uri, state, nonce } = parsed.data;
-
-    // TEMP DEBUG - remove after diagnosing login issue
-    req.log.error(
-      {
-        redirect_uri,
-        origin: getOrigin(req),
-        host: req.headers['host'],
-        forwardedHost: req.headers['x-forwarded-host'],
-        userAgent: req.headers['user-agent'],
-      },
-      'TEMP DEBUG token exchange incoming request',
-    );
 
     try {
       const config = await getOidcConfig();
@@ -308,19 +458,6 @@ router.post(
       res.json(ExchangeMobileAuthorizationCodeResponse.parse({ token: sid }));
     } catch (err) {
       req.log.error(getSafeErrorMetadata(err), 'Mobile token exchange error');
-      // TEMP DEBUG - remove after diagnosing login issue
-      if (isRecord(err)) {
-        req.log.error(
-          {
-            cause: isRecord(err.cause) ? err.cause : undefined,
-            message: (err as Error).message,
-            responseBody: isRecord(err.cause)
-              ? (err.cause as Record<string, unknown>).error
-              : undefined,
-          },
-          'TEMP DEBUG token exchange error detail',
-        );
-      }
       res.status(500).json({ error: 'Token exchange failed' });
     }
   },
