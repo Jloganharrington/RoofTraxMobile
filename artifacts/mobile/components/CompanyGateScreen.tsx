@@ -12,7 +12,7 @@ import { createCompany, getCompany } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth, type LoginError } from '@/lib/auth';
 
-type Mode = 'choose' | 'join' | 'create';
+type Mode = 'choose' | 'join' | 'confirm' | 'create';
 
 function errorMessage(error: LoginError | null): string | null {
   switch (error) {
@@ -39,8 +39,11 @@ export function CompanyGateScreen() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [resolvedCompany, setResolvedCompany] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
-  const handleJoin = async () => {
+  const handleLookup = async () => {
     const id = companyCode.trim().toUpperCase();
     if (!id) {
       setFormError('Enter your company ID.');
@@ -50,12 +53,18 @@ export function CompanyGateScreen() {
     setFormError(null);
     try {
       const { company } = await getCompany(id);
-      await login(company.id);
+      setResolvedCompany({ id: company.id, name: company.name });
+      setMode('confirm');
     } catch {
       setFormError("That company ID doesn't exist. Double-check it and try again.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleConfirmJoin = async () => {
+    if (!resolvedCompany) return;
+    await login(resolvedCompany.id);
   };
 
   const handleCreate = async () => {
@@ -156,7 +165,7 @@ export function CompanyGateScreen() {
             ]}
           />
           <Pressable
-            onPress={handleJoin}
+            onPress={handleLookup}
             disabled={busy || isLoading}
             style={[styles.button, { backgroundColor: colors.primary }]}
           >
@@ -170,6 +179,48 @@ export function CompanyGateScreen() {
           </Pressable>
           <Pressable onPress={() => setMode('choose')} style={styles.linkButton}>
             <Text style={[styles.linkText, { color: colors.mutedForeground }]}>Back</Text>
+          </Pressable>
+        </>
+      )}
+
+      {mode === 'confirm' && resolvedCompany && (
+        <>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            You're about to join:
+          </Text>
+          <Text style={[styles.code, { color: colors.foreground }]}>
+            {resolvedCompany.name}
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Is this your company?
+          </Text>
+          {message && (
+            <Text style={[styles.error, { color: colors.destructive }]}>{message}</Text>
+          )}
+          <Pressable
+            onPress={handleConfirmJoin}
+            disabled={isLoading}
+            style={[styles.button, { backgroundColor: colors.primary }]}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+                Yes, join {resolvedCompany.name}
+              </Text>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setResolvedCompany(null);
+              setFormError(null);
+              setMode('join');
+            }}
+            style={styles.linkButton}
+          >
+            <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
+              Not right — re-enter code
+            </Text>
           </Pressable>
         </>
       )}
