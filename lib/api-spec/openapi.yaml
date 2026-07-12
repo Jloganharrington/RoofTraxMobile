@@ -22,6 +22,8 @@ tags:
     description: Team management and overview stats (manager/admin only).
   - name: Location
     description: Live rep location tracking.
+  - name: Geocode
+    description: Coordinate/address lookups.
 paths:
   /healthz:
     get:
@@ -549,6 +551,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /geocode/reverse:
+    get:
+      tags: [Geocode]
+      operationId: reverseGeocodeCoordinates
+      summary: Look up a human-readable address for a coordinate pair
+      description: Best-effort only; returns a null address if lookup fails.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Lookup completed (address may be null).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReverseGeocodeResponse"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /location/team:
     get:
       tags: [Location]
@@ -993,3 +1025,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TeamLocation"
+
+    ReverseGeocodeResponse:
+      type: object
+      required: [address]
+      properties:
+        address:
+          type: [string, "null"]

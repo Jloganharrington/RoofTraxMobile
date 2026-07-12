@@ -14,7 +14,11 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCreatePin } from '@workspace/api-client-react';
+import {
+  useCreatePin,
+  useReverseGeocodeCoordinates,
+  getReverseGeocodeCoordinatesQueryKey,
+} from '@workspace/api-client-react';
 import type { DamageType, DoorKnockResult, PinWorkflow } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
@@ -82,6 +86,14 @@ export default function PinNewScreen() {
   }>();
   const { workflowAssignment } = useProfile();
   const createPin = useCreatePin();
+  const geocodeParams = { latitude: Number(latitude), longitude: Number(longitude) };
+  const geocode = useReverseGeocodeCoordinates(geocodeParams, {
+    query: {
+      enabled: Boolean(latitude) && Boolean(longitude),
+      queryKey: getReverseGeocodeCoordinatesQueryKey(geocodeParams),
+    },
+  });
+  const address = geocode.data?.address ?? null;
 
   const [workflow, setWorkflow] = useState<PinWorkflow>(
     workflowAssignment === 'retail' ? 'retail' : 'insurance',
@@ -166,9 +178,23 @@ export default function PinNewScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
     >
-      <Text style={[styles.label, { color: colors.mutedForeground }]}>
-        Location: {Number(latitude).toFixed(5)}, {Number(longitude).toFixed(5)}
-      </Text>
+      <View style={styles.locationBlock}>
+        {geocode.isLoading ? (
+          <View style={styles.locationRow}>
+            <ActivityIndicator size="small" color={colors.mutedForeground} />
+            <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 0 }]}>
+              Looking up address…
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.address, { color: colors.foreground }]}>
+            {address ?? 'Address unavailable'}
+          </Text>
+        )}
+        <Text style={[styles.label, { color: colors.mutedForeground, marginTop: 2 }]}>
+          {Number(latitude).toFixed(5)}, {Number(longitude).toFixed(5)}
+        </Text>
+      </View>
 
       {canPickWorkflow && (
         <>
@@ -305,6 +331,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   label: { fontSize: 14, fontWeight: '600', marginTop: 8 },
+  locationBlock: { gap: 2 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  address: { fontSize: 16, fontWeight: '700' },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   choiceChip: {
     paddingHorizontal: 14,

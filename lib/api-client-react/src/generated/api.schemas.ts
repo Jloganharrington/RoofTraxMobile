@@ -259,6 +259,11 @@ export interface TeamLocationListEnvelope {
   locations: TeamLocation[];
 }
 
+export interface ReverseGeocodeResponse {
+  /** @nullable */
+  address: string | null;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */
@@ -279,5 +284,10 @@ iss?: string;
 
 export type LogoutBrowserSessionParams = {
 returnTo?: string;
+};
+
+export type ReverseGeocodeCoordinatesParams = {
+latitude: number;
+longitude: number;
 };
 

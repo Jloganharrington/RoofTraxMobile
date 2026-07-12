@@ -6,6 +6,7 @@ import profileRouter from "./profile";
 import pinsRouter from "./pins";
 import adminRouter from "./admin";
 import locationRouter from "./location";
+import geocodeRouter from "./geocode";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(profileRouter);
 router.use(pinsRouter);
 router.use(adminRouter);
 router.use(locationRouter);
+router.use(geocodeRouter);
 
 export default router;

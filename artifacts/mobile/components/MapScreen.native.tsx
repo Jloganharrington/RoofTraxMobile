@@ -7,7 +7,13 @@ import {
   Text,
   View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, {
+  Marker,
+  PROVIDER_DEFAULT,
+  type LatLng,
+  type MapPressEvent,
+  type MarkerDragStartEndEvent,
+} from 'react-native-maps';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useListPins, usePingLocation } from '@workspace/api-client-react';
@@ -31,6 +37,7 @@ export default function MapScreen() {
   const pinsQuery = useListPins();
   const pingLocation = usePingLocation();
   const [hasCentered, setHasCentered] = useState(false);
+  const [pendingPin, setPendingPin] = useState<LatLng | null>(null);
 
   useEffect(() => {
     if (coords && !hasCentered) {
@@ -61,12 +68,35 @@ export default function MapScreen() {
     [coords],
   );
 
-  function handleDropPin() {
+  // Tapping the map drops a draggable pin so the rep can fine-tune the exact
+  // spot (e.g. over the house, not the street) before confirming.
+  function handleMapPress(event: MapPressEvent) {
+    setPendingPin(event.nativeEvent.coordinate);
+  }
+
+  function handleFabPress() {
+    if (pendingPin) {
+      confirmPendingPin();
+      return;
+    }
     if (!coords) return;
+    setPendingPin(coords);
+  }
+
+  function handlePendingPinDragEnd(event: MarkerDragStartEndEvent) {
+    setPendingPin(event.nativeEvent.coordinate);
+  }
+
+  function confirmPendingPin() {
+    if (!pendingPin) return;
     router.push({
       pathname: '/pin-new',
-      params: { latitude: String(coords.latitude), longitude: String(coords.longitude) },
+      params: {
+        latitude: String(pendingPin.latitude),
+        longitude: String(pendingPin.longitude),
+      },
     });
+    setPendingPin(null);
   }
 
   return (
@@ -78,7 +108,17 @@ export default function MapScreen() {
         initialRegion={initialRegion}
         showsUserLocation
         showsMyLocationButton={false}
+        onPress={handleMapPress}
       >
+        {pendingPin && (
+          <Marker
+            coordinate={pendingPin}
+            draggable
+            onDragEnd={handlePendingPinDragEnd}
+            pinColor={colors.primary}
+          />
+        )}
+
         {pins.map((pin) => (
           <Marker
             key={pin.id}
@@ -100,7 +140,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {permissionDenied && (
+      {permissionDenied && !pendingPin && (
         <View style={[styles.banner, { backgroundColor: colors.destructive }]}>
           <Text style={styles.bannerText}>
             Location access is needed to drop pins at your position.
@@ -108,7 +148,27 @@ export default function MapScreen() {
         </View>
       )}
 
-      {role === 'field_rep' && (
+      {pendingPin && (
+        <View style={[styles.banner, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+          <Text style={[styles.bannerText, { color: colors.foreground }]}>
+            Drag the pin over the house, then tap the check to confirm.
+          </Text>
+        </View>
+      )}
+
+      {pendingPin && (
+        <Pressable
+          onPress={() => setPendingPin(null)}
+          style={[
+            styles.secondaryFab,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Feather name="x" size={20} color={colors.foreground} />
+        </Pressable>
+      )}
+
+      {role === 'field_rep' && !pendingPin && (
         <Pressable
           onPress={() => router.push('/bulk-upload')}
           style={[
@@ -121,14 +181,21 @@ export default function MapScreen() {
       )}
 
       <Pressable
-        onPress={handleDropPin}
-        disabled={!coords}
+        onPress={handleFabPress}
+        disabled={!pendingPin && !coords}
         style={[
           styles.fab,
-          { backgroundColor: coords ? colors.primary : colors.mutedForeground },
+          {
+            backgroundColor:
+              pendingPin || coords ? colors.primary : colors.mutedForeground,
+          },
         ]}
       >
-        <Feather name="plus" size={28} color={colors.primaryForeground} />
+        <Feather
+          name={pendingPin ? 'check' : 'plus'}
+          size={28}
+          color={colors.primaryForeground}
+        />
       </Pressable>
     </View>
   );

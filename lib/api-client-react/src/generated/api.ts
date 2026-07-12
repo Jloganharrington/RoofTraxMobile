@@ -38,6 +38,8 @@ import type {
   PinEnvelope,
   PinListEnvelope,
   ProfileEnvelope,
+  ReverseGeocodeCoordinatesParams,
+  ReverseGeocodeResponse,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
@@ -1593,6 +1595,91 @@ export const usePingLocation = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getPingLocationMutationOptions(options));
     }
+
+export const getReverseGeocodeCoordinatesUrl = (params: ReverseGeocodeCoordinatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/geocode/reverse?${stringifiedParams}` : `/api/geocode/reverse`
+}
+
+/**
+ * Best-effort only; returns a null address if lookup fails.
+ * @summary Look up a human-readable address for a coordinate pair
+ */
+export const reverseGeocodeCoordinates = async (params: ReverseGeocodeCoordinatesParams, options?: RequestInit): Promise<ReverseGeocodeResponse> => {
+
+  return customFetch<ReverseGeocodeResponse>(getReverseGeocodeCoordinatesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getReverseGeocodeCoordinatesQueryKey = (params?: ReverseGeocodeCoordinatesParams,) => {
+    return [
+    `/api/geocode/reverse`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getReverseGeocodeCoordinatesQueryOptions = <TData = Awaited<ReturnType<typeof reverseGeocodeCoordinates>>, TError = ErrorType<ErrorEnvelope>>(params: ReverseGeocodeCoordinatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof reverseGeocodeCoordinates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getReverseGeocodeCoordinatesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof reverseGeocodeCoordinates>>> = ({ signal }) => reverseGeocodeCoordinates(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof reverseGeocodeCoordinates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ReverseGeocodeCoordinatesQueryResult = NonNullable<Awaited<ReturnType<typeof reverseGeocodeCoordinates>>>
+export type ReverseGeocodeCoordinatesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Look up a human-readable address for a coordinate pair
+ */
+
+export function useReverseGeocodeCoordinates<TData = Awaited<ReturnType<typeof reverseGeocodeCoordinates>>, TError = ErrorType<ErrorEnvelope>>(
+ params: ReverseGeocodeCoordinatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof reverseGeocodeCoordinates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getReverseGeocodeCoordinatesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListTeamLocationsUrl = () => {
 

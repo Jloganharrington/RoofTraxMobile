@@ -424,6 +424,20 @@ export const PingLocationResponse = zod.object({
 
 
 /**
+ * Best-effort only; returns a null address if lookup fails.
+ * @summary Look up a human-readable address for a coordinate pair
+ */
+export const ReverseGeocodeCoordinatesQueryParams = zod.object({
+  "latitude": zod.coerce.number(),
+  "longitude": zod.coerce.number()
+})
+
+export const ReverseGeocodeCoordinatesResponse = zod.object({
+  "address": zod.string().nullable()
+})
+
+
+/**
  * Manager/admin only.
  * @summary List the latest known location of every team member
  */

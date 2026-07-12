@@ -34,6 +34,8 @@ export * from './pinWorkflow';
 export * from './profile';
 export * from './profileEnvelope';
 export * from './retailData';
+export * from './reverseGeocodeCoordinatesParams';
+export * from './reverseGeocodeResponse';
 export * from './role';
 export * from './teamLocation';
 export * from './teamLocationListEnvelope';
