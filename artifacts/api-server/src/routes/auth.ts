@@ -296,6 +296,19 @@ router.post(
       res.json(ExchangeMobileAuthorizationCodeResponse.parse({ token: sid }));
     } catch (err) {
       req.log.error(getSafeErrorMetadata(err), 'Mobile token exchange error');
+      // TEMP DEBUG - remove after diagnosing login issue
+      if (isRecord(err)) {
+        req.log.error(
+          {
+            cause: isRecord(err.cause) ? err.cause : undefined,
+            message: (err as Error).message,
+            responseBody: isRecord(err.cause)
+              ? (err.cause as Record<string, unknown>).error
+              : undefined,
+          },
+          'TEMP DEBUG token exchange error detail',
+        );
+      }
       res.status(500).json({ error: 'Token exchange failed' });
     }
   },
