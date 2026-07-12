@@ -61,7 +61,8 @@ function pinSubtitle(pin: Pin): string {
 export default function ProfileScreen() {
   const colors = useColors();
   const { user, logout } = useAuth();
-  const { role, workflowAssignment, isLoading: profileLoading } = useProfile();
+  const { role, workflowAssignment, companyId, companyName, isLoading: profileLoading } =
+    useProfile();
   const pinsQuery = useListPins();
   const pins = pinsQuery.data?.pins ?? [];
 
@@ -109,9 +110,9 @@ export default function ProfileScreen() {
               </View>
             </View>
           )}
-          {user?.companyId && (
+          {companyId && (
             <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>
-              Company ID: {user.companyId}
+              {companyName ? `${companyName} · ` : ''}Company ID: {companyId}
             </Text>
           )}
         </View>

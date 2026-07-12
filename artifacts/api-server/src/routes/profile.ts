@@ -1,5 +1,5 @@
 import { GetMyProfileResponse } from '@workspace/api-zod';
-import { db, userProfilesTable } from '@workspace/db';
+import { db, userProfilesTable, usersTable, companiesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -33,12 +33,23 @@ router.get('/profile/me', async (req: Request, res: Response) => {
     }
   }
 
+  const [row] = await db
+    .select({
+      companyId: usersTable.companyId,
+      companyName: companiesTable.name,
+    })
+    .from(usersTable)
+    .innerJoin(companiesTable, eq(companiesTable.id, usersTable.companyId))
+    .where(eq(usersTable.id, userId));
+
   res.json(
     GetMyProfileResponse.parse({
       profile: {
         userId: profile.userId,
         role: profile.role,
         workflowAssignment: profile.workflowAssignment,
+        companyId: row.companyId,
+        companyName: row.companyName,
       },
     }),
   );

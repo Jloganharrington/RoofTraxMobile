@@ -17,6 +17,8 @@ export function useProfile() {
     isLoading: isAuthenticated ? query.isLoading : false,
     role: query.data?.profile.role ?? 'field_rep',
     workflowAssignment: query.data?.profile.workflowAssignment ?? 'insurance',
+    companyId: query.data?.profile.companyId,
+    companyName: query.data?.profile.companyName,
     refetch: query.refetch,
   };
 }

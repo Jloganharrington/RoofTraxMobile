@@ -833,7 +833,7 @@ components:
 
     Profile:
       type: object
-      required: [userId, role, workflowAssignment]
+      required: [userId, role, workflowAssignment, companyId, companyName]
       properties:
         userId:
           type: string
@@ -841,6 +841,10 @@ components:
           $ref: "#/components/schemas/Role"
         workflowAssignment:
           $ref: "#/components/schemas/WorkflowAssignment"
+        companyId:
+          type: string
+        companyName:
+          type: string
     ProfileEnvelope:
       type: object
       required: [profile]

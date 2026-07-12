@@ -208,7 +208,9 @@ export const GetMyProfileResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
   "role": zod.enum(['field_rep', 'manager', 'admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance', 'both'])
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'both']),
+  "companyId": zod.string(),
+  "companyName": zod.string()
 })
 })
 

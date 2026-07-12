@@ -143,6 +143,8 @@ export interface Profile {
   userId: string;
   role: Role;
   workflowAssignment: WorkflowAssignment;
+  companyId: string;
+  companyName: string;
 }
 
 export interface ProfileEnvelope {
