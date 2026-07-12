@@ -1,5 +1,5 @@
-import * as SecureStore from 'expo-secure-store';
 import { getApiBaseUrl } from './api';
+import { getToken } from './tokenStorage';
 
 interface RequestUploadUrlResult {
   uploadURL: string;
@@ -7,7 +7,7 @@ interface RequestUploadUrlResult {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const token = await SecureStore.getItemAsync('auth_session_token');
+  const token = await getToken('auth_session_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

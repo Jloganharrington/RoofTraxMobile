@@ -8,8 +8,8 @@ import React, {
 } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
-import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
+import { getToken, setToken, deleteToken } from './tokenStorage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      const token = await getToken(AUTH_TOKEN_KEY);
       if (!token) {
         setUser(null);
         setIsLoading(false);
@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         setUser(data.user);
       } else {
-        await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+        await deleteToken(AUTH_TOKEN_KEY);
         setUser(null);
       }
     } catch {
@@ -138,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await exchangeRes.json();
         if (data.token) {
-          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
+          await setToken(AUTH_TOKEN_KEY, data.token);
           setIsLoading(true);
           await fetchUser();
         }
@@ -184,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (data?.type === 'mobile-auth-success' && data.token) {
           cleanup();
-          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
+          await setToken(AUTH_TOKEN_KEY, data.token);
           setIsLoading(true);
           await fetchUser();
           resolve();
@@ -220,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      const token = await getToken(AUTH_TOKEN_KEY);
       if (token) {
         const apiBase = getApiBaseUrl();
         await fetch(`${apiBase}/api/mobile-auth/logout`, {
@@ -230,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch {
     } finally {
-      await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+      await deleteToken(AUTH_TOKEN_KEY);
       setUser(null);
     }
   }, []);
