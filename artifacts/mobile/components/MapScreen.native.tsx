@@ -15,6 +15,7 @@ import MapView, {
   type MapPressEvent,
   type MarkerDragStartEndEvent,
 } from 'react-native-maps';
+import { AddressSearchBar } from '@/components/AddressSearchBar';
 import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
 import {
@@ -23,6 +24,7 @@ import {
   useListTeamUsers,
   usePingLocation,
 } from '@workspace/api-client-react';
+import type { GeocodeSearchResult } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useProfile } from '@/hooks/useProfile';
@@ -115,6 +117,19 @@ export default function MapScreen() {
     setPendingPin(event.nativeEvent.coordinate);
   }
 
+  // Search result selection recenters the map on that address and drops a
+  // pending pin there, reusing the same confirm/cancel flow as tapping the
+  // map directly — so a rep can search an address they aren't standing at
+  // and immediately drop a pin on it.
+  function handleSearchSelect(result: GeocodeSearchResult) {
+    const coordinate = { latitude: result.latitude, longitude: result.longitude };
+    mapRef.current?.animateToRegion(
+      { ...coordinate, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+      400,
+    );
+    setPendingPin(coordinate);
+  }
+
   function confirmPendingPin() {
     if (!pendingPin) return;
     router.push({
@@ -176,6 +191,8 @@ export default function MapScreen() {
           />
         ))}
       </MapView>
+
+      <AddressSearchBar onSelect={handleSearchSelect} />
 
       {(locLoading || pinsQuery.isLoading) && (
         <View style={styles.loadingBadge} pointerEvents="none">
@@ -327,7 +344,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingBadge: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 80 : 16,
+    top: Platform.OS === 'web' ? 80 : 130,
     alignSelf: 'center',
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderRadius: 20,
@@ -335,7 +352,7 @@ const styles = StyleSheet.create({
   },
   filterPill: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 80 : 16,
+    top: Platform.OS === 'web' ? 80 : 130,
     left: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -349,7 +366,7 @@ const styles = StyleSheet.create({
   filterPillText: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
   banner: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 80 : 16,
+    top: Platform.OS === 'web' ? 80 : 130,
     left: 16,
     right: 16,
     borderRadius: 12,

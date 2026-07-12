@@ -318,6 +318,16 @@ export interface ReverseGeocodeResponse {
   address: string | null;
 }
 
+export interface GeocodeSearchResult {
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface AddressSearchResults {
+  results: GeocodeSearchResult[];
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */
@@ -354,5 +364,12 @@ userId?: string;
 export type ReverseGeocodeCoordinatesParams = {
 latitude: number;
 longitude: number;
+};
+
+export type SearchAddressParams = {
+/**
+ * Free-text address or place query.
+ */
+q: string;
 };
 

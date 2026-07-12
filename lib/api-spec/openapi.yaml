@@ -695,6 +695,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /geocode/search:
+    get:
+      tags: [Geocode]
+      operationId: searchAddress
+      summary: Look up coordinates for a specific address
+      description: >-
+        Forward geocoding, so a rep can find a specific address instead of
+        only working off their current GPS position. Best-effort only;
+        returns an empty list if nothing matches or the lookup fails.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Free-text address or place query.
+      responses:
+        "200":
+          description: Matching candidates, best match first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressSearchResults"
+        "400":
+          description: Missing query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /location/team:
     get:
       tags: [Location]
@@ -1224,3 +1259,22 @@ components:
       properties:
         address:
           type: [string, "null"]
+
+    GeocodeSearchResult:
+      type: object
+      required: [address, latitude, longitude]
+      properties:
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+    AddressSearchResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeocodeSearchResult"

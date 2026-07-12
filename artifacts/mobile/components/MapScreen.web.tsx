@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AddressSearchBar } from '@/components/AddressSearchBar';
 import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
 import {
@@ -7,6 +8,7 @@ import {
   useListPins,
   useListTeamUsers,
 } from '@workspace/api-client-react';
+import type { GeocodeSearchResult } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
@@ -23,6 +25,7 @@ export default function MapScreenWeb() {
 
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
   const [filterPickerOpen, setFilterPickerOpen] = useState(false);
+  const [searchedLocation, setSearchedLocation] = useState<GeocodeSearchResult | null>(null);
 
   const teamQuery = useListTeamUsers({
     query: { enabled: isManagerOrAdmin, queryKey: getListTeamUsersQueryKey() },
@@ -59,6 +62,45 @@ export default function MapScreenWeb() {
           list here instead.
         </Text>
       </View>
+
+      <AddressSearchBar
+        variant="inline"
+        onSelect={(result) => setSearchedLocation(result)}
+      />
+
+      {searchedLocation && (
+        <View
+          style={[
+            styles.searchResultCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.foreground, fontWeight: '600' }} numberOfLines={2}>
+              {searchedLocation.address}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              {searchedLocation.latitude.toFixed(5)}, {searchedLocation.longitude.toFixed(5)}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: '/pin-new',
+                params: {
+                  latitude: String(searchedLocation.latitude),
+                  longitude: String(searchedLocation.longitude),
+                },
+              })
+            }
+            style={[styles.dropPinButton, { backgroundColor: colors.primary }]}
+          >
+            <Text style={{ color: colors.primaryForeground, fontWeight: '600', fontSize: 13 }}>
+              Drop pin here
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       {isManagerOrAdmin && (
         <Pressable
@@ -208,6 +250,21 @@ const styles = StyleSheet.create({
     maxWidth: 220,
   },
   filterPillText: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  searchResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
+  dropPinButton: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
   list: { padding: 16, paddingBottom: 120, gap: 10 },
   pinRow: {
     flexDirection: 'row',

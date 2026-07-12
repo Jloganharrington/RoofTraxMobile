@@ -1,7 +1,10 @@
-import { ReverseGeocodeCoordinatesResponse } from '@workspace/api-zod';
+import {
+  ReverseGeocodeCoordinatesResponse,
+  SearchAddressResponse,
+} from '@workspace/api-zod';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { reverseGeocode } from '../lib/geocode';
+import { reverseGeocode, searchAddress } from '../lib/geocode';
 
 const router: IRouter = Router();
 
@@ -21,6 +24,22 @@ router.get('/geocode/reverse', async (req: Request, res: Response) => {
 
   const address = await reverseGeocode(latitude, longitude);
   res.json(ReverseGeocodeCoordinatesResponse.parse({ address }));
+});
+
+router.get('/geocode/search', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (!q) {
+    res.status(400).json({ error: 'Query parameter q is required' });
+    return;
+  }
+
+  const results = await searchAddress(q);
+  res.json(SearchAddressResponse.parse({ results }));
 });
 
 export default router;

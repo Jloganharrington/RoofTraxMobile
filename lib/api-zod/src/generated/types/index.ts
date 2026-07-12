@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './addressSearchResults';
 export * from './adminStats';
 export * from './adminStatsEnvelope';
 export * from './authorizationSessionHeaderParameter';
@@ -23,6 +24,7 @@ export * from './damageType';
 export * from './deleteSuccess';
 export * from './doorKnockResult';
 export * from './errorEnvelope';
+export * from './geocodeSearchResult';
 export * from './handleBrowserLoginCallbackParams';
 export * from './healthStatus';
 export * from './listPinsParams';
@@ -42,6 +44,7 @@ export * from './retailData';
 export * from './reverseGeocodeCoordinatesParams';
 export * from './reverseGeocodeResponse';
 export * from './role';
+export * from './searchAddressParams';
 export * from './teamLocation';
 export * from './teamLocationListEnvelope';
 export * from './teamUser';

@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AddressSearchResults,
   AdminStatsEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
@@ -43,6 +44,7 @@ import type {
   ProfileEnvelope,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
+  SearchAddressParams,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
@@ -1903,6 +1905,91 @@ export function useReverseGeocodeCoordinates<TData = Awaited<ReturnType<typeof r
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getReverseGeocodeCoordinatesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchAddressUrl = (params: SearchAddressParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/geocode/search?${stringifiedParams}` : `/api/geocode/search`
+}
+
+/**
+ * Forward geocoding, so a rep can find a specific address instead of only working off their current GPS position. Best-effort only; returns an empty list if nothing matches or the lookup fails.
+ * @summary Look up coordinates for a specific address
+ */
+export const searchAddress = async (params: SearchAddressParams, options?: RequestInit): Promise<AddressSearchResults> => {
+
+  return customFetch<AddressSearchResults>(getSearchAddressUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchAddressQueryKey = (params?: SearchAddressParams,) => {
+    return [
+    `/api/geocode/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchAddressQueryOptions = <TData = Awaited<ReturnType<typeof searchAddress>>, TError = ErrorType<ErrorEnvelope>>(params: SearchAddressParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchAddress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchAddressQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchAddress>>> = ({ signal }) => searchAddress(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchAddress>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchAddressQueryResult = NonNullable<Awaited<ReturnType<typeof searchAddress>>>
+export type SearchAddressQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Look up coordinates for a specific address
+ */
+
+export function useSearchAddress<TData = Awaited<ReturnType<typeof searchAddress>>, TError = ErrorType<ErrorEnvelope>>(
+ params: SearchAddressParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchAddress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchAddressQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

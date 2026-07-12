@@ -570,6 +570,23 @@ export const ReverseGeocodeCoordinatesResponse = zod.object({
 
 
 /**
+ * Forward geocoding, so a rep can find a specific address instead of only working off their current GPS position. Best-effort only; returns an empty list if nothing matches or the lookup fails.
+ * @summary Look up coordinates for a specific address
+ */
+export const SearchAddressQueryParams = zod.object({
+  "q": zod.coerce.string().describe('Free-text address or place query.')
+})
+
+export const SearchAddressResponse = zod.object({
+  "results": zod.array(zod.object({
+  "address": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number()
+}))
+})
+
+
+/**
  * Manager/admin only.
  * @summary List the latest known location of every team member
  */

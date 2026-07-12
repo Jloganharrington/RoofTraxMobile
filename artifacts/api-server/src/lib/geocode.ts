@@ -14,6 +14,19 @@ interface NominatimReverseResponse {
   address?: NominatimAddress;
 }
 
+interface NominatimSearchResult {
+  display_name: string;
+  lat: string;
+  lon: string;
+  address?: NominatimAddress;
+}
+
+export interface GeocodeSearchResult {
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
 // Formats a Nominatim address into "1111 Street Name, City, State, Zipcode" —
 // deliberately dropping county and country, which Nominatim's `display_name`
 // otherwise includes.
@@ -56,5 +69,44 @@ export async function reverseGeocode(
     return formatAddress(data.address) ?? data.display_name ?? null;
   } catch {
     return null;
+  }
+}
+
+// Forward geocoding helper backed by Nominatim's /search endpoint, used to
+// let a rep look up a specific address instead of only working off their
+// current GPS position. Best-effort only: failures resolve to an empty
+// array rather than throwing.
+export async function searchAddress(query: string): Promise<GeocodeSearchResult[]> {
+  try {
+    const url = new URL('https://nominatim.openstreetmap.org/search');
+    url.searchParams.set('q', query);
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('addressdetails', '1');
+    url.searchParams.set('limit', '5');
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'RoofTrax/1.0 (field-ops pin tracking)',
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const data = (await response.json()) as NominatimSearchResult[];
+
+    return data
+      .map((result) => {
+        const latitude = Number(result.lat);
+        const longitude = Number(result.lon);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+        const address =
+          (result.address && formatAddress(result.address)) || result.display_name;
+
+        return { address, latitude, longitude };
+      })
+      .filter((result): result is GeocodeSearchResult => result !== null);
+  } catch {
+    return [];
   }
 }
