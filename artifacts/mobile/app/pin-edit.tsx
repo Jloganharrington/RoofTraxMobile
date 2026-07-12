@@ -161,11 +161,13 @@ export default function PinEditScreen() {
     }
   }
 
+  const photoRequired = !isRetail && contactOutcome === 'no_soliciting';
+
   function handleSave() {
-    if (!isRetail && !photoUrl) {
+    if (photoRequired && !photoUrl) {
       Alert.alert(
         'Photo required',
-        'Add a photo of the front of the home before saving this pin.',
+        'Add a photo of the front of the home for Mailer Only outcomes.',
       );
       return;
     }
@@ -344,7 +346,7 @@ export default function PinEditScreen() {
         style={[
           styles.photoButton,
           {
-            borderColor: !isRetail && !photoUrl ? colors.destructive : colors.border,
+            borderColor: photoRequired && !photoUrl ? colors.destructive : colors.border,
           },
         ]}
       >
@@ -354,7 +356,7 @@ export default function PinEditScreen() {
           <>
             <Icon name="camera" size={18} color={colors.foreground} />
             <Text style={{ color: colors.foreground }}>
-              {photoUri || photoUrl ? 'Retake photo' : !isRetail ? 'Add photo (required)' : 'Add photo'}
+              {photoUri || photoUrl ? 'Retake photo' : photoRequired ? 'Add photo (required)' : 'Add photo'}
             </Text>
           </>
         )}
@@ -366,7 +368,10 @@ export default function PinEditScreen() {
           contactOutcome === 'call_to_schedule' &&
           (!customerName.trim() || !customerPhone.trim());
         const saveDisabled =
-          updatePin.isPending || uploadingPhoto || (!isRetail && !photoUrl) || missingCustomerInfo;
+          updatePin.isPending ||
+          uploadingPhoto ||
+          missingCustomerInfo ||
+          (photoRequired && !photoUrl);
 
         return (
           <Pressable

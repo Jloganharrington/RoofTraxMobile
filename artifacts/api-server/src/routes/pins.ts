@@ -88,6 +88,13 @@ router.post('/pins', async (req: Request, res: Response) => {
     return;
   }
 
+  if (contactOutcome === 'no_soliciting' && !photoUrl) {
+    res.status(400).json({
+      error: 'A photo of the front of the home is required for Mailer Only outcomes',
+    });
+    return;
+  }
+
   const address = await reverseGeocode(latitude, longitude);
 
   const [pin] = await db
@@ -187,6 +194,14 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
     res
       .status(400)
       .json({ error: 'Customer name and phone number are required to schedule a call' });
+    return;
+  }
+
+  const nextPhotoUrl = parsed.data.photoUrl ?? pin.photoUrl;
+  if (nextContactOutcome === 'no_soliciting' && !nextPhotoUrl) {
+    res.status(400).json({
+      error: 'A photo of the front of the home is required for Mailer Only outcomes',
+    });
     return;
   }
 
