@@ -15,6 +15,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { Feather } from '@expo/vector-icons';
+import * as Font from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { ActivityIndicator, View } from 'react-native';
@@ -66,6 +67,12 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
+    }
+    if (fontError) {
+      console.error('[fonts] useFonts error:', fontError);
+    }
+    if (fontsLoaded) {
+      console.log('[fonts] fontsLoaded=true, Feather isLoaded=', Font.isLoaded('feather'));
     }
   }, [fontsLoaded, fontError]);
 
