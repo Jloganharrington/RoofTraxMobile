@@ -56,6 +56,11 @@ router.post('/pins', async (req: Request, res: Response) => {
   const { latitude, longitude, workflow, damageType, photoUrl, doorKnockResult, retailData } =
     parsed.data;
 
+  if (workflow === 'insurance' && !photoUrl) {
+    res.status(400).json({ error: 'A photo of the front of the home is required' });
+    return;
+  }
+
   const address = await reverseGeocode(latitude, longitude);
 
   const [pin] = await db

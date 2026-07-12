@@ -141,6 +141,14 @@ export default function PinNewScreen() {
   function handleSave() {
     if (!latitude || !longitude) return;
 
+    if (!isRetail && !photoUrl) {
+      Alert.alert(
+        'Photo required',
+        'Add a photo of the front of the home before saving this pin.',
+      );
+      return;
+    }
+
     createPin.mutate(
       {
         data: {
@@ -290,9 +298,19 @@ export default function PinNewScreen() {
         </>
       )}
 
+      {!isRetail && (
+        <Text style={[styles.label, { color: colors.foreground }]}>
+          Photo of front of home
+        </Text>
+      )}
       <Pressable
         onPress={handlePickPhoto}
-        style={[styles.photoButton, { borderColor: colors.border }]}
+        style={[
+          styles.photoButton,
+          {
+            borderColor: !isRetail && !photoUrl ? colors.destructive : colors.border,
+          },
+        ]}
       >
         {uploadingPhoto ? (
           <ActivityIndicator />
@@ -300,7 +318,7 @@ export default function PinNewScreen() {
           <>
             <Icon name="camera" size={18} color={colors.foreground} />
             <Text style={{ color: colors.foreground }}>
-              {photoUri ? 'Retake photo' : 'Add photo'}
+              {photoUri ? 'Retake photo' : !isRetail ? 'Add photo (required)' : 'Add photo'}
             </Text>
           </>
         )}
@@ -308,8 +326,14 @@ export default function PinNewScreen() {
 
       <Pressable
         onPress={handleSave}
-        disabled={createPin.isPending || uploadingPhoto}
-        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+        disabled={createPin.isPending || uploadingPhoto || (!isRetail && !photoUrl)}
+        style={[
+          styles.saveButton,
+          {
+            backgroundColor: colors.primary,
+            opacity: !isRetail && !photoUrl ? 0.5 : 1,
+          },
+        ]}
       >
         {createPin.isPending ? (
           <ActivityIndicator color={colors.primaryForeground} />
