@@ -379,6 +379,76 @@ export const BulkCreatePinsResponse = zod.object({
 
 
 /**
+ * Owners may edit their own pins; managers/admins may edit any pin.
+ * @summary Edit a pin
+ */
+export const UpdatePinParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+
+
+
+export const UpdatePinBody = zod.object({
+  "workflow": zod.enum(['retail', 'insurance']).optional(),
+  "damageType": zod.enum(['roof', 'siding', 'roof_and_siding']).optional(),
+  "photoUrl": zod.string().optional(),
+  "doorKnockResult": zod.enum(['no_answer', 'no_appointment', 'appointment']).optional(),
+  "retailData": zod.object({
+  "ownerName1": zod.string().min(1),
+  "ownerName2": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "interestedRoof": zod.boolean(),
+  "interestedSiding": zod.boolean(),
+  "interestedWindows": zod.boolean(),
+  "interestedDoors": zod.boolean(),
+  "interestNotes": zod.string().nullish(),
+  "appointmentDate": zod.string().nullish(),
+  "notes": zod.string().nullish()
+}).optional(),
+  "contactOutcome": zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']).optional(),
+  "customerName": zod.string().optional(),
+  "customerPhone": zod.string().optional()
+}).describe('All fields optional; only the ones present are changed. Location (latitude\/longitude) is immutable after creation.')
+
+
+
+
+export const UpdatePinResponse = zod.object({
+  "pin": zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "address": zod.string().nullable(),
+  "workflow": zod.enum(['retail', 'insurance']),
+  "damageType": zod.union([zod.enum(['roof', 'siding', 'roof_and_siding']),zod.null()]),
+  "photoUrl": zod.string().nullable(),
+  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment']),zod.null()]),
+  "retailData": zod.union([zod.object({
+  "ownerName1": zod.string().min(1),
+  "ownerName2": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "interestedRoof": zod.boolean(),
+  "interestedSiding": zod.boolean(),
+  "interestedWindows": zod.boolean(),
+  "interestedDoors": zod.boolean(),
+  "interestNotes": zod.string().nullish(),
+  "appointmentDate": zod.string().nullish(),
+  "notes": zod.string().nullish()
+}),zod.null()]),
+  "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
+  "status": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
  * Owners may delete their own pins; managers/admins may delete any pin.
  * @summary Delete a pin
  */

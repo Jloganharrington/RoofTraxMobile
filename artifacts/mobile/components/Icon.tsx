@@ -21,7 +21,8 @@ export type IconName =
   | 'plus'
   | 'user'
   | 'log-out'
-  | 'chevron-down';
+  | 'chevron-down'
+  | 'chevron-right';
 
 type IconProps = {
   name: IconName;
@@ -124,6 +125,10 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
 
       {name === 'chevron-down' && (
         <Polyline points="6 9 12 15 18 9" {...strokeProps} />
+      )}
+
+      {name === 'chevron-right' && (
+        <Polyline points="9 18 15 12 9 6" {...strokeProps} />
       )}
 
       {name === 'log-out' && (

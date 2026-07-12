@@ -10,6 +10,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
+import { canEditPin } from '@/lib/permissions';
 
 // react-native-maps has no web renderer (its web entry is an
 // UnimplementedView stub), so the web build shows a plain list of pins
@@ -73,24 +74,34 @@ export default function MapScreenWeb() {
       )}
 
       <ScrollView contentContainerStyle={styles.list}>
-        {pins.map((pin) => (
-          <View
-            key={pin.id}
-            style={[styles.pinRow, { borderColor: colors.border, backgroundColor: colors.card }]}
-          >
-            <View style={[styles.dot, { backgroundColor: dotColorFor(pin) }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.foreground, fontWeight: '600' }}>
-                {pin.address ?? `${pin.latitude.toFixed(4)}, ${pin.longitude.toFixed(4)}`}
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                {pin.workflow === 'retail'
-                  ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
-                  : `Insurance · ${pin.damageType ?? 'unspecified'}`}
-              </Text>
-            </View>
-          </View>
-        ))}
+        {pins.map((pin) => {
+          const editable = canEditPin(role, user?.id, pin.userId);
+          return (
+            <Pressable
+              key={pin.id}
+              disabled={!editable}
+              onPress={() =>
+                router.push({ pathname: '/pin-edit', params: { pin: JSON.stringify(pin) } })
+              }
+              style={[styles.pinRow, { borderColor: colors.border, backgroundColor: colors.card }]}
+            >
+              <View style={[styles.dot, { backgroundColor: dotColorFor(pin) }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.foreground, fontWeight: '600' }}>
+                  {pin.address ?? `${pin.latitude.toFixed(4)}, ${pin.longitude.toFixed(4)}`}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                  {pin.workflow === 'retail'
+                    ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
+                    : `Insurance · ${pin.damageType ?? 'unspecified'}`}
+                </Text>
+              </View>
+              {editable && (
+                <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+              )}
+            </Pressable>
+          );
+        })}
         {pins.length === 0 && !pinsQuery.isLoading && (
           <Text style={{ color: colors.mutedForeground, padding: 16 }}>
             No pins yet.

@@ -46,6 +46,7 @@ import type {
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
+  UpdatePinInput,
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse
@@ -1308,6 +1309,79 @@ export const useBulkCreatePins = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getBulkCreatePinsMutationOptions(options));
+    }
+
+export const getUpdatePinUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}`
+}
+
+/**
+ * Owners may edit their own pins; managers/admins may edit any pin.
+ * @summary Edit a pin
+ */
+export const updatePin = async (pinId: string,
+    updatePinInput: UpdatePinInput, options?: RequestInit): Promise<PinEnvelope> => {
+
+  return customFetch<PinEnvelope>(getUpdatePinUrl(pinId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePinInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePinMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePin>>, TError,{pinId: string;data: BodyType<UpdatePinInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePin>>, TError,{pinId: string;data: BodyType<UpdatePinInput>}, TContext> => {
+
+const mutationKey = ['updatePin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePin>>, {pinId: string;data: BodyType<UpdatePinInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  updatePin(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePinMutationResult = NonNullable<Awaited<ReturnType<typeof updatePin>>>
+    export type UpdatePinMutationBody = BodyType<UpdatePinInput>
+    export type UpdatePinMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Edit a pin
+ */
+export const useUpdatePin = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePin>>, TError,{pinId: string;data: BodyType<UpdatePinInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePin>>,
+        TError,
+        {pinId: string;data: BodyType<UpdatePinInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePinMutationOptions(options));
     }
 
 export const getDeletePinUrl = (pinId: string,) => {

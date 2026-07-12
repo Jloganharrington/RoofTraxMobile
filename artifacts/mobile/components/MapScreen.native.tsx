@@ -27,6 +27,7 @@ import { useColors } from '@/hooks/useColors';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
+import { canEditPin } from '@/lib/permissions';
 
 const DEFAULT_REGION = {
   latitude: 39.8283,
@@ -168,6 +169,10 @@ export default function MapScreen() {
                 ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
                 : `Insurance · ${pin.damageType ?? 'unspecified'}`
             }
+            onCalloutPress={() => {
+              if (!canEditPin(role, user?.id, pin.userId)) return;
+              router.push({ pathname: '/pin-edit', params: { pin: JSON.stringify(pin) } });
+            }}
           />
         ))}
       </MapView>

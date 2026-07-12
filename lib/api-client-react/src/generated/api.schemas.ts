@@ -215,6 +215,20 @@ export interface CreatePinInput {
   customerPhone?: string;
 }
 
+/**
+ * All fields optional; only the ones present are changed. Location (latitude/longitude) is immutable after creation.
+ */
+export interface UpdatePinInput {
+  workflow?: PinWorkflow;
+  damageType?: DamageType;
+  photoUrl?: string;
+  doorKnockResult?: DoorKnockResult;
+  retailData?: RetailData;
+  contactOutcome?: ContactOutcome;
+  customerName?: string;
+  customerPhone?: string;
+}
+
 export interface BulkPinInput {
   latitude: number;
   longitude: number;

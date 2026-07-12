@@ -47,6 +47,7 @@ export * from './teamLocationListEnvelope';
 export * from './teamUser';
 export * from './teamUserEnvelope';
 export * from './teamUserListEnvelope';
+export * from './updatePinInput';
 export * from './updateTeamUserInput';
 export * from './uploadUrlRequest';
 export * from './uploadUrlResponse';

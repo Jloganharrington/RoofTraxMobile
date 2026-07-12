@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Icon } from '@/components/Icon';
+import { router } from 'expo-router';
 import { useListPins } from '@workspace/api-client-react';
 import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -147,8 +148,9 @@ export default function ProfileScreen() {
         <Text style={{ color: colors.mutedForeground }}>You haven't dropped any pins yet.</Text>
       ) : (
         pins.map((pin: Pin) => (
-          <View
+          <Pressable
             key={pin.id}
+            onPress={() => router.push({ pathname: '/pin-edit', params: { pin: JSON.stringify(pin) } })}
             style={[styles.pinCard, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <View style={{ flex: 1 }}>
@@ -165,7 +167,8 @@ export default function ProfileScreen() {
                 { backgroundColor: pin.workflow === 'retail' ? colors.retail : colors.insurance },
               ]}
             />
-          </View>
+            <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+          </Pressable>
         ))
       )}
     </ScrollView>

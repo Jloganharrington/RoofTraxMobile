@@ -28,6 +28,12 @@ export function isManagerOrAdmin(role: Role): boolean {
   return role === 'manager' || role === 'admin';
 }
 
+// Pin edit/delete rules: owners may act on their own pins; managers/admins
+// may act on anyone's pin in their company.
+export function canEditPin(actorRole: Role, actorId: string, pinOwnerId: string): boolean {
+  return actorId === pinOwnerId || isManagerOrAdmin(actorRole);
+}
+
 // Workflow (Insurance/Retail) assignment rules:
 // - Admins can set anyone's workflow assignment, including their own.
 // - Managers can only set field reps' workflow assignment, never their own.

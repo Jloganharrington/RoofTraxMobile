@@ -5,13 +5,15 @@ import {
   CreatePinResponse,
   BulkCreatePinsResponse,
   DeletePinResponse,
+  UpdatePinBody,
+  UpdatePinResponse,
 } from '@workspace/api-zod';
 import { db, pinsTable, userProfilesTable } from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
-import { isManagerOrAdmin } from '../lib/permissions';
+import { canEditPin, isManagerOrAdmin } from '../lib/permissions';
 
 const router: IRouter = Router();
 
@@ -154,6 +156,76 @@ router.post('/pins/bulk', async (req: Request, res: Response) => {
   res.status(201).json(BulkCreatePinsResponse.parse({ pins: created }));
 });
 
+router.patch('/pins/:pinId', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const pinId = req.params.pinId as string;
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) {
+    res.status(404).json({ error: 'Pin not found' });
+    return;
+  }
+
+  const role = await getRole(req.user.id);
+  if (!canEditPin(role, req.user.id, pin.userId)) {
+    res.status(403).json({ error: 'Not permitted to edit this pin' });
+    return;
+  }
+
+  const parsed = UpdatePinBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid pin payload' });
+    return;
+  }
+
+  const nextWorkflow = parsed.data.workflow ?? pin.workflow;
+  const nextPhotoUrl = parsed.data.photoUrl ?? pin.photoUrl;
+  if (nextWorkflow === 'insurance' && !nextPhotoUrl) {
+    res.status(400).json({ error: 'A photo of the front of the home is required' });
+    return;
+  }
+
+  const nextContactOutcome = parsed.data.contactOutcome ?? pin.contactOutcome;
+  const nextCustomerName = parsed.data.customerName ?? pin.customerName;
+  const nextCustomerPhone = parsed.data.customerPhone ?? pin.customerPhone;
+  if (nextContactOutcome === 'call_to_schedule' && (!nextCustomerName || !nextCustomerPhone)) {
+    res
+      .status(400)
+      .json({ error: 'Customer name and phone number are required to schedule a call' });
+    return;
+  }
+
+  const [updated] = await db
+    .update(pinsTable)
+    .set({
+      ...(parsed.data.workflow !== undefined && { workflow: parsed.data.workflow }),
+      ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
+      ...(parsed.data.photoUrl !== undefined && { photoUrl: parsed.data.photoUrl }),
+      ...(parsed.data.doorKnockResult !== undefined && {
+        doorKnockResult: parsed.data.doorKnockResult,
+      }),
+      ...(parsed.data.retailData !== undefined && { retailData: parsed.data.retailData }),
+      ...(parsed.data.contactOutcome !== undefined && {
+        contactOutcome: parsed.data.contactOutcome,
+      }),
+      ...(parsed.data.customerName !== undefined && { customerName: parsed.data.customerName }),
+      ...(parsed.data.customerPhone !== undefined && {
+        customerPhone: parsed.data.customerPhone,
+      }),
+    })
+    .where(eq(pinsTable.id, pinId))
+    .returning();
+
+  res.json(UpdatePinResponse.parse({ pin: updated }));
+});
+
 router.delete('/pins/:pinId', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -172,7 +244,7 @@ router.delete('/pins/:pinId', async (req: Request, res: Response) => {
   }
 
   const role = await getRole(req.user.id);
-  if (pin.userId !== req.user.id && !isManagerOrAdmin(role)) {
+  if (!canEditPin(role, req.user.id, pin.userId)) {
     res.status(403).json({ error: 'Not permitted to delete this pin' });
     return;
   }
