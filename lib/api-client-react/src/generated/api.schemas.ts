@@ -23,10 +23,28 @@ export interface AuthUser {
   lastName: string | null;
   /** @nullable */
   profileImageUrl: string | null;
+  companyId: string;
 }
 
 export interface AuthUserEnvelope {
   user: AuthUser | null;
+}
+
+export interface Company {
+  id: string;
+  name: string;
+}
+
+export interface CreateCompanyRequest {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  name: string;
+}
+
+export interface CompanyEnvelope {
+  company: Company;
 }
 
 export interface MobileTokenExchangeRequest {
@@ -40,6 +58,8 @@ export interface MobileTokenExchangeRequest {
   state: string;
   /** @minLength 1 */
   nonce?: string;
+  /** @minLength 1 */
+  companyId?: string;
 }
 
 export interface MobileTokenExchangeSuccess {
@@ -291,6 +311,10 @@ export type BeginBrowserLoginParams = {
  * Relative path to redirect to after login (must start with `/`). Defaults to `/`.
  */
 returnTo?: string;
+/**
+ * Company ID chosen on the join/create-company screen. Only used the first time this user logs in; ignored on subsequent logins.
+ */
+companyId?: string;
 };
 
 export type HandleBrowserLoginCallbackParams = {

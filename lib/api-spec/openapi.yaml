@@ -66,6 +66,12 @@ paths:
           description: Relative path to redirect to after login (must start with `/`). Defaults to `/`.
           schema:
             type: string
+        - name: companyId
+          in: query
+          required: false
+          description: Company ID chosen on the join/create-company screen. Only used the first time this user logs in; ignored on subsequent logins.
+          schema:
+            type: string
       responses:
         "302":
           description: Redirect to the OIDC authorization endpoint.
@@ -110,6 +116,56 @@ paths:
       responses:
         "302":
           description: Redirect to the OIDC provider logout URL with a post-logout redirect back to the validated `returnTo` path.
+  /companies:
+    post:
+      tags: [Companies]
+      operationId: createCompany
+      summary: Create a new company and generate its join ID
+      description: Public — used on the "create a company" screen before the user has logged in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompanyRequest"
+      responses:
+        "201":
+          description: Company created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}:
+    get:
+      tags: [Companies]
+      operationId: getCompany
+      summary: Look up a company by its join ID
+      description: Public — used to confirm a company exists before joining it.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Company found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyEnvelope"
+        "404":
+          description: No company with that ID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /mobile-auth/token-exchange:
     post:
       tags: [Auth]
@@ -652,7 +708,7 @@ components:
 
     AuthUser:
       type: object
-      required: [id, email, firstName, lastName, profileImageUrl]
+      required: [id, email, firstName, lastName, profileImageUrl, companyId]
       properties:
         id:
           type: string
@@ -664,6 +720,8 @@ components:
           type: [string, "null"]
         profileImageUrl:
           type: [string, "null"]
+        companyId:
+          type: string
     AuthUserEnvelope:
       type: object
       required: [user]
@@ -672,6 +730,28 @@ components:
           oneOf:
             - $ref: "#/components/schemas/AuthUser"
             - type: "null"
+    Company:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    CreateCompanyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+    CompanyEnvelope:
+      type: object
+      required: [company]
+      properties:
+        company:
+          $ref: "#/components/schemas/Company"
     MobileTokenExchangeRequest:
       type: object
       required: [code, code_verifier, redirect_uri, state]
@@ -689,6 +769,9 @@ components:
           type: string
           minLength: 1
         nonce:
+          type: string
+          minLength: 1
+        companyId:
           type: string
           minLength: 1
     MobileTokenExchangeSuccess:

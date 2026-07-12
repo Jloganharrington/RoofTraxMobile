@@ -6,7 +6,7 @@ import {
   RemoveTeamUserResponse,
 } from '@workspace/api-zod';
 import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canManageUser, canSetWorkflow, isManagerOrAdmin } from '../lib/permissions';
@@ -30,12 +30,12 @@ async function requireManagerOrAdmin(req: Request, res: Response) {
     return null;
   }
 
-  return role;
+  return { role, companyId: req.user.companyId };
 }
 
 router.get('/admin/stats', async (req: Request, res: Response) => {
-  const role = await requireManagerOrAdmin(req, res);
-  if (!role) return;
+  const actor = await requireManagerOrAdmin(req, res);
+  if (!actor) return;
 
   const [totals] = await db
     .select({
@@ -44,12 +44,19 @@ router.get('/admin/stats', async (req: Request, res: Response) => {
       retailPins: sql<number>`count(*) filter (where ${pinsTable.workflow} = 'retail')`,
       appointments: sql<number>`count(*) filter (where ${pinsTable.doorKnockResult} = 'appointment')`,
     })
-    .from(pinsTable);
+    .from(pinsTable)
+    .where(eq(pinsTable.companyId, actor.companyId));
 
   const [{ fieldRepCount }] = await db
     .select({ fieldRepCount: sql<number>`count(*)` })
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.role, 'field_rep'));
+    .innerJoin(usersTable, eq(usersTable.id, userProfilesTable.userId))
+    .where(
+      and(
+        eq(userProfilesTable.role, 'field_rep'),
+        eq(usersTable.companyId, actor.companyId),
+      ),
+    );
 
   res.json(
     GetAdminStatsResponse.parse({
@@ -65,8 +72,8 @@ router.get('/admin/stats', async (req: Request, res: Response) => {
 });
 
 router.get('/admin/users', async (req: Request, res: Response) => {
-  const role = await requireManagerOrAdmin(req, res);
-  if (!role) return;
+  const actor = await requireManagerOrAdmin(req, res);
+  if (!actor) return;
 
   const rows = await db
     .select({
@@ -81,7 +88,8 @@ router.get('/admin/users', async (req: Request, res: Response) => {
       pinCount: sql<number>`(select count(*) from ${pinsTable} where ${pinsTable.userId} = ${usersTable.id})`,
     })
     .from(usersTable)
-    .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id));
+    .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
+    .where(eq(usersTable.companyId, actor.companyId));
 
   res.json(
     ListTeamUsersResponse.parse({
@@ -101,8 +109,8 @@ router.get('/admin/users', async (req: Request, res: Response) => {
 });
 
 router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
-  const actorRole = await requireManagerOrAdmin(req, res);
-  if (!actorRole) return;
+  const actor = await requireManagerOrAdmin(req, res);
+  if (!actor) return;
 
   const userId = req.params.userId as string;
   const parsed = UpdateTeamUserBody.safeParse(req.body);
@@ -111,10 +119,14 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
     return;
   }
 
+  // Cross-company targets are treated as not found — never leak their
+  // existence, and never let a role-hierarchy check even run against them.
   const [targetUser] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.id, userId));
+    .where(
+      and(eq(usersTable.id, userId), eq(usersTable.companyId, actor.companyId)),
+    );
   if (!targetUser) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -128,7 +140,7 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
 
   if (
     parsed.data.role !== undefined &&
-    !canManageUser(actorRole, req.user!.id, userId, targetRole, parsed.data.role)
+    !canManageUser(actor.role, req.user!.id, userId, targetRole, parsed.data.role)
   ) {
     res.status(403).json({ error: 'Not permitted to change this role' });
     return;
@@ -136,7 +148,7 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
 
   if (
     parsed.data.workflowAssignment !== undefined &&
-    !canSetWorkflow(actorRole, req.user!.id, userId, targetRole)
+    !canSetWorkflow(actor.role, req.user!.id, userId, targetRole)
   ) {
     res.status(403).json({ error: 'Not permitted to change this workflow assignment' });
     return;
@@ -187,14 +199,16 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
 });
 
 router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
-  const actorRole = await requireManagerOrAdmin(req, res);
-  if (!actorRole) return;
+  const actor = await requireManagerOrAdmin(req, res);
+  if (!actor) return;
 
   const userId = req.params.userId as string;
   const [targetUser] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.id, userId));
+    .where(
+      and(eq(usersTable.id, userId), eq(usersTable.companyId, actor.companyId)),
+    );
   if (!targetUser) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -206,7 +220,7 @@ router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
     .where(eq(userProfilesTable.userId, userId));
   const targetRole = targetProfile?.role ?? 'field_rep';
 
-  if (!canManageUser(actorRole, req.user!.id, userId, targetRole)) {
+  if (!canManageUser(actor.role, req.user!.id, userId, targetRole)) {
     res.status(403).json({ error: 'Not permitted to remove this user' });
     return;
   }

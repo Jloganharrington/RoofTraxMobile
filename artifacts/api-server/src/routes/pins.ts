@@ -7,7 +7,7 @@ import {
   DeletePinResponse,
 } from '@workspace/api-zod';
 import { db, pinsTable, userProfilesTable } from '@workspace/db';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
@@ -31,18 +31,25 @@ router.get('/pins', async (req: Request, res: Response) => {
 
   const role = await getRole(req.user.id);
   const filterUserId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
+  const companyId = req.user.companyId;
 
-  // Every role can see every pin now (field reps see other reps' pins as
-  // read-only context, rendered grey client-side). Only managers/admins may
-  // narrow the list to a single rep via ?userId=.
+  // Every role can see every pin in their own company now (field reps see
+  // other reps' pins as read-only context, rendered grey client-side).
+  // Only managers/admins may narrow the list to a single rep via ?userId=.
   const rows =
     filterUserId && isManagerOrAdmin(role)
       ? await db
           .select()
           .from(pinsTable)
-          .where(eq(pinsTable.userId, filterUserId))
+          .where(
+            and(eq(pinsTable.companyId, companyId), eq(pinsTable.userId, filterUserId)),
+          )
           .orderBy(desc(pinsTable.createdAt))
-      : await db.select().from(pinsTable).orderBy(desc(pinsTable.createdAt));
+      : await db
+          .select()
+          .from(pinsTable)
+          .where(eq(pinsTable.companyId, companyId))
+          .orderBy(desc(pinsTable.createdAt));
 
   res.json(ListPinsResponse.parse({ pins: rows }));
 });
@@ -90,6 +97,7 @@ router.post('/pins', async (req: Request, res: Response) => {
     .insert(pinsTable)
     .values({
       userId: req.user.id,
+      companyId: req.user.companyId,
       latitude,
       longitude,
       address,
@@ -132,6 +140,7 @@ router.post('/pins/bulk', async (req: Request, res: Response) => {
       .insert(pinsTable)
       .values({
         userId: req.user.id,
+        companyId: req.user.companyId,
         latitude: input.latitude,
         longitude: input.longitude,
         address,
@@ -152,7 +161,10 @@ router.delete('/pins/:pinId', async (req: Request, res: Response) => {
   }
 
   const pinId = req.params.pinId as string;
-  const [pin] = await db.select().from(pinsTable).where(eq(pinsTable.id, pinId));
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });

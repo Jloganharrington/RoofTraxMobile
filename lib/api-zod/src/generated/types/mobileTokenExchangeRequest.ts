@@ -17,4 +17,6 @@ export interface MobileTokenExchangeRequest {
   state: string;
   /** @minLength 1 */
   nonce?: string;
+  /** @minLength 1 */
+  companyId?: string;
 }

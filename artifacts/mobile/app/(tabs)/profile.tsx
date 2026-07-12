@@ -109,6 +109,11 @@ export default function ProfileScreen() {
               </View>
             </View>
           )}
+          {user?.companyId && (
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>
+              Company ID: {user.companyId}
+            </Text>
+          )}
         </View>
       </View>
 

@@ -4,7 +4,6 @@ import {
   GetCurrentAuthUserResponse,
   LogoutMobileSessionResponse,
 } from '@workspace/api-zod';
-import { db, usersTable } from '@workspace/db';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import * as oidc from 'openid-client';
 
@@ -19,6 +18,12 @@ import {
   SESSION_TTL,
   type SessionData,
 } from '../lib/auth';
+import {
+  CompanyNotFoundError,
+  MissingCompanyError,
+  upsertUserOnLogin,
+  type Claims,
+} from '../lib/onboarding';
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -108,31 +113,6 @@ function getSafeErrorMetadata(error: unknown) {
   };
 }
 
-async function upsertUser(claims: Record<string, unknown>) {
-  const userData = {
-    id: claims.sub as string,
-    email: (claims.email as string) || null,
-    firstName: (claims.first_name as string) || null,
-    lastName: (claims.last_name as string) || null,
-    profileImageUrl: (claims.profile_image_url || claims.picture) as
-      | string
-      | null,
-  };
-
-  const [user] = await db
-    .insert(usersTable)
-    .values(userData)
-    .onConflictDoUpdate({
-      target: usersTable.id,
-      set: {
-        ...userData,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
-  return user;
-}
-
 router.get('/auth/user', (req: Request, res: Response) => {
   res.json(
     GetCurrentAuthUserResponse.parse({
@@ -146,6 +126,7 @@ router.get('/login', async (req: Request, res: Response) => {
   const callbackUrl = `${getOrigin(req)}/api/callback`;
 
   const returnTo = getSafeReturnTo(req.query.returnTo);
+  const companyId = typeof req.query.companyId === 'string' ? req.query.companyId : '';
 
   const state = oidc.randomState();
   const nonce = oidc.randomNonce();
@@ -166,6 +147,7 @@ router.get('/login', async (req: Request, res: Response) => {
   setOidcCookie(res, 'nonce', nonce);
   setOidcCookie(res, 'state', state);
   setOidcCookie(res, 'return_to', returnTo);
+  setOidcCookie(res, 'company_id', companyId);
 
   res.redirect(redirectTo.href);
 });
@@ -203,11 +185,13 @@ router.get('/callback', async (req: Request, res: Response) => {
   }
 
   const returnTo = getSafeReturnTo(req.cookies?.return_to);
+  const companyId = req.cookies?.company_id as string | undefined;
 
   res.clearCookie('code_verifier', { path: '/' });
   res.clearCookie('nonce', { path: '/' });
   res.clearCookie('state', { path: '/' });
   res.clearCookie('return_to', { path: '/' });
+  res.clearCookie('company_id', { path: '/' });
 
   const claims = tokens.claims();
   if (!claims) {
@@ -215,7 +199,20 @@ router.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  const dbUser = await upsertUser(claims as unknown as Record<string, unknown>);
+  let dbUser;
+  try {
+    dbUser = await upsertUserOnLogin(claims as unknown as Claims, companyId);
+  } catch (err) {
+    if (err instanceof MissingCompanyError) {
+      res.redirect('/?authError=missing_company');
+      return;
+    }
+    if (err instanceof CompanyNotFoundError) {
+      res.redirect('/?authError=company_not_found');
+      return;
+    }
+    throw err;
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
@@ -225,6 +222,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       firstName: dbUser.firstName,
       lastName: dbUser.lastName,
       profileImageUrl: dbUser.profileImageUrl,
+      companyId: dbUser.companyId,
     },
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -262,6 +260,8 @@ router.get('/mobile-auth/web-login', async (req: Request, res: Response) => {
   const allowedOrigins = getAllowedMobileWebOrigins();
   const origin =
     typeof req.query.origin === 'string' ? req.query.origin : '';
+  const companyId =
+    typeof req.query.companyId === 'string' ? req.query.companyId : '';
 
   if (!allowedOrigins.includes(origin)) {
     res.status(400).send('Invalid origin');
@@ -290,6 +290,7 @@ router.get('/mobile-auth/web-login', async (req: Request, res: Response) => {
   setOidcCookie(res, 'mw_nonce', nonce);
   setOidcCookie(res, 'mw_state', state);
   setOidcCookie(res, 'mw_origin', origin);
+  setOidcCookie(res, 'mw_company_id', companyId);
 
   res.redirect(redirectTo.href);
 });
@@ -327,11 +328,13 @@ router.get(
     const codeVerifier = req.cookies?.mw_code_verifier;
     const nonce = req.cookies?.mw_nonce;
     const expectedState = req.cookies?.mw_state;
+    const companyId = req.cookies?.mw_company_id as string | undefined;
 
     res.clearCookie('mw_code_verifier', { path: '/' });
     res.clearCookie('mw_nonce', { path: '/' });
     res.clearCookie('mw_state', { path: '/' });
     res.clearCookie('mw_origin', { path: '/' });
+    res.clearCookie('mw_company_id', { path: '/' });
 
     if (!allowedOrigins.includes(origin)) {
       res.status(400).send('Invalid origin');
@@ -368,9 +371,26 @@ router.get(
         return;
       }
 
-      const dbUser = await upsertUser(
-        claims as unknown as Record<string, unknown>,
-      );
+      let dbUser;
+      try {
+        dbUser = await upsertUserOnLogin(claims as unknown as Claims, companyId);
+      } catch (err) {
+        if (err instanceof MissingCompanyError) {
+          renderMobileWebRelay(res, origin, {
+            type: 'mobile-auth-error',
+            error: 'missing_company',
+          });
+          return;
+        }
+        if (err instanceof CompanyNotFoundError) {
+          renderMobileWebRelay(res, origin, {
+            type: 'mobile-auth-error',
+            error: 'company_not_found',
+          });
+          return;
+        }
+        throw err;
+      }
 
       const now = Math.floor(Date.now() / 1000);
       const sessionData: SessionData = {
@@ -380,6 +400,7 @@ router.get(
           firstName: dbUser.firstName,
           lastName: dbUser.lastName,
           profileImageUrl: dbUser.profileImageUrl,
+          companyId: dbUser.companyId,
         },
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
@@ -413,7 +434,8 @@ router.post(
       return;
     }
 
-    const { code, code_verifier, redirect_uri, state, nonce } = parsed.data;
+    const { code, code_verifier, redirect_uri, state, nonce, companyId } =
+      parsed.data;
 
     try {
       const config = await getOidcConfig();
@@ -436,9 +458,20 @@ router.post(
         return;
       }
 
-      const dbUser = await upsertUser(
-        claims as unknown as Record<string, unknown>,
-      );
+      let dbUser;
+      try {
+        dbUser = await upsertUserOnLogin(claims as unknown as Claims, companyId);
+      } catch (err) {
+        if (err instanceof MissingCompanyError) {
+          res.status(400).json({ error: 'A companyId is required for new accounts' });
+          return;
+        }
+        if (err instanceof CompanyNotFoundError) {
+          res.status(400).json({ error: 'Unknown companyId' });
+          return;
+        }
+        throw err;
+      }
 
       const now = Math.floor(Date.now() / 1000);
       const sessionData: SessionData = {
@@ -448,6 +481,7 @@ router.post(
           firstName: dbUser.firstName,
           lastName: dbUser.lastName,
           profileImageUrl: dbUser.profileImageUrl,
+          companyId: dbUser.companyId,
         },
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,

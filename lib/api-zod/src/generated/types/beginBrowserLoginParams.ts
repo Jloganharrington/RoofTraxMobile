@@ -11,4 +11,8 @@ export type BeginBrowserLoginParams = {
  * Relative path to redirect to after login (must start with `/`). Defaults to `/`.
  */
 returnTo?: string;
+/**
+ * Company ID chosen on the join/create-company screen. Only used the first time this user logs in; ignored on subsequent logins.
+ */
+companyId?: string;
 };

@@ -24,6 +24,8 @@ import type {
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   BulkCreatePinsInput,
+  CompanyEnvelope,
+  CreateCompanyRequest,
   CreatePinInput,
   DeleteSuccess,
   ErrorEnvelope,
@@ -471,6 +473,156 @@ export function useLogoutBrowserSession<TData = Awaited<ReturnType<typeof logout
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getLogoutBrowserSessionQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateCompanyUrl = () => {
+
+
+
+
+  return `/api/companies`
+}
+
+/**
+ * Public — used on the "create a company" screen before the user has logged in.
+ * @summary Create a new company and generate its join ID
+ */
+export const createCompany = async (createCompanyRequest: CreateCompanyRequest, options?: RequestInit): Promise<CompanyEnvelope> => {
+
+  return customFetch<CompanyEnvelope>(getCreateCompanyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createCompanyRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateCompanyMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCompany>>, TError,{data: BodyType<CreateCompanyRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCompany>>, TError,{data: BodyType<CreateCompanyRequest>}, TContext> => {
+
+const mutationKey = ['createCompany'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCompany>>, {data: BodyType<CreateCompanyRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCompany(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCompanyMutationResult = NonNullable<Awaited<ReturnType<typeof createCompany>>>
+    export type CreateCompanyMutationBody = BodyType<CreateCompanyRequest>
+    export type CreateCompanyMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a new company and generate its join ID
+ */
+export const useCreateCompany = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCompany>>, TError,{data: BodyType<CreateCompanyRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCompany>>,
+        TError,
+        {data: BodyType<CreateCompanyRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateCompanyMutationOptions(options));
+    }
+
+export const getGetCompanyUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}`
+}
+
+/**
+ * Public — used to confirm a company exists before joining it.
+ * @summary Look up a company by its join ID
+ */
+export const getCompany = async (companyId: string, options?: RequestInit): Promise<CompanyEnvelope> => {
+
+  return customFetch<CompanyEnvelope>(getGetCompanyUrl(companyId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompanyQueryKey = (companyId: string,) => {
+    return [
+    `/api/companies/${companyId}`
+    ] as const;
+    }
+
+
+export const getGetCompanyQueryOptions = <TData = Awaited<ReturnType<typeof getCompany>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompany>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompanyQueryKey(companyId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompany>>> = ({ signal }) => getCompany(companyId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompany>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompanyQueryResult = NonNullable<Awaited<ReturnType<typeof getCompany>>>
+export type GetCompanyQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Look up a company by its join ID
+ */
+
+export function useGetCompany<TData = Awaited<ReturnType<typeof getCompany>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompany>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompanyQueryOptions(companyId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

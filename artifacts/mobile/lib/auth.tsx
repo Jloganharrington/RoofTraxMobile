@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -23,13 +24,20 @@ interface User {
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
+  companyId: string;
 }
+
+export type LoginError = 'missing_company' | 'company_not_found' | 'unknown';
 
 interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: () => Promise<void>;
+  loginError: LoginError | null;
+  // companyId is required the first time a person from a company signs in
+  // (it founds/joins the company); returning users' companyId is fixed
+  // server-side and this value is ignored for them.
+  login: (companyId?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -37,6 +45,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  loginError: null,
   login: async () => {},
   logout: async () => {},
 });
@@ -55,6 +64,8 @@ function getClientId(): string {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loginError, setLoginError] = useState<LoginError | null>(null);
+  const pendingCompanyId = useRef<string | undefined>(undefined);
 
   const discovery = AuthSession.useAutoDiscovery(ISSUER_URL);
 
@@ -115,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        setLoginError(null);
         const exchangeRes = await fetch(
           `${apiBase}/api/mobile-auth/token-exchange`,
           {
@@ -126,12 +138,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               redirect_uri: redirectUri,
               state,
               nonce: (request as unknown as { nonce?: string }).nonce,
+              companyId: pendingCompanyId.current,
             }),
           },
         );
 
         if (!exchangeRes.ok) {
+          const body = await exchangeRes.json().catch(() => null);
           console.error('Token exchange failed:', exchangeRes.status);
+          setLoginError(
+            body?.error === 'A companyId is required for new accounts'
+              ? 'missing_company'
+              : body?.error === 'Unknown companyId'
+                ? 'company_not_found'
+                : 'unknown',
+          );
           setIsLoading(false);
           return;
         }
@@ -144,12 +165,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error('Token exchange error:', err);
+        setLoginError('unknown');
         setIsLoading(false);
       }
     })();
   }, [response, request, redirectUri, fetchUser]);
 
-  const loginOnWeb = useCallback(async () => {
+  const loginOnWeb = useCallback(async (companyId?: string) => {
     const apiBase = getApiBaseUrl();
     if (!apiBase || typeof window === 'undefined') {
       console.error('API base URL is not configured.');
@@ -157,8 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const webOrigin = window.location.origin;
+    const companyParam = companyId
+      ? `&companyId=${encodeURIComponent(companyId)}`
+      : '';
     const popup = window.open(
-      `${apiBase}/api/mobile-auth/web-login?origin=${encodeURIComponent(webOrigin)}`,
+      `${apiBase}/api/mobile-auth/web-login?origin=${encodeURIComponent(webOrigin)}${companyParam}`,
       'roof-trax-login',
       'width=500,height=650',
     );
@@ -184,12 +209,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (data?.type === 'mobile-auth-success' && data.token) {
           cleanup();
+          setLoginError(null);
           await setToken(AUTH_TOKEN_KEY, data.token);
           setIsLoading(true);
           await fetchUser();
           resolve();
         } else if (data?.type === 'mobile-auth-error') {
           console.error('Login error:', data.error);
+          setLoginError(
+            data.error === 'missing_company'
+              ? 'missing_company'
+              : data.error === 'company_not_found'
+                ? 'company_not_found'
+                : 'unknown',
+          );
           cleanup();
           resolve();
         }
@@ -206,17 +239,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [fetchUser]);
 
-  const login = useCallback(async () => {
-    try {
-      if (Platform.OS === 'web') {
-        await loginOnWeb();
-        return;
+  const login = useCallback(
+    async (companyId?: string) => {
+      pendingCompanyId.current = companyId;
+      try {
+        if (Platform.OS === 'web') {
+          await loginOnWeb(companyId);
+          return;
+        }
+        await promptAsync();
+      } catch (err) {
+        console.error('Login error:', err);
+        setLoginError('unknown');
       }
-      await promptAsync();
-    } catch (err) {
-      console.error('Login error:', err);
-    }
-  }, [promptAsync, loginOnWeb]);
+    },
+    [promptAsync, loginOnWeb],
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -241,6 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        loginError,
         login,
         logout,
       }}

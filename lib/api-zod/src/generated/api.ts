@@ -30,7 +30,8 @@ export const GetCurrentAuthUserResponse = zod.object({
   "email": zod.string().nullable(),
   "firstName": zod.string().nullable(),
   "lastName": zod.string().nullable(),
-  "profileImageUrl": zod.string().nullable()
+  "profileImageUrl": zod.string().nullable(),
+  "companyId": zod.string()
 }),zod.null()])
 })
 
@@ -39,7 +40,8 @@ export const GetCurrentAuthUserResponse = zod.object({
  * @summary Start the browser OIDC login flow
  */
 export const BeginBrowserLoginQueryParams = zod.object({
-  "returnTo": zod.coerce.string().optional().describe('Relative path to redirect to after login (must start with `\/`). Defaults to `\/`.')
+  "returnTo": zod.coerce.string().optional().describe('Relative path to redirect to after login (must start with `\/`). Defaults to `\/`.'),
+  "companyId": zod.coerce.string().optional().describe('Company ID chosen on the join\/create-company screen. Only used the first time this user logs in; ignored on subsequent logins.')
 })
 
 export const BeginBrowserLoginResponse = zod.void()
@@ -74,8 +76,45 @@ export const LogoutBrowserSessionResponse = zod.void()
 
 
 /**
+ * Public — used on the "create a company" screen before the user has logged in.
+ * @summary Create a new company and generate its join ID
+ */
+export const createCompanyBodyNameMax = 120;
+
+
+
+export const CreateCompanyBody = zod.object({
+  "name": zod.string().min(1).max(createCompanyBodyNameMax)
+})
+
+export const CreateCompanyResponse = zod.object({
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})
+})
+
+
+/**
+ * Public — used to confirm a company exists before joining it.
+ * @summary Look up a company by its join ID
+ */
+export const GetCompanyParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const GetCompanyResponse = zod.object({
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})
+})
+
+
+/**
  * @summary Exchange a mobile OIDC code for a session token
  */
+
 
 
 
@@ -88,7 +127,8 @@ export const ExchangeMobileAuthorizationCodeBody = zod.object({
   "code_verifier": zod.string().min(1),
   "redirect_uri": zod.string().min(1),
   "state": zod.string().min(1),
-  "nonce": zod.string().min(1).optional()
+  "nonce": zod.string().min(1).optional(),
+  "companyId": zod.string().min(1).optional()
 })
 
 export const ExchangeMobileAuthorizationCodeResponse = zod.object({

@@ -4,7 +4,7 @@ import {
   ListTeamLocationsResponse,
 } from '@workspace/api-zod';
 import { db, userLocationsTable, userProfilesTable, usersTable } from '@workspace/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { isManagerOrAdmin } from '../lib/permissions';
@@ -27,7 +27,7 @@ router.post('/location/ping', async (req: Request, res: Response) => {
 
   await db
     .insert(userLocationsTable)
-    .values({ userId: req.user.id, latitude, longitude })
+    .values({ userId: req.user.id, companyId: req.user.companyId, latitude, longitude })
     .onConflictDoUpdate({
       target: userLocationsTable.userId,
       set: { latitude, longitude, updatedAt: new Date() },
@@ -63,7 +63,8 @@ router.get('/location/team', async (req: Request, res: Response) => {
       updatedAt: userLocationsTable.updatedAt,
     })
     .from(userLocationsTable)
-    .innerJoin(usersTable, eq(usersTable.id, userLocationsTable.userId));
+    .innerJoin(usersTable, eq(usersTable.id, userLocationsTable.userId))
+    .where(eq(usersTable.companyId, req.user.companyId));
 
   res.json(ListTeamLocationsResponse.parse({ locations: rows }));
 });

@@ -8,7 +8,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { usersTable } from './auth';
+import { companiesTable, usersTable } from './auth';
 
 export const ROLES = ['field_rep', 'manager', 'admin'] as const;
 export const WORKFLOW_ASSIGNMENTS = ['retail', 'insurance', 'both'] as const;
@@ -79,6 +79,11 @@ export const pinsTable = pgTable('pins', {
   userId: varchar('user_id')
     .notNull()
     .references(() => usersTable.id, { onDelete: 'cascade' }),
+  // Denormalized from the creating user's company so every pin query can
+  // be scoped by companyId without joining through users.
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
   latitude: doublePrecision('latitude').notNull(),
   longitude: doublePrecision('longitude').notNull(),
   address: text('address'),
@@ -101,6 +106,9 @@ export const userLocationsTable = pgTable('user_locations', {
   userId: varchar('user_id')
     .primaryKey()
     .references(() => usersTable.id, { onDelete: 'cascade' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
   latitude: doublePrecision('latitude').notNull(),
   longitude: doublePrecision('longitude').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
