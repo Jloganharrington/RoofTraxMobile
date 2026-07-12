@@ -204,6 +204,9 @@ export const ListPinsResponse = zod.object({
   "appointmentDate": zod.string().nullish(),
   "notes": zod.string().nullish()
 }),zod.null()]),
+  "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date()
 }))
@@ -236,7 +239,10 @@ export const CreatePinBody = zod.object({
   "interestNotes": zod.string().nullish(),
   "appointmentDate": zod.string().nullish(),
   "notes": zod.string().nullish()
-}).optional()
+}).optional(),
+  "contactOutcome": zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']).optional(),
+  "customerName": zod.string().optional(),
+  "customerPhone": zod.string().optional()
 })
 
 
@@ -266,6 +272,9 @@ export const CreatePinResponse = zod.object({
   "appointmentDate": zod.string().nullish(),
   "notes": zod.string().nullish()
 }),zod.null()]),
+  "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date()
 })
@@ -314,6 +323,9 @@ export const BulkCreatePinsResponse = zod.object({
   "appointmentDate": zod.string().nullish(),
   "notes": zod.string().nullish()
 }),zod.null()]),
+  "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date()
 }))

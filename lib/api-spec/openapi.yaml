@@ -734,6 +734,9 @@ components:
     DoorKnockResult:
       type: string
       enum: [no_answer, no_appointment, appointment]
+    ContactOutcome:
+      type: string
+      enum: [no_soliciting, priority_inspection, call_to_schedule]
 
     Profile:
       type: object
@@ -801,6 +804,9 @@ components:
           photoUrl,
           doorKnockResult,
           retailData,
+          contactOutcome,
+          customerName,
+          customerPhone,
           status,
           createdAt,
         ]
@@ -831,6 +837,14 @@ components:
           oneOf:
             - $ref: "#/components/schemas/RetailData"
             - type: "null"
+        contactOutcome:
+          oneOf:
+            - $ref: "#/components/schemas/ContactOutcome"
+            - type: "null"
+        customerName:
+          type: [string, "null"]
+        customerPhone:
+          type: [string, "null"]
         status:
           type: string
         createdAt:
@@ -869,6 +883,12 @@ components:
           $ref: "#/components/schemas/DoorKnockResult"
         retailData:
           $ref: "#/components/schemas/RetailData"
+        contactOutcome:
+          $ref: "#/components/schemas/ContactOutcome"
+        customerName:
+          type: string
+        customerPhone:
+          type: string
 
     BulkPinInput:
       type: object

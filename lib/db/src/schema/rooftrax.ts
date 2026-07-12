@@ -19,12 +19,21 @@ export const DOOR_KNOCK_RESULTS = [
   'no_appointment',
   'appointment',
 ] as const;
+// Homeowner-contact outcome captured on insurance/damage pins. When
+// "call_to_schedule" is selected, the rep must also capture the
+// customer's name and phone number so the office can follow up.
+export const CONTACT_OUTCOMES = [
+  'no_soliciting',
+  'priority_inspection',
+  'call_to_schedule',
+] as const;
 
 export type Role = (typeof ROLES)[number];
 export type WorkflowAssignment = (typeof WORKFLOW_ASSIGNMENTS)[number];
 export type PinWorkflow = (typeof PIN_WORKFLOWS)[number];
 export type DamageType = (typeof DAMAGE_TYPES)[number];
 export type DoorKnockResult = (typeof DOOR_KNOCK_RESULTS)[number];
+export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
 
 // Per-user role + workflow assignment. Row is created lazily on first
 // profile access (defaults: field_rep / insurance), mirroring the source
@@ -78,6 +87,9 @@ export const pinsTable = pgTable('pins', {
   photoUrl: text('photo_url'),
   doorKnockResult: varchar('door_knock_result', { enum: DOOR_KNOCK_RESULTS }),
   retailData: jsonb('retail_data').$type<RetailData>(),
+  contactOutcome: varchar('contact_outcome', { enum: CONTACT_OUTCOMES }),
+  customerName: text('customer_name'),
+  customerPhone: text('customer_phone'),
   status: varchar('status').notNull().default('active'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ContactOutcome } from './contactOutcome';
 import type { DamageType } from './damageType';
 import type { DoorKnockResult } from './doorKnockResult';
 import type { PinWorkflow } from './pinWorkflow';
@@ -23,6 +24,11 @@ export interface Pin {
   photoUrl: string | null;
   doorKnockResult: DoorKnockResult | null;
   retailData: RetailData | null;
+  contactOutcome: ContactOutcome | null;
+  /** @nullable */
+  customerName: string | null;
+  /** @nullable */
+  customerPhone: string | null;
   status: string;
   createdAt: Date;
 }

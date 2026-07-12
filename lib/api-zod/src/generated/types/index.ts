@@ -14,6 +14,7 @@ export * from './authUserEnvelope';
 export * from './beginBrowserLoginParams';
 export * from './bulkCreatePinsInput';
 export * from './bulkPinInput';
+export * from './contactOutcome';
 export * from './createPinInput';
 export * from './damageType';
 export * from './deleteSuccess';

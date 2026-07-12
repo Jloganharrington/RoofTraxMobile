@@ -110,6 +110,15 @@ export const DoorKnockResult = {
   appointment: 'appointment',
 } as const;
 
+export type ContactOutcome = typeof ContactOutcome[keyof typeof ContactOutcome];
+
+
+export const ContactOutcome = {
+  no_soliciting: 'no_soliciting',
+  priority_inspection: 'priority_inspection',
+  call_to_schedule: 'call_to_schedule',
+} as const;
+
 export interface Profile {
   userId: string;
   role: Role;
@@ -154,6 +163,11 @@ export interface Pin {
   photoUrl: string | null;
   doorKnockResult: DoorKnockResult | null;
   retailData: RetailData | null;
+  contactOutcome: ContactOutcome | null;
+  /** @nullable */
+  customerName: string | null;
+  /** @nullable */
+  customerPhone: string | null;
   status: string;
   createdAt: string;
 }
@@ -174,6 +188,9 @@ export interface CreatePinInput {
   photoUrl?: string;
   doorKnockResult?: DoorKnockResult;
   retailData?: RetailData;
+  contactOutcome?: ContactOutcome;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 export interface BulkPinInput {

@@ -19,7 +19,12 @@ import {
   useReverseGeocodeCoordinates,
   getReverseGeocodeCoordinatesQueryKey,
 } from '@workspace/api-client-react';
-import type { DamageType, DoorKnockResult, PinWorkflow } from '@workspace/api-client-react';
+import type {
+  ContactOutcome,
+  DamageType,
+  DoorKnockResult,
+  PinWorkflow,
+} from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { uploadFile } from '@/lib/upload';
@@ -34,6 +39,12 @@ const DOOR_KNOCK_RESULTS: { value: DoorKnockResult; label: string }[] = [
   { value: 'no_answer', label: 'No answer' },
   { value: 'no_appointment', label: 'No appointment' },
   { value: 'appointment', label: 'Appointment' },
+];
+
+const CONTACT_OUTCOMES: { value: ContactOutcome; label: string }[] = [
+  { value: 'no_soliciting', label: 'No Soliciting - Mailer Only' },
+  { value: 'priority_inspection', label: 'Priority Inspection Authorized' },
+  { value: 'call_to_schedule', label: 'Call to Schedule' },
 ];
 
 function ChoiceRow<T extends string>({
@@ -100,6 +111,9 @@ export default function PinNewScreen() {
   );
   const [damageType, setDamageType] = useState<DamageType | null>(null);
   const [doorKnockResult, setDoorKnockResult] = useState<DoorKnockResult | null>(null);
+  const [contactOutcome, setContactOutcome] = useState<ContactOutcome | null>(null);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -149,6 +163,14 @@ export default function PinNewScreen() {
       return;
     }
 
+    if (!isRetail && contactOutcome === 'call_to_schedule' && (!customerName.trim() || !customerPhone.trim())) {
+      Alert.alert(
+        'Customer info required',
+        'Enter the customer name and phone number to schedule a call.',
+      );
+      return;
+    }
+
     createPin.mutate(
       {
         data: {
@@ -158,6 +180,11 @@ export default function PinNewScreen() {
           damageType: !isRetail ? damageType ?? undefined : undefined,
           doorKnockResult: isRetail ? doorKnockResult ?? undefined : undefined,
           photoUrl: photoUrl ?? undefined,
+          contactOutcome: !isRetail ? contactOutcome ?? undefined : undefined,
+          customerName:
+            !isRetail && contactOutcome === 'call_to_schedule' ? customerName.trim() : undefined,
+          customerPhone:
+            !isRetail && contactOutcome === 'call_to_schedule' ? customerPhone.trim() : undefined,
           retailData: isRetail
             ? {
                 ownerName1,
@@ -222,6 +249,33 @@ export default function PinNewScreen() {
         <>
           <Text style={[styles.label, { color: colors.foreground }]}>Damage type</Text>
           <ChoiceRow options={DAMAGE_TYPES} value={damageType} onChange={setDamageType} />
+
+          <Text style={[styles.label, { color: colors.foreground }]}>Homeowner contact</Text>
+          <ChoiceRow
+            options={CONTACT_OUTCOMES}
+            value={contactOutcome}
+            onChange={setContactOutcome}
+          />
+
+          {contactOutcome === 'call_to_schedule' && (
+            <>
+              <TextInput
+                placeholder="Customer name"
+                value={customerName}
+                onChangeText={setCustomerName}
+                style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                placeholderTextColor={colors.mutedForeground}
+              />
+              <TextInput
+                placeholder="Customer phone"
+                value={customerPhone}
+                onChangeText={setCustomerPhone}
+                keyboardType="phone-pad"
+                style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
+                placeholderTextColor={colors.mutedForeground}
+              />
+            </>
+          )}
         </>
       ) : (
         <>
@@ -324,25 +378,36 @@ export default function PinNewScreen() {
         )}
       </Pressable>
 
-      <Pressable
-        onPress={handleSave}
-        disabled={createPin.isPending || uploadingPhoto || (!isRetail && !photoUrl)}
-        style={[
-          styles.saveButton,
-          {
-            backgroundColor: colors.primary,
-            opacity: !isRetail && !photoUrl ? 0.5 : 1,
-          },
-        ]}
-      >
-        {createPin.isPending ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 16 }}>
-            Save pin
-          </Text>
-        )}
-      </Pressable>
+      {(() => {
+        const missingCustomerInfo =
+          !isRetail &&
+          contactOutcome === 'call_to_schedule' &&
+          (!customerName.trim() || !customerPhone.trim());
+        const saveDisabled =
+          createPin.isPending || uploadingPhoto || (!isRetail && !photoUrl) || missingCustomerInfo;
+
+        return (
+          <Pressable
+            onPress={handleSave}
+            disabled={saveDisabled}
+            style={[
+              styles.saveButton,
+              {
+                backgroundColor: colors.primary,
+                opacity: saveDisabled ? 0.5 : 1,
+              },
+            ]}
+          >
+            {createPin.isPending ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 16 }}>
+                Save pin
+              </Text>
+            )}
+          </Pressable>
+        );
+      })()}
     </ScrollView>
   );
 }

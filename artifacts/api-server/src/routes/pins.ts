@@ -53,11 +53,28 @@ router.post('/pins', async (req: Request, res: Response) => {
     return;
   }
 
-  const { latitude, longitude, workflow, damageType, photoUrl, doorKnockResult, retailData } =
-    parsed.data;
+  const {
+    latitude,
+    longitude,
+    workflow,
+    damageType,
+    photoUrl,
+    doorKnockResult,
+    retailData,
+    contactOutcome,
+    customerName,
+    customerPhone,
+  } = parsed.data;
 
   if (workflow === 'insurance' && !photoUrl) {
     res.status(400).json({ error: 'A photo of the front of the home is required' });
+    return;
+  }
+
+  if (contactOutcome === 'call_to_schedule' && (!customerName || !customerPhone)) {
+    res
+      .status(400)
+      .json({ error: 'Customer name and phone number are required to schedule a call' });
     return;
   }
 
@@ -75,6 +92,9 @@ router.post('/pins', async (req: Request, res: Response) => {
       photoUrl,
       doorKnockResult,
       retailData,
+      contactOutcome,
+      customerName,
+      customerPhone,
     })
     .returning();
 
