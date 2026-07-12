@@ -99,6 +99,10 @@ export const pinsTable = pgTable('pins', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 // Latest known GPS position per rep — internal team-position awareness.

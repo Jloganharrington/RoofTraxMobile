@@ -254,7 +254,8 @@ export const ListPinsResponse = zod.object({
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 }))
 })
 
@@ -322,7 +323,8 @@ export const CreatePinResponse = zod.object({
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 })
 
@@ -373,7 +375,8 @@ export const BulkCreatePinsResponse = zod.object({
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 }))
 })
 
@@ -443,7 +446,8 @@ export const UpdatePinResponse = zod.object({
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 })
 

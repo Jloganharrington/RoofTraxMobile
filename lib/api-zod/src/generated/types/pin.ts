@@ -31,4 +31,5 @@ export interface Pin {
   customerPhone: string | null;
   status: string;
   createdAt: Date;
+  updatedAt: Date;
 }

@@ -192,6 +192,7 @@ export interface Pin {
   customerPhone: string | null;
   status: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface PinEnvelope {
