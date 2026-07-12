@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
 import { useBulkCreatePins } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -117,7 +117,7 @@ export default function BulkUploadScreen() {
         onPress={handlePickPhotos}
         style={[styles.pickButton, { borderColor: colors.border }]}
       >
-        <Feather name="image" size={18} color={colors.foreground} />
+        <Icon name="image" size={18} color={colors.foreground} />
         <Text style={{ color: colors.foreground, fontWeight: '600' }}>
           Choose photos
         </Text>

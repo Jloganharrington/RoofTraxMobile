@@ -1,21 +1,28 @@
 ---
-name: Expo vector-icons rendering as tofu/box glyphs on SDK 54
-description: All @expo/vector-icons glyphs show as [X]/tofu boxes in Expo Go on SDK 54 due to a nested expo-font version mismatch, not a font-loading-order bug.
+name: Expo font-glyph icons render as tofu/box on Android in Expo Go
+description: Custom icon fonts (@expo/vector-icons, Feather, etc.) can register successfully (Font.isLoaded() === true) yet still render as missing-glyph boxes on Android in Expo Go. Not fixable via version pinning or config; use SVG icons instead.
 ---
 
-On Expo SDK 54, `@expo/vector-icons@^15.0.3` can resolve to `15.1.1` (npm `latest`), which nests its own
-`expo-font@56.x`. That version is incompatible with the `expo-font@14.x` / `expo-modules-core@3.0.x` that
-Expo SDK 54 actually ships. The mismatch doesn't throw a loud error in Expo Go — icons silently fall back
-to the missing-glyph "tofu" box (rendered as `[X]`) for every icon in the app, on every screen.
+Symptom: every icon in the app renders as a box-with-X ("tofu") glyph on Android inside Expo Go, on a
+project running Expo SDK 54.
 
-**Why:** Adding the icon font to `useFonts` in the root layout, clearing Metro/watchman cache, and fully
-closing/reopening Expo Go do NOT fix this — the bug is a dependency resolution problem, not a runtime
-loading-order or cache problem. Confirmed via upstream reports: https://github.com/expo/vector-icons/issues/372
-and https://github.com/expo/vector-icons/issues/351.
+**Ruled out (don't waste time on these first):**
+- Font not registered in the root `useFonts()` call — icons from `@expo/vector-icons` self-load their own
+  font via `Font.loadAsync` on mount regardless of any app-level `useFonts`, so this is rarely the cause.
+- Metro/watchman cache, full close-and-reopen of Expo Go on device — doesn't help, this isn't a caching bug.
+- `@expo/vector-icons` resolving to a newer minor (e.g. 15.1.x bundling an incompatible nested `expo-font`)
+  — real bug (see https://github.com/expo/vector-icons/issues/372), but pinning the exact compatible version
+  and forcing the `expo-font` version via a pnpm override did NOT fix this particular symptom. Diagnostic
+  logging (`Font.isLoaded('feather')`) came back `true` after the pin, proving the font loaded fine at the
+  JS/native-module level — the bug is downstream of that, in Android's actual glyph rendering under Expo
+  Go's Fabric/New Architecture renderer for privately-loaded custom fonts. `newArchEnabled` in `app.json`
+  has no effect here since Expo Go is a fixed pre-built binary that ignores that config.
 
-**How to apply:** Pin `@expo/vector-icons` to an exact version known to match the installed Expo SDK's
-`expo-font` (e.g. `15.0.3` for SDK 54, no `^`), and add a pnpm workspace override forcing `expo-font` to the
-version `expo` itself declares (e.g. `"pnpm": { "overrides": { "expo-font": "14.0.12" } }"` in the root
-`package.json`). Verify with `pnpm why @expo/vector-icons` and `pnpm why expo-font` — every consumer should
-resolve to the same single version before assuming the fix worked. `expo install --check` will NOT flag this
-mismatch, so don't rely on it to rule this out.
+**Fix that worked:** stop rendering icons as font glyphs. Replace font-icon usage (e.g. `<Feather name=.../>`)
+with hand-drawn vector icons using `react-native-svg` (`Svg`/`Path`/`Circle`/etc.), matching the same visual
+style. This sidesteps the whole custom-font-glyph rendering path and works identically on iOS, Android, and
+web without any native build or config changes — safe within Expo Go, no dev client needed.
+
+**Why:** the failure is in Android's native text/glyph rendering pipeline for dynamically-registered custom
+fonts specifically inside Expo Go, not in JS-level font loading or dependency versions. SVG rendering doesn't
+go through that pipeline at all.

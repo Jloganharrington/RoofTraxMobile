@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
 import { useListPins } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -18,7 +18,7 @@ export default function MapScreenWeb() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.banner, { backgroundColor: colors.secondary }]}>
-        <Feather name="smartphone" size={18} color="#fff" />
+        <Icon name="smartphone" size={18} color="#fff" />
         <Text style={styles.bannerText}>
           The live map needs the mobile app (iOS/Android) — showing pins as a
           list here instead.
@@ -61,7 +61,7 @@ export default function MapScreenWeb() {
           onPress={() => router.push('/bulk-upload')}
           style={[styles.fab, { backgroundColor: colors.primary }]}
         >
-          <Feather name="upload" size={22} color={colors.primaryForeground} />
+          <Icon name="upload" size={22} color={colors.primaryForeground} />
         </Pressable>
       )}
     </View>

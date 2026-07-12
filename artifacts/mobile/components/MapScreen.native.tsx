@@ -14,7 +14,7 @@ import MapView, {
   type MapPressEvent,
   type MarkerDragStartEndEvent,
 } from 'react-native-maps';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
 import { useListPins, usePingLocation } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -164,7 +164,7 @@ export default function MapScreen() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <Feather name="x" size={20} color={colors.foreground} />
+          <Icon name="x" size={20} color={colors.foreground} />
         </Pressable>
       )}
 
@@ -176,7 +176,7 @@ export default function MapScreen() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <Feather name="upload" size={20} color={colors.foreground} />
+          <Icon name="upload" size={20} color={colors.foreground} />
         </Pressable>
       )}
 
@@ -191,7 +191,7 @@ export default function MapScreen() {
           },
         ]}
       >
-        <Feather
+        <Icon
           name={pendingPin ? 'check' : 'plus'}
           size={28}
           color={colors.primaryForeground}

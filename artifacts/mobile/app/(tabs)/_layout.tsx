@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 
@@ -53,7 +53,7 @@ export default function TabLayout() {
         options={{
           title: 'Map',
           tabBarIcon: ({ color }) => (
-            <Feather name="map-pin" size={22} color={color} />
+            <Icon name="map-pin" size={22} color={color} />
           ),
         }}
       />
@@ -63,7 +63,7 @@ export default function TabLayout() {
           title: 'Team',
           href: canSeeTeam ? undefined : null,
           tabBarIcon: ({ color }) => (
-            <Feather name="users" size={22} color={color} />
+            <Icon name="users" size={22} color={color} />
           ),
         }}
       />

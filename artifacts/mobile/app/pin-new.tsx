@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   useCreatePin,
@@ -298,7 +298,7 @@ export default function PinNewScreen() {
           <ActivityIndicator />
         ) : (
           <>
-            <Feather name="camera" size={18} color={colors.foreground} />
+            <Icon name="camera" size={18} color={colors.foreground} />
             <Text style={{ color: colors.foreground }}>
               {photoUri ? 'Retake photo' : 'Add photo'}
             </Text>

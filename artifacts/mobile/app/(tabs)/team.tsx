@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import {
   useGetAdminStats,
   useListTeamUsers,
@@ -165,7 +165,7 @@ export default function TeamScreen() {
                     disabled={busy}
                     hitSlop={8}
                   >
-                    <Feather name="trash-2" size={18} color={colors.destructive} />
+                    <Icon name="trash-2" size={18} color={colors.destructive} />
                   </Pressable>
                 )}
               </View>
