@@ -253,6 +253,18 @@ router.post(
 
     const { code, code_verifier, redirect_uri, state, nonce } = parsed.data;
 
+    // TEMP DEBUG - remove after diagnosing login issue
+    req.log.error(
+      {
+        redirect_uri,
+        origin: getOrigin(req),
+        host: req.headers['host'],
+        forwardedHost: req.headers['x-forwarded-host'],
+        userAgent: req.headers['user-agent'],
+      },
+      'TEMP DEBUG token exchange incoming request',
+    );
+
     try {
       const config = await getOidcConfig();
 

@@ -59,6 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const redirectUri = AuthSession.makeRedirectUri();
 
+  // TEMP DEBUG - remove after diagnosing login issue
+  console.log('AUTH DEBUG render redirectUri', redirectUri);
+
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId: getClientId(),
@@ -113,6 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('API base URL is not configured.');
           return;
         }
+
+        // TEMP DEBUG - remove after diagnosing login issue
+        console.log('AUTH DEBUG exchange redirectUri', redirectUri);
+        console.log('AUTH DEBUG exchange location.href', typeof window !== 'undefined' ? window.location.href : 'n/a');
 
         const exchangeRes = await fetch(
           `${apiBase}/api/mobile-auth/token-exchange`,
