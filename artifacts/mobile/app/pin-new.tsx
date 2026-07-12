@@ -157,14 +157,6 @@ export default function PinNewScreen() {
   function handleSave() {
     if (!latitude || !longitude) return;
 
-    if (!isRetail && !photoUrl) {
-      Alert.alert(
-        'Photo required',
-        'Add a photo of the front of the home before saving this pin.',
-      );
-      return;
-    }
-
     if (!isRetail && contactOutcome === 'call_to_schedule' && (!customerName.trim() || !customerPhone.trim())) {
       Alert.alert(
         'Customer info required',
@@ -361,12 +353,7 @@ export default function PinNewScreen() {
       )}
       <Pressable
         onPress={handlePickPhoto}
-        style={[
-          styles.photoButton,
-          {
-            borderColor: !isRetail && !photoUrl ? colors.destructive : colors.border,
-          },
-        ]}
+        style={[styles.photoButton, { borderColor: colors.border }]}
       >
         {uploadingPhoto ? (
           <ActivityIndicator />
@@ -374,7 +361,7 @@ export default function PinNewScreen() {
           <>
             <Icon name="camera" size={18} color={colors.foreground} />
             <Text style={{ color: colors.foreground }}>
-              {photoUri ? 'Retake photo' : !isRetail ? 'Add photo (required)' : 'Add photo'}
+              {photoUri ? 'Retake photo' : 'Add photo'}
             </Text>
           </>
         )}
@@ -385,8 +372,7 @@ export default function PinNewScreen() {
           !isRetail &&
           contactOutcome === 'call_to_schedule' &&
           (!customerName.trim() || !customerPhone.trim());
-        const saveDisabled =
-          createPin.isPending || uploadingPhoto || (!isRetail && !photoUrl) || missingCustomerInfo;
+        const saveDisabled = createPin.isPending || uploadingPhoto || missingCustomerInfo;
 
         return (
           <Pressable

@@ -81,11 +81,6 @@ router.post('/pins', async (req: Request, res: Response) => {
     customerPhone,
   } = parsed.data;
 
-  if (workflow === 'insurance' && !photoUrl) {
-    res.status(400).json({ error: 'A photo of the front of the home is required' });
-    return;
-  }
-
   if (contactOutcome === 'call_to_schedule' && (!customerName || !customerPhone)) {
     res
       .status(400)
@@ -182,13 +177,6 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
   const parsed = UpdatePinBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid pin payload' });
-    return;
-  }
-
-  const nextWorkflow = parsed.data.workflow ?? pin.workflow;
-  const nextPhotoUrl = parsed.data.photoUrl ?? pin.photoUrl;
-  if (nextWorkflow === 'insurance' && !nextPhotoUrl) {
-    res.status(400).json({ error: 'A photo of the front of the home is required' });
     return;
   }
 
