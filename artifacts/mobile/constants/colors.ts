@@ -1,35 +1,33 @@
 /**
- * RoofTrax palette — "storm sky over steel siding".
- *
- * A field-ops app used outdoors in bright sunlight and rain: deep storm-navy
- * surfaces for contrast, a high-visibility safety-orange primary action
- * color (the same hue as roofing tarps and hazard signage), and a clear
- * amber for insurance-workflow accents vs. a teal for retail-workflow
- * accents, so reps can tell the two pin types apart at a glance.
+ * RoofTrax palette — sampled from the brand logo (navy roofline + orange
+ * inspection lens). Deep navy surfaces for contrast, the logo's safety-
+ * orange as the primary action color, and a clear amber vs. teal split for
+ * insurance-workflow vs. retail-workflow pin accents so reps can tell the
+ * two pin types apart at a glance.
  */
 
 const colors = {
   light: {
-    text: '#0b1220',
-    tint: '#ff6a1a',
+    text: '#0f2244',
+    tint: '#f2801f',
 
     background: '#f5f7fa',
-    foreground: '#0b1220',
+    foreground: '#0f2244',
 
     card: '#ffffff',
-    cardForeground: '#0b1220',
+    cardForeground: '#0f2244',
 
-    primary: '#ff6a1a',
+    primary: '#f2801f',
     primaryForeground: '#ffffff',
 
-    secondary: '#0f2440',
+    secondary: '#132a4f',
     secondaryForeground: '#ffffff',
 
     muted: '#e7ebf0',
     mutedForeground: '#5b6b7d',
 
     accent: '#eef2f6',
-    accentForeground: '#0f2440',
+    accentForeground: '#132a4f',
 
     destructive: '#dc2626',
     destructiveForeground: '#ffffff',

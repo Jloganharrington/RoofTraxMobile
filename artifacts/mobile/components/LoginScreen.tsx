@@ -1,5 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
 
@@ -8,12 +7,13 @@ export function LoginScreen() {
   const { login, isLoading } = useAuth();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.secondary }]}>
-      <View style={[styles.iconWrap, { backgroundColor: colors.primary }]}>
-        <Feather name="home" size={36} color={colors.primaryForeground} />
-      </View>
-      <Text style={[styles.title, { color: '#ffffff' }]}>RoofTrax</Text>
-      <Text style={[styles.subtitle, { color: '#c7d2e0' }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Image
+        source={require('@/assets/images/brand/full-logo-trimmed.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
+      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
         Field pins, door knocks, and team tracking for storm restoration
         crews.
       </Text>
@@ -43,17 +43,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     gap: 12,
   },
-  iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logo: {
+    width: '100%',
+    maxWidth: 320,
+    height: 140,
     marginBottom: 8,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
   },
   subtitle: {
     fontSize: 15,
