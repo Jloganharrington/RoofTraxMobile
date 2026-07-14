@@ -61,6 +61,9 @@ export const INSPECTION_SUBJECT_TYPES = [
   'component',
   'penetration',
   'product',
+  // M-E (E2) additive subject: an interior/attic observation the evidence
+  // capture flow attaches room-stain / moisture / attic photos to.
+  'interior_observation',
 ] as const;
 export type InspectionSubjectType = (typeof INSPECTION_SUBJECT_TYPES)[number];
 
@@ -105,6 +108,18 @@ export type ProductIdMethod = (typeof PRODUCT_ID_METHODS)[number];
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
 
+// M-E (E2) — Controlled vocabulary for a single interior/attic observation.
+// Raw facts only: the inspector records what they saw (a stain, a moisture
+// reading, an attic pass) — no derived severity or causation lives here.
+export const INTERIOR_OBSERVATION_TYPES = [
+  'ceiling_stain',
+  'wall_stain',
+  'moisture_reading',
+  'attic_pass',
+  'other',
+] as const;
+export type InteriorObservationType = (typeof INTERIOR_OBSERVATION_TYPES)[number];
+
 // M-D (D1) — Controlled vocabulary for classifying each hit counted inside a
 // test square. The app records the raw classification only; it never derives
 // hail density, severity, or significance from these counts (that is the
@@ -135,6 +150,25 @@ export interface ArrivalConditions {
   personnelPresent: string | null;
   recordedAtUtc: string;
 }
+
+// Structured homeowner facts (M-E / E3). Plain factual intake only — no
+// coverage, settlement, or advice language ever lives here. Stored verbatim
+// on the inspection row as a single additive jsonb column.
+export interface HomeownerFacts {
+  // Whether the homeowner is aware of / can corroborate the date of loss.
+  awareOfDateOfLoss: boolean | null;
+  // Free-text factual notes on prior repairs and prior claims.
+  priorRepairs: string | null;
+  priorClaims: string | null;
+  recordedAtUtc: string;
+}
+
+// The client-assembled submission contract (M-E / E6), stored verbatim when
+// the inspection is submitted. The app authors it (manifest of records +
+// photo SHA-256 hashes + protocol version + gate results); the server accepts
+// it thin. Hash verification, record locking, and a pre-flight endpoint are
+// deferred to M-F — this column is just the durable snapshot of what was sent.
+export type SubmissionManifestV1 = Record<string, unknown>;
 
 // The inspector-confirmed "storm of record" (Phase M-B / B5), written to
 // inspections.stormConfirmedRef. This is a raw snapshot of the single
@@ -187,6 +221,11 @@ export const inspectionsTable = pgTable('inspections', {
   stormConfirmedRef: jsonb('storm_confirmed_ref').$type<StormConfirmedRef | null>(),
   // Arrival-conditions log captured in S1 (B6). Nullable.
   arrivalConditions: jsonb('arrival_conditions').$type<ArrivalConditions | null>(),
+  // Structured homeowner facts (E3). Nullable; facts only.
+  homeownerFacts: jsonb('homeowner_facts').$type<HomeownerFacts | null>(),
+  // Client-assembled submission contract v1 (E6), stored verbatim on submit.
+  // Nullable until the inspection is submitted.
+  submissionManifest: jsonb('submission_manifest').$type<SubmissionManifestV1 | null>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -449,7 +488,31 @@ export const inspectionProductsTable = pgTable('inspection_products', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// M-E (E2) — A single interior/attic observation. Additive, company- and
+// inspection-scoped. Raw facts only: a location, a controlled observation
+// type, and an optional numeric moisture reading. Whether an inspection needs
+// interior documentation at all is a protocol soft flag, cleared either by
+// recording observations or by filing an explicit "no interior claim"
+// attestation (S6).
+export const inspectionInteriorObservationsTable = pgTable('inspection_interior_observations', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  location: text('location').notNull(),
+  observationType: varchar('observation_type', { enum: INTERIOR_OBSERVATION_TYPES }).notNull(),
+  moistureReading: doublePrecision('moisture_reading'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Inspection = typeof inspectionsTable.$inferSelect;
+export type InteriorObservation = typeof inspectionInteriorObservationsTable.$inferSelect;
 export type InsertInspection = typeof inspectionsTable.$inferInsert;
 export type InspectionSlope = typeof inspectionSlopesTable.$inferSelect;
 export type InspectionElevation = typeof inspectionElevationsTable.$inferSelect;

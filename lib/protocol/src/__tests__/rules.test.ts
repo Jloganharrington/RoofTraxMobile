@@ -22,6 +22,8 @@ function completeState(): InspectionProtocolState {
       { id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: true, closePhotoCaptured: true },
     ],
     interiorPhotoCaptured: false,
+    interiorObservationCount: 1,
+    interiorClaimWaived: false,
     productIdentifications: [{ id: 'prod-1', unidentifiable: false }],
     measurements: [{ id: 'm-1', slopeId: 'slope-1' }],
     attestationRecorded: true,
@@ -265,5 +267,150 @@ describe('evaluate', () => {
     state.productIdentifications = [{ id: 'prod-1', unidentifiable: false }];
     const result = evaluate(state);
     expect(result.softFlags).toEqual([]);
+  });
+
+  // ---- E2: interior "satisfied-or-attested" soft flag (S6) ----------------
+
+  it('soft-flags an inspection whose interior was neither documented nor waived', () => {
+    const state = completeState();
+    state.interiorObservationCount = 0;
+    state.interiorClaimWaived = false;
+    const result = evaluate(state);
+    expect(result.deficiencies).toEqual([]);
+    expect(result.softFlags).toHaveLength(1);
+    expect(result.softFlags[0]).toMatchObject({ stage: 'S6', code: 'INTERIOR_NOT_ADDRESSED' });
+  });
+
+  it('clears the interior soft flag when observations were recorded', () => {
+    const state = completeState();
+    state.interiorObservationCount = 2;
+    state.interiorClaimWaived = false;
+    expect(evaluate(state).softFlags).toEqual([]);
+  });
+
+  it('clears the interior soft flag when the inspector waives the interior claim', () => {
+    const state = completeState();
+    state.interiorObservationCount = 0;
+    state.interiorClaimWaived = true;
+    expect(evaluate(state).softFlags).toEqual([]);
+  });
+
+  // ---- E1: measurement/slope cross-check soft flag (S7) -------------------
+
+  it('soft-flags a measurement that references a slope not in the inventory', () => {
+    const state = completeState();
+    state.measurements = [
+      { id: 'm-1', slopeId: 'slope-1' },
+      { id: 'm-2', slopeId: 'slope-ghost' },
+    ];
+    const result = evaluate(state);
+    expect(result.deficiencies).toEqual([]);
+    expect(result.softFlags).toHaveLength(1);
+    expect(result.softFlags[0]).toMatchObject({
+      stage: 'S7',
+      code: 'MEASUREMENT_SLOPE_MISMATCH_m-2',
+    });
+  });
+
+  it('does not soft-flag whole-roof measurements (no slopeId) or matched slope measurements', () => {
+    const state = completeState();
+    state.measurements = [
+      { id: 'm-1', slopeId: 'slope-1' },
+      { id: 'm-2', slopeId: '' },
+    ];
+    expect(evaluate(state).softFlags).toEqual([]);
+  });
+
+  // ---- Gate-engine regression: 20+ single-deficiency fixtures -------------
+  // Each fixture mutates exactly one thing out of a complete state and must
+  // yield exactly one hard deficiency with the expected stage/code. This is
+  // the "one deficiency in, one deficiency out" contract the readiness UI
+  // depends on to deep-link every blocker to its fix screen.
+
+  const SINGLE_DEFICIENCY_FIXTURES: Array<{
+    name: string;
+    mutate: (s: InspectionProtocolState) => void;
+    stage: string;
+    code: string;
+  }> = [
+    { name: 'S0 overview missing', mutate: (s) => { s.overviewPhotoCaptured = false; }, stage: 'S0', code: 'MISSING_OVERVIEW_PHOTO' },
+    { name: 'S1 front deleted', mutate: (s) => { delete s.elevations.front; }, stage: 'S1', code: 'MISSING_ELEVATION_PHOTO_FRONT' },
+    { name: 'S1 right deleted', mutate: (s) => { delete s.elevations.right; }, stage: 'S1', code: 'MISSING_ELEVATION_PHOTO_RIGHT' },
+    { name: 'S1 back deleted', mutate: (s) => { delete s.elevations.back; }, stage: 'S1', code: 'MISSING_ELEVATION_PHOTO_BACK' },
+    { name: 'S1 left deleted', mutate: (s) => { delete s.elevations.left; }, stage: 'S1', code: 'MISSING_ELEVATION_PHOTO_LEFT' },
+    { name: 'S1 front wide false', mutate: (s) => { s.elevations.front = { widePhotoCaptured: false }; }, stage: 'S1', code: 'MISSING_ELEVATION_PHOTO_FRONT' },
+    { name: 'S1 right wide false', mutate: (s) => { s.elevations.right = { widePhotoCaptured: false }; }, stage: 'S1', code: 'MISSING_ELEVATION_PHOTO_RIGHT' },
+    { name: 'S2 roof access missing', mutate: (s) => { s.roofAccessPhotoCaptured = false; }, stage: 'S2', code: 'MISSING_ROOF_ACCESS_PHOTO' },
+    { name: 'S3 no slopes', mutate: (s) => { s.slopes = []; s.testSquares = []; }, stage: 'S3', code: 'NO_SLOPES_CAPTURED' },
+    { name: 'S3 slope photo missing', mutate: (s) => { s.slopes = [{ id: 'slope-1', widePhotoCaptured: false }]; }, stage: 'S3', code: 'MISSING_SLOPE_PHOTO_slope-1' },
+    {
+      name: 'S3 second slope photo missing',
+      mutate: (s) => {
+        s.slopes = [{ id: 'slope-1', widePhotoCaptured: true }, { id: 'slope-2', widePhotoCaptured: false }];
+        s.testSquares = [
+          { id: 'ts-1', slopeId: 'slope-1', overviewPhotoCaptured: true, hitCount: 3 },
+          { id: 'ts-2', slopeId: 'slope-2', overviewPhotoCaptured: true, hitCount: 3 },
+        ];
+      },
+      stage: 'S3',
+      code: 'MISSING_SLOPE_PHOTO_slope-2',
+    },
+    { name: 'S4 no test square', mutate: (s) => { s.testSquares = []; }, stage: 'S4', code: 'MISSING_TEST_SQUARE_slope-1' },
+    { name: 'S4 square overview missing', mutate: (s) => { s.testSquares = [{ id: 'ts-1', slopeId: 'slope-1', overviewPhotoCaptured: false, hitCount: 3 }]; }, stage: 'S4', code: 'MISSING_TEST_SQUARE_slope-1' },
+    {
+      name: 'S4 second slope no square',
+      mutate: (s) => {
+        s.slopes = [{ id: 'slope-1', widePhotoCaptured: true }, { id: 'slope-2', widePhotoCaptured: true }];
+        s.testSquares = [{ id: 'ts-1', slopeId: 'slope-1', overviewPhotoCaptured: true, hitCount: 3 }];
+      },
+      stage: 'S4',
+      code: 'MISSING_TEST_SQUARE_slope-2',
+    },
+    { name: 'S5 triad wide missing', mutate: (s) => { s.damageInstances = [{ id: 'dmg-1', widePhotoCaptured: false, midPhotoCaptured: true, closePhotoCaptured: true }]; }, stage: 'S5', code: 'INCOMPLETE_DAMAGE_TRIAD_dmg-1' },
+    { name: 'S5 triad mid missing', mutate: (s) => { s.damageInstances = [{ id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: false, closePhotoCaptured: true }]; }, stage: 'S5', code: 'INCOMPLETE_DAMAGE_TRIAD_dmg-1' },
+    { name: 'S5 triad close missing', mutate: (s) => { s.damageInstances = [{ id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: true, closePhotoCaptured: false }]; }, stage: 'S5', code: 'INCOMPLETE_DAMAGE_TRIAD_dmg-1' },
+    {
+      name: 'S5 second damage incomplete',
+      mutate: (s) => {
+        s.damageInstances = [
+          { id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: true, closePhotoCaptured: true },
+          { id: 'dmg-2', widePhotoCaptured: true, midPhotoCaptured: false, closePhotoCaptured: false },
+        ];
+      },
+      stage: 'S5',
+      code: 'INCOMPLETE_DAMAGE_TRIAD_dmg-2',
+    },
+    { name: 'S7 no measurements', mutate: (s) => { s.measurements = []; }, stage: 'S7', code: 'NO_MEASUREMENTS_RECORDED' },
+    { name: 'S8 attestation missing', mutate: (s) => { s.attestationRecorded = false; }, stage: 'S8', code: 'MISSING_ATTESTATION' },
+    { name: 'S9 final review unconfirmed', mutate: (s) => { s.finalReviewConfirmed = false; }, stage: 'S9', code: 'FINAL_REVIEW_NOT_CONFIRMED' },
+  ];
+
+  it('exercises at least 20 distinct single-deficiency fixtures', () => {
+    expect(SINGLE_DEFICIENCY_FIXTURES.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it.each(SINGLE_DEFICIENCY_FIXTURES)(
+    'yields exactly one deficiency: $name',
+    ({ mutate, stage, code }) => {
+      const state = completeState();
+      mutate(state);
+      const result = evaluate(state);
+      expect(result.deficiencies).toHaveLength(1);
+      expect(result.deficiencies[0]).toMatchObject({ stage, code });
+    },
+  );
+
+  // ---- Submission gate: allowed only at zero hard deficiencies -----------
+
+  it('allows submission (zero hard deficiencies) for a complete inspection', () => {
+    expect(evaluate(completeState()).deficiencies).toHaveLength(0);
+  });
+
+  it('blocks submission whenever any single hard deficiency remains', () => {
+    for (const fixture of SINGLE_DEFICIENCY_FIXTURES) {
+      const state = completeState();
+      fixture.mutate(state);
+      expect(evaluate(state).deficiencies.length).toBeGreaterThan(0);
+    }
   });
 });

@@ -16,7 +16,10 @@ export type OutboxItemKind =
   | 'inspection.penetration'
   | 'inspection.product'
   | 'inspection.testSquare'
-  | 'inspection.testSquareHit';
+  | 'inspection.testSquareHit'
+  | 'inspection.measurement'
+  | 'inspection.interiorObservation'
+  | 'inspection.submission';
 
 export interface InspectionPhotoOutboxPayload {
   /** Client-generated photo id so a replayed outbox item (e.g. after a lost
@@ -76,6 +79,15 @@ export interface InspectionChildCreateOutboxPayload {
 export interface InspectionTestSquareHitOutboxPayload {
   inspectionId: string;
   testSquareId: string;
+  input: Record<string, unknown>;
+}
+
+/** Offline-first submission (E6). Carries the client-assembled submission
+ * manifest v1 (record ids, photo SHA-256s, gate results). The server accepts
+ * it thinly — stores the manifest verbatim and transitions the inspection to
+ * `submitted`; hash/lock/pre-flight verification is deferred to M-F. */
+export interface InspectionSubmissionOutboxPayload {
+  inspectionId: string;
   input: Record<string, unknown>;
 }
 

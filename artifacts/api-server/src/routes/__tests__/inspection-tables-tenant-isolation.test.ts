@@ -5,6 +5,7 @@ import {
   db,
   inspectionComponentsTable,
   inspectionElevationsTable,
+  inspectionInteriorObservationsTable,
   inspectionPenetrationsTable,
   inspectionPhotosTable,
   inspectionProductsTable,
@@ -39,6 +40,7 @@ interface SeededCompany {
   componentId: string;
   penetrationId: string;
   productId: string;
+  interiorObservationId: string;
 }
 
 async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
@@ -147,6 +149,16 @@ async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
     })
     .returning();
 
+  const [interiorObservation] = await db
+    .insert(inspectionInteriorObservationsTable)
+    .values({
+      companyId,
+      inspectionId: inspection.id,
+      location: 'Kitchen ceiling',
+      observationType: 'ceiling_stain',
+    })
+    .returning();
+
   return {
     companyId,
     userId: user.id,
@@ -162,6 +174,7 @@ async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
     componentId: component.id,
     penetrationId: penetration.id,
     productId: product.id,
+    interiorObservationId: interiorObservation.id,
   };
 }
 
@@ -306,5 +319,15 @@ describe('inspection data model tenant isolation', () => {
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(companyA.productId);
     expect(ids).not.toContain(companyB.productId);
+  });
+
+  it('inspection_interior_observations are scoped by companyId', async () => {
+    const rows = await db
+      .select()
+      .from(inspectionInteriorObservationsTable)
+      .where(eq(inspectionInteriorObservationsTable.companyId, companyA.companyId));
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(companyA.interiorObservationId);
+    expect(ids).not.toContain(companyB.interiorObservationId);
   });
 });

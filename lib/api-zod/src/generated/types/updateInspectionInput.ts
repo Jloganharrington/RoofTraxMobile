@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ArrivalConditions } from './arrivalConditions';
+import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionStatus } from './inspectionStatus';
 import type { StormConfirmedRef } from './stormConfirmedRef';
 
@@ -33,4 +34,5 @@ export interface UpdateInspectionInput {
   dateOfLoss?: string | null;
   stormConfirmedRef?: StormConfirmedRef | null;
   arrivalConditions?: ArrivalConditions | null;
+  homeownerFacts?: HomeownerFacts | null;
 }

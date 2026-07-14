@@ -373,6 +373,7 @@ export const InspectionSubjectType = {
   component: 'component',
   penetration: 'penetration',
   product: 'product',
+  interior_observation: 'interior_observation',
 } as const;
 
 /**
@@ -422,6 +423,20 @@ export const AttestationType = {
   stage_signoff: 'stage_signoff',
 } as const;
 
+/**
+ * Controlled vocabulary (E2) for a single interior/attic observation. Raw facts only — no derived severity or causation.
+ */
+export type InteriorObservationType = typeof InteriorObservationType[keyof typeof InteriorObservationType];
+
+
+export const InteriorObservationType = {
+  ceiling_stain: 'ceiling_stain',
+  wall_stain: 'wall_stain',
+  moisture_reading: 'moisture_reading',
+  attic_pass: 'attic_pass',
+  other: 'other',
+} as const;
+
 export type StormConfirmedRefType = typeof StormConfirmedRefType[keyof typeof StormConfirmedRefType];
 
 
@@ -464,6 +479,55 @@ export interface ArrivalConditions {
   /** @nullable */
   personnelPresent: string | null;
   recordedAtUtc: string;
+}
+
+/**
+ * Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.
+ */
+export interface HomeownerFacts {
+  /** @nullable */
+  awareOfDateOfLoss: boolean | null;
+  /** @nullable */
+  priorRepairs: string | null;
+  /** @nullable */
+  priorClaims: string | null;
+  recordedAtUtc: string;
+}
+
+/**
+ * A single gate-engine finding (deficiency or soft flag).
+ */
+export interface GateFinding {
+  stage: string;
+  code: string;
+  message: string;
+}
+
+export interface SubmissionPhotoHash {
+  photoId: string;
+  sha256: string;
+}
+
+/**
+ * Map of record type to the list of record ids included in the package.
+ */
+export type SubmissionManifestV1Records = {[key: string]: string[]};
+
+export type SubmissionManifestV1GateResults = {
+  deficiencies: GateFinding[];
+  softFlags: GateFinding[];
+};
+
+/**
+ * Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.
+ */
+export interface SubmissionManifestV1 {
+  protocolVersion: string;
+  generatedAtUtc: string;
+  /** Map of record type to the list of record ids included in the package. */
+  records: SubmissionManifestV1Records;
+  photoHashes: SubmissionPhotoHash[];
+  gateResults: SubmissionManifestV1GateResults;
 }
 
 export interface InspectionSlope {
@@ -682,6 +746,33 @@ export interface Attestation {
   attestedAt: string;
 }
 
+export interface InteriorObservation {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  location: string;
+  observationType: InteriorObservationType;
+  /** @nullable */
+  moistureReading: number | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface Measurement {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  subjectType: InspectionSubjectType;
+  /** @nullable */
+  subjectId: string | null;
+  measurementType: string;
+  value: number;
+  /** @nullable */
+  unit: string | null;
+  createdAt: string;
+}
+
 export interface Inspection {
   id: string;
   companyId: string;
@@ -709,6 +800,8 @@ export interface Inspection {
   dateOfLoss: string | null;
   stormConfirmedRef: StormConfirmedRef | null;
   arrivalConditions: ArrivalConditions | null;
+  homeownerFacts: HomeownerFacts | null;
+  submissionManifest: SubmissionManifestV1 | null;
   createdAt: string;
   updatedAt: string;
   /** Child slopes. Populated by GET /inspections/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid. */
@@ -731,6 +824,10 @@ export interface Inspection {
   testSquareHits?: TestSquareHit[];
   /** Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only. */
   attestations?: Attestation[];
+  /** E2 interior/attic observations, populated by the detail view only. */
+  interiorObservations?: InteriorObservation[];
+  /** E1 (S7) raw measurements, populated by the detail view only. */
+  measurements?: Measurement[];
 }
 
 export interface CreateInspectionInput {
@@ -785,6 +882,7 @@ export interface UpdateInspectionInput {
   dateOfLoss?: string | null;
   stormConfirmedRef?: StormConfirmedRef | null;
   arrivalConditions?: ArrivalConditions | null;
+  homeownerFacts?: HomeownerFacts | null;
 }
 
 export interface InspectionEnvelope {
@@ -971,21 +1069,9 @@ export interface InspectionPhotoEnvelope {
   photo: InspectionPhoto;
 }
 
-export interface Measurement {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  subjectType: InspectionSubjectType;
-  /** @nullable */
-  subjectId: string | null;
-  measurementType: string;
-  value: number;
-  /** @nullable */
-  unit: string | null;
-  createdAt: string;
-}
-
 export interface CreateMeasurementInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the measurement write is idempotent, so a queued offline measurement can be retried without duplicating the row. */
+  id?: string;
   subjectType: InspectionSubjectType;
   /** @nullable */
   subjectId?: string | null;
@@ -998,6 +1084,26 @@ export interface CreateMeasurementInput {
 
 export interface MeasurementEnvelope {
   measurement: Measurement;
+}
+
+export interface CreateInteriorObservationInput {
+  /** Optional client-generated id for offline-first idempotent creation. */
+  id?: string;
+  /** @minLength 1 */
+  location: string;
+  observationType: InteriorObservationType;
+  /** @nullable */
+  moistureReading?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InteriorObservationEnvelope {
+  interiorObservation: InteriorObservation;
+}
+
+export interface SubmitInspectionInput {
+  manifest: SubmissionManifestV1;
 }
 
 /**

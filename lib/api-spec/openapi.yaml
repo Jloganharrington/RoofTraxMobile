@@ -1486,6 +1486,115 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/interior-observations:
+    post:
+      tags: [Inspections]
+      operationId: createInteriorObservation
+      summary: Record an interior/attic observation on an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInteriorObservationInput"
+      responses:
+        "201":
+          description: Interior observation recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InteriorObservationEnvelope"
+        "200":
+          description: Observation already existed (idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InteriorObservationEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Observation id already exists on another inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/submission:
+    post:
+      tags: [Inspections]
+      operationId: submitInspection
+      summary: Submit the assembled inspection package (thin accept — M-F adds verification)
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitInspectionInput"
+      responses:
+        "200":
+          description: Submission accepted; inspection transitioned to submitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /inspections/scheduled:
     get:
       tags: [Inspections]
@@ -2215,7 +2324,7 @@ components:
       enum: [front, right, back, left]
     InspectionSubjectType:
       type: string
-      enum: [inspection, slope, elevation, damage_instance, test_square, test_square_hit, component, penetration, product]
+      enum: [inspection, slope, elevation, damage_instance, test_square, test_square_hit, component, penetration, product, interior_observation]
     TestSquareHitType:
       type: string
       description: >-
@@ -2232,6 +2341,12 @@ components:
     AttestationType:
       type: string
       enum: [equipment, gps_override, stage_signoff]
+    InteriorObservationType:
+      type: string
+      description: >-
+        Controlled vocabulary (E2) for a single interior/attic observation.
+        Raw facts only — no derived severity or causation.
+      enum: [ceiling_stain, wall_stain, moisture_reading, attic_pass, other]
 
     StormConfirmedRef:
       type: object
@@ -2275,6 +2390,77 @@ components:
           type: [string, "null"]
         recordedAtUtc:
           type: string
+    HomeownerFacts:
+      type: object
+      description: >-
+        Structured homeowner facts (E3). Plain factual intake only — no
+        coverage, settlement, or advice language ever appears here.
+      required: [awareOfDateOfLoss, priorRepairs, priorClaims, recordedAtUtc]
+      properties:
+        awareOfDateOfLoss:
+          type: [boolean, "null"]
+        priorRepairs:
+          type: [string, "null"]
+        priorClaims:
+          type: [string, "null"]
+        recordedAtUtc:
+          type: string
+    GateFinding:
+      type: object
+      description: A single gate-engine finding (deficiency or soft flag).
+      required: [stage, code, message]
+      properties:
+        stage:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+    SubmissionPhotoHash:
+      type: object
+      required: [photoId, sha256]
+      properties:
+        photoId:
+          type: string
+        sha256:
+          type: string
+    SubmissionManifestV1:
+      type: object
+      description: >-
+        Client-assembled submission contract v1 (E6) — the stable interface the
+        Brain inherits. A manifest of record ids by type, per-photo SHA-256
+        hashes, the protocol version the gate ran under, and the gate results.
+        Assembled and hashed client-side; the server accepts it thin. M-F adds
+        server-side hash verification, record locking, and a pre-flight endpoint.
+      required: [protocolVersion, generatedAtUtc, records, photoHashes, gateResults]
+      properties:
+        protocolVersion:
+          type: string
+        generatedAtUtc:
+          type: string
+        records:
+          type: object
+          description: Map of record type to the list of record ids included in the package.
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        photoHashes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubmissionPhotoHash"
+        gateResults:
+          type: object
+          required: [deficiencies, softFlags]
+          properties:
+            deficiencies:
+              type: array
+              items:
+                $ref: "#/components/schemas/GateFinding"
+            softFlags:
+              type: array
+              items:
+                $ref: "#/components/schemas/GateFinding"
 
     Inspection:
       type: object
@@ -2296,6 +2482,8 @@ components:
           dateOfLoss,
           stormConfirmedRef,
           arrivalConditions,
+          homeownerFacts,
+          submissionManifest,
           createdAt,
           updatedAt,
         ]
@@ -2335,6 +2523,14 @@ components:
         arrivalConditions:
           oneOf:
             - $ref: "#/components/schemas/ArrivalConditions"
+            - type: "null"
+        homeownerFacts:
+          oneOf:
+            - $ref: "#/components/schemas/HomeownerFacts"
+            - type: "null"
+        submissionManifest:
+          oneOf:
+            - $ref: "#/components/schemas/SubmissionManifestV1"
             - type: "null"
         createdAt:
           type: string
@@ -2401,6 +2597,16 @@ components:
             attestation), populated by the detail view only.
           items:
             $ref: "#/components/schemas/Attestation"
+        interiorObservations:
+          type: array
+          description: E2 interior/attic observations, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InteriorObservation"
+        measurements:
+          type: array
+          description: E1 (S7) raw measurements, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/Measurement"
     CreateInspectionInput:
       type: object
       properties:
@@ -2467,6 +2673,10 @@ components:
         arrivalConditions:
           oneOf:
             - $ref: "#/components/schemas/ArrivalConditions"
+            - type: "null"
+        homeownerFacts:
+          oneOf:
+            - $ref: "#/components/schemas/HomeownerFacts"
             - type: "null"
     InspectionEnvelope:
       type: object
@@ -3021,6 +3231,12 @@ components:
       type: object
       required: [subjectType, measurementType, value]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, the measurement write is idempotent, so a queued offline
+            measurement can be retried without duplicating the row.
         subjectType:
           $ref: "#/components/schemas/InspectionSubjectType"
         subjectId:
@@ -3038,6 +3254,56 @@ components:
       properties:
         measurement:
           $ref: "#/components/schemas/Measurement"
+
+    InteriorObservation:
+      type: object
+      required: [id, companyId, inspectionId, location, observationType, moistureReading, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        location:
+          type: string
+        observationType:
+          $ref: "#/components/schemas/InteriorObservationType"
+        moistureReading:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInteriorObservationInput:
+      type: object
+      required: [location, observationType]
+      properties:
+        id:
+          type: string
+          description: Optional client-generated id for offline-first idempotent creation.
+        location:
+          type: string
+          minLength: 1
+        observationType:
+          $ref: "#/components/schemas/InteriorObservationType"
+        moistureReading:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+    InteriorObservationEnvelope:
+      type: object
+      required: [interiorObservation]
+      properties:
+        interiorObservation:
+          $ref: "#/components/schemas/InteriorObservation"
+    SubmitInspectionInput:
+      type: object
+      required: [manifest]
+      properties:
+        manifest:
+          $ref: "#/components/schemas/SubmissionManifestV1"
 
     Attestation:
       type: object

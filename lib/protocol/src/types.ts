@@ -31,10 +31,20 @@ export interface InspectionProtocolState {
     closePhotoCaptured: boolean;
   }>;
   interiorPhotoCaptured: boolean;
+  // How many interior/attic observations were recorded (E2), and whether the
+  // inspector explicitly waived interior documentation via a "no interior
+  // claim" attestation. An inspection with neither raises a soft flag — it is
+  // never a hard block, since many roofs have no interior claim at all.
+  interiorObservationCount: number;
+  interiorClaimWaived: boolean;
   // Product identifications captured during S4 close-up documentation. Each is
   // a plain fact: was the roofing product identified in the field, or flagged
   // as unidentifiable (deferred to lab/ITEL)? Drives a non-blocking soft flag.
   productIdentifications: Array<{ id: string; unidentifiable: boolean }>;
+  // Raw measurements recorded (E1). `slopeId` is the slope a per-slope
+  // measurement is tied to (empty for whole-roof measurements). Used to
+  // cross-check against the S3 slope inventory (a measurement referencing a
+  // slope that was never documented is soft-flagged).
   measurements: Array<{ id: string; slopeId: string }>;
   attestationRecorded: boolean;
   finalReviewConfirmed: boolean;

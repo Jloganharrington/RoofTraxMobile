@@ -359,6 +359,10 @@ describe('inspection routes', () => {
           request(app).post(`/api/inspections/${inspectionId}/measurements`).set(auth(sid)).send({ subjectType: 'slope', measurementType: 'length', value: 12 })],
         ['create attestation', () =>
           request(app).post(`/api/inspections/${inspectionId}/attestations`).set(auth(sid)).send({ stage: 'S2', signatureData: 'C0' })],
+        ['create interior observation', () =>
+          request(app).post(`/api/inspections/${inspectionId}/interior-observations`).set(auth(sid)).send({ location: 'Kitchen', observationType: 'ceiling_stain' })],
+        ['submit inspection', () =>
+          request(app).post(`/api/inspections/${inspectionId}/submission`).set(auth(sid)).send({ manifest: { protocolVersion: 'v1', generatedAtUtc: new Date().toISOString(), records: {}, photoHashes: [], gateResults: { deficiencies: [], softFlags: [] } } })],
       ];
     }
 
@@ -575,7 +579,7 @@ describe('inspection routes', () => {
       const batch: Array<{ path: string; body: Record<string, unknown> }> = [
         { path: `/api/inspections/${inspectionId}/elevations`, body: { id: elevId, direction: 'front' } },
         { path: `/api/inspections/${inspectionId}/slopes`, body: { id: slopeId, label: 'Mini-pass slope' } },
-        { path: `/api/inspections/${inspectionId}/damage-instances`, body: { id: dmgId, slopeId, damageType: 'hail' } },
+        { path: `/api/inspections/${inspectionId}/damage-instances`, body: { id: dmgId, slopeId, damageType: 'hail', causationNote: 'Mat exposure compromises water shedding' } },
         { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-elev`, subjectType: 'elevation', subjectId: elevId, triadRole: 'wide', stage: 'S1', url: 'https://example.test/e.jpg', sha256: '1'.repeat(64) } },
         { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-roof`, subjectType: 'inspection', triadRole: 'wide', stage: 'S2', url: 'https://example.test/r.jpg', sha256: '2'.repeat(64) } },
         { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-slope`, subjectType: 'slope', subjectId: slopeId, triadRole: 'wide', stage: 'S3', url: 'https://example.test/s.jpg', sha256: '3'.repeat(64) } },
@@ -954,6 +958,173 @@ describe('inspection routes', () => {
         .set(auth(inspectorA.sid))
         .send({ id: penId, penetrationType: 'skylight' });
       expect(collide.status).toBe(409);
+    });
+  });
+
+  // ---- M-E: functional causation note (E0), interior (E2), measurement
+  //       idempotency (E1), signature attestation (E5), submission (E6) -----
+  describe('M-E child records and submission', () => {
+    it('E0: rejects functional (slope-tagged) damage without a causation note', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const slope = await request(app)
+        .post(`/api/inspections/${inspectionId}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'E0 slope' });
+      const slopeId = slope.body.slope.id as string;
+
+      const noNote = await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send({ slopeId, damageType: 'mat exposure' });
+      expect(noNote.status).toBe(400);
+
+      const blankNote = await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send({ slopeId, damageType: 'mat exposure', causationNote: '   ' });
+      expect(blankNote.status).toBe(400);
+
+      const withNote = await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send({ slopeId, damageType: 'mat exposure', causationNote: 'Granule loss exposes mat' });
+      expect(withNote.status).toBe(201);
+    });
+
+    it('E0: allows collateral (elevation-tagged) damage without a note', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const elev = await request(app)
+        .post(`/api/inspections/${inspectionId}/elevations`)
+        .set(auth(inspectorA.sid))
+        .send({ direction: 'front' });
+      const res = await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send({ elevationId: elev.body.elevation.id, damageType: 'siding dent' });
+      expect(res.status).toBe(201);
+    });
+
+    it('E1: records measurements idempotently by client id', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const mId = `meas-${RUN_ID}-idem`;
+      const body = { id: mId, subjectType: 'inspection', measurementType: 'ridge', value: 30, unit: 'ft' };
+      const first = await request(app)
+        .post(`/api/inspections/${inspectionId}/measurements`)
+        .set(auth(inspectorA.sid))
+        .send(body);
+      expect(first.status).toBe(201);
+      const retry = await request(app)
+        .post(`/api/inspections/${inspectionId}/measurements`)
+        .set(auth(inspectorA.sid))
+        .send(body);
+      expect(retry.status).toBe(200);
+      expect(retry.body.measurement.id).toBe(mId);
+    });
+
+    it('E2: creates interior observations (idempotent) and hydrates them on GET', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const obsId = `int-${RUN_ID}-idem`;
+      const body = {
+        id: obsId,
+        location: 'Master bedroom ceiling',
+        observationType: 'moisture_reading',
+        moistureReading: 18.5,
+      };
+      const first = await request(app)
+        .post(`/api/inspections/${inspectionId}/interior-observations`)
+        .set(auth(inspectorA.sid))
+        .send(body);
+      expect(first.status).toBe(201);
+      expect(first.body.interiorObservation.moistureReading).toBe(18.5);
+      const retry = await request(app)
+        .post(`/api/inspections/${inspectionId}/interior-observations`)
+        .set(auth(inspectorA.sid))
+        .send(body);
+      expect(retry.status).toBe(200);
+
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      expect(detail.body.inspection.interiorObservations).toHaveLength(1);
+      expect(detail.body.inspection.interiorObservations[0].id).toBe(obsId);
+    });
+
+    it('E3: stores homeowner facts via PATCH and returns them on GET', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const facts = {
+        awareOfDateOfLoss: true,
+        priorRepairs: 'Roof patched in 2019',
+        priorClaims: null,
+        recordedAtUtc: new Date().toISOString(),
+      };
+      const patch = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ homeownerFacts: facts });
+      expect(patch.status).toBe(200);
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      expect(detail.body.inspection.homeownerFacts).toMatchObject({
+        awareOfDateOfLoss: true,
+        priorRepairs: 'Roof patched in 2019',
+      });
+    });
+
+    it('E5: stores an S8 signature attestation (hashed) and returns it on GET', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const signatureHash = 'a'.repeat(64); // client hashes the strokes with expo-crypto
+      const res = await request(app)
+        .post(`/api/inspections/${inspectionId}/attestations`)
+        .set(auth(inspectorA.sid))
+        .send({
+          stage: 'S8',
+          attestationType: 'stage_signoff',
+          signatureData: signatureHash,
+          details: { kind: 'methodology_declaration', declarationHash: 'b'.repeat(64) },
+        });
+      expect(res.status).toBe(201);
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      const s8 = detail.body.inspection.attestations.find(
+        (a: { stage: string }) => a.stage === 'S8',
+      );
+      expect(s8.signatureData).toBe(signatureHash);
+      expect(s8.details.declarationHash).toBe('b'.repeat(64));
+    });
+
+    it('E6: accepts a submission with matching photo hashes and transitions to submitted', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const photoSha = 'f'.repeat(64);
+      const photoRes = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ subjectType: 'inspection', triadRole: 'wide', stage: 'S0', url: 'https://example.test/o.jpg', sha256: photoSha });
+      const photoId = photoRes.body.photo.id as string;
+
+      const manifest = {
+        protocolVersion: 'test-v1',
+        generatedAtUtc: new Date().toISOString(),
+        records: { photos: [photoId] },
+        photoHashes: [{ photoId, sha256: photoSha }],
+        gateResults: { deficiencies: [], softFlags: [] },
+      };
+      const submit = await request(app)
+        .post(`/api/inspections/${inspectionId}/submission`)
+        .set(auth(inspectorA.sid))
+        .send({ manifest });
+      expect(submit.status).toBe(200);
+      expect(submit.body.inspection.status).toBe('submitted');
+
+      // The stored manifest's photo hash must match the persisted photo's
+      // SHA-256 — the durable evidence trail the Brain will verify in M-F.
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      const storedPhoto = detail.body.inspection.photos.find((p: { id: string }) => p.id === photoId);
+      const manifestHash = detail.body.inspection.submissionManifest.photoHashes[0].sha256;
+      expect(manifestHash).toBe(storedPhoto.sha256);
+      expect(detail.body.inspection.status).toBe('submitted');
     });
   });
 });

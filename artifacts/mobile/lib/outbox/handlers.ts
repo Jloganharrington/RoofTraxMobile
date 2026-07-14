@@ -9,8 +9,11 @@ import {
   createInspectionPhoto,
   createInspectionProduct,
   createInspectionSlope,
+  createInteriorObservation,
+  createMeasurement,
   createTestSquare,
   createTestSquareHit,
+  submitInspection,
   updateInspection,
 } from '@workspace/api-client-react';
 import type {
@@ -22,11 +25,14 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  CreateInteriorObservationInput,
+  CreateMeasurementInput,
   CreateTestSquareInput,
   CreateTestSquareHitInput,
   CaptureStage,
   InspectionSubjectType,
   PhotoTriadRole,
+  SubmitInspectionInput,
   UpdateInspectionInput,
 } from '@workspace/api-client-react';
 
@@ -36,6 +42,7 @@ import type {
   InspectionChildCreateOutboxPayload,
   InspectionCreateOutboxPayload,
   InspectionPhotoOutboxPayload,
+  InspectionSubmissionOutboxPayload,
   InspectionTestSquareHitOutboxPayload,
   InspectionUpdateOutboxPayload,
   OutboxItemKind,
@@ -168,6 +175,30 @@ async function syncInspectionTestSquareHit(payloadJson: string): Promise<void> {
   );
 }
 
+async function syncInspectionMeasurement(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createMeasurement(
+    payload.inspectionId,
+    payload.input as unknown as CreateMeasurementInput,
+  );
+}
+
+async function syncInspectionInteriorObservation(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInteriorObservation(
+    payload.inspectionId,
+    payload.input as unknown as CreateInteriorObservationInput,
+  );
+}
+
+// The submission is the last write in the queue for an inspection — it replays
+// after every child create it references (FIFO), so by the time it lands the
+// records and photo hashes in its manifest already exist server-side.
+async function syncInspectionSubmission(payloadJson: string): Promise<void> {
+  const payload: InspectionSubmissionOutboxPayload = JSON.parse(payloadJson);
+  await submitInspection(payload.inspectionId, payload.input as unknown as SubmitInspectionInput);
+}
+
 export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.photo': syncInspectionPhoto,
   'inspection.create': syncInspectionCreate,
@@ -181,4 +212,7 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.product': syncInspectionProduct,
   'inspection.testSquare': syncInspectionTestSquare,
   'inspection.testSquareHit': syncInspectionTestSquareHit,
+  'inspection.measurement': syncInspectionMeasurement,
+  'inspection.interiorObservation': syncInspectionInteriorObservation,
+  'inspection.submission': syncInspectionSubmission,
 };

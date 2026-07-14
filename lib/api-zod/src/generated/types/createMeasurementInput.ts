@@ -8,6 +8,8 @@
 import type { InspectionSubjectType } from './inspectionSubjectType';
 
 export interface CreateMeasurementInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the measurement write is idempotent, so a queued offline measurement can be retried without duplicating the row. */
+  id?: string;
   subjectType: InspectionSubjectType;
   /** @nullable */
   subjectId?: string | null;

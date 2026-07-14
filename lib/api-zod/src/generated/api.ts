@@ -643,6 +643,33 @@ export const ListInspectionsResponse = zod.object({
   "personnelPresent": zod.string().nullable(),
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+  "homeownerFacts": zod.union([zod.object({
+  "awareOfDateOfLoss": zod.boolean().nullable(),
+  "priorRepairs": zod.string().nullable(),
+  "priorClaims": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
+  "submissionManifest": zod.union([zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+})
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -681,7 +708,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -760,7 +787,28 @@ export const ListInspectionsResponse = zod.object({
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
   "attestedAt": zod.coerce.date()
-})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.'),
+  "interiorObservations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "location": zod.string(),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E2 interior\/attic observations, populated by the detail view only.'),
+  "measurements": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
+  "subjectId": zod.string().nullable(),
+  "measurementType": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
 }))
 })
 
@@ -818,6 +866,33 @@ export const CreateInspectionResponse = zod.object({
   "personnelPresent": zod.string().nullable(),
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+  "homeownerFacts": zod.union([zod.object({
+  "awareOfDateOfLoss": zod.boolean().nullable(),
+  "priorRepairs": zod.string().nullable(),
+  "priorClaims": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
+  "submissionManifest": zod.union([zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+})
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -856,7 +931,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -935,7 +1010,28 @@ export const CreateInspectionResponse = zod.object({
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
   "attestedAt": zod.coerce.date()
-})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.'),
+  "interiorObservations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "location": zod.string(),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E2 interior\/attic observations, populated by the detail view only.'),
+  "measurements": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
+  "subjectId": zod.string().nullable(),
+  "measurementType": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
 })
 })
 
@@ -981,6 +1077,33 @@ export const GetInspectionResponse = zod.object({
   "personnelPresent": zod.string().nullable(),
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+  "homeownerFacts": zod.union([zod.object({
+  "awareOfDateOfLoss": zod.boolean().nullable(),
+  "priorRepairs": zod.string().nullable(),
+  "priorClaims": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
+  "submissionManifest": zod.union([zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+})
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -1019,7 +1142,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1098,7 +1221,28 @@ export const GetInspectionResponse = zod.object({
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
   "attestedAt": zod.coerce.date()
-})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.'),
+  "interiorObservations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "location": zod.string(),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E2 interior\/attic observations, populated by the detail view only.'),
+  "measurements": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
+  "subjectId": zod.string().nullable(),
+  "measurementType": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
 })
 })
 
@@ -1139,7 +1283,13 @@ export const UpdateInspectionBody = zod.object({
   "temp": zod.string().nullable(),
   "personnelPresent": zod.string().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]).optional()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]).optional(),
+  "homeownerFacts": zod.union([zod.object({
+  "awareOfDateOfLoss": zod.boolean().nullable(),
+  "priorRepairs": zod.string().nullable(),
+  "priorClaims": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]).optional()
 })
 
 export const UpdateInspectionResponse = zod.object({
@@ -1176,6 +1326,33 @@ export const UpdateInspectionResponse = zod.object({
   "personnelPresent": zod.string().nullable(),
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+  "homeownerFacts": zod.union([zod.object({
+  "awareOfDateOfLoss": zod.boolean().nullable(),
+  "priorRepairs": zod.string().nullable(),
+  "priorClaims": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
+  "submissionManifest": zod.union([zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+})
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -1214,7 +1391,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1293,7 +1470,28 @@ export const UpdateInspectionResponse = zod.object({
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
   "attestedAt": zod.coerce.date()
-})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.'),
+  "interiorObservations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "location": zod.string(),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E2 interior\/attic observations, populated by the detail view only.'),
+  "measurements": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
+  "subjectId": zod.string().nullable(),
+  "measurementType": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
 })
 })
 
@@ -1563,7 +1761,7 @@ export const CreateInspectionPhotoParams = zod.object({
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
   "url": zod.string().min(1),
@@ -1585,7 +1783,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1615,7 +1813,8 @@ export const CreateMeasurementParams = zod.object({
 
 
 export const CreateMeasurementBody = zod.object({
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the measurement write is idempotent, so a queued offline measurement can be retried without duplicating the row.'),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullish(),
   "measurementType": zod.string().min(1),
   "value": zod.number(),
@@ -1627,7 +1826,7 @@ export const CreateMeasurementResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "measurementType": zod.string(),
   "value": zod.number(),
@@ -1663,6 +1862,273 @@ export const CreateAttestationResponse = zod.object({
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
   "attestedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Record an interior/attic observation on an inspection
+ */
+export const CreateInteriorObservationParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CreateInteriorObservationBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first idempotent creation.'),
+  "location": zod.string().min(1),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInteriorObservationResponse = zod.object({
+  "interiorObservation": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "location": zod.string(),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Submit the assembled inspection package (thin accept — M-F adds verification)
+ */
+export const SubmitInspectionParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const SubmitInspectionBody = zod.object({
+  "manifest": zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+})
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.')
+})
+
+export const SubmitInspectionResponse = zod.object({
+  "inspection": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string().nullable(),
+  "inspectorUserId": zod.string(),
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']),
+  "claimNumber": zod.string().nullable(),
+  "policyNumber": zod.string().nullable(),
+  "carrierName": zod.string().nullable(),
+  "insuredName": zod.string().nullable(),
+  "address": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "stormConfirmedRef": zod.union([zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "distance": zod.number().nullable(),
+  "description": zod.string().nullable(),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "confirmedAtUtc": zod.string()
+}).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
+  "arrivalConditions": zod.union([zod.object({
+  "sky": zod.string().nullable(),
+  "wind": zod.string().nullable(),
+  "temp": zod.string().nullable(),
+  "personnelPresent": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+  "homeownerFacts": zod.union([zod.object({
+  "awareOfDateOfLoss": zod.boolean().nullable(),
+  "priorRepairs": zod.string().nullable(),
+  "priorClaims": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
+  "submissionManifest": zod.union([zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+})
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "slopes": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
+  "elevations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child elevations, populated by the detail view only.'),
+  "damageInstances": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "elevationId": zod.string().nullable(),
+  "damageType": zod.string(),
+  "severity": zod.string().nullable(),
+  "causationNote": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child damage instances, populated by the detail view only.'),
+  "photos": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
+  "subjectId": zod.string().nullable(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "exifJson": zod.object({
+
+}).passthrough().nullable(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullable(),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Captured evidence photos, populated by the detail view only.'),
+  "components": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "layerCount": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 documented existing-components, populated by the detail view only.'),
+  "penetrations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 roof penetration inventory, populated by the detail view only.'),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "brand": zod.string().nullable(),
+  "productLine": zod.string().nullable(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullable(),
+  "unidentifiableReason": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C5 product-identification records, populated by the detail view only.'),
+  "testSquares": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "label": zod.string(),
+  "sizeSqFt": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test squares, populated by the detail view only.'),
+  "testSquareHits": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "testSquareId": zod.string(),
+  "hitType": zod.union([zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),zod.null()]),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter.'),
+  "attestations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
+  "details": zod.record(zod.string(), zod.unknown()).nullable(),
+  "signatureData": zod.string().nullable(),
+  "attestedAt": zod.coerce.date()
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.'),
+  "interiorObservations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "location": zod.string(),
+  "observationType": zod.enum(['ceiling_stain', 'wall_stain', 'moisture_reading', 'attic_pass', 'other']).describe('Controlled vocabulary (E2) for a single interior\/attic observation. Raw facts only — no derived severity or causation.'),
+  "moistureReading": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E2 interior\/attic observations, populated by the detail view only.'),
+  "measurements": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
+  "subjectId": zod.string().nullable(),
+  "measurementType": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
 })
 })
 

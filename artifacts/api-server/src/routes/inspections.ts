@@ -17,8 +17,12 @@ import {
   CreateInspectionResponse,
   CreateInspectionSlopeBody,
   CreateInspectionSlopeResponse,
+  CreateInteriorObservationBody,
+  CreateInteriorObservationResponse,
   CreateMeasurementBody,
   CreateMeasurementResponse,
+  SubmitInspectionBody,
+  SubmitInspectionResponse,
   CreateTestSquareBody,
   CreateTestSquareHitBody,
   CreateTestSquareHitResponse,
@@ -35,6 +39,7 @@ import {
   db,
   inspectionComponentsTable,
   inspectionElevationsTable,
+  inspectionInteriorObservationsTable,
   inspectionPenetrationsTable,
   inspectionPhotosTable,
   inspectionProductsTable,
@@ -249,6 +254,8 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
     products,
     testSquares,
     attestations,
+    interiorObservations,
+    measurements,
   ] = await Promise.all([
     db
       .select()
@@ -340,6 +347,26 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
         ),
       )
       .orderBy(attestationsTable.attestedAt),
+    db
+      .select()
+      .from(inspectionInteriorObservationsTable)
+      .where(
+        and(
+          eq(inspectionInteriorObservationsTable.inspectionId, inspectionId),
+          eq(inspectionInteriorObservationsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionInteriorObservationsTable.createdAt),
+    db
+      .select()
+      .from(measurementsTable)
+      .where(
+        and(
+          eq(measurementsTable.inspectionId, inspectionId),
+          eq(measurementsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(measurementsTable.createdAt),
   ]);
 
   // Test-square hits have no inspectionId of their own — they hang off the
@@ -373,6 +400,8 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
         testSquares,
         testSquareHits,
         attestations,
+        interiorObservations,
+        measurements,
       },
     }),
   );
@@ -411,6 +440,9 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       }),
       ...(parsed.data.arrivalConditions !== undefined && {
         arrivalConditions: parsed.data.arrivalConditions,
+      }),
+      ...(parsed.data.homeownerFacts !== undefined && {
+        homeownerFacts: parsed.data.homeownerFacts,
       }),
     })
     .where(eq(inspectionsTable.id, inspectionId))
@@ -547,6 +579,16 @@ router.post('/inspections/:inspectionId/damage-instances', async (req: Request, 
   const parsed = CreateDamageInstanceBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid damage instance payload' });
+    return;
+  }
+
+  // E0 — functional damage (slope-tagged) requires a causation note: the
+  // "if-not-for" thread (why this mark compromises the roof's water-shedding
+  // function) that the Brain later consumes. Collateral (elevation-tagged)
+  // instances leave it optional. Enforced server-side so the invariant holds
+  // regardless of client, mirroring the mobile Save guard.
+  if (parsed.data.slopeId && !parsed.data.causationNote?.trim()) {
+    res.status(400).json({ error: 'Functional damage requires a causation note' });
     return;
   }
 
@@ -1004,18 +1046,48 @@ router.post('/inspections/:inspectionId/measurements', async (req: Request, res:
     return;
   }
 
-  const [measurement] = await db
-    .insert(measurementsTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      subjectType: parsed.data.subjectType,
-      subjectId: parsed.data.subjectId ?? undefined,
-      measurementType: parsed.data.measurementType,
-      value: parsed.data.value,
-      unit: parsed.data.unit ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    subjectType: parsed.data.subjectType,
+    subjectId: parsed.data.subjectId ?? undefined,
+    measurementType: parsed.data.measurementType,
+    value: parsed.data.value,
+    unit: parsed.data.unit ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes handler for rationale) —
+  // a queued offline measurement can be retried without duplicating the row.
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(measurementsTable)
+      .values(values)
+      .onConflictDoNothing({ target: measurementsTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateMeasurementResponse.parse({ measurement: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(measurementsTable)
+      .where(
+        and(
+          eq(measurementsTable.id, parsed.data.id),
+          eq(measurementsTable.companyId, actor.companyId),
+          eq(measurementsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Measurement id already exists' });
+      return;
+    }
+    res.status(200).json(CreateMeasurementResponse.parse({ measurement: existing }));
+    return;
+  }
+
+  const [measurement] = await db.insert(measurementsTable).values(values).returning();
 
   res.status(201).json(CreateMeasurementResponse.parse({ measurement }));
 });
@@ -1081,6 +1153,108 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
   const [attestation] = await db.insert(attestationsTable).values(values).returning();
 
   res.status(201).json(CreateAttestationResponse.parse({ attestation }));
+});
+
+router.post(
+  '/inspections/:inspectionId/interior-observations',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const parsed = CreateInteriorObservationBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid interior observation payload' });
+      return;
+    }
+
+    const values = {
+      ...(parsed.data.id ? { id: parsed.data.id } : {}),
+      companyId: actor.companyId,
+      inspectionId,
+      location: parsed.data.location,
+      observationType: parsed.data.observationType,
+      moistureReading: parsed.data.moistureReading ?? undefined,
+      notes: parsed.data.notes ?? undefined,
+    };
+
+    // Offline-first idempotent create (see the slopes handler for rationale).
+    if (parsed.data.id) {
+      const [inserted] = await db
+        .insert(inspectionInteriorObservationsTable)
+        .values(values)
+        .onConflictDoNothing({ target: inspectionInteriorObservationsTable.id })
+        .returning();
+      if (inserted) {
+        res
+          .status(201)
+          .json(CreateInteriorObservationResponse.parse({ interiorObservation: inserted }));
+        return;
+      }
+      const [existing] = await db
+        .select()
+        .from(inspectionInteriorObservationsTable)
+        .where(
+          and(
+            eq(inspectionInteriorObservationsTable.id, parsed.data.id),
+            eq(inspectionInteriorObservationsTable.companyId, actor.companyId),
+            eq(inspectionInteriorObservationsTable.inspectionId, inspectionId),
+          ),
+        );
+      if (!existing) {
+        res.status(409).json({ error: 'Interior observation id already exists' });
+        return;
+      }
+      res
+        .status(200)
+        .json(CreateInteriorObservationResponse.parse({ interiorObservation: existing }));
+      return;
+    }
+
+    const [interiorObservation] = await db
+      .insert(inspectionInteriorObservationsTable)
+      .values(values)
+      .returning();
+
+    res
+      .status(201)
+      .json(CreateInteriorObservationResponse.parse({ interiorObservation }));
+  },
+);
+
+router.post('/inspections/:inspectionId/submission', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  const parsed = SubmitInspectionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid submission payload' });
+    return;
+  }
+
+  // Thin accept (M-F seam). The client is the gatekeeper: it blocks submit
+  // unless the shared gate engine reports zero hard deficiencies, then
+  // assembles and hashes the manifest here. This endpoint deliberately does
+  // NOT re-verify the gate, re-hash the photos, lock the records, or run a
+  // pre-flight check — all of that is deferred to M-F. It only records the
+  // manifest verbatim and transitions the lifecycle to `submitted`.
+  const [updated] = await db
+    .update(inspectionsTable)
+    .set({
+      status: 'submitted',
+      submissionManifest: parsed.data.manifest,
+    })
+    .where(eq(inspectionsTable.id, inspectionId))
+    .returning();
+
+  res.json(SubmitInspectionResponse.parse({ inspection: updated }));
 });
 
 export default router;

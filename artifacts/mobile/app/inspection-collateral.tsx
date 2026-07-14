@@ -144,8 +144,14 @@ export default function InspectionDamageScreen() {
     });
   }
 
+  // Functional mode requires a causation note — it is the "if-not-for" thread
+  // (why this mark compromises the roof's water-shedding function) that the
+  // Brain later consumes. Collateral mode leaves the note optional.
+  const noteRequired = mode === 'functional';
+  const canSave = damageType.trim().length > 0 && (!noteRequired || note.trim().length > 0);
+
   async function saveDamage() {
-    if (!target || !damageType.trim() || saving) return;
+    if (!target || !canSave || saving) return;
     setSaving(true);
     try {
       const damageId = await createDamageInstance(queryClient, id, {
@@ -262,8 +268,8 @@ export default function InspectionDamageScreen() {
               </Pressable>
               <Pressable
                 onPress={saveDamage}
-                disabled={!damageType.trim() || saving}
-                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: !damageType.trim() || saving ? 0.5 : 1 }]}
+                disabled={!canSave || saving}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: !canSave || saving ? 0.5 : 1 }]}
               >
                 {saving ? (
                   <ActivityIndicator color={colors.primaryForeground} />

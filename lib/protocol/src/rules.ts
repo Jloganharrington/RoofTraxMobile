@@ -165,10 +165,45 @@ function checkUnidentifiedProducts(state: InspectionProtocolState): SoftFlag[] {
     );
 }
 
+// E2 — Interior/attic is conditional: an inspection either records at least
+// one interior observation OR the inspector explicitly waives it with a "no
+// interior claim" attestation. Neither is a soft flag (an undocumented skip),
+// never a hard block.
+function checkInteriorNotAddressed(state: InspectionProtocolState): SoftFlag[] {
+  if (state.interiorObservationCount === 0 && !state.interiorClaimWaived) {
+    return [
+      softFlag(
+        'S6',
+        'INTERIOR_NOT_ADDRESSED',
+        'Interior/attic was neither documented nor explicitly waived with a no-interior-claim attestation.',
+      ),
+    ];
+  }
+  return [];
+}
+
+// E1 — A measurement recorded against a slope that is not in the S3 slope
+// inventory is almost always a typo or a stale reference. Soft-flagged (not a
+// block) so the inspector can reconcile it against the documented slopes.
+function checkMeasurementSlopeMismatch(state: InspectionProtocolState): SoftFlag[] {
+  const slopeIds = new Set(state.slopes.map((slope) => slope.id));
+  return state.measurements
+    .filter((measurement) => measurement.slopeId !== '' && !slopeIds.has(measurement.slopeId))
+    .map((measurement) =>
+      softFlag(
+        'S7',
+        `MEASUREMENT_SLOPE_MISMATCH_${measurement.id}`,
+        `Measurement ${measurement.id} references slope ${measurement.slopeId}, which is not in the documented slope inventory.`,
+      ),
+    );
+}
+
 const SOFT_FLAG_CHECKS = [
   checkInteriorLeakWithoutPhoto,
   checkZeroHitTestSquares,
   checkUnidentifiedProducts,
+  checkInteriorNotAddressed,
+  checkMeasurementSlopeMismatch,
 ];
 
 // Single entry point: given the raw capture state of an inspection, returns

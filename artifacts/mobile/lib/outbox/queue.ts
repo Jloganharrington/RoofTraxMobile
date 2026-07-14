@@ -43,6 +43,28 @@ export async function listAllOutboxItems(): Promise<OutboxItem[]> {
   return db.getAllAsync<OutboxItem>(`SELECT * FROM outbox_items ORDER BY createdAt ASC`);
 }
 
+/**
+ * Counts still-unsynced capture writes (photos, measurements, interior
+ * observations, attestations, etc.) belonging to one inspection — everything
+ * EXCEPT the submission item itself. The E6 readiness screen blocks submit
+ * until this reaches zero, so the submission manifest can never reference a
+ * child record that has not durably persisted server-side. A permanently
+ * failing child therefore surfaces as "still uploading" rather than a silently
+ * invalid package.
+ */
+export async function countUnsyncedWritesForInspection(inspectionId: string): Promise<number> {
+  const items = await listSyncableOutboxItems();
+  return items.filter((item) => {
+    if (item.kind === 'inspection.submission') return false;
+    try {
+      const payload = JSON.parse(item.payload) as { inspectionId?: string };
+      return payload.inspectionId === inspectionId;
+    } catch {
+      return false;
+    }
+  }).length;
+}
+
 async function setStatus(id: string, status: OutboxStatus, lastError: string | null, bumpAttempts: boolean) {
   const db = await getOutboxDb();
   await db.runAsync(

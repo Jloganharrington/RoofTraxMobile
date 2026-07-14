@@ -19,4 +19,5 @@ export const InspectionSubjectType = {
   component: 'component',
   penetration: 'penetration',
   product: 'product',
+  interior_observation: 'interior_observation',
 } as const;

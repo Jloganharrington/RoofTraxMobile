@@ -1,0 +1,27 @@
+RoofTraxMobile — Phase M-E Work Order: Measurements, Interior & Wrap-up
+Depends on M-A + M-B + M-C + M-D merged. Adds the measurement record, conditional interior/attic module, the full gate-engine deficiency UI, the on-device signature, and the submission that assembles the versioned contract the Brain will later consume.
+
+Standing constraints
+Canvassing untouched — additive inspection code only.
+App computes nothing derivable — measurements are raw numbers (per-slope dims, pitch, lengths, counts); it must not compute squares/waste/quantities (Brain's job). It does enforce gates and assemble the submission manifest.
+Stage-numbering note
+The lib/protocol engine owns the canonical stage ids (currently S0–S5). M-E's stages append to stages.ts consistently — "S7/S8/S9" here is forensic-protocol shorthand, not a prescription. Record the actual engine mapping in the report (as M-C/M-D did).
+
+E0 — Carryover (first, small). Enforce the M-D functional-damage causation note: in functional mode the Save guard requires note.trim() (it's the ifNotFor thread the Brain uses; collateral mode unchanged). Test covers it.
+
+E1 — Measurement record. Two sources: generic aerial-report attach (file/reference — vendor still undecided, so no vendor integration yet) OR a field-fallback form (per-slope dims, pitch, ridge/hip/valley/eave/rake, penetration counts). Raw numbers only. Slope cross-check against the S3 inventory (flag a slope mismatch). Wire to the existing measurements route.
+
+E2 — Interior & attic (conditional). Room stains, moisture readings, attic pass — or skippable via an explicit "no interior claim" attestation (undocumented skip flags). Needs a minimal additive inspection_interior_observations table (company+inspection scoped, tenant-isolation coverage, thin CRUD).
+
+E3 — Homeowner facts. Structured factual fields (date-of-loss awareness, prior repairs/claims). Facts only — no coverage/settlement/advice language. Additive fields, company-scoped.
+
+E4 — Gate engine UI (centerpiece). A "can I submit?" readiness screen running the full lib/protocol evaluate() across every stage; group deficiencies by stage, deep-link each to the screen that fixes it; soft flags shown as attested, not blockers; complete inspection → zero deficiencies.
+
+E5 — Declaration & signature. Methodology declaration rendered from the recorded log (equipment, conditions, capture sequence, attestations — not typed free text); on-device signature via react-native-signature-canvas (new dep); stored as a hashed attestation tied to the declaration snapshot.
+
+E6 — Submission (assemble contract v1). Author submission contract v1 in lib/api-spec (manifest of records + photo SHA-256 hashes + protocol version + gate results) — the interface the Brain inherits. Block submit unless zero hard deficiencies (soft flags allowed); assemble client-side, queue via outbox (offline-survivable), transition → submitted. Server: thin accept only. Defer to M-F: hash verification, record locking, and the pre-flight endpoint — leave the endpoint thin and mark the seam.
+
+Testing gate: E0 enforcement; full offline E2E submit-on-reconnect with matching manifest hashes; gate-engine regression (20+ one-deficiency fixtures + zero-deficiency complete + submission blocked/allowed); measurement slope cross-check; interior satisfied-or-attested + isolation on the new table; signature hashed attestation; C0 guard on new writes; no bypass; standing pin regression; typecheck.
+
+Execution discipline: reuse shared components; minimal additive schema; author contract v1 for the Brain but do NOT build M-F's hash-verify/lock/pre-flight; diff reviewed before pull; no canvassing drift.
+

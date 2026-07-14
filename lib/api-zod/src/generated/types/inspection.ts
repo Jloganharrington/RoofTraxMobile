@@ -8,6 +8,7 @@
 import type { ArrivalConditions } from './arrivalConditions';
 import type { Attestation } from './attestation';
 import type { DamageInstance } from './damageInstance';
+import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
 import type { InspectionPenetration } from './inspectionPenetration';
@@ -15,7 +16,10 @@ import type { InspectionPhoto } from './inspectionPhoto';
 import type { InspectionProduct } from './inspectionProduct';
 import type { InspectionSlope } from './inspectionSlope';
 import type { InspectionStatus } from './inspectionStatus';
+import type { InteriorObservation } from './interiorObservation';
+import type { Measurement } from './measurement';
 import type { StormConfirmedRef } from './stormConfirmedRef';
+import type { SubmissionManifestV1 } from './submissionManifestV1';
 import type { TestSquare } from './testSquare';
 import type { TestSquareHit } from './testSquareHit';
 
@@ -46,6 +50,8 @@ export interface Inspection {
   dateOfLoss: string | null;
   stormConfirmedRef: StormConfirmedRef | null;
   arrivalConditions: ArrivalConditions | null;
+  homeownerFacts: HomeownerFacts | null;
+  submissionManifest: SubmissionManifestV1 | null;
   createdAt: Date;
   updatedAt: Date;
   /** Child slopes. Populated by GET /inspections/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid. */
@@ -68,4 +74,8 @@ export interface Inspection {
   testSquareHits?: TestSquareHit[];
   /** Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only. */
   attestations?: Attestation[];
+  /** E2 interior/attic observations, populated by the detail view only. */
+  interiorObservations?: InteriorObservation[];
+  /** E1 (S7) raw measurements, populated by the detail view only. */
+  measurements?: Measurement[];
 }

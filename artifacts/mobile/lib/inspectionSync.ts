@@ -15,10 +15,13 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  CreateInteriorObservationInput,
+  CreateMeasurementInput,
   CreateTestSquareInput,
   CreateTestSquareHitInput,
   DamageInstance,
   ElevationDirection,
+  HomeownerFacts,
   Inspection,
   InspectionComponent,
   InspectionElevation,
@@ -28,7 +31,10 @@ import type {
   InspectionProduct,
   InspectionSlope,
   InspectionSubjectType,
+  InteriorObservation,
+  Measurement,
   PhotoTriadRole,
+  SubmissionManifestV1,
   TestSquare,
   TestSquareHit,
   UpdateInspectionInput,
@@ -81,6 +87,8 @@ export async function startInspection({
     dateOfLoss: input.dateOfLoss ?? null,
     stormConfirmedRef: null,
     arrivalConditions: null,
+    homeownerFacts: null,
+    submissionManifest: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -422,14 +430,221 @@ export async function markSlopeInaccessible(
   void drainOutbox();
 }
 
+/** Records a raw measurement (E1 / S7) offline-first and returns its client
+ * id. The app stores only the fact captured — never a computed square count
+ * or waste factor, which is the Brain's job downstream. */
+export async function createMeasurement(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateMeasurementInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: Measurement = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      subjectType: fields.subjectType,
+      subjectId: fields.subjectId ?? null,
+      measurementType: fields.measurementType,
+      value: fields.value,
+      unit: fields.unit ?? null,
+      createdAt: now,
+    };
+    return { ...inspection, measurements: [...(inspection.measurements ?? []), optimistic] };
+  });
+  const input: CreateMeasurementInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.measurement', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Records an interior/attic observation (E2 / S6) offline-first and returns
+ * its client id. One or more observations clears the INTERIOR_NOT_ADDRESSED
+ * soft flag; see also `markNoInteriorClaim` for the explicit-waiver path. */
+export async function createInteriorObservation(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateInteriorObservationInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: InteriorObservation = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      location: fields.location,
+      observationType: fields.observationType,
+      moistureReading: fields.moistureReading ?? null,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return {
+      ...inspection,
+      interiorObservations: [...(inspection.interiorObservations ?? []), optimistic],
+    };
+  });
+  const input: CreateInteriorObservationInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.interiorObservation', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Explicitly waives interior documentation (E2) with a "no interior claim"
+ * attestation on S6, clearing the INTERIOR_NOT_ADDRESSED soft flag without a
+ * recorded observation. Offline-first + idempotent by client id. */
+export async function markNoInteriorClaim(
+  queryClient: QueryClient,
+  inspectionId: string,
+  actorUserId: string,
+  reason?: string,
+): Promise<void> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  const details = { kind: 'no_interior_claim', reason: reason ?? null };
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: Attestation = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      userId: actorUserId,
+      stage: 'S6',
+      attestationType: 'stage_signoff',
+      details,
+      signatureData: null,
+      attestedAt: now,
+    };
+    return { ...inspection, attestations: [...(inspection.attestations ?? []), optimistic] };
+  });
+  const input: CreateAttestationInput = {
+    id,
+    stage: 'S6',
+    attestationType: 'stage_signoff',
+    details,
+  };
+  await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
+  void drainOutbox();
+}
+
+/** Stores homeowner facts (E3) offline-first. Thin wrapper over the inspection
+ * patch — the facts live in a single additive jsonb column. */
+export async function updateHomeownerFacts(
+  queryClient: QueryClient,
+  inspectionId: string,
+  facts: HomeownerFacts,
+): Promise<void> {
+  await patchInspection(queryClient, inspectionId, { homeownerFacts: facts });
+}
+
+/** Records the inspector's methodology attestation + signature (E5 / S8)
+ * offline-first. `signatureHash` is a SHA-256 of the captured signature
+ * strokes (hashed client-side with expo-crypto) — the raw image never leaves
+ * the device. Clears the S8 hard gate. Idempotent by client id. */
+export async function recordSignatureAttestation(
+  queryClient: QueryClient,
+  inspectionId: string,
+  actorUserId: string,
+  signatureHash: string,
+  declarationHash: string,
+): Promise<void> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  const details = { kind: 'methodology_declaration', declarationHash };
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: Attestation = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      userId: actorUserId,
+      stage: 'S8',
+      attestationType: 'stage_signoff',
+      details,
+      signatureData: signatureHash,
+      attestedAt: now,
+    };
+    return { ...inspection, attestations: [...(inspection.attestations ?? []), optimistic] };
+  });
+  const input: CreateAttestationInput = {
+    id,
+    stage: 'S8',
+    attestationType: 'stage_signoff',
+    details,
+    signatureData: signatureHash,
+  };
+  await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
+  void drainOutbox();
+}
+
+/** Confirms the final package review (E6 / S9) offline-first — a distinct,
+ * deliberate act from the mechanical submit. Filed as an S9 attestation that
+ * clears the S9 hard gate. Idempotent by client id. */
+export async function confirmFinalReview(
+  queryClient: QueryClient,
+  inspectionId: string,
+  actorUserId: string,
+): Promise<void> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  const details = { kind: 'final_review' };
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: Attestation = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      userId: actorUserId,
+      stage: 'S9',
+      attestationType: 'stage_signoff',
+      details,
+      signatureData: null,
+      attestedAt: now,
+    };
+    return { ...inspection, attestations: [...(inspection.attestations ?? []), optimistic] };
+  });
+  const input: CreateAttestationInput = {
+    id,
+    stage: 'S9',
+    attestationType: 'stage_signoff',
+    details,
+  };
+  await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
+  void drainOutbox();
+}
+
+/** Submits the assembled package (E6) offline-first. The caller must have
+ * confirmed zero hard deficiencies via the shared gate engine before calling
+ * — the server accept is thin (M-F seam) and does not re-verify. Optimistically
+ * flips the cached status to `submitted` and stores the manifest. */
+export async function submitInspection(
+  queryClient: QueryClient,
+  inspectionId: string,
+  manifest: SubmissionManifestV1,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    status: 'submitted',
+    submissionManifest: manifest,
+    updatedAt: new Date().toISOString(),
+  }));
+  await enqueueOutboxItem('inspection.submission', { inspectionId, input: { manifest } });
+  void drainOutbox();
+}
+
 /** Optimistically appends captured evidence photos to the cached inspection
  * so gate progress reflects them immediately, before the outbox has synced
- * (or even while offline). The URL/sha are placeholders here; a later online
- * refetch of the detail replaces these rows wholesale with server truth. */
+ * (or even while offline). Each photo carries the SAME client-generated id
+ * used for its outbox payload and the idempotent server write, so the cached
+ * row's id is the durable record id — never a throwaway placeholder. This
+ * matters for the E6 submission manifest, which is assembled from these cached
+ * rows and must reference ids that actually persist server-side. The URL is a
+ * placeholder until sync; a later refetch replaces these rows with server
+ * truth (same ids). */
 export function appendOptimisticPhotos(
   queryClient: QueryClient,
   inspectionId: string,
   photos: Array<{
+    id: string;
     subjectType: InspectionSubjectType;
     subjectId: string | null;
     stage?: CaptureStage | null;
@@ -440,7 +655,7 @@ export function appendOptimisticPhotos(
   const now = new Date().toISOString();
   patchCachedInspection(queryClient, inspectionId, (inspection) => {
     const optimistic: InspectionPhoto[] = photos.map((p) => ({
-      id: `pending:${Crypto.randomUUID()}`,
+      id: p.id,
       companyId: inspection.companyId,
       inspectionId,
       stage: p.stage ?? null,

@@ -159,7 +159,7 @@ export default function InspectionPhotoCaptureScreen() {
     // means this screen can finish (and the inspector can move on) even in
     // airplane mode.
     setQueueing(true);
-    const queued: Array<{ triadRole: TriadRole; sha256: string }> = [];
+    const queued: Array<{ id: string; triadRole: TriadRole; sha256: string }> = [];
     try {
       for (const step of steps) {
         const shot = shots[step.role];
@@ -167,8 +167,9 @@ export default function InspectionPhotoCaptureScreen() {
 
         setUploadingRole(step.role);
         const persisted = await persistCapturedPhotoForOutbox(shot);
+        const photoId = Crypto.randomUUID();
         const payload: InspectionPhotoOutboxPayload = {
-          id: Crypto.randomUUID(),
+          id: photoId,
           inspectionId,
           subjectType,
           subjectId: params.subjectId ?? null,
@@ -184,7 +185,7 @@ export default function InspectionPhotoCaptureScreen() {
           longitude: persisted.longitude,
         };
         await enqueueOutboxItem('inspection.photo', payload);
-        queued.push({ triadRole: step.role, sha256: persisted.sha256 });
+        queued.push({ id: photoId, triadRole: step.role, sha256: persisted.sha256 });
       }
     } catch {
       setQueueing(false);
@@ -201,6 +202,7 @@ export default function InspectionPhotoCaptureScreen() {
       queryClient,
       inspectionId,
       queued.map((q) => ({
+        id: q.id,
         subjectType,
         subjectId: params.subjectId ?? null,
         stage: params.stage ?? null,

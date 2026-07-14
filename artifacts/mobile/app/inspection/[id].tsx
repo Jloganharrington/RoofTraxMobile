@@ -14,7 +14,12 @@ import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { attestInspection } from '@/lib/inspectionSync';
-import { isStageComplete, stageDeficiencies } from '@/lib/inspectionProtocolState';
+import {
+  buildProtocolState,
+  evaluateInspection,
+  isStageComplete,
+  stageDeficiencies,
+} from '@/lib/inspectionProtocolState';
 
 const EQUIPMENT_ITEMS = [
   'Ladder',
@@ -344,6 +349,95 @@ export default function InspectionDetailScreen() {
               }
               done={productCount > 0 && unidentifiedProducts === 0}
               onPress={() => router.push({ pathname: '/inspection-product', params: { id } })}
+              colors={colors}
+            />
+          </>
+        );
+      })()}
+
+      {/* Measurements & wrap-up (M-E) */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Measurements & wrap-up</Text>
+
+      {(() => {
+        const state = buildProtocolState(inspection);
+        const gate = evaluateInspection(inspection);
+        const s6Missing = stageDeficiencies(inspection, 'S6').length;
+        const s7Missing = stageDeficiencies(inspection, 'S7').length;
+        const measurementCount = inspection.measurements?.length ?? 0;
+        const interiorCount = inspection.interiorObservations?.length ?? 0;
+        const interiorAddressed = interiorCount > 0 || state.interiorClaimWaived;
+        const homeownerDone = inspection.homeownerFacts != null;
+        const submitted =
+          inspection.status === 'submitted' || inspection.status === 'package_ready';
+        const remaining = gate.deficiencies.length;
+        return (
+          <>
+            <StageCard
+              icon="navigation"
+              title="S7 · Measurements"
+              subtitle={
+                measurementCount === 0
+                  ? 'Record raw roof measurements'
+                  : s7Missing === 0
+                    ? `${measurementCount} measurement${measurementCount === 1 ? '' : 's'} recorded`
+                    : 'At least one measurement required'
+              }
+              done={measurementCount > 0 && s7Missing === 0}
+              onPress={() => router.push({ pathname: '/inspection-measurements', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="home"
+              title="S6 · Interior / attic"
+              subtitle={
+                interiorCount > 0
+                  ? `${interiorCount} observation${interiorCount === 1 ? '' : 's'} recorded`
+                  : state.interiorClaimWaived
+                    ? 'No interior claim — waived'
+                    : s6Missing > 0
+                      ? 'Interior not yet addressed'
+                      : 'Record interior evidence or waive'
+              }
+              done={interiorAddressed}
+              onPress={() => router.push({ pathname: '/inspection-interior', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="clipboard"
+              title="Homeowner"
+              subtitle={homeownerDone ? 'Homeowner facts recorded' : 'What the homeowner reported'}
+              done={homeownerDone}
+              onPress={() => router.push({ pathname: '/inspection-homeowner', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="check"
+              title="S8 · Declaration"
+              subtitle={
+                state.attestationRecorded
+                  ? 'Methodology attestation signed'
+                  : 'Read & sign the inspector attestation'
+              }
+              done={state.attestationRecorded}
+              onPress={() => router.push({ pathname: '/inspection-declaration', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="clipboard"
+              title="Readiness & submit"
+              subtitle={
+                submitted
+                  ? 'Package submitted'
+                  : remaining === 0
+                    ? 'All gates satisfied — ready to submit'
+                    : `${remaining} gate${remaining === 1 ? '' : 's'} remaining before submit`
+              }
+              done={submitted}
+              onPress={() => router.push({ pathname: '/inspection-readiness', params: { id } })}
               colors={colors}
             />
           </>

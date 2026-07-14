@@ -74,6 +74,11 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection-collateral" options={{ title: 'Collateral Sweep' }} />
       <Stack.Screen name="inspection-components" options={{ title: 'Components' }} />
       <Stack.Screen name="inspection-product" options={{ title: 'Product ID' }} />
+      <Stack.Screen name="inspection-measurements" options={{ title: 'Measurements' }} />
+      <Stack.Screen name="inspection-interior" options={{ title: 'Interior / Attic' }} />
+      <Stack.Screen name="inspection-homeowner" options={{ title: 'Homeowner' }} />
+      <Stack.Screen name="inspection-readiness" options={{ title: 'Readiness' }} />
+      <Stack.Screen name="inspection-declaration" options={{ title: 'Declaration' }} />
     </Stack>
   );
 }

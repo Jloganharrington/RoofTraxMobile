@@ -40,6 +40,7 @@ import type {
   CreateInspectionPhotoInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  CreateInteriorObservationInput,
   CreateMeasurementInput,
   CreatePinInput,
   CreateTestSquareHitInput,
@@ -59,6 +60,7 @@ import type {
   InspectionPhotoEnvelope,
   InspectionProductEnvelope,
   InspectionSlopeEnvelope,
+  InteriorObservationEnvelope,
   ListPinsParams,
   LocationPingBody,
   LocationPingSuccess,
@@ -74,6 +76,7 @@ import type {
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
   SearchAddressParams,
+  SubmitInspectionInput,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
@@ -3203,6 +3206,150 @@ export const useCreateAttestation = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getCreateAttestationMutationOptions(options));
+    }
+
+export const getCreateInteriorObservationUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/interior-observations`
+}
+
+/**
+ * @summary Record an interior/attic observation on an inspection
+ */
+export const createInteriorObservation = async (inspectionId: string,
+    createInteriorObservationInput: CreateInteriorObservationInput, options?: RequestInit): Promise<InteriorObservationEnvelope> => {
+
+  return customFetch<InteriorObservationEnvelope>(getCreateInteriorObservationUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInteriorObservationInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInteriorObservationMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInteriorObservation>>, TError,{inspectionId: string;data: BodyType<CreateInteriorObservationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInteriorObservation>>, TError,{inspectionId: string;data: BodyType<CreateInteriorObservationInput>}, TContext> => {
+
+const mutationKey = ['createInteriorObservation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInteriorObservation>>, {inspectionId: string;data: BodyType<CreateInteriorObservationInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createInteriorObservation(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInteriorObservationMutationResult = NonNullable<Awaited<ReturnType<typeof createInteriorObservation>>>
+    export type CreateInteriorObservationMutationBody = BodyType<CreateInteriorObservationInput>
+    export type CreateInteriorObservationMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record an interior/attic observation on an inspection
+ */
+export const useCreateInteriorObservation = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInteriorObservation>>, TError,{inspectionId: string;data: BodyType<CreateInteriorObservationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInteriorObservation>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateInteriorObservationInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInteriorObservationMutationOptions(options));
+    }
+
+export const getSubmitInspectionUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/submission`
+}
+
+/**
+ * @summary Submit the assembled inspection package (thin accept — M-F adds verification)
+ */
+export const submitInspection = async (inspectionId: string,
+    submitInspectionInput: SubmitInspectionInput, options?: RequestInit): Promise<InspectionEnvelope> => {
+
+  return customFetch<InspectionEnvelope>(getSubmitInspectionUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitInspectionInput)
+  }
+);}
+
+
+
+
+
+export const getSubmitInspectionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitInspection>>, TError,{inspectionId: string;data: BodyType<SubmitInspectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitInspection>>, TError,{inspectionId: string;data: BodyType<SubmitInspectionInput>}, TContext> => {
+
+const mutationKey = ['submitInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitInspection>>, {inspectionId: string;data: BodyType<SubmitInspectionInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  submitInspection(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof submitInspection>>>
+    export type SubmitInspectionMutationBody = BodyType<SubmitInspectionInput>
+    export type SubmitInspectionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Submit the assembled inspection package (thin accept — M-F adds verification)
+ */
+export const useSubmitInspection = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitInspection>>, TError,{inspectionId: string;data: BodyType<SubmitInspectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitInspection>>,
+        TError,
+        {inspectionId: string;data: BodyType<SubmitInspectionInput>},
+        TContext
+      > => {
+      return useMutation(getSubmitInspectionMutationOptions(options));
     }
 
 export const getListScheduledInspectionsUrl = () => {
