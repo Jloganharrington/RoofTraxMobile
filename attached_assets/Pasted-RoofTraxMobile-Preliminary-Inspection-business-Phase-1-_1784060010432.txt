@@ -1,0 +1,19 @@
+RoofTraxMobile — Preliminary Inspection (business Phase 1 → Phase 2 forensic)
+Adds the missing top-of-funnel preliminary and corrects the misplaced storm step. Depends on M-A…M-F.
+
+Coordination note: this work order relocates the "Confirm Storm Data" step into Phase 1 (structural placement only). The storm candidate analysis + LLM selection is your separate Replit track and plugs into this step — the work order must not reimplement it.
+
+P0 — Phase concept. Add phase: preliminary → forensic, modeled as one record that advances (Phase 2 = same row, so it inherits by identity — not two records). Advances only at the P4 checkpoint. Existing forensic model unchanged.
+
+P1 — Relocate storm confirm. Move the storm step out of forensic into Phase 1; forensic inherits it read-only (no re-pull). The step consumes whatever the storm workflow returns and writes stormConfirmedRef. Offline soft-gate behavior unchanged, just in Phase 1 now.
+
+P2 — Phase 1 capture (light). Gated to inspector_canvasser + super_admin. Start against an address, no contact info, damage type, 4 photos via the evidence module in single-shot mode (hashed + GPS, no triad): front of home, roof overview, 2 damage close-ups. Confirm storm. Offline-first.
+
+P3 — Homeowner report. Simple on-device report: damage found · event that caused it · next steps (File Claim → Pay for Forensic → Forensic Inspection → Proof Package → Claim Negotiation). Lightweight, shareable, not the proof package, no pricing/coverage language.
+
+P4 — "Proceed to Phase 2" checkpoint. Inspector proceeds (advances the record to forensic, carrying Phase 1 data) or leaves it at a resumable "preliminary complete" checkpoint for later.
+
+P5 — Forensic adjustments. Remove its storm step; inherit property/damage-type/storm/4-photos from Phase 1; still collect full claim identity (insured/carrier/policy/claim — Phase 1 skipped contact info); everything else in S0–S9 unchanged.
+
+Testing gate: phase advance/resume; storm relocated (forensic has no storm step, inherits read-only); Phase 1 4-photo offline capture; report renders/shares clean; forensic pre-fills from Phase 1; permissions; pin regression; typecheck. Discipline: reuse components, additive schema, don't reimplement storm analysis, descriptive commits, diff reviewed before pull.
+
