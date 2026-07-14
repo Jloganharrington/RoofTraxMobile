@@ -121,6 +121,27 @@ describe('evaluate', () => {
     });
   });
 
+  // Field-test C: skip a slope overview AND a damage close-up in one pass; the
+  // gate engine must flag both independently and demand nothing from stages the
+  // app hasn't built. buildProtocolState reports S0/S4/S6/S7/S8/S9 as complete
+  // for stages the exterior-capture UI doesn't touch, so only S3 + S5 surface.
+  it('flags a skipped slope overview (S3) and a skipped damage close-up (S5) together, without demanding unbuilt stages', () => {
+    const state = completeState();
+    state.slopes = [{ id: 'slope-1', widePhotoCaptured: false }];
+    state.damageInstances = [
+      { id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: true, closePhotoCaptured: false },
+    ];
+    const result = evaluate(state);
+    expect(result.deficiencies).toHaveLength(2);
+    expect(result.deficiencies.map((d) => `${d.stage}:${d.code}`).sort()).toEqual(
+      ['S3:MISSING_SLOPE_PHOTO_slope-1', 'S5:INCOMPLETE_DAMAGE_TRIAD_dmg-1'].sort(),
+    );
+    // No S0/S4/S6/S7/S8/S9 demands leak through when those inputs are complete.
+    expect(result.deficiencies.some((d) => ['S0', 'S4', 'S6', 'S7', 'S8', 'S9'].includes(d.stage))).toBe(
+      false,
+    );
+  });
+
   it('flags zero measurements (S7) as exactly one deficiency', () => {
     const state = completeState();
     state.measurements = [];

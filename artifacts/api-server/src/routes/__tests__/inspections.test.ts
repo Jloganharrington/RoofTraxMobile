@@ -560,6 +560,57 @@ describe('inspection routes', () => {
       expect(collide.status).toBe(409);
     });
 
+    it('replays a full offline mini-pass twice with no duplicates (force-quit / re-drain)', async () => {
+      // Field-test B, off-device half: the outbox persists queued writes and
+      // drains them on reconnect. If the app is force-quit mid-drain (or a
+      // response is lost after commit), the SAME batch — same client ids —
+      // drains again. This asserts the second drain is a no-op: every create
+      // returns the existing row (200) and GET /:id counts don't budge.
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const elevId = `elev-${RUN_ID}-mp`;
+      const slopeId = `slope-${RUN_ID}-mp`;
+      const dmgId = `dmg-${RUN_ID}-mp`;
+
+      const batch: Array<{ path: string; body: Record<string, unknown> }> = [
+        { path: `/api/inspections/${inspectionId}/elevations`, body: { id: elevId, direction: 'front' } },
+        { path: `/api/inspections/${inspectionId}/slopes`, body: { id: slopeId, label: 'Mini-pass slope' } },
+        { path: `/api/inspections/${inspectionId}/damage-instances`, body: { id: dmgId, slopeId, damageType: 'hail' } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-elev`, subjectType: 'elevation', subjectId: elevId, triadRole: 'wide', stage: 'S1', url: 'https://example.test/e.jpg', sha256: '1'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-roof`, subjectType: 'inspection', triadRole: 'wide', stage: 'S2', url: 'https://example.test/r.jpg', sha256: '2'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-slope`, subjectType: 'slope', subjectId: slopeId, triadRole: 'wide', stage: 'S3', url: 'https://example.test/s.jpg', sha256: '3'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dw`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'wide', stage: 'S5', url: 'https://example.test/dw.jpg', sha256: '4'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dm`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'mid', stage: 'S5', url: 'https://example.test/dm.jpg', sha256: '5'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dc`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'close', stage: 'S5', url: 'https://example.test/dc.jpg', sha256: '6'.repeat(64) } },
+      ];
+
+      // Drain in queue order (sequential), mirroring the outbox: FK-dependent
+      // items (damage -> slope) must replay after their parent, not racing it.
+      const drain = async () => {
+        const statuses: number[] = [];
+        for (const item of batch) {
+          const res = await request(app).post(item.path).set(auth(inspectorA.sid)).send(item.body);
+          statuses.push(res.status);
+        }
+        return statuses;
+      };
+
+      const first = await drain();
+      expect(first).toEqual(batch.map(() => 201));
+
+      const second = await drain();
+      expect(second).toEqual(batch.map(() => 200));
+
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      const insp = detail.body.inspection;
+      expect(insp.elevations).toHaveLength(1);
+      expect(insp.slopes).toHaveLength(1);
+      expect(insp.damageInstances).toHaveLength(1);
+      expect(insp.photos.filter((p: { id: string }) => p.id.startsWith(`p-${RUN_ID}-`))).toHaveLength(6);
+    });
+
     it('creates photos idempotently by client id (retry-safe evidence writes)', async () => {
       const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
       const inspectionId = create.body.inspection.id as string;

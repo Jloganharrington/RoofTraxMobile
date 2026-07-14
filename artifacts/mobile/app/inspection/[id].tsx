@@ -172,8 +172,10 @@ export default function InspectionDetailScreen() {
         colors={colors}
       />
 
-      {/* S1 — Arrival (B6) */}
-      <Text style={[styles.section, { color: colors.foreground }]}>S1 · Arrival</Text>
+      {/* Arrival (B6) — a pre-inspection step, NOT a protocol capture stage.
+          The protocol's S1 is Elevations (see the Exterior capture section
+          below), so this header must not carry an "S1" tag. */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Arrival</Text>
       <StageCard
         icon="navigation"
         title={inspection.arrivalConditions ? 'Arrival logged' : 'Log arrival'}
