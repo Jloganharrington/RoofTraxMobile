@@ -16,3 +16,4 @@
 - [Inspection authz layers](inspection-authz-layers.md) — inspection writes need module-access + company-scope + record-write-authority (owner-or-manager); company scope alone is not authorization; gate assignment at create too.
 - [Offline-first write idempotency](offline-write-idempotency.md) — every outbox-replayable create (incl. photos) needs a client id; conflict lookup must be parent-scoped (inspectionId), not just id+company.
 - [Protocol gate mapping layer](protocol-gate-mapping-layer.md) — stage gates are enforced by tested rules AND the untested mobile buildProtocolState mapping; qualify photo role + attestation type in the mapping or the gate is bypassable.
+- [Optimistic cache id parity](optimistic-cache-id-parity.md) — offline optimistic cache rows must reuse the outbox/server client id (not a placeholder), and manifest builders must gate on a fully-drained outbox for that entity.
