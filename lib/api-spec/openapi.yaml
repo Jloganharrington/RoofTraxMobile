@@ -2609,6 +2609,12 @@ components:
     CreateAttestationInput:
       type: object
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, the attestation write is idempotent, so a queued
+            offline attestation can be retried without duplicating the row.
         stage:
           oneOf:
             - $ref: "#/components/schemas/CaptureStage"

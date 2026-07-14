@@ -98,12 +98,16 @@ export async function patchInspection(
   void drainOutbox();
 }
 
-/** Records an attestation offline-first (equipment checklist, GPS override…). */
+/** Records an attestation offline-first (equipment checklist, GPS override…).
+ * A client-generated id makes the queued write idempotent — a retry after a
+ * partial success (server committed, ack lost) returns the same row rather
+ * than duplicating the attestation. */
 export async function attestInspection(
   inspectionId: string,
   input: CreateAttestationInput,
 ): Promise<void> {
-  await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
+  const withId: CreateAttestationInput = { id: Crypto.randomUUID(), ...input };
+  await enqueueOutboxItem('inspection.attestation', { inspectionId, input: withId });
   void drainOutbox();
 }
 

@@ -1,0 +1,14 @@
+RoofTraxMobile — Phase M-A Fix Work Order
+The M-A review passed the permission model, inspection tables, tenant isolation, and permission-rank logic — but found two data-migration gaps (one production-breaking) and repo hygiene to clean up. All stem from there being no backfill step alongside the schema push. Fix before M-A is done and before M-B stacks on top.
+
+Root cause: the project applies schema via drizzle-kit push (no migration files), so these one-time data fixes must be delivered as idempotent, re-runnable scripts you actually run against the DB and confirm.
+
+FIX-1 — Backfill object_ownership (CRITICAL). A1's ACL 404s any object with no ownership row, and rows exist only for post-change uploads → every pre-existing pin photo 404s. Write an idempotent backfill creating an ownership row for every pins row with a photoUrl (derive objectPath from the URL; userId/companyId from the pin). Audit for any other column storing /storage/objects/ paths and backfill those too. Upsert / ON CONFLICT DO NOTHING. Do not weaken the ACL with a legacy-path fallback — fix the data. Acceptance: an existing pin photo loads (200) for its company, denied for wrong-company; include before/after.
+
+FIX-2 — workflowAssignment data migration (HIGH). Existing rows still hold 'both'/'insurance' → those users silently lose the workflow picker. Run idempotent UPDATE user_profiles SET workflow_assignment='insurance_retail' WHERE workflow_assignment IN ('both','insurance'). Grep for any remaining 'both'/'insurance' readers. Acceptance: no stale rows; a previously-'both' user regains the picker.
+
+FIX-3 — Seed the first super_admin (MEDIUM). Nothing promotes anyone, and only a super_admin can promote — chicken-and-egg. Promote each company's founder (companies.founderUserId) to super_admin, idempotent, tenancy-preserved. Resolve via founderUserId, don't hardcode an email. Acceptance: each company has exactly one seeded super_admin.
+
+FIX-4 — Repo hygiene (LOW). git rm the committed 1 MB RoofTrax-Pro-main.zip and add attached_assets/*.zip to .gitignore; remove the stray M-B .txt files committed during M-A. Acceptance: zip + docs untracked, gitignore prevents re-adding.
+
+Discipline: one-time scripts + file removals only; don't touch the passing M-A code except where FIX-2's grep finds a stale reader. Capture before/after evidence. Commit each fix, push, report — the diff gets re-reviewed before M-B proceeds.

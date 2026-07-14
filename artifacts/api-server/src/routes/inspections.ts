@@ -81,10 +81,18 @@ router.get('/inspections', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
+  // "My inspections": scoped to the acting inspector (within their company),
+  // matching the mobile list's semantics. Team-wide visibility is surfaced
+  // through the role-scoped dashboard stats, not this raw list.
   const rows = await db
     .select()
     .from(inspectionsTable)
-    .where(eq(inspectionsTable.companyId, actor.companyId))
+    .where(
+      and(
+        eq(inspectionsTable.companyId, actor.companyId),
+        eq(inspectionsTable.inspectorUserId, actor.userId),
+      ),
+    )
     .orderBy(desc(inspectionsTable.createdAt));
 
   res.json(ListInspectionsResponse.parse({ inspections: rows }));
@@ -484,18 +492,50 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
     return;
   }
 
-  const [attestation] = await db
-    .insert(attestationsTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      userId: actor.userId,
-      stage: parsed.data.stage ?? undefined,
-      attestationType: parsed.data.attestationType ?? undefined,
-      details: parsed.data.details ?? undefined,
-      signatureData: parsed.data.signatureData ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    userId: actor.userId,
+    stage: parsed.data.stage ?? undefined,
+    attestationType: parsed.data.attestationType ?? undefined,
+    details: parsed.data.details ?? undefined,
+    signatureData: parsed.data.signatureData ?? undefined,
+  };
+
+  // Offline-first: a client-supplied id makes the write idempotent so a
+  // retried offline attestation (server committed, ack lost) returns the
+  // existing row instead of duplicating the audit record.
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(attestationsTable)
+      .values(values)
+      .onConflictDoNothing({ target: attestationsTable.id })
+      .returning();
+
+    if (inserted) {
+      res.status(201).json(CreateAttestationResponse.parse({ attestation: inserted }));
+      return;
+    }
+
+    const [existing] = await db
+      .select()
+      .from(attestationsTable)
+      .where(
+        and(
+          eq(attestationsTable.id, parsed.data.id),
+          eq(attestationsTable.companyId, actor.companyId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Attestation id already exists' });
+      return;
+    }
+    res.status(200).json(CreateAttestationResponse.parse({ attestation: existing }));
+    return;
+  }
+
+  const [attestation] = await db.insert(attestationsTable).values(values).returning();
 
   res.status(201).json(CreateAttestationResponse.parse({ attestation }));
 });

@@ -53,6 +53,7 @@ describe('inspection routes', () => {
   const companyA = `TEST-INSPR-${RUN_ID}-A`.toUpperCase();
   const companyB = `TEST-INSPR-${RUN_ID}-B`.toUpperCase();
   let inspectorA: SeededUser;
+  let inspectorA2: SeededUser;
   let canvasserA: SeededUser;
   let superAdminB: SeededUser;
   let inspectorB: SeededUser;
@@ -65,10 +66,17 @@ describe('inspection routes', () => {
     ]);
 
     inspectorA = await seedUser('inspector-a', 'field_rep', 'inspector_canvasser', companyA);
+    inspectorA2 = await seedUser('inspector-a2', 'field_rep', 'inspector_canvasser', companyA);
     canvasserA = await seedUser('canvasser-a', 'field_rep', 'canvasser', companyA);
     superAdminB = await seedUser('super-admin-b', 'super_admin', 'canvasser', companyB);
     inspectorB = await seedUser('inspector-b', 'field_rep', 'inspector_canvasser', companyB);
-    userIds.push(inspectorA.userId, canvasserA.userId, superAdminB.userId, inspectorB.userId);
+    userIds.push(
+      inspectorA.userId,
+      inspectorA2.userId,
+      canvasserA.userId,
+      superAdminB.userId,
+      inspectorB.userId,
+    );
   });
 
   afterAll(async () => {
@@ -143,6 +151,49 @@ describe('inspection routes', () => {
     const listB = await request(app).get('/api/inspections').set(auth(inspectorB.sid));
     const idsB = listB.body.inspections.map((i: { id: string }) => i.id);
     expect(idsB).not.toContain(inspectionId);
+  });
+
+  it('scopes the "my inspections" list to the acting inspector, not the whole company', async () => {
+    const mine = await request(app)
+      .post('/api/inspections')
+      .set(auth(inspectorA.sid))
+      .send({ claimNumber: 'CLM-MINE' });
+    const coworkers = await request(app)
+      .post('/api/inspections')
+      .set(auth(inspectorA2.sid))
+      .send({ claimNumber: 'CLM-COWORKER' });
+
+    const listA = await request(app).get('/api/inspections').set(auth(inspectorA.sid));
+    const idsA = listA.body.inspections.map((i: { id: string }) => i.id);
+    expect(idsA).toContain(mine.body.inspection.id);
+    expect(idsA).not.toContain(coworkers.body.inspection.id);
+  });
+
+  it('creates attestations idempotently when a client id is supplied (retry-safe)', async () => {
+    const createRes = await request(app)
+      .post('/api/inspections')
+      .set(auth(inspectorA.sid))
+      .send({ claimNumber: 'CLM-ATTEST' });
+    const inspectionId = createRes.body.inspection.id as string;
+
+    const clientId = `att-${RUN_ID}-idem`;
+    const body = { id: clientId, attestationType: 'equipment', stage: 'S0', details: { ok: true } };
+
+    const first = await request(app)
+      .post(`/api/inspections/${inspectionId}/attestations`)
+      .set(auth(inspectorA.sid))
+      .send(body);
+    expect(first.status).toBe(201);
+    expect(first.body.attestation.id).toBe(clientId);
+
+    // A retried offline queue item resends the same payload; the server must
+    // return the existing row (200) instead of duplicating it (201).
+    const retry = await request(app)
+      .post(`/api/inspections/${inspectionId}/attestations`)
+      .set(auth(inspectorA.sid))
+      .send(body);
+    expect(retry.status).toBe(200);
+    expect(retry.body.attestation.id).toBe(clientId);
   });
 
   it('updates an inspection\'s status', async () => {

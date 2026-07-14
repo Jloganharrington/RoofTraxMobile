@@ -807,6 +807,8 @@ export interface Attestation {
 export type CreateAttestationInputDetails = { [key: string]: unknown } | null;
 
 export interface CreateAttestationInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the attestation write is idempotent, so a queued offline attestation can be retried without duplicating the row. */
+  id?: string;
   stage?: CaptureStage | null;
   attestationType?: AttestationType | null;
   /** @nullable */

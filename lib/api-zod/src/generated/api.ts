@@ -1078,6 +1078,7 @@ export const CreateAttestationParams = zod.object({
 })
 
 export const CreateAttestationBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the attestation write is idempotent, so a queued offline attestation can be retried without duplicating the row.'),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]).optional(),
   "details": zod.record(zod.string(), zod.unknown()).nullish(),

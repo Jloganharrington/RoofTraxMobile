@@ -20,11 +20,21 @@ export async function enqueueOutboxItem(kind: OutboxItemKind, payload: unknown):
   return id;
 }
 
-/** Items eligible to attempt a sync: never-tried or previously-failed, oldest first (FIFO). */
+/**
+ * Items eligible to attempt a sync: never-tried, previously-failed, or left
+ * mid-flight by an interrupted drain (a crash/force-quit after an item was
+ * marked `syncing` but before it could be marked done/failed). The in-process
+ * single-flight guard in drain.ts plus JS's single thread guarantee that any
+ * `syncing` row observed at the start of a drain is such a leftover — never a
+ * genuinely concurrent send — so it is safe to retry. Without this, a crash
+ * mid-sync would strand the row in `syncing` forever, silently losing the
+ * offline write. Oldest first (FIFO) so a create always precedes its
+ * dependents.
+ */
 export async function listSyncableOutboxItems(): Promise<OutboxItem[]> {
   const db = await getOutboxDb();
   return db.getAllAsync<OutboxItem>(
-    `SELECT * FROM outbox_items WHERE status IN ('pending', 'failed') ORDER BY createdAt ASC`,
+    `SELECT * FROM outbox_items WHERE status IN ('pending', 'failed', 'syncing') ORDER BY createdAt ASC`,
   );
 }
 
