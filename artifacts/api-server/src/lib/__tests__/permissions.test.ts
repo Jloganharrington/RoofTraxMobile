@@ -7,6 +7,7 @@ import {
   canManageUser,
   canSetRoleDeptSpec,
   canSetWorkflow,
+  canWriteInspection,
   isManagerOrAdmin,
   roleRank,
 } from '../permissions';
@@ -177,6 +178,28 @@ describe('canAccessInspectionModule', () => {
   it('blocks canvasser-department non-super_admins', () => {
     expect(canAccessInspectionModule('field_rep', 'canvasser')).toBe(false);
     expect(canAccessInspectionModule('admin', 'canvasser')).toBe(false);
+  });
+});
+
+describe('canWriteInspection', () => {
+  it('lets the assigned inspector write their own inspection', () => {
+    expect(canWriteInspection('field_rep', 'insp-1', 'insp-1')).toBe(true);
+  });
+
+  it('blocks a same-company peer field rep from writing another inspector’s inspection', () => {
+    expect(canWriteInspection('field_rep', 'insp-2', 'insp-1')).toBe(false);
+  });
+
+  it('lets managers and above write anyone’s inspection in the company', () => {
+    expect(canWriteInspection('manager', 'mgr-1', 'insp-1')).toBe(true);
+    expect(canWriteInspection('admin', 'admin-1', 'insp-1')).toBe(true);
+    expect(canWriteInspection('super_admin', 'sa-1', 'insp-1')).toBe(true);
+  });
+
+  it('never lets a peer field rep claim a null-owner (unassigned/legacy) inspection', () => {
+    expect(canWriteInspection('field_rep', 'insp-2', null)).toBe(false);
+    // ...but a manager+ can still act on it.
+    expect(canWriteInspection('manager', 'mgr-1', null)).toBe(true);
   });
 });
 

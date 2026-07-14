@@ -36,10 +36,11 @@ import {
   measurementsTable,
   userProfilesTable,
 } from '@workspace/db';
+import type { Role } from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canAccessInspectionModule } from '../lib/permissions';
+import { canAccessInspectionModule, canWriteInspection } from '../lib/permissions';
 
 const router: IRouter = Router();
 
@@ -74,6 +75,28 @@ async function loadInspectionInCompany(inspectionId: string, companyId: string) 
     .select()
     .from(inspectionsTable)
     .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, companyId)));
+  return inspection;
+}
+
+// Loads an inspection scoped to the actor's company, then enforces the C0
+// write gate: only the assigned inspector, or a manager and above, may mutate
+// it. A same-company peer field rep is denied even though they can reach the
+// module. Sends the 404/403 response and returns null when the caller should
+// stop; otherwise returns the inspection.
+async function loadWritableInspection(
+  inspectionId: string,
+  actor: { role: Role; userId: string; companyId: string },
+  res: Response,
+) {
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return null;
+  }
+  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
+    res.status(403).json({ error: 'Not authorized to modify this inspection' });
+    return null;
+  }
   return inspection;
 }
 
@@ -186,11 +209,8 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = UpdateInspectionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -230,11 +250,8 @@ router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Respo
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateInspectionSlopeBody.safeParse(req.body);
   if (!parsed.success) {
@@ -263,11 +280,8 @@ router.post('/inspections/:inspectionId/elevations', async (req: Request, res: R
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateInspectionElevationBody.safeParse(req.body);
   if (!parsed.success) {
@@ -293,11 +307,8 @@ router.post('/inspections/:inspectionId/damage-instances', async (req: Request, 
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateDamageInstanceBody.safeParse(req.body);
   if (!parsed.success) {
@@ -327,11 +338,8 @@ router.post('/inspections/:inspectionId/test-squares', async (req: Request, res:
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateTestSquareBody.safeParse(req.body);
   if (!parsed.success) {
@@ -362,11 +370,8 @@ router.post(
 
     const inspectionId = req.params.inspectionId as string;
     const testSquareId = req.params.testSquareId as string;
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) {
-      res.status(404).json({ error: 'Inspection not found' });
-      return;
-    }
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
 
     const [testSquare] = await db
       .select()
@@ -408,11 +413,8 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateInspectionPhotoBody.safeParse(req.body);
   if (!parsed.success) {
@@ -447,11 +449,8 @@ router.post('/inspections/:inspectionId/measurements', async (req: Request, res:
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateMeasurementBody.safeParse(req.body);
   if (!parsed.success) {
@@ -480,11 +479,8 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
 
   const parsed = CreateAttestationBody.safeParse(req.body);
   if (!parsed.success) {

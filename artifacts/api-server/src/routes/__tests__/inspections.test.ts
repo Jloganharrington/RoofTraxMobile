@@ -20,7 +20,7 @@ interface SeededUser {
 
 async function seedUser(
   label: string,
-  role: 'field_rep' | 'super_admin',
+  role: 'field_rep' | 'manager' | 'super_admin',
   department: 'canvasser' | 'inspector_canvasser',
   companyId: string,
 ): Promise<SeededUser> {
@@ -54,6 +54,7 @@ describe('inspection routes', () => {
   const companyB = `TEST-INSPR-${RUN_ID}-B`.toUpperCase();
   let inspectorA: SeededUser;
   let inspectorA2: SeededUser;
+  let managerA: SeededUser;
   let canvasserA: SeededUser;
   let superAdminB: SeededUser;
   let inspectorB: SeededUser;
@@ -67,12 +68,14 @@ describe('inspection routes', () => {
 
     inspectorA = await seedUser('inspector-a', 'field_rep', 'inspector_canvasser', companyA);
     inspectorA2 = await seedUser('inspector-a2', 'field_rep', 'inspector_canvasser', companyA);
+    managerA = await seedUser('manager-a', 'manager', 'inspector_canvasser', companyA);
     canvasserA = await seedUser('canvasser-a', 'field_rep', 'canvasser', companyA);
     superAdminB = await seedUser('super-admin-b', 'super_admin', 'canvasser', companyB);
     inspectorB = await seedUser('inspector-b', 'field_rep', 'inspector_canvasser', companyB);
     userIds.push(
       inspectorA.userId,
       inspectorA2.userId,
+      managerA.userId,
       canvasserA.userId,
       superAdminB.userId,
       inspectorB.userId,
@@ -308,5 +311,76 @@ describe('inspection routes', () => {
       .set(auth(inspectorA.sid))
       .send({});
     expect(res.status).toBe(400);
+  });
+
+  // C0: a same-company peer inspector can reach the module but must not be
+  // able to mutate an inspection they don't own. Every write path is gated to
+  // the assigned inspector OR a manager and above in the company.
+  describe('C0 write-scoping: owner or manager+, never a same-company peer', () => {
+    let inspectionId: string;
+    let ownerTestSquareId: string;
+
+    beforeAll(async () => {
+      const createRes = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-C0' });
+      inspectionId = createRes.body.inspection.id as string;
+
+      // Owner-created test square so the peer's hit attempt fails on the write
+      // gate, not on a missing square.
+      const ts = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'TS-C0' });
+      ownerTestSquareId = ts.body.testSquare.id as string;
+    });
+
+    // Every mutating path on an existing inspection (PATCH carries the
+    // storm-confirm and arrival fields). Built fresh per actor so ids stay
+    // current across the beforeAll.
+    function writeAttempts(sid: string): Array<[string, () => request.Test]> {
+      return [
+        ['PATCH inspection (status/storm/arrival)', () =>
+          request(app).patch(`/api/inspections/${inspectionId}`).set(auth(sid)).send({ status: 'capturing' })],
+        ['create slope', () =>
+          request(app).post(`/api/inspections/${inspectionId}/slopes`).set(auth(sid)).send({ label: 'C0 slope' })],
+        ['create elevation', () =>
+          request(app).post(`/api/inspections/${inspectionId}/elevations`).set(auth(sid)).send({ direction: 'front' })],
+        ['create damage instance', () =>
+          request(app).post(`/api/inspections/${inspectionId}/damage-instances`).set(auth(sid)).send({ damageType: 'hail' })],
+        ['create test square', () =>
+          request(app).post(`/api/inspections/${inspectionId}/test-squares`).set(auth(sid)).send({ label: 'C0 TS' })],
+        ['create test-square hit', () =>
+          request(app).post(`/api/inspections/${inspectionId}/test-squares/${ownerTestSquareId}/hits`).set(auth(sid)).send({ hitType: 'impact' })],
+        ['create photo', () =>
+          request(app).post(`/api/inspections/${inspectionId}/photos`).set(auth(sid)).send({ subjectType: 'slope', url: 'https://example.test/c0.jpg', sha256: 'c'.repeat(64) })],
+        ['create measurement', () =>
+          request(app).post(`/api/inspections/${inspectionId}/measurements`).set(auth(sid)).send({ subjectType: 'slope', measurementType: 'length', value: 12 })],
+        ['create attestation', () =>
+          request(app).post(`/api/inspections/${inspectionId}/attestations`).set(auth(sid)).send({ stage: 'S2', signatureData: 'C0' })],
+      ];
+    }
+
+    it('denies a same-company peer field_rep (403) on every inspection write path', async () => {
+      for (const [name, run] of writeAttempts(inspectorA2.sid)) {
+        const res = await run();
+        expect(res.status, `peer must be forbidden: ${name}`).toBe(403);
+      }
+    });
+
+    it('allows the owning inspector on every write path', async () => {
+      for (const [name, run] of writeAttempts(inspectorA.sid)) {
+        const res = await run();
+        expect([200, 201], `owner must be allowed: ${name} (got ${res.status})`).toContain(res.status);
+      }
+    });
+
+    it('allows a manager+ in the same company on every write path', async () => {
+      for (const [name, run] of writeAttempts(managerA.sid)) {
+        const res = await run();
+        expect([200, 201], `manager must be allowed: ${name} (got ${res.status})`).toContain(res.status);
+      }
+    });
   });
 });

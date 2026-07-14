@@ -72,6 +72,19 @@ export function canDeletePin(actorRole: Role): boolean {
   return isManagerOrAdmin(actorRole);
 }
 
+// Inspection write rules mirror pin edits: the inspection's owner (the
+// assigned inspector) may mutate it, and managers and above may mutate any
+// inspection in their company. Company scoping is enforced by the caller
+// before this runs. A null owner (legacy/unassigned inspection) falls through
+// to the manager-only branch, so a peer field rep can never claim it.
+export function canWriteInspection(
+  actorRole: Role,
+  actorId: string,
+  inspectorUserId: string | null,
+): boolean {
+  return actorId === inspectorUserId || isManagerOrAdmin(actorRole);
+}
+
 // Workflow (Insurance+Retail/Retail) assignment rules:
 // - Admins and super_admins can set anyone's workflow assignment, including
 //   their own.
