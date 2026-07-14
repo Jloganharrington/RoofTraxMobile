@@ -50,3 +50,5 @@ Thumbs.db
 
 # Transient uploaded scratch assets — keep on disk, out of git
 attached_assets/*.zip
+# Stray pasted work-order docs (scratch) — keep on disk, out of git
+attached_assets/*Phase-M-B*.txt
