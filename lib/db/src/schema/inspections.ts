@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   doublePrecision,
   jsonb,
   pgTable,
@@ -226,6 +227,12 @@ export const inspectionsTable = pgTable('inspections', {
   // Client-assembled submission contract v1 (E6), stored verbatim on submit.
   // Nullable until the inspection is submitted.
   submissionManifest: jsonb('submission_manifest').$type<SubmissionManifestV1 | null>(),
+  // Immutability marker (M-F / F2). Set at the moment a submission passes
+  // server-side verification (photo-hash re-check + gate re-evaluation). Once
+  // set, the record is locked: every child-write route rejects further edits,
+  // and a correction must be filed as an addendum instead. Nullable until the
+  // inspection is successfully submitted.
+  lockedAt: timestamp('locked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -511,7 +518,52 @@ export const inspectionInteriorObservationsTable = pgTable('inspection_interior_
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// M-F (F2) — Post-lock corrections. Once an inspection is locked at
+// submission, its captured records are immutable; any later correction is an
+// append-only addendum rather than an edit, preserving the original evidentiary
+// record. Additive, company- and inspection-scoped. `body` is the free-text
+// correction the inspector files; there is no derived logic here — the Brain
+// consumes the original record plus its addenda downstream.
+export const inspectionAddendaTable = pgTable('inspection_addenda', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// M-F (F4) — Per-tenant CRM linkage config. The CRM seam (scheduled-inspection
+// queue in, appointment-completion + report ingest out) is keyed by a
+// per-company field key issued by the external CRM. No external CRM keys exist
+// in the platform yet, so this stays disabled by default: reads report
+// "pending" and return empty/null rather than fabricating data. `fieldKey` is
+// the opaque per-tenant key; `enabled` flips the seam from pending to active
+// once a real key is provisioned. One row per company.
+export const companyCrmConfigTable = pgTable('company_crm_config', {
+  companyId: varchar('company_id')
+    .primaryKey()
+    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false),
+  fieldKey: text('field_key'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 export type Inspection = typeof inspectionsTable.$inferSelect;
+export type InspectionAddendum = typeof inspectionAddendaTable.$inferSelect;
+export type CompanyCrmConfig = typeof companyCrmConfigTable.$inferSelect;
 export type InteriorObservation = typeof inspectionInteriorObservationsTable.$inferSelect;
 export type InsertInspection = typeof inspectionsTable.$inferInsert;
 export type InspectionSlope = typeof inspectionSlopesTable.$inferSelect;

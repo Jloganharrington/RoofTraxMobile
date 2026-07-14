@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,20 +11,21 @@ import {
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
-import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
+import { useProfile } from '@/hooks/useProfile';
 import { recordSignatureAttestation } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 
 // E5 / S8 — Attestation & signature. The inspector reads the methodology
-// declaration and signs. We never store the raw signature image: it is hashed
-// (SHA-256) on-device with expo-crypto, and only the hash — alongside a hash of
-// the exact declaration text signed — is persisted as the S8 stage_signoff
-// attestation. That clears the S8 hard gate while keeping biometric-adjacent
-// data off the wire.
+// declaration and attests to it by applying their signature-on-file (M-F / F0):
+// they capture their signature once on their profile, and here they apply it to
+// this specific inspection. The S8 proof recorded is a SHA-256 of the exact
+// declaration text signed; the on-file signature is recorded by reference (its
+// storage URL + hash), never re-drawn per inspection. Without a signature on
+// file, S8 cannot be cleared — the screen routes the inspector to set one up.
 
 const DECLARATION_TEXT =
   'I attest that I personally performed this inspection, that the captured ' +
@@ -37,7 +39,8 @@ export default function InspectionDeclarationScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const signatureRef = React.useRef<SignatureViewRef>(null);
+  const { signatureUrl, signatureSha256, signatureSignedAt, isLoading: profileLoading } =
+    useProfile();
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -47,7 +50,7 @@ export default function InspectionDeclarationScreen() {
   const [agreed, setAgreed] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
-  if (inspectionQuery.isLoading && !inspection) {
+  if ((inspectionQuery.isLoading && !inspection) || profileLoading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <Stack.Screen options={{ title: 'Declaration' }} />
@@ -67,23 +70,25 @@ export default function InspectionDeclarationScreen() {
 
   const state = buildProtocolState(inspection);
   const alreadySigned = state.attestationRecorded;
+  const hasSignatureOnFile = !!signatureUrl && !!signatureSha256;
 
-  // Fired by the signature pad's confirm button with the signature as a
-  // base64 data URL. We hash it (never store the image) and persist the S8
-  // attestation.
-  async function handleSignature(signature: string) {
-    if (!user || saving) return;
+  // Applies the on-file signature to this inspection. We hash the exact
+  // declaration text as the S8 proof and record the on-file signature by
+  // reference — the raw image never re-enters the client payload.
+  async function handleApplySignature() {
+    if (!user || saving || !hasSignatureOnFile) return;
     setSaving(true);
     try {
-      const signatureHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        signature,
-      );
       const declarationHash = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
         DECLARATION_TEXT,
       );
-      await recordSignatureAttestation(queryClient, id, user.id, signatureHash, declarationHash);
+      await recordSignatureAttestation(queryClient, id, user.id, {
+        declarationHash,
+        signatureUrl: signatureUrl as string,
+        signatureSha256: signatureSha256 as string,
+        signedAt: signatureSignedAt ?? null,
+      });
       router.back();
     } finally {
       setSaving(false);
@@ -117,46 +122,71 @@ export default function InspectionDeclarationScreen() {
           <Text style={[styles.declaration, { color: colors.foreground }]}>{DECLARATION_TEXT}</Text>
         </View>
 
-        <Pressable onPress={() => setAgreed((prev) => !prev)} style={styles.agreeRow}>
-          <View
-            style={[
-              styles.checkbox,
-              {
-                backgroundColor: agreed ? colors.primary : 'transparent',
-                borderColor: agreed ? colors.primary : colors.border,
-              },
-            ]}
-          >
-            {agreed ? <Icon name="check" size={14} color={colors.primaryForeground} /> : null}
+        {!hasSignatureOnFile ? (
+          <View style={[styles.banner, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
+            <Icon name="alert-circle" size={22} color="#b45309" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, { color: '#92400e' }]}>No signature on file</Text>
+              <Text style={{ color: '#92400e', fontSize: 13 }}>
+                Capture your signature on your profile once — it will be applied to this and every
+                future inspection declaration.
+              </Text>
+              <Pressable
+                onPress={() => router.push('/(tabs)/profile')}
+                style={[styles.actionBtn, { backgroundColor: colors.secondary, marginTop: 10 }]}
+              >
+                <Text style={styles.actionText}>Set up my signature</Text>
+              </Pressable>
+            </View>
           </View>
-          <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>
-            I have read and agree to the statement above.
-          </Text>
-        </Pressable>
-
-        {agreed ? (
+        ) : (
           <>
+            <Pressable onPress={() => setAgreed((prev) => !prev)} style={styles.agreeRow}>
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    backgroundColor: agreed ? colors.primary : 'transparent',
+                    borderColor: agreed ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                {agreed ? <Icon name="check" size={14} color={colors.primaryForeground} /> : null}
+              </View>
+              <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>
+                I have read and agree to the statement above.
+              </Text>
+            </Pressable>
+
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              Sign below, then tap Confirm
+              Your signature on file
             </Text>
-            <View style={[styles.padWrap, { borderColor: colors.border }]}>
-              <SignatureScreen
-                ref={signatureRef}
-                onOK={handleSignature}
-                descriptionText=""
-                clearText="Clear"
-                confirmText="Confirm & sign"
-                webStyle={SIGNATURE_WEB_STYLE}
+            <View style={[styles.sigPreviewWrap, { borderColor: colors.border }]}>
+              <Image
+                source={{ uri: signatureUrl as string }}
+                style={styles.sigPreview}
+                resizeMode="contain"
               />
             </View>
-            {saving ? (
-              <View style={styles.savingRow}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={{ color: colors.mutedForeground }}>Recording attestation…</Text>
-              </View>
-            ) : null}
+
+            <Pressable
+              onPress={handleApplySignature}
+              disabled={!agreed || saving}
+              style={[
+                styles.actionBtn,
+                { backgroundColor: colors.primary, opacity: !agreed || saving ? 0.5 : 1 },
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.actionText, { color: colors.primaryForeground }]}>
+                  Apply my signature & sign
+                </Text>
+              )}
+            </Pressable>
           </>
-        ) : null}
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -164,20 +194,11 @@ export default function InspectionDeclarationScreen() {
   );
 }
 
-// The signature pad renders inside a WebView; this trims its chrome so only the
-// canvas + Clear/Confirm buttons show.
-const SIGNATURE_WEB_STYLE = `
-  .m-signature-pad { box-shadow: none; border: none; margin: 0; }
-  .m-signature-pad--body { border: none; }
-  .m-signature-pad--footer { margin: 8px 0; }
-  body, html { height: 100%; margin: 0; }
-`;
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 12 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
+  banner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
   bannerTitle: { fontSize: 15, fontWeight: '800', marginBottom: 2 },
   section: { fontSize: 16, fontWeight: '700' },
   card: { borderRadius: 14, borderWidth: 1, padding: 16 },
@@ -192,6 +213,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: { fontSize: 13, fontWeight: '600' },
-  padWrap: { height: 240, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
-  savingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
+  sigPreviewWrap: { borderWidth: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' },
+  sigPreview: { width: '100%', height: 120 },
+  actionBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  actionText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import app from '../../app';
 import { createSession } from '../../lib/auth';
+import { buildPassingInspection, manifestFor, setSignature } from './helpers/passingInspection';
 
 // Proves the inspection module's permission gate (inspector_canvasser
 // department or super_admin role) and tenant scoping end-to-end through
@@ -373,17 +374,25 @@ describe('inspection routes', () => {
       }
     });
 
+    // C0 is a write-authority gate checked in loadWritableInspection, BEFORE
+    // the M-F submission preconditions (signature-on-file, gate re-run). This
+    // minimal C0 inspection has neither, so an authorized actor's submit returns
+    // 422 (a downstream business rule) — never 403/404. A blocked peer never
+    // reaches 422, so 422 still conclusively proves authorization passed.
+    const allowed = (name: string) =>
+      name === 'submit inspection' ? [200, 201, 422] : [200, 201];
+
     it('allows the owning inspector on every write path', async () => {
       for (const [name, run] of writeAttempts(inspectorA.sid)) {
         const res = await run();
-        expect([200, 201], `owner must be allowed: ${name} (got ${res.status})`).toContain(res.status);
+        expect(allowed(name), `owner must be allowed: ${name} (got ${res.status})`).toContain(res.status);
       }
     });
 
     it('allows a manager+ in the same company on every write path', async () => {
       for (const [name, run] of writeAttempts(managerA.sid)) {
         const res = await run();
-        expect([200, 201], `manager must be allowed: ${name} (got ${res.status})`).toContain(res.status);
+        expect(allowed(name), `manager must be allowed: ${name} (got ${res.status})`).toContain(res.status);
       }
     });
   });
@@ -1095,35 +1104,25 @@ describe('inspection routes', () => {
     });
 
     it('E6: accepts a submission with matching photo hashes and transitions to submitted', async () => {
-      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
-      const inspectionId = create.body.inspection.id as string;
-      const photoSha = 'f'.repeat(64);
-      const photoRes = await request(app)
-        .post(`/api/inspections/${inspectionId}/photos`)
-        .set(auth(inspectorA.sid))
-        .send({ subjectType: 'inspection', triadRole: 'wide', stage: 'S0', url: 'https://example.test/o.jpg', sha256: photoSha });
-      const photoId = photoRes.body.photo.id as string;
-
-      const manifest = {
-        protocolVersion: 'test-v1',
-        generatedAtUtc: new Date().toISOString(),
-        records: { photos: [photoId] },
-        photoHashes: [{ photoId, sha256: photoSha }],
-        gateResults: { deficiencies: [], softFlags: [] },
-      };
+      // M-F made submission require a signature on file AND a fully passing
+      // server gate re-run, so this happy path now builds a complete inspection.
+      await setSignature(inspectorA.sid, '6');
+      const p = await buildPassingInspection(inspectorA.sid);
       const submit = await request(app)
-        .post(`/api/inspections/${inspectionId}/submission`)
+        .post(`/api/inspections/${p.inspectionId}/submission`)
         .set(auth(inspectorA.sid))
-        .send({ manifest });
+        .send({ manifest: manifestFor(p) });
       expect(submit.status).toBe(200);
       expect(submit.body.inspection.status).toBe('submitted');
 
-      // The stored manifest's photo hash must match the persisted photo's
-      // SHA-256 — the durable evidence trail the Brain will verify in M-F.
-      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
-      const storedPhoto = detail.body.inspection.photos.find((p: { id: string }) => p.id === photoId);
-      const manifestHash = detail.body.inspection.submissionManifest.photoHashes[0].sha256;
-      expect(manifestHash).toBe(storedPhoto.sha256);
+      // The stored manifest's photo hashes must match the persisted photos'
+      // SHA-256s — the durable evidence trail the Brain will verify in M-F.
+      const detail = await request(app).get(`/api/inspections/${p.inspectionId}`).set(auth(inspectorA.sid));
+      const claim = detail.body.inspection.submissionManifest.photoHashes[0];
+      const storedPhoto = detail.body.inspection.photos.find(
+        (photo: { id: string }) => photo.id === claim.photoId,
+      );
+      expect(claim.sha256).toBe(storedPhoto.sha256);
       expect(detail.body.inspection.status).toBe('submitted');
     });
   });

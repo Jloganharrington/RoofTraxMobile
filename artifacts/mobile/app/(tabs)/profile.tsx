@@ -12,11 +12,18 @@ import {
 } from 'react-native';
 import { Icon } from '@/components/Icon';
 import { router } from 'expo-router';
-import { useListPins } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
+import {
+  getGetMyProfileQueryKey,
+  useListPins,
+  useUpdateProfileSignature,
+} from '@workspace/api-client-react';
 import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
+import { saveSignatureFromDataUrl } from '@/lib/profileSignature';
 
 const ROLE_LABELS: Record<string, string> = {
   field_rep: 'Field Rep',
@@ -66,6 +73,7 @@ function pinSubtitle(pin: Pin): string {
 
 export default function ProfileScreen() {
   const colors = useColors();
+  const queryClient = useQueryClient();
   const { user, logout } = useAuth();
   const {
     role,
@@ -73,10 +81,40 @@ export default function ProfileScreen() {
     department,
     companyId,
     companyName,
+    signatureUrl,
+    signatureSignedAt,
     isLoading: profileLoading,
   } = useProfile();
   const pinsQuery = useListPins();
   const pins = pinsQuery.data?.pins ?? [];
+
+  const signatureRef = React.useRef<SignatureViewRef>(null);
+  const [capturing, setCapturing] = React.useState(false);
+  const [savingSignature, setSavingSignature] = React.useState(false);
+  const updateSignature = useUpdateProfileSignature();
+
+  // Uploads the drawn signature to object storage and records it on the
+  // profile. Requires connectivity (unlike field captures) — signatures are set
+  // up once, not in the field.
+  async function handleSignature(dataUrl: string) {
+    if (savingSignature) return;
+    setSavingSignature(true);
+    try {
+      const { signatureUrl: url, signatureSha256 } = await saveSignatureFromDataUrl(dataUrl);
+      await updateSignature.mutateAsync({
+        data: { signatureUrl: url, signatureSha256 },
+      });
+      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      setCapturing(false);
+    } catch {
+      Alert.alert(
+        'Could not save signature',
+        'Check your connection and try again. A signature must be saved before you can submit an inspection.',
+      );
+    } finally {
+      setSavingSignature(false);
+    }
+  }
 
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Field rep';
 
@@ -135,6 +173,73 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sigHeader}>
+          <Icon name="edit-3" size={18} color={colors.foreground} />
+          <Text style={[styles.sigTitle, { color: colors.foreground }]}>Signature on file</Text>
+          {signatureUrl ? (
+            <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+              <Text style={[styles.sigBadgeText, { color: colors.success }]}>On file</Text>
+            </View>
+          ) : (
+            <View style={[styles.sigBadge, { backgroundColor: '#fffbeb' }]}>
+              <Text style={[styles.sigBadgeText, { color: '#b45309' }]}>Required</Text>
+            </View>
+          )}
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+          {signatureUrl
+            ? `Your signature is applied to inspection declarations.${
+                signatureSignedAt
+                  ? ` Captured ${new Date(signatureSignedAt).toLocaleDateString()}.`
+                  : ''
+              }`
+            : 'Capture your signature once here. It is applied to every inspection declaration you sign — you cannot submit an inspection without it.'}
+        </Text>
+
+        {signatureUrl && !capturing ? (
+          <Image
+            source={{ uri: signatureUrl }}
+            style={styles.sigPreview}
+            resizeMode="contain"
+          />
+        ) : null}
+
+        {capturing ? (
+          <>
+            <View style={[styles.sigPadWrap, { borderColor: colors.border }]}>
+              <SignatureScreen
+                ref={signatureRef}
+                onOK={handleSignature}
+                descriptionText=""
+                clearText="Clear"
+                confirmText="Save signature"
+                webStyle={SIGNATURE_WEB_STYLE}
+              />
+            </View>
+            {savingSignature ? (
+              <View style={styles.sigSavingRow}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={{ color: colors.mutedForeground }}>Saving signature…</Text>
+              </View>
+            ) : (
+              <Pressable onPress={() => setCapturing(false)} style={styles.sigCancel}>
+                <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>Cancel</Text>
+              </Pressable>
+            )}
+          </>
+        ) : (
+          <Pressable
+            onPress={() => setCapturing(true)}
+            style={[styles.sigButton, { backgroundColor: colors.secondary }]}
+          >
+            <Text style={styles.sigButtonText}>
+              {signatureUrl ? 'Replace signature' : 'Capture signature'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+
       <Pressable
         onPress={handleLogout}
         style={[styles.logoutButton, { borderColor: colors.destructive }]}
@@ -191,8 +296,33 @@ export default function ProfileScreen() {
   );
 }
 
+// Trims the signature pad's WebView chrome so only the canvas + buttons show.
+const SIGNATURE_WEB_STYLE = `
+  .m-signature-pad { box-shadow: none; border: none; margin: 0; }
+  .m-signature-pad--body { border: none; }
+  .m-signature-pad--footer { margin: 8px 0; }
+  body, html { height: 100%; margin: 0; }
+`;
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  sigCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+    marginBottom: 12,
+  },
+  sigHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sigTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  sigBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  sigBadgeText: { fontSize: 12, fontWeight: '700' },
+  sigPreview: { width: '100%', height: 90, backgroundColor: '#fff', borderRadius: 8 },
+  sigPadWrap: { height: 220, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  sigSavingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
+  sigCancel: { alignItems: 'center', paddingVertical: 8 },
+  sigButton: { paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  sigButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   content: {
     padding: 16,
     paddingTop: Platform.OS === 'web' ? 32 : 16,

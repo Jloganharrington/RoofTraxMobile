@@ -9,12 +9,21 @@ import {
 } from 'react-native';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
-import type { Inspection, SubmissionManifestV1 } from '@workspace/api-client-react';
+import {
+  getGetInspectionQueryKey,
+  useGetInspection,
+  usePreflightInspection,
+} from '@workspace/api-client-react';
+import type {
+  Inspection,
+  PreflightResult,
+  SubmissionManifestV1,
+} from '@workspace/api-client-react';
 import { STAGE_DEFINITIONS, type Stage } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
+import { useProfile } from '@/hooks/useProfile';
 import { confirmFinalReview, submitInspection } from '@/lib/inspectionSync';
 import { buildProtocolState, evaluateInspection } from '@/lib/inspectionProtocolState';
 import { countUnsyncedWritesForInspection } from '@/lib/outbox/queue';
@@ -43,6 +52,7 @@ const STAGE_FIX_ROUTES: Partial<Record<Stage, string>> = {
 function assembleManifest(
   inspection: Inspection,
   gate: ReturnType<typeof evaluateInspection>,
+  signature: { url: string; sha256: string; signedAt: string | null } | null,
 ): SubmissionManifestV1 {
   const photos = inspection.photos ?? [];
   const records: Record<string, string[]> = {
@@ -67,6 +77,12 @@ function assembleManifest(
       .filter((p) => p.sha256)
       .map((p) => ({ photoId: p.id, sha256: p.sha256 as string })),
     gateResults: { deficiencies: gate.deficiencies, softFlags: gate.softFlags },
+    // M-F (F0) — carry the inspector's on-file signature so the package is
+    // self-contained. The server is the source of truth and re-stamps this from
+    // the profile, but including it keeps the client-assembled manifest complete.
+    signatureOnFile: signature
+      ? { url: signature.url, sha256: signature.sha256, signedAt: signature.signedAt }
+      : null,
   };
 }
 
@@ -75,6 +91,8 @@ export default function InspectionReadinessScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { signatureUrl, signatureSha256, signatureSignedAt } = useProfile();
+  const hasSignatureOnFile = !!signatureUrl && !!signatureSha256;
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -84,6 +102,24 @@ export default function InspectionReadinessScreen() {
   const [confirming, setConfirming] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [pendingWrites, setPendingWrites] = React.useState<number | null>(null);
+
+  // M-F (F1) — on-site pre-flight. Runs the server's authoritative gate re-run
+  // so the inspector can catch a deficiency the client might have missed BEFORE
+  // leaving the property. Distinct from the local gate below (which drives the
+  // live UI): this proves the server will accept the package.
+  const preflight = usePreflightInspection();
+  const [preflightResult, setPreflightResult] = React.useState<PreflightResult | null>(null);
+  const [preflightError, setPreflightError] = React.useState<string | null>(null);
+
+  async function onRunPreflight() {
+    setPreflightError(null);
+    try {
+      const res = await preflight.mutateAsync({ inspectionId: id });
+      setPreflightResult(res.preflight);
+    } catch {
+      setPreflightError('Could not reach the server for a pre-flight check. Try again on-site.');
+    }
+  }
 
   // Poll the outbox for still-unsynced captures on this inspection. Submit is
   // blocked until this is zero, so the manifest never references a child record
@@ -137,7 +173,10 @@ export default function InspectionReadinessScreen() {
   // pendingWrites === null means we haven't finished the first outbox read yet;
   // treat that as "not clear" so we never assemble a manifest prematurely.
   const packageSynced = pendingWrites === 0;
-  const canSubmit = deficiencies.length === 0 && !submitted && packageSynced;
+  // M-F (F0) — the server rejects submission without a signature on file, so
+  // gate submit on it here too and surface the fix path.
+  const canSubmit =
+    deficiencies.length === 0 && !submitted && packageSynced && hasSignatureOnFile;
 
   async function onConfirmFinalReview() {
     if (!user || confirming) return;
@@ -153,7 +192,11 @@ export default function InspectionReadinessScreen() {
     if (submitting || !inspection) return;
     setSubmitting(true);
     try {
-      const manifest = assembleManifest(inspection, gate);
+      const signature =
+        signatureUrl && signatureSha256
+          ? { url: signatureUrl, sha256: signatureSha256, signedAt: signatureSignedAt ?? null }
+          : null;
+      const manifest = assembleManifest(inspection, gate, signature);
       await submitInspection(queryClient, id, manifest);
       router.back();
     } finally {
@@ -166,15 +209,36 @@ export default function InspectionReadinessScreen() {
       <Stack.Screen options={{ title: 'Readiness' }} />
 
       {submitted ? (
-        <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
-          <Icon name="check" size={22} color={colors.success} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.bannerTitle, { color: colors.foreground }]}>Package submitted</Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              This inspection has been submitted for review.
-            </Text>
+        <>
+          <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
+            <Icon name="check" size={22} color={colors.success} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, { color: colors.foreground }]}>Package submitted</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                This inspection has been submitted for review.
+              </Text>
+            </View>
           </View>
-        </View>
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/inspection-package', params: { id } } as never)
+            }
+            style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+              <Icon name="file-text" size={20} color={colors.secondary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                View package status & receipt
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Track processing and see what was received.
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+          </Pressable>
+        </>
       ) : deficiencies.length === 0 ? (
         <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
           <Icon name="check" size={22} color={colors.success} />
@@ -300,6 +364,68 @@ export default function InspectionReadinessScreen() {
                     : `Uploading ${pendingWrites} captured item${pendingWrites === 1 ? '' : 's'} — submit unlocks once the package is fully synced.`}
                 </Text>
               </View>
+            ) : null}
+
+            {/* M-F (F1) — on-site pre-flight. Ask the server to re-run the gate
+                before leaving, so a server-side deficiency surfaces here rather
+                than at submit. */}
+            <View style={styles.finalStep}>
+              <Icon name="server" size={18} color={colors.mutedForeground} />
+              <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>
+                Pre-flight check (server-verified)
+              </Text>
+            </View>
+            <Pressable
+              onPress={onRunPreflight}
+              disabled={preflight.isPending}
+              style={[
+                styles.actionBtn,
+                { backgroundColor: colors.secondary, opacity: preflight.isPending ? 0.6 : 1 },
+              ]}
+            >
+              {preflight.isPending ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.actionText}>Run pre-flight check</Text>
+              )}
+            </Pressable>
+            {preflightError ? (
+              <Text style={{ color: colors.destructive, fontSize: 13 }}>{preflightError}</Text>
+            ) : null}
+            {preflightResult ? (
+              preflightResult.deficiencies.length === 0 ? (
+                <View style={styles.finalStep}>
+                  <Icon name="check" size={16} color={colors.success} />
+                  <Text style={{ color: colors.success, flex: 1, fontSize: 13, fontWeight: '600' }}>
+                    Server pre-flight passed — no blocking gates.
+                    {preflightResult.softFlags.length > 0
+                      ? ` ${preflightResult.softFlags.length} review flag${preflightResult.softFlags.length === 1 ? '' : 's'} (non-blocking).`
+                      : ''}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.finalStep}>
+                  <Icon name="alert-circle" size={16} color="#b45309" />
+                  <Text style={{ color: '#92400e', flex: 1, fontSize: 13 }}>
+                    Server found {preflightResult.deficiencies.length} blocking gate
+                    {preflightResult.deficiencies.length === 1 ? '' : 's'}:{' '}
+                    {preflightResult.deficiencies.map((d) => `${d.stage} ${d.message}`).join('; ')}
+                  </Text>
+                </View>
+              )
+            ) : null}
+
+            {!hasSignatureOnFile ? (
+              <Pressable
+                onPress={() => router.push('/(tabs)/profile')}
+                style={[styles.finalStep, { paddingVertical: 4 }]}
+              >
+                <Icon name="edit-3" size={16} color="#b45309" />
+                <Text style={{ color: '#92400e', flex: 1, fontSize: 13 }}>
+                  You have no signature on file. Tap to set one up — required before you can submit.
+                </Text>
+                <Icon name="chevron-right" size={18} color="#b45309" />
+              </Pressable>
             ) : null}
 
             <Pressable

@@ -52,6 +52,11 @@ export interface Inspection {
   arrivalConditions: ArrivalConditions | null;
   homeownerFacts: HomeownerFacts | null;
   submissionManifest: SubmissionManifestV1 | null;
+  /**
+     * Set at submission verification (M-F / F2); non-null means the record is locked and immutable — corrections must be filed as addenda.
+     * @nullable
+     */
+  lockedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   /** Child slopes. Populated by GET /inspections/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid. */

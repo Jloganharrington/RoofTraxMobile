@@ -20,6 +20,10 @@ export function useProfile() {
     department: query.data?.profile.department ?? 'canvasser',
     companyId: query.data?.profile.companyId,
     companyName: query.data?.profile.companyName,
+    // M-F (F0) — signature-on-file. Null until the inspector captures one.
+    signatureUrl: query.data?.profile.signatureUrl ?? null,
+    signatureSha256: query.data?.profile.signatureSha256 ?? null,
+    signatureSignedAt: query.data?.profile.signatureSignedAt ?? null,
     refetch: query.refetch,
   };
 }

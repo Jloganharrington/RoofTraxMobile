@@ -154,6 +154,22 @@ export interface Profile {
   department: Department;
   companyId: string;
   companyName: string;
+  /** @nullable */
+  signatureUrl: string | null;
+  /** @nullable */
+  signatureSha256: string | null;
+  /** @nullable */
+  signatureSignedAt: string | null;
+}
+
+/**
+ * Records the inspector's signature-on-file (M-F / F0). The client uploads the signature image to object storage via the presigned-URL flow, then sends the servable URL plus a SHA-256 of the exact bytes. The server stamps signedAt server-side.
+ */
+export interface UpdateProfileSignatureInput {
+  /** @minLength 1 */
+  signatureUrl: string;
+  /** @minLength 1 */
+  signatureSha256: string;
 }
 
 export interface ProfileEnvelope {
@@ -518,6 +534,13 @@ export type SubmissionManifestV1GateResults = {
   softFlags: GateFinding[];
 };
 
+export interface SignatureOnFileRef {
+  url: string;
+  sha256: string;
+  /** @nullable */
+  signedAt?: string | null;
+}
+
 /**
  * Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.
  */
@@ -528,6 +551,7 @@ export interface SubmissionManifestV1 {
   records: SubmissionManifestV1Records;
   photoHashes: SubmissionPhotoHash[];
   gateResults: SubmissionManifestV1GateResults;
+  signatureOnFile?: SignatureOnFileRef | null;
 }
 
 export interface InspectionSlope {
@@ -802,6 +826,11 @@ export interface Inspection {
   arrivalConditions: ArrivalConditions | null;
   homeownerFacts: HomeownerFacts | null;
   submissionManifest: SubmissionManifestV1 | null;
+  /**
+     * Set at submission verification (M-F / F2); non-null means the record is locked and immutable — corrections must be filed as addenda.
+     * @nullable
+     */
+  lockedAt: string | null;
   createdAt: string;
   updatedAt: string;
   /** Child slopes. Populated by GET /inspections/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid. */
@@ -1170,6 +1199,92 @@ export interface ScheduledInspection {
 
 export interface ScheduledInspectionListEnvelope {
   scheduled: ScheduledInspection[];
+}
+
+/**
+ * Server-side re-run of the shared protocol gate. Mirrors the client readiness screen's evaluation exactly.
+ */
+export interface PreflightResult {
+  deficiencies: GateFinding[];
+  softFlags: GateFinding[];
+}
+
+export interface PreflightResultEnvelope {
+  preflight: PreflightResult;
+}
+
+export type PackageReceiptStage = typeof PackageReceiptStage[keyof typeof PackageReceiptStage];
+
+
+export const PackageReceiptStage = {
+  pending: 'pending',
+  received: 'received',
+  validated: 'validated',
+} as const;
+
+/**
+ * STUB receipt (M-F / F3). The standalone Brain that renders the real package does not exist yet; this is a clearly-labeled placeholder that reports what the intake verified, never a fabricated deliverable.
+ */
+export interface PackageReceipt {
+  stage: PackageReceiptStage;
+  label: string;
+  message: string;
+  isStub: boolean;
+  verifiedPhotoCount: number;
+  recordCount: number;
+  generatedAtUtc: string;
+}
+
+export interface InspectionStatusEnvelope {
+  status: InspectionStatus;
+  /** @nullable */
+  lockedAt: string | null;
+  submissionManifest: SubmissionManifestV1 | null;
+  receipt: PackageReceipt | null;
+}
+
+/**
+ * A post-lock correction. `id` is an optional client-generated id so an offline replay is idempotent.
+ */
+export interface CreateInspectionAddendumInput {
+  id?: string;
+  /** @minLength 1 */
+  body: string;
+}
+
+export interface InspectionAddendum {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  userId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface InspectionAddendumEnvelope {
+  addendum: InspectionAddendum;
+}
+
+export type CrmThreadStatus = typeof CrmThreadStatus[keyof typeof CrmThreadStatus];
+
+
+export const CrmThreadStatus = {
+  pending: 'pending',
+  active: 'active',
+} as const;
+
+/**
+ * Per-tenant CRM seam status (M-F / F4). "pending" means no CRM field key is provisioned for the company, so inbound/outbound threads read empty rather than fabricating data.
+ */
+export interface CrmStatus {
+  enabled: boolean;
+  scheduledFeed: CrmThreadStatus;
+  appointmentSync: CrmThreadStatus;
+  reportIngest: CrmThreadStatus;
+}
+
+export interface CrmStatusEnvelope {
+  crm: CrmStatus;
 }
 
 export type ActivityScope = typeof ActivityScope[keyof typeof ActivityScope];

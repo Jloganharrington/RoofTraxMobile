@@ -33,6 +33,7 @@ import type {
   CreateAttestationInput,
   CreateCompanyRequest,
   CreateDamageInstanceInput,
+  CreateInspectionAddendumInput,
   CreateInspectionComponentInput,
   CreateInspectionElevationInput,
   CreateInspectionInput,
@@ -45,6 +46,7 @@ import type {
   CreatePinInput,
   CreateTestSquareHitInput,
   CreateTestSquareInput,
+  CrmStatusEnvelope,
   DamageInstanceEnvelope,
   DeleteSuccess,
   ErrorEnvelope,
@@ -52,6 +54,7 @@ import type {
   GetWeatherEventsParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
+  InspectionAddendumEnvelope,
   InspectionComponentEnvelope,
   InspectionElevationEnvelope,
   InspectionEnvelope,
@@ -60,6 +63,7 @@ import type {
   InspectionPhotoEnvelope,
   InspectionProductEnvelope,
   InspectionSlopeEnvelope,
+  InspectionStatusEnvelope,
   InteriorObservationEnvelope,
   ListPinsParams,
   LocationPingBody,
@@ -71,6 +75,7 @@ import type {
   MobileTokenExchangeSuccess,
   PinEnvelope,
   PinListEnvelope,
+  PreflightResultEnvelope,
   ProfileEnvelope,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
@@ -84,6 +89,7 @@ import type {
   TestSquareHitEnvelope,
   UpdateInspectionInput,
   UpdatePinInput,
+  UpdateProfileSignatureInput,
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -1120,6 +1126,77 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
 
 
 
+
+export const getUpdateProfileSignatureUrl = () => {
+
+
+
+
+  return `/api/profile/signature`
+}
+
+/**
+ * @summary Record the current user's signature-on-file (M-F / F0)
+ */
+export const updateProfileSignature = async (updateProfileSignatureInput: UpdateProfileSignatureInput, options?: RequestInit): Promise<ProfileEnvelope> => {
+
+  return customFetch<ProfileEnvelope>(getUpdateProfileSignatureUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateProfileSignatureInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateProfileSignatureMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileSignature>>, TError,{data: BodyType<UpdateProfileSignatureInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProfileSignature>>, TError,{data: BodyType<UpdateProfileSignatureInput>}, TContext> => {
+
+const mutationKey = ['updateProfileSignature'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProfileSignature>>, {data: BodyType<UpdateProfileSignatureInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateProfileSignature(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProfileSignatureMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfileSignature>>>
+    export type UpdateProfileSignatureMutationBody = BodyType<UpdateProfileSignatureInput>
+    export type UpdateProfileSignatureMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record the current user's signature-on-file (M-F / F0)
+ */
+export const useUpdateProfileSignature = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileSignature>>, TError,{data: BodyType<UpdateProfileSignatureInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProfileSignature>>,
+        TError,
+        {data: BodyType<UpdateProfileSignatureInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateProfileSignatureMutationOptions(options));
+    }
 
 export const getListPinsUrl = (params?: ListPinsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3417,6 +3494,303 @@ export function useListScheduledInspections<TData = Awaited<ReturnType<typeof li
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListScheduledInspectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPreflightInspectionUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/preflight`
+}
+
+/**
+ * @summary Re-run the shared protocol gate server-side (M-F / F1) so the inspector can resolve deficiencies while still on-site. Authoritative — the server hydrates the record and runs the SAME lib/protocol evaluate() the mobile readiness screen runs.
+ */
+export const preflightInspection = async (inspectionId: string, options?: RequestInit): Promise<PreflightResultEnvelope> => {
+
+  return customFetch<PreflightResultEnvelope>(getPreflightInspectionUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreflightInspectionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof preflightInspection>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof preflightInspection>>, TError,{inspectionId: string}, TContext> => {
+
+const mutationKey = ['preflightInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof preflightInspection>>, {inspectionId: string}> = (props) => {
+          const {inspectionId} = props ?? {};
+
+          return  preflightInspection(inspectionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreflightInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof preflightInspection>>>
+
+    export type PreflightInspectionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Re-run the shared protocol gate server-side (M-F / F1) so the inspector can resolve deficiencies while still on-site. Authoritative — the server hydrates the record and runs the SAME lib/protocol evaluate() the mobile readiness screen runs.
+ */
+export const usePreflightInspection = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof preflightInspection>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof preflightInspection>>,
+        TError,
+        {inspectionId: string},
+        TContext
+      > => {
+      return useMutation(getPreflightInspectionMutationOptions(options));
+    }
+
+export const getGetInspectionStatusUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/status`
+}
+
+/**
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+ */
+export const getInspectionStatus = async (inspectionId: string, options?: RequestInit): Promise<InspectionStatusEnvelope> => {
+
+  return customFetch<InspectionStatusEnvelope>(getGetInspectionStatusUrl(inspectionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInspectionStatusQueryKey = (inspectionId: string,) => {
+    return [
+    `/api/inspections/${inspectionId}/status`
+    ] as const;
+    }
+
+
+export const getGetInspectionStatusQueryOptions = <TData = Awaited<ReturnType<typeof getInspectionStatus>>, TError = ErrorType<ErrorEnvelope>>(inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInspectionStatusQueryKey(inspectionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInspectionStatus>>> = ({ signal }) => getInspectionStatus(inspectionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: inspectionId !== null && inspectionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInspectionStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInspectionStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getInspectionStatus>>>
+export type GetInspectionStatusQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+ */
+
+export function useGetInspectionStatus<TData = Awaited<ReturnType<typeof getInspectionStatus>>, TError = ErrorType<ErrorEnvelope>>(
+ inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInspectionStatusQueryOptions(inspectionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateInspectionAddendumUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/addenda`
+}
+
+/**
+ * @summary File a post-lock correction as an append-only addendum (M-F / F2). A locked inspection is immutable; corrections never edit the original record. Allowed after lock; the only inspection write that is.
+ */
+export const createInspectionAddendum = async (inspectionId: string,
+    createInspectionAddendumInput: CreateInspectionAddendumInput, options?: RequestInit): Promise<InspectionAddendumEnvelope> => {
+
+  return customFetch<InspectionAddendumEnvelope>(getCreateInspectionAddendumUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInspectionAddendumInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInspectionAddendumMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionAddendum>>, TError,{inspectionId: string;data: BodyType<CreateInspectionAddendumInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInspectionAddendum>>, TError,{inspectionId: string;data: BodyType<CreateInspectionAddendumInput>}, TContext> => {
+
+const mutationKey = ['createInspectionAddendum'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInspectionAddendum>>, {inspectionId: string;data: BodyType<CreateInspectionAddendumInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createInspectionAddendum(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInspectionAddendumMutationResult = NonNullable<Awaited<ReturnType<typeof createInspectionAddendum>>>
+    export type CreateInspectionAddendumMutationBody = BodyType<CreateInspectionAddendumInput>
+    export type CreateInspectionAddendumMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary File a post-lock correction as an append-only addendum (M-F / F2). A locked inspection is immutable; corrections never edit the original record. Allowed after lock; the only inspection write that is.
+ */
+export const useCreateInspectionAddendum = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionAddendum>>, TError,{inspectionId: string;data: BodyType<CreateInspectionAddendumInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInspectionAddendum>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateInspectionAddendumInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInspectionAddendumMutationOptions(options));
+    }
+
+export const getGetCrmStatusUrl = () => {
+
+
+
+
+  return `/api/crm/status`
+}
+
+/**
+ * @summary Report whether the per-tenant CRM seam is active or pending (M-F / F4). No data is fabricated — an unconfigured tenant reads "pending".
+ */
+export const getCrmStatus = async ( options?: RequestInit): Promise<CrmStatusEnvelope> => {
+
+  return customFetch<CrmStatusEnvelope>(getGetCrmStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCrmStatusQueryKey = () => {
+    return [
+    `/api/crm/status`
+    ] as const;
+    }
+
+
+export const getGetCrmStatusQueryOptions = <TData = Awaited<ReturnType<typeof getCrmStatus>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCrmStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCrmStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCrmStatus>>> = ({ signal }) => getCrmStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCrmStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCrmStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getCrmStatus>>>
+export type GetCrmStatusQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Report whether the per-tenant CRM seam is active or pending (M-F / F4). No data is fabricated — an unconfigured tenant reads "pending".
+ */
+
+export function useGetCrmStatus<TData = Awaited<ReturnType<typeof getCrmStatus>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCrmStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCrmStatusQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

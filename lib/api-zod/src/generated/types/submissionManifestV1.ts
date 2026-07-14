@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SignatureOnFileRef } from './signatureOnFileRef';
 import type { SubmissionManifestV1GateResults } from './submissionManifestV1GateResults';
 import type { SubmissionManifestV1Records } from './submissionManifestV1Records';
 import type { SubmissionPhotoHash } from './submissionPhotoHash';
@@ -19,4 +20,5 @@ export interface SubmissionManifestV1 {
   records: SubmissionManifestV1Records;
   photoHashes: SubmissionPhotoHash[];
   gateResults: SubmissionManifestV1GateResults;
+  signatureOnFile?: SignatureOnFileRef | null;
 }

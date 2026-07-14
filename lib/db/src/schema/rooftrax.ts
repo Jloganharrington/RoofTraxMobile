@@ -60,6 +60,16 @@ export const userProfilesTable = pgTable('user_profiles', {
   department: varchar('department', { enum: DEPARTMENTS })
     .notNull()
     .default('canvasser'),
+  // Signature-on-file (M-F / F0). Captured once on the profile and reused
+  // across every inspection declaration, so the inspector never re-draws a
+  // signature per submission. The image itself lives in tenant-scoped object
+  // storage (read access enforced by objectOwnershipTable); we store only the
+  // servable URL, a SHA-256 of the exact bytes (integrity proof), and when it
+  // was captured. All nullable: a profile with no signature on file blocks
+  // submission until one is captured.
+  signatureUrl: text('signature_url'),
+  signatureSha256: text('signature_sha256'),
+  signatureSignedAt: timestamp('signature_signed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

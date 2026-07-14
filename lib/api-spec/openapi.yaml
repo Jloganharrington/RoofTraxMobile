@@ -347,6 +347,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /profile/signature:
+    patch:
+      tags: [Profile]
+      operationId: updateProfileSignature
+      summary: Record the current user's signature-on-file (M-F / F0)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileSignatureInput"
+      responses:
+        "200":
+          description: Signature recorded; updated profile returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /pins:
     get:
       tags: [Pins]
@@ -1620,6 +1651,171 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/preflight:
+    post:
+      tags: [Inspections]
+      operationId: preflightInspection
+      summary: >-
+        Re-run the shared protocol gate server-side (M-F / F1) so the inspector
+        can resolve deficiencies while still on-site. Authoritative — the
+        server hydrates the record and runs the SAME lib/protocol evaluate() the
+        mobile readiness screen runs.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Gate evaluation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreflightResultEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to access this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /inspections/{inspectionId}/status:
+    get:
+      tags: [Inspections]
+      operationId: getInspectionStatus
+      summary: >-
+        Poll an inspection's submission status and package receipt (M-F / F3).
+        Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inspection status and package receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionStatusEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /inspections/{inspectionId}/addenda:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionAddendum
+      summary: >-
+        File a post-lock correction as an append-only addendum (M-F / F2). A
+        locked inspection is immutable; corrections never edit the original
+        record. Allowed after lock; the only inspection write that is.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionAddendumInput"
+      responses:
+        "201":
+          description: Addendum recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionAddendumEnvelope"
+        "200":
+          description: Addendum already existed (idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionAddendumEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /crm/status:
+    get:
+      tags: [Crm]
+      operationId: getCrmStatus
+      summary: >-
+        Report whether the per-tenant CRM seam is active or pending (M-F / F4).
+        No data is fabricated — an unconfigured tenant reads "pending".
+      responses:
+        "200":
+          description: CRM seam status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrmStatusEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /canvassing/current:
     get:
       tags: [Canvassing]
@@ -1946,7 +2142,18 @@ components:
 
     Profile:
       type: object
-      required: [userId, role, workflowAssignment, department, companyId, companyName]
+      required:
+        [
+          userId,
+          role,
+          workflowAssignment,
+          department,
+          companyId,
+          companyName,
+          signatureUrl,
+          signatureSha256,
+          signatureSignedAt,
+        ]
       properties:
         userId:
           type: string
@@ -1960,6 +2167,32 @@ components:
           type: string
         companyName:
           type: string
+        # Signature-on-file (M-F / F0). Null until the inspector captures a
+        # signature on their profile. The URL points at the tenant-scoped
+        # object-storage copy; the SHA-256 is an integrity proof of the exact
+        # bytes; signedAt is when it was captured.
+        signatureUrl:
+          type: [string, "null"]
+        signatureSha256:
+          type: [string, "null"]
+        signatureSignedAt:
+          type: [string, "null"]
+          format: date-time
+    UpdateProfileSignatureInput:
+      type: object
+      required: [signatureUrl, signatureSha256]
+      description: >-
+        Records the inspector's signature-on-file (M-F / F0). The client
+        uploads the signature image to object storage via the presigned-URL
+        flow, then sends the servable URL plus a SHA-256 of the exact bytes.
+        The server stamps signedAt server-side.
+      properties:
+        signatureUrl:
+          type: string
+          minLength: 1
+        signatureSha256:
+          type: string
+          minLength: 1
     ProfileEnvelope:
       type: object
       required: [profile]
@@ -2461,6 +2694,27 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/GateFinding"
+        # Signature-on-file reference (M-F / F0). The client copies the
+        # inspector's on-file signature (URL + SHA-256) into the manifest at
+        # submit time so the package carries a durable, self-contained proof of
+        # who signed. Optional in the contract for backwards compatibility, but
+        # the server rejects a submission whose inspector has no signature on
+        # file, so a real submission always carries it.
+        signatureOnFile:
+          oneOf:
+            - $ref: "#/components/schemas/SignatureOnFileRef"
+            - type: "null"
+    SignatureOnFileRef:
+      type: object
+      required: [url, sha256]
+      properties:
+        url:
+          type: string
+        sha256:
+          type: string
+        signedAt:
+          type: [string, "null"]
+          format: date-time
 
     Inspection:
       type: object
@@ -2484,6 +2738,7 @@ components:
           arrivalConditions,
           homeownerFacts,
           submissionManifest,
+          lockedAt,
           createdAt,
           updatedAt,
         ]
@@ -2532,6 +2787,12 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SubmissionManifestV1"
             - type: "null"
+        lockedAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            Set at submission verification (M-F / F2); non-null means the record
+            is locked and immutable — corrections must be filed as addenda.
         createdAt:
           type: string
           format: date-time
@@ -3431,6 +3692,137 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScheduledInspection"
+
+    # ---- M-F (F1) Pre-flight ----
+    PreflightResult:
+      type: object
+      required: [deficiencies, softFlags]
+      description: >-
+        Server-side re-run of the shared protocol gate. Mirrors the client
+        readiness screen's evaluation exactly.
+      properties:
+        deficiencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/GateFinding"
+        softFlags:
+          type: array
+          items:
+            $ref: "#/components/schemas/GateFinding"
+    PreflightResultEnvelope:
+      type: object
+      required: [preflight]
+      properties:
+        preflight:
+          $ref: "#/components/schemas/PreflightResult"
+
+    # ---- M-F (F3) Status & package receipt ----
+    PackageReceipt:
+      type: object
+      description: >-
+        STUB receipt (M-F / F3). The standalone Brain that renders the real
+        package does not exist yet; this is a clearly-labeled placeholder that
+        reports what the intake verified, never a fabricated deliverable.
+      required:
+        [stage, label, message, isStub, verifiedPhotoCount, recordCount, generatedAtUtc]
+      properties:
+        stage:
+          type: string
+          enum: [pending, received, validated]
+        label:
+          type: string
+        message:
+          type: string
+        isStub:
+          type: boolean
+        verifiedPhotoCount:
+          type: integer
+        recordCount:
+          type: integer
+        generatedAtUtc:
+          type: string
+          format: date-time
+    InspectionStatusEnvelope:
+      type: object
+      required: [status, lockedAt, submissionManifest, receipt]
+      properties:
+        status:
+          $ref: "#/components/schemas/InspectionStatus"
+        lockedAt:
+          type: [string, "null"]
+          format: date-time
+        submissionManifest:
+          oneOf:
+            - $ref: "#/components/schemas/SubmissionManifestV1"
+            - type: "null"
+        receipt:
+          oneOf:
+            - $ref: "#/components/schemas/PackageReceipt"
+            - type: "null"
+
+    # ---- M-F (F2) Addenda ----
+    CreateInspectionAddendumInput:
+      type: object
+      required: [body]
+      description: >-
+        A post-lock correction. `id` is an optional client-generated id so an
+        offline replay is idempotent.
+      properties:
+        id:
+          type: string
+        body:
+          type: string
+          minLength: 1
+    InspectionAddendum:
+      type: object
+      required: [id, companyId, inspectionId, userId, body, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        userId:
+          type: string
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    InspectionAddendumEnvelope:
+      type: object
+      required: [addendum]
+      properties:
+        addendum:
+          $ref: "#/components/schemas/InspectionAddendum"
+
+    # ---- M-F (F4) CRM seam ----
+    CrmThreadStatus:
+      type: string
+      enum: [pending, active]
+    CrmStatus:
+      type: object
+      description: >-
+        Per-tenant CRM seam status (M-F / F4). "pending" means no CRM field key
+        is provisioned for the company, so inbound/outbound threads read empty
+        rather than fabricating data.
+      required: [enabled, scheduledFeed, appointmentSync, reportIngest]
+      properties:
+        enabled:
+          type: boolean
+        scheduledFeed:
+          $ref: "#/components/schemas/CrmThreadStatus"
+        appointmentSync:
+          $ref: "#/components/schemas/CrmThreadStatus"
+        reportIngest:
+          $ref: "#/components/schemas/CrmThreadStatus"
+    CrmStatusEnvelope:
+      type: object
+      required: [crm]
+      properties:
+        crm:
+          $ref: "#/components/schemas/CrmStatus"
 
     ActivityScope:
       type: string

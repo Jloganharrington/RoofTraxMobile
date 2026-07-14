@@ -12,6 +12,7 @@ import inspectionsRouter from "./inspections";
 import canvassingRouter from "./canvassing";
 import activityRouter from "./activity";
 import weatherRouter from "./weather";
+import crmRouter from "./crm";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(inspectionsRouter);
 router.use(canvassingRouter);
 router.use(activityRouter);
 router.use(weatherRouter);
+router.use(crmRouter);
 
 export default router;

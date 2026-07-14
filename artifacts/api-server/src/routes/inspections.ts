@@ -28,8 +28,12 @@ import {
   CreateTestSquareHitResponse,
   CreateTestSquareResponse,
   GetInspectionResponse,
+  GetInspectionStatusResponse,
   ListInspectionsResponse,
   ListScheduledInspectionsResponse,
+  PreflightInspectionResponse,
+  CreateInspectionAddendumBody,
+  CreateInspectionAddendumResponse,
   UpdateInspectionBody,
   UpdateInspectionResponse,
 } from '@workspace/api-zod';
@@ -37,6 +41,7 @@ import {
   attestationsTable,
   damageInstancesTable,
   db,
+  inspectionAddendaTable,
   inspectionComponentsTable,
   inspectionElevationsTable,
   inspectionInteriorObservationsTable,
@@ -56,6 +61,12 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
+import {
+  buildServerProtocolState,
+  evaluateServerInspection,
+  type HydratedInspectionChildren,
+} from '../lib/inspectionProtocolState';
+import { getCompanyCrmConfig } from '../lib/crm';
 
 const router: IRouter = Router();
 
@@ -102,6 +113,7 @@ async function loadWritableInspection(
   inspectionId: string,
   actor: { role: Role; userId: string; companyId: string },
   res: Response,
+  opts: { allowLocked?: boolean } = {},
 ) {
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) {
@@ -112,7 +124,183 @@ async function loadWritableInspection(
     res.status(403).json({ error: 'Not authorized to modify this inspection' });
     return null;
   }
+  // M-F (F2) — Immutability. Once an inspection is locked at submission, its
+  // captured records are frozen; every child-write route refuses further
+  // edits. A correction must be filed as an addendum instead (the addenda route
+  // opts into allowLocked). The submission route also opts in so it can replay
+  // idempotently against an already-locked record.
+  if (inspection.lockedAt && !opts.allowLocked) {
+    res.status(409).json({
+      error: 'Inspection is locked; corrections must be filed as an addendum',
+    });
+    return null;
+  }
   return inspection;
+}
+
+// Loads every child collection for an inspection, scoped to the company. Shared
+// by the detail GET, the pre-flight gate re-run (F1), the submission hardening
+// (F2), and the status receipt (F3) so they all see an identical hydration.
+async function hydrateInspectionChildren(
+  inspectionId: string,
+  companyId: string,
+): Promise<HydratedInspectionChildren & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }> {
+  const [
+    slopes,
+    elevations,
+    damageInstances,
+    photos,
+    components,
+    penetrations,
+    products,
+    testSquares,
+    attestations,
+    interiorObservations,
+    measurements,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(inspectionSlopesTable)
+      .where(
+        and(
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+          eq(inspectionSlopesTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionSlopesTable.createdAt),
+    db
+      .select()
+      .from(inspectionElevationsTable)
+      .where(
+        and(
+          eq(inspectionElevationsTable.inspectionId, inspectionId),
+          eq(inspectionElevationsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionElevationsTable.createdAt),
+    db
+      .select()
+      .from(damageInstancesTable)
+      .where(
+        and(
+          eq(damageInstancesTable.inspectionId, inspectionId),
+          eq(damageInstancesTable.companyId, companyId),
+        ),
+      )
+      .orderBy(damageInstancesTable.createdAt),
+    db
+      .select()
+      .from(inspectionPhotosTable)
+      .where(
+        and(
+          eq(inspectionPhotosTable.inspectionId, inspectionId),
+          eq(inspectionPhotosTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionPhotosTable.createdAt),
+    db
+      .select()
+      .from(inspectionComponentsTable)
+      .where(
+        and(
+          eq(inspectionComponentsTable.inspectionId, inspectionId),
+          eq(inspectionComponentsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionComponentsTable.createdAt),
+    db
+      .select()
+      .from(inspectionPenetrationsTable)
+      .where(
+        and(
+          eq(inspectionPenetrationsTable.inspectionId, inspectionId),
+          eq(inspectionPenetrationsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionPenetrationsTable.createdAt),
+    db
+      .select()
+      .from(inspectionProductsTable)
+      .where(
+        and(
+          eq(inspectionProductsTable.inspectionId, inspectionId),
+          eq(inspectionProductsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionProductsTable.createdAt),
+    db
+      .select()
+      .from(testSquaresTable)
+      .where(
+        and(
+          eq(testSquaresTable.inspectionId, inspectionId),
+          eq(testSquaresTable.companyId, companyId),
+        ),
+      )
+      .orderBy(testSquaresTable.createdAt),
+    db
+      .select()
+      .from(attestationsTable)
+      .where(
+        and(
+          eq(attestationsTable.inspectionId, inspectionId),
+          eq(attestationsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(attestationsTable.attestedAt),
+    db
+      .select()
+      .from(inspectionInteriorObservationsTable)
+      .where(
+        and(
+          eq(inspectionInteriorObservationsTable.inspectionId, inspectionId),
+          eq(inspectionInteriorObservationsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionInteriorObservationsTable.createdAt),
+    db
+      .select()
+      .from(measurementsTable)
+      .where(
+        and(
+          eq(measurementsTable.inspectionId, inspectionId),
+          eq(measurementsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(measurementsTable.createdAt),
+  ]);
+
+  // Test-square hits hang off the square, not the inspection. Fetch them scoped
+  // to this inspection's squares (and company) so the client can group by
+  // testSquareId for the live hit counter.
+  const squareIds = testSquares.map((square) => square.id);
+  const testSquareHits = squareIds.length
+    ? await db
+        .select()
+        .from(testSquareHitsTable)
+        .where(
+          and(
+            inArray(testSquareHitsTable.testSquareId, squareIds),
+            eq(testSquareHitsTable.companyId, companyId),
+          ),
+        )
+        .orderBy(testSquareHitsTable.createdAt)
+    : [];
+
+  return {
+    slopes,
+    elevations,
+    damageInstances,
+    photos,
+    components,
+    penetrations,
+    products,
+    testSquares,
+    testSquareHits,
+    attestations,
+    interiorObservations,
+    measurements,
+  };
 }
 
 router.get('/inspections', async (req: Request, res: Response) => {
@@ -216,15 +404,27 @@ router.post('/inspections', async (req: Request, res: Response) => {
   res.status(201).json(CreateInspectionResponse.parse({ inspection }));
 });
 
-// CRM seam (B3): scheduled inspections come from the CRM. Until that seam is
-// wired (a later phase) this returns an empty list — the shape is fixed so
-// the mobile prefill path can be built ahead of the data. Declared before
-// the "/inspections/:inspectionId" route so "scheduled" isn't captured as an
-// id.
+// CRM seam (B3 / M-F F4): scheduled inspections come from the external CRM,
+// keyed by the tenant's CRM field key. Until a real key is provisioned the seam
+// is "pending" (see lib/crm), so this returns an empty list rather than
+// fabricating scheduled work — the shape is fixed so the mobile prefill path can
+// be built ahead of the data. When the seam goes active, the upstream fetch
+// drops in here behind the same config gate. Declared before the
+// "/inspections/:inspectionId" route so "scheduled" isn't captured as an id.
 router.get('/inspections/scheduled', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
+  const crmConfig = await getCompanyCrmConfig(actor.companyId);
+  if (!crmConfig.enabled || !crmConfig.fieldKey) {
+    // Pending seam — no upstream to read, so no data. Never fabricate.
+    res.json(ListScheduledInspectionsResponse.parse({ scheduled: [] }));
+    return;
+  }
+
+  // Seam active: a real CRM integration would fetch the tenant's scheduled
+  // queue here. No external CRM is connected yet, so this still yields an empty
+  // list rather than inventing appointments.
   res.json(ListScheduledInspectionsResponse.parse({ scheduled: [] }));
 });
 
@@ -244,164 +444,13 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   // progress and drive the lib/protocol gate. The list feed omits these;
   // only this by-id read pays for the extra queries. Ordered by createdAt
   // so the client can rely on capture order (e.g. the elevation walk).
-  const [
-    slopes,
-    elevations,
-    damageInstances,
-    photos,
-    components,
-    penetrations,
-    products,
-    testSquares,
-    attestations,
-    interiorObservations,
-    measurements,
-  ] = await Promise.all([
-    db
-      .select()
-      .from(inspectionSlopesTable)
-      .where(
-        and(
-          eq(inspectionSlopesTable.inspectionId, inspectionId),
-          eq(inspectionSlopesTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionSlopesTable.createdAt),
-    db
-      .select()
-      .from(inspectionElevationsTable)
-      .where(
-        and(
-          eq(inspectionElevationsTable.inspectionId, inspectionId),
-          eq(inspectionElevationsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionElevationsTable.createdAt),
-    db
-      .select()
-      .from(damageInstancesTable)
-      .where(
-        and(
-          eq(damageInstancesTable.inspectionId, inspectionId),
-          eq(damageInstancesTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(damageInstancesTable.createdAt),
-    db
-      .select()
-      .from(inspectionPhotosTable)
-      .where(
-        and(
-          eq(inspectionPhotosTable.inspectionId, inspectionId),
-          eq(inspectionPhotosTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionPhotosTable.createdAt),
-    db
-      .select()
-      .from(inspectionComponentsTable)
-      .where(
-        and(
-          eq(inspectionComponentsTable.inspectionId, inspectionId),
-          eq(inspectionComponentsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionComponentsTable.createdAt),
-    db
-      .select()
-      .from(inspectionPenetrationsTable)
-      .where(
-        and(
-          eq(inspectionPenetrationsTable.inspectionId, inspectionId),
-          eq(inspectionPenetrationsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionPenetrationsTable.createdAt),
-    db
-      .select()
-      .from(inspectionProductsTable)
-      .where(
-        and(
-          eq(inspectionProductsTable.inspectionId, inspectionId),
-          eq(inspectionProductsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionProductsTable.createdAt),
-    db
-      .select()
-      .from(testSquaresTable)
-      .where(
-        and(
-          eq(testSquaresTable.inspectionId, inspectionId),
-          eq(testSquaresTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(testSquaresTable.createdAt),
-    db
-      .select()
-      .from(attestationsTable)
-      .where(
-        and(
-          eq(attestationsTable.inspectionId, inspectionId),
-          eq(attestationsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(attestationsTable.attestedAt),
-    db
-      .select()
-      .from(inspectionInteriorObservationsTable)
-      .where(
-        and(
-          eq(inspectionInteriorObservationsTable.inspectionId, inspectionId),
-          eq(inspectionInteriorObservationsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(inspectionInteriorObservationsTable.createdAt),
-    db
-      .select()
-      .from(measurementsTable)
-      .where(
-        and(
-          eq(measurementsTable.inspectionId, inspectionId),
-          eq(measurementsTable.companyId, actor.companyId),
-        ),
-      )
-      .orderBy(measurementsTable.createdAt),
-  ]);
-
-  // Test-square hits have no inspectionId of their own — they hang off the
-  // square. Fetch them scoped to this inspection's squares (and company) so
-  // the client can group them by testSquareId for the live hit counter.
-  const squareIds = testSquares.map((square) => square.id);
-  const testSquareHits = squareIds.length
-    ? await db
-        .select()
-        .from(testSquareHitsTable)
-        .where(
-          and(
-            inArray(testSquareHitsTable.testSquareId, squareIds),
-            eq(testSquareHitsTable.companyId, actor.companyId),
-          ),
-        )
-        .orderBy(testSquareHitsTable.createdAt)
-    : [];
+  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
 
   res.json(
     GetInspectionResponse.parse({
       inspection: {
         ...inspection,
-        slopes,
-        elevations,
-        damageInstances,
-        photos,
-        components,
-        penetrations,
-        products,
-        testSquares,
-        testSquareHits,
-        attestations,
-        interiorObservations,
-        measurements,
+        ...children,
       },
     }),
   );
@@ -1225,13 +1274,29 @@ router.post(
   },
 );
 
+// M-F (F2) — Intake hardening ("Brain v0"). The server is now the
+// authoritative gatekeeper, not a thin accept. On submit it: (a) requires the
+// inspector to have a signature on file (F0); (b) re-hashes every manifest photo
+// against the stored row and rejects on any mismatch/missing photo; (c) re-runs
+// the SAME shared gate the client ran and rejects if any hard deficiency
+// remains (no client-side bypass); then (d) records the manifest verbatim,
+// stamps lockedAt, and transitions to `submitted`. Once locked the record is
+// immutable — corrections become addenda.
 router.post('/inspections/:inspectionId/submission', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  // allowLocked: an offline outbox may replay this after the record is already
+  // locked. Rather than 409, we treat a locked record as an idempotent success.
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
   if (!inspection) return;
+
+  // Idempotent replay: already locked/submitted → return the existing record.
+  if (inspection.lockedAt) {
+    res.json(SubmitInspectionResponse.parse({ inspection }));
+    return;
+  }
 
   const parsed = SubmitInspectionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1239,22 +1304,233 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
     return;
   }
 
-  // Thin accept (M-F seam). The client is the gatekeeper: it blocks submit
-  // unless the shared gate engine reports zero hard deficiencies, then
-  // assembles and hashes the manifest here. This endpoint deliberately does
-  // NOT re-verify the gate, re-hash the photos, lock the records, or run a
-  // pre-flight check — all of that is deferred to M-F. It only records the
-  // manifest verbatim and transitions the lifecycle to `submitted`.
+  // (F0) Signature-on-file gate. The inspector who owns this record must have a
+  // signature on file; the declaration (S8) references it and the package
+  // carries it. Missing signature blocks submission — the client surfaces a
+  // capture prompt.
+  const [inspectorProfile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, inspection.inspectorUserId));
+  if (!inspectorProfile?.signatureUrl || !inspectorProfile.signatureSha256) {
+    res.status(422).json({
+      error: 'No signature on file for the assigned inspector; capture one before submitting',
+      code: 'signature_required',
+    });
+    return;
+  }
+
+  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
+
+  // (F2) Photo-hash verification. Every hash the manifest claims must match a
+  // stored photo in this inspection. A missing photo or a hash mismatch means
+  // the evidence the package attests to is not the evidence on file — reject.
+  const photoById = new Map(children.photos.map((photo) => [photo.id, photo]));
+  const mismatches: { photoId: string; reason: string }[] = [];
+  for (const claim of parsed.data.manifest.photoHashes) {
+    const stored = photoById.get(claim.photoId);
+    if (!stored) {
+      mismatches.push({ photoId: claim.photoId, reason: 'not_found' });
+    } else if (stored.sha256 !== claim.sha256) {
+      mismatches.push({ photoId: claim.photoId, reason: 'hash_mismatch' });
+    }
+  }
+  if (mismatches.length > 0) {
+    res.status(422).json({
+      error: 'Submission manifest photo hashes do not match stored evidence',
+      code: 'photo_hash_mismatch',
+      mismatches,
+    });
+    return;
+  }
+
+  // (F2) Server-side gate re-run. The client blocks submit on a clean gate, but
+  // the server must not trust that — re-derive the protocol state from stored
+  // rows and re-run the shared engine. Any hard deficiency rejects.
+  const evaluation = evaluateServerInspection(children);
+  if (evaluation.deficiencies.length > 0) {
+    res.status(422).json({
+      error: 'Inspection has unresolved deficiencies and cannot be submitted',
+      code: 'gate_deficiencies',
+      deficiencies: evaluation.deficiencies,
+    });
+    return;
+  }
+
+  // Record the on-file signature reference into the stored manifest so the
+  // package is self-contained (the client also sends it, but the server is the
+  // source of truth for what's actually on file).
+  const manifestToStore = {
+    ...parsed.data.manifest,
+    signatureOnFile: {
+      url: inspectorProfile.signatureUrl,
+      sha256: inspectorProfile.signatureSha256,
+      signedAt: inspectorProfile.signatureSignedAt
+        ? inspectorProfile.signatureSignedAt.toISOString()
+        : null,
+    },
+  };
+
   const [updated] = await db
     .update(inspectionsTable)
     .set({
       status: 'submitted',
-      submissionManifest: parsed.data.manifest,
+      submissionManifest: manifestToStore,
+      lockedAt: new Date(),
     })
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
 
   res.json(SubmitInspectionResponse.parse({ inspection: updated }));
+});
+
+// M-F (F1) — Pre-flight. Re-runs the shared gate server-side so the inspector
+// can resolve deficiencies while still on-site, before leaving. Authoritative:
+// hydrates stored rows and runs the SAME evaluate() the client runs. Scoped to
+// the record's writers (owning inspector or a manager+) — a same-company peer
+// gets 403, matching every other write-adjacent inspection path. C0-guarded.
+// allowLocked so a submitted record can still be re-checked.
+router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
+  const evaluation = evaluateServerInspection(children);
+
+  res.json(
+    PreflightInspectionResponse.parse({
+      preflight: {
+        deficiencies: evaluation.deficiencies,
+        softFlags: evaluation.softFlags,
+      },
+    }),
+  );
+});
+
+// M-F (F3) — Status & package receipt. Poll an inspection's submission status
+// and a clearly-labeled STUB receipt. The standalone Brain that renders the
+// real package does not exist yet; this receipt only reports what the intake
+// verified (record + verified-photo counts), never a fabricated deliverable.
+router.get('/inspections/:inspectionId/status', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  // The db types submissionManifest loosely (jsonb Record<string, unknown>);
+  // narrow to the fields the receipt counts. The stored value was validated
+  // against SubmissionManifestV1 at submit time.
+  const manifest = (inspection.submissionManifest ?? null) as
+    | { records?: Record<string, unknown>; photoHashes?: unknown[] }
+    | null;
+  const isSubmitted = !!inspection.lockedAt && !!manifest;
+  const recordCount = manifest?.records
+    ? Object.values(manifest.records).reduce<number>(
+        (sum, ids) => sum + (Array.isArray(ids) ? ids.length : 0),
+        0,
+      )
+    : 0;
+  const verifiedPhotoCount = manifest?.photoHashes?.length ?? 0;
+
+  const receipt = isSubmitted
+    ? {
+        stage: 'validated' as const,
+        label: 'Received & validated',
+        message:
+          'STUB: the inspection package was received and its evidence verified at intake. Full package rendering is handled by the standalone Brain, which is not yet built.',
+        isStub: true,
+        verifiedPhotoCount,
+        recordCount,
+        generatedAtUtc: new Date().toISOString(),
+      }
+    : null;
+
+  res.json(
+    GetInspectionStatusResponse.parse({
+      status: inspection.status,
+      lockedAt: inspection.lockedAt ? inspection.lockedAt.toISOString() : null,
+      submissionManifest: manifest,
+      receipt,
+    }),
+  );
+});
+
+// M-F (F2) — Addenda. The only write allowed on a locked inspection. A
+// post-lock correction is appended, never an edit, preserving the original
+// evidentiary record. Requires the same write authority as any other
+// inspection write, but opts into allowLocked. Idempotent by client-supplied id.
+router.post('/inspections/:inspectionId/addenda', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  // An addendum is a POST-lock correction — it exists precisely because the
+  // record is immutable. Before lock, the inspector edits the record directly,
+  // so an addendum on an unlocked inspection is out-of-policy; reject it.
+  if (!inspection.lockedAt) {
+    res.status(409).json({
+      error: 'Addenda can only be filed on a submitted (locked) inspection',
+      code: 'inspection_not_locked',
+    });
+    return;
+  }
+
+  const parsed = CreateInspectionAddendumBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid addendum payload' });
+    return;
+  }
+
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    userId: actor.userId,
+    body: parsed.data.body,
+  };
+
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionAddendaTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionAddendaTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionAddendumResponse.parse({ addendum: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionAddendaTable)
+      .where(
+        and(
+          eq(inspectionAddendaTable.id, parsed.data.id),
+          eq(inspectionAddendaTable.companyId, actor.companyId),
+          eq(inspectionAddendaTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Addendum id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionAddendumResponse.parse({ addendum: existing }));
+    return;
+  }
+
+  const [addendum] = await db.insert(inspectionAddendaTable).values(values).returning();
+  res.status(201).json(CreateInspectionAddendumResponse.parse({ addendum }));
 });
 
 export default router;

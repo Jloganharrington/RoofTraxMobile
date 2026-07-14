@@ -211,7 +211,37 @@ export const GetMyProfileResponse = zod.object({
   "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser']),
   "companyId": zod.string(),
-  "companyName": zod.string()
+  "companyName": zod.string(),
+  "signatureUrl": zod.string().nullable(),
+  "signatureSha256": zod.string().nullable(),
+  "signatureSignedAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary Record the current user's signature-on-file (M-F / F0)
+ */
+
+
+
+
+export const UpdateProfileSignatureBody = zod.object({
+  "signatureUrl": zod.string().min(1),
+  "signatureSha256": zod.string().min(1)
+}).describe('Records the inspector\'s signature-on-file (M-F \/ F0). The client uploads the signature image to object storage via the presigned-URL flow, then sends the servable URL plus a SHA-256 of the exact bytes. The server stamps signedAt server-side.')
+
+export const UpdateProfileSignatureResponse = zod.object({
+  "profile": zod.object({
+  "userId": zod.string(),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
+  "companyId": zod.string(),
+  "companyName": zod.string(),
+  "signatureUrl": zod.string().nullable(),
+  "signatureSha256": zod.string().nullable(),
+  "signatureSignedAt": zod.coerce.date().nullable()
 })
 })
 
@@ -668,8 +698,14 @@ export const ListInspectionsResponse = zod.object({
   "code": zod.string(),
   "message": zod.string()
 }).describe('A single gate-engine finding (deficiency or soft flag).'))
-})
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -891,8 +927,14 @@ export const CreateInspectionResponse = zod.object({
   "code": zod.string(),
   "message": zod.string()
 }).describe('A single gate-engine finding (deficiency or soft flag).'))
-})
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -1102,8 +1144,14 @@ export const GetInspectionResponse = zod.object({
   "code": zod.string(),
   "message": zod.string()
 }).describe('A single gate-engine finding (deficiency or soft flag).'))
-})
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -1351,8 +1399,14 @@ export const UpdateInspectionResponse = zod.object({
   "code": zod.string(),
   "message": zod.string()
 }).describe('A single gate-engine finding (deficiency or soft flag).'))
-})
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -1925,7 +1979,12 @@ export const SubmitInspectionBody = zod.object({
   "code": zod.string(),
   "message": zod.string()
 }).describe('A single gate-engine finding (deficiency or soft flag).'))
-})
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.')
 })
 
@@ -1988,8 +2047,14 @@ export const SubmitInspectionResponse = zod.object({
   "code": zod.string(),
   "message": zod.string()
 }).describe('A single gate-engine finding (deficiency or soft flag).'))
-})
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date(),
   "slopes": zod.array(zod.object({
@@ -2149,6 +2214,117 @@ export const ListScheduledInspectionsResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable()
 }).describe('A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.'))
+})
+
+
+/**
+ * @summary Re-run the shared protocol gate server-side (M-F / F1) so the inspector can resolve deficiencies while still on-site. Authoritative — the server hydrates the record and runs the SAME lib/protocol evaluate() the mobile readiness screen runs.
+ */
+export const PreflightInspectionParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const PreflightInspectionResponse = zod.object({
+  "preflight": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+}).describe('Server-side re-run of the shared protocol gate. Mirrors the client readiness screen\'s evaluation exactly.')
+})
+
+
+/**
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+ */
+export const GetInspectionStatusParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const GetInspectionStatusResponse = zod.object({
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']),
+  "lockedAt": zod.coerce.date().nullable(),
+  "submissionManifest": zod.union([zod.object({
+  "protocolVersion": zod.string(),
+  "generatedAtUtc": zod.string(),
+  "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
+  "photoHashes": zod.array(zod.object({
+  "photoId": zod.string(),
+  "sha256": zod.string()
+})),
+  "gateResults": zod.object({
+  "deficiencies": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).')),
+  "softFlags": zod.array(zod.object({
+  "stage": zod.string(),
+  "code": zod.string(),
+  "message": zod.string()
+}).describe('A single gate-engine finding (deficiency or soft flag).'))
+}),
+  "signatureOnFile": zod.union([zod.object({
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "signedAt": zod.coerce.date().nullish()
+}),zod.null()]).optional()
+}).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
+  "receipt": zod.union([zod.object({
+  "stage": zod.enum(['pending', 'received', 'validated']),
+  "label": zod.string(),
+  "message": zod.string(),
+  "isStub": zod.boolean(),
+  "verifiedPhotoCount": zod.number(),
+  "recordCount": zod.number(),
+  "generatedAtUtc": zod.coerce.date()
+}).describe('STUB receipt (M-F \/ F3). The standalone Brain that renders the real package does not exist yet; this is a clearly-labeled placeholder that reports what the intake verified, never a fabricated deliverable.'),zod.null()])
+})
+
+
+/**
+ * @summary File a post-lock correction as an append-only addendum (M-F / F2). A locked inspection is immutable; corrections never edit the original record. Allowed after lock; the only inspection write that is.
+ */
+export const CreateInspectionAddendumParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CreateInspectionAddendumBody = zod.object({
+  "id": zod.string().optional(),
+  "body": zod.string().min(1)
+}).describe('A post-lock correction. `id` is an optional client-generated id so an offline replay is idempotent.')
+
+export const CreateInspectionAddendumResponse = zod.object({
+  "addendum": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Report whether the per-tenant CRM seam is active or pending (M-F / F4). No data is fabricated — an unconfigured tenant reads "pending".
+ */
+export const GetCrmStatusResponse = zod.object({
+  "crm": zod.object({
+  "enabled": zod.boolean(),
+  "scheduledFeed": zod.enum(['pending', 'active']),
+  "appointmentSync": zod.enum(['pending', 'active']),
+  "reportIngest": zod.enum(['pending', 'active'])
+}).describe('Per-tenant CRM seam status (M-F \/ F4). \"pending\" means no CRM field key is provisioned for the company, so inbound\/outbound threads read empty rather than fabricating data.')
 })
 
 

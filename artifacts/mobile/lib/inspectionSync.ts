@@ -89,6 +89,7 @@ export async function startInspection({
     arrivalConditions: null,
     homeownerFacts: null,
     submissionManifest: null,
+    lockedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -538,20 +539,35 @@ export async function updateHomeownerFacts(
   await patchInspection(queryClient, inspectionId, { homeownerFacts: facts });
 }
 
-/** Records the inspector's methodology attestation + signature (E5 / S8)
- * offline-first. `signatureHash` is a SHA-256 of the captured signature
- * strokes (hashed client-side with expo-crypto) — the raw image never leaves
- * the device. Clears the S8 hard gate. Idempotent by client id. */
+/** Records the inspector's methodology attestation (E5 / S8) offline-first,
+ * applying their signature-on-file (M-F / F0). The inspector no longer draws a
+ * fresh signature per inspection: they capture it once on their profile, and
+ * here they attest to the declaration ("Apply my signature & sign"). The S8
+ * proof recorded is a SHA-256 of the exact declaration text signed; the on-file
+ * signature is recorded by reference (its URL + hash), never re-inlined. Clears
+ * the S8 hard gate. Idempotent by client id. */
 export async function recordSignatureAttestation(
   queryClient: QueryClient,
   inspectionId: string,
   actorUserId: string,
-  signatureHash: string,
-  declarationHash: string,
+  args: {
+    declarationHash: string;
+    signatureUrl: string;
+    signatureSha256: string;
+    signedAt: string | null;
+  },
 ): Promise<void> {
   const id = Crypto.randomUUID();
   const now = new Date().toISOString();
-  const details = { kind: 'methodology_declaration', declarationHash };
+  const details = {
+    kind: 'methodology_declaration',
+    declarationHash: args.declarationHash,
+    signatureRef: {
+      url: args.signatureUrl,
+      sha256: args.signatureSha256,
+      signedAt: args.signedAt,
+    },
+  };
   patchCachedInspection(queryClient, inspectionId, (inspection) => {
     const optimistic: Attestation = {
       id,
@@ -561,7 +577,9 @@ export async function recordSignatureAttestation(
       stage: 'S8',
       attestationType: 'stage_signoff',
       details,
-      signatureData: signatureHash,
+      // The on-file signature hash stands in as the attestation's signature
+      // proof; the raw image lives in object storage, referenced above.
+      signatureData: args.signatureSha256,
       attestedAt: now,
     };
     return { ...inspection, attestations: [...(inspection.attestations ?? []), optimistic] };
@@ -571,7 +589,7 @@ export async function recordSignatureAttestation(
     stage: 'S8',
     attestationType: 'stage_signoff',
     details,
-    signatureData: signatureHash,
+    signatureData: args.signatureSha256,
   };
   await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
   void drainOutbox();

@@ -34,7 +34,10 @@ export type IconName =
   | 'navigation'
   | 'play'
   | 'square'
-  | 'wind';
+  | 'wind'
+  | 'edit-3'
+  | 'server'
+  | 'file-text';
 
 type IconProps = {
   name: IconName;
@@ -110,6 +113,32 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
         <>
           <Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" {...strokeProps} />
           <Circle cx={12} cy={10} r={3} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'edit-3' && (
+        <>
+          <Path d="M12 20h9" {...strokeProps} />
+          <Path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z" {...strokeProps} />
+        </>
+      )}
+
+      {name === 'server' && (
+        <>
+          <Rect x={2} y={2} width={20} height={8} rx={2} ry={2} {...strokeProps} />
+          <Rect x={2} y={14} width={20} height={8} rx={2} ry={2} {...strokeProps} />
+          <Line x1={6} y1={6} x2={6.01} y2={6} {...strokeProps} />
+          <Line x1={6} y1={18} x2={6.01} y2={18} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'file-text' && (
+        <>
+          <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" {...strokeProps} />
+          <Polyline points="14 2 14 8 20 8" {...strokeProps} />
+          <Line x1={16} y1={13} x2={8} y2={13} {...strokeProps} />
+          <Line x1={16} y1={17} x2={8} y2={17} {...strokeProps} />
+          <Polyline points="10 9 9 9 8 9" {...strokeProps} />
         </>
       )}
 

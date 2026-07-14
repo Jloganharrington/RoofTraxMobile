@@ -16,4 +16,10 @@ export interface Profile {
   department: Department;
   companyId: string;
   companyName: string;
+  /** @nullable */
+  signatureUrl: string | null;
+  /** @nullable */
+  signatureSha256: string | null;
+  /** @nullable */
+  signatureSignedAt: Date | null;
 }
