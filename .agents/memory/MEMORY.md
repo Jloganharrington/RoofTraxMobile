@@ -10,3 +10,4 @@
 - [E2E testing api-server routes](api-server-e2e-testing.md) — no test framework existed; sessions are DB rows, so tests can mint a session directly and hit the Express app with supertest.
 - [expo-file-system v19 API split](expo-file-system-v19-api-split.md) — never import `/legacy` (compiles raw upstream source); new File/Directory classes need a local interface cast, their own methods aren't typed.
 - [Per-package pnpm installs](pnpm-package-install-per-package.md) — sandboxed install callback rejects workspace-member targets; `cd` into the package and `pnpm add` via shell instead.
+- [orval coerce.string() query params](orval-coerce-string-query-params.md) — a missing required query param passes server zod as the literal "undefined"; guard raw req.query presence first.
