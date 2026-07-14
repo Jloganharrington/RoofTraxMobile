@@ -7,6 +7,7 @@ import { CompanyGateScreen } from '@/components/CompanyGateScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { useOutboxSync } from '@/lib/outbox/useOutboxSync';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -37,6 +38,14 @@ function AuthGate() {
   if (!isAuthenticated) {
     return <CompanyGateScreen />;
   }
+
+  return <AuthenticatedStack />;
+}
+
+function AuthenticatedStack() {
+  // Only runs once the session is authenticated — the outbox drainer needs
+  // an authenticated API client to sync queued inspection writes.
+  useOutboxSync();
 
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>

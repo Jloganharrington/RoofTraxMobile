@@ -13,17 +13,19 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCreateInspectionPhoto } from '@workspace/api-client-react';
 import type { InspectionSubjectType } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import {
   captureEvidencePhoto,
-  uploadEvidencePhoto,
+  persistCapturedPhotoForOutbox,
   type CapturedEvidencePhoto,
   type PhotoAnnotation,
   type TriadRole,
 } from '@/lib/inspectionPhoto';
+import { drainOutbox } from '@/lib/outbox/drain';
+import { enqueueOutboxItem } from '@/lib/outbox/queue';
+import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 
 // Evidence-photo capture module (Phase M-A / A6): walks a field inspector
 // through the wide -> mid -> close triad for one subject (a slope,
@@ -58,11 +60,10 @@ export default function InspectionPhotoCaptureScreen() {
     subjectType: InspectionSubjectType;
     subjectId?: string;
   }>();
-  const createPhoto = useCreateInspectionPhoto();
-
   const [shots, setShots] = useState<Partial<Record<TriadRole, AnnotatedShot>>>({});
   const [capturingRole, setCapturingRole] = useState<TriadRole | null>(null);
   const [uploadingRole, setUploadingRole] = useState<TriadRole | null>(null);
+  const [queueing, setQueueing] = useState(false);
   const [annotatingRole, setAnnotatingRole] = useState<TriadRole | null>(null);
   const [pendingAnnotation, setPendingAnnotation] = useState<{ x: number; y: number } | null>(null);
   const [noteText, setNoteText] = useState('');
@@ -123,39 +124,55 @@ export default function InspectionPhotoCaptureScreen() {
       return;
     }
 
-    for (const step of TRIAD_STEPS) {
-      const shot = shots[step.role];
-      if (!shot) continue;
+    // Queueing is local-first and network-independent: each shot is
+    // copied to durable storage and hashed on-device, then handed to the
+    // outbox. The outbox's own drainer uploads and posts it — immediately
+    // if online, automatically once connectivity returns if not. That
+    // means this screen can finish (and the inspector can move on) even in
+    // airplane mode.
+    setQueueing(true);
+    try {
+      for (const step of TRIAD_STEPS) {
+        const shot = shots[step.role];
+        if (!shot) continue;
 
-      setUploadingRole(step.role);
-      try {
-        const uploaded = await uploadEvidencePhoto(shot);
-        await createPhoto.mutateAsync({
+        setUploadingRole(step.role);
+        const persisted = await persistCapturedPhotoForOutbox(shot);
+        const payload: InspectionPhotoOutboxPayload = {
           inspectionId,
-          data: {
-            subjectType,
-            subjectId: params.subjectId ?? undefined,
-            triadRole: step.role,
-            url: uploaded.url,
-            sha256: uploaded.sha256,
-            exifJson: uploaded.exifJson,
-            overlayJson: uploaded.overlayJson,
-            capturedAtUtc: uploaded.capturedAtUtc,
-            latitude: uploaded.latitude,
-            longitude: uploaded.longitude,
-          },
-        });
-      } catch {
-        setUploadingRole(null);
-        Alert.alert('Upload failed', `Could not save the ${step.title.toLowerCase()}. Try again.`);
-        return;
+          subjectType,
+          subjectId: params.subjectId ?? null,
+          triadRole: step.role,
+          localFilePath: persisted.localFilePath,
+          mimeType: shot.mimeType,
+          sha256: persisted.sha256,
+          exifJson: persisted.exifJson,
+          overlayJson: persisted.overlayJson,
+          capturedAtUtc: persisted.capturedAtUtc,
+          latitude: persisted.latitude,
+          longitude: persisted.longitude,
+        };
+        await enqueueOutboxItem('inspection.photo', payload);
       }
+    } catch {
+      setQueueing(false);
+      setUploadingRole(null);
+      Alert.alert('Could not queue photos', 'Something went wrong saving the photos locally. Try again.');
+      return;
     }
     setUploadingRole(null);
+    setQueueing(false);
+
+    // Fire-and-forget: attempt an immediate sync if online, but don't make
+    // the inspector wait on it — the periodic/connectivity-triggered drain
+    // will retry regardless of whether this attempt succeeds.
+    drainOutbox();
+
+    Alert.alert('Photos queued', 'They will upload automatically once you have a connection.');
     router.back();
   }
 
-  const isBusy = capturingRole !== null || uploadingRole !== null || createPhoto.isPending;
+  const isBusy = capturingRole !== null || uploadingRole !== null || queueing;
 
   return (
     <ScrollView
@@ -222,7 +239,7 @@ export default function InspectionPhotoCaptureScreen() {
               </Pressable>
             )}
             {isUploadingThis && (
-              <Text style={[styles.stepHint, { color: colors.mutedForeground }]}>Uploading…</Text>
+              <Text style={[styles.stepHint, { color: colors.mutedForeground }]}>Saving locally…</Text>
             )}
           </View>
         );

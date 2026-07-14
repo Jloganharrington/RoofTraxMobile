@@ -1,9 +1,32 @@
 import * as Crypto from 'expo-crypto';
-import * as FileSystem from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 
-import { uploadFile } from './upload';
+// expo-file-system@19's `File`/`Directory` classes extend a native-module
+// property typed as `typeof File`/`typeof Directory` (see
+// ExpoFileSystem.d.ts), which TypeScript does not treat as inheriting
+// instance members — every documented instance method (bytes/copy/create/
+// uri/etc.) is consequently missing from the exported class's own type,
+// even though it exists at runtime. This local interface documents the
+// subset this module relies on and casts around the upstream declaration
+// gap rather than fighting it file-by-file.
+interface UsableFile {
+  readonly uri: string;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
+  copy(destination: UsableFile | UsableDirectory): void;
+  exists: boolean;
+  delete(): void;
+}
+interface UsableDirectory {
+  create(options?: { intermediates?: boolean; idempotent?: boolean }): void;
+}
+function asFile(file: File): UsableFile {
+  return file as unknown as UsableFile;
+}
+function asDirectory(dir: Directory): UsableDirectory {
+  return dir as unknown as UsableDirectory;
+}
 
 export type TriadRole = 'wide' | 'mid' | 'close';
 
@@ -32,14 +55,6 @@ export interface CapturedEvidencePhoto {
   annotations: PhotoAnnotation[];
 }
 
-function toBase64Bytes(base64: string): ArrayBuffer {
-  const binary = globalThis.atob(base64);
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return buffer;
-}
-
 function bytesToHex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -48,13 +63,10 @@ function bytesToHex(bytes: ArrayBuffer): string {
 
 /**
  * Hashes the exact bytes of a local file with SHA-256, so the resulting
- * digest matches whatever bytes end up in object storage. Reads through
- * base64 (expo-file-system's only binary-safe read on all platforms) rather
- * than hashing a string, which would silently hash the wrong bytes.
+ * digest matches whatever bytes end up in object storage.
  */
 export async function sha256OfFile(localUri: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
-  const bytes = toBase64Bytes(base64);
+  const bytes = await asFile(new File(localUri)).bytes();
   const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
   return bytesToHex(digest);
 }
@@ -138,15 +150,16 @@ export async function captureEvidencePhoto(triadRole: TriadRole): Promise<Captur
 }
 
 /**
- * Uploads the original, unmodified photo bytes through the existing
- * tenant-scoped presigned storage pipeline, then returns the metadata
- * payload the inspection-photo API expects. Annotations travel separately
- * as `overlayJson` — they never get burned into the image itself.
+ * Copies the captured photo out of the camera/picker's cache location into
+ * this app's stable document storage, and hashes the exact bytes that get
+ * copied. Both steps are local-only (no network), so they succeed offline
+ * and the result is safe to hand to the outbox: the OS can reclaim
+ * ImagePicker's cache at any time, but it will not touch our own document
+ * directory, so the file is still there whenever connectivity returns —
+ * including after the app restarts or the device sat in airplane mode.
  */
-export async function uploadEvidencePhoto(
-  photo: CapturedEvidencePhoto,
-): Promise<{
-  url: string;
+export async function persistCapturedPhotoForOutbox(photo: CapturedEvidencePhoto): Promise<{
+  localFilePath: string;
   sha256: string;
   exifJson: Record<string, unknown> | null;
   overlayJson: Record<string, unknown> | null;
@@ -154,13 +167,18 @@ export async function uploadEvidencePhoto(
   latitude: number | null;
   longitude: number | null;
 }> {
-  const [url, sha256] = await Promise.all([
-    uploadFile(photo.localUri, photo.mimeType),
-    sha256OfFile(photo.localUri),
-  ]);
+  const outboxDir = new Directory(Paths.document, 'outbox-photos');
+  asDirectory(outboxDir).create({ intermediates: true, idempotent: true });
+
+  const extension = photo.localUri.split('.').pop() ?? 'jpg';
+  const destination = new File(outboxDir, `${Crypto.randomUUID()}.${extension}`);
+  asFile(new File(photo.localUri)).copy(asFile(destination));
+  const localFilePath = asFile(destination).uri;
+
+  const sha256 = await sha256OfFile(localFilePath);
 
   return {
-    url,
+    localFilePath,
     sha256,
     exifJson: photo.exif,
     overlayJson: photo.annotations.length > 0 ? { annotations: photo.annotations } : null,
