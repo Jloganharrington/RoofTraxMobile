@@ -612,6 +612,15 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
 
+  lib/protocol:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.4
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.0)(yaml@2.9.0)
+
   scripts:
     devDependencies:
       '@types/node':
