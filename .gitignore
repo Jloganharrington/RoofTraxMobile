@@ -47,3 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Transient uploaded scratch assets — keep on disk, out of git
+attached_assets/*.zip

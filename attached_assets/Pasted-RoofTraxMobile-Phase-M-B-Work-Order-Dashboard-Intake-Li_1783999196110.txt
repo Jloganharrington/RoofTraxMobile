@@ -1,0 +1,82 @@
+RoofTraxMobile — Phase M-B Work Order: Dashboard, Intake & Live Storm · Protocol stages S0–S1
+Second phase of the field-platform build. Depends on M-A being merged (permission shell, inspection tables, lib/protocol, evidence-photo module, offline outbox). M-B ships the first user-visible slice on both sides: the dashboard home for everyone, canvassing time tracking, and the front of the inspection flow — starting an inspection through arrival and live storm verification.
+
+Two standing constraints (unchanged from M-A)
+Canvassing must keep working. The inspection additions are new screens/tables/routes. One intended navigation change this phase: the app home becomes the dashboard instead of the map — the map is now reached via the "Add Pins" action. Every canvassing capability (create/edit pin, bulk upload, team, map, location ping) must remain fully functional through the new entry point. If anything about pin behavior itself changes, stop and flag it.
+The app computes nothing derivable server-side. Stats and rankings are computed by the api-server from stored data and returned; the app displays them. Storm scoring, package math, etc. remain server/Brain concerns.
+Isolation boundary — do NOT modify
+Pin CRUD behavior and validation (routes/pins.ts), MapScreen.* pin logic, pin-new/edit.tsx, bulk-upload.tsx, location ping.
+The OIDC/token login mechanism.
+Generated lib/api-zod / lib/api-client-react — regenerate via Orval, never hand-edit.
+Two CRM seams that are NOT built in this phase
+The CRM (RoofTraxAdmin) owns the appointment + inspection-schedule lifecycle, and its multi-tenant rollout is in progress. Do not build the CRM integration in M-B. Instead:
+
+Scheduled inspections (B3): build the list to read from a server source; that source returns only local inspections for now (walk-ups). The CRM-fed scheduled entries stay empty behind a clearly-marked seam that M-F wires. Do not call RoofTraxAdmin.
+Appointment "completed" metric (B1 panel): appointments set are computed locally from pin data. Appointments completed are CRM-owned — expose the field, source it from a server value that M-F will populate, and render a clean "pending" / — state until then. Do not fabricate a local completion metric.
+B1 — Dashboard home
+The new landing surface for every role: stats first, then department-gated action buttons (the buttons come from M-A's resolved capabilities — canvasser → Add Pins; inspector_canvasser → Add a Pin + Inspections; super_admin → all).
+
+Activity metrics, canvassing-only, current-period (glanceable, not analytical): pins dropped, appointments set, appointments completed (CRM-stubbed per the seam above), hours tracked (from B2).
+Scope by role: field_rep sees own numbers only. manager/admin/super_admin get a total / department / individual toggle. Enforce this server-side, not just in the UI.
+Competitive panel (trailing 30 days): rows for Me, Team total, and My rank, across two metrics — appointments set (computed locally) and completed (CRM-stub). Rank-only for field_rep — reps never see peers' individual numbers. manager+ get the full named leaderboard.
+Server: an activity-stats endpoint, company-scoped, that respects role (own vs. team/department/individual filter) and computes counts + the rank over the canvassing-department cohort. Rank and aggregates are computed server-side.
+Acceptance: field_rep sees only own stats and a rank (no peer numbers); manager+ toggle returns correct total/department/individual aggregates; rank matches a hand-computed fixture; completed-metric renders its pending state cleanly.
+
+B2 — Canvassing time tracking
+New tenant-scoped table canvassing_sessions (id, companyId, userId, startedAt, endedAt nullable, duration derived). At most one open session per user at a time.
+Clock in / clock out on the Add Pins flow; open-session indicator.
+Hours (today / period) surface on the dashboard.
+Additive only — starting/stopping a session must not alter pin creation.
+Acceptance: open/close lifecycle enforced (no double-open); hours aggregate correctly on the dashboard; tenant-isolated.
+
+B3 — Inspections list + start-from-pin
+Entry gated to inspector_canvasser + super_admin.
+
+List shows: in-progress / local inspections, plus a Scheduled section reading from the server source (empty for now per the CRM seam — M-F fills it).
+"Start an Inspection" → the drop-a-pin flow (reuse the existing pin location capture) → create an inspection anchored to that pin (inspection.pinId), status = capturing. This is the ad-hoc walk-up path.
+When starting from a scheduled entry (once M-F supplies them), prefill location + claim identity from the scheduled record and confirm the pin at that location instead of a blank drop. Build the prefill path now against the scheduled-record shape; it simply has no data to run on until M-F.
+Acceptance: starting an inspection creates a pin + a linked inspection in capturing; the list shows it; scheduled section renders empty cleanly.
+
+B4 — Claim intake + offline bundle
+Intake form: insuredName, propertyAddress, carrier, policyNumber, claimNumber, dateOfLoss. Prefill from the pin (address; customer name → insured) and/or the scheduled record.
+Equipment attestation (S0): checklist — ladder, chalk, scale gauge, pitch gauge, moisture meter, sample bags — written as an attestations row (type = equipment).
+Offline bundle: on start, cache the inspection record + the lib/protocol checklists to SQLite (via the M-A outbox/store); show a "ready for field" indicator so the inspector knows they can go offline.
+Acceptance: intake persists and prefills correctly; equipment attestation stored; a started inspection is fully usable with the device in airplane mode.
+
+B5 — Weather engine: extract & adapt from RoofTrax Pro
+Reuse RoofTrax Pro's tested weather engine as the source of truth rather than re-implementing. A RoofTrax Pro git zip is provided; extract the deterministic storm logic and adapt it into RoofTraxMobile's api-server — this is extract-and-adapt, not a wholesale drop-in.
+
+Source files (in the provided rooftrax-pro zip):
+artifacts/api-server/src/routes/weather.ts — VisualCrossing Timeline retrieval + storm-event gating (the part to reuse).
+artifacts/api-server/src/routes/hail.ts — hail scoring; contains the LLM call — the part to exclude.
+artifacts/api-server/src/routes/inspections.ts + any shared storm-scoring util/types they import.
+lib/db/src/schema/inspectionDetails.ts — reference only, so you see the old persistence shape and know to map away from it.
+Extract the deterministic part only. Identify the seam where the storm flow calls the LLM hail-scoring (claude-opus-4-8, Anthropic SDK) and cut there. Do not carry the LLM path into M-B — it's deferred pending the model-consistency decision (Pro's Opus vs. the Admin app's Gemini) and will be added Brain-side later. No Anthropic/LLM dependency in M-B.
+Rewrite persistence + tenancy. rooftrax-pro stores to its own inspection_details table (weatherEvents, selectedStorm). Do not copy that. Adapt storage to RoofTraxMobile's M-A schema — write the confirmed storm to inspection.stormConfirmedRef, company-scoped and permission-gated like every other inspection route.
+Endpoint contract. Expose a tenant-scoped endpoint shaped to what the app needs: dateOfLoss + property location → candidate storm events. Env: VISUALCROSSING_API_KEY (do not bring the Anthropic key across).
+Mobile + offline (unchanged): the app calls it live in S0/S1; the inspector confirms the storm of record → inspection.stormConfirmedRef. If offline, queue the pull + confirmation and complete on reconnect. Missing confirmation is a SOFT gate, never a hard block.
+Acceptance: candidates from the extracted VisualCrossing logic match rooftrax-pro's behavior for a known date/location; confirmation writes stormConfirmedRef; offline soft-gate path works; a grep confirms no Anthropic/LLM call in the path.
+
+B6 — Arrival flow (S1)
+Address-verification photo + front-of-risk wide shot via the M-A evidence module (original + hash + GPS/UTC).
+GPS-vs-geocode tolerance check (reuse the geocode routes): pass / fail / override-with-attestation (a failed check is recorded, not silently ignored).
+Conditions log (sky, wind, temp) and personnel-present note.
+Everything captured offline-first through the outbox.
+Acceptance: arrival photos carry metadata + hash; tolerance check produces pass/fail/override with the override recorded as an attestation; all of S1 completes offline and syncs.
+
+Testing gate M-B (all must pass before the phase closes)
+E2E: create inspection → cache → airplane mode → complete S0–S1 → reconnect → server has the record, attestations, and photos with matching hashes.
+Storm: online candidate pull + confirmation writes stormConfirmedRef; offline-retry soft-gate path (inspection proceeds, confirmation completes on reconnect); confirm no LLM call in the path.
+GPS tolerance: unit tests for pass / fail / override-with-attestation.
+Intake: pin/scheduled prefill correctness; start-from-pin creates the linked inspection.
+Dashboard stats: per-role correctness — field_rep own-only (rank without peer numbers); manager+ total/department/individual aggregates match fixtures; time-tracking hours; competitive panel appointments-set correct and completed-metric shows its pending state.
+Standing pin regression: full canvassing flow still works through the new dashboard → Add Pins entry — create/edit pin, bulk upload, team, profile, map, location ping — unchanged in behavior.
+Workspace typecheck clean.
+Produce evidence, not assertions: paste test output; include a device screenshot of the dashboard (field_rep view and a manager view) and confirm the pin regression passed.
+
+Execution discipline
+Implement → typecheck → full test suite → commit per-item → push.
+Do not build the CRM integration (scheduled feed, appointment-completed) — stub the seams for M-F as described. When extracting the weather engine from the provided RoofTrax Pro zip, take the deterministic retrieval + gating only and exclude the AI hail-scoring (cut at the LLM seam).
+No auth-bypass, dev-login, or scratch session endpoint in committed code.
+The pushed diff is independently reviewed against origin before pull — keep changes scoped to M-B and additive per the isolation boundary. If any item forces a change outside it (beyond the intended home→dashboard navigation move), stop and report.
+Deliverable report: per-item summary; the canvassing_sessions schema; how the two CRM seams and the deferred AI scoring were stubbed/flagged; test output per gate bullet; dashboard screenshots; and explicit confirmation that the pin-canvassing regression passed and no bypass endpoint was committed.
