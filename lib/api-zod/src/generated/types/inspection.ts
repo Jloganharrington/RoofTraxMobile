@@ -5,7 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArrivalConditions } from './arrivalConditions';
 import type { InspectionStatus } from './inspectionStatus';
+import type { StormConfirmedRef } from './stormConfirmedRef';
 
 export interface Inspection {
   id: string;
@@ -30,6 +32,10 @@ export interface Inspection {
   longitude: number | null;
   /** @nullable */
   notes: string | null;
+  /** @nullable */
+  dateOfLoss: string | null;
+  stormConfirmedRef: StormConfirmedRef | null;
+  arrivalConditions: ArrivalConditions | null;
   createdAt: Date;
   updatedAt: Date;
 }

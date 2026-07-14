@@ -19,6 +19,7 @@ import {
   CreateTestSquareResponse,
   GetInspectionResponse,
   ListInspectionsResponse,
+  ListScheduledInspectionsResponse,
   UpdateInspectionBody,
   UpdateInspectionResponse,
 } from '@workspace/api-zod';
@@ -99,24 +100,64 @@ router.post('/inspections', async (req: Request, res: Response) => {
     return;
   }
 
-  const [inspection] = await db
-    .insert(inspectionsTable)
-    .values({
-      companyId: actor.companyId,
-      inspectorUserId: parsed.data.inspectorUserId ?? actor.userId,
-      pinId: parsed.data.pinId ?? undefined,
-      claimNumber: parsed.data.claimNumber ?? undefined,
-      policyNumber: parsed.data.policyNumber ?? undefined,
-      carrierName: parsed.data.carrierName ?? undefined,
-      insuredName: parsed.data.insuredName ?? undefined,
-      address: parsed.data.address ?? undefined,
-      latitude: parsed.data.latitude ?? undefined,
-      longitude: parsed.data.longitude ?? undefined,
-      notes: parsed.data.notes ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectorUserId: parsed.data.inspectorUserId ?? actor.userId,
+    status: parsed.data.status ?? undefined,
+    pinId: parsed.data.pinId ?? undefined,
+    claimNumber: parsed.data.claimNumber ?? undefined,
+    policyNumber: parsed.data.policyNumber ?? undefined,
+    carrierName: parsed.data.carrierName ?? undefined,
+    insuredName: parsed.data.insuredName ?? undefined,
+    address: parsed.data.address ?? undefined,
+    latitude: parsed.data.latitude ?? undefined,
+    longitude: parsed.data.longitude ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+    dateOfLoss: parsed.data.dateOfLoss ?? undefined,
+  };
+
+  // Offline-first: when the client supplies its own id, creation is
+  // idempotent so a queued offline "start" can be retried safely. A retry
+  // never clobbers edits made after the first successful create — it simply
+  // returns the existing row.
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionsTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionsTable.id })
+      .returning();
+
+    if (inserted) {
+      res.status(201).json(CreateInspectionResponse.parse({ inspection: inserted }));
+      return;
+    }
+
+    // Conflict: id already exists. Only return it if it's in this company.
+    const existing = await loadInspectionInCompany(parsed.data.id, actor.companyId);
+    if (!existing) {
+      res.status(409).json({ error: 'Inspection id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionResponse.parse({ inspection: existing }));
+    return;
+  }
+
+  const [inspection] = await db.insert(inspectionsTable).values(values).returning();
 
   res.status(201).json(CreateInspectionResponse.parse({ inspection }));
+});
+
+// CRM seam (B3): scheduled inspections come from the CRM. Until that seam is
+// wired (a later phase) this returns an empty list — the shape is fixed so
+// the mobile prefill path can be built ahead of the data. Declared before
+// the "/inspections/:inspectionId" route so "scheduled" isn't captured as an
+// id.
+router.get('/inspections/scheduled', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  res.json(ListScheduledInspectionsResponse.parse({ scheduled: [] }));
 });
 
 router.get('/inspections/:inspectionId', async (req: Request, res: Response) => {
@@ -153,6 +194,7 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     .update(inspectionsTable)
     .set({
       ...(parsed.data.status !== undefined && { status: parsed.data.status }),
+      ...(parsed.data.pinId !== undefined && { pinId: parsed.data.pinId }),
       ...(parsed.data.claimNumber !== undefined && { claimNumber: parsed.data.claimNumber }),
       ...(parsed.data.policyNumber !== undefined && { policyNumber: parsed.data.policyNumber }),
       ...(parsed.data.carrierName !== undefined && { carrierName: parsed.data.carrierName }),
@@ -161,6 +203,13 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       ...(parsed.data.latitude !== undefined && { latitude: parsed.data.latitude }),
       ...(parsed.data.longitude !== undefined && { longitude: parsed.data.longitude }),
       ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
+      ...(parsed.data.dateOfLoss !== undefined && { dateOfLoss: parsed.data.dateOfLoss }),
+      ...(parsed.data.stormConfirmedRef !== undefined && {
+        stormConfirmedRef: parsed.data.stormConfirmedRef,
+      }),
+      ...(parsed.data.arrivalConditions !== undefined && {
+        arrivalConditions: parsed.data.arrivalConditions,
+      }),
     })
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
@@ -442,6 +491,8 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
       inspectionId,
       userId: actor.userId,
       stage: parsed.data.stage ?? undefined,
+      attestationType: parsed.data.attestationType ?? undefined,
+      details: parsed.data.details ?? undefined,
       signatureData: parsed.data.signatureData ?? undefined,
     })
     .returning();

@@ -24,6 +24,12 @@ tags:
     description: Live rep location tracking.
   - name: Geocode
     description: Coordinate/address lookups.
+  - name: Canvassing
+    description: Canvassing time tracking (clock in/out).
+  - name: Activity
+    description: Company-scoped canvassing activity stats, ranks, and leaderboards.
+  - name: Weather
+    description: Deterministic candidate storm events (VisualCrossing, no AI scoring).
   - name: Inspections
     description: >-
       Forensic insurance-inspection records and their child capture data
@@ -1300,6 +1306,194 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/scheduled:
+    get:
+      tags: [Inspections]
+      operationId: listScheduledInspections
+      summary: List CRM-scheduled inspections (empty until the CRM seam is wired)
+      responses:
+        "200":
+          description: Scheduled inspection list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledInspectionListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /canvassing/current:
+    get:
+      tags: [Canvassing]
+      operationId: getCurrentCanvassingSession
+      summary: Get the caller's currently-open canvassing session, if any
+      responses:
+        "200":
+          description: The open session, or null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvassingCurrentEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /canvassing/clock-in:
+    post:
+      tags: [Canvassing]
+      operationId: clockInCanvassing
+      summary: Start a canvassing session
+      responses:
+        "201":
+          description: Session started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvassingSessionEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: A session is already open for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /canvassing/clock-out:
+    post:
+      tags: [Canvassing]
+      operationId: clockOutCanvassing
+      summary: End the caller's open canvassing session
+      responses:
+        "200":
+          description: Session ended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvassingSessionEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No open session to end.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /activity-stats:
+    get:
+      tags: [Activity]
+      operationId: getActivityStats
+      summary: Company-scoped canvassing activity stats, rank, and leaderboard
+      description: >-
+        Field reps see only their own current-period metrics plus their
+        rank. Managers and above may toggle scope and see a named
+        leaderboard. All scoping and ranking is computed server-side over
+        the canvassing cohort.
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ActivityScope"
+        - name: userId
+          in: query
+          required: false
+          description: Target user for scope=individual (manager+ only).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity stats.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityStatsEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted to view the requested scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /weather/events:
+    get:
+      tags: [Weather]
+      operationId: getWeatherEvents
+      summary: Deterministic candidate storm events for a location and date of loss
+      description: >-
+        Extracted VisualCrossing retrieval + gating logic (no AI scoring).
+        Returns qualifying severe-weather candidates. Gated by the
+        inspection module permission.
+      parameters:
+        - name: location
+          in: query
+          required: true
+          description: Property location — "lat,long" or a city/address string.
+          schema:
+            type: string
+        - name: dateOfLoss
+          in: query
+          required: false
+          description: Claimed date of loss (YYYY-MM-DD); prioritizes candidates near it.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Candidate storm events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeatherCandidatesEnvelope"
+        "400":
+          description: Invalid query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Weather provider error or not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -1848,6 +2042,52 @@ components:
     CaptureStage:
       type: string
       enum: [S0, S1, S2, S3, S4, S5, S6, S7, S8, S9]
+    AttestationType:
+      type: string
+      enum: [equipment, gps_override, stage_signoff]
+
+    StormConfirmedRef:
+      type: object
+      description: >-
+        The inspector-confirmed storm of record (B5). Raw snapshot of the
+        single severe-weather event selected as cause of loss.
+      required:
+        [date, type, hailSize, windSpeed, distance, description, queriedLocation, dateOfLoss, confirmedAtUtc]
+      properties:
+        date:
+          type: string
+        type:
+          type: string
+          enum: [hail, wind, tornado]
+        hailSize:
+          type: [number, "null"]
+        windSpeed:
+          type: [number, "null"]
+        distance:
+          type: [number, "null"]
+        description:
+          type: [string, "null"]
+        queriedLocation:
+          type: string
+        dateOfLoss:
+          type: [string, "null"]
+        confirmedAtUtc:
+          type: string
+    ArrivalConditions:
+      type: object
+      description: Arrival-conditions log captured in S1 (B6).
+      required: [sky, wind, temp, personnelPresent, recordedAtUtc]
+      properties:
+        sky:
+          type: [string, "null"]
+        wind:
+          type: [string, "null"]
+        temp:
+          type: [string, "null"]
+        personnelPresent:
+          type: [string, "null"]
+        recordedAtUtc:
+          type: string
 
     Inspection:
       type: object
@@ -1866,6 +2106,9 @@ components:
           latitude,
           longitude,
           notes,
+          dateOfLoss,
+          stormConfirmedRef,
+          arrivalConditions,
           createdAt,
           updatedAt,
         ]
@@ -1896,6 +2139,16 @@ components:
           type: [number, "null"]
         notes:
           type: [string, "null"]
+        dateOfLoss:
+          type: [string, "null"]
+        stormConfirmedRef:
+          oneOf:
+            - $ref: "#/components/schemas/StormConfirmedRef"
+            - type: "null"
+        arrivalConditions:
+          oneOf:
+            - $ref: "#/components/schemas/ArrivalConditions"
+            - type: "null"
         createdAt:
           type: string
           format: date-time
@@ -1905,6 +2158,14 @@ components:
     CreateInspectionInput:
       type: object
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert), so a queued offline
+            start can be safely retried.
+        status:
+          $ref: "#/components/schemas/InspectionStatus"
         pinId:
           type: [string, "null"]
         inspectorUserId:
@@ -1926,11 +2187,15 @@ components:
           type: [number, "null"]
         notes:
           type: [string, "null"]
+        dateOfLoss:
+          type: [string, "null"]
     UpdateInspectionInput:
       type: object
       properties:
         status:
           $ref: "#/components/schemas/InspectionStatus"
+        pinId:
+          type: [string, "null"]
         claimNumber:
           type: [string, "null"]
         policyNumber:
@@ -1947,6 +2212,16 @@ components:
           type: [number, "null"]
         notes:
           type: [string, "null"]
+        dateOfLoss:
+          type: [string, "null"]
+        stormConfirmedRef:
+          oneOf:
+            - $ref: "#/components/schemas/StormConfirmedRef"
+            - type: "null"
+        arrivalConditions:
+          oneOf:
+            - $ref: "#/components/schemas/ArrivalConditions"
+            - type: "null"
     InspectionEnvelope:
       type: object
       required: [inspection]
@@ -2305,7 +2580,7 @@ components:
 
     Attestation:
       type: object
-      required: [id, companyId, inspectionId, userId, stage, signatureData, attestedAt]
+      required: [id, companyId, inspectionId, userId, stage, attestationType, details, signatureData, attestedAt]
       properties:
         id:
           type: string
@@ -2319,6 +2594,13 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CaptureStage"
             - type: "null"
+        attestationType:
+          oneOf:
+            - $ref: "#/components/schemas/AttestationType"
+            - type: "null"
+        details:
+          type: [object, "null"]
+          additionalProperties: true
         signatureData:
           type: [string, "null"]
         attestedAt:
@@ -2331,6 +2613,13 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CaptureStage"
             - type: "null"
+        attestationType:
+          oneOf:
+            - $ref: "#/components/schemas/AttestationType"
+            - type: "null"
+        details:
+          type: [object, "null"]
+          additionalProperties: true
         signatureData:
           type: [string, "null"]
     AttestationEnvelope:
@@ -2339,3 +2628,181 @@ components:
       properties:
         attestation:
           $ref: "#/components/schemas/Attestation"
+
+    CanvassingSession:
+      type: object
+      required: [id, companyId, userId, startedAt, endedAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        userId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+    CanvassingSessionEnvelope:
+      type: object
+      required: [session]
+      properties:
+        session:
+          $ref: "#/components/schemas/CanvassingSession"
+    CanvassingCurrentEnvelope:
+      type: object
+      required: [session]
+      properties:
+        session:
+          oneOf:
+            - $ref: "#/components/schemas/CanvassingSession"
+            - type: "null"
+
+    ScheduledInspection:
+      type: object
+      description: >-
+        A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam —
+        for now the server returns an empty list; the shape is fixed so the
+        prefill path can be built ahead of the data.
+      required:
+        [id, scheduledFor, insuredName, propertyAddress, carrier, policyNumber, claimNumber, dateOfLoss, latitude, longitude]
+      properties:
+        id:
+          type: string
+        scheduledFor:
+          type: [string, "null"]
+          format: date-time
+        insuredName:
+          type: [string, "null"]
+        propertyAddress:
+          type: [string, "null"]
+        carrier:
+          type: [string, "null"]
+        policyNumber:
+          type: [string, "null"]
+        claimNumber:
+          type: [string, "null"]
+        dateOfLoss:
+          type: [string, "null"]
+        latitude:
+          type: [number, "null"]
+        longitude:
+          type: [number, "null"]
+    ScheduledInspectionListEnvelope:
+      type: object
+      required: [scheduled]
+      properties:
+        scheduled:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduledInspection"
+
+    ActivityScope:
+      type: string
+      enum: [own, total, department, individual]
+    LeaderboardEntry:
+      type: object
+      required: [userId, name, pinsDropped, appointmentsSet, appointmentsCompleted, rank]
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        pinsDropped:
+          type: integer
+        appointmentsSet:
+          type: integer
+        appointmentsCompleted:
+          type: [integer, "null"]
+          description: CRM-owned metric. Null until the CRM seam is wired.
+        rank:
+          type: integer
+    ActivityMetrics:
+      type: object
+      required: [pinsDropped, appointmentsSet, appointmentsCompleted, hoursTracked]
+      properties:
+        pinsDropped:
+          type: integer
+        appointmentsSet:
+          type: integer
+        appointmentsCompleted:
+          type: [integer, "null"]
+          description: CRM-owned metric. Null until the CRM seam is wired.
+        hoursTracked:
+          type: number
+    CompetitivePanel:
+      type: object
+      description: Trailing-30-day competitive comparison.
+      required: [me, teamTotal, myRank, cohortSize]
+      properties:
+        me:
+          $ref: "#/components/schemas/ActivityMetrics"
+        teamTotal:
+          $ref: "#/components/schemas/ActivityMetrics"
+        myRank:
+          type: [integer, "null"]
+        cohortSize:
+          type: integer
+    ActivityStats:
+      type: object
+      required: [scope, canViewLeaderboard, period, competitive, leaderboard, myRank]
+      properties:
+        scope:
+          $ref: "#/components/schemas/ActivityScope"
+        canViewLeaderboard:
+          type: boolean
+          description: True for manager and above; field reps see only their own numbers plus rank.
+        period:
+          $ref: "#/components/schemas/ActivityMetrics"
+        competitive:
+          $ref: "#/components/schemas/CompetitivePanel"
+        leaderboard:
+          type: array
+          description: Named leaderboard. Empty for field reps.
+          items:
+            $ref: "#/components/schemas/LeaderboardEntry"
+        myRank:
+          type: [integer, "null"]
+    ActivityStatsEnvelope:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          $ref: "#/components/schemas/ActivityStats"
+
+    WeatherCandidate:
+      type: object
+      description: A deterministic candidate storm event (B5). No AI scoring.
+      required: [date, type, hailSize, windSpeed, tornado, severityScore, description]
+      properties:
+        date:
+          type: string
+        type:
+          type: string
+          enum: [hail, wind, tornado]
+        hailSize:
+          type: [number, "null"]
+        windSpeed:
+          type: [number, "null"]
+        tornado:
+          type: boolean
+        severityScore:
+          type: number
+        description:
+          type: [string, "null"]
+    WeatherCandidatesEnvelope:
+      type: object
+      required: [candidates, queriedLocation, dateOfLoss, cached]
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeatherCandidate"
+        queriedLocation:
+          type: string
+        dateOfLoss:
+          type: [string, "null"]
+        cached:
+          type: boolean

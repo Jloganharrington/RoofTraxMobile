@@ -5,10 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AttestationType } from './attestationType';
 import type { CaptureStage } from './captureStage';
+import type { CreateAttestationInputDetails } from './createAttestationInputDetails';
 
 export interface CreateAttestationInput {
   stage?: CaptureStage | null;
+  attestationType?: AttestationType | null;
+  /** @nullable */
+  details?: CreateAttestationInputDetails;
   /** @nullable */
   signatureData?: string | null;
 }

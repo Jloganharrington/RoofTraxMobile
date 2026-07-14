@@ -20,12 +20,15 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActivityStatsEnvelope,
   AddressSearchResults,
   AdminStatsEnvelope,
   AttestationEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   BulkCreatePinsInput,
+  CanvassingCurrentEnvelope,
+  CanvassingSessionEnvelope,
   CompanyEnvelope,
   CreateAttestationInput,
   CreateCompanyRequest,
@@ -41,6 +44,8 @@ import type {
   DamageInstanceEnvelope,
   DeleteSuccess,
   ErrorEnvelope,
+  GetActivityStatsParams,
+  GetWeatherEventsParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   InspectionElevationEnvelope,
@@ -61,6 +66,7 @@ import type {
   ProfileEnvelope,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
+  ScheduledInspectionListEnvelope,
   SearchAddressParams,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
@@ -71,7 +77,8 @@ import type {
   UpdatePinInput,
   UpdateTeamUserInput,
   UploadUrlRequest,
-  UploadUrlResponse
+  UploadUrlResponse,
+  WeatherCandidatesEnvelope
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -2975,4 +2982,470 @@ export const useCreateAttestation = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getCreateAttestationMutationOptions(options));
     }
+
+export const getListScheduledInspectionsUrl = () => {
+
+
+
+
+  return `/api/inspections/scheduled`
+}
+
+/**
+ * @summary List CRM-scheduled inspections (empty until the CRM seam is wired)
+ */
+export const listScheduledInspections = async ( options?: RequestInit): Promise<ScheduledInspectionListEnvelope> => {
+
+  return customFetch<ScheduledInspectionListEnvelope>(getListScheduledInspectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListScheduledInspectionsQueryKey = () => {
+    return [
+    `/api/inspections/scheduled`
+    ] as const;
+    }
+
+
+export const getListScheduledInspectionsQueryOptions = <TData = Awaited<ReturnType<typeof listScheduledInspections>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listScheduledInspections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListScheduledInspectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listScheduledInspections>>> = ({ signal }) => listScheduledInspections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listScheduledInspections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListScheduledInspectionsQueryResult = NonNullable<Awaited<ReturnType<typeof listScheduledInspections>>>
+export type ListScheduledInspectionsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List CRM-scheduled inspections (empty until the CRM seam is wired)
+ */
+
+export function useListScheduledInspections<TData = Awaited<ReturnType<typeof listScheduledInspections>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listScheduledInspections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListScheduledInspectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCurrentCanvassingSessionUrl = () => {
+
+
+
+
+  return `/api/canvassing/current`
+}
+
+/**
+ * @summary Get the caller's currently-open canvassing session, if any
+ */
+export const getCurrentCanvassingSession = async ( options?: RequestInit): Promise<CanvassingCurrentEnvelope> => {
+
+  return customFetch<CanvassingCurrentEnvelope>(getGetCurrentCanvassingSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCurrentCanvassingSessionQueryKey = () => {
+    return [
+    `/api/canvassing/current`
+    ] as const;
+    }
+
+
+export const getGetCurrentCanvassingSessionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentCanvassingSession>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCanvassingSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentCanvassingSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentCanvassingSession>>> = ({ signal }) => getCurrentCanvassingSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentCanvassingSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCurrentCanvassingSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentCanvassingSession>>>
+export type GetCurrentCanvassingSessionQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the caller's currently-open canvassing session, if any
+ */
+
+export function useGetCurrentCanvassingSession<TData = Awaited<ReturnType<typeof getCurrentCanvassingSession>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCanvassingSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCurrentCanvassingSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getClockInCanvassingUrl = () => {
+
+
+
+
+  return `/api/canvassing/clock-in`
+}
+
+/**
+ * @summary Start a canvassing session
+ */
+export const clockInCanvassing = async ( options?: RequestInit): Promise<CanvassingSessionEnvelope> => {
+
+  return customFetch<CanvassingSessionEnvelope>(getClockInCanvassingUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getClockInCanvassingMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clockInCanvassing>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clockInCanvassing>>, TError,void, TContext> => {
+
+const mutationKey = ['clockInCanvassing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clockInCanvassing>>, void> = () => {
+
+
+          return  clockInCanvassing(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClockInCanvassingMutationResult = NonNullable<Awaited<ReturnType<typeof clockInCanvassing>>>
+
+    export type ClockInCanvassingMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Start a canvassing session
+ */
+export const useClockInCanvassing = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clockInCanvassing>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clockInCanvassing>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClockInCanvassingMutationOptions(options));
+    }
+
+export const getClockOutCanvassingUrl = () => {
+
+
+
+
+  return `/api/canvassing/clock-out`
+}
+
+/**
+ * @summary End the caller's open canvassing session
+ */
+export const clockOutCanvassing = async ( options?: RequestInit): Promise<CanvassingSessionEnvelope> => {
+
+  return customFetch<CanvassingSessionEnvelope>(getClockOutCanvassingUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getClockOutCanvassingMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clockOutCanvassing>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clockOutCanvassing>>, TError,void, TContext> => {
+
+const mutationKey = ['clockOutCanvassing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clockOutCanvassing>>, void> = () => {
+
+
+          return  clockOutCanvassing(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClockOutCanvassingMutationResult = NonNullable<Awaited<ReturnType<typeof clockOutCanvassing>>>
+
+    export type ClockOutCanvassingMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary End the caller's open canvassing session
+ */
+export const useClockOutCanvassing = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clockOutCanvassing>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clockOutCanvassing>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClockOutCanvassingMutationOptions(options));
+    }
+
+export const getGetActivityStatsUrl = (params?: GetActivityStatsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/activity-stats?${stringifiedParams}` : `/api/activity-stats`
+}
+
+/**
+ * Field reps see only their own current-period metrics plus their rank. Managers and above may toggle scope and see a named leaderboard. All scoping and ranking is computed server-side over the canvassing cohort.
+ * @summary Company-scoped canvassing activity stats, rank, and leaderboard
+ */
+export const getActivityStats = async (params?: GetActivityStatsParams, options?: RequestInit): Promise<ActivityStatsEnvelope> => {
+
+  return customFetch<ActivityStatsEnvelope>(getGetActivityStatsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetActivityStatsQueryKey = (params?: GetActivityStatsParams,) => {
+    return [
+    `/api/activity-stats`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetActivityStatsQueryOptions = <TData = Awaited<ReturnType<typeof getActivityStats>>, TError = ErrorType<ErrorEnvelope>>(params?: GetActivityStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivityStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetActivityStatsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivityStats>>> = ({ signal }) => getActivityStats(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getActivityStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetActivityStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getActivityStats>>>
+export type GetActivityStatsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Company-scoped canvassing activity stats, rank, and leaderboard
+ */
+
+export function useGetActivityStats<TData = Awaited<ReturnType<typeof getActivityStats>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: GetActivityStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActivityStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetActivityStatsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWeatherEventsUrl = (params: GetWeatherEventsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/weather/events?${stringifiedParams}` : `/api/weather/events`
+}
+
+/**
+ * Extracted VisualCrossing retrieval + gating logic (no AI scoring). Returns qualifying severe-weather candidates. Gated by the inspection module permission.
+ * @summary Deterministic candidate storm events for a location and date of loss
+ */
+export const getWeatherEvents = async (params: GetWeatherEventsParams, options?: RequestInit): Promise<WeatherCandidatesEnvelope> => {
+
+  return customFetch<WeatherCandidatesEnvelope>(getGetWeatherEventsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWeatherEventsQueryKey = (params?: GetWeatherEventsParams,) => {
+    return [
+    `/api/weather/events`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWeatherEventsQueryOptions = <TData = Awaited<ReturnType<typeof getWeatherEvents>>, TError = ErrorType<ErrorEnvelope>>(params: GetWeatherEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWeatherEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWeatherEventsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWeatherEvents>>> = ({ signal }) => getWeatherEvents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWeatherEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWeatherEventsQueryResult = NonNullable<Awaited<ReturnType<typeof getWeatherEvents>>>
+export type GetWeatherEventsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Deterministic candidate storm events for a location and date of loss
+ */
+
+export function useGetWeatherEvents<TData = Awaited<ReturnType<typeof getWeatherEvents>>, TError = ErrorType<ErrorEnvelope>>(
+ params: GetWeatherEventsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWeatherEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWeatherEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

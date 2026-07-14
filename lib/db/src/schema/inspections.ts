@@ -57,6 +57,44 @@ export type InspectionSubjectType = (typeof INSPECTION_SUBJECT_TYPES)[number];
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
 
+// Kind of attestation captured (Phase M-B). `equipment` is the S0
+// equipment checklist; `gps_override` records an inspector overriding a
+// failed arrival GPS-vs-geocode tolerance check (B6). `stage_signoff` is
+// the generic per-stage sign-off from M-A (null attestationType behaves as
+// that for backwards compatibility).
+export const ATTESTATION_TYPES = ['equipment', 'gps_override', 'stage_signoff'] as const;
+export type AttestationType = (typeof ATTESTATION_TYPES)[number];
+
+// Structured arrival-conditions log recorded on arrival (B6 / S1). Stored
+// verbatim on the inspection row; no derived logic.
+export interface ArrivalConditions {
+  sky: string | null;
+  wind: string | null;
+  temp: string | null;
+  personnelPresent: string | null;
+  recordedAtUtc: string;
+}
+
+// The inspector-confirmed "storm of record" (Phase M-B / B5), written to
+// inspections.stormConfirmedRef. This is a raw snapshot of the single
+// severe-weather event the inspector selected as the cause of loss —
+// pulled from the deterministic VisualCrossing engine (no AI scoring in
+// this phase). Stored verbatim; no derived logic.
+export interface StormConfirmedRef {
+  // 'YYYY-MM-DD' event date.
+  date: string;
+  type: 'hail' | 'wind' | 'tornado';
+  hailSize: number | null;
+  windSpeed: number | null;
+  distance: number | null;
+  description: string | null;
+  // The dateOfLoss + location the pull was run against, for provenance.
+  queriedLocation: string;
+  dateOfLoss: string | null;
+  // When the inspector confirmed this event (UTC ISO-8601).
+  confirmedAtUtc: string;
+}
+
 // A single forensic inspection engagement. `pinId` is nullable because an
 // inspection can be scheduled directly (e.g. from a carrier referral)
 // without ever having gone through the canvassing pin-drop flow.
@@ -80,6 +118,14 @@ export const inspectionsTable = pgTable('inspections', {
   latitude: doublePrecision('latitude'),
   longitude: doublePrecision('longitude'),
   notes: text('notes'),
+  // Additional intake fields (B4). Carrier/policy/claim/insured already
+  // exist above; date-of-loss is captured here for the storm engine (B5).
+  dateOfLoss: text('date_of_loss'),
+  // Inspector-confirmed storm of record (B5). Nullable + a SOFT gate —
+  // an inspection may proceed without it.
+  stormConfirmedRef: jsonb('storm_confirmed_ref').$type<StormConfirmedRef | null>(),
+  // Arrival-conditions log captured in S1 (B6). Nullable.
+  arrivalConditions: jsonb('arrival_conditions').$type<ArrivalConditions | null>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -256,6 +302,12 @@ export const attestationsTable = pgTable('attestations', {
     .notNull()
     .references(() => usersTable.id),
   stage: varchar('stage', { enum: CAPTURE_STAGES }),
+  // What kind of attestation this is (B4/B6). Null = the generic M-A
+  // per-stage sign-off.
+  attestationType: varchar('attestation_type', { enum: ATTESTATION_TYPES }),
+  // Structured payload for typed attestations: the equipment checklist for
+  // `equipment`, and the measured distance + reason for `gps_override`.
+  details: jsonb('details'),
   signatureData: text('signature_data'),
   attestedAt: timestamp('attested_at', { withTimezone: true }).notNull().defaultNow(),
 });

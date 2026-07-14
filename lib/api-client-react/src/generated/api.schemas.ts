@@ -396,6 +396,59 @@ export const CaptureStage = {
   S9: 'S9',
 } as const;
 
+export type AttestationType = typeof AttestationType[keyof typeof AttestationType];
+
+
+export const AttestationType = {
+  equipment: 'equipment',
+  gps_override: 'gps_override',
+  stage_signoff: 'stage_signoff',
+} as const;
+
+export type StormConfirmedRefType = typeof StormConfirmedRefType[keyof typeof StormConfirmedRefType];
+
+
+export const StormConfirmedRefType = {
+  hail: 'hail',
+  wind: 'wind',
+  tornado: 'tornado',
+} as const;
+
+/**
+ * The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.
+ */
+export interface StormConfirmedRef {
+  date: string;
+  type: StormConfirmedRefType;
+  /** @nullable */
+  hailSize: number | null;
+  /** @nullable */
+  windSpeed: number | null;
+  /** @nullable */
+  distance: number | null;
+  /** @nullable */
+  description: string | null;
+  queriedLocation: string;
+  /** @nullable */
+  dateOfLoss: string | null;
+  confirmedAtUtc: string;
+}
+
+/**
+ * Arrival-conditions log captured in S1 (B6).
+ */
+export interface ArrivalConditions {
+  /** @nullable */
+  sky: string | null;
+  /** @nullable */
+  wind: string | null;
+  /** @nullable */
+  temp: string | null;
+  /** @nullable */
+  personnelPresent: string | null;
+  recordedAtUtc: string;
+}
+
 export interface Inspection {
   id: string;
   companyId: string;
@@ -419,11 +472,18 @@ export interface Inspection {
   longitude: number | null;
   /** @nullable */
   notes: string | null;
+  /** @nullable */
+  dateOfLoss: string | null;
+  stormConfirmedRef: StormConfirmedRef | null;
+  arrivalConditions: ArrivalConditions | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateInspectionInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline start can be safely retried. */
+  id?: string;
+  status?: InspectionStatus;
   /** @nullable */
   pinId?: string | null;
   /** Defaults to the acting user if omitted. */
@@ -444,10 +504,14 @@ export interface CreateInspectionInput {
   longitude?: number | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  dateOfLoss?: string | null;
 }
 
 export interface UpdateInspectionInput {
   status?: InspectionStatus;
+  /** @nullable */
+  pinId?: string | null;
   /** @nullable */
   claimNumber?: string | null;
   /** @nullable */
@@ -464,6 +528,10 @@ export interface UpdateInspectionInput {
   longitude?: number | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  dateOfLoss?: string | null;
+  stormConfirmedRef?: StormConfirmedRef | null;
+  arrivalConditions?: ArrivalConditions | null;
 }
 
 export interface InspectionEnvelope {
@@ -714,25 +782,181 @@ export interface MeasurementEnvelope {
   measurement: Measurement;
 }
 
+/**
+ * @nullable
+ */
+export type AttestationDetails = { [key: string]: unknown } | null;
+
 export interface Attestation {
   id: string;
   companyId: string;
   inspectionId: string;
   userId: string;
   stage: CaptureStage | null;
+  attestationType: AttestationType | null;
+  /** @nullable */
+  details: AttestationDetails;
   /** @nullable */
   signatureData: string | null;
   attestedAt: string;
 }
 
+/**
+ * @nullable
+ */
+export type CreateAttestationInputDetails = { [key: string]: unknown } | null;
+
 export interface CreateAttestationInput {
   stage?: CaptureStage | null;
+  attestationType?: AttestationType | null;
+  /** @nullable */
+  details?: CreateAttestationInputDetails;
   /** @nullable */
   signatureData?: string | null;
 }
 
 export interface AttestationEnvelope {
   attestation: Attestation;
+}
+
+export interface CanvassingSession {
+  id: string;
+  companyId: string;
+  userId: string;
+  startedAt: string;
+  /** @nullable */
+  endedAt: string | null;
+}
+
+export interface CanvassingSessionEnvelope {
+  session: CanvassingSession;
+}
+
+export interface CanvassingCurrentEnvelope {
+  session: CanvassingSession | null;
+}
+
+/**
+ * A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.
+ */
+export interface ScheduledInspection {
+  id: string;
+  /** @nullable */
+  scheduledFor: string | null;
+  /** @nullable */
+  insuredName: string | null;
+  /** @nullable */
+  propertyAddress: string | null;
+  /** @nullable */
+  carrier: string | null;
+  /** @nullable */
+  policyNumber: string | null;
+  /** @nullable */
+  claimNumber: string | null;
+  /** @nullable */
+  dateOfLoss: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+}
+
+export interface ScheduledInspectionListEnvelope {
+  scheduled: ScheduledInspection[];
+}
+
+export type ActivityScope = typeof ActivityScope[keyof typeof ActivityScope];
+
+
+export const ActivityScope = {
+  own: 'own',
+  total: 'total',
+  department: 'department',
+  individual: 'individual',
+} as const;
+
+export interface LeaderboardEntry {
+  userId: string;
+  name: string;
+  pinsDropped: number;
+  appointmentsSet: number;
+  /**
+     * CRM-owned metric. Null until the CRM seam is wired.
+     * @nullable
+     */
+  appointmentsCompleted: number | null;
+  rank: number;
+}
+
+export interface ActivityMetrics {
+  pinsDropped: number;
+  appointmentsSet: number;
+  /**
+     * CRM-owned metric. Null until the CRM seam is wired.
+     * @nullable
+     */
+  appointmentsCompleted: number | null;
+  hoursTracked: number;
+}
+
+/**
+ * Trailing-30-day competitive comparison.
+ */
+export interface CompetitivePanel {
+  me: ActivityMetrics;
+  teamTotal: ActivityMetrics;
+  /** @nullable */
+  myRank: number | null;
+  cohortSize: number;
+}
+
+export interface ActivityStats {
+  scope: ActivityScope;
+  /** True for manager and above; field reps see only their own numbers plus rank. */
+  canViewLeaderboard: boolean;
+  period: ActivityMetrics;
+  competitive: CompetitivePanel;
+  /** Named leaderboard. Empty for field reps. */
+  leaderboard: LeaderboardEntry[];
+  /** @nullable */
+  myRank: number | null;
+}
+
+export interface ActivityStatsEnvelope {
+  stats: ActivityStats;
+}
+
+export type WeatherCandidateType = typeof WeatherCandidateType[keyof typeof WeatherCandidateType];
+
+
+export const WeatherCandidateType = {
+  hail: 'hail',
+  wind: 'wind',
+  tornado: 'tornado',
+} as const;
+
+/**
+ * A deterministic candidate storm event (B5). No AI scoring.
+ */
+export interface WeatherCandidate {
+  date: string;
+  type: WeatherCandidateType;
+  /** @nullable */
+  hailSize: number | null;
+  /** @nullable */
+  windSpeed: number | null;
+  tornado: boolean;
+  severityScore: number;
+  /** @nullable */
+  description: string | null;
+}
+
+export interface WeatherCandidatesEnvelope {
+  candidates: WeatherCandidate[];
+  queriedLocation: string;
+  /** @nullable */
+  dateOfLoss: string | null;
+  cached: boolean;
 }
 
 /**
@@ -778,5 +1002,24 @@ export type SearchAddressParams = {
  * Free-text address or place query.
  */
 q: string;
+};
+
+export type GetActivityStatsParams = {
+scope?: ActivityScope;
+/**
+ * Target user for scope=individual (manager+ only).
+ */
+userId?: string;
+};
+
+export type GetWeatherEventsParams = {
+/**
+ * Property location — "lat,long" or a city/address string.
+ */
+location: string;
+/**
+ * Claimed date of loss (YYYY-MM-DD); prioritizes candidates near it.
+ */
+dateOfLoss?: string;
 };
 

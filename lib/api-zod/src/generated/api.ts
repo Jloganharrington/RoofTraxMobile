@@ -624,6 +624,25 @@ export const ListInspectionsResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "notes": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "stormConfirmedRef": zod.union([zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "distance": zod.number().nullable(),
+  "description": zod.string().nullable(),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "confirmedAtUtc": zod.string()
+}).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
+  "arrivalConditions": zod.union([zod.object({
+  "sky": zod.string().nullable(),
+  "wind": zod.string().nullable(),
+  "temp": zod.string().nullable(),
+  "personnelPresent": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }))
@@ -634,6 +653,8 @@ export const ListInspectionsResponse = zod.object({
  * @summary Create an inspection
  */
 export const CreateInspectionBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline start can be safely retried.'),
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']).optional(),
   "pinId": zod.string().nullish(),
   "inspectorUserId": zod.string().optional().describe('Defaults to the acting user if omitted.'),
   "claimNumber": zod.string().nullish(),
@@ -643,7 +664,8 @@ export const CreateInspectionBody = zod.object({
   "address": zod.string().nullish(),
   "latitude": zod.number().nullish(),
   "longitude": zod.number().nullish(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "dateOfLoss": zod.string().nullish()
 })
 
 export const CreateInspectionResponse = zod.object({
@@ -661,6 +683,25 @@ export const CreateInspectionResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "notes": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "stormConfirmedRef": zod.union([zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "distance": zod.number().nullable(),
+  "description": zod.string().nullable(),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "confirmedAtUtc": zod.string()
+}).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
+  "arrivalConditions": zod.union([zod.object({
+  "sky": zod.string().nullable(),
+  "wind": zod.string().nullable(),
+  "temp": zod.string().nullable(),
+  "personnelPresent": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -689,6 +730,25 @@ export const GetInspectionResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "notes": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "stormConfirmedRef": zod.union([zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "distance": zod.number().nullable(),
+  "description": zod.string().nullable(),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "confirmedAtUtc": zod.string()
+}).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
+  "arrivalConditions": zod.union([zod.object({
+  "sky": zod.string().nullable(),
+  "wind": zod.string().nullable(),
+  "temp": zod.string().nullable(),
+  "personnelPresent": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -704,6 +764,7 @@ export const UpdateInspectionParams = zod.object({
 
 export const UpdateInspectionBody = zod.object({
   "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']).optional(),
+  "pinId": zod.string().nullish(),
   "claimNumber": zod.string().nullish(),
   "policyNumber": zod.string().nullish(),
   "carrierName": zod.string().nullish(),
@@ -711,7 +772,26 @@ export const UpdateInspectionBody = zod.object({
   "address": zod.string().nullish(),
   "latitude": zod.number().nullish(),
   "longitude": zod.number().nullish(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "dateOfLoss": zod.string().nullish(),
+  "stormConfirmedRef": zod.union([zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "distance": zod.number().nullable(),
+  "description": zod.string().nullable(),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "confirmedAtUtc": zod.string()
+}).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]).optional(),
+  "arrivalConditions": zod.union([zod.object({
+  "sky": zod.string().nullable(),
+  "wind": zod.string().nullable(),
+  "temp": zod.string().nullable(),
+  "personnelPresent": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]).optional()
 })
 
 export const UpdateInspectionResponse = zod.object({
@@ -729,6 +809,25 @@ export const UpdateInspectionResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "notes": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "stormConfirmedRef": zod.union([zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "distance": zod.number().nullable(),
+  "description": zod.string().nullable(),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "confirmedAtUtc": zod.string()
+}).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
+  "arrivalConditions": zod.union([zod.object({
+  "sky": zod.string().nullable(),
+  "wind": zod.string().nullable(),
+  "temp": zod.string().nullable(),
+  "personnelPresent": zod.string().nullable(),
+  "recordedAtUtc": zod.string()
+}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -980,6 +1079,8 @@ export const CreateAttestationParams = zod.object({
 
 export const CreateAttestationBody = zod.object({
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]).optional(),
+  "details": zod.record(zod.string(), zod.unknown()).nullish(),
   "signatureData": zod.string().nullish()
 })
 
@@ -990,9 +1091,145 @@ export const CreateAttestationResponse = zod.object({
   "inspectionId": zod.string(),
   "userId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
+  "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
   "attestedAt": zod.coerce.date()
 })
+})
+
+
+/**
+ * @summary List CRM-scheduled inspections (empty until the CRM seam is wired)
+ */
+export const ListScheduledInspectionsResponse = zod.object({
+  "scheduled": zod.array(zod.object({
+  "id": zod.string(),
+  "scheduledFor": zod.coerce.date().nullable(),
+  "insuredName": zod.string().nullable(),
+  "propertyAddress": zod.string().nullable(),
+  "carrier": zod.string().nullable(),
+  "policyNumber": zod.string().nullable(),
+  "claimNumber": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable()
+}).describe('A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.'))
+})
+
+
+/**
+ * @summary Get the caller's currently-open canvassing session, if any
+ */
+export const GetCurrentCanvassingSessionResponse = zod.object({
+  "session": zod.union([zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "startedAt": zod.coerce.date(),
+  "endedAt": zod.coerce.date().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Start a canvassing session
+ */
+export const ClockInCanvassingResponse = zod.object({
+  "session": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "startedAt": zod.coerce.date(),
+  "endedAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * @summary End the caller's open canvassing session
+ */
+export const ClockOutCanvassingResponse = zod.object({
+  "session": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "startedAt": zod.coerce.date(),
+  "endedAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * Field reps see only their own current-period metrics plus their rank. Managers and above may toggle scope and see a named leaderboard. All scoping and ranking is computed server-side over the canvassing cohort.
+ * @summary Company-scoped canvassing activity stats, rank, and leaderboard
+ */
+export const GetActivityStatsQueryParams = zod.object({
+  "scope": zod.enum(['own', 'total', 'department', 'individual']).optional(),
+  "userId": zod.coerce.string().optional().describe('Target user for scope=individual (manager+ only).')
+})
+
+export const GetActivityStatsResponse = zod.object({
+  "stats": zod.object({
+  "scope": zod.enum(['own', 'total', 'department', 'individual']),
+  "canViewLeaderboard": zod.boolean().describe('True for manager and above; field reps see only their own numbers plus rank.'),
+  "period": zod.object({
+  "pinsDropped": zod.number(),
+  "appointmentsSet": zod.number(),
+  "appointmentsCompleted": zod.number().nullable().describe('CRM-owned metric. Null until the CRM seam is wired.'),
+  "hoursTracked": zod.number()
+}),
+  "competitive": zod.object({
+  "me": zod.object({
+  "pinsDropped": zod.number(),
+  "appointmentsSet": zod.number(),
+  "appointmentsCompleted": zod.number().nullable().describe('CRM-owned metric. Null until the CRM seam is wired.'),
+  "hoursTracked": zod.number()
+}),
+  "teamTotal": zod.object({
+  "pinsDropped": zod.number(),
+  "appointmentsSet": zod.number(),
+  "appointmentsCompleted": zod.number().nullable().describe('CRM-owned metric. Null until the CRM seam is wired.'),
+  "hoursTracked": zod.number()
+}),
+  "myRank": zod.number().nullable(),
+  "cohortSize": zod.number()
+}).describe('Trailing-30-day competitive comparison.'),
+  "leaderboard": zod.array(zod.object({
+  "userId": zod.string(),
+  "name": zod.string(),
+  "pinsDropped": zod.number(),
+  "appointmentsSet": zod.number(),
+  "appointmentsCompleted": zod.number().nullable().describe('CRM-owned metric. Null until the CRM seam is wired.'),
+  "rank": zod.number()
+})).describe('Named leaderboard. Empty for field reps.'),
+  "myRank": zod.number().nullable()
+})
+})
+
+
+/**
+ * Extracted VisualCrossing retrieval + gating logic (no AI scoring). Returns qualifying severe-weather candidates. Gated by the inspection module permission.
+ * @summary Deterministic candidate storm events for a location and date of loss
+ */
+export const GetWeatherEventsQueryParams = zod.object({
+  "location": zod.coerce.string().describe('Property location — \"lat,long\" or a city\/address string.'),
+  "dateOfLoss": zod.coerce.string().optional().describe('Claimed date of loss (YYYY-MM-DD); prioritizes candidates near it.')
+})
+
+export const GetWeatherEventsResponse = zod.object({
+  "candidates": zod.array(zod.object({
+  "date": zod.string(),
+  "type": zod.enum(['hail', 'wind', 'tornado']),
+  "hailSize": zod.number().nullable(),
+  "windSpeed": zod.number().nullable(),
+  "tornado": zod.boolean(),
+  "severityScore": zod.number(),
+  "description": zod.string().nullable()
+}).describe('A deterministic candidate storm event (B5). No AI scoring.')),
+  "queriedLocation": zod.string(),
+  "dateOfLoss": zod.string().nullable(),
+  "cached": zod.boolean()
 })
 
 

@@ -5,10 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArrivalConditions } from './arrivalConditions';
 import type { InspectionStatus } from './inspectionStatus';
+import type { StormConfirmedRef } from './stormConfirmedRef';
 
 export interface UpdateInspectionInput {
   status?: InspectionStatus;
+  /** @nullable */
+  pinId?: string | null;
   /** @nullable */
   claimNumber?: string | null;
   /** @nullable */
@@ -25,4 +29,8 @@ export interface UpdateInspectionInput {
   longitude?: number | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  dateOfLoss?: string | null;
+  stormConfirmedRef?: StormConfirmedRef | null;
+  arrivalConditions?: ArrivalConditions | null;
 }

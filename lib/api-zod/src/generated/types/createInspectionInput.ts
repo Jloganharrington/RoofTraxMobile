@@ -5,8 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InspectionStatus } from './inspectionStatus';
 
 export interface CreateInspectionInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline start can be safely retried. */
+  id?: string;
+  status?: InspectionStatus;
   /** @nullable */
   pinId?: string | null;
   /** Defaults to the acting user if omitted. */
@@ -27,4 +31,6 @@ export interface CreateInspectionInput {
   longitude?: number | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  dateOfLoss?: string | null;
 }

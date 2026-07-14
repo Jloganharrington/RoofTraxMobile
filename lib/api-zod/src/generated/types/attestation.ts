@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AttestationDetails } from './attestationDetails';
+import type { AttestationType } from './attestationType';
 import type { CaptureStage } from './captureStage';
 
 export interface Attestation {
@@ -13,6 +15,9 @@ export interface Attestation {
   inspectionId: string;
   userId: string;
   stage: CaptureStage | null;
+  attestationType: AttestationType | null;
+  /** @nullable */
+  details: AttestationDetails;
   /** @nullable */
   signatureData: string | null;
   attestedAt: Date;
