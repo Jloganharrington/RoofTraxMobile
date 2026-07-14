@@ -48,6 +48,7 @@ router.get('/profile/me', async (req: Request, res: Response) => {
         userId: profile.userId,
         role: profile.role,
         workflowAssignment: profile.workflowAssignment,
+        department: profile.department,
         companyId: row.companyId,
         companyName: row.companyName,
       },

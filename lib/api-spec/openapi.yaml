@@ -897,10 +897,13 @@ components:
 
     Role:
       type: string
-      enum: [field_rep, manager, admin]
+      enum: [field_rep, manager, admin, super_admin]
     WorkflowAssignment:
       type: string
-      enum: [retail, insurance, both]
+      enum: [retail, insurance_retail]
+    Department:
+      type: string
+      enum: [canvasser, inspector_canvasser]
     PinWorkflow:
       type: string
       enum: [retail, insurance]
@@ -916,7 +919,7 @@ components:
 
     Profile:
       type: object
-      required: [userId, role, workflowAssignment, companyId, companyName]
+      required: [userId, role, workflowAssignment, department, companyId, companyName]
       properties:
         userId:
           type: string
@@ -924,6 +927,8 @@ components:
           $ref: "#/components/schemas/Role"
         workflowAssignment:
           $ref: "#/components/schemas/WorkflowAssignment"
+        department:
+          $ref: "#/components/schemas/Department"
         companyId:
           type: string
         companyName:
@@ -1165,6 +1170,7 @@ components:
           profileImageUrl,
           role,
           workflowAssignment,
+          department,
           pinCount,
           joinedAt,
         ]
@@ -1183,6 +1189,8 @@ components:
           $ref: "#/components/schemas/Role"
         workflowAssignment:
           $ref: "#/components/schemas/WorkflowAssignment"
+        department:
+          $ref: "#/components/schemas/Department"
         pinCount:
           type: integer
         joinedAt:
@@ -1210,6 +1218,8 @@ components:
           $ref: "#/components/schemas/Role"
         workflowAssignment:
           $ref: "#/components/schemas/WorkflowAssignment"
+        department:
+          $ref: "#/components/schemas/Department"
 
     LocationPingBody:
       type: object

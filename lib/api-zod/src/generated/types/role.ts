@@ -13,4 +13,5 @@ export const Role = {
   field_rep: 'field_rep',
   manager: 'manager',
   admin: 'admin',
+  super_admin: 'super_admin',
 } as const;

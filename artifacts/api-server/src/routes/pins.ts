@@ -13,7 +13,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
-import { canEditPin, isManagerOrAdmin } from '../lib/permissions';
+import { canDeletePin, canEditPin, isManagerOrAdmin } from '../lib/permissions';
 
 const router: IRouter = Router();
 
@@ -247,7 +247,7 @@ router.delete('/pins/:pinId', async (req: Request, res: Response) => {
   }
 
   const role = await getRole(req.user.id);
-  if (!canEditPin(role, req.user.id, pin.userId)) {
+  if (!canDeletePin(role)) {
     res.status(403).json({ error: 'Not permitted to delete this pin' });
     return;
   }

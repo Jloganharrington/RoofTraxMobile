@@ -18,7 +18,7 @@ import {
   useRemoveTeamUser,
   useUpdateTeamUser,
 } from '@workspace/api-client-react';
-import type { Role, WorkflowAssignment } from '@workspace/api-client-react';
+import type { Department, Role, WorkflowAssignment } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
@@ -27,29 +27,46 @@ const ROLE_LABELS: Record<Role, string> = {
   field_rep: 'Field Rep',
   manager: 'Manager',
   admin: 'Admin',
+  super_admin: 'Super Admin',
 };
 
 const WORKFLOW_LABELS: Record<WorkflowAssignment, string> = {
   retail: 'Retail',
-  insurance: 'Insurance',
-  both: 'Both',
+  insurance_retail: 'Insurance + Retail',
 };
 
-const ROLE_OPTIONS: Role[] = ['field_rep', 'manager', 'admin'];
-const WORKFLOW_OPTIONS: WorkflowAssignment[] = ['insurance', 'retail', 'both'];
+const DEPARTMENT_LABELS: Record<Department, string> = {
+  canvasser: 'Canvasser',
+  inspector_canvasser: 'Inspector Canvasser',
+};
 
-// Mirrors the server's `canManageUser` rules so disabled options in the
-// picker match what the backend will actually accept. The backend remains
-// the source of truth; this just avoids offering choices that would fail.
+const ROLE_OPTIONS: Role[] = ['field_rep', 'manager', 'admin', 'super_admin'];
+const WORKFLOW_OPTIONS: WorkflowAssignment[] = ['insurance_retail', 'retail'];
+const DEPARTMENT_OPTIONS: Department[] = ['canvasser', 'inspector_canvasser'];
+
+const ROLE_RANK: Record<Role, number> = {
+  field_rep: 0,
+  manager: 1,
+  admin: 2,
+  super_admin: 3,
+};
+
+// Mirrors the server's rank-based rules (`canManageUser`/`canSetRoleDeptSpec`)
+// so disabled options in the picker match what the backend will actually
+// accept. The backend remains the source of truth; this just avoids
+// offering choices that would fail.
 function canAssignRole(actorRole: Role, targetRole: Role, nextRole: Role): boolean {
-  if (actorRole === 'admin') return true;
-  if (actorRole === 'manager') return targetRole === 'field_rep' && nextRole === 'field_rep';
-  return false;
+  return ROLE_RANK[actorRole] > ROLE_RANK[targetRole] && ROLE_RANK[actorRole] > ROLE_RANK[nextRole];
+}
+
+function canEditDepartment(actorRole: Role, targetRole: Role): boolean {
+  return ROLE_RANK[actorRole] > ROLE_RANK[targetRole];
 }
 
 type PickerState =
   | { kind: 'role'; userId: string; name: string; current: Role }
   | { kind: 'workflow'; userId: string; name: string; current: WorkflowAssignment }
+  | { kind: 'department'; userId: string; name: string; current: Department; targetRole: Role }
   | null;
 
 function StatCard({
@@ -107,6 +124,20 @@ export default function TeamScreen() {
       { userId, data: { workflowAssignment } },
       {
         onSuccess: () => Promise.all([usersQuery.refetch(), statsQuery.refetch()]),
+        onSettled: () => setBusyUserId(null),
+        onError: () =>
+          Alert.alert('Not allowed', 'You cannot make that change.'),
+      },
+    );
+  }
+
+  function applyDepartment(userId: string, department: Department) {
+    setBusyUserId(userId);
+    setPicker(null);
+    updateUser.mutate(
+      { userId, data: { department } },
+      {
+        onSuccess: () => usersQuery.refetch(),
         onSettled: () => setBusyUserId(null),
         onError: () =>
           Alert.alert('Not allowed', 'You cannot make that change.'),
@@ -224,6 +255,29 @@ export default function TeamScreen() {
                     {WORKFLOW_LABELS[member.workflowAssignment]}
                   </Text>
                 </Pressable>
+                <Pressable
+                  disabled={busy || !canEditDepartment(actorRole, member.role)}
+                  onPress={() =>
+                    setPicker({
+                      kind: 'department',
+                      userId: member.id,
+                      name,
+                      current: member.department,
+                      targetRole: member.role,
+                    })
+                  }
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: colors.muted,
+                      opacity: canEditDepartment(actorRole, member.role) ? 1 : 0.5,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.chipText, { color: colors.foreground }]}>
+                    {DEPARTMENT_LABELS[member.department]}
+                  </Text>
+                </Pressable>
               </View>
             </View>
           );
@@ -241,7 +295,12 @@ export default function TeamScreen() {
             style={[styles.modalCard, { backgroundColor: colors.background, borderColor: colors.border }]}
           >
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-              {picker?.kind === 'role' ? 'Access level' : 'Workflow'} — {picker?.name}
+              {picker?.kind === 'role'
+                ? 'Access level'
+                : picker?.kind === 'department'
+                  ? 'Department'
+                  : 'Workflow'}{' '}
+              — {picker?.name}
             </Text>
 
             {picker?.kind === 'role' &&
@@ -287,6 +346,29 @@ export default function TeamScreen() {
                   >
                     <Text style={{ color: colors.foreground, fontSize: 15 }}>
                       {WORKFLOW_LABELS[option]}
+                    </Text>
+                    {selected && <Icon name="check" size={18} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+
+            {picker?.kind === 'department' &&
+              DEPARTMENT_OPTIONS.map((option) => {
+                const selected = option === picker.current;
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => applyDepartment(picker.userId, option)}
+                    style={[
+                      styles.optionRow,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: selected ? colors.muted : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: colors.foreground, fontSize: 15 }}>
+                      {DEPARTMENT_LABELS[option]}
                     </Text>
                     {selected && <Icon name="check" size={18} color={colors.primary} />}
                   </Pressable>

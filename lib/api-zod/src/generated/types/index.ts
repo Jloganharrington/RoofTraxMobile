@@ -22,6 +22,7 @@ export * from './createCompanyRequest';
 export * from './createPinInput';
 export * from './damageType';
 export * from './deleteSuccess';
+export * from './department';
 export * from './doorKnockResult';
 export * from './errorEnvelope';
 export * from './geocodeSearchResult';

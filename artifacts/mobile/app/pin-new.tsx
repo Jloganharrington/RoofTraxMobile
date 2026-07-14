@@ -130,9 +130,11 @@ export default function PinNewScreen() {
   const [notes, setNotes] = useState('');
 
   const isRetail = workflow === 'retail';
-  // Admins can work either workflow regardless of their assigned default;
-  // everyone else only gets the picker when explicitly assigned 'both'.
-  const canPickWorkflow = workflowAssignment === 'both' || role === 'admin';
+  // Admins/super_admins can work either workflow regardless of their
+  // assigned default; everyone else only gets the picker when explicitly
+  // assigned insurance_retail (both lines of business).
+  const canPickWorkflow =
+    workflowAssignment === 'insurance_retail' || role === 'admin' || role === 'super_admin';
 
   async function handlePickPhoto() {
     const result = await ImagePicker.launchCameraAsync({

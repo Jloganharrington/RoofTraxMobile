@@ -93,6 +93,7 @@ export const Role = {
   field_rep: 'field_rep',
   manager: 'manager',
   admin: 'admin',
+  super_admin: 'super_admin',
 } as const;
 
 export type WorkflowAssignment = typeof WorkflowAssignment[keyof typeof WorkflowAssignment];
@@ -100,8 +101,15 @@ export type WorkflowAssignment = typeof WorkflowAssignment[keyof typeof Workflow
 
 export const WorkflowAssignment = {
   retail: 'retail',
-  insurance: 'insurance',
-  both: 'both',
+  insurance_retail: 'insurance_retail',
+} as const;
+
+export type Department = typeof Department[keyof typeof Department];
+
+
+export const Department = {
+  canvasser: 'canvasser',
+  inspector_canvasser: 'inspector_canvasser',
 } as const;
 
 export type PinWorkflow = typeof PinWorkflow[keyof typeof PinWorkflow];
@@ -143,6 +151,7 @@ export interface Profile {
   userId: string;
   role: Role;
   workflowAssignment: WorkflowAssignment;
+  department: Department;
   companyId: string;
   companyName: string;
 }
@@ -271,6 +280,7 @@ export interface TeamUser {
   profileImageUrl: string | null;
   role: Role;
   workflowAssignment: WorkflowAssignment;
+  department: Department;
   pinCount: number;
   joinedAt: string;
 }
@@ -286,6 +296,7 @@ export interface TeamUserListEnvelope {
 export interface UpdateTeamUserInput {
   role?: Role;
   workflowAssignment?: WorkflowAssignment;
+  department?: Department;
 }
 
 export interface LocationPingBody {

@@ -22,7 +22,8 @@ export type IconName =
   | 'user'
   | 'log-out'
   | 'chevron-down'
-  | 'chevron-right';
+  | 'chevron-right'
+  | 'clipboard';
 
 type IconProps = {
   name: IconName;
@@ -136,6 +137,16 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
           <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" {...strokeProps} />
           <Polyline points="16 17 21 12 16 7" {...strokeProps} />
           <Line x1={21} y1={12} x2={9} y2={12} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'clipboard' && (
+        <>
+          <Rect x={8} y={2} width={8} height={4} rx={1} ry={1} {...strokeProps} />
+          <Path
+            d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+            {...strokeProps}
+          />
         </>
       )}
     </Svg>

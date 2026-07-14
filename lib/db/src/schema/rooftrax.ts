@@ -10,8 +10,16 @@ import {
 
 import { companiesTable, usersTable } from './auth';
 
-export const ROLES = ['field_rep', 'manager', 'admin'] as const;
-export const WORKFLOW_ASSIGNMENTS = ['retail', 'insurance', 'both'] as const;
+export const ROLES = ['field_rep', 'manager', 'admin', 'super_admin'] as const;
+// Which line(s) of business a user works. `insurance_retail` replaces the
+// former separate `insurance` and `both` values — every insurance-capable
+// rep can also see retail pins, so there is no longer a pure-insurance mode.
+export const WORKFLOW_ASSIGNMENTS = ['retail', 'insurance_retail'] as const;
+// Which dashboard/module a user lands in. `canvasser` is the existing
+// door-knocking flow; `inspector_canvasser` additionally gets the forensic
+// inspection module (content ships in a later phase — this only stores and
+// gates the assignment).
+export const DEPARTMENTS = ['canvasser', 'inspector_canvasser'] as const;
 export const PIN_WORKFLOWS = ['retail', 'insurance'] as const;
 export const DAMAGE_TYPES = ['roof', 'siding', 'roof_and_siding'] as const;
 export const DOOR_KNOCK_RESULTS = [
@@ -30,14 +38,15 @@ export const CONTACT_OUTCOMES = [
 
 export type Role = (typeof ROLES)[number];
 export type WorkflowAssignment = (typeof WORKFLOW_ASSIGNMENTS)[number];
+export type Department = (typeof DEPARTMENTS)[number];
 export type PinWorkflow = (typeof PIN_WORKFLOWS)[number];
 export type DamageType = (typeof DAMAGE_TYPES)[number];
 export type DoorKnockResult = (typeof DOOR_KNOCK_RESULTS)[number];
 export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
 
-// Per-user role + workflow assignment. Row is created lazily on first
-// profile access (defaults: field_rep / insurance), mirroring the source
-// app's behavior.
+// Per-user role + workflow assignment + department. Row is created lazily
+// on first profile access (defaults: field_rep / insurance_retail /
+// canvasser), mirroring the source app's behavior.
 export const userProfilesTable = pgTable('user_profiles', {
   userId: varchar('user_id')
     .primaryKey()
@@ -47,7 +56,10 @@ export const userProfilesTable = pgTable('user_profiles', {
     enum: WORKFLOW_ASSIGNMENTS,
   })
     .notNull()
-    .default('insurance'),
+    .default('insurance_retail'),
+  department: varchar('department', { enum: DEPARTMENTS })
+    .notNull()
+    .default('canvasser'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -105,6 +117,23 @@ export const pinsTable = pgTable('pins', {
     .$onUpdate(() => new Date()),
 });
 
+// Tracks which user/company an uploaded object storage entity belongs to,
+// recorded when the presigned upload URL is issued (before the file itself
+// exists). GET /storage/objects/*path uses this to enforce that only
+// authenticated users from the same company can read the file back.
+export const objectOwnershipTable = pgTable('object_ownership', {
+  objectPath: varchar('object_path').primaryKey(),
+  userId: varchar('user_id')
+    .notNull()
+    .references(() => usersTable.id, { onDelete: 'cascade' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // Latest known GPS position per rep — internal team-position awareness.
 export const userLocationsTable = pgTable('user_locations', {
   userId: varchar('user_id')
@@ -124,3 +153,4 @@ export type UserProfile = typeof userProfilesTable.$inferSelect;
 export type Pin = typeof pinsTable.$inferSelect;
 export type InsertPin = typeof pinsTable.$inferInsert;
 export type UserLocation = typeof userLocationsTable.$inferSelect;
+export type ObjectOwnership = typeof objectOwnershipTable.$inferSelect;

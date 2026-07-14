@@ -22,12 +22,17 @@ const ROLE_LABELS: Record<string, string> = {
   field_rep: 'Field Rep',
   manager: 'Manager',
   admin: 'Admin',
+  super_admin: 'Super Admin',
 };
 
 const WORKFLOW_LABELS: Record<string, string> = {
   retail: 'Retail',
-  insurance: 'Insurance',
-  both: 'Both',
+  insurance_retail: 'Insurance + Retail',
+};
+
+const DEPARTMENT_LABELS: Record<string, string> = {
+  canvasser: 'Canvasser',
+  inspector_canvasser: 'Inspector Canvasser',
 };
 
 const DAMAGE_TYPE_LABELS: Record<DamageType, string> = {
@@ -62,8 +67,14 @@ function pinSubtitle(pin: Pin): string {
 export default function ProfileScreen() {
   const colors = useColors();
   const { user, logout } = useAuth();
-  const { role, workflowAssignment, companyId, companyName, isLoading: profileLoading } =
-    useProfile();
+  const {
+    role,
+    workflowAssignment,
+    department,
+    companyId,
+    companyName,
+    isLoading: profileLoading,
+  } = useProfile();
   const pinsQuery = useListPins();
   const pins = pinsQuery.data?.pins ?? [];
 
@@ -107,6 +118,11 @@ export default function ProfileScreen() {
               <View style={[styles.chip, { backgroundColor: colors.muted }]}>
                 <Text style={[styles.chipText, { color: colors.foreground }]}>
                   {WORKFLOW_LABELS[workflowAssignment] ?? workflowAssignment}
+                </Text>
+              </View>
+              <View style={[styles.chip, { backgroundColor: colors.muted }]}>
+                <Text style={[styles.chipText, { color: colors.foreground }]}>
+                  {DEPARTMENT_LABELS[department] ?? department}
                 </Text>
               </View>
             </View>

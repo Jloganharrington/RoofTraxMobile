@@ -207,8 +207,9 @@ export const GetStorageObjectResponse = zod.unknown()
 export const GetMyProfileResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
-  "role": zod.enum(['field_rep', 'manager', 'admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance', 'both']),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
   "companyId": zod.string(),
   "companyName": zod.string()
 })
@@ -491,8 +492,9 @@ export const ListTeamUsersResponse = zod.object({
   "firstName": zod.string().nullable(),
   "lastName": zod.string().nullable(),
   "profileImageUrl": zod.string().nullable(),
-  "role": zod.enum(['field_rep', 'manager', 'admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance', 'both']),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
   "pinCount": zod.number(),
   "joinedAt": zod.coerce.date()
 }))
@@ -510,8 +512,9 @@ export const UpdateTeamUserParams = zod.object({
 })
 
 export const UpdateTeamUserBody = zod.object({
-  "role": zod.enum(['field_rep', 'manager', 'admin']).optional(),
-  "workflowAssignment": zod.enum(['retail', 'insurance', 'both']).optional()
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']).optional(),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']).optional(),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']).optional()
 })
 
 export const UpdateTeamUserResponse = zod.object({
@@ -521,8 +524,9 @@ export const UpdateTeamUserResponse = zod.object({
   "firstName": zod.string().nullable(),
   "lastName": zod.string().nullable(),
   "profileImageUrl": zod.string().nullable(),
-  "role": zod.enum(['field_rep', 'manager', 'admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance', 'both']),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
   "pinCount": zod.number(),
   "joinedAt": zod.coerce.date()
 })

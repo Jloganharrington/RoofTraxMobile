@@ -11,6 +11,5 @@ export type WorkflowAssignment = typeof WorkflowAssignment[keyof typeof Workflow
 
 export const WorkflowAssignment = {
   retail: 'retail',
-  insurance: 'insurance',
-  both: 'both',
+  insurance_retail: 'insurance_retail',
 } as const;

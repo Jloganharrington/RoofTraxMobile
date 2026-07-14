@@ -3,9 +3,10 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from '@workspace/api-zod';
+import { db, objectOwnershipTable } from '@workspace/db';
+import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { ObjectPermission } from '../lib/objectAcl';
 import {
   ObjectNotFoundError,
   ObjectStorageService,
@@ -13,19 +14,6 @@ import {
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
-
-function hasAuthenticatedSession(
-  req: Request,
-): req is Request & { isAuthenticated: () => boolean } {
-  if (
-    !('isAuthenticated' in req) ||
-    typeof req.isAuthenticated !== 'function'
-  ) {
-    return false;
-  }
-
-  return req.isAuthenticated();
-}
 
 /**
  * POST /storage/uploads/request-url
@@ -38,7 +26,7 @@ function hasAuthenticatedSession(
 router.post(
   '/storage/uploads/request-url',
   async (req: Request, res: Response) => {
-    if (!hasAuthenticatedSession(req)) {
+    if (!req.isAuthenticated()) {
       res.status(401).json({ error: 'Unauthorized' });
 
       return;
@@ -56,6 +44,15 @@ router.post(
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       const objectPath =
         objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+      // Record ownership at request time (before the file exists) so
+      // GET /storage/objects/*path can later enforce a same-company check
+      // without relying on GCS object metadata.
+      await db.insert(objectOwnershipTable).values({
+        objectPath,
+        userId: req.user.id,
+        companyId: req.user.companyId,
+      });
 
       res.json(
         RequestUploadUrlResponse.parse({
@@ -119,26 +116,32 @@ router.get(
  */
 router.get('/storage/objects/*path', async (req: Request, res: Response) => {
   try {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join('/') : raw;
     const objectPath = `/objects/${wildcardPath}`;
+
+    const [ownership] = await db
+      .select()
+      .from(objectOwnershipTable)
+      .where(eq(objectOwnershipTable.objectPath, objectPath));
+
+    if (!ownership) {
+      res.status(404).json({ error: 'Object not found' });
+      return;
+    }
+
+    if (ownership.companyId !== req.user.companyId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
     const objectFile =
       await objectStorageService.getObjectEntityFile(objectPath);
-
-    // --- Protected route example (uncomment when using replit-auth) ---
-    // if (!req.isAuthenticated()) {
-    //   res.status(401).json({ error: "Unauthorized" });
-    //   return;
-    // }
-    // const canAccess = await objectStorageService.canAccessObjectEntity({
-    //   userId: req.user.id,
-    //   objectFile,
-    //   requestedPermission: ObjectPermission.READ,
-    // });
-    // if (!canAccess) {
-    //   res.status(403).json({ error: "Forbidden" });
-    //   return;
-    // }
 
     const response = await objectStorageService.downloadObject(objectFile);
 

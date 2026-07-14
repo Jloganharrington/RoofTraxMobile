@@ -9,7 +9,7 @@ import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canManageUser, canSetWorkflow, isManagerOrAdmin } from '../lib/permissions';
+import { canSetRoleDeptSpec, canSetWorkflow, isManagerOrAdmin } from '../lib/permissions';
 
 const router: IRouter = Router();
 
@@ -85,6 +85,7 @@ router.get('/admin/users', async (req: Request, res: Response) => {
       createdAt: usersTable.createdAt,
       role: userProfilesTable.role,
       workflowAssignment: userProfilesTable.workflowAssignment,
+      department: userProfilesTable.department,
       pinCount: sql<number>`(select count(*) from ${pinsTable} where ${pinsTable.userId} = ${usersTable.id})`,
     })
     .from(usersTable)
@@ -100,7 +101,8 @@ router.get('/admin/users', async (req: Request, res: Response) => {
         lastName: row.lastName,
         profileImageUrl: row.profileImageUrl,
         role: row.role ?? 'field_rep',
-        workflowAssignment: row.workflowAssignment ?? 'insurance',
+        workflowAssignment: row.workflowAssignment ?? 'insurance_retail',
+        department: row.department ?? 'canvasser',
         pinCount: Number(row.pinCount ?? 0),
         joinedAt: row.createdAt,
       })),
@@ -139,10 +141,12 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
   const targetRole = targetProfile?.role ?? 'field_rep';
 
   if (
-    parsed.data.role !== undefined &&
-    !canManageUser(actor.role, req.user!.id, userId, targetRole, parsed.data.role)
+    (parsed.data.role !== undefined || parsed.data.department !== undefined) &&
+    !canSetRoleDeptSpec(actor.role, req.user!.id, userId, targetRole, {
+      role: parsed.data.role,
+    })
   ) {
-    res.status(403).json({ error: 'Not permitted to change this role' });
+    res.status(403).json({ error: 'Not permitted to change this role or department' });
     return;
   }
 
@@ -162,7 +166,8 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
       workflowAssignment:
         parsed.data.workflowAssignment ??
         targetProfile?.workflowAssignment ??
-        'insurance',
+        'insurance_retail',
+      department: parsed.data.department ?? targetProfile?.department ?? 'canvasser',
     })
     .onConflictDoUpdate({
       target: userProfilesTable.userId,
@@ -171,6 +176,7 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
         ...(parsed.data.workflowAssignment
           ? { workflowAssignment: parsed.data.workflowAssignment }
           : {}),
+        ...(parsed.data.department ? { department: parsed.data.department } : {}),
         updatedAt: new Date(),
       },
     })
@@ -191,6 +197,7 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
         profileImageUrl: targetUser.profileImageUrl,
         role: updated.role,
         workflowAssignment: updated.workflowAssignment,
+        department: updated.department,
         pinCount: Number(pinCount ?? 0),
         joinedAt: targetUser.createdAt,
       },
@@ -220,7 +227,7 @@ router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
     .where(eq(userProfilesTable.userId, userId));
   const targetRole = targetProfile?.role ?? 'field_rep';
 
-  if (!canManageUser(actor.role, req.user!.id, userId, targetRole)) {
+  if (!canSetRoleDeptSpec(actor.role, req.user!.id, userId, targetRole)) {
     res.status(403).json({ error: 'Not permitted to remove this user' });
     return;
   }

@@ -12,8 +12,12 @@ export default function TabLayout() {
   const isDark = colorScheme === 'dark';
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
-  const { role } = useProfile();
-  const canSeeTeam = role === 'manager' || role === 'admin';
+  const { role, department } = useProfile();
+  const canSeeTeam = role === 'manager' || role === 'admin' || role === 'super_admin';
+  // inspector_canvasser is the department built for the forensic inspection
+  // module; super_admin can always reach it too. Content ships in a later
+  // phase — this tab currently just gates the placeholder screen.
+  const canSeeInspections = department === 'inspector_canvasser' || role === 'super_admin';
 
   return (
     <Tabs
@@ -64,6 +68,16 @@ export default function TabLayout() {
           href: canSeeTeam ? undefined : null,
           tabBarIcon: ({ color }) => (
             <Icon name="users" size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="inspections"
+        options={{
+          title: 'Inspections',
+          href: canSeeInspections ? undefined : null,
+          tabBarIcon: ({ color }) => (
+            <Icon name="clipboard" size={22} color={color} />
           ),
         }}
       />
