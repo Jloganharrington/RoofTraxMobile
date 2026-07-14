@@ -339,6 +339,402 @@ export interface AddressSearchResults {
   results: GeocodeSearchResult[];
 }
 
+export type InspectionStatus = typeof InspectionStatus[keyof typeof InspectionStatus];
+
+
+export const InspectionStatus = {
+  scheduled: 'scheduled',
+  capturing: 'capturing',
+  validating: 'validating',
+  submitted: 'submitted',
+  package_ready: 'package_ready',
+} as const;
+
+export type ElevationDirection = typeof ElevationDirection[keyof typeof ElevationDirection];
+
+
+export const ElevationDirection = {
+  front: 'front',
+  right: 'right',
+  back: 'back',
+  left: 'left',
+} as const;
+
+export type InspectionSubjectType = typeof InspectionSubjectType[keyof typeof InspectionSubjectType];
+
+
+export const InspectionSubjectType = {
+  inspection: 'inspection',
+  slope: 'slope',
+  elevation: 'elevation',
+  damage_instance: 'damage_instance',
+  test_square: 'test_square',
+} as const;
+
+export type PhotoTriadRole = typeof PhotoTriadRole[keyof typeof PhotoTriadRole];
+
+
+export const PhotoTriadRole = {
+  wide: 'wide',
+  mid: 'mid',
+  close: 'close',
+} as const;
+
+export type CaptureStage = typeof CaptureStage[keyof typeof CaptureStage];
+
+
+export const CaptureStage = {
+  S0: 'S0',
+  S1: 'S1',
+  S2: 'S2',
+  S3: 'S3',
+  S4: 'S4',
+  S5: 'S5',
+  S6: 'S6',
+  S7: 'S7',
+  S8: 'S8',
+  S9: 'S9',
+} as const;
+
+export interface Inspection {
+  id: string;
+  companyId: string;
+  /** @nullable */
+  pinId: string | null;
+  inspectorUserId: string;
+  status: InspectionStatus;
+  /** @nullable */
+  claimNumber: string | null;
+  /** @nullable */
+  policyNumber: string | null;
+  /** @nullable */
+  carrierName: string | null;
+  /** @nullable */
+  insuredName: string | null;
+  /** @nullable */
+  address: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInspectionInput {
+  /** @nullable */
+  pinId?: string | null;
+  /** Defaults to the acting user if omitted. */
+  inspectorUserId?: string;
+  /** @nullable */
+  claimNumber?: string | null;
+  /** @nullable */
+  policyNumber?: string | null;
+  /** @nullable */
+  carrierName?: string | null;
+  /** @nullable */
+  insuredName?: string | null;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface UpdateInspectionInput {
+  status?: InspectionStatus;
+  /** @nullable */
+  claimNumber?: string | null;
+  /** @nullable */
+  policyNumber?: string | null;
+  /** @nullable */
+  carrierName?: string | null;
+  /** @nullable */
+  insuredName?: string | null;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionEnvelope {
+  inspection: Inspection;
+}
+
+export interface InspectionListEnvelope {
+  inspections: Inspection[];
+}
+
+export interface InspectionSlope {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  label: string;
+  /** @nullable */
+  pitchRise: number | null;
+  /** @nullable */
+  pitchRun: number | null;
+  /** @nullable */
+  materialType: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateInspectionSlopeInput {
+  /** @minLength 1 */
+  label: string;
+  /** @nullable */
+  pitchRise?: number | null;
+  /** @nullable */
+  pitchRun?: number | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionSlopeEnvelope {
+  slope: InspectionSlope;
+}
+
+export interface InspectionElevation {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  direction: ElevationDirection;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateInspectionElevationInput {
+  direction: ElevationDirection;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionElevationEnvelope {
+  elevation: InspectionElevation;
+}
+
+export interface DamageInstance {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  /** @nullable */
+  elevationId: string | null;
+  damageType: string;
+  /** @nullable */
+  severity: string | null;
+  /** @nullable */
+  causationNote: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateDamageInstanceInput {
+  /** @nullable */
+  slopeId?: string | null;
+  /** @nullable */
+  elevationId?: string | null;
+  /** @minLength 1 */
+  damageType: string;
+  /** @nullable */
+  severity?: string | null;
+  /** @nullable */
+  causationNote?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface DamageInstanceEnvelope {
+  damageInstance: DamageInstance;
+}
+
+export interface TestSquare {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  label: string;
+  /** @nullable */
+  sizeSqFt: number | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateTestSquareInput {
+  /** @nullable */
+  slopeId?: string | null;
+  /** @minLength 1 */
+  label: string;
+  /** @nullable */
+  sizeSqFt?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface TestSquareEnvelope {
+  testSquare: TestSquare;
+}
+
+export interface TestSquareHit {
+  id: string;
+  companyId: string;
+  testSquareId: string;
+  /** @nullable */
+  hitType: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateTestSquareHitInput {
+  /** @nullable */
+  hitType?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface TestSquareHitEnvelope {
+  hit: TestSquareHit;
+}
+
+/**
+ * @nullable
+ */
+export type InspectionPhotoExifJson = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type InspectionPhotoOverlayJson = { [key: string]: unknown } | null;
+
+export interface InspectionPhoto {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  stage: CaptureStage | null;
+  subjectType: InspectionSubjectType;
+  /** @nullable */
+  subjectId: string | null;
+  triadRole: PhotoTriadRole | null;
+  url: string;
+  sha256: string;
+  /** @nullable */
+  exifJson: InspectionPhotoExifJson;
+  /** @nullable */
+  overlayJson: InspectionPhotoOverlayJson;
+  /** @nullable */
+  capturedAtUtc: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  createdAt: string;
+}
+
+/**
+ * @nullable
+ */
+export type CreateInspectionPhotoInputExifJson = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type CreateInspectionPhotoInputOverlayJson = { [key: string]: unknown } | null;
+
+export interface CreateInspectionPhotoInput {
+  stage?: CaptureStage | null;
+  subjectType: InspectionSubjectType;
+  /** @nullable */
+  subjectId?: string | null;
+  triadRole?: PhotoTriadRole | null;
+  /** @minLength 1 */
+  url: string;
+  /** @minLength 1 */
+  sha256: string;
+  /** @nullable */
+  exifJson?: CreateInspectionPhotoInputExifJson;
+  /** @nullable */
+  overlayJson?: CreateInspectionPhotoInputOverlayJson;
+  /** @nullable */
+  capturedAtUtc?: string | null;
+  /** @nullable */
+  latitude?: number | null;
+  /** @nullable */
+  longitude?: number | null;
+}
+
+export interface InspectionPhotoEnvelope {
+  photo: InspectionPhoto;
+}
+
+export interface Measurement {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  subjectType: InspectionSubjectType;
+  /** @nullable */
+  subjectId: string | null;
+  measurementType: string;
+  value: number;
+  /** @nullable */
+  unit: string | null;
+  createdAt: string;
+}
+
+export interface CreateMeasurementInput {
+  subjectType: InspectionSubjectType;
+  /** @nullable */
+  subjectId?: string | null;
+  /** @minLength 1 */
+  measurementType: string;
+  value: number;
+  /** @nullable */
+  unit?: string | null;
+}
+
+export interface MeasurementEnvelope {
+  measurement: Measurement;
+}
+
+export interface Attestation {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  userId: string;
+  stage: CaptureStage | null;
+  /** @nullable */
+  signatureData: string | null;
+  attestedAt: string;
+}
+
+export interface CreateAttestationInput {
+  stage?: CaptureStage | null;
+  /** @nullable */
+  signatureData?: string | null;
+}
+
+export interface AttestationEnvelope {
+  attestation: Attestation;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */

@@ -606,3 +606,393 @@ export const ListTeamLocationsResponse = zod.object({
 })
 
 
+/**
+ * @summary List inspections in the current user's company
+ */
+export const ListInspectionsResponse = zod.object({
+  "inspections": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string().nullable(),
+  "inspectorUserId": zod.string(),
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']),
+  "claimNumber": zod.string().nullable(),
+  "policyNumber": zod.string().nullable(),
+  "carrierName": zod.string().nullable(),
+  "insuredName": zod.string().nullable(),
+  "address": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create an inspection
+ */
+export const CreateInspectionBody = zod.object({
+  "pinId": zod.string().nullish(),
+  "inspectorUserId": zod.string().optional().describe('Defaults to the acting user if omitted.'),
+  "claimNumber": zod.string().nullish(),
+  "policyNumber": zod.string().nullish(),
+  "carrierName": zod.string().nullish(),
+  "insuredName": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInspectionResponse = zod.object({
+  "inspection": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string().nullable(),
+  "inspectorUserId": zod.string(),
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']),
+  "claimNumber": zod.string().nullable(),
+  "policyNumber": zod.string().nullable(),
+  "carrierName": zod.string().nullable(),
+  "insuredName": zod.string().nullable(),
+  "address": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Get a single inspection
+ */
+export const GetInspectionParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const GetInspectionResponse = zod.object({
+  "inspection": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string().nullable(),
+  "inspectorUserId": zod.string(),
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']),
+  "claimNumber": zod.string().nullable(),
+  "policyNumber": zod.string().nullable(),
+  "carrierName": zod.string().nullable(),
+  "insuredName": zod.string().nullable(),
+  "address": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update an inspection's status or claim details
+ */
+export const UpdateInspectionParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const UpdateInspectionBody = zod.object({
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']).optional(),
+  "claimNumber": zod.string().nullish(),
+  "policyNumber": zod.string().nullish(),
+  "carrierName": zod.string().nullish(),
+  "insuredName": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const UpdateInspectionResponse = zod.object({
+  "inspection": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string().nullable(),
+  "inspectorUserId": zod.string(),
+  "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']),
+  "claimNumber": zod.string().nullable(),
+  "policyNumber": zod.string().nullable(),
+  "carrierName": zod.string().nullable(),
+  "insuredName": zod.string().nullable(),
+  "address": zod.string().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Add a roof slope to an inspection
+ */
+export const CreateInspectionSlopeParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CreateInspectionSlopeBody = zod.object({
+  "label": zod.string().min(1),
+  "pitchRise": zod.number().nullish(),
+  "pitchRun": zod.number().nullish(),
+  "materialType": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInspectionSlopeResponse = zod.object({
+  "slope": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Add a building elevation to an inspection
+ */
+export const CreateInspectionElevationParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const CreateInspectionElevationBody = zod.object({
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInspectionElevationResponse = zod.object({
+  "elevation": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Record a damage instance on an inspection
+ */
+export const CreateDamageInstanceParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CreateDamageInstanceBody = zod.object({
+  "slopeId": zod.string().nullish(),
+  "elevationId": zod.string().nullish(),
+  "damageType": zod.string().min(1),
+  "severity": zod.string().nullish(),
+  "causationNote": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateDamageInstanceResponse = zod.object({
+  "damageInstance": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "elevationId": zod.string().nullable(),
+  "damageType": zod.string(),
+  "severity": zod.string().nullable(),
+  "causationNote": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Mark a test square on an inspection
+ */
+export const CreateTestSquareParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CreateTestSquareBody = zod.object({
+  "slopeId": zod.string().nullish(),
+  "label": zod.string().min(1),
+  "sizeSqFt": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateTestSquareResponse = zod.object({
+  "testSquare": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "label": zod.string(),
+  "sizeSqFt": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Record a hit within a test square
+ */
+export const CreateTestSquareHitParams = zod.object({
+  "inspectionId": zod.coerce.string(),
+  "testSquareId": zod.coerce.string()
+})
+
+export const CreateTestSquareHitBody = zod.object({
+  "hitType": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateTestSquareHitResponse = zod.object({
+  "hit": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "testSquareId": zod.string(),
+  "hitType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Stores the already-uploaded photo's metadata (EXIF/GPS/UTC, SHA-256, overlay annotations); the binary itself goes through the existing presigned storage upload pipeline first.
+ * @summary Record an evidence photo captured for an inspection
+ */
+export const CreateInspectionPhotoParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+
+export const CreateInspectionPhotoBody = zod.object({
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullish(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
+  "url": zod.string().min(1),
+  "sha256": zod.string().min(1),
+  "exifJson": zod.object({
+
+}).passthrough().nullish(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullish(),
+  "capturedAtUtc": zod.coerce.date().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish()
+})
+
+export const CreateInspectionPhotoResponse = zod.object({
+  "photo": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullable(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "exifJson": zod.object({
+
+}).passthrough().nullable(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullable(),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Record a raw measurement for an inspection
+ */
+export const CreateMeasurementParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CreateMeasurementBody = zod.object({
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullish(),
+  "measurementType": zod.string().min(1),
+  "value": zod.number(),
+  "unit": zod.string().nullish()
+})
+
+export const CreateMeasurementResponse = zod.object({
+  "measurement": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullable(),
+  "measurementType": zod.string(),
+  "value": zod.number(),
+  "unit": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Record the acting inspector's attestation for a capture stage
+ */
+export const CreateAttestationParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const CreateAttestationBody = zod.object({
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
+  "signatureData": zod.string().nullish()
+})
+
+export const CreateAttestationResponse = zod.object({
+  "attestation": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "signatureData": zod.string().nullable(),
+  "attestedAt": zod.coerce.date()
+})
+})
+
+

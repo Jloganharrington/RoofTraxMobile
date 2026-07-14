@@ -22,21 +22,38 @@ import type {
 import type {
   AddressSearchResults,
   AdminStatsEnvelope,
+  AttestationEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
   BulkCreatePinsInput,
   CompanyEnvelope,
+  CreateAttestationInput,
   CreateCompanyRequest,
+  CreateDamageInstanceInput,
+  CreateInspectionElevationInput,
+  CreateInspectionInput,
+  CreateInspectionPhotoInput,
+  CreateInspectionSlopeInput,
+  CreateMeasurementInput,
   CreatePinInput,
+  CreateTestSquareHitInput,
+  CreateTestSquareInput,
+  DamageInstanceEnvelope,
   DeleteSuccess,
   ErrorEnvelope,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
+  InspectionElevationEnvelope,
+  InspectionEnvelope,
+  InspectionListEnvelope,
+  InspectionPhotoEnvelope,
+  InspectionSlopeEnvelope,
   ListPinsParams,
   LocationPingBody,
   LocationPingSuccess,
   LogoutBrowserSessionParams,
   LogoutSuccess,
+  MeasurementEnvelope,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   PinEnvelope,
@@ -48,6 +65,9 @@ import type {
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
+  TestSquareEnvelope,
+  TestSquareHitEnvelope,
+  UpdateInspectionInput,
   UpdatePinInput,
   UpdateTeamUserInput,
   UploadUrlRequest,
@@ -2079,4 +2099,880 @@ export function useListTeamLocations<TData = Awaited<ReturnType<typeof listTeamL
 
 
 
+
+export const getListInspectionsUrl = () => {
+
+
+
+
+  return `/api/inspections`
+}
+
+/**
+ * @summary List inspections in the current user's company
+ */
+export const listInspections = async ( options?: RequestInit): Promise<InspectionListEnvelope> => {
+
+  return customFetch<InspectionListEnvelope>(getListInspectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInspectionsQueryKey = () => {
+    return [
+    `/api/inspections`
+    ] as const;
+    }
+
+
+export const getListInspectionsQueryOptions = <TData = Awaited<ReturnType<typeof listInspections>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInspections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInspectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInspections>>> = ({ signal }) => listInspections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInspections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInspectionsQueryResult = NonNullable<Awaited<ReturnType<typeof listInspections>>>
+export type ListInspectionsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List inspections in the current user's company
+ */
+
+export function useListInspections<TData = Awaited<ReturnType<typeof listInspections>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInspections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInspectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateInspectionUrl = () => {
+
+
+
+
+  return `/api/inspections`
+}
+
+/**
+ * @summary Create an inspection
+ */
+export const createInspection = async (createInspectionInput: CreateInspectionInput, options?: RequestInit): Promise<InspectionEnvelope> => {
+
+  return customFetch<InspectionEnvelope>(getCreateInspectionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInspectionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInspectionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspection>>, TError,{data: BodyType<CreateInspectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInspection>>, TError,{data: BodyType<CreateInspectionInput>}, TContext> => {
+
+const mutationKey = ['createInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInspection>>, {data: BodyType<CreateInspectionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createInspection(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof createInspection>>>
+    export type CreateInspectionMutationBody = BodyType<CreateInspectionInput>
+    export type CreateInspectionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create an inspection
+ */
+export const useCreateInspection = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspection>>, TError,{data: BodyType<CreateInspectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInspection>>,
+        TError,
+        {data: BodyType<CreateInspectionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInspectionMutationOptions(options));
+    }
+
+export const getGetInspectionUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}`
+}
+
+/**
+ * @summary Get a single inspection
+ */
+export const getInspection = async (inspectionId: string, options?: RequestInit): Promise<InspectionEnvelope> => {
+
+  return customFetch<InspectionEnvelope>(getGetInspectionUrl(inspectionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInspectionQueryKey = (inspectionId: string,) => {
+    return [
+    `/api/inspections/${inspectionId}`
+    ] as const;
+    }
+
+
+export const getGetInspectionQueryOptions = <TData = Awaited<ReturnType<typeof getInspection>>, TError = ErrorType<ErrorEnvelope>>(inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInspectionQueryKey(inspectionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInspection>>> = ({ signal }) => getInspection(inspectionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: inspectionId !== null && inspectionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInspection>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInspectionQueryResult = NonNullable<Awaited<ReturnType<typeof getInspection>>>
+export type GetInspectionQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get a single inspection
+ */
+
+export function useGetInspection<TData = Awaited<ReturnType<typeof getInspection>>, TError = ErrorType<ErrorEnvelope>>(
+ inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInspectionQueryOptions(inspectionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateInspectionUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}`
+}
+
+/**
+ * @summary Update an inspection's status or claim details
+ */
+export const updateInspection = async (inspectionId: string,
+    updateInspectionInput: UpdateInspectionInput, options?: RequestInit): Promise<InspectionEnvelope> => {
+
+  return customFetch<InspectionEnvelope>(getUpdateInspectionUrl(inspectionId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateInspectionInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateInspectionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspection>>, TError,{inspectionId: string;data: BodyType<UpdateInspectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInspection>>, TError,{inspectionId: string;data: BodyType<UpdateInspectionInput>}, TContext> => {
+
+const mutationKey = ['updateInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInspection>>, {inspectionId: string;data: BodyType<UpdateInspectionInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  updateInspection(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof updateInspection>>>
+    export type UpdateInspectionMutationBody = BodyType<UpdateInspectionInput>
+    export type UpdateInspectionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update an inspection's status or claim details
+ */
+export const useUpdateInspection = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspection>>, TError,{inspectionId: string;data: BodyType<UpdateInspectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInspection>>,
+        TError,
+        {inspectionId: string;data: BodyType<UpdateInspectionInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInspectionMutationOptions(options));
+    }
+
+export const getCreateInspectionSlopeUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/slopes`
+}
+
+/**
+ * @summary Add a roof slope to an inspection
+ */
+export const createInspectionSlope = async (inspectionId: string,
+    createInspectionSlopeInput: CreateInspectionSlopeInput, options?: RequestInit): Promise<InspectionSlopeEnvelope> => {
+
+  return customFetch<InspectionSlopeEnvelope>(getCreateInspectionSlopeUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInspectionSlopeInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInspectionSlopeMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionSlope>>, TError,{inspectionId: string;data: BodyType<CreateInspectionSlopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInspectionSlope>>, TError,{inspectionId: string;data: BodyType<CreateInspectionSlopeInput>}, TContext> => {
+
+const mutationKey = ['createInspectionSlope'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInspectionSlope>>, {inspectionId: string;data: BodyType<CreateInspectionSlopeInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createInspectionSlope(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInspectionSlopeMutationResult = NonNullable<Awaited<ReturnType<typeof createInspectionSlope>>>
+    export type CreateInspectionSlopeMutationBody = BodyType<CreateInspectionSlopeInput>
+    export type CreateInspectionSlopeMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Add a roof slope to an inspection
+ */
+export const useCreateInspectionSlope = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionSlope>>, TError,{inspectionId: string;data: BodyType<CreateInspectionSlopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInspectionSlope>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateInspectionSlopeInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInspectionSlopeMutationOptions(options));
+    }
+
+export const getCreateInspectionElevationUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/elevations`
+}
+
+/**
+ * @summary Add a building elevation to an inspection
+ */
+export const createInspectionElevation = async (inspectionId: string,
+    createInspectionElevationInput: CreateInspectionElevationInput, options?: RequestInit): Promise<InspectionElevationEnvelope> => {
+
+  return customFetch<InspectionElevationEnvelope>(getCreateInspectionElevationUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInspectionElevationInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInspectionElevationMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionElevation>>, TError,{inspectionId: string;data: BodyType<CreateInspectionElevationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInspectionElevation>>, TError,{inspectionId: string;data: BodyType<CreateInspectionElevationInput>}, TContext> => {
+
+const mutationKey = ['createInspectionElevation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInspectionElevation>>, {inspectionId: string;data: BodyType<CreateInspectionElevationInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createInspectionElevation(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInspectionElevationMutationResult = NonNullable<Awaited<ReturnType<typeof createInspectionElevation>>>
+    export type CreateInspectionElevationMutationBody = BodyType<CreateInspectionElevationInput>
+    export type CreateInspectionElevationMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Add a building elevation to an inspection
+ */
+export const useCreateInspectionElevation = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionElevation>>, TError,{inspectionId: string;data: BodyType<CreateInspectionElevationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInspectionElevation>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateInspectionElevationInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInspectionElevationMutationOptions(options));
+    }
+
+export const getCreateDamageInstanceUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/damage-instances`
+}
+
+/**
+ * @summary Record a damage instance on an inspection
+ */
+export const createDamageInstance = async (inspectionId: string,
+    createDamageInstanceInput: CreateDamageInstanceInput, options?: RequestInit): Promise<DamageInstanceEnvelope> => {
+
+  return customFetch<DamageInstanceEnvelope>(getCreateDamageInstanceUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createDamageInstanceInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDamageInstanceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDamageInstance>>, TError,{inspectionId: string;data: BodyType<CreateDamageInstanceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDamageInstance>>, TError,{inspectionId: string;data: BodyType<CreateDamageInstanceInput>}, TContext> => {
+
+const mutationKey = ['createDamageInstance'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDamageInstance>>, {inspectionId: string;data: BodyType<CreateDamageInstanceInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createDamageInstance(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDamageInstanceMutationResult = NonNullable<Awaited<ReturnType<typeof createDamageInstance>>>
+    export type CreateDamageInstanceMutationBody = BodyType<CreateDamageInstanceInput>
+    export type CreateDamageInstanceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record a damage instance on an inspection
+ */
+export const useCreateDamageInstance = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDamageInstance>>, TError,{inspectionId: string;data: BodyType<CreateDamageInstanceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDamageInstance>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateDamageInstanceInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDamageInstanceMutationOptions(options));
+    }
+
+export const getCreateTestSquareUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/test-squares`
+}
+
+/**
+ * @summary Mark a test square on an inspection
+ */
+export const createTestSquare = async (inspectionId: string,
+    createTestSquareInput: CreateTestSquareInput, options?: RequestInit): Promise<TestSquareEnvelope> => {
+
+  return customFetch<TestSquareEnvelope>(getCreateTestSquareUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTestSquareInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTestSquareMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTestSquare>>, TError,{inspectionId: string;data: BodyType<CreateTestSquareInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTestSquare>>, TError,{inspectionId: string;data: BodyType<CreateTestSquareInput>}, TContext> => {
+
+const mutationKey = ['createTestSquare'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTestSquare>>, {inspectionId: string;data: BodyType<CreateTestSquareInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createTestSquare(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTestSquareMutationResult = NonNullable<Awaited<ReturnType<typeof createTestSquare>>>
+    export type CreateTestSquareMutationBody = BodyType<CreateTestSquareInput>
+    export type CreateTestSquareMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark a test square on an inspection
+ */
+export const useCreateTestSquare = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTestSquare>>, TError,{inspectionId: string;data: BodyType<CreateTestSquareInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTestSquare>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateTestSquareInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTestSquareMutationOptions(options));
+    }
+
+export const getCreateTestSquareHitUrl = (inspectionId: string,
+    testSquareId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/test-squares/${testSquareId}/hits`
+}
+
+/**
+ * @summary Record a hit within a test square
+ */
+export const createTestSquareHit = async (inspectionId: string,
+    testSquareId: string,
+    createTestSquareHitInput: CreateTestSquareHitInput, options?: RequestInit): Promise<TestSquareHitEnvelope> => {
+
+  return customFetch<TestSquareHitEnvelope>(getCreateTestSquareHitUrl(inspectionId,testSquareId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTestSquareHitInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTestSquareHitMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTestSquareHit>>, TError,{inspectionId: string;testSquareId: string;data: BodyType<CreateTestSquareHitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTestSquareHit>>, TError,{inspectionId: string;testSquareId: string;data: BodyType<CreateTestSquareHitInput>}, TContext> => {
+
+const mutationKey = ['createTestSquareHit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTestSquareHit>>, {inspectionId: string;testSquareId: string;data: BodyType<CreateTestSquareHitInput>}> = (props) => {
+          const {inspectionId,testSquareId,data} = props ?? {};
+
+          return  createTestSquareHit(inspectionId,testSquareId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTestSquareHitMutationResult = NonNullable<Awaited<ReturnType<typeof createTestSquareHit>>>
+    export type CreateTestSquareHitMutationBody = BodyType<CreateTestSquareHitInput>
+    export type CreateTestSquareHitMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record a hit within a test square
+ */
+export const useCreateTestSquareHit = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTestSquareHit>>, TError,{inspectionId: string;testSquareId: string;data: BodyType<CreateTestSquareHitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTestSquareHit>>,
+        TError,
+        {inspectionId: string;testSquareId: string;data: BodyType<CreateTestSquareHitInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTestSquareHitMutationOptions(options));
+    }
+
+export const getCreateInspectionPhotoUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/photos`
+}
+
+/**
+ * Stores the already-uploaded photo's metadata (EXIF/GPS/UTC, SHA-256, overlay annotations); the binary itself goes through the existing presigned storage upload pipeline first.
+ * @summary Record an evidence photo captured for an inspection
+ */
+export const createInspectionPhoto = async (inspectionId: string,
+    createInspectionPhotoInput: CreateInspectionPhotoInput, options?: RequestInit): Promise<InspectionPhotoEnvelope> => {
+
+  return customFetch<InspectionPhotoEnvelope>(getCreateInspectionPhotoUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInspectionPhotoInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInspectionPhotoMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionPhoto>>, TError,{inspectionId: string;data: BodyType<CreateInspectionPhotoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInspectionPhoto>>, TError,{inspectionId: string;data: BodyType<CreateInspectionPhotoInput>}, TContext> => {
+
+const mutationKey = ['createInspectionPhoto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInspectionPhoto>>, {inspectionId: string;data: BodyType<CreateInspectionPhotoInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createInspectionPhoto(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInspectionPhotoMutationResult = NonNullable<Awaited<ReturnType<typeof createInspectionPhoto>>>
+    export type CreateInspectionPhotoMutationBody = BodyType<CreateInspectionPhotoInput>
+    export type CreateInspectionPhotoMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record an evidence photo captured for an inspection
+ */
+export const useCreateInspectionPhoto = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionPhoto>>, TError,{inspectionId: string;data: BodyType<CreateInspectionPhotoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInspectionPhoto>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateInspectionPhotoInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInspectionPhotoMutationOptions(options));
+    }
+
+export const getCreateMeasurementUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/measurements`
+}
+
+/**
+ * @summary Record a raw measurement for an inspection
+ */
+export const createMeasurement = async (inspectionId: string,
+    createMeasurementInput: CreateMeasurementInput, options?: RequestInit): Promise<MeasurementEnvelope> => {
+
+  return customFetch<MeasurementEnvelope>(getCreateMeasurementUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createMeasurementInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMeasurementMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMeasurement>>, TError,{inspectionId: string;data: BodyType<CreateMeasurementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMeasurement>>, TError,{inspectionId: string;data: BodyType<CreateMeasurementInput>}, TContext> => {
+
+const mutationKey = ['createMeasurement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMeasurement>>, {inspectionId: string;data: BodyType<CreateMeasurementInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createMeasurement(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMeasurementMutationResult = NonNullable<Awaited<ReturnType<typeof createMeasurement>>>
+    export type CreateMeasurementMutationBody = BodyType<CreateMeasurementInput>
+    export type CreateMeasurementMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record a raw measurement for an inspection
+ */
+export const useCreateMeasurement = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMeasurement>>, TError,{inspectionId: string;data: BodyType<CreateMeasurementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMeasurement>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateMeasurementInput>},
+        TContext
+      > => {
+      return useMutation(getCreateMeasurementMutationOptions(options));
+    }
+
+export const getCreateAttestationUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/attestations`
+}
+
+/**
+ * @summary Record the acting inspector's attestation for a capture stage
+ */
+export const createAttestation = async (inspectionId: string,
+    createAttestationInput: CreateAttestationInput, options?: RequestInit): Promise<AttestationEnvelope> => {
+
+  return customFetch<AttestationEnvelope>(getCreateAttestationUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createAttestationInput)
+  }
+);}
+
+
+
+
+
+export const getCreateAttestationMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAttestation>>, TError,{inspectionId: string;data: BodyType<CreateAttestationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAttestation>>, TError,{inspectionId: string;data: BodyType<CreateAttestationInput>}, TContext> => {
+
+const mutationKey = ['createAttestation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAttestation>>, {inspectionId: string;data: BodyType<CreateAttestationInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createAttestation(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAttestationMutationResult = NonNullable<Awaited<ReturnType<typeof createAttestation>>>
+    export type CreateAttestationMutationBody = BodyType<CreateAttestationInput>
+    export type CreateAttestationMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record the acting inspector's attestation for a capture stage
+ */
+export const useCreateAttestation = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAttestation>>, TError,{inspectionId: string;data: BodyType<CreateAttestationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAttestation>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateAttestationInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAttestationMutationOptions(options));
+    }
 

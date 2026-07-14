@@ -57,6 +57,11 @@ export default defineConfig({
       prettier: true,
       override: {
         zod: {
+          // "auto" mis-detects as v4 here because api-zod/package.json
+          // pins zod via the pnpm catalog (a literal "catalog:" string,
+          // not a resolved semver) — force v3 explicitly to match the
+          // zod@3.25.76 actually installed in this workspace.
+          version: 3,
           coerce: {
             query: ['boolean', 'number', 'string'],
             param: ['boolean', 'number', 'string'],

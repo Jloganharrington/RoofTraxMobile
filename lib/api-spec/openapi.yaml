@@ -24,6 +24,14 @@ tags:
     description: Live rep location tracking.
   - name: Geocode
     description: Coordinate/address lookups.
+  - name: Inspections
+    description: >-
+      Forensic insurance-inspection records and their child capture data
+      (slopes, elevations, damage instances, test squares, photos,
+      measurements, attestations). Thin CRUD only — validates, stamps the
+      tenant, and stores raw values; no derived/computed logic. Gated by
+      the inspection module permission (inspector_canvasser department or
+      super_admin role).
 paths:
   /healthz:
     get:
@@ -756,6 +764,542 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections:
+    get:
+      tags: [Inspections]
+      operationId: listInspections
+      summary: List inspections in the current user's company
+      responses:
+        "200":
+          description: Inspections list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Inspections]
+      operationId: createInspection
+      summary: Create an inspection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionInput"
+      responses:
+        "201":
+          description: Inspection created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}:
+    get:
+      tags: [Inspections]
+      operationId: getInspection
+      summary: Get a single inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Inspections]
+      operationId: updateInspection
+      summary: Update an inspection's status or claim details
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInspectionInput"
+      responses:
+        "200":
+          description: Inspection updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/slopes:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionSlope
+      summary: Add a roof slope to an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionSlopeInput"
+      responses:
+        "201":
+          description: Slope created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSlopeEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/elevations:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionElevation
+      summary: Add a building elevation to an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionElevationInput"
+      responses:
+        "201":
+          description: Elevation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionElevationEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/damage-instances:
+    post:
+      tags: [Inspections]
+      operationId: createDamageInstance
+      summary: Record a damage instance on an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDamageInstanceInput"
+      responses:
+        "201":
+          description: Damage instance created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DamageInstanceEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/test-squares:
+    post:
+      tags: [Inspections]
+      operationId: createTestSquare
+      summary: Mark a test square on an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTestSquareInput"
+      responses:
+        "201":
+          description: Test square created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestSquareEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/test-squares/{testSquareId}/hits:
+    post:
+      tags: [Inspections]
+      operationId: createTestSquareHit
+      summary: Record a hit within a test square
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: testSquareId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTestSquareHitInput"
+      responses:
+        "201":
+          description: Hit recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestSquareHitEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or test square not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/photos:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionPhoto
+      summary: Record an evidence photo captured for an inspection
+      description: >-
+        Stores the already-uploaded photo's metadata (EXIF/GPS/UTC, SHA-256,
+        overlay annotations); the binary itself goes through the existing
+        presigned storage upload pipeline first.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionPhotoInput"
+      responses:
+        "201":
+          description: Photo recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionPhotoEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/measurements:
+    post:
+      tags: [Inspections]
+      operationId: createMeasurement
+      summary: Record a raw measurement for an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMeasurementInput"
+      responses:
+        "201":
+          description: Measurement recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeasurementEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/attestations:
+    post:
+      tags: [Inspections]
+      operationId: createAttestation
+      summary: Record the acting inspector's attestation for a capture stage
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAttestationInput"
+      responses:
+        "201":
+          description: Attestation recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttestationEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -1288,3 +1832,510 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GeocodeSearchResult"
+
+    InspectionStatus:
+      type: string
+      enum: [scheduled, capturing, validating, submitted, package_ready]
+    ElevationDirection:
+      type: string
+      enum: [front, right, back, left]
+    InspectionSubjectType:
+      type: string
+      enum: [inspection, slope, elevation, damage_instance, test_square]
+    PhotoTriadRole:
+      type: string
+      enum: [wide, mid, close]
+    CaptureStage:
+      type: string
+      enum: [S0, S1, S2, S3, S4, S5, S6, S7, S8, S9]
+
+    Inspection:
+      type: object
+      required:
+        [
+          id,
+          companyId,
+          pinId,
+          inspectorUserId,
+          status,
+          claimNumber,
+          policyNumber,
+          carrierName,
+          insuredName,
+          address,
+          latitude,
+          longitude,
+          notes,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        pinId:
+          type: [string, "null"]
+        inspectorUserId:
+          type: string
+        status:
+          $ref: "#/components/schemas/InspectionStatus"
+        claimNumber:
+          type: [string, "null"]
+        policyNumber:
+          type: [string, "null"]
+        carrierName:
+          type: [string, "null"]
+        insuredName:
+          type: [string, "null"]
+        address:
+          type: [string, "null"]
+        latitude:
+          type: [number, "null"]
+        longitude:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateInspectionInput:
+      type: object
+      properties:
+        pinId:
+          type: [string, "null"]
+        inspectorUserId:
+          type: string
+          description: Defaults to the acting user if omitted.
+        claimNumber:
+          type: [string, "null"]
+        policyNumber:
+          type: [string, "null"]
+        carrierName:
+          type: [string, "null"]
+        insuredName:
+          type: [string, "null"]
+        address:
+          type: [string, "null"]
+        latitude:
+          type: [number, "null"]
+        longitude:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+    UpdateInspectionInput:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/InspectionStatus"
+        claimNumber:
+          type: [string, "null"]
+        policyNumber:
+          type: [string, "null"]
+        carrierName:
+          type: [string, "null"]
+        insuredName:
+          type: [string, "null"]
+        address:
+          type: [string, "null"]
+        latitude:
+          type: [number, "null"]
+        longitude:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+    InspectionEnvelope:
+      type: object
+      required: [inspection]
+      properties:
+        inspection:
+          $ref: "#/components/schemas/Inspection"
+    InspectionListEnvelope:
+      type: object
+      required: [inspections]
+      properties:
+        inspections:
+          type: array
+          items:
+            $ref: "#/components/schemas/Inspection"
+
+    InspectionSlope:
+      type: object
+      required: [id, companyId, inspectionId, label, pitchRise, pitchRun, materialType, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        label:
+          type: string
+        pitchRise:
+          type: [number, "null"]
+        pitchRun:
+          type: [number, "null"]
+        materialType:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionSlopeInput:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+        pitchRise:
+          type: [number, "null"]
+        pitchRun:
+          type: [number, "null"]
+        materialType:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+    InspectionSlopeEnvelope:
+      type: object
+      required: [slope]
+      properties:
+        slope:
+          $ref: "#/components/schemas/InspectionSlope"
+
+    InspectionElevation:
+      type: object
+      required: [id, companyId, inspectionId, direction, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        direction:
+          $ref: "#/components/schemas/ElevationDirection"
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionElevationInput:
+      type: object
+      required: [direction]
+      properties:
+        direction:
+          $ref: "#/components/schemas/ElevationDirection"
+        notes:
+          type: [string, "null"]
+    InspectionElevationEnvelope:
+      type: object
+      required: [elevation]
+      properties:
+        elevation:
+          $ref: "#/components/schemas/InspectionElevation"
+
+    DamageInstance:
+      type: object
+      required:
+        [id, companyId, inspectionId, slopeId, elevationId, damageType, severity, causationNote, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        slopeId:
+          type: [string, "null"]
+        elevationId:
+          type: [string, "null"]
+        damageType:
+          type: string
+        severity:
+          type: [string, "null"]
+        causationNote:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateDamageInstanceInput:
+      type: object
+      required: [damageType]
+      properties:
+        slopeId:
+          type: [string, "null"]
+        elevationId:
+          type: [string, "null"]
+        damageType:
+          type: string
+          minLength: 1
+        severity:
+          type: [string, "null"]
+        causationNote:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+    DamageInstanceEnvelope:
+      type: object
+      required: [damageInstance]
+      properties:
+        damageInstance:
+          $ref: "#/components/schemas/DamageInstance"
+
+    TestSquare:
+      type: object
+      required: [id, companyId, inspectionId, slopeId, label, sizeSqFt, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        slopeId:
+          type: [string, "null"]
+        label:
+          type: string
+        sizeSqFt:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateTestSquareInput:
+      type: object
+      required: [label]
+      properties:
+        slopeId:
+          type: [string, "null"]
+        label:
+          type: string
+          minLength: 1
+        sizeSqFt:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+    TestSquareEnvelope:
+      type: object
+      required: [testSquare]
+      properties:
+        testSquare:
+          $ref: "#/components/schemas/TestSquare"
+
+    TestSquareHit:
+      type: object
+      required: [id, companyId, testSquareId, hitType, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        testSquareId:
+          type: string
+        hitType:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateTestSquareHitInput:
+      type: object
+      properties:
+        hitType:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+    TestSquareHitEnvelope:
+      type: object
+      required: [hit]
+      properties:
+        hit:
+          $ref: "#/components/schemas/TestSquareHit"
+
+    InspectionPhoto:
+      type: object
+      required:
+        [
+          id,
+          companyId,
+          inspectionId,
+          stage,
+          subjectType,
+          subjectId,
+          triadRole,
+          url,
+          sha256,
+          exifJson,
+          overlayJson,
+          capturedAtUtc,
+          latitude,
+          longitude,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/CaptureStage"
+            - type: "null"
+        subjectType:
+          $ref: "#/components/schemas/InspectionSubjectType"
+        subjectId:
+          type: [string, "null"]
+        triadRole:
+          oneOf:
+            - $ref: "#/components/schemas/PhotoTriadRole"
+            - type: "null"
+        url:
+          type: string
+        sha256:
+          type: string
+        exifJson:
+          type: [object, "null"]
+        overlayJson:
+          type: [object, "null"]
+        capturedAtUtc:
+          type: [string, "null"]
+          format: date-time
+        latitude:
+          type: [number, "null"]
+        longitude:
+          type: [number, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionPhotoInput:
+      type: object
+      required: [subjectType, url, sha256]
+      properties:
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/CaptureStage"
+            - type: "null"
+        subjectType:
+          $ref: "#/components/schemas/InspectionSubjectType"
+        subjectId:
+          type: [string, "null"]
+        triadRole:
+          oneOf:
+            - $ref: "#/components/schemas/PhotoTriadRole"
+            - type: "null"
+        url:
+          type: string
+          minLength: 1
+        sha256:
+          type: string
+          minLength: 1
+        exifJson:
+          type: [object, "null"]
+        overlayJson:
+          type: [object, "null"]
+        capturedAtUtc:
+          type: [string, "null"]
+          format: date-time
+        latitude:
+          type: [number, "null"]
+        longitude:
+          type: [number, "null"]
+    InspectionPhotoEnvelope:
+      type: object
+      required: [photo]
+      properties:
+        photo:
+          $ref: "#/components/schemas/InspectionPhoto"
+
+    Measurement:
+      type: object
+      required: [id, companyId, inspectionId, subjectType, subjectId, measurementType, value, unit, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        subjectType:
+          $ref: "#/components/schemas/InspectionSubjectType"
+        subjectId:
+          type: [string, "null"]
+        measurementType:
+          type: string
+        value:
+          type: number
+        unit:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateMeasurementInput:
+      type: object
+      required: [subjectType, measurementType, value]
+      properties:
+        subjectType:
+          $ref: "#/components/schemas/InspectionSubjectType"
+        subjectId:
+          type: [string, "null"]
+        measurementType:
+          type: string
+          minLength: 1
+        value:
+          type: number
+        unit:
+          type: [string, "null"]
+    MeasurementEnvelope:
+      type: object
+      required: [measurement]
+      properties:
+        measurement:
+          $ref: "#/components/schemas/Measurement"
+
+    Attestation:
+      type: object
+      required: [id, companyId, inspectionId, userId, stage, signatureData, attestedAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        userId:
+          type: string
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/CaptureStage"
+            - type: "null"
+        signatureData:
+          type: [string, "null"]
+        attestedAt:
+          type: string
+          format: date-time
+    CreateAttestationInput:
+      type: object
+      properties:
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/CaptureStage"
+            - type: "null"
+        signatureData:
+          type: [string, "null"]
+    AttestationEnvelope:
+      type: object
+      required: [attestation]
+      properties:
+        attestation:
+          $ref: "#/components/schemas/Attestation"

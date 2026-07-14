@@ -8,6 +8,7 @@ import pinsRouter from "./pins";
 import adminRouter from "./admin";
 import locationRouter from "./location";
 import geocodeRouter from "./geocode";
+import inspectionsRouter from "./inspections";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(pinsRouter);
 router.use(adminRouter);
 router.use(locationRouter);
 router.use(geocodeRouter);
+router.use(inspectionsRouter);
 
 export default router;
