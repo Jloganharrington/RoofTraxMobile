@@ -1,0 +1,27 @@
+RoofTraxMobile — Phase M-C Work Order: Exterior Capture (S2–S4)
+Third phase. Depends on M-A + M-B merged. The documentation core and biggest UI phase — elevation walk, collateral sweep, slope inventory, components, product ID. Everything rides on the M-A evidence module (triad + hashing) and the lib/protocol gate engine.
+
+Standing constraints
+Canvassing untouched — all M-C work is additive inspection code.
+App computes nothing derivable — capture raw observations + photos; quantities/pricing are the Brain's job.
+Evidentiary standards (carry through every item)
+Full-res original untouched, EXIF+GPS+UTC + SHA-256 at capture, annotations as overlay JSON, wide→mid→close triad with scale reference on close-ups, controlled observed-indicator vocabulary, offline-first. Gates from lib/protocol — hard gates block, soft flags require an attestation.
+
+C0 — Inspection write-scoping hardening (first). M-B review found inspection writes authorize by company only — a peer inspector in the same tenant can mutate another's inspection. Tighten all inspection write paths (PATCH, attestations, storm confirm, arrival, and every new C-phase write) to owner OR manager+/super_admin in-company. Tests: peer field_rep denied (403) on every write path; owner allowed; manager+ allowed.
+
+C1 — Elevation walk (S2). Guided front → right → rear → left, wide shot per elevation, walk order auto-logged → inspection_elevations + photos stage S2. Gate flags a missing elevation.
+
+C2 — Collateral sweep (S2). Per-elevation checklist (gutters, downspouts, screens/beading, AC fins, fascia/trim, siding, decks, fences). Each finding → damage-instance recorder with triad enforcement, material, observed-indicator note, elevation tag → damage_instances. No orphan photos.
+
+C3 — Roof access & slope inventory (S3). Access-method log; slope builder (direction + steepness class) — the authoritative spine M-D/M-E key off; ridge-line overview photo required per slope → inspection_slopes with overviewPhotoId. Gate flags a slope missing its overview.
+
+C4 — Components documentation (S3). Layer-count photo at eave/rake, penetration inventory, existing-components checklist (drip edge, ice & water, ventilation, decking). Needs minimal additive storage — a small inspection_components (and/or penetrations) table following M-A conventions (companyId, tenant-isolation coverage, thin CRUD). Don't overload an unrelated table.
+
+C5 — Product identification (S4). Brand/profile close-up, exposure with tape in frame, granule/mat detail, accessories; ITEL branch (photograph in place → bag & label) or a "unidentifiable in field" soft-flag attestation. Additive product-ID storage, company-scoped.
+
+Testing gate M-C: triad enforcement; slope-inventory consistency; checklist evaluators against lib/protocol fixtures; C0 peer-denial tests; offline full exterior pass (S2–S4) with hash-matched sync; tenant isolation on new C4/C5 tables; standing pin regression; typecheck. Field usability checkpoint (headline test): run the exterior flow on a real house with a real ladder start to finish — measure taps per capture and minutes per stage, report friction. Last cheap moment to reshape capture UX before M-D copies these patterns.
+
+Execution discipline: minimal additive C4/C5 schema; no bypass endpoints; diff reviewed against origin before pull; stop and report if forced outside the isolation boundary. Deliverable report includes the field-usability numbers.
+
+Bundled FIX-4 cleanup: git rm --cached the two stray attached_assets/Pasted-*Phase-M-B*.txt docs (gitignore already covers them but doesn't untrack), commit as a small chore:. Zips are already handled.
+
