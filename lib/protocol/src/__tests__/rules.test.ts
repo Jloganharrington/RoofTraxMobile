@@ -14,7 +14,10 @@ function completeState(): InspectionProtocolState {
     },
     roofAccessPhotoCaptured: true,
     slopes: [{ id: 'slope-1', widePhotoCaptured: true }],
-    testSquares: [{ id: 'ts-1', slopeId: 'slope-1', hitCount: 3 }],
+    testSquares: [
+      { id: 'ts-1', slopeId: 'slope-1', overviewPhotoCaptured: true, hitCount: 3 },
+    ],
+    inaccessibleSlopeIds: [],
     damageInstances: [
       { id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: true, closePhotoCaptured: true },
     ],
@@ -98,14 +101,51 @@ describe('evaluate', () => {
     });
   });
 
-  it('flags zero test squares (S4) as exactly one deficiency', () => {
+  it('flags a slope with no test square (S4) as exactly one deficiency', () => {
     const state = completeState();
     state.testSquares = [];
     const result = evaluate(state);
     expect(result.deficiencies).toHaveLength(1);
     expect(result.deficiencies[0]).toMatchObject({
       stage: 'S4',
-      code: 'NO_TEST_SQUARES_CAPTURED',
+      code: 'MISSING_TEST_SQUARE_slope-1',
+    });
+  });
+
+  it('flags a square whose overview photo was never captured (S4)', () => {
+    const state = completeState();
+    state.testSquares = [
+      { id: 'ts-1', slopeId: 'slope-1', overviewPhotoCaptured: false, hitCount: 0 },
+    ];
+    const result = evaluate(state);
+    expect(result.deficiencies).toHaveLength(1);
+    expect(result.deficiencies[0]).toMatchObject({
+      stage: 'S4',
+      code: 'MISSING_TEST_SQUARE_slope-1',
+    });
+  });
+
+  it('clears the S4 gate for a slope documented as inaccessible (D2), without a square', () => {
+    const state = completeState();
+    state.testSquares = [];
+    state.inaccessibleSlopeIds = ['slope-1'];
+    const result = evaluate(state);
+    expect(result.deficiencies).toEqual([]);
+  });
+
+  it('flags only the accessible slope when one of two slopes is documented inaccessible', () => {
+    const state = completeState();
+    state.slopes = [
+      { id: 'slope-1', widePhotoCaptured: true },
+      { id: 'slope-2', widePhotoCaptured: true },
+    ];
+    state.testSquares = [];
+    state.inaccessibleSlopeIds = ['slope-1'];
+    const result = evaluate(state);
+    expect(result.deficiencies).toHaveLength(1);
+    expect(result.deficiencies[0]).toMatchObject({
+      stage: 'S4',
+      code: 'MISSING_TEST_SQUARE_slope-2',
     });
   });
 
@@ -196,7 +236,9 @@ describe('evaluate', () => {
 
   it('soft-flags a zero-hit test square, without blocking', () => {
     const state = completeState();
-    state.testSquares = [{ id: 'ts-1', slopeId: 'slope-1', hitCount: 0 }];
+    state.testSquares = [
+      { id: 'ts-1', slopeId: 'slope-1', overviewPhotoCaptured: true, hitCount: 0 },
+    ];
     const result = evaluate(state);
     expect(result.deficiencies).toEqual([]);
     expect(result.softFlags).toHaveLength(1);

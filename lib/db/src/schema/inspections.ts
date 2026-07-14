@@ -51,6 +51,10 @@ export const INSPECTION_SUBJECT_TYPES = [
   'elevation',
   'damage_instance',
   'test_square',
+  // M-D additive subject: a per-hit close-up (with scale gauge in frame)
+  // attaches to the individual test-square hit it documents, so no S4 photo
+  // is ever left as an orphan (D4).
+  'test_square_hit',
   // C4 / C5 additive subjects: the same evidence-capture flow attaches to a
   // documented existing-component, a roof penetration, and a product-ID
   // record just as it does to slopes and damage instances.
@@ -100,6 +104,19 @@ export type ProductIdMethod = (typeof PRODUCT_ID_METHODS)[number];
 
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
+
+// M-D (D1) — Controlled vocabulary for classifying each hit counted inside a
+// test square. The app records the raw classification only; it never derives
+// hail density, severity, or significance from these counts (that is the
+// Brain's job downstream). `foot_scuff` / `mechanical` / `blistering` let the
+// inspector distinguish non-storm marks so the raw hit count stays honest.
+export const TEST_SQUARE_HIT_TYPES = [
+  'hail_strike',
+  'mechanical',
+  'blistering',
+  'foot_scuff',
+] as const;
+export type TestSquareHitType = (typeof TEST_SQUARE_HIT_TYPES)[number];
 
 // Kind of attestation captured (Phase M-B). `equipment` is the S0
 // equipment checklist; `gps_override` records an inspector overriding a
@@ -272,7 +289,10 @@ export const testSquareHitsTable = pgTable('test_square_hits', {
   testSquareId: varchar('test_square_id')
     .notNull()
     .references(() => testSquaresTable.id, { onDelete: 'cascade' }),
-  hitType: text('hit_type'),
+  // Controlled classification (D1). Stored as text so no DB migration is
+  // needed; the `enum` only constrains the TypeScript type. Nullable for
+  // backwards compatibility with any pre-M-D free-text rows.
+  hitType: text('hit_type', { enum: TEST_SQUARE_HIT_TYPES }),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

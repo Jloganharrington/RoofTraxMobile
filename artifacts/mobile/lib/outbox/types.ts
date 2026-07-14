@@ -14,7 +14,9 @@ export type OutboxItemKind =
   | 'inspection.damage'
   | 'inspection.component'
   | 'inspection.penetration'
-  | 'inspection.product';
+  | 'inspection.product'
+  | 'inspection.testSquare'
+  | 'inspection.testSquareHit';
 
 export interface InspectionPhotoOutboxPayload {
   /** Client-generated photo id so a replayed outbox item (e.g. after a lost
@@ -64,6 +66,16 @@ export interface InspectionAttestationOutboxPayload {
  * it has synced. `input` is the matching Create*Input shape. */
 export interface InspectionChildCreateOutboxPayload {
   inspectionId: string;
+  input: Record<string, unknown>;
+}
+
+/** Offline-first test-square hit create (D1). Carries the parent
+ * `testSquareId` (the hit route is nested under the square) plus a
+ * client-generated `id` inside `input` so the server upserts idempotently and
+ * a replay never inflates the live hit counter. */
+export interface InspectionTestSquareHitOutboxPayload {
+  inspectionId: string;
+  testSquareId: string;
   input: Record<string, unknown>;
 }
 

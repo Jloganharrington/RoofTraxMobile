@@ -7,6 +7,8 @@
  */
 
 export interface CreateTestSquareInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the test-square write is idempotent, so a queued offline square can be retried without duplicating the row. */
+  id?: string;
   /** @nullable */
   slopeId?: string | null;
   /** @minLength 1 */

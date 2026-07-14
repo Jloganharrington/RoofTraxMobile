@@ -9,6 +9,8 @@ import {
   createInspectionPhoto,
   createInspectionProduct,
   createInspectionSlope,
+  createTestSquare,
+  createTestSquareHit,
   updateInspection,
 } from '@workspace/api-client-react';
 import type {
@@ -20,6 +22,8 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  CreateTestSquareInput,
+  CreateTestSquareHitInput,
   CaptureStage,
   InspectionSubjectType,
   PhotoTriadRole,
@@ -32,6 +36,7 @@ import type {
   InspectionChildCreateOutboxPayload,
   InspectionCreateOutboxPayload,
   InspectionPhotoOutboxPayload,
+  InspectionTestSquareHitOutboxPayload,
   InspectionUpdateOutboxPayload,
   OutboxItemKind,
 } from './types';
@@ -146,6 +151,23 @@ async function syncInspectionProduct(payloadJson: string): Promise<void> {
   );
 }
 
+async function syncInspectionTestSquare(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createTestSquare(
+    payload.inspectionId,
+    payload.input as unknown as CreateTestSquareInput,
+  );
+}
+
+async function syncInspectionTestSquareHit(payloadJson: string): Promise<void> {
+  const payload: InspectionTestSquareHitOutboxPayload = JSON.parse(payloadJson);
+  await createTestSquareHit(
+    payload.inspectionId,
+    payload.testSquareId,
+    payload.input as unknown as CreateTestSquareHitInput,
+  );
+}
+
 export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.photo': syncInspectionPhoto,
   'inspection.create': syncInspectionCreate,
@@ -157,4 +179,6 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.component': syncInspectionComponent,
   'inspection.penetration': syncInspectionPenetration,
   'inspection.product': syncInspectionProduct,
+  'inspection.testSquare': syncInspectionTestSquare,
+  'inspection.testSquareHit': syncInspectionTestSquareHit,
 };

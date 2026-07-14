@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { type ElevationDirection } from '@workspace/protocol';
@@ -18,11 +18,16 @@ import { useColors } from '@/hooks/useColors';
 import { createDamageInstance } from '@/lib/inspectionSync';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
 
-// C2 — Collateral sweep (S5). Works elevation-by-elevation. For each face the
-// inspector records discrete damage instances; every instance must carry the
-// full wide/mid/close triad (enforced by the shared capture screen) before it
-// satisfies the S5 gate. Damage instances are always tied to an elevation so
-// nothing is captured as an orphan photo.
+// Damage recorder for S5. A single recorder drives two passes so the capture
+// flow, triad enforcement, and damage-instance persistence never fork:
+//   • mode "collateral"  — C2 collateral sweep, grouped per elevation face,
+//     each instance tagged with its elevationId.
+//   • mode "functional"  — D3 whole-roof functional-damage pass, grouped per
+//     slope, each instance tagged with its slopeId and carrying a causation
+//     note (why the mark compromises the roof's water-shedding function).
+// Both feed the same damage-instances route and the same S5 gate; every
+// instance requires the full wide/mid/close triad and is always tied to a
+// slope or elevation, so no photo is ever an orphan.
 
 const DIRECTION_LABELS: Record<ElevationDirection, string> = {
   front: 'Front',
@@ -31,17 +36,47 @@ const DIRECTION_LABELS: Record<ElevationDirection, string> = {
   left: 'Left',
 };
 
-export default function InspectionCollateralScreen() {
+type Mode = 'collateral' | 'functional';
+
+const MODE_CONFIG: Record<
+  Mode,
+  {
+    headerTitle: string;
+    emptyGroups: string;
+    summaryHint: string;
+    typePlaceholder: string;
+    groupSuffix: string;
+  }
+> = {
+  collateral: {
+    headerTitle: 'Collateral Sweep',
+    emptyGroups: 'Walk the elevations first (S1). Collateral damage is recorded per elevation.',
+    summaryHint: 'Each instance needs a wide, mid, and close-up with scale.',
+    typePlaceholder: 'e.g. Hail bruising, wind tear',
+    groupSuffix: 'elevation',
+  },
+  functional: {
+    headerTitle: 'Functional Damage',
+    emptyGroups: 'Document the roof slopes first (S3). Functional damage is recorded per slope.',
+    summaryHint: 'Each instance needs a wide, mid, and close-up plus a causation note.',
+    typePlaceholder: 'e.g. Mat exposure, granule loss, seal failure',
+    groupSuffix: 'slope',
+  },
+};
+
+export default function InspectionDamageScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, mode: modeParam } = useLocalSearchParams<{ id: string; mode?: string }>();
+  const mode: Mode = modeParam === 'functional' ? 'functional' : 'collateral';
+  const config = MODE_CONFIG[mode];
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  const [target, setTarget] = React.useState<{ elevationId: string; label: string } | null>(null);
+  const [target, setTarget] = React.useState<{ groupId: string; label: string } | null>(null);
   const [damageType, setDamageType] = React.useState('');
   const [severity, setSeverity] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -50,6 +85,7 @@ export default function InspectionCollateralScreen() {
   if (inspectionQuery.isLoading && !inspection) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Stack.Screen options={{ title: config.headerTitle }} />
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -57,6 +93,7 @@ export default function InspectionCollateralScreen() {
   if (!inspection) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Stack.Screen options={{ title: config.headerTitle }} />
         <Icon name="alert-circle" size={28} color={colors.mutedForeground} />
         <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Inspection not found.</Text>
       </View>
@@ -70,12 +107,24 @@ export default function InspectionCollateralScreen() {
       d.widePhotoCaptured && d.midPhotoCaptured && d.closePhotoCaptured,
     ]),
   );
-  const elevations = inspection.elevations ?? [];
-  const damage = inspection.damageInstances ?? [];
+  const allDamage = inspection.damageInstances ?? [];
+  // This pass only shows the instances it owns: collateral instances are
+  // elevation-tagged, functional instances are slope-tagged.
+  const damage = allDamage.filter((d) =>
+    mode === 'functional' ? d.slopeId != null : d.elevationId != null,
+  );
   const s5Remaining = stageDeficiencies(inspection, 'S5').length;
 
-  function openAdd(elevationId: string, label: string) {
-    setTarget({ elevationId, label });
+  const groups =
+    mode === 'functional'
+      ? (inspection.slopes ?? []).map((slope) => ({ id: slope.id, label: slope.label }))
+      : (inspection.elevations ?? []).map((elevation) => ({
+          id: elevation.id,
+          label: `${DIRECTION_LABELS[elevation.direction as ElevationDirection] ?? elevation.direction} elevation`,
+        }));
+
+  function openAdd(groupId: string, label: string) {
+    setTarget({ groupId, label });
     setDamageType('');
     setSeverity('');
     setNote('');
@@ -100,7 +149,8 @@ export default function InspectionCollateralScreen() {
     setSaving(true);
     try {
       const damageId = await createDamageInstance(queryClient, id, {
-        elevationId: target.elevationId,
+        elevationId: mode === 'collateral' ? target.groupId : null,
+        slopeId: mode === 'functional' ? target.groupId : null,
         damageType: damageType.trim(),
         severity: severity.trim() || null,
         causationNote: note.trim() || null,
@@ -115,11 +165,12 @@ export default function InspectionCollateralScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
-      {elevations.length === 0 ? (
+      <Stack.Screen options={{ title: config.headerTitle }} />
+      {groups.length === 0 ? (
         <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Icon name="alert-circle" size={22} color={colors.mutedForeground} />
           <Text style={{ color: colors.mutedForeground, flex: 1, fontSize: 13 }}>
-            Walk the elevations first (S1). Collateral damage is recorded per elevation.
+            {config.emptyGroups}
           </Text>
         </View>
       ) : (
@@ -136,24 +187,23 @@ export default function InspectionCollateralScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
               {damage.length === 0
-                ? 'No collateral damage recorded yet'
+                ? 'No damage recorded in this pass yet'
                 : s5Remaining === 0
                   ? `${damage.length} instance${damage.length === 1 ? '' : 's'} — all triads complete`
                   : `${s5Remaining} instance${s5Remaining === 1 ? '' : 's'} missing wide/mid/close`}
             </Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              Each instance needs a wide, mid, and close-up with scale.
-            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>{config.summaryHint}</Text>
           </View>
         </View>
       )}
 
-      {elevations.map((elevation) => {
-        const label = DIRECTION_LABELS[elevation.direction as ElevationDirection] ?? elevation.direction;
-        const own = damage.filter((d) => d.elevationId === elevation.id);
+      {groups.map((group) => {
+        const own = damage.filter((d) =>
+          mode === 'functional' ? d.slopeId === group.id : d.elevationId === group.id,
+        );
         return (
-          <View key={elevation.id} style={{ gap: 8 }}>
-            <Text style={[styles.section, { color: colors.foreground }]}>{label} elevation</Text>
+          <View key={group.id} style={{ gap: 8 }}>
+            <Text style={[styles.section, { color: colors.foreground }]}>{group.label}</Text>
             {own.map((d) => {
               const done = triadComplete.get(d.id) ?? false;
               return (
@@ -177,11 +227,13 @@ export default function InspectionCollateralScreen() {
               );
             })}
             <Pressable
-              onPress={() => openAdd(elevation.id, label)}
+              onPress={() => openAdd(group.id, group.label)}
               style={[styles.addRow, { borderColor: colors.border }]}
             >
               <Icon name="plus" size={18} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontWeight: '600' }}>Add damage on {label.toLowerCase()}</Text>
+              <Text style={{ color: colors.primary, fontWeight: '600' }}>
+                Add damage on {group.label.toLowerCase()}
+              </Text>
             </Pressable>
           </View>
         );
@@ -195,9 +247,15 @@ export default function InspectionCollateralScreen() {
             <Text style={[styles.rowTitle, { color: colors.foreground }]}>
               Damage on {target?.label.toLowerCase()}
             </Text>
-            <Field label="Damage type" value={damageType} onChange={setDamageType} placeholder="e.g. Hail bruising, wind tear" colors={colors} />
+            <Field label="Damage type" value={damageType} onChange={setDamageType} placeholder={config.typePlaceholder} colors={colors} />
             <Field label="Severity (optional)" value={severity} onChange={setSeverity} placeholder="e.g. Moderate" colors={colors} />
-            <Field label="Causation note (optional)" value={note} onChange={setNote} placeholder="What caused it?" colors={colors} />
+            <Field
+              label={mode === 'functional' ? 'Causation note' : 'Causation note (optional)'}
+              value={note}
+              onChange={setNote}
+              placeholder={mode === 'functional' ? 'How does it compromise the roof?' : 'What caused it?'}
+              colors={colors}
+            />
             <View style={styles.modalActions}>
               <Pressable onPress={() => setTarget(null)} style={[styles.secondaryBtn, { borderColor: colors.border }]}>
                 <Text style={{ color: colors.foreground }}>Cancel</Text>

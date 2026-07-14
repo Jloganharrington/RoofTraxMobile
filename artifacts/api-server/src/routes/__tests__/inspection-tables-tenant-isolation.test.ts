@@ -82,7 +82,7 @@ async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
 
   const [testSquareHit] = await db
     .insert(testSquareHitsTable)
-    .values({ companyId, testSquareId: testSquare.id, hitType: 'impact' })
+    .values({ companyId, testSquareId: testSquare.id, hitType: 'hail_strike' })
     .returning();
 
   const [photo] = await db

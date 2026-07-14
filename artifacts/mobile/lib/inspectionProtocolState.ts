@@ -34,6 +34,19 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
   const slopes = inspection.slopes ?? [];
   const damageInstances = inspection.damageInstances ?? [];
   const products = inspection.products ?? [];
+  const testSquares = inspection.testSquares ?? [];
+  const testSquareHits = inspection.testSquareHits ?? [];
+  const attestations = inspection.attestations ?? [];
+
+  // D2 — slopes the inspector documented as inaccessible via an S4 reason
+  // attestation. Such a slope clears its test-square requirement while
+  // recording why no square could be marked.
+  const inaccessibleSlopeIds = attestations.flatMap((attestation) => {
+    if (attestation.stage !== 'S4' || attestation.attestationType !== 'stage_signoff') return [];
+    const details = attestation.details as { kind?: string; slopeId?: string } | null;
+    if (details?.kind !== 'inaccessible_slope' || !details.slopeId) return [];
+    return [details.slopeId];
+  });
 
   const elevationState: InspectionProtocolState['elevations'] = {};
   for (const elevation of elevations) {
@@ -61,7 +74,18 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
         (p) => p.subjectType === 'slope' && p.subjectId === slope.id && p.triadRole === 'wide',
       ),
     })),
-    testSquares: [],
+    testSquares: testSquares.map((square) => ({
+      id: square.id,
+      slopeId: square.slopeId ?? '',
+      overviewPhotoCaptured: photos.some(
+        (p) =>
+          p.subjectType === 'test_square' &&
+          p.subjectId === square.id &&
+          p.triadRole === 'wide',
+      ),
+      hitCount: testSquareHits.filter((hit) => hit.testSquareId === square.id).length,
+    })),
+    inaccessibleSlopeIds,
     damageInstances: damageInstances.map((instance) => {
       const own = photos.filter(
         (p) => p.subjectType === 'damage_instance' && p.subjectId === instance.id,

@@ -120,6 +120,7 @@ export * from './testSquare';
 export * from './testSquareEnvelope';
 export * from './testSquareHit';
 export * from './testSquareHitEnvelope';
+export * from './testSquareHitType';
 export * from './updateInspectionInput';
 export * from './updatePinInput';
 export * from './updateTeamUserInput';

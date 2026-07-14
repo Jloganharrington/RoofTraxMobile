@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ArrivalConditions } from './arrivalConditions';
+import type { Attestation } from './attestation';
 import type { DamageInstance } from './damageInstance';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
@@ -15,6 +16,8 @@ import type { InspectionProduct } from './inspectionProduct';
 import type { InspectionSlope } from './inspectionSlope';
 import type { InspectionStatus } from './inspectionStatus';
 import type { StormConfirmedRef } from './stormConfirmedRef';
+import type { TestSquare } from './testSquare';
+import type { TestSquareHit } from './testSquareHit';
 
 export interface Inspection {
   id: string;
@@ -59,4 +62,10 @@ export interface Inspection {
   penetrations?: InspectionPenetration[];
   /** C5 product-identification records, populated by the detail view only. */
   products?: InspectionProduct[];
+  /** M-D (S4) test squares, populated by the detail view only. */
+  testSquares?: TestSquare[];
+  /** M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter. */
+  testSquareHits?: TestSquareHit[];
+  /** Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only. */
+  attestations?: Attestation[];
 }

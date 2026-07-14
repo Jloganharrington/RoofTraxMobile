@@ -9,7 +9,21 @@ export interface InspectionProtocolState {
   elevations: Partial<Record<ElevationDirection, { widePhotoCaptured: boolean }>>;
   roofAccessPhotoCaptured: boolean;
   slopes: Array<{ id: string; widePhotoCaptured: boolean }>;
-  testSquares: Array<{ id: string; slopeId: string; hitCount: number }>;
+  // One test square per directional slope (D1). `overviewPhotoCaptured` is the
+  // chalked full-square shot; `hitCount` is the raw number of recorded hits (a
+  // documented zero-hit square is valid — see the S4 soft flag). `slopeId` ties
+  // the square to the slope whose S4 gate it satisfies.
+  testSquares: Array<{
+    id: string;
+    slopeId: string;
+    overviewPhotoCaptured: boolean;
+    hitCount: number;
+  }>;
+  // Slopes the inspector documented as inaccessible via a reason attestation
+  // (D2). Such a slope clears its S4 test-square requirement while recording
+  // *why* no square could be marked. An undocumented missing square still
+  // fails the gate.
+  inaccessibleSlopeIds: string[];
   damageInstances: Array<{
     id: string;
     widePhotoCaptured: boolean;

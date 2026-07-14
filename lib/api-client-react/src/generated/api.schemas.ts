@@ -369,9 +369,23 @@ export const InspectionSubjectType = {
   elevation: 'elevation',
   damage_instance: 'damage_instance',
   test_square: 'test_square',
+  test_square_hit: 'test_square_hit',
   component: 'component',
   penetration: 'penetration',
   product: 'product',
+} as const;
+
+/**
+ * Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.
+ */
+export type TestSquareHitType = typeof TestSquareHitType[keyof typeof TestSquareHitType];
+
+
+export const TestSquareHitType = {
+  hail_strike: 'hail_strike',
+  mechanical: 'mechanical',
+  blistering: 'blistering',
+  foot_scuff: 'foot_scuff',
 } as const;
 
 export type PhotoTriadRole = typeof PhotoTriadRole[keyof typeof PhotoTriadRole];
@@ -625,6 +639,49 @@ export interface InspectionProduct {
   createdAt: string;
 }
 
+export interface TestSquare {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  label: string;
+  /** @nullable */
+  sizeSqFt: number | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface TestSquareHit {
+  id: string;
+  companyId: string;
+  testSquareId: string;
+  hitType: TestSquareHitType | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+/**
+ * @nullable
+ */
+export type AttestationDetails = { [key: string]: unknown } | null;
+
+export interface Attestation {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  userId: string;
+  stage: CaptureStage | null;
+  attestationType: AttestationType | null;
+  /** @nullable */
+  details: AttestationDetails;
+  /** @nullable */
+  signatureData: string | null;
+  attestedAt: string;
+}
+
 export interface Inspection {
   id: string;
   companyId: string;
@@ -668,6 +725,12 @@ export interface Inspection {
   penetrations?: InspectionPenetration[];
   /** C5 product-identification records, populated by the detail view only. */
   products?: InspectionProduct[];
+  /** M-D (S4) test squares, populated by the detail view only. */
+  testSquares?: TestSquare[];
+  /** M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter. */
+  testSquareHits?: TestSquareHit[];
+  /** Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only. */
+  attestations?: Attestation[];
 }
 
 export interface CreateInspectionInput {
@@ -841,21 +904,9 @@ export interface InspectionProductEnvelope {
   product: InspectionProduct;
 }
 
-export interface TestSquare {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  /** @nullable */
-  slopeId: string | null;
-  label: string;
-  /** @nullable */
-  sizeSqFt: number | null;
-  /** @nullable */
-  notes: string | null;
-  createdAt: string;
-}
-
 export interface CreateTestSquareInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the test-square write is idempotent, so a queued offline square can be retried without duplicating the row. */
+  id?: string;
   /** @nullable */
   slopeId?: string | null;
   /** @minLength 1 */
@@ -870,20 +921,10 @@ export interface TestSquareEnvelope {
   testSquare: TestSquare;
 }
 
-export interface TestSquareHit {
-  id: string;
-  companyId: string;
-  testSquareId: string;
-  /** @nullable */
-  hitType: string | null;
-  /** @nullable */
-  notes: string | null;
-  createdAt: string;
-}
-
 export interface CreateTestSquareHitInput {
-  /** @nullable */
-  hitType?: string | null;
+  /** Optional client-generated id for offline-first creation. When supplied, the hit write is idempotent, so a queued offline hit can be retried without inflating the live hit counter. */
+  id?: string;
+  hitType: TestSquareHitType;
   /** @nullable */
   notes?: string | null;
 }
@@ -957,25 +998,6 @@ export interface CreateMeasurementInput {
 
 export interface MeasurementEnvelope {
   measurement: Measurement;
-}
-
-/**
- * @nullable
- */
-export type AttestationDetails = { [key: string]: unknown } | null;
-
-export interface Attestation {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  userId: string;
-  stage: CaptureStage | null;
-  attestationType: AttestationType | null;
-  /** @nullable */
-  details: AttestationDetails;
-  /** @nullable */
-  signatureData: string | null;
-  attestedAt: string;
 }
 
 /**

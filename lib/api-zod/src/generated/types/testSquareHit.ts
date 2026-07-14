@@ -5,13 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TestSquareHitType } from './testSquareHitType';
 
 export interface TestSquareHit {
   id: string;
   companyId: string;
   testSquareId: string;
-  /** @nullable */
-  hitType: string | null;
+  hitType: TestSquareHitType | null;
   /** @nullable */
   notes: string | null;
   createdAt: Date;

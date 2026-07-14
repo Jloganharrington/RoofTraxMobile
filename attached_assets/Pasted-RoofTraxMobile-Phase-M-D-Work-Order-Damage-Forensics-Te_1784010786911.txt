@@ -1,0 +1,23 @@
+RoofTraxMobile — Phase M-D Work Order: Damage Forensics (Test squares S4 + Functional damage S5)
+The most tap-intensive capture phase. Depends on M-A + M-B + M-C merged. Most of the backend already exists — test_squares, test_square_hits, and damage_instances CRUD were built in M-A and are already C0-guarded + idempotent — so M-D is primarily mobile capture screens + protocol gate wiring, reusing the shared capture component and the C2 damage recorder.
+
+Standing constraints
+Canvassing untouched — additive inspection code only.
+App computes nothing derivable — it records raw hit counts and per-hit classifications; it must not compute hail density, per-square severity, or any "significant/approved" judgment. The live hit counter is just a count of records. Significance is the Brain's job.
+Evidentiary standards
+Full-res original untouched, hashing at capture, triad for damage instances, scale gauge in every per-hit close-up, controlled vocabulary, offline-first. Reuse the shared capture component + C2 recorder — do not fork a second one.
+
+D0 — Attestation idempotency cleanup (first, small). The carryover fix: make the attestations idempotency re-select inspectionId-scoped like the C1–C5 children. Test: reused id on a different same-company inspection now 409s.
+
+D1 — Test-square module (S4). One square per directional slope (keyed off the S3 slope inventory). Chalked overview photo → per-hit close-up loop, each with the scale gauge in frame, classified from the controlled vocabulary (hail strike / mechanical / blistering / foot scuff). Live hit counter = count of hit records. Persist to the existing test_squares + test_square_hits routes. Wire the S4 gate into lib/protocol + the banner (now counts S1–S5): a square required per accessible slope with overview + recorded count — a documented zero-hit square is valid (zero is a finding, not a gap). Add minimal additive columns only if the classification enum / square label isn't already there.
+
+D2 — Inaccessible-slope branch. A slope with no square requires a documented-reason soft-flag attestation (photo of the constraint where possible) — clears the S4 gate for that slope while recording why. Same pattern as C5's unidentifiable path. Undocumented missing square still flags.
+
+D3 — Functional damage recorder (S5, whole-roof). Instances beyond the squares (mat fracture, granule displacement w/ mat exposure, crushed hip/ridge, punctures, flashing). Reuse the C2 recorder but slope-tagged (slopeId) and whole-roof; carry the causation note (ifNotFor thread) that flows downstream to scope/code on the Brain. Persist to the existing damage_instances route.
+
+D4 — Orphan-photo prevention. Every S4/S5 photo must attach to a square, hit, or instance — no loose-photo path exists. Test asserts the attachment.
+
+Testing gate M-D: S4 gate matrix (square per accessible slope; zero-hit square accepted when documented; inaccessible satisfied only via attestation; undocumented gap flags); classification round-trips; orphan-photo prevention; D0 409 test; offline full-roof pass (squares + hits + damage → force-quit → reconnect → hashes match, no dupes); tenant isolation; standing pin regression; typecheck. Field-usability note (headline, pending device run): the per-hit close-up loop is the single most repetitive action in the protocol (a slope can have 10–20+ hits). Report an interaction-count analysis (taps/hit, taps/square, taps for 4 slopes × 12 hits), but don't speculatively over-optimize — surface the numbers so the pending field test can pinpoint real friction; flag the per-hit loop as the top tap-reduction candidate.
+
+Execution discipline: reuse the shared component + C2 recorder; minimal additive schema; no bypass endpoints; diff reviewed before pull; stop and report if forced outside the boundary; do not drift into canvassing feature work (edit/delete pin, live rep positions — separate workstream). Deliverable report includes the reuse confirmation, S4 gate wiring, the D0 fix + test, offline-pass evidence, and the per-hit interaction-count analysis.
+

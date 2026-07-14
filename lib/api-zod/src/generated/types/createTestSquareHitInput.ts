@@ -5,10 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TestSquareHitType } from './testSquareHitType';
 
 export interface CreateTestSquareHitInput {
-  /** @nullable */
-  hitType?: string | null;
+  /** Optional client-generated id for offline-first creation. When supplied, the hit write is idempotent, so a queued offline hit can be retried without inflating the live hit counter. */
+  id?: string;
+  hitType: TestSquareHitType;
   /** @nullable */
   notes?: string | null;
 }

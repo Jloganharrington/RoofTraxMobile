@@ -5,6 +5,7 @@ import {
   getListInspectionsQueryKey,
 } from '@workspace/api-client-react';
 import type {
+  Attestation,
   CaptureStage,
   CreateAttestationInput,
   CreateDamageInstanceInput,
@@ -14,6 +15,8 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  CreateTestSquareInput,
+  CreateTestSquareHitInput,
   DamageInstance,
   ElevationDirection,
   Inspection,
@@ -26,6 +29,8 @@ import type {
   InspectionSlope,
   InspectionSubjectType,
   PhotoTriadRole,
+  TestSquare,
+  TestSquareHit,
   UpdateInspectionInput,
 } from '@workspace/api-client-react';
 
@@ -316,6 +321,105 @@ export async function createProduct(
   await enqueueOutboxItem('inspection.product', { inspectionId, input });
   void drainOutbox();
   return id;
+}
+
+/** Creates a test square (D1) offline-first and returns its client id. The
+ * id is echoed to the server so the create is idempotent and so the overview
+ * photo + per-hit close-ups can reference it before it syncs. */
+export async function createTestSquare(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateTestSquareInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: TestSquare = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      slopeId: fields.slopeId ?? null,
+      label: fields.label,
+      sizeSqFt: fields.sizeSqFt ?? null,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return { ...inspection, testSquares: [...(inspection.testSquares ?? []), optimistic] };
+  });
+  const input: CreateTestSquareInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.testSquare', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Records a single hit (D1) inside a test square offline-first and returns
+ * its client id. The optimistic append updates the live hit counter
+ * immediately, even in airplane mode; the client id keeps the queued write
+ * idempotent so a replay never inflates the count. */
+export async function createTestSquareHit(
+  queryClient: QueryClient,
+  inspectionId: string,
+  testSquareId: string,
+  fields: Omit<CreateTestSquareHitInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: TestSquareHit = {
+      id,
+      companyId: inspection.companyId,
+      testSquareId,
+      hitType: fields.hitType,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return {
+      ...inspection,
+      testSquareHits: [...(inspection.testSquareHits ?? []), optimistic],
+    };
+  });
+  const input: CreateTestSquareHitInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.testSquareHit', { inspectionId, testSquareId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Documents a slope as inaccessible (D2) with a required reason, clearing its
+ * S4 test-square requirement while recording *why* no square could be marked.
+ * Recorded as an S4 stage attestation and optimistically appended so the gate
+ * clears live/offline. A client id keeps the queued write idempotent. */
+export async function markSlopeInaccessible(
+  queryClient: QueryClient,
+  inspectionId: string,
+  slopeId: string,
+  reason: string,
+  actorUserId: string,
+): Promise<void> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  const details = { kind: 'inaccessible_slope', slopeId, reason };
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: Attestation = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      userId: actorUserId,
+      stage: 'S4',
+      attestationType: 'stage_signoff',
+      details,
+      signatureData: null,
+      attestedAt: now,
+    };
+    return { ...inspection, attestations: [...(inspection.attestations ?? []), optimistic] };
+  });
+  const input: CreateAttestationInput = {
+    id,
+    stage: 'S4',
+    attestationType: 'stage_signoff',
+    details,
+  };
+  await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
+  void drainOutbox();
 }
 
 /** Optimistically appends captured evidence photos to the cached inspection

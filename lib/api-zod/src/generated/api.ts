@@ -681,7 +681,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -731,7 +731,36 @@ export const ListInspectionsResponse = zod.object({
   "unidentifiableReason": zod.string().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('C5 product-identification records, populated by the detail view only.')
+})).optional().describe('C5 product-identification records, populated by the detail view only.'),
+  "testSquares": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "label": zod.string(),
+  "sizeSqFt": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test squares, populated by the detail view only.'),
+  "testSquareHits": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "testSquareId": zod.string(),
+  "hitType": zod.union([zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),zod.null()]),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter.'),
+  "attestations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
+  "details": zod.record(zod.string(), zod.unknown()).nullable(),
+  "signatureData": zod.string().nullable(),
+  "attestedAt": zod.coerce.date()
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
 }))
 })
 
@@ -827,7 +856,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -877,7 +906,36 @@ export const CreateInspectionResponse = zod.object({
   "unidentifiableReason": zod.string().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('C5 product-identification records, populated by the detail view only.')
+})).optional().describe('C5 product-identification records, populated by the detail view only.'),
+  "testSquares": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "label": zod.string(),
+  "sizeSqFt": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test squares, populated by the detail view only.'),
+  "testSquareHits": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "testSquareId": zod.string(),
+  "hitType": zod.union([zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),zod.null()]),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter.'),
+  "attestations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
+  "details": zod.record(zod.string(), zod.unknown()).nullable(),
+  "signatureData": zod.string().nullable(),
+  "attestedAt": zod.coerce.date()
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
 })
 })
 
@@ -961,7 +1019,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1011,7 +1069,36 @@ export const GetInspectionResponse = zod.object({
   "unidentifiableReason": zod.string().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('C5 product-identification records, populated by the detail view only.')
+})).optional().describe('C5 product-identification records, populated by the detail view only.'),
+  "testSquares": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "label": zod.string(),
+  "sizeSqFt": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test squares, populated by the detail view only.'),
+  "testSquareHits": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "testSquareId": zod.string(),
+  "hitType": zod.union([zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),zod.null()]),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter.'),
+  "attestations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
+  "details": zod.record(zod.string(), zod.unknown()).nullable(),
+  "signatureData": zod.string().nullable(),
+  "attestedAt": zod.coerce.date()
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
 })
 })
 
@@ -1127,7 +1214,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1177,7 +1264,36 @@ export const UpdateInspectionResponse = zod.object({
   "unidentifiableReason": zod.string().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('C5 product-identification records, populated by the detail view only.')
+})).optional().describe('C5 product-identification records, populated by the detail view only.'),
+  "testSquares": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "label": zod.string(),
+  "sizeSqFt": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test squares, populated by the detail view only.'),
+  "testSquareHits": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "testSquareId": zod.string(),
+  "hitType": zod.union([zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),zod.null()]),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('M-D (S4) test-square hits across every square on this inspection, populated by the detail view only. Grouped client-side by testSquareId to drive the live hit counter.'),
+  "attestations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "userId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
+  "details": zod.record(zod.string(), zod.unknown()).nullable(),
+  "signatureData": zod.string().nullable(),
+  "attestedAt": zod.coerce.date()
+})).optional().describe('Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only.')
 })
 })
 
@@ -1385,6 +1501,7 @@ export const CreateTestSquareParams = zod.object({
 
 
 export const CreateTestSquareBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the test-square write is idempotent, so a queued offline square can be retried without duplicating the row.'),
   "slopeId": zod.string().nullish(),
   "label": zod.string().min(1),
   "sizeSqFt": zod.number().nullish(),
@@ -1414,7 +1531,8 @@ export const CreateTestSquareHitParams = zod.object({
 })
 
 export const CreateTestSquareHitBody = zod.object({
-  "hitType": zod.string().nullish(),
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the hit write is idempotent, so a queued offline hit can be retried without inflating the live hit counter.'),
+  "hitType": zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),
   "notes": zod.string().nullish()
 })
 
@@ -1423,7 +1541,7 @@ export const CreateTestSquareHitResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "testSquareId": zod.string(),
-  "hitType": zod.string().nullable(),
+  "hitType": zod.union([zod.enum(['hail_strike', 'mechanical', 'blistering', 'foot_scuff']).describe('Controlled vocabulary (D1) for classifying an individual hit counted inside a test square. Raw classification only — no derived density or severity.'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -1445,7 +1563,7 @@ export const CreateInspectionPhotoParams = zod.object({
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
   "url": zod.string().min(1),
@@ -1467,7 +1585,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1497,7 +1615,7 @@ export const CreateMeasurementParams = zod.object({
 
 
 export const CreateMeasurementBody = zod.object({
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullish(),
   "measurementType": zod.string().min(1),
   "value": zod.number(),
@@ -1509,7 +1627,7 @@ export const CreateMeasurementResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "measurementType": zod.string(),
   "value": zod.number(),

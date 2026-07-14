@@ -251,7 +251,7 @@ describe('inspection routes', () => {
     const hitRes = await request(app)
       .post(`/api/inspections/${inspectionId}/test-squares/${testSquareId}/hits`)
       .set(auth(inspectorA.sid))
-      .send({ hitType: 'impact' });
+      .send({ hitType: 'hail_strike' });
     expect(hitRes.status).toBe(201);
     expect(hitRes.body.hit.testSquareId).toBe(testSquareId);
 
@@ -352,9 +352,9 @@ describe('inspection routes', () => {
         ['create test square', () =>
           request(app).post(`/api/inspections/${inspectionId}/test-squares`).set(auth(sid)).send({ label: 'C0 TS' })],
         ['create test-square hit', () =>
-          request(app).post(`/api/inspections/${inspectionId}/test-squares/${ownerTestSquareId}/hits`).set(auth(sid)).send({ hitType: 'impact' })],
+          request(app).post(`/api/inspections/${inspectionId}/test-squares/${ownerTestSquareId}/hits`).set(auth(sid)).send({ hitType: 'hail_strike' })],
         ['create photo', () =>
-          request(app).post(`/api/inspections/${inspectionId}/photos`).set(auth(sid)).send({ subjectType: 'slope', url: 'https://example.test/c0.jpg', sha256: 'c'.repeat(64) })],
+          request(app).post(`/api/inspections/${inspectionId}/photos`).set(auth(sid)).send({ subjectType: 'inspection', url: 'https://example.test/c0.jpg', sha256: 'c'.repeat(64) })],
         ['create measurement', () =>
           request(app).post(`/api/inspections/${inspectionId}/measurements`).set(auth(sid)).send({ subjectType: 'slope', measurementType: 'length', value: 12 })],
         ['create attestation', () =>
@@ -647,6 +647,187 @@ describe('inspection routes', () => {
         (p) => p.id === photoId,
       );
       expect(matching).toHaveLength(1);
+    });
+  });
+
+  // M-D: test squares (S4), classified hits, the inaccessible-slope escape
+  // hatch (D2), orphan-photo prevention (D4), and the D0 attestation-scope fix.
+  describe('M-D test squares, hits, inaccessible slopes & orphan guard', () => {
+    it('creates a test square and hit idempotently, and hydrates them on GET /:id', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+
+      const tsId = `ts-${RUN_ID}-idem`;
+      const tsBody = { id: tsId, label: 'S4 square' };
+      const tsFirst = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares`)
+        .set(auth(inspectorA.sid))
+        .send(tsBody);
+      expect(tsFirst.status).toBe(201);
+      expect(tsFirst.body.testSquare.id).toBe(tsId);
+      const tsRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares`)
+        .set(auth(inspectorA.sid))
+        .send(tsBody);
+      expect(tsRetry.status).toBe(200);
+      expect(tsRetry.body.testSquare.id).toBe(tsId);
+
+      const hitId = `hit-${RUN_ID}-idem`;
+      const hitBody = { id: hitId, hitType: 'hail_strike' };
+      const hitFirst = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares/${tsId}/hits`)
+        .set(auth(inspectorA.sid))
+        .send(hitBody);
+      expect(hitFirst.status).toBe(201);
+      expect(hitFirst.body.hit.hitType).toBe('hail_strike');
+      const hitRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares/${tsId}/hits`)
+        .set(auth(inspectorA.sid))
+        .send(hitBody);
+      expect(hitRetry.status).toBe(200);
+      expect(hitRetry.body.hit.id).toBe(hitId);
+
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      expect(detail.status).toBe(200);
+      expect(detail.body.inspection.testSquares).toHaveLength(1);
+      // The counter must not double after the retry.
+      expect(detail.body.inspection.testSquareHits).toHaveLength(1);
+    });
+
+    it('rejects a hit outside the controlled vocabulary (400)', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const ts = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'Vocab square' });
+      const bad = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares/${ts.body.testSquare.id}/hits`)
+        .set(auth(inspectorA.sid))
+        .send({ hitType: 'impact' });
+      expect(bad.status).toBe(400);
+    });
+
+    it('409s when a hit client id is reused under a different square (parent-scoped)', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const tsA = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'Square A' });
+      const tsB = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'Square B' });
+      const hitId = `hit-${RUN_ID}-xsquare`;
+      const seed = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares/${tsA.body.testSquare.id}/hits`)
+        .set(auth(inspectorA.sid))
+        .send({ id: hitId, hitType: 'mechanical' });
+      expect(seed.status).toBe(201);
+      // Same id, different parent square: must not silently return the other
+      // square's hit — the conflict lookup is testSquareId-scoped.
+      const collide = await request(app)
+        .post(`/api/inspections/${inspectionId}/test-squares/${tsB.body.testSquare.id}/hits`)
+        .set(auth(inspectorA.sid))
+        .send({ id: hitId, hitType: 'mechanical' });
+      expect(collide.status).toBe(409);
+    });
+
+    it('409s when an attestation client id is reused on a different inspection (D0)', async () => {
+      const first = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const second = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const attId = `att-${RUN_ID}-xinsp`;
+      const seed = await request(app)
+        .post(`/api/inspections/${first.body.inspection.id}/attestations`)
+        .set(auth(inspectorA.sid))
+        .send({ id: attId, stage: 'S4', attestationType: 'stage_signoff', details: { kind: 'inaccessible_slope', slopeId: 's', reason: 'steep' } });
+      expect(seed.status).toBe(201);
+      // Before D0 the re-select was only id+company, so this replay leaked the
+      // other inspection's attestation as a 200. It must 409.
+      const collide = await request(app)
+        .post(`/api/inspections/${second.body.inspection.id}/attestations`)
+        .set(auth(inspectorA.sid))
+        .send({ id: attId, stage: 'S4', attestationType: 'stage_signoff', details: {} });
+      expect(collide.status).toBe(409);
+    });
+
+    it('documents an inaccessible slope as an S4 attestation and hydrates it', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const slope = await request(app)
+        .post(`/api/inspections/${inspectionId}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'Steep slope' });
+      const att = await request(app)
+        .post(`/api/inspections/${inspectionId}/attestations`)
+        .set(auth(inspectorA.sid))
+        .send({
+          stage: 'S4',
+          attestationType: 'stage_signoff',
+          details: { kind: 'inaccessible_slope', slopeId: slope.body.slope.id, reason: 'Too steep to walk safely' },
+        });
+      expect(att.status).toBe(201);
+
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      const hydrated = detail.body.inspection.attestations as Array<{ stage: string; details: { kind?: string } }>;
+      expect(hydrated.some((a) => a.stage === 'S4' && a.details?.kind === 'inaccessible_slope')).toBe(true);
+    });
+
+    it('rejects a subject-attached photo with no subjectId (D4 orphan guard)', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+
+      // A test-square photo with no subjectId would be an orphan — rejected.
+      const orphan = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ subjectType: 'test_square', triadRole: 'wide', stage: 'S4', url: 'https://example.test/o.jpg', sha256: '7'.repeat(64) });
+      expect(orphan.status).toBe(400);
+
+      // A whole-inspection photo legitimately has no subjectId — allowed.
+      const rootPhoto = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ subjectType: 'inspection', triadRole: 'wide', stage: 'S2', url: 'https://example.test/root.jpg', sha256: '8'.repeat(64) });
+      expect(rootPhoto.status).toBe(201);
+    });
+
+    it('replays a full S4 offline pass twice with no duplicates (square + overview + hit + close-up)', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const tsId = `ts-${RUN_ID}-op`;
+      const hitId = `hit-${RUN_ID}-op`;
+
+      const batch: Array<{ path: string; body: Record<string, unknown> }> = [
+        { path: `/api/inspections/${inspectionId}/test-squares`, body: { id: tsId, label: 'Offline square' } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-ov`, subjectType: 'test_square', subjectId: tsId, triadRole: 'wide', stage: 'S4', url: 'https://example.test/ov.jpg', sha256: 'a'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/test-squares/${tsId}/hits`, body: { id: hitId, hitType: 'hail_strike' } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-cu`, subjectType: 'test_square_hit', subjectId: hitId, triadRole: 'close', stage: 'S4', url: 'https://example.test/cu.jpg', sha256: 'b'.repeat(64) } },
+      ];
+
+      const drain = async () => {
+        const statuses: number[] = [];
+        for (const item of batch) {
+          const res = await request(app).post(item.path).set(auth(inspectorA.sid)).send(item.body);
+          statuses.push(res.status);
+        }
+        return statuses;
+      };
+
+      expect(await drain()).toEqual(batch.map(() => 201));
+      // Force-quit mid-drain: the same client ids replay and must all be no-ops.
+      expect(await drain()).toEqual(batch.map(() => 200));
+
+      const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
+      const insp = detail.body.inspection;
+      expect(insp.testSquares).toHaveLength(1);
+      expect(insp.testSquareHits).toHaveLength(1);
+      const s4Photos = (insp.photos as Array<{ id: string; sha256: string }>).filter((p) => p.id.startsWith(`p-${RUN_ID}-`));
+      expect(s4Photos).toHaveLength(2);
+      // Hashes are captured at shoot time and survive the replay unchanged.
+      expect(s4Photos.find((p) => p.id === `p-${RUN_ID}-ov`)?.sha256).toBe('a'.repeat(64));
+      expect(s4Photos.find((p) => p.id === `p-${RUN_ID}-cu`)?.sha256).toBe('b'.repeat(64));
     });
   });
 

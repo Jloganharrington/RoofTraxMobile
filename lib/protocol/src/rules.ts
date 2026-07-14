@@ -53,11 +53,26 @@ function checkS3(state: InspectionProtocolState): Deficiency[] {
     );
 }
 
+// D1/D2 — Every documented slope needs either a test square (with its chalked
+// overview photo) or a documented inaccessible-slope attestation. A square with
+// no overview photo does not count. Reported per-slope so one missing square is
+// exactly one deficiency, mirroring the S3 per-slope shape.
 function checkS4(state: InspectionProtocolState): Deficiency[] {
-  if (state.testSquares.length === 0) {
-    return [deficiency('S4', 'NO_TEST_SQUARES_CAPTURED', 'No test squares have been recorded.')];
-  }
-  return [];
+  const inaccessible = new Set(state.inaccessibleSlopeIds);
+  return state.slopes
+    .filter((slope) => {
+      if (inaccessible.has(slope.id)) return false;
+      return !state.testSquares.some(
+        (square) => square.slopeId === slope.id && square.overviewPhotoCaptured,
+      );
+    })
+    .map((slope) =>
+      deficiency(
+        'S4',
+        `MISSING_TEST_SQUARE_${slope.id}`,
+        `Slope ${slope.id} needs a test square with an overview photo, or a documented inaccessible-slope attestation.`,
+      ),
+    );
 }
 
 function checkS5(state: InspectionProtocolState): Deficiency[] {

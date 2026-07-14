@@ -2215,7 +2215,14 @@ components:
       enum: [front, right, back, left]
     InspectionSubjectType:
       type: string
-      enum: [inspection, slope, elevation, damage_instance, test_square, component, penetration, product]
+      enum: [inspection, slope, elevation, damage_instance, test_square, test_square_hit, component, penetration, product]
+    TestSquareHitType:
+      type: string
+      description: >-
+        Controlled vocabulary (D1) for classifying an individual hit counted
+        inside a test square. Raw classification only — no derived density or
+        severity.
+      enum: [hail_strike, mechanical, blistering, foot_scuff]
     PhotoTriadRole:
       type: string
       enum: [wide, mid, close]
@@ -2373,6 +2380,27 @@ components:
           description: C5 product-identification records, populated by the detail view only.
           items:
             $ref: "#/components/schemas/InspectionProduct"
+        testSquares:
+          type: array
+          description: M-D (S4) test squares, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/TestSquare"
+        testSquareHits:
+          type: array
+          description: >-
+            M-D (S4) test-square hits across every square on this inspection,
+            populated by the detail view only. Grouped client-side by
+            testSquareId to drive the live hit counter.
+          items:
+            $ref: "#/components/schemas/TestSquareHit"
+        attestations:
+          type: array
+          description: >-
+            Attestations recorded on this inspection (equipment checklist,
+            GPS override, stage sign-offs incl. the D2 inaccessible-slope
+            attestation), populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/Attestation"
     CreateInspectionInput:
       type: object
       properties:
@@ -2800,6 +2828,12 @@ components:
       type: object
       required: [label]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, the test-square write is idempotent, so a queued offline
+            square can be retried without duplicating the row.
         slopeId:
           type: [string, "null"]
         label:
@@ -2827,7 +2861,9 @@ components:
         testSquareId:
           type: string
         hitType:
-          type: [string, "null"]
+          oneOf:
+            - $ref: "#/components/schemas/TestSquareHitType"
+            - type: "null"
         notes:
           type: [string, "null"]
         createdAt:
@@ -2835,9 +2871,16 @@ components:
           format: date-time
     CreateTestSquareHitInput:
       type: object
+      required: [hitType]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, the hit write is idempotent, so a queued offline hit can
+            be retried without inflating the live hit counter.
         hitType:
-          type: [string, "null"]
+          $ref: "#/components/schemas/TestSquareHitType"
         notes:
           type: [string, "null"]
     TestSquareHitEnvelope:

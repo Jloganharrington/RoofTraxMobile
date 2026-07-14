@@ -47,7 +47,7 @@ import {
   usersTable,
 } from '@workspace/db';
 import type { Role } from '@workspace/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
@@ -239,8 +239,17 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   // progress and drive the lib/protocol gate. The list feed omits these;
   // only this by-id read pays for the extra queries. Ordered by createdAt
   // so the client can rely on capture order (e.g. the elevation walk).
-  const [slopes, elevations, damageInstances, photos, components, penetrations, products] =
-    await Promise.all([
+  const [
+    slopes,
+    elevations,
+    damageInstances,
+    photos,
+    components,
+    penetrations,
+    products,
+    testSquares,
+    attestations,
+  ] = await Promise.all([
     db
       .select()
       .from(inspectionSlopesTable)
@@ -311,7 +320,44 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
         ),
       )
       .orderBy(inspectionProductsTable.createdAt),
+    db
+      .select()
+      .from(testSquaresTable)
+      .where(
+        and(
+          eq(testSquaresTable.inspectionId, inspectionId),
+          eq(testSquaresTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(testSquaresTable.createdAt),
+    db
+      .select()
+      .from(attestationsTable)
+      .where(
+        and(
+          eq(attestationsTable.inspectionId, inspectionId),
+          eq(attestationsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(attestationsTable.attestedAt),
   ]);
+
+  // Test-square hits have no inspectionId of their own — they hang off the
+  // square. Fetch them scoped to this inspection's squares (and company) so
+  // the client can group them by testSquareId for the live hit counter.
+  const squareIds = testSquares.map((square) => square.id);
+  const testSquareHits = squareIds.length
+    ? await db
+        .select()
+        .from(testSquareHitsTable)
+        .where(
+          and(
+            inArray(testSquareHitsTable.testSquareId, squareIds),
+            eq(testSquareHitsTable.companyId, actor.companyId),
+          ),
+        )
+        .orderBy(testSquareHitsTable.createdAt)
+    : [];
 
   res.json(
     GetInspectionResponse.parse({
@@ -324,6 +370,9 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
         components,
         penetrations,
         products,
+        testSquares,
+        testSquareHits,
+        attestations,
       },
     }),
   );
@@ -740,17 +789,49 @@ router.post('/inspections/:inspectionId/test-squares', async (req: Request, res:
     return;
   }
 
-  const [testSquare] = await db
-    .insert(testSquaresTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      slopeId: parsed.data.slopeId ?? undefined,
-      label: parsed.data.label,
-      sizeSqFt: parsed.data.sizeSqFt ?? undefined,
-      notes: parsed.data.notes ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    slopeId: parsed.data.slopeId ?? undefined,
+    label: parsed.data.label,
+    sizeSqFt: parsed.data.sizeSqFt ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes/damage handlers). A test
+  // square marked offline is queued and drained on reconnect; a replayed item
+  // with the same client id returns the existing row instead of duplicating
+  // the square (which would double the S4 gate rows for that slope).
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(testSquaresTable)
+      .values(values)
+      .onConflictDoNothing({ target: testSquaresTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateTestSquareResponse.parse({ testSquare: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(testSquaresTable)
+      .where(
+        and(
+          eq(testSquaresTable.id, parsed.data.id),
+          eq(testSquaresTable.companyId, actor.companyId),
+          eq(testSquaresTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Test square id already exists' });
+      return;
+    }
+    res.status(200).json(CreateTestSquareResponse.parse({ testSquare: existing }));
+    return;
+  }
+
+  const [testSquare] = await db.insert(testSquaresTable).values(values).returning();
 
   res.status(201).json(CreateTestSquareResponse.parse({ testSquare }));
 });
@@ -787,15 +868,46 @@ router.post(
       return;
     }
 
-    const [hit] = await db
-      .insert(testSquareHitsTable)
-      .values({
-        companyId: actor.companyId,
-        testSquareId,
-        hitType: parsed.data.hitType ?? undefined,
-        notes: parsed.data.notes ?? undefined,
-      })
-      .returning();
+    const values = {
+      ...(parsed.data.id ? { id: parsed.data.id } : {}),
+      companyId: actor.companyId,
+      testSquareId,
+      hitType: parsed.data.hitType,
+      notes: parsed.data.notes ?? undefined,
+    };
+
+    // Offline-first idempotent create. The conflict re-select is parent-scoped
+    // by testSquareId (the hit's parent) plus companyId, so a replayed offline
+    // hit never inflates the live hit counter and can't collide across tenants.
+    if (parsed.data.id) {
+      const [inserted] = await db
+        .insert(testSquareHitsTable)
+        .values(values)
+        .onConflictDoNothing({ target: testSquareHitsTable.id })
+        .returning();
+      if (inserted) {
+        res.status(201).json(CreateTestSquareHitResponse.parse({ hit: inserted }));
+        return;
+      }
+      const [existing] = await db
+        .select()
+        .from(testSquareHitsTable)
+        .where(
+          and(
+            eq(testSquareHitsTable.id, parsed.data.id),
+            eq(testSquareHitsTable.companyId, actor.companyId),
+            eq(testSquareHitsTable.testSquareId, testSquareId),
+          ),
+        );
+      if (!existing) {
+        res.status(409).json({ error: 'Hit id already exists' });
+        return;
+      }
+      res.status(200).json(CreateTestSquareHitResponse.parse({ hit: existing }));
+      return;
+    }
+
+    const [hit] = await db.insert(testSquareHitsTable).values(values).returning();
 
     res.status(201).json(CreateTestSquareHitResponse.parse({ hit }));
   },
@@ -812,6 +924,15 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
   const parsed = CreateInspectionPhotoBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid photo payload' });
+    return;
+  }
+
+  // D4 — Orphan-photo prevention. Every subject-attached photo (test square,
+  // hit, damage instance, slope, elevation, component, penetration, product)
+  // must reference the record it documents. Only whole-inspection photos (S0
+  // overview, S2 roof access) legitimately have no subjectId.
+  if (parsed.data.subjectType !== 'inspection' && !parsed.data.subjectId) {
+    res.status(400).json({ error: 'A subjectId is required for subject-attached photos' });
     return;
   }
 
@@ -946,6 +1067,7 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
         and(
           eq(attestationsTable.id, parsed.data.id),
           eq(attestationsTable.companyId, actor.companyId),
+          eq(attestationsTable.inspectionId, inspectionId),
         ),
       );
     if (!existing) {

@@ -204,9 +204,13 @@ export default function InspectionDetailScreen() {
       {(() => {
         const s1Missing = stageDeficiencies(inspection, 'S1').length;
         const s3Missing = stageDeficiencies(inspection, 'S3').length;
+        const s4Missing = stageDeficiencies(inspection, 'S4').length;
         const s5Missing = stageDeficiencies(inspection, 'S5').length;
         const slopeCount = inspection.slopes?.length ?? 0;
-        const damageCount = inspection.damageInstances?.length ?? 0;
+        const testSquareCount = inspection.testSquares?.length ?? 0;
+        const damageInstances = inspection.damageInstances ?? [];
+        const collateralCount = damageInstances.filter((d) => d.elevationId != null).length;
+        const functionalCount = damageInstances.filter((d) => d.slopeId != null).length;
         const componentCount = inspection.components?.length ?? 0;
         const penetrationCount = inspection.penetrations?.length ?? 0;
         const productCount = inspection.products?.length ?? 0;
@@ -217,6 +221,7 @@ export default function InspectionDetailScreen() {
           ...stageDeficiencies(inspection, 'S1'),
           ...stageDeficiencies(inspection, 'S2'),
           ...stageDeficiencies(inspection, 'S3'),
+          ...stageDeficiencies(inspection, 'S4'),
           ...stageDeficiencies(inspection, 'S5'),
         ];
         return (
@@ -267,17 +272,50 @@ export default function InspectionDetailScreen() {
             />
 
             <StageCard
+              icon="square"
+              title="S4 · Test squares"
+              subtitle={
+                slopeCount === 0
+                  ? 'Chalk one test square per accessible slope'
+                  : s4Missing === 0
+                    ? `${testSquareCount} square${testSquareCount === 1 ? '' : 's'} — every slope covered`
+                    : `${s4Missing} slope${s4Missing === 1 ? '' : 's'} need a square or a documented reason`
+              }
+              done={slopeCount > 0 && s4Missing === 0}
+              onPress={() => router.push({ pathname: '/inspection-test-squares', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
               icon="clipboard"
               title="S5 · Collateral sweep"
               subtitle={
-                damageCount === 0
+                collateralCount === 0
                   ? 'Record collateral damage per elevation'
                   : s5Missing === 0
-                    ? `${damageCount} instance${damageCount === 1 ? '' : 's'} — triads complete`
+                    ? `${collateralCount} instance${collateralCount === 1 ? '' : 's'} — triads complete`
                     : `${s5Missing} instance${s5Missing === 1 ? '' : 's'} missing wide/mid/close`
               }
-              done={damageCount > 0 && s5Missing === 0}
+              done={collateralCount > 0 && s5Missing === 0}
               onPress={() => router.push({ pathname: '/inspection-collateral', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="clipboard"
+              title="S5 · Functional damage"
+              subtitle={
+                functionalCount === 0
+                  ? 'Whole-roof functional damage, tagged by slope'
+                  : `${functionalCount} instance${functionalCount === 1 ? '' : 's'} recorded across slopes`
+              }
+              done={functionalCount > 0 && s5Missing === 0}
+              onPress={() =>
+                router.push({
+                  pathname: '/inspection-collateral',
+                  params: { id, mode: 'functional' },
+                })
+              }
               colors={colors}
             />
 
