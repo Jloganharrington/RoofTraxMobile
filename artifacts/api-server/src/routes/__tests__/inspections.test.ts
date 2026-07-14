@@ -383,4 +383,43 @@ describe('inspection routes', () => {
       }
     });
   });
+
+  // C0: creation establishes ownership, so a field rep must not be able to
+  // create an inspection owned by (or assigned to) someone else. Assignment is
+  // a manager+ action, and the assignee must be in the actor's company.
+  describe('C0 create-assignment policy', () => {
+    it('lets a field rep create an inspection owned by themselves (explicit self)', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA2.sid))
+        .send({ inspectorUserId: inspectorA2.userId, claimNumber: 'CLM-SELF' });
+      expect(res.status).toBe(201);
+      expect(res.body.inspection.inspectorUserId).toBe(inspectorA2.userId);
+    });
+
+    it('forbids a field rep from creating an inspection assigned to another user (403)', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA2.sid))
+        .send({ inspectorUserId: inspectorA.userId, claimNumber: 'CLM-SPOOF' });
+      expect(res.status).toBe(403);
+    });
+
+    it('lets a manager assign a new inspection to another user in the company', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(managerA.sid))
+        .send({ inspectorUserId: inspectorA.userId, claimNumber: 'CLM-ASSIGN' });
+      expect(res.status).toBe(201);
+      expect(res.body.inspection.inspectorUserId).toBe(inspectorA.userId);
+    });
+
+    it('rejects assigning a new inspection to a user outside the company (400)', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(managerA.sid))
+        .send({ inspectorUserId: inspectorB.userId, claimNumber: 'CLM-XCO' });
+      expect(res.status).toBe(400);
+    });
+  });
 });

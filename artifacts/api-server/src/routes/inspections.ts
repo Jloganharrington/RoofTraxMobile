@@ -35,12 +35,13 @@ import {
   testSquaresTable,
   measurementsTable,
   userProfilesTable,
+  usersTable,
 } from '@workspace/db';
 import type { Role } from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canAccessInspectionModule, canWriteInspection } from '../lib/permissions';
+import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
 
 const router: IRouter = Router();
 
@@ -131,10 +132,32 @@ router.post('/inspections', async (req: Request, res: Response) => {
     return;
   }
 
+  // Ownership-assignment policy (C0): a field rep may only create an
+  // inspection owned by themselves. Assigning ownership to someone else is a
+  // managerial action, and the assignee must be a user in the actor's company
+  // — this prevents ownership spoofing and cross-tenant/orphaned assignment.
+  const requestedOwnerId = parsed.data.inspectorUserId ?? actor.userId;
+  if (requestedOwnerId !== actor.userId) {
+    if (!isManagerOrAdmin(actor.role)) {
+      res
+        .status(403)
+        .json({ error: 'Only a manager or above can assign an inspection to another user' });
+      return;
+    }
+    const [assignee] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, requestedOwnerId), eq(usersTable.companyId, actor.companyId)));
+    if (!assignee) {
+      res.status(400).json({ error: 'Assigned inspector must be a user in your company' });
+      return;
+    }
+  }
+
   const values = {
     ...(parsed.data.id ? { id: parsed.data.id } : {}),
     companyId: actor.companyId,
-    inspectorUserId: parsed.data.inspectorUserId ?? actor.userId,
+    inspectorUserId: requestedOwnerId,
     status: parsed.data.status ?? undefined,
     pinId: parsed.data.pinId ?? undefined,
     claimNumber: parsed.data.claimNumber ?? undefined,
