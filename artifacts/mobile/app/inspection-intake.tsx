@@ -1,0 +1,188 @@
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { Icon } from '@/components/Icon';
+import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '@/lib/auth';
+import { inspectionsListKey, startInspection } from '@/lib/inspectionSync';
+
+// Claim intake (B4): captures the claim/policy header for a new forensic
+// inspection. Offline-first — the inspection is created against a durable
+// outbox with a client id, so an intake filled in airplane mode syncs later.
+export default function InspectionIntakeScreen() {
+  const colors = useColors();
+  const queryClient = useQueryClient();
+  const { companyId } = useProfile();
+  const { user } = useAuth();
+  const params = useLocalSearchParams<{
+    pinId?: string;
+    insuredName?: string;
+    address?: string;
+    carrierName?: string;
+    policyNumber?: string;
+    claimNumber?: string;
+    dateOfLoss?: string;
+    latitude?: string;
+    longitude?: string;
+  }>();
+
+  const [insuredName, setInsuredName] = useState(params.insuredName ?? '');
+  const [address, setAddress] = useState(params.address ?? '');
+  const [claimNumber, setClaimNumber] = useState(params.claimNumber ?? '');
+  const [policyNumber, setPolicyNumber] = useState(params.policyNumber ?? '');
+  const [carrierName, setCarrierName] = useState(params.carrierName ?? '');
+  const [dateOfLoss, setDateOfLoss] = useState(params.dateOfLoss ?? '');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const latitude = params.latitude ? Number(params.latitude) : null;
+  const longitude = params.longitude ? Number(params.longitude) : null;
+
+  async function handleCreate() {
+    if (!companyId || !user?.id) {
+      Alert.alert('Not ready', 'Your profile is still loading. Try again in a moment.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const id = await startInspection({
+        queryClient,
+        companyId,
+        inspectorUserId: user.id,
+        input: {
+          status: 'capturing',
+          pinId: params.pinId ?? null,
+          insuredName: insuredName.trim() || null,
+          address: address.trim() || null,
+          claimNumber: claimNumber.trim() || null,
+          policyNumber: policyNumber.trim() || null,
+          carrierName: carrierName.trim() || null,
+          dateOfLoss: dateOfLoss.trim() || null,
+          notes: notes.trim() || null,
+          latitude,
+          longitude,
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
+      router.replace({ pathname: '/inspection/[id]', params: { id } });
+    } catch {
+      Alert.alert('Could not start', 'Something went wrong creating the inspection.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function Field({
+    label,
+    value,
+    onChange,
+    placeholder,
+    multiline,
+    keyboardType,
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+    multiline?: boolean;
+    keyboardType?: 'default' | 'numeric';
+  }) {
+    return (
+      <View style={styles.field}>
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={colors.mutedForeground}
+          multiline={multiline}
+          keyboardType={keyboardType}
+          style={[
+            styles.input,
+            multiline && { height: 88, textAlignVertical: 'top' },
+            { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground },
+          ]}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {params.pinId ? (
+          <View style={[styles.pinNote, { backgroundColor: colors.accent }]}>
+            <Icon name="map-pin" size={16} color={colors.insurance} />
+            <Text style={{ color: colors.accentForeground, flex: 1, fontSize: 13 }}>
+              Started from a canvassing pin — location prefilled.
+            </Text>
+          </View>
+        ) : null}
+
+        <Field label="Insured name" value={insuredName} onChange={setInsuredName} placeholder="Homeowner name" />
+        <Field label="Property address" value={address} onChange={setAddress} placeholder="123 Main St" />
+        <Field label="Carrier" value={carrierName} onChange={setCarrierName} placeholder="Insurance carrier" />
+        <Field label="Policy number" value={policyNumber} onChange={setPolicyNumber} />
+        <Field label="Claim number" value={claimNumber} onChange={setClaimNumber} />
+        <Field label="Date of loss" value={dateOfLoss} onChange={setDateOfLoss} placeholder="YYYY-MM-DD" />
+        <Field label="Notes" value={notes} onChange={setNotes} multiline placeholder="Optional context" />
+
+        <Pressable
+          onPress={handleCreate}
+          disabled={saving}
+          style={[styles.submit, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
+        >
+          {saving ? (
+            <ActivityIndicator color={colors.primaryForeground} />
+          ) : (
+            <Text style={[styles.submitText, { color: colors.primaryForeground }]}>Create inspection</Text>
+          )}
+        </Pressable>
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: 16, gap: 12 },
+  pinNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+  },
+  field: { gap: 6 },
+  label: { fontSize: 13, fontWeight: '600' },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  submit: {
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  submitText: { fontSize: 16, fontWeight: '700' },
+});

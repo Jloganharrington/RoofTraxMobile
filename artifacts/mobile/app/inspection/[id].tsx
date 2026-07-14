@@ -1,0 +1,288 @@
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Icon } from '@/components/Icon';
+import type { IconName } from '@/components/Icon';
+import { useColors } from '@/hooks/useColors';
+import { attestInspection } from '@/lib/inspectionSync';
+
+const EQUIPMENT_ITEMS = [
+  'Ladder',
+  'Drone',
+  'Chalk / crayon',
+  'Moisture meter',
+  'Camera / phone',
+  'Fall protection',
+];
+
+export default function InspectionDetailScreen() {
+  const colors = useColors();
+  const queryClient = useQueryClient();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const inspectionQuery = useGetInspection(id, {
+    query: { queryKey: getGetInspectionQueryKey(id) },
+  });
+  const inspection = inspectionQuery.data?.inspection;
+
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [equipmentDone, setEquipmentDone] = useState(false);
+  const [savingEquipment, setSavingEquipment] = useState(false);
+
+  const allChecked = EQUIPMENT_ITEMS.every((item) => checked[item]);
+
+  async function confirmEquipment() {
+    setSavingEquipment(true);
+    try {
+      await attestInspection(id, {
+        stage: 'S0',
+        attestationType: 'equipment',
+        details: { items: checked, confirmedAllPresent: allChecked },
+      });
+      setEquipmentDone(true);
+    } finally {
+      setSavingEquipment(false);
+    }
+  }
+
+  const location = inspection?.address
+    ? inspection.address
+    : inspection?.latitude != null && inspection?.longitude != null
+      ? `${inspection.latitude},${inspection.longitude}`
+      : '';
+
+  if (inspectionQuery.isLoading && !inspection) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!inspection) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Icon name="alert-circle" size={28} color={colors.mutedForeground} />
+        <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Inspection not found.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+    >
+      <View style={[styles.headerCard, { backgroundColor: colors.secondary }]}>
+        <Text style={styles.headerTitle}>{inspection.insuredName ?? 'Inspection'}</Text>
+        <Text style={styles.headerSub}>{inspection.address ?? 'No address on file'}</Text>
+        <View style={styles.headerMetaRow}>
+          {inspection.claimNumber ? (
+            <Text style={styles.headerMeta}>Claim {inspection.claimNumber}</Text>
+          ) : null}
+          {inspection.dateOfLoss ? (
+            <Text style={styles.headerMeta}>DOL {inspection.dateOfLoss}</Text>
+          ) : null}
+        </View>
+      </View>
+
+      {/* S0 — Equipment attestation (B4) */}
+      <Text style={[styles.section, { color: colors.foreground }]}>S0 · Equipment check</Text>
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {equipmentDone ? (
+          <View style={styles.doneRow}>
+            <Icon name="check" size={18} color={colors.success} />
+            <Text style={{ color: colors.foreground, fontWeight: '600' }}>
+              Equipment attested{allChecked ? ' — all present' : ' — partial'}
+            </Text>
+          </View>
+        ) : (
+          <>
+            {EQUIPMENT_ITEMS.map((item) => {
+              const on = !!checked[item];
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => setChecked((prev) => ({ ...prev, [item]: !prev[item] }))}
+                  style={styles.checkRow}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      {
+                        backgroundColor: on ? colors.primary : 'transparent',
+                        borderColor: on ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    {on ? <Icon name="check" size={14} color={colors.primaryForeground} /> : null}
+                  </View>
+                  <Text style={{ color: colors.foreground, fontSize: 15 }}>{item}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={confirmEquipment}
+              disabled={savingEquipment}
+              style={[styles.confirmBtn, { backgroundColor: colors.primary, opacity: savingEquipment ? 0.6 : 1 }]}
+            >
+              {savingEquipment ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.confirmText, { color: colors.primaryForeground }]}>
+                  Attest equipment
+                </Text>
+              )}
+            </Pressable>
+          </>
+        )}
+      </View>
+
+      {/* B5 — Storm of record */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Storm of record</Text>
+      <StageCard
+        icon="cloud"
+        title={inspection.stormConfirmedRef ? 'Storm confirmed' : 'Confirm the storm'}
+        subtitle={
+          inspection.stormConfirmedRef
+            ? `${inspection.stormConfirmedRef.type} · ${inspection.stormConfirmedRef.date}`
+            : 'Match the claim to a severe-weather event'
+        }
+        done={!!inspection.stormConfirmedRef}
+        onPress={() =>
+          router.push({
+            pathname: '/inspection-storm',
+            params: {
+              id,
+              location,
+              dateOfLoss: inspection.dateOfLoss ?? '',
+            },
+          })
+        }
+        colors={colors}
+      />
+
+      {/* S1 — Arrival (B6) */}
+      <Text style={[styles.section, { color: colors.foreground }]}>S1 · Arrival</Text>
+      <StageCard
+        icon="navigation"
+        title={inspection.arrivalConditions ? 'Arrival logged' : 'Log arrival'}
+        subtitle={
+          inspection.arrivalConditions
+            ? `Recorded ${new Date(inspection.arrivalConditions.recordedAtUtc).toLocaleTimeString()}`
+            : 'Verify you are on-site and note conditions'
+        }
+        done={!!inspection.arrivalConditions}
+        onPress={() =>
+          router.push({
+            pathname: '/inspection-arrival',
+            params: {
+              id,
+              latitude: inspection.latitude != null ? String(inspection.latitude) : '',
+              longitude: inspection.longitude != null ? String(inspection.longitude) : '',
+            },
+          })
+        }
+        colors={colors}
+      />
+
+      {/* Evidence photos (M-A) */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Evidence</Text>
+      <StageCard
+        icon="camera"
+        title="Capture evidence photos"
+        subtitle="Wide / mid / close triad with GPS + hash"
+        done={false}
+        onPress={() =>
+          router.push({
+            pathname: '/inspection-photo-capture',
+            params: { inspectionId: id, subjectType: 'inspection' },
+          })
+        }
+        colors={colors}
+      />
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+}
+
+function StageCard({
+  icon,
+  title,
+  subtitle,
+  done,
+  onPress,
+  colors,
+}: {
+  icon: IconName;
+  title: string;
+  subtitle: string;
+  done: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.stageCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
+      <View
+        style={[
+          styles.stageIcon,
+          { backgroundColor: done ? colors.success : colors.accent },
+        ]}
+      >
+        <Icon name={done ? 'check' : icon} size={18} color={done ? '#fff' : colors.secondary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.stageTitle, { color: colors.foreground }]}>{title}</Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>{subtitle}</Text>
+      </View>
+      <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: 16, gap: 10 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  headerCard: { borderRadius: 16, padding: 18, gap: 4 },
+  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
+  headerMetaRow: { flexDirection: 'row', gap: 14, marginTop: 6 },
+  headerMeta: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600' },
+  section: { fontSize: 16, fontWeight: '700', marginTop: 10 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmBtn: { paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 6 },
+  confirmText: { fontSize: 15, fontWeight: '700' },
+  stageCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  stageIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  stageTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+});

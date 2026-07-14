@@ -1,9 +1,26 @@
 import { File } from 'expo-file-system';
-import { createInspectionPhoto } from '@workspace/api-client-react';
-import type { InspectionSubjectType, PhotoTriadRole } from '@workspace/api-client-react';
+import {
+  createAttestation,
+  createInspection,
+  createInspectionPhoto,
+  updateInspection,
+} from '@workspace/api-client-react';
+import type {
+  CreateAttestationInput,
+  CreateInspectionInput,
+  InspectionSubjectType,
+  PhotoTriadRole,
+  UpdateInspectionInput,
+} from '@workspace/api-client-react';
 
 import { uploadFile } from '../upload';
-import type { InspectionPhotoOutboxPayload, OutboxItemKind } from './types';
+import type {
+  InspectionAttestationOutboxPayload,
+  InspectionCreateOutboxPayload,
+  InspectionPhotoOutboxPayload,
+  InspectionUpdateOutboxPayload,
+  OutboxItemKind,
+} from './types';
 
 type Handler = (payload: string) => Promise<void>;
 
@@ -46,6 +63,26 @@ async function syncInspectionPhoto(payloadJson: string): Promise<void> {
   }
 }
 
+async function syncInspectionCreate(payloadJson: string): Promise<void> {
+  const payload: InspectionCreateOutboxPayload = JSON.parse(payloadJson);
+  // Idempotent by the client-supplied id — a retry after a partial failure
+  // returns the existing row instead of creating a duplicate.
+  await createInspection(payload.input as CreateInspectionInput);
+}
+
+async function syncInspectionUpdate(payloadJson: string): Promise<void> {
+  const payload: InspectionUpdateOutboxPayload = JSON.parse(payloadJson);
+  await updateInspection(payload.inspectionId, payload.patch as UpdateInspectionInput);
+}
+
+async function syncInspectionAttestation(payloadJson: string): Promise<void> {
+  const payload: InspectionAttestationOutboxPayload = JSON.parse(payloadJson);
+  await createAttestation(payload.inspectionId, payload.input as CreateAttestationInput);
+}
+
 export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.photo': syncInspectionPhoto,
+  'inspection.create': syncInspectionCreate,
+  'inspection.update': syncInspectionUpdate,
+  'inspection.attestation': syncInspectionAttestation,
 };
