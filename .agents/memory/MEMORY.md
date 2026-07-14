@@ -17,3 +17,4 @@
 - [Offline-first write idempotency](offline-write-idempotency.md) — every outbox-replayable create (incl. photos) needs a client id; conflict lookup must be parent-scoped (inspectionId), not just id+company.
 - [Protocol gate mapping layer](protocol-gate-mapping-layer.md) — stage gates are enforced by tested rules AND the untested mobile buildProtocolState mapping; qualify photo role + attestation type in the mapping or the gate is bypassable.
 - [Optimistic cache id parity](optimistic-cache-id-parity.md) — offline optimistic cache rows must reuse the outbox/server client id (not a placeholder), and manifest builders must gate on a fully-drained outbox for that entity.
+- [Duplicate react-native from @types/react fork](duplicate-react-native-types-fork.md) — Expo Go "downloads 100% then crashes, no redbox" = two RN instances forked by mismatched @types/react peers; pin @types/react via root pnpm.overrides + wipe node_modules.

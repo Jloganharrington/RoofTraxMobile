@@ -1,0 +1,22 @@
+RoofTraxMobile — Phase M-F Work Order: Brain v0, Signature-on-File & CRM Linkage
+Depends on M-A…M-E merged. Hardens the submission into a real Brain v0 intake, adds the on-site pre-flight, wires signature-on-file, stubs package return, and defines the CRM threads. After M-F the field app is feature-complete.
+
+Keep the M-F/Brain seam sharp
+M-F builds Brain v0 (intake hardening + pre-flight + status stub, inside the api-server, written to be lifted out). Do not build package generation, exhibit rendering, code/pricing engines, or any LLM surface — those are the standalone Brain.
+
+F0 — Signature-on-file (your option 3). Capture an inspector's signature once (profile), store the image in tenant-scoped object storage + SHA-256 on their profile. Rework the M-E declaration: drop the per-inspection pad; the inspector reviews the declaration and taps "Apply my signature & sign" — stores the declaration hash as proof-of-signing (unchanged), records the applied on-file signature by reference. Submission carries the on-file signature reference (image URL + hash) so the Brain renders it onto Exhibit M later (not here). Missing on-file signature blocks with a capture prompt.
+
+F1 — Pre-flight endpoint. POST /inspections/:id/preflight re-runs the same lib/protocol evaluate() server-side (authoritative) and returns deficiencies. App calls it in S9 while the inspector's still on site — the "don't climb down yet" feature. C0-guarded.
+
+F2 — Submission intake hardening (Brain v0). The hardening M-E deferred: verify manifest hashes against stored photos (reject on mismatch), lock the record immutable on submit (corrections become addenda, not edits), lifecycle → submitted only after verification.
+
+F3 — Status & package return. Status/polling endpoint + package-viewer screen; serves a clearly-labeled stub "received & validated" receipt until the real Brain exists, so the poll→display→share plumbing is done ahead of package generation.
+
+F4 — CRM threads (define; activate as CRM allows). Wire the M-B stubs: read the scheduled-inspection queue and appointment-completion from RoofTraxAdmin (keyed by per-tenant field key), define the outbound inspection-report ingest. Depends on the CRM's multi-tenant Phase 3 keys — activate what's live, define the rest behind a flag, fabricate nothing. Report the active-vs-pending split.
+
+F5 — Brain extraction seam (doc). Write down exactly what the standalone Brain lifts out (intake, pre-flight, status routes; lib/protocol; contract v1; weather engine) and the deferred Brain responsibilities (package/exhibit generation, Exhibit M signature rendering from F0, code/pricing, the LLM surface + Opus-vs-Gemini decision).
+
+Testing gate: F0 capture/apply/block; F1 pre-flight parity + peer-403; F2 hash-mismatch reject + record-lock + addendum-allowed; F3 stub receipt; F4 keyed-reads/empty-pending + no fabricated data; C0 on new writes; tenant isolation on the signature record; no bypass; standing pin regression; typecheck. Final acceptance (pending real device): two mock inspections end-to-end — one clean, one deficient and repaired on-site via the F1 pre-flight — both landing with verified hashes and locked records. This is the physical field test that's been the standing gate — it closes M-F and the field-usability gate at once.
+
+Discipline: keep Brain v0 thin and lift-out-ready; reuse components; minimal additive schema; no bypass; diff reviewed before pull; no canvassing drift; do not build the standalone Brain.
+
