@@ -50,6 +50,7 @@ function AuthenticatedStack() {
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="map" options={{ title: 'Add Pins' }} />
       <Stack.Screen
         name="pin-new"
         options={{ presentation: 'modal', title: 'New Pin' }}

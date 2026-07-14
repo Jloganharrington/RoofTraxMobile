@@ -55,9 +55,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Map',
+          title: 'Home',
           tabBarIcon: ({ color }) => (
-            <Icon name="map-pin" size={22} color={color} />
+            <Icon name="home" size={22} color={color} />
           ),
         }}
       />

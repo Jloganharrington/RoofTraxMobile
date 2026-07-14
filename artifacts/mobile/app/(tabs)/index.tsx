@@ -1,1 +1,1 @@
-export { default } from '@/components/MapScreen';
+export { default } from '@/components/DashboardScreen';
