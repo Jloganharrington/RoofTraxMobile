@@ -8,3 +8,5 @@
 - [Expo vector-icons tofu-box glyphs on SDK 54](expo-vector-icons-sdk54-tofu.md) — nested expo-font version mismatch, not a load-order bug; pin exact version + pnpm override.
 - [One-off DB scripts fail standalone in this pnpm/ESM workspace](one-off-db-scripts-pnpm-esm.md) — tsx/esbuild ad-hoc scripts hit pg/module-resolution errors; use a temporary Express route instead.
 - [E2E testing api-server routes](api-server-e2e-testing.md) — no test framework existed; sessions are DB rows, so tests can mint a session directly and hit the Express app with supertest.
+- [expo-file-system v19 API split](expo-file-system-v19-api-split.md) — never import `/legacy` (compiles raw upstream source); new File/Directory classes need a local interface cast, their own methods aren't typed.
+- [Per-package pnpm installs](pnpm-package-install-per-package.md) — sandboxed install callback rejects workspace-member targets; `cd` into the package and `pnpm add` via shell instead.
