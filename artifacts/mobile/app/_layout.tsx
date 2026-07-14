@@ -49,6 +49,10 @@ function AuthGate() {
         name="bulk-upload"
         options={{ presentation: 'modal', title: 'Bulk Upload' }}
       />
+      <Stack.Screen
+        name="inspection-photo-capture"
+        options={{ presentation: 'modal', title: 'Evidence Photos' }}
+      />
     </Stack>
   );
 }
