@@ -649,4 +649,130 @@ describe('inspection routes', () => {
       expect(matching).toHaveLength(1);
     });
   });
+
+  describe('M-C C4/C5 components, penetrations & products', () => {
+    it('creates components, penetrations, and products and hydrates them on GET /:id', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-C4C5' });
+      const inspectionId = create.body.inspection.id as string;
+
+      const component = await request(app)
+        .post(`/api/inspections/${inspectionId}/components`)
+        .set(auth(inspectorA.sid))
+        .send({ componentType: 'drip_edge', status: 'present' });
+      expect(component.status).toBe(201);
+      expect(component.body.component.componentType).toBe('drip_edge');
+      expect(component.body.component.status).toBe('present');
+
+      const layer = await request(app)
+        .post(`/api/inspections/${inspectionId}/components`)
+        .set(auth(inspectorA.sid))
+        .send({ componentType: 'layer_count', layerCount: 2 });
+      expect(layer.status).toBe(201);
+      expect(layer.body.component.layerCount).toBe(2);
+
+      const penetration = await request(app)
+        .post(`/api/inspections/${inspectionId}/penetrations`)
+        .set(auth(inspectorA.sid))
+        .send({ penetrationType: 'plumbing_vent', flashingCondition: 'Sealed' });
+      expect(penetration.status).toBe(201);
+      expect(penetration.body.penetration.penetrationType).toBe('plumbing_vent');
+
+      const product = await request(app)
+        .post(`/api/inspections/${inspectionId}/products`)
+        .set(auth(inspectorA.sid))
+        .send({ identificationMethod: 'unidentifiable', unidentifiableReason: 'No markings' });
+      expect(product.status).toBe(201);
+      expect(product.body.product.identificationMethod).toBe('unidentifiable');
+
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      expect(detail.status).toBe(200);
+      expect(detail.body.inspection.components).toHaveLength(2);
+      expect(detail.body.inspection.penetrations).toHaveLength(1);
+      expect(detail.body.inspection.products).toHaveLength(1);
+    });
+
+    it('denies a same-company peer field_rep (403) on every C4/C5 write path', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+
+      const attempts: Array<[string, request.Test]> = [
+        [
+          'components',
+          request(app)
+            .post(`/api/inspections/${inspectionId}/components`)
+            .set(auth(inspectorA2.sid))
+            .send({ componentType: 'decking', status: 'present' }),
+        ],
+        [
+          'penetrations',
+          request(app)
+            .post(`/api/inspections/${inspectionId}/penetrations`)
+            .set(auth(inspectorA2.sid))
+            .send({ penetrationType: 'chimney' }),
+        ],
+        [
+          'products',
+          request(app)
+            .post(`/api/inspections/${inspectionId}/products`)
+            .set(auth(inspectorA2.sid))
+            .send({ identificationMethod: 'field_identified', brand: 'GAF' }),
+        ],
+      ];
+      for (const [name, req] of attempts) {
+        const res = await req;
+        expect(res.status, `peer must be forbidden: ${name}`).toBe(403);
+      }
+    });
+
+    it('returns the existing row (200) on a retried create with the same client id', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+
+      const compId = `comp-${RUN_ID}-idem`;
+      const compBody = { id: compId, componentType: 'ventilation', status: 'present' };
+      expect(
+        (await request(app).post(`/api/inspections/${inspectionId}/components`).set(auth(inspectorA.sid)).send(compBody)).status,
+      ).toBe(201);
+      const compRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/components`)
+        .set(auth(inspectorA.sid))
+        .send(compBody);
+      expect(compRetry.status).toBe(200);
+      expect(compRetry.body.component.id).toBe(compId);
+
+      const prodId = `prod-${RUN_ID}-idem`;
+      const prodBody = { id: prodId, identificationMethod: 'itel_sample', itelSampleRef: 'Bag #7' };
+      expect(
+        (await request(app).post(`/api/inspections/${inspectionId}/products`).set(auth(inspectorA.sid)).send(prodBody)).status,
+      ).toBe(201);
+      const prodRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/products`)
+        .set(auth(inspectorA.sid))
+        .send(prodBody);
+      expect(prodRetry.status).toBe(200);
+      expect(prodRetry.body.product.id).toBe(prodId);
+    });
+
+    it('409s when a component client id is reused on a different inspection in the same company', async () => {
+      const first = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const second = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const penId = `pen-${RUN_ID}-xinsp`;
+      const seed = await request(app)
+        .post(`/api/inspections/${first.body.inspection.id}/penetrations`)
+        .set(auth(inspectorA.sid))
+        .send({ id: penId, penetrationType: 'skylight' });
+      expect(seed.status).toBe(201);
+
+      const collide = await request(app)
+        .post(`/api/inspections/${second.body.inspection.id}/penetrations`)
+        .set(auth(inspectorA.sid))
+        .send({ id: penId, penetrationType: 'skylight' });
+      expect(collide.status).toBe(409);
+    });
+  });
 });

@@ -19,6 +19,7 @@ function completeState(): InspectionProtocolState {
       { id: 'dmg-1', widePhotoCaptured: true, midPhotoCaptured: true, closePhotoCaptured: true },
     ],
     interiorPhotoCaptured: false,
+    productIdentifications: [{ id: 'prod-1', unidentifiable: false }],
     measurements: [{ id: 'm-1', slopeId: 'slope-1' }],
     attestationRecorded: true,
     finalReviewConfirmed: true,
@@ -203,5 +204,24 @@ describe('evaluate', () => {
       stage: 'S4',
       code: 'TEST_SQUARE_ZERO_HITS_ts-1',
     });
+  });
+
+  it('soft-flags an unidentifiable roofing product, without blocking', () => {
+    const state = completeState();
+    state.productIdentifications = [{ id: 'prod-1', unidentifiable: true }];
+    const result = evaluate(state);
+    expect(result.deficiencies).toEqual([]);
+    expect(result.softFlags).toHaveLength(1);
+    expect(result.softFlags[0]).toMatchObject({
+      stage: 'S4',
+      code: 'PRODUCT_UNIDENTIFIED_prod-1',
+    });
+  });
+
+  it('does not soft-flag a field-identified roofing product', () => {
+    const state = completeState();
+    state.productIdentifications = [{ id: 'prod-1', unidentifiable: false }];
+    const result = evaluate(state);
+    expect(result.softFlags).toEqual([]);
   });
 });

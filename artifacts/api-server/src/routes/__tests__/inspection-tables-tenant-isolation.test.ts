@@ -3,8 +3,11 @@ import {
   companiesTable,
   damageInstancesTable,
   db,
+  inspectionComponentsTable,
   inspectionElevationsTable,
+  inspectionPenetrationsTable,
   inspectionPhotosTable,
+  inspectionProductsTable,
   inspectionSlopesTable,
   inspectionsTable,
   measurementsTable,
@@ -33,6 +36,9 @@ interface SeededCompany {
   photoId: string;
   measurementId: string;
   attestationId: string;
+  componentId: string;
+  penetrationId: string;
+  productId: string;
 }
 
 async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
@@ -109,6 +115,38 @@ async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
     .values({ companyId, inspectionId: inspection.id, userId: user.id, stage: 'S1' })
     .returning();
 
+  const [component] = await db
+    .insert(inspectionComponentsTable)
+    .values({
+      companyId,
+      inspectionId: inspection.id,
+      slopeId: slope.id,
+      componentType: 'drip_edge',
+      status: 'present',
+    })
+    .returning();
+
+  const [penetration] = await db
+    .insert(inspectionPenetrationsTable)
+    .values({
+      companyId,
+      inspectionId: inspection.id,
+      slopeId: slope.id,
+      penetrationType: 'plumbing_vent',
+    })
+    .returning();
+
+  const [product] = await db
+    .insert(inspectionProductsTable)
+    .values({
+      companyId,
+      inspectionId: inspection.id,
+      slopeId: slope.id,
+      identificationMethod: 'field_identified',
+      brand: 'GAF',
+    })
+    .returning();
+
   return {
     companyId,
     userId: user.id,
@@ -121,6 +159,9 @@ async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
     photoId: photo.id,
     measurementId: measurement.id,
     attestationId: attestation.id,
+    componentId: component.id,
+    penetrationId: penetration.id,
+    productId: product.id,
   };
 }
 
@@ -235,5 +276,35 @@ describe('inspection data model tenant isolation', () => {
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(companyA.attestationId);
     expect(ids).not.toContain(companyB.attestationId);
+  });
+
+  it('inspection_components are scoped by companyId', async () => {
+    const rows = await db
+      .select()
+      .from(inspectionComponentsTable)
+      .where(eq(inspectionComponentsTable.companyId, companyA.companyId));
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(companyA.componentId);
+    expect(ids).not.toContain(companyB.componentId);
+  });
+
+  it('inspection_penetrations are scoped by companyId', async () => {
+    const rows = await db
+      .select()
+      .from(inspectionPenetrationsTable)
+      .where(eq(inspectionPenetrationsTable.companyId, companyA.companyId));
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(companyA.penetrationId);
+    expect(ids).not.toContain(companyB.penetrationId);
+  });
+
+  it('inspection_products are scoped by companyId', async () => {
+    const rows = await db
+      .select()
+      .from(inspectionProductsTable)
+      .where(eq(inspectionProductsTable.companyId, companyA.companyId));
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(companyA.productId);
+    expect(ids).not.toContain(companyB.productId);
   });
 });

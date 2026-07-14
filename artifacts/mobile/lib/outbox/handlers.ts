@@ -3,16 +3,22 @@ import {
   createAttestation,
   createDamageInstance,
   createInspection,
+  createInspectionComponent,
   createInspectionElevation,
+  createInspectionPenetration,
   createInspectionPhoto,
+  createInspectionProduct,
   createInspectionSlope,
   updateInspection,
 } from '@workspace/api-client-react';
 import type {
   CreateAttestationInput,
   CreateDamageInstanceInput,
+  CreateInspectionComponentInput,
   CreateInspectionElevationInput,
   CreateInspectionInput,
+  CreateInspectionPenetrationInput,
+  CreateInspectionProductInput,
   CreateInspectionSlopeInput,
   CaptureStage,
   InspectionSubjectType,
@@ -116,6 +122,30 @@ async function syncInspectionDamage(payloadJson: string): Promise<void> {
   );
 }
 
+async function syncInspectionComponent(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInspectionComponent(
+    payload.inspectionId,
+    payload.input as unknown as CreateInspectionComponentInput,
+  );
+}
+
+async function syncInspectionPenetration(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInspectionPenetration(
+    payload.inspectionId,
+    payload.input as unknown as CreateInspectionPenetrationInput,
+  );
+}
+
+async function syncInspectionProduct(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInspectionProduct(
+    payload.inspectionId,
+    payload.input as unknown as CreateInspectionProductInput,
+  );
+}
+
 export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.photo': syncInspectionPhoto,
   'inspection.create': syncInspectionCreate,
@@ -124,4 +154,7 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.elevation': syncInspectionElevation,
   'inspection.slope': syncInspectionSlope,
   'inspection.damage': syncInspectionDamage,
+  'inspection.component': syncInspectionComponent,
+  'inspection.penetration': syncInspectionPenetration,
+  'inspection.product': syncInspectionProduct,
 };

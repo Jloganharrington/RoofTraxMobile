@@ -7,8 +7,11 @@
  */
 import type { ArrivalConditions } from './arrivalConditions';
 import type { DamageInstance } from './damageInstance';
+import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
+import type { InspectionPenetration } from './inspectionPenetration';
 import type { InspectionPhoto } from './inspectionPhoto';
+import type { InspectionProduct } from './inspectionProduct';
 import type { InspectionSlope } from './inspectionSlope';
 import type { InspectionStatus } from './inspectionStatus';
 import type { StormConfirmedRef } from './stormConfirmedRef';
@@ -50,4 +53,10 @@ export interface Inspection {
   damageInstances?: DamageInstance[];
   /** Captured evidence photos, populated by the detail view only. */
   photos?: InspectionPhoto[];
+  /** C4 documented existing-components, populated by the detail view only. */
+  components?: InspectionComponent[];
+  /** C4 roof penetration inventory, populated by the detail view only. */
+  penetrations?: InspectionPenetration[];
+  /** C5 product-identification records, populated by the detail view only. */
+  products?: InspectionProduct[];
 }

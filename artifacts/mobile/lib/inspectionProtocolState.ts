@@ -25,12 +25,15 @@ function hasTriad(photos: Photo[], subjectId: string, role: 'wide' | 'mid' | 'cl
 /** Builds the protocol state from an inspection detail. Stages not yet wired
  * into the app (S0 overview, S4 test squares, S6 interior, S7 measurements,
  * S8/S9 sign-off) are reported as their raw-empty facts; the UI only consumes
- * the deficiencies for the stages it has actually built (see `stageStatus`). */
+ * the deficiencies for the stages it has actually built (see `stageStatus`).
+ * C5 product identifications are now populated, so the S4 unidentified-product
+ * soft flag fires whenever a product row is marked `unidentifiable`. */
 export function buildProtocolState(inspection: Inspection): InspectionProtocolState {
   const photos = inspection.photos ?? [];
   const elevations = inspection.elevations ?? [];
   const slopes = inspection.slopes ?? [];
   const damageInstances = inspection.damageInstances ?? [];
+  const products = inspection.products ?? [];
 
   const elevationState: InspectionProtocolState['elevations'] = {};
   for (const elevation of elevations) {
@@ -71,6 +74,10 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       };
     }),
     interiorPhotoCaptured: false,
+    productIdentifications: products.map((product) => ({
+      id: product.id,
+      unidentifiable: product.identificationMethod === 'unidentifiable',
+    })),
     measurements: [],
     attestationRecorded: false,
     finalReviewConfirmed: false,

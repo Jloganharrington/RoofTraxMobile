@@ -17,6 +17,10 @@ export interface InspectionProtocolState {
     closePhotoCaptured: boolean;
   }>;
   interiorPhotoCaptured: boolean;
+  // Product identifications captured during S4 close-up documentation. Each is
+  // a plain fact: was the roofing product identified in the field, or flagged
+  // as unidentifiable (deferred to lab/ITEL)? Drives a non-blocking soft flag.
+  productIdentifications: Array<{ id: string; unidentifiable: boolean }>;
   measurements: Array<{ id: string; slopeId: string }>;
   attestationRecorded: boolean;
   finalReviewConfirmed: boolean;

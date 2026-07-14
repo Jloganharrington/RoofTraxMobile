@@ -51,8 +51,52 @@ export const INSPECTION_SUBJECT_TYPES = [
   'elevation',
   'damage_instance',
   'test_square',
+  // C4 / C5 additive subjects: the same evidence-capture flow attaches to a
+  // documented existing-component, a roof penetration, and a product-ID
+  // record just as it does to slopes and damage instances.
+  'component',
+  'penetration',
+  'product',
 ] as const;
 export type InspectionSubjectType = (typeof INSPECTION_SUBJECT_TYPES)[number];
+
+// C4 — Components documentation. Controlled vocabulary for the
+// existing-components checklist plus the `layer_count` observation (a
+// numeric count recorded from the eave/rake tear-off photo). No derived
+// logic: `status` is a raw present/absent/not-determined observation and
+// `layerCount` is a raw integer, both captured by the inspector.
+export const COMPONENT_TYPES = [
+  'drip_edge',
+  'ice_and_water_shield',
+  'ventilation',
+  'decking',
+  'underlayment',
+  'flashing',
+  'layer_count',
+] as const;
+export type ComponentType = (typeof COMPONENT_TYPES)[number];
+
+export const COMPONENT_STATUSES = ['present', 'absent', 'not_determined'] as const;
+export type ComponentStatus = (typeof COMPONENT_STATUSES)[number];
+
+// C4 — Penetration inventory. Each roof penetration the inspector logs is a
+// discrete raw observation with a controlled type.
+export const PENETRATION_TYPES = [
+  'plumbing_vent',
+  'pipe_boot',
+  'exhaust_vent',
+  'chimney',
+  'skylight',
+  'satellite_mount',
+  'other',
+] as const;
+export type PenetrationType = (typeof PENETRATION_TYPES)[number];
+
+// C5 — Product identification. How the roofing product was identified in the
+// field: read directly, sampled for lab (ITEL) identification, or flagged as
+// unidentifiable-in-field (which the protocol soft-flags for reviewer follow-up).
+export const PRODUCT_ID_METHODS = ['field_identified', 'itel_sample', 'unidentifiable'] as const;
+export type ProductIdMethod = (typeof PRODUCT_ID_METHODS)[number];
 
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
@@ -312,6 +356,79 @@ export const attestationsTable = pgTable('attestations', {
   attestedAt: timestamp('attested_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// C4 — A documented existing-component observation (checklist item or the
+// eave/rake layer-count). Raw facts only: a `status` for checklist items and
+// an optional integer `layerCount` for the layer-count entry. `slopeId` is
+// nullable because some components (e.g. layer count at a single eave) are
+// documented against a specific slope while others are whole-roof.
+export const inspectionComponentsTable = pgTable('inspection_components', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  slopeId: varchar('slope_id').references(() => inspectionSlopesTable.id, {
+    onDelete: 'set null',
+  }),
+  componentType: varchar('component_type', { enum: COMPONENT_TYPES }).notNull(),
+  status: varchar('status', { enum: COMPONENT_STATUSES }),
+  layerCount: doublePrecision('layer_count'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// C4 — A single roof penetration logged during the components sweep.
+export const inspectionPenetrationsTable = pgTable('inspection_penetrations', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  slopeId: varchar('slope_id').references(() => inspectionSlopesTable.id, {
+    onDelete: 'set null',
+  }),
+  penetrationType: varchar('penetration_type', { enum: PENETRATION_TYPES }).notNull(),
+  flashingCondition: text('flashing_condition'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// C5 — Product identification record. Captures the raw brand/profile the
+// inspector read (or the ITEL sample reference, or an unidentifiable flag).
+// `itelSampleRef` records the bag-&-label id when a physical sample was
+// taken; `unidentifiableReason` records the inspector's note when the
+// product could not be identified in the field. No pricing/derived logic.
+export const inspectionProductsTable = pgTable('inspection_products', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  slopeId: varchar('slope_id').references(() => inspectionSlopesTable.id, {
+    onDelete: 'set null',
+  }),
+  category: text('category'),
+  brand: text('brand'),
+  productLine: text('product_line'),
+  identificationMethod: varchar('identification_method', { enum: PRODUCT_ID_METHODS }).notNull(),
+  itelSampleRef: text('itel_sample_ref'),
+  unidentifiableReason: text('unidentifiable_reason'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Inspection = typeof inspectionsTable.$inferSelect;
 export type InsertInspection = typeof inspectionsTable.$inferInsert;
 export type InspectionSlope = typeof inspectionSlopesTable.$inferSelect;
@@ -322,3 +439,6 @@ export type TestSquareHit = typeof testSquareHitsTable.$inferSelect;
 export type InspectionPhoto = typeof inspectionPhotosTable.$inferSelect;
 export type Measurement = typeof measurementsTable.$inferSelect;
 export type Attestation = typeof attestationsTable.$inferSelect;
+export type InspectionComponent = typeof inspectionComponentsTable.$inferSelect;
+export type InspectionPenetration = typeof inspectionPenetrationsTable.$inferSelect;
+export type InspectionProduct = typeof inspectionProductsTable.$inferSelect;

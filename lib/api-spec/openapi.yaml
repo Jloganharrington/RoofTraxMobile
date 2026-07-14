@@ -1056,6 +1056,186 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/components:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionComponent
+      summary: Document an existing-component observation on an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionComponentInput"
+      responses:
+        "201":
+          description: Component created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionComponentEnvelope"
+        "200":
+          description: Component already existed (idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionComponentEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Component id already exists on another inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/penetrations:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionPenetration
+      summary: Log a roof penetration on an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionPenetrationInput"
+      responses:
+        "201":
+          description: Penetration created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionPenetrationEnvelope"
+        "200":
+          description: Penetration already existed (idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionPenetrationEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Penetration id already exists on another inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/products:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionProduct
+      summary: Record a product-identification observation on an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionProductInput"
+      responses:
+        "201":
+          description: Product created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionProductEnvelope"
+        "200":
+          description: Product already existed (idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionProductEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Product id already exists on another inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /inspections/{inspectionId}/test-squares:
     post:
       tags: [Inspections]
@@ -2035,7 +2215,7 @@ components:
       enum: [front, right, back, left]
     InspectionSubjectType:
       type: string
-      enum: [inspection, slope, elevation, damage_instance, test_square]
+      enum: [inspection, slope, elevation, damage_instance, test_square, component, penetration, product]
     PhotoTriadRole:
       type: string
       enum: [wide, mid, close]
@@ -2178,6 +2358,21 @@ components:
           description: Captured evidence photos, populated by the detail view only.
           items:
             $ref: "#/components/schemas/InspectionPhoto"
+        components:
+          type: array
+          description: C4 documented existing-components, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InspectionComponent"
+        penetrations:
+          type: array
+          description: C4 roof penetration inventory, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InspectionPenetration"
+        products:
+          type: array
+          description: C5 product-identification records, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InspectionProduct"
     CreateInspectionInput:
       type: object
       properties:
@@ -2405,6 +2600,180 @@ components:
       properties:
         damageInstance:
           $ref: "#/components/schemas/DamageInstance"
+
+    ComponentType:
+      type: string
+      enum: [drip_edge, ice_and_water_shield, ventilation, decking, underlayment, flashing, layer_count]
+    ComponentStatus:
+      type: string
+      enum: [present, absent, not_determined]
+    InspectionComponent:
+      type: object
+      required:
+        [id, companyId, inspectionId, slopeId, componentType, status, layerCount, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        slopeId:
+          type: [string, "null"]
+        componentType:
+          $ref: "#/components/schemas/ComponentType"
+        status:
+          oneOf:
+            - $ref: "#/components/schemas/ComponentStatus"
+            - type: "null"
+        layerCount:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionComponentInput:
+      type: object
+      required: [componentType]
+      properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert).
+        slopeId:
+          type: [string, "null"]
+        componentType:
+          $ref: "#/components/schemas/ComponentType"
+        status:
+          oneOf:
+            - $ref: "#/components/schemas/ComponentStatus"
+            - type: "null"
+        layerCount:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+    InspectionComponentEnvelope:
+      type: object
+      required: [component]
+      properties:
+        component:
+          $ref: "#/components/schemas/InspectionComponent"
+
+    PenetrationType:
+      type: string
+      enum: [plumbing_vent, pipe_boot, exhaust_vent, chimney, skylight, satellite_mount, other]
+    InspectionPenetration:
+      type: object
+      required:
+        [id, companyId, inspectionId, slopeId, penetrationType, flashingCondition, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        slopeId:
+          type: [string, "null"]
+        penetrationType:
+          $ref: "#/components/schemas/PenetrationType"
+        flashingCondition:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionPenetrationInput:
+      type: object
+      required: [penetrationType]
+      properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert).
+        slopeId:
+          type: [string, "null"]
+        penetrationType:
+          $ref: "#/components/schemas/PenetrationType"
+        flashingCondition:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+    InspectionPenetrationEnvelope:
+      type: object
+      required: [penetration]
+      properties:
+        penetration:
+          $ref: "#/components/schemas/InspectionPenetration"
+
+    ProductIdMethod:
+      type: string
+      enum: [field_identified, itel_sample, unidentifiable]
+    InspectionProduct:
+      type: object
+      required:
+        [id, companyId, inspectionId, slopeId, category, brand, productLine, identificationMethod, itelSampleRef, unidentifiableReason, notes, createdAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        slopeId:
+          type: [string, "null"]
+        category:
+          type: [string, "null"]
+        brand:
+          type: [string, "null"]
+        productLine:
+          type: [string, "null"]
+        identificationMethod:
+          $ref: "#/components/schemas/ProductIdMethod"
+        itelSampleRef:
+          type: [string, "null"]
+        unidentifiableReason:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionProductInput:
+      type: object
+      required: [identificationMethod]
+      properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert).
+        slopeId:
+          type: [string, "null"]
+        category:
+          type: [string, "null"]
+        brand:
+          type: [string, "null"]
+        productLine:
+          type: [string, "null"]
+        identificationMethod:
+          $ref: "#/components/schemas/ProductIdMethod"
+        itelSampleRef:
+          type: [string, "null"]
+        unidentifiableReason:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+    InspectionProductEnvelope:
+      type: object
+      required: [product]
+      properties:
+        product:
+          $ref: "#/components/schemas/InspectionProduct"
 
     TestSquare:
       type: object

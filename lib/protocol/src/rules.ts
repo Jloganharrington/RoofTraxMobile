@@ -138,7 +138,23 @@ function checkZeroHitTestSquares(state: InspectionProtocolState): SoftFlag[] {
     );
 }
 
-const SOFT_FLAG_CHECKS = [checkInteriorLeakWithoutPhoto, checkZeroHitTestSquares];
+function checkUnidentifiedProducts(state: InspectionProtocolState): SoftFlag[] {
+  return state.productIdentifications
+    .filter((product) => product.unidentifiable)
+    .map((product) =>
+      softFlag(
+        'S4',
+        `PRODUCT_UNIDENTIFIED_${product.id}`,
+        `Roofing product ${product.id} could not be identified in the field — confirm a sample was bagged or the attestation was filed.`,
+      ),
+    );
+}
+
+const SOFT_FLAG_CHECKS = [
+  checkInteriorLeakWithoutPhoto,
+  checkZeroHitTestSquares,
+  checkUnidentifiedProducts,
+];
 
 // Single entry point: given the raw capture state of an inspection, returns
 // every hard-gate deficiency (blocking) and soft flag (non-blocking).

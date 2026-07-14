@@ -4,10 +4,16 @@ import {
   CreateDamageInstanceBody,
   CreateDamageInstanceResponse,
   CreateInspectionBody,
+  CreateInspectionComponentBody,
+  CreateInspectionComponentResponse,
   CreateInspectionElevationBody,
   CreateInspectionElevationResponse,
+  CreateInspectionPenetrationBody,
+  CreateInspectionPenetrationResponse,
   CreateInspectionPhotoBody,
   CreateInspectionPhotoResponse,
+  CreateInspectionProductBody,
+  CreateInspectionProductResponse,
   CreateInspectionResponse,
   CreateInspectionSlopeBody,
   CreateInspectionSlopeResponse,
@@ -27,8 +33,11 @@ import {
   attestationsTable,
   damageInstancesTable,
   db,
+  inspectionComponentsTable,
   inspectionElevationsTable,
+  inspectionPenetrationsTable,
   inspectionPhotosTable,
+  inspectionProductsTable,
   inspectionSlopesTable,
   inspectionsTable,
   testSquareHitsTable,
@@ -230,7 +239,8 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   // progress and drive the lib/protocol gate. The list feed omits these;
   // only this by-id read pays for the extra queries. Ordered by createdAt
   // so the client can rely on capture order (e.g. the elevation walk).
-  const [slopes, elevations, damageInstances, photos] = await Promise.all([
+  const [slopes, elevations, damageInstances, photos, components, penetrations, products] =
+    await Promise.all([
     db
       .select()
       .from(inspectionSlopesTable)
@@ -271,11 +281,50 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
         ),
       )
       .orderBy(inspectionPhotosTable.createdAt),
+    db
+      .select()
+      .from(inspectionComponentsTable)
+      .where(
+        and(
+          eq(inspectionComponentsTable.inspectionId, inspectionId),
+          eq(inspectionComponentsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionComponentsTable.createdAt),
+    db
+      .select()
+      .from(inspectionPenetrationsTable)
+      .where(
+        and(
+          eq(inspectionPenetrationsTable.inspectionId, inspectionId),
+          eq(inspectionPenetrationsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionPenetrationsTable.createdAt),
+    db
+      .select()
+      .from(inspectionProductsTable)
+      .where(
+        and(
+          eq(inspectionProductsTable.inspectionId, inspectionId),
+          eq(inspectionProductsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionProductsTable.createdAt),
   ]);
 
   res.json(
     GetInspectionResponse.parse({
-      inspection: { ...inspection, slopes, elevations, damageInstances, photos },
+      inspection: {
+        ...inspection,
+        slopes,
+        elevations,
+        damageInstances,
+        photos,
+        components,
+        penetrations,
+        products,
+      },
     }),
   );
 });
@@ -496,6 +545,185 @@ router.post('/inspections/:inspectionId/damage-instances', async (req: Request, 
   const [damageInstance] = await db.insert(damageInstancesTable).values(values).returning();
 
   res.status(201).json(CreateDamageInstanceResponse.parse({ damageInstance }));
+});
+
+router.post('/inspections/:inspectionId/components', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  const parsed = CreateInspectionComponentBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid component payload' });
+    return;
+  }
+
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    slopeId: parsed.data.slopeId ?? undefined,
+    componentType: parsed.data.componentType,
+    status: parsed.data.status ?? undefined,
+    layerCount: parsed.data.layerCount ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes handler for rationale).
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionComponentsTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionComponentsTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionComponentResponse.parse({ component: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionComponentsTable)
+      .where(
+        and(
+          eq(inspectionComponentsTable.id, parsed.data.id),
+          eq(inspectionComponentsTable.companyId, actor.companyId),
+          eq(inspectionComponentsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Component id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionComponentResponse.parse({ component: existing }));
+    return;
+  }
+
+  const [component] = await db.insert(inspectionComponentsTable).values(values).returning();
+
+  res.status(201).json(CreateInspectionComponentResponse.parse({ component }));
+});
+
+router.post('/inspections/:inspectionId/penetrations', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  const parsed = CreateInspectionPenetrationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid penetration payload' });
+    return;
+  }
+
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    slopeId: parsed.data.slopeId ?? undefined,
+    penetrationType: parsed.data.penetrationType,
+    flashingCondition: parsed.data.flashingCondition ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes handler for rationale).
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionPenetrationsTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionPenetrationsTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionPenetrationResponse.parse({ penetration: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionPenetrationsTable)
+      .where(
+        and(
+          eq(inspectionPenetrationsTable.id, parsed.data.id),
+          eq(inspectionPenetrationsTable.companyId, actor.companyId),
+          eq(inspectionPenetrationsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Penetration id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionPenetrationResponse.parse({ penetration: existing }));
+    return;
+  }
+
+  const [penetration] = await db.insert(inspectionPenetrationsTable).values(values).returning();
+
+  res.status(201).json(CreateInspectionPenetrationResponse.parse({ penetration }));
+});
+
+router.post('/inspections/:inspectionId/products', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  const parsed = CreateInspectionProductBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid product payload' });
+    return;
+  }
+
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    slopeId: parsed.data.slopeId ?? undefined,
+    category: parsed.data.category ?? undefined,
+    brand: parsed.data.brand ?? undefined,
+    productLine: parsed.data.productLine ?? undefined,
+    identificationMethod: parsed.data.identificationMethod,
+    itelSampleRef: parsed.data.itelSampleRef ?? undefined,
+    unidentifiableReason: parsed.data.unidentifiableReason ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes handler for rationale).
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionProductsTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionProductsTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionProductResponse.parse({ product: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionProductsTable)
+      .where(
+        and(
+          eq(inspectionProductsTable.id, parsed.data.id),
+          eq(inspectionProductsTable.companyId, actor.companyId),
+          eq(inspectionProductsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Product id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionProductResponse.parse({ product: existing }));
+    return;
+  }
+
+  const [product] = await db.insert(inspectionProductsTable).values(values).returning();
+
+  res.status(201).json(CreateInspectionProductResponse.parse({ product }));
 });
 
 router.post('/inspections/:inspectionId/test-squares', async (req: Request, res: Response) => {

@@ -11,7 +11,10 @@ export type OutboxItemKind =
   | 'inspection.attestation'
   | 'inspection.elevation'
   | 'inspection.slope'
-  | 'inspection.damage';
+  | 'inspection.damage'
+  | 'inspection.component'
+  | 'inspection.penetration'
+  | 'inspection.product';
 
 export interface InspectionPhotoOutboxPayload {
   /** Client-generated photo id so a replayed outbox item (e.g. after a lost

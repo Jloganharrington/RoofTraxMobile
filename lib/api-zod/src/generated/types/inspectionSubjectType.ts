@@ -15,4 +15,7 @@ export const InspectionSubjectType = {
   elevation: 'elevation',
   damage_instance: 'damage_instance',
   test_square: 'test_square',
+  component: 'component',
+  penetration: 'penetration',
+  product: 'product',
 } as const;

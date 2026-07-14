@@ -369,6 +369,9 @@ export const InspectionSubjectType = {
   elevation: 'elevation',
   damage_instance: 'damage_instance',
   test_square: 'test_square',
+  component: 'component',
+  penetration: 'penetration',
+  product: 'product',
 } as const;
 
 export type PhotoTriadRole = typeof PhotoTriadRole[keyof typeof PhotoTriadRole];
@@ -527,6 +530,101 @@ export interface InspectionPhoto {
   createdAt: string;
 }
 
+export type ComponentType = typeof ComponentType[keyof typeof ComponentType];
+
+
+export const ComponentType = {
+  drip_edge: 'drip_edge',
+  ice_and_water_shield: 'ice_and_water_shield',
+  ventilation: 'ventilation',
+  decking: 'decking',
+  underlayment: 'underlayment',
+  flashing: 'flashing',
+  layer_count: 'layer_count',
+} as const;
+
+export type ComponentStatus = typeof ComponentStatus[keyof typeof ComponentStatus];
+
+
+export const ComponentStatus = {
+  present: 'present',
+  absent: 'absent',
+  not_determined: 'not_determined',
+} as const;
+
+export interface InspectionComponent {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  componentType: ComponentType;
+  status: ComponentStatus | null;
+  /** @nullable */
+  layerCount: number | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export type PenetrationType = typeof PenetrationType[keyof typeof PenetrationType];
+
+
+export const PenetrationType = {
+  plumbing_vent: 'plumbing_vent',
+  pipe_boot: 'pipe_boot',
+  exhaust_vent: 'exhaust_vent',
+  chimney: 'chimney',
+  skylight: 'skylight',
+  satellite_mount: 'satellite_mount',
+  other: 'other',
+} as const;
+
+export interface InspectionPenetration {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  penetrationType: PenetrationType;
+  /** @nullable */
+  flashingCondition: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export type ProductIdMethod = typeof ProductIdMethod[keyof typeof ProductIdMethod];
+
+
+export const ProductIdMethod = {
+  field_identified: 'field_identified',
+  itel_sample: 'itel_sample',
+  unidentifiable: 'unidentifiable',
+} as const;
+
+export interface InspectionProduct {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  /** @nullable */
+  category: string | null;
+  /** @nullable */
+  brand: string | null;
+  /** @nullable */
+  productLine: string | null;
+  identificationMethod: ProductIdMethod;
+  /** @nullable */
+  itelSampleRef: string | null;
+  /** @nullable */
+  unidentifiableReason: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
 export interface Inspection {
   id: string;
   companyId: string;
@@ -564,6 +662,12 @@ export interface Inspection {
   damageInstances?: DamageInstance[];
   /** Captured evidence photos, populated by the detail view only. */
   photos?: InspectionPhoto[];
+  /** C4 documented existing-components, populated by the detail view only. */
+  components?: InspectionComponent[];
+  /** C4 roof penetration inventory, populated by the detail view only. */
+  penetrations?: InspectionPenetration[];
+  /** C5 product-identification records, populated by the detail view only. */
+  products?: InspectionProduct[];
 }
 
 export interface CreateInspectionInput {
@@ -678,6 +782,63 @@ export interface CreateDamageInstanceInput {
 
 export interface DamageInstanceEnvelope {
   damageInstance: DamageInstance;
+}
+
+export interface CreateInspectionComponentInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert). */
+  id?: string;
+  /** @nullable */
+  slopeId?: string | null;
+  componentType: ComponentType;
+  status?: ComponentStatus | null;
+  /** @nullable */
+  layerCount?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionComponentEnvelope {
+  component: InspectionComponent;
+}
+
+export interface CreateInspectionPenetrationInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert). */
+  id?: string;
+  /** @nullable */
+  slopeId?: string | null;
+  penetrationType: PenetrationType;
+  /** @nullable */
+  flashingCondition?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionPenetrationEnvelope {
+  penetration: InspectionPenetration;
+}
+
+export interface CreateInspectionProductInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert). */
+  id?: string;
+  /** @nullable */
+  slopeId?: string | null;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  brand?: string | null;
+  /** @nullable */
+  productLine?: string | null;
+  identificationMethod: ProductIdMethod;
+  /** @nullable */
+  itelSampleRef?: string | null;
+  /** @nullable */
+  unidentifiableReason?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionProductEnvelope {
+  product: InspectionProduct;
 }
 
 export interface TestSquare {

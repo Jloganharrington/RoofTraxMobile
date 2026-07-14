@@ -207,6 +207,11 @@ export default function InspectionDetailScreen() {
         const s5Missing = stageDeficiencies(inspection, 'S5').length;
         const slopeCount = inspection.slopes?.length ?? 0;
         const damageCount = inspection.damageInstances?.length ?? 0;
+        const componentCount = inspection.components?.length ?? 0;
+        const penetrationCount = inspection.penetrations?.length ?? 0;
+        const productCount = inspection.products?.length ?? 0;
+        const unidentifiedProducts =
+          inspection.products?.filter((p) => p.identificationMethod === 'unidentifiable').length ?? 0;
         const roofSlopeDone = isStageComplete(inspection, 'S2') && isStageComplete(inspection, 'S3');
         const blockers = [
           ...stageDeficiencies(inspection, 'S1'),
@@ -273,6 +278,34 @@ export default function InspectionDetailScreen() {
               }
               done={damageCount > 0 && s5Missing === 0}
               onPress={() => router.push({ pathname: '/inspection-collateral', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="clipboard"
+              title="Components & penetrations"
+              subtitle={
+                componentCount === 0 && penetrationCount === 0
+                  ? 'Existing components, layer count, penetrations'
+                  : `${componentCount} component${componentCount === 1 ? '' : 's'} · ${penetrationCount} penetration${penetrationCount === 1 ? '' : 's'}`
+              }
+              done={componentCount > 0}
+              onPress={() => router.push({ pathname: '/inspection-components', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="camera"
+              title="Product identification"
+              subtitle={
+                productCount === 0
+                  ? 'Brand, exposure, granule & accessory close-ups'
+                  : unidentifiedProducts > 0
+                    ? `${productCount} product${productCount === 1 ? '' : 's'} · ${unidentifiedProducts} flagged for review`
+                    : `${productCount} product${productCount === 1 ? '' : 's'} identified`
+              }
+              done={productCount > 0 && unidentifiedProducts === 0}
+              onPress={() => router.push({ pathname: '/inspection-product', params: { id } })}
               colors={colors}
             />
           </>

@@ -8,15 +8,21 @@ import type {
   CaptureStage,
   CreateAttestationInput,
   CreateDamageInstanceInput,
+  CreateInspectionComponentInput,
   CreateInspectionElevationInput,
   CreateInspectionInput,
+  CreateInspectionPenetrationInput,
+  CreateInspectionProductInput,
   CreateInspectionSlopeInput,
   DamageInstance,
   ElevationDirection,
   Inspection,
+  InspectionComponent,
   InspectionElevation,
   InspectionEnvelope,
+  InspectionPenetration,
   InspectionPhoto,
+  InspectionProduct,
   InspectionSlope,
   InspectionSubjectType,
   PhotoTriadRole,
@@ -219,6 +225,95 @@ export async function createDamageInstance(
   });
   const input: CreateDamageInstanceInput = { id, ...fields };
   await enqueueOutboxItem('inspection.damage', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Creates a C4 existing-component / layer-count record offline-first and
+ * returns its client-generated id. */
+export async function createComponent(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateInspectionComponentInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: InspectionComponent = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      slopeId: fields.slopeId ?? null,
+      componentType: fields.componentType,
+      status: fields.status ?? null,
+      layerCount: fields.layerCount ?? null,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return { ...inspection, components: [...(inspection.components ?? []), optimistic] };
+  });
+  const input: CreateInspectionComponentInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.component', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Creates a C4 roof-penetration inventory record offline-first and returns
+ * its client-generated id. */
+export async function createPenetration(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateInspectionPenetrationInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: InspectionPenetration = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      slopeId: fields.slopeId ?? null,
+      penetrationType: fields.penetrationType,
+      flashingCondition: fields.flashingCondition ?? null,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return { ...inspection, penetrations: [...(inspection.penetrations ?? []), optimistic] };
+  });
+  const input: CreateInspectionPenetrationInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.penetration', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Creates a C5 product-identification record offline-first and returns its
+ * client-generated id. */
+export async function createProduct(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateInspectionProductInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: InspectionProduct = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      slopeId: fields.slopeId ?? null,
+      category: fields.category ?? null,
+      brand: fields.brand ?? null,
+      productLine: fields.productLine ?? null,
+      identificationMethod: fields.identificationMethod,
+      itelSampleRef: fields.itelSampleRef ?? null,
+      unidentifiableReason: fields.unidentifiableReason ?? null,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return { ...inspection, products: [...(inspection.products ?? []), optimistic] };
+  });
+  const input: CreateInspectionProductInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.product', { inspectionId, input });
   void drainOutbox();
   return id;
 }

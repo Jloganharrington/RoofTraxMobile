@@ -681,7 +681,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -696,7 +696,42 @@ export const ListInspectionsResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('Captured evidence photos, populated by the detail view only.')
+})).optional().describe('Captured evidence photos, populated by the detail view only.'),
+  "components": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "layerCount": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 documented existing-components, populated by the detail view only.'),
+  "penetrations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 roof penetration inventory, populated by the detail view only.'),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "brand": zod.string().nullable(),
+  "productLine": zod.string().nullable(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullable(),
+  "unidentifiableReason": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C5 product-identification records, populated by the detail view only.')
 }))
 })
 
@@ -792,7 +827,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -807,7 +842,42 @@ export const CreateInspectionResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('Captured evidence photos, populated by the detail view only.')
+})).optional().describe('Captured evidence photos, populated by the detail view only.'),
+  "components": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "layerCount": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 documented existing-components, populated by the detail view only.'),
+  "penetrations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 roof penetration inventory, populated by the detail view only.'),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "brand": zod.string().nullable(),
+  "productLine": zod.string().nullable(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullable(),
+  "unidentifiableReason": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C5 product-identification records, populated by the detail view only.')
 })
 })
 
@@ -891,7 +961,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -906,7 +976,42 @@ export const GetInspectionResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('Captured evidence photos, populated by the detail view only.')
+})).optional().describe('Captured evidence photos, populated by the detail view only.'),
+  "components": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "layerCount": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 documented existing-components, populated by the detail view only.'),
+  "penetrations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 roof penetration inventory, populated by the detail view only.'),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "brand": zod.string().nullable(),
+  "productLine": zod.string().nullable(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullable(),
+  "unidentifiableReason": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C5 product-identification records, populated by the detail view only.')
 })
 })
 
@@ -1022,7 +1127,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1037,7 +1142,42 @@ export const UpdateInspectionResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('Captured evidence photos, populated by the detail view only.')
+})).optional().describe('Captured evidence photos, populated by the detail view only.'),
+  "components": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "layerCount": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 documented existing-components, populated by the detail view only.'),
+  "penetrations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C4 roof penetration inventory, populated by the detail view only.'),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "brand": zod.string().nullable(),
+  "productLine": zod.string().nullable(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullable(),
+  "unidentifiableReason": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('C5 product-identification records, populated by the detail view only.')
 })
 })
 
@@ -1138,6 +1278,103 @@ export const CreateDamageInstanceResponse = zod.object({
 
 
 /**
+ * @summary Document an existing-component observation on an inspection
+ */
+export const CreateInspectionComponentParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const CreateInspectionComponentBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert).'),
+  "slopeId": zod.string().nullish(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]).optional(),
+  "layerCount": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInspectionComponentResponse = zod.object({
+  "component": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "componentType": zod.enum(['drip_edge', 'ice_and_water_shield', 'ventilation', 'decking', 'underlayment', 'flashing', 'layer_count']),
+  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "layerCount": zod.number().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Log a roof penetration on an inspection
+ */
+export const CreateInspectionPenetrationParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const CreateInspectionPenetrationBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert).'),
+  "slopeId": zod.string().nullish(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInspectionPenetrationResponse = zod.object({
+  "penetration": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "penetrationType": zod.enum(['plumbing_vent', 'pipe_boot', 'exhaust_vent', 'chimney', 'skylight', 'satellite_mount', 'other']),
+  "flashingCondition": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Record a product-identification observation on an inspection
+ */
+export const CreateInspectionProductParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const CreateInspectionProductBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert).'),
+  "slopeId": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "brand": zod.string().nullish(),
+  "productLine": zod.string().nullish(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullish(),
+  "unidentifiableReason": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const CreateInspectionProductResponse = zod.object({
+  "product": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "category": zod.string().nullable(),
+  "brand": zod.string().nullable(),
+  "productLine": zod.string().nullable(),
+  "identificationMethod": zod.enum(['field_identified', 'itel_sample', 'unidentifiable']),
+  "itelSampleRef": zod.string().nullable(),
+  "unidentifiableReason": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
  * @summary Mark a test square on an inspection
  */
 export const CreateTestSquareParams = zod.object({
@@ -1208,7 +1445,7 @@ export const CreateInspectionPhotoParams = zod.object({
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
   "url": zod.string().min(1),
@@ -1230,7 +1467,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
   "url": zod.string(),
@@ -1260,7 +1497,7 @@ export const CreateMeasurementParams = zod.object({
 
 
 export const CreateMeasurementBody = zod.object({
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullish(),
   "measurementType": zod.string().min(1),
   "value": zod.number(),
@@ -1272,7 +1509,7 @@ export const CreateMeasurementResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'component', 'penetration', 'product']),
   "subjectId": zod.string().nullable(),
   "measurementType": zod.string(),
   "value": zod.number(),
