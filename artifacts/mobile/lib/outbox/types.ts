@@ -8,12 +8,21 @@ export type OutboxItemKind =
   | 'inspection.photo'
   | 'inspection.create'
   | 'inspection.update'
-  | 'inspection.attestation';
+  | 'inspection.attestation'
+  | 'inspection.elevation'
+  | 'inspection.slope'
+  | 'inspection.damage';
 
 export interface InspectionPhotoOutboxPayload {
+  /** Client-generated photo id so a replayed outbox item (e.g. after a lost
+   * upload response) is idempotent server-side and can't duplicate the row. */
+  id: string;
   inspectionId: string;
   subjectType: string;
   subjectId: string | null;
+  /** Optional capture stage (e.g. 'S2' for a roof-access photo). Lets the
+   * gate engine distinguish otherwise-identical inspection-subject photos. */
+  stage?: string | null;
   triadRole: 'wide' | 'mid' | 'close';
   /** Path to a copy of the photo in this app's stable document storage —
    * NOT the original camera-roll/cache URI, which the OS may evict before
@@ -42,6 +51,15 @@ export interface InspectionUpdateOutboxPayload {
 
 /** Offline-first attestation (equipment checklist, GPS override, sign-off). */
 export interface InspectionAttestationOutboxPayload {
+  inspectionId: string;
+  input: Record<string, unknown>;
+}
+
+/** Offline-first child create (elevation / slope / damage instance). Each
+ * carries a client-generated `id` so the server upserts idempotently and so
+ * evidence photos queued in the same session can reference the child before
+ * it has synced. `input` is the matching Create*Input shape. */
+export interface InspectionChildCreateOutboxPayload {
   inspectionId: string;
   input: Record<string, unknown>;
 }

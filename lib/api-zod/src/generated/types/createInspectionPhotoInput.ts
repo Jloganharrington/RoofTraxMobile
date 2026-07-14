@@ -12,6 +12,8 @@ import type { InspectionSubjectType } from './inspectionSubjectType';
 import type { PhotoTriadRole } from './photoTriadRole';
 
 export interface CreateInspectionPhotoInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row. */
+  id?: string;
   stage?: CaptureStage | null;
   subjectType: InspectionSubjectType;
   /** @nullable */

@@ -8,6 +8,8 @@
 import type { ElevationDirection } from './elevationDirection';
 
 export interface CreateInspectionElevationInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert). */
+  id?: string;
   direction: ElevationDirection;
   /** @nullable */
   notes?: string | null;

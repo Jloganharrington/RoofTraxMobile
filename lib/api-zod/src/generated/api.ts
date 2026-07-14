@@ -644,7 +644,59 @@ export const ListInspectionsResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "slopes": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
+  "elevations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child elevations, populated by the detail view only.'),
+  "damageInstances": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "elevationId": zod.string().nullable(),
+  "damageType": zod.string(),
+  "severity": zod.string().nullable(),
+  "causationNote": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child damage instances, populated by the detail view only.'),
+  "photos": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullable(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "exifJson": zod.object({
+
+}).passthrough().nullable(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullable(),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Captured evidence photos, populated by the detail view only.')
 }))
 })
 
@@ -703,7 +755,59 @@ export const CreateInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "slopes": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
+  "elevations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child elevations, populated by the detail view only.'),
+  "damageInstances": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "elevationId": zod.string().nullable(),
+  "damageType": zod.string(),
+  "severity": zod.string().nullable(),
+  "causationNote": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child damage instances, populated by the detail view only.'),
+  "photos": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullable(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "exifJson": zod.object({
+
+}).passthrough().nullable(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullable(),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Captured evidence photos, populated by the detail view only.')
 })
 })
 
@@ -750,7 +854,59 @@ export const GetInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "slopes": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
+  "elevations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child elevations, populated by the detail view only.'),
+  "damageInstances": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "elevationId": zod.string().nullable(),
+  "damageType": zod.string(),
+  "severity": zod.string().nullable(),
+  "causationNote": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child damage instances, populated by the detail view only.'),
+  "photos": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullable(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "exifJson": zod.object({
+
+}).passthrough().nullable(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullable(),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Captured evidence photos, populated by the detail view only.')
 })
 })
 
@@ -829,7 +985,59 @@ export const UpdateInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "slopes": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
+  "elevations": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "direction": zod.enum(['front', 'right', 'back', 'left']),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child elevations, populated by the detail view only.'),
+  "damageInstances": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "slopeId": zod.string().nullable(),
+  "elevationId": zod.string().nullable(),
+  "damageType": zod.string(),
+  "severity": zod.string().nullable(),
+  "causationNote": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Child damage instances, populated by the detail view only.'),
+  "photos": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
+  "subjectId": zod.string().nullable(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
+  "url": zod.string(),
+  "sha256": zod.string(),
+  "exifJson": zod.object({
+
+}).passthrough().nullable(),
+  "overlayJson": zod.object({
+
+}).passthrough().nullable(),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "latitude": zod.number().nullable(),
+  "longitude": zod.number().nullable(),
+  "createdAt": zod.coerce.date()
+})).optional().describe('Captured evidence photos, populated by the detail view only.')
 })
 })
 
@@ -845,6 +1053,7 @@ export const CreateInspectionSlopeParams = zod.object({
 
 
 export const CreateInspectionSlopeBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced.'),
   "label": zod.string().min(1),
   "pitchRise": zod.number().nullish(),
   "pitchRun": zod.number().nullish(),
@@ -875,6 +1084,7 @@ export const CreateInspectionElevationParams = zod.object({
 })
 
 export const CreateInspectionElevationBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert).'),
   "direction": zod.enum(['front', 'right', 'back', 'left']),
   "notes": zod.string().nullish()
 })
@@ -902,6 +1112,7 @@ export const CreateDamageInstanceParams = zod.object({
 
 
 export const CreateDamageInstanceBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced.'),
   "slopeId": zod.string().nullish(),
   "elevationId": zod.string().nullish(),
   "damageType": zod.string().min(1),
@@ -995,6 +1206,7 @@ export const CreateInspectionPhotoParams = zod.object({
 
 
 export const CreateInspectionPhotoBody = zod.object({
+  "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
   "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square']),
   "subjectId": zod.string().nullish(),

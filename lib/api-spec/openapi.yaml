@@ -2155,6 +2155,29 @@ components:
         updatedAt:
           type: string
           format: date-time
+        slopes:
+          type: array
+          description: >-
+            Child slopes. Populated by GET /inspections/{id} (detail view);
+            omitted from the list feed. Optional so list rows and the mobile
+            optimistic cache stay valid.
+          items:
+            $ref: "#/components/schemas/InspectionSlope"
+        elevations:
+          type: array
+          description: Child elevations, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InspectionElevation"
+        damageInstances:
+          type: array
+          description: Child damage instances, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/DamageInstance"
+        photos:
+          type: array
+          description: Captured evidence photos, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InspectionPhoto"
     CreateInspectionInput:
       type: object
       properties:
@@ -2264,6 +2287,13 @@ components:
       type: object
       required: [label]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert), so a queued offline
+            capture can be safely retried and referenced by child photos
+            before it has synced.
         label:
           type: string
           minLength: 1
@@ -2303,6 +2333,11 @@ components:
       type: object
       required: [direction]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert).
         direction:
           $ref: "#/components/schemas/ElevationDirection"
         notes:
@@ -2344,6 +2379,13 @@ components:
       type: object
       required: [damageType]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert), so a queued offline
+            capture can be safely retried and referenced by child photos
+            before it has synced.
         slopeId:
           type: [string, "null"]
         elevationId:
@@ -2497,6 +2539,13 @@ components:
       type: object
       required: [subjectType, url, sha256]
       properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, the photo write is idempotent, so a queued offline
+            capture can be retried (e.g. after a lost upload response)
+            without duplicating the evidence row.
         stage:
           oneOf:
             - $ref: "#/components/schemas/CaptureStage"

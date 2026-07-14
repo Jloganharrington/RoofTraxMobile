@@ -12,10 +12,13 @@ import {
   View,
   type GestureResponderEvent,
 } from 'react-native';
+import * as Crypto from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
-import type { InspectionSubjectType } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { CaptureStage, InspectionSubjectType } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { appendOptimisticPhotos } from '@/lib/inspectionSync';
 import {
   captureEvidencePhoto,
   persistCapturedPhotoForOutbox,
@@ -41,25 +44,50 @@ import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 // lib/protocol's job and a later phase. It is a self-contained, reusable
 // capture step that any calling screen can push with the right params.
 
-const TRIAD_STEPS: { role: TriadRole; title: string; hint: string }[] = [
-  { role: 'wide', title: 'Wide shot', hint: 'Frame the entire subject area.' },
-  { role: 'mid', title: 'Mid shot', hint: 'Move closer to show the damage clearly.' },
-  {
+const ALL_STEPS: Record<TriadRole, { role: TriadRole; title: string; hint: string }> = {
+  wide: { role: 'wide', title: 'Wide shot', hint: 'Frame the entire subject area.' },
+  mid: { role: 'mid', title: 'Mid shot', hint: 'Move closer to show the damage clearly.' },
+  close: {
     role: 'close',
     title: 'Close-up with scale',
     hint: 'Place a coin or ruler next to the damage for scale before shooting.',
   },
-];
+};
+
+const ROLE_ORDER: TriadRole[] = ['wide', 'mid', 'close'];
+
+// Parses the optional `roles` route param (e.g. "wide" for a single overview
+// shot, or "wide,mid,close" for the full damage triad). Defaults to the full
+// triad so existing callers keep their behaviour.
+function parseRoles(raw: string | undefined): TriadRole[] {
+  if (!raw) return [...ROLE_ORDER];
+  const requested = raw
+    .split(',')
+    .map((r) => r.trim())
+    .filter((r): r is TriadRole => r === 'wide' || r === 'mid' || r === 'close');
+  const ordered = ROLE_ORDER.filter((r) => requested.includes(r));
+  return ordered.length > 0 ? ordered : [...ROLE_ORDER];
+}
 
 interface AnnotatedShot extends CapturedEvidencePhoto {}
 
 export default function InspectionPhotoCaptureScreen() {
   const colors = useColors();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{
     inspectionId: string;
     subjectType: InspectionSubjectType;
     subjectId?: string;
+    /** Which triad roles to require, comma-separated. Defaults to the full
+     * wide,mid,close triad. Single-shot subjects (elevation/slope overview,
+     * roof access) pass "wide". */
+    roles?: string;
+    /** Optional capture stage tag (e.g. "S2" for a roof-access photo). */
+    stage?: CaptureStage;
+    /** Optional header title override. */
+    title?: string;
   }>();
+  const steps = useMemo(() => parseRoles(params.roles).map((role) => ALL_STEPS[role]), [params.roles]);
   const [shots, setShots] = useState<Partial<Record<TriadRole, AnnotatedShot>>>({});
   const [capturingRole, setCapturingRole] = useState<TriadRole | null>(null);
   const [uploadingRole, setUploadingRole] = useState<TriadRole | null>(null);
@@ -68,7 +96,7 @@ export default function InspectionPhotoCaptureScreen() {
   const [pendingAnnotation, setPendingAnnotation] = useState<{ x: number; y: number } | null>(null);
   const [noteText, setNoteText] = useState('');
 
-  const nextStep = useMemo(() => TRIAD_STEPS.find((step) => !shots[step.role]), [shots]);
+  const nextStep = useMemo(() => steps.find((step) => !shots[step.role]), [steps, shots]);
   const allCaptured = !nextStep;
 
   async function handleCapture(role: TriadRole) {
@@ -131,17 +159,20 @@ export default function InspectionPhotoCaptureScreen() {
     // means this screen can finish (and the inspector can move on) even in
     // airplane mode.
     setQueueing(true);
+    const queued: Array<{ triadRole: TriadRole; sha256: string }> = [];
     try {
-      for (const step of TRIAD_STEPS) {
+      for (const step of steps) {
         const shot = shots[step.role];
         if (!shot) continue;
 
         setUploadingRole(step.role);
         const persisted = await persistCapturedPhotoForOutbox(shot);
         const payload: InspectionPhotoOutboxPayload = {
+          id: Crypto.randomUUID(),
           inspectionId,
           subjectType,
           subjectId: params.subjectId ?? null,
+          stage: params.stage ?? null,
           triadRole: step.role,
           localFilePath: persisted.localFilePath,
           mimeType: shot.mimeType,
@@ -153,6 +184,7 @@ export default function InspectionPhotoCaptureScreen() {
           longitude: persisted.longitude,
         };
         await enqueueOutboxItem('inspection.photo', payload);
+        queued.push({ triadRole: step.role, sha256: persisted.sha256 });
       }
     } catch {
       setQueueing(false);
@@ -162,6 +194,20 @@ export default function InspectionPhotoCaptureScreen() {
     }
     setUploadingRole(null);
     setQueueing(false);
+
+    // Reflect the captures in the cached inspection detail immediately so
+    // gate progress updates even before (or without) a sync.
+    appendOptimisticPhotos(
+      queryClient,
+      inspectionId,
+      queued.map((q) => ({
+        subjectType,
+        subjectId: params.subjectId ?? null,
+        stage: params.stage ?? null,
+        triadRole: q.triadRole,
+        sha256: q.sha256,
+      })),
+    );
 
     // Fire-and-forget: attempt an immediate sync if online, but don't make
     // the inspector wait on it — the periodic/connectivity-triggered drain
@@ -179,12 +225,14 @@ export default function InspectionPhotoCaptureScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.container}
     >
-      <Text style={[styles.title, { color: colors.foreground }]}>Evidence photos</Text>
+      <Text style={[styles.title, { color: colors.foreground }]}>{params.title ?? 'Evidence photos'}</Text>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-        Capture a wide, mid, and close-up shot. Tap a photo afterward to drop a note marker.
+        {steps.length === 1
+          ? 'Capture the overview shot. Tap the photo afterward to drop a note marker.'
+          : 'Capture a wide, mid, and close-up shot. Tap a photo afterward to drop a note marker.'}
       </Text>
 
-      {TRIAD_STEPS.map((step) => {
+      {steps.map((step) => {
         const shot = shots[step.role];
         const isCapturingThis = capturingRole === step.role;
         const isUploadingThis = uploadingRole === step.role;

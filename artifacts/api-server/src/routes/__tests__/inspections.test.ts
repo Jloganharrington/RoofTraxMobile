@@ -422,4 +422,180 @@ describe('inspection routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // M-C: the detail endpoint hydrates child arrays (so the mobile app reads
+  // capture state without new endpoints), and child creates are idempotent by
+  // client-supplied id so an offline outbox can safely replay them.
+  describe('M-C detail hydration + child-create idempotency', () => {
+    it('hydrates slopes, elevations, damage instances, and photos on GET /:id', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-MC-DETAIL' });
+      const inspectionId = create.body.inspection.id as string;
+
+      const slope = await request(app)
+        .post(`/api/inspections/${inspectionId}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send({ label: 'Detail slope' });
+      const slopeId = slope.body.slope.id as string;
+      await request(app)
+        .post(`/api/inspections/${inspectionId}/elevations`)
+        .set(auth(inspectorA.sid))
+        .send({ direction: 'front' });
+      await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send({ damageType: 'hail' });
+      await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({
+          subjectType: 'slope',
+          subjectId: slopeId,
+          triadRole: 'wide',
+          stage: 'S3',
+          url: 'https://example.test/mc.jpg',
+          sha256: 'd'.repeat(64),
+        });
+
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      expect(detail.status).toBe(200);
+      expect(detail.body.inspection.slopes).toHaveLength(1);
+      expect(detail.body.inspection.elevations).toHaveLength(1);
+      expect(detail.body.inspection.damageInstances).toHaveLength(1);
+      expect(detail.body.inspection.photos).toHaveLength(1);
+      expect(detail.body.inspection.photos[0].stage).toBe('S3');
+    });
+
+    it('returns the existing child (200) on a retried create with the same client id', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+
+      const elevId = `elev-${RUN_ID}-idem`;
+      const elevBody = { id: elevId, direction: 'front' };
+      const elevFirst = await request(app)
+        .post(`/api/inspections/${inspectionId}/elevations`)
+        .set(auth(inspectorA.sid))
+        .send(elevBody);
+      expect(elevFirst.status).toBe(201);
+      expect(elevFirst.body.elevation.id).toBe(elevId);
+      const elevRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/elevations`)
+        .set(auth(inspectorA.sid))
+        .send(elevBody);
+      expect(elevRetry.status).toBe(200);
+      expect(elevRetry.body.elevation.id).toBe(elevId);
+
+      const slopeId = `slope-${RUN_ID}-idem`;
+      const slopeBody = { id: slopeId, label: 'Idem slope' };
+      const slopeFirst = await request(app)
+        .post(`/api/inspections/${inspectionId}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send(slopeBody);
+      expect(slopeFirst.status).toBe(201);
+      const slopeRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send(slopeBody);
+      expect(slopeRetry.status).toBe(200);
+      expect(slopeRetry.body.slope.id).toBe(slopeId);
+
+      const dmgId = `dmg-${RUN_ID}-idem`;
+      const dmgBody = { id: dmgId, damageType: 'hail' };
+      const dmgFirst = await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send(dmgBody);
+      expect(dmgFirst.status).toBe(201);
+      const dmgRetry = await request(app)
+        .post(`/api/inspections/${inspectionId}/damage-instances`)
+        .set(auth(inspectorA.sid))
+        .send(dmgBody);
+      expect(dmgRetry.status).toBe(200);
+      expect(dmgRetry.body.damageInstance.id).toBe(dmgId);
+    });
+
+    it('409s when a client id collides with a row in another company (never leaks it)', async () => {
+      // Seed the id under company B.
+      const createB = await request(app).post('/api/inspections').set(auth(inspectorB.sid)).send({});
+      const inspectionBId = createB.body.inspection.id as string;
+      const collidingId = `elev-${RUN_ID}-collision`;
+      const seedB = await request(app)
+        .post(`/api/inspections/${inspectionBId}/elevations`)
+        .set(auth(inspectorB.sid))
+        .send({ id: collidingId, direction: 'front' });
+      expect(seedB.status).toBe(201);
+
+      // Company A replays the same id: the global unique constraint blocks the
+      // insert, and the company-scoped lookup can't see B's row, so it 409s
+      // rather than returning another tenant's record.
+      const createA = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionAId = createA.body.inspection.id as string;
+      const collide = await request(app)
+        .post(`/api/inspections/${inspectionAId}/elevations`)
+        .set(auth(inspectorA.sid))
+        .send({ id: collidingId, direction: 'front' });
+      expect(collide.status).toBe(409);
+    });
+
+    it('409s when a client id is reused on a different inspection in the same company', async () => {
+      const first = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const second = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const slopeId = `slope-${RUN_ID}-xinsp`;
+      const seed = await request(app)
+        .post(`/api/inspections/${first.body.inspection.id}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send({ id: slopeId, label: 'Owned slope' });
+      expect(seed.status).toBe(201);
+
+      // Same tenant, same id, different inspection: must not silently return
+      // the other inspection's row — the conflict lookup is inspection-scoped.
+      const collide = await request(app)
+        .post(`/api/inspections/${second.body.inspection.id}/slopes`)
+        .set(auth(inspectorA.sid))
+        .send({ id: slopeId, label: 'Colliding slope' });
+      expect(collide.status).toBe(409);
+    });
+
+    it('creates photos idempotently by client id (retry-safe evidence writes)', async () => {
+      const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
+      const inspectionId = create.body.inspection.id as string;
+      const photoId = `photo-${RUN_ID}-idem`;
+      const body = {
+        id: photoId,
+        subjectType: 'inspection',
+        stage: 'S2',
+        triadRole: 'wide',
+        url: 'https://example.test/idem.jpg',
+        sha256: 'e'.repeat(64),
+      };
+
+      const first = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send(body);
+      expect(first.status).toBe(201);
+      expect(first.body.photo.id).toBe(photoId);
+
+      // A replayed outbox item (e.g. upload response lost after commit) must
+      // return the existing evidence row, not duplicate it.
+      const retry = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send(body);
+      expect(retry.status).toBe(200);
+      expect(retry.body.photo.id).toBe(photoId);
+
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      const matching = (detail.body.inspection.photos as Array<{ id: string }>).filter(
+        (p) => p.id === photoId,
+      );
+      expect(matching).toHaveLength(1);
+    });
+  });
 });

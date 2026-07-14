@@ -14,6 +14,7 @@ import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { attestInspection } from '@/lib/inspectionSync';
+import { isStageComplete, stageDeficiencies } from '@/lib/inspectionProtocolState';
 
 const EQUIPMENT_ITEMS = [
   'Ladder',
@@ -195,21 +196,86 @@ export default function InspectionDetailScreen() {
         colors={colors}
       />
 
-      {/* Evidence photos (M-A) */}
-      <Text style={[styles.section, { color: colors.foreground }]}>Evidence</Text>
-      <StageCard
-        icon="camera"
-        title="Capture evidence photos"
-        subtitle="Wide / mid / close triad with GPS + hash"
-        done={false}
-        onPress={() =>
-          router.push({
-            pathname: '/inspection-photo-capture',
-            params: { inspectionId: id, subjectType: 'inspection' },
-          })
-        }
-        colors={colors}
-      />
+      {/* Exterior capture (M-C) */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Exterior capture</Text>
+
+      {(() => {
+        const s1Missing = stageDeficiencies(inspection, 'S1').length;
+        const s3Missing = stageDeficiencies(inspection, 'S3').length;
+        const s5Missing = stageDeficiencies(inspection, 'S5').length;
+        const slopeCount = inspection.slopes?.length ?? 0;
+        const damageCount = inspection.damageInstances?.length ?? 0;
+        const roofSlopeDone = isStageComplete(inspection, 'S2') && isStageComplete(inspection, 'S3');
+        const blockers = [
+          ...stageDeficiencies(inspection, 'S1'),
+          ...stageDeficiencies(inspection, 'S2'),
+          ...stageDeficiencies(inspection, 'S3'),
+          ...stageDeficiencies(inspection, 'S5'),
+        ];
+        return (
+          <>
+            {blockers.length > 0 ? (
+              <View style={[styles.gateCard, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
+                <Icon name="alert-circle" size={18} color="#b45309" />
+                <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
+                  {blockers.length} capture gate{blockers.length === 1 ? '' : 's'} remaining before this
+                  inspection can advance.
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.gateCard, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
+                <Icon name="check" size={18} color={colors.success} />
+                <Text style={{ color: colors.foreground, fontSize: 13, flex: 1 }}>
+                  Exterior capture gates satisfied.
+                </Text>
+              </View>
+            )}
+
+            <StageCard
+              icon="home"
+              title="S1 · Elevation walk"
+              subtitle={
+                s1Missing === 0
+                  ? 'All four elevations captured'
+                  : `${4 - s1Missing} of 4 elevations captured`
+              }
+              done={s1Missing === 0}
+              onPress={() => router.push({ pathname: '/inspection-elevations', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="navigation"
+              title="S2 · S3 · Roof & slopes"
+              subtitle={
+                roofSlopeDone
+                  ? `Roof access + ${slopeCount} slope${slopeCount === 1 ? '' : 's'} documented`
+                  : slopeCount === 0
+                    ? 'Roof access photo + slope inventory'
+                    : `${s3Missing} slope${s3Missing === 1 ? '' : 's'} / roof access outstanding`
+              }
+              done={roofSlopeDone}
+              onPress={() => router.push({ pathname: '/inspection-roof', params: { id } })}
+              colors={colors}
+            />
+
+            <StageCard
+              icon="clipboard"
+              title="S5 · Collateral sweep"
+              subtitle={
+                damageCount === 0
+                  ? 'Record collateral damage per elevation'
+                  : s5Missing === 0
+                    ? `${damageCount} instance${damageCount === 1 ? '' : 's'} — triads complete`
+                    : `${s5Missing} instance${s5Missing === 1 ? '' : 's'} missing wide/mid/close`
+              }
+              done={damageCount > 0 && s5Missing === 0}
+              onPress={() => router.push({ pathname: '/inspection-collateral', params: { id } })}
+              colors={colors}
+            />
+          </>
+        );
+      })()}
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -285,4 +351,12 @@ const styles = StyleSheet.create({
   },
   stageIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   stageTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  gateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
 });

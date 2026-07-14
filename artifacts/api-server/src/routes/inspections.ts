@@ -218,13 +218,66 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
-  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) {
     res.status(404).json({ error: 'Inspection not found' });
     return;
   }
 
-  res.json(GetInspectionResponse.parse({ inspection }));
+  // Detail view: hydrate the child collections the mobile capture flow
+  // (elevations / slopes / damage / evidence photos) reads to render
+  // progress and drive the lib/protocol gate. The list feed omits these;
+  // only this by-id read pays for the extra queries. Ordered by createdAt
+  // so the client can rely on capture order (e.g. the elevation walk).
+  const [slopes, elevations, damageInstances, photos] = await Promise.all([
+    db
+      .select()
+      .from(inspectionSlopesTable)
+      .where(
+        and(
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+          eq(inspectionSlopesTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionSlopesTable.createdAt),
+    db
+      .select()
+      .from(inspectionElevationsTable)
+      .where(
+        and(
+          eq(inspectionElevationsTable.inspectionId, inspectionId),
+          eq(inspectionElevationsTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionElevationsTable.createdAt),
+    db
+      .select()
+      .from(damageInstancesTable)
+      .where(
+        and(
+          eq(damageInstancesTable.inspectionId, inspectionId),
+          eq(damageInstancesTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(damageInstancesTable.createdAt),
+    db
+      .select()
+      .from(inspectionPhotosTable)
+      .where(
+        and(
+          eq(inspectionPhotosTable.inspectionId, inspectionId),
+          eq(inspectionPhotosTable.companyId, actor.companyId),
+        ),
+      )
+      .orderBy(inspectionPhotosTable.createdAt),
+  ]);
+
+  res.json(
+    GetInspectionResponse.parse({
+      inspection: { ...inspection, slopes, elevations, damageInstances, photos },
+    }),
+  );
 });
 
 router.patch('/inspections/:inspectionId', async (req: Request, res: Response) => {
@@ -282,18 +335,49 @@ router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Respo
     return;
   }
 
-  const [slope] = await db
-    .insert(inspectionSlopesTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      label: parsed.data.label,
-      pitchRise: parsed.data.pitchRise ?? undefined,
-      pitchRun: parsed.data.pitchRun ?? undefined,
-      materialType: parsed.data.materialType ?? undefined,
-      notes: parsed.data.notes ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    label: parsed.data.label,
+    pitchRise: parsed.data.pitchRise ?? undefined,
+    pitchRun: parsed.data.pitchRun ?? undefined,
+    materialType: parsed.data.materialType ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first: a client-supplied id makes the create idempotent so a
+  // retried offline capture returns the existing row instead of a
+  // duplicate — and child photos can reference the slope id before it syncs.
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionSlopesTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionSlopesTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionSlopeResponse.parse({ slope: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionSlopesTable)
+      .where(
+        and(
+          eq(inspectionSlopesTable.id, parsed.data.id),
+          eq(inspectionSlopesTable.companyId, actor.companyId),
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Slope id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionSlopeResponse.parse({ slope: existing }));
+    return;
+  }
+
+  const [slope] = await db.insert(inspectionSlopesTable).values(values).returning();
 
   res.status(201).json(CreateInspectionSlopeResponse.parse({ slope }));
 });
@@ -312,15 +396,44 @@ router.post('/inspections/:inspectionId/elevations', async (req: Request, res: R
     return;
   }
 
-  const [elevation] = await db
-    .insert(inspectionElevationsTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      direction: parsed.data.direction,
-      notes: parsed.data.notes ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    direction: parsed.data.direction,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes handler for rationale).
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionElevationsTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionElevationsTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionElevationResponse.parse({ elevation: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionElevationsTable)
+      .where(
+        and(
+          eq(inspectionElevationsTable.id, parsed.data.id),
+          eq(inspectionElevationsTable.companyId, actor.companyId),
+          eq(inspectionElevationsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Elevation id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionElevationResponse.parse({ elevation: existing }));
+    return;
+  }
+
+  const [elevation] = await db.insert(inspectionElevationsTable).values(values).returning();
 
   res.status(201).json(CreateInspectionElevationResponse.parse({ elevation }));
 });
@@ -339,19 +452,48 @@ router.post('/inspections/:inspectionId/damage-instances', async (req: Request, 
     return;
   }
 
-  const [damageInstance] = await db
-    .insert(damageInstancesTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      slopeId: parsed.data.slopeId ?? undefined,
-      elevationId: parsed.data.elevationId ?? undefined,
-      damageType: parsed.data.damageType,
-      severity: parsed.data.severity ?? undefined,
-      causationNote: parsed.data.causationNote ?? undefined,
-      notes: parsed.data.notes ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    slopeId: parsed.data.slopeId ?? undefined,
+    elevationId: parsed.data.elevationId ?? undefined,
+    damageType: parsed.data.damageType,
+    severity: parsed.data.severity ?? undefined,
+    causationNote: parsed.data.causationNote ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  // Offline-first idempotent create (see the slopes handler for rationale).
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(damageInstancesTable)
+      .values(values)
+      .onConflictDoNothing({ target: damageInstancesTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateDamageInstanceResponse.parse({ damageInstance: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(damageInstancesTable)
+      .where(
+        and(
+          eq(damageInstancesTable.id, parsed.data.id),
+          eq(damageInstancesTable.companyId, actor.companyId),
+          eq(damageInstancesTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Damage instance id already exists' });
+      return;
+    }
+    res.status(200).json(CreateDamageInstanceResponse.parse({ damageInstance: existing }));
+    return;
+  }
+
+  const [damageInstance] = await db.insert(damageInstancesTable).values(values).returning();
 
   res.status(201).json(CreateDamageInstanceResponse.parse({ damageInstance }));
 });
@@ -445,25 +587,57 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     return;
   }
 
-  const [photo] = await db
-    .insert(inspectionPhotosTable)
-    .values({
-      companyId: actor.companyId,
-      inspectionId,
-      stage: parsed.data.stage ?? undefined,
-      subjectType: parsed.data.subjectType,
-      subjectId: parsed.data.subjectId ?? undefined,
-      triadRole: parsed.data.triadRole ?? undefined,
-      url: parsed.data.url,
-      sha256: parsed.data.sha256,
-      exifJson: parsed.data.exifJson ?? undefined,
-      overlayJson: parsed.data.overlayJson ?? undefined,
-      capturedAtUtc: parsed.data.capturedAtUtc ?? undefined,
-      latitude: parsed.data.latitude ?? undefined,
-      longitude: parsed.data.longitude ?? undefined,
-    })
-    .returning();
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    stage: parsed.data.stage ?? undefined,
+    subjectType: parsed.data.subjectType,
+    subjectId: parsed.data.subjectId ?? undefined,
+    triadRole: parsed.data.triadRole ?? undefined,
+    url: parsed.data.url,
+    sha256: parsed.data.sha256,
+    exifJson: parsed.data.exifJson ?? undefined,
+    overlayJson: parsed.data.overlayJson ?? undefined,
+    capturedAtUtc: parsed.data.capturedAtUtc ?? undefined,
+    latitude: parsed.data.latitude ?? undefined,
+    longitude: parsed.data.longitude ?? undefined,
+  };
 
+  // Offline-first idempotent create. Evidence photos are queued in the mobile
+  // outbox and drained on reconnect; if the server commits but the response is
+  // lost, the item replays with the same client id. Without this guard that
+  // replay would duplicate the evidence row (corrupting the audit trail and
+  // inflating triad/gate counts), so a repeat id returns the existing row.
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionPhotosTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionPhotosTable.id })
+      .returning();
+    if (inserted) {
+      res.status(201).json(CreateInspectionPhotoResponse.parse({ photo: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionPhotosTable)
+      .where(
+        and(
+          eq(inspectionPhotosTable.id, parsed.data.id),
+          eq(inspectionPhotosTable.companyId, actor.companyId),
+          eq(inspectionPhotosTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Photo id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionPhotoResponse.parse({ photo: existing }));
+    return;
+  }
+
+  const [photo] = await db.insert(inspectionPhotosTable).values(values).returning();
   res.status(201).json(CreateInspectionPhotoResponse.parse({ photo }));
 });
 

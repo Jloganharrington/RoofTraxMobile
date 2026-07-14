@@ -7,6 +7,8 @@
  */
 
 export interface CreateDamageInstanceInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
+  id?: string;
   /** @nullable */
   slopeId?: string | null;
   /** @nullable */

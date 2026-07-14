@@ -449,6 +449,84 @@ export interface ArrivalConditions {
   recordedAtUtc: string;
 }
 
+export interface InspectionSlope {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  label: string;
+  /** @nullable */
+  pitchRise: number | null;
+  /** @nullable */
+  pitchRun: number | null;
+  /** @nullable */
+  materialType: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface InspectionElevation {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  direction: ElevationDirection;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface DamageInstance {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  /** @nullable */
+  slopeId: string | null;
+  /** @nullable */
+  elevationId: string | null;
+  damageType: string;
+  /** @nullable */
+  severity: string | null;
+  /** @nullable */
+  causationNote: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
+/**
+ * @nullable
+ */
+export type InspectionPhotoExifJson = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type InspectionPhotoOverlayJson = { [key: string]: unknown } | null;
+
+export interface InspectionPhoto {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  stage: CaptureStage | null;
+  subjectType: InspectionSubjectType;
+  /** @nullable */
+  subjectId: string | null;
+  triadRole: PhotoTriadRole | null;
+  url: string;
+  sha256: string;
+  /** @nullable */
+  exifJson: InspectionPhotoExifJson;
+  /** @nullable */
+  overlayJson: InspectionPhotoOverlayJson;
+  /** @nullable */
+  capturedAtUtc: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  createdAt: string;
+}
+
 export interface Inspection {
   id: string;
   companyId: string;
@@ -478,6 +556,14 @@ export interface Inspection {
   arrivalConditions: ArrivalConditions | null;
   createdAt: string;
   updatedAt: string;
+  /** Child slopes. Populated by GET /inspections/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid. */
+  slopes?: InspectionSlope[];
+  /** Child elevations, populated by the detail view only. */
+  elevations?: InspectionElevation[];
+  /** Child damage instances, populated by the detail view only. */
+  damageInstances?: DamageInstance[];
+  /** Captured evidence photos, populated by the detail view only. */
+  photos?: InspectionPhoto[];
 }
 
 export interface CreateInspectionInput {
@@ -542,23 +628,9 @@ export interface InspectionListEnvelope {
   inspections: Inspection[];
 }
 
-export interface InspectionSlope {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  label: string;
-  /** @nullable */
-  pitchRise: number | null;
-  /** @nullable */
-  pitchRun: number | null;
-  /** @nullable */
-  materialType: string | null;
-  /** @nullable */
-  notes: string | null;
-  createdAt: string;
-}
-
 export interface CreateInspectionSlopeInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
+  id?: string;
   /** @minLength 1 */
   label: string;
   /** @nullable */
@@ -575,17 +647,9 @@ export interface InspectionSlopeEnvelope {
   slope: InspectionSlope;
 }
 
-export interface InspectionElevation {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  direction: ElevationDirection;
-  /** @nullable */
-  notes: string | null;
-  createdAt: string;
-}
-
 export interface CreateInspectionElevationInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert). */
+  id?: string;
   direction: ElevationDirection;
   /** @nullable */
   notes?: string | null;
@@ -595,25 +659,9 @@ export interface InspectionElevationEnvelope {
   elevation: InspectionElevation;
 }
 
-export interface DamageInstance {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  /** @nullable */
-  slopeId: string | null;
-  /** @nullable */
-  elevationId: string | null;
-  damageType: string;
-  /** @nullable */
-  severity: string | null;
-  /** @nullable */
-  causationNote: string | null;
-  /** @nullable */
-  notes: string | null;
-  createdAt: string;
-}
-
 export interface CreateDamageInstanceInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
+  id?: string;
   /** @nullable */
   slopeId?: string | null;
   /** @nullable */
@@ -686,40 +734,6 @@ export interface TestSquareHitEnvelope {
 /**
  * @nullable
  */
-export type InspectionPhotoExifJson = { [key: string]: unknown } | null;
-
-/**
- * @nullable
- */
-export type InspectionPhotoOverlayJson = { [key: string]: unknown } | null;
-
-export interface InspectionPhoto {
-  id: string;
-  companyId: string;
-  inspectionId: string;
-  stage: CaptureStage | null;
-  subjectType: InspectionSubjectType;
-  /** @nullable */
-  subjectId: string | null;
-  triadRole: PhotoTriadRole | null;
-  url: string;
-  sha256: string;
-  /** @nullable */
-  exifJson: InspectionPhotoExifJson;
-  /** @nullable */
-  overlayJson: InspectionPhotoOverlayJson;
-  /** @nullable */
-  capturedAtUtc: string | null;
-  /** @nullable */
-  latitude: number | null;
-  /** @nullable */
-  longitude: number | null;
-  createdAt: string;
-}
-
-/**
- * @nullable
- */
 export type CreateInspectionPhotoInputExifJson = { [key: string]: unknown } | null;
 
 /**
@@ -728,6 +742,8 @@ export type CreateInspectionPhotoInputExifJson = { [key: string]: unknown } | nu
 export type CreateInspectionPhotoInputOverlayJson = { [key: string]: unknown } | null;
 
 export interface CreateInspectionPhotoInput {
+  /** Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row. */
+  id?: string;
   stage?: CaptureStage | null;
   subjectType: InspectionSubjectType;
   /** @nullable */

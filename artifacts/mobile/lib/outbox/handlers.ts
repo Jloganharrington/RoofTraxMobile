@@ -1,13 +1,20 @@
 import { File } from 'expo-file-system';
 import {
   createAttestation,
+  createDamageInstance,
   createInspection,
+  createInspectionElevation,
   createInspectionPhoto,
+  createInspectionSlope,
   updateInspection,
 } from '@workspace/api-client-react';
 import type {
   CreateAttestationInput,
+  CreateDamageInstanceInput,
+  CreateInspectionElevationInput,
   CreateInspectionInput,
+  CreateInspectionSlopeInput,
+  CaptureStage,
   InspectionSubjectType,
   PhotoTriadRole,
   UpdateInspectionInput,
@@ -16,6 +23,7 @@ import type {
 import { uploadFile } from '../upload';
 import type {
   InspectionAttestationOutboxPayload,
+  InspectionChildCreateOutboxPayload,
   InspectionCreateOutboxPayload,
   InspectionPhotoOutboxPayload,
   InspectionUpdateOutboxPayload,
@@ -38,8 +46,10 @@ async function syncInspectionPhoto(payloadJson: string): Promise<void> {
   const url = await uploadFile(payload.localFilePath, payload.mimeType);
 
   await createInspectionPhoto(payload.inspectionId, {
+    id: payload.id,
     subjectType: payload.subjectType as InspectionSubjectType,
     subjectId: payload.subjectId ?? undefined,
+    stage: (payload.stage as CaptureStage | null | undefined) ?? undefined,
     triadRole: payload.triadRole as PhotoTriadRole,
     url,
     sha256: payload.sha256,
@@ -80,9 +90,38 @@ async function syncInspectionAttestation(payloadJson: string): Promise<void> {
   await createAttestation(payload.inspectionId, payload.input as CreateAttestationInput);
 }
 
+// Child creates are idempotent by their client-supplied id — a retry after a
+// partial failure returns the existing row instead of duplicating it.
+async function syncInspectionElevation(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInspectionElevation(
+    payload.inspectionId,
+    payload.input as unknown as CreateInspectionElevationInput,
+  );
+}
+
+async function syncInspectionSlope(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInspectionSlope(
+    payload.inspectionId,
+    payload.input as unknown as CreateInspectionSlopeInput,
+  );
+}
+
+async function syncInspectionDamage(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createDamageInstance(
+    payload.inspectionId,
+    payload.input as unknown as CreateDamageInstanceInput,
+  );
+}
+
 export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.photo': syncInspectionPhoto,
   'inspection.create': syncInspectionCreate,
   'inspection.update': syncInspectionUpdate,
   'inspection.attestation': syncInspectionAttestation,
+  'inspection.elevation': syncInspectionElevation,
+  'inspection.slope': syncInspectionSlope,
+  'inspection.damage': syncInspectionDamage,
 };
