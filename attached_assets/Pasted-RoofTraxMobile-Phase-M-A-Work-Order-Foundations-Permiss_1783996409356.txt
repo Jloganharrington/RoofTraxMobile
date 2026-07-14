@@ -1,0 +1,26 @@
+RoofTraxMobile — Phase M-A Work Order: Foundations, Permissions & Hardening
+This is the first phase of extending RoofTraxMobile from a canvassing-only pin-drop app into the unified field platform for both canvassing and forensic insurance inspections, gated by permission. M-A ships no inspection screens — it builds the foundation every later phase stands on. Work items are ordered; A1 is first and blocks everything evidence-related.
+
+Two standing constraints (apply to every item)
+Canvassing must keep working, untouched. Everything is additive — new tables, routes, packages, columns. Do not change the behavior of existing pin creation/editing, the map, team/profile screens, location ping, or the auth flow. The only edits to existing code: extending enums, adding the department column, tightening permission helpers, and the storage ACL fix. If a change would alter a canvasser's flow, stop and flag it.
+The app computes nothing derivable. No squares/waste/pricing/PDF/scoring logic in this phase. Tables store raw values; math is the server's job later.
+Isolation boundary — do NOT modify
+Pin CRUD behavior, MapScreen.*, pin-new/edit.tsx, bulk-upload.tsx, team.tsx, profile.tsx runtime behavior; location.ts/ping, geocode; the OIDC/token-exchange login mechanism (you extend the role model, not login). Generated lib/api-zod and lib/api-client-react are codegen output — regenerate via Orval, never hand-edit.
+
+A1 — Storage ACL fix (first). artifacts/api-server/src/routes/storage.ts has a commented-out auth/ACL check on GET /storage/objects/* — any caller who knows a path can fetch a private object, and inspection evidence will live behind this route. Re-enable it (authenticated + same-company/ACL before streaming). Tests: unauthenticated → denied; wrong-company → denied; owner → served.
+
+A2 — Permission & routing shell. Add super_admin to ROLES. Add DEPARTMENTS = ['canvasser','inspector_canvasser'] + a department column on userProfilesTable, default 'canvasser'. Migrate workflowAssignment to ['retail','insurance_retail'] (both→insurance_retail, insurance→insurance_retail, retire pure insurance). Seed one super_admin by promoting founderUserId. Rewrite permissions.ts on role rank (field_rep < manager < admin < super_admin, same company, no reporting tree): canManageUser/canSetRoleDeptSpec (actor rank strictly greater), canDeletePin (manager+ only — field_reps keep add + edit-own), canAccessInspectionModule (inspector_canvasser or super_admin). Extend admin user-management with role/dept/spec pickers. Wire the dashboard-home conditional entry per department (content is M-B; M-A just does the routing gate).
+
+A3 — Inspection data model. New tenant-scoped Drizzle tables: inspections (claim identity, lifecycle scheduled → capturing → validating → submitted → package_ready, nullable pinId), inspection_slopes, inspection_elevations, damage_instances (with causationNote), test_squares + test_square_hits, inspection_photos (stage, polymorphic subject, sha256, EXIF/GPS/UTC, overlay JSON, triad role), measurements, attestations. Extend tenant-isolation tests to every new table.
+
+A4 — lib/protocol package. New pure-TS workspace package, importable by app + server: S0–S9 stage definitions, required-capture rules, hard-gate vs. soft-flag evaluators, observed-indicator vocabulary, a single evaluate(state) → {deficiencies, softFlags} entry point. Fully unit-tested with fixtures (complete → zero; each one-thing-missing → exactly that deficiency).
+
+A5 — API spec + codegen. Add thin inspection CRUD + child routes to openapi.yaml (validate → stamp tenant → store, no logic); regenerate api-zod/api-client-react via Orval; every route tenant-scoped and canAccessInspectionModule-gated.
+
+A6 — Evidence photo module (mobile). Full-res original preserved untouched; EXIF+GPS+UTC and SHA-256 at capture (expo-crypto); annotations as separate overlay JSON; wide→mid→close triad grouping + scale-gauge prompt; upload through the existing presigned pipeline into tenant-scoped paths.
+
+A7 — Offline outbox (mobile). expo-sqlite local-first writes; outbox drainer syncs on connectivity; append-only, idempotent per record; must survive airplane-mode capture + app restart, then sync on reconnect.
+
+Testing gate M-A: storage ACL denial matrix; permission role-rank matrix (every actor/target pair); lib/protocol rule units; pin-delete gating; tenant isolation on every new table; outbox round-trip (write offline → restart → reconnect → server rows + photo hashes match); full pin-canvassing regression; workspace typecheck. Paste test output; confirm the migration was verified against existing rows.
+
+Execution discipline: implement → typecheck → full test suite → commit per-item → push. No auth-bypass/dev-login/scratch session endpoint in committed code. The diff will be independently reviewed against origin before pull, so keep changes scoped and additive. If any item forces a change outside the isolation boundary, stop and report. Deliverable: per-item summary, the enum-migration approach, test evidence per gate bullet, and explicit confirmation that the pin regression passed and no bypass endpoint was committed.
