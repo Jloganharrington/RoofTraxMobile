@@ -34,6 +34,7 @@ import type {
   InteriorObservation,
   Measurement,
   PhotoTriadRole,
+  PreliminaryPhotoRole,
   SubmissionManifestV1,
   TestSquare,
   TestSquareHit,
@@ -76,6 +77,9 @@ export async function startInspection({
     inspectorUserId,
     pinId: input.pinId ?? null,
     status: input.status ?? 'capturing',
+    phase: input.phase ?? 'forensic',
+    damageType: input.damageType ?? null,
+    preliminaryCompletedAt: null,
     claimNumber: input.claimNumber ?? null,
     policyNumber: input.policyNumber ?? null,
     carrierName: input.carrierName ?? null,
@@ -666,7 +670,8 @@ export function appendOptimisticPhotos(
     subjectType: InspectionSubjectType;
     subjectId: string | null;
     stage?: CaptureStage | null;
-    triadRole: PhotoTriadRole;
+    triadRole?: PhotoTriadRole | null;
+    preliminaryRole?: PreliminaryPhotoRole | null;
     sha256: string;
   }>,
 ): void {
@@ -679,7 +684,8 @@ export function appendOptimisticPhotos(
       stage: p.stage ?? null,
       subjectType: p.subjectType,
       subjectId: p.subjectId ?? null,
-      triadRole: p.triadRole,
+      triadRole: p.triadRole ?? null,
+      preliminaryRole: p.preliminaryRole ?? null,
       url: '',
       sha256: p.sha256,
       exifJson: null,

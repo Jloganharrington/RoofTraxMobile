@@ -102,7 +102,7 @@ export default function InspectionPhotoCaptureScreen() {
   async function handleCapture(role: TriadRole) {
     setCapturingRole(role);
     try {
-      const captured = await captureEvidencePhoto(role);
+      const captured = await captureEvidencePhoto();
       if (captured) {
         setShots((prev) => ({ ...prev, [role]: captured }));
       }

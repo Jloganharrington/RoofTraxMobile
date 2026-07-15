@@ -22,12 +22,13 @@ export default function InspectionStartScreen() {
   const candidates = (pins.data?.pins ?? []).filter((p) => p.workflow === 'insurance');
 
   function startFromPin(pin: Pin) {
+    // Pins now seed a Phase 1 (preliminary) inspection — the light top-of-funnel
+    // flow. It can advance to forensic later at the P4 checkpoint.
     router.replace({
-      pathname: '/inspection-intake',
+      pathname: '/inspection-preliminary-intake',
       params: {
         pinId: pin.id,
         address: pin.address ?? '',
-        insuredName: pin.customerName ?? '',
         latitude: String(pin.latitude),
         longitude: String(pin.longitude),
       },
@@ -39,14 +40,35 @@ export default function InspectionStartScreen() {
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
     >
+      <Text style={[styles.section, { color: colors.foreground, marginTop: 0 }]}>
+        Start a blank inspection
+      </Text>
+
+      <Pressable
+        onPress={() => router.replace('/inspection-preliminary-intake')}
+        style={[styles.blankCta, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <Icon name="clipboard" size={20} color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.blankText, { color: colors.foreground }]}>Preliminary (Phase 1)</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            Light capture — address, damage type, 4 photos, storm
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+      </Pressable>
+
       <Pressable
         onPress={() => router.replace('/inspection-intake')}
         style={[styles.blankCta, { backgroundColor: colors.card, borderColor: colors.border }]}
       >
-        <Icon name="plus" size={20} color={colors.primary} />
-        <Text style={[styles.blankText, { color: colors.foreground }]}>
-          Start a blank inspection
-        </Text>
+        <Icon name="home" size={20} color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.blankText, { color: colors.foreground }]}>Forensic (Phase 2)</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            Full claim intake and the complete protocol
+          </Text>
+        </View>
         <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
       </Pressable>
 

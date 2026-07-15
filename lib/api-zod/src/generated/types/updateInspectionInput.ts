@@ -7,11 +7,23 @@
  */
 import type { ArrivalConditions } from './arrivalConditions';
 import type { HomeownerFacts } from './homeownerFacts';
+import type { InspectionPhase } from './inspectionPhase';
 import type { InspectionStatus } from './inspectionStatus';
 import type { StormConfirmedRef } from './stormConfirmedRef';
 
 export interface UpdateInspectionInput {
   status?: InspectionStatus;
+  phase?: InspectionPhase;
+  /**
+     * Phase 1 light damage type (P2).
+     * @nullable
+     */
+  damageType?: string | null;
+  /**
+     * P4 checkpoint marker. Set when Phase 1 is marked complete or as provenance when advancing to forensic.
+     * @nullable
+     */
+  preliminaryCompletedAt?: Date | null;
   /** @nullable */
   pinId?: string | null;
   /** @nullable */

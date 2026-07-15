@@ -31,7 +31,11 @@ export interface InspectionPhotoOutboxPayload {
   /** Optional capture stage (e.g. 'S2' for a roof-access photo). Lets the
    * gate engine distinguish otherwise-identical inspection-subject photos. */
   stage?: string | null;
-  triadRole: 'wide' | 'mid' | 'close';
+  /** Forensic triad slot. Null/omitted for Phase 1 single-shot photos, which
+   * carry `preliminaryRole` instead. */
+  triadRole?: 'wide' | 'mid' | 'close' | null;
+  /** Phase 1 single-shot slot (P2). Mutually exclusive with `triadRole`. */
+  preliminaryRole?: 'front_of_home' | 'roof_overview' | 'damage_closeup' | null;
   /** Path to a copy of the photo in this app's stable document storage —
    * NOT the original camera-roll/cache URI, which the OS may evict before
    * connectivity returns. */

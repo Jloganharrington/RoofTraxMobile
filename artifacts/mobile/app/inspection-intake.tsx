@@ -17,7 +17,7 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
-import { inspectionsListKey, startInspection } from '@/lib/inspectionSync';
+import { inspectionsListKey, patchInspection, startInspection } from '@/lib/inspectionSync';
 
 // Claim intake (B4): captures the claim/policy header for a new forensic
 // inspection. Offline-first — the inspection is created against a durable
@@ -28,6 +28,7 @@ export default function InspectionIntakeScreen() {
   const { companyId } = useProfile();
   const { user } = useAuth();
   const params = useLocalSearchParams<{
+    id?: string;
     pinId?: string;
     insuredName?: string;
     address?: string;
@@ -38,6 +39,11 @@ export default function InspectionIntakeScreen() {
     latitude?: string;
     longitude?: string;
   }>();
+
+  // Advance mode (P4): when an `id` is passed, this screen patches an existing
+  // preliminary record into forensic in place (same row) instead of creating a
+  // new one — carrying the Phase 1 property/damage/storm/photos forward.
+  const advancingId = params.id;
 
   const [insuredName, setInsuredName] = useState(params.insuredName ?? '');
   const [address, setAddress] = useState(params.address ?? '');
@@ -52,12 +58,32 @@ export default function InspectionIntakeScreen() {
   const longitude = params.longitude ? Number(params.longitude) : null;
 
   async function handleCreate() {
-    if (!companyId || !user?.id) {
-      Alert.alert('Not ready', 'Your profile is still loading. Try again in a moment.');
-      return;
-    }
     setSaving(true);
     try {
+      if (advancingId) {
+        // P4 advance: patch the SAME preliminary record into forensic, adding
+        // the claim identity and stamping preliminaryCompletedAt. The server's
+        // forward-only phase guard rejects any other phase transition.
+        await patchInspection(queryClient, advancingId, {
+          phase: 'forensic',
+          preliminaryCompletedAt: new Date().toISOString(),
+          insuredName: insuredName.trim() || null,
+          address: address.trim() || null,
+          claimNumber: claimNumber.trim() || null,
+          policyNumber: policyNumber.trim() || null,
+          carrierName: carrierName.trim() || null,
+          dateOfLoss: dateOfLoss.trim() || null,
+          notes: notes.trim() || null,
+        });
+        await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
+        router.replace({ pathname: '/inspection/[id]', params: { id: advancingId } });
+        return;
+      }
+
+      if (!companyId || !user?.id) {
+        Alert.alert('Not ready', 'Your profile is still loading. Try again in a moment.');
+        return;
+      }
       const id = await startInspection({
         queryClient,
         companyId,
@@ -79,7 +105,10 @@ export default function InspectionIntakeScreen() {
       await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
       router.replace({ pathname: '/inspection/[id]', params: { id } });
     } catch {
-      Alert.alert('Could not start', 'Something went wrong creating the inspection.');
+      Alert.alert(
+        advancingId ? 'Could not advance' : 'Could not start',
+        'Something went wrong. Try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -126,7 +155,14 @@ export default function InspectionIntakeScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {params.pinId ? (
+        {advancingId ? (
+          <View style={[styles.pinNote, { backgroundColor: colors.accent }]}>
+            <Icon name="check" size={16} color={colors.insurance} />
+            <Text style={{ color: colors.accentForeground, flex: 1, fontSize: 13 }}>
+              Advancing to Phase 2 — the property, damage type, storm, and Phase 1 photos carry over.
+            </Text>
+          </View>
+        ) : params.pinId ? (
           <View style={[styles.pinNote, { backgroundColor: colors.accent }]}>
             <Icon name="map-pin" size={16} color={colors.insurance} />
             <Text style={{ color: colors.accentForeground, flex: 1, fontSize: 13 }}>
@@ -151,7 +187,9 @@ export default function InspectionIntakeScreen() {
           {saving ? (
             <ActivityIndicator color={colors.primaryForeground} />
           ) : (
-            <Text style={[styles.submitText, { color: colors.primaryForeground }]}>Create inspection</Text>
+            <Text style={[styles.submitText, { color: colors.primaryForeground }]}>
+              {advancingId ? 'Advance to forensic' : 'Create inspection'}
+            </Text>
           )}
         </Pressable>
         <View style={{ height: 40 }} />

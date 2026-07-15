@@ -366,6 +366,29 @@ export const InspectionStatus = {
   package_ready: 'package_ready',
 } as const;
 
+/**
+ * Business phase of a single inspection record (P0). Begins as `preliminary` (light top-of-funnel capture) and advances IN PLACE to `forensic` at the P4 checkpoint — one record, never two.
+ */
+export type InspectionPhase = typeof InspectionPhase[keyof typeof InspectionPhase];
+
+
+export const InspectionPhase = {
+  preliminary: 'preliminary',
+  forensic: 'forensic',
+} as const;
+
+/**
+ * A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.
+ */
+export type PreliminaryPhotoRole = typeof PreliminaryPhotoRole[keyof typeof PreliminaryPhotoRole];
+
+
+export const PreliminaryPhotoRole = {
+  front_of_home: 'front_of_home',
+  roof_overview: 'roof_overview',
+  damage_closeup: 'damage_closeup',
+} as const;
+
 export type ElevationDirection = typeof ElevationDirection[keyof typeof ElevationDirection];
 
 
@@ -617,6 +640,7 @@ export interface InspectionPhoto {
   /** @nullable */
   subjectId: string | null;
   triadRole: PhotoTriadRole | null;
+  preliminaryRole: PreliminaryPhotoRole | null;
   url: string;
   sha256: string;
   /** @nullable */
@@ -804,6 +828,17 @@ export interface Inspection {
   pinId: string | null;
   inspectorUserId: string;
   status: InspectionStatus;
+  phase: InspectionPhase;
+  /**
+     * Phase 1 light damage type (P2). Null for forensic-first records.
+     * @nullable
+     */
+  damageType: string | null;
+  /**
+     * Set at the P4 checkpoint when Phase 1 is marked complete (resume later) or as provenance when advancing to forensic.
+     * @nullable
+     */
+  preliminaryCompletedAt: string | null;
   /** @nullable */
   claimNumber: string | null;
   /** @nullable */
@@ -863,6 +898,12 @@ export interface CreateInspectionInput {
   /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline start can be safely retried. */
   id?: string;
   status?: InspectionStatus;
+  phase?: InspectionPhase;
+  /**
+     * Phase 1 light damage type (P2).
+     * @nullable
+     */
+  damageType?: string | null;
   /** @nullable */
   pinId?: string | null;
   /** Defaults to the acting user if omitted. */
@@ -889,6 +930,17 @@ export interface CreateInspectionInput {
 
 export interface UpdateInspectionInput {
   status?: InspectionStatus;
+  phase?: InspectionPhase;
+  /**
+     * Phase 1 light damage type (P2).
+     * @nullable
+     */
+  damageType?: string | null;
+  /**
+     * P4 checkpoint marker. Set when Phase 1 is marked complete or as provenance when advancing to forensic.
+     * @nullable
+     */
+  preliminaryCompletedAt?: string | null;
   /** @nullable */
   pinId?: string | null;
   /** @nullable */
@@ -1078,6 +1130,7 @@ export interface CreateInspectionPhotoInput {
   /** @nullable */
   subjectId?: string | null;
   triadRole?: PhotoTriadRole | null;
+  preliminaryRole?: PreliminaryPhotoRole | null;
   /** @minLength 1 */
   url: string;
   /** @minLength 1 */

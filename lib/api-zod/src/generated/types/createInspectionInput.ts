@@ -5,12 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InspectionPhase } from './inspectionPhase';
 import type { InspectionStatus } from './inspectionStatus';
 
 export interface CreateInspectionInput {
   /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline start can be safely retried. */
   id?: string;
   status?: InspectionStatus;
+  phase?: InspectionPhase;
+  /**
+     * Phase 1 light damage type (P2).
+     * @nullable
+     */
+  damageType?: string | null;
   /** @nullable */
   pinId?: string | null;
   /** Defaults to the acting user if omitted. */

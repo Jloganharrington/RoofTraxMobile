@@ -2552,6 +2552,19 @@ components:
     InspectionStatus:
       type: string
       enum: [scheduled, capturing, validating, submitted, package_ready]
+    InspectionPhase:
+      type: string
+      description: >-
+        Business phase of a single inspection record (P0). Begins as
+        `preliminary` (light top-of-funnel capture) and advances IN PLACE to
+        `forensic` at the P4 checkpoint — one record, never two.
+      enum: [preliminary, forensic]
+    PreliminaryPhotoRole:
+      type: string
+      description: >-
+        A Phase 1 single-shot evidence slot (P2). Captured through the evidence
+        module without a triad; `damage_closeup` is captured twice.
+      enum: [front_of_home, roof_overview, damage_closeup]
     ElevationDirection:
       type: string
       enum: [front, right, back, left]
@@ -2725,6 +2738,9 @@ components:
           pinId,
           inspectorUserId,
           status,
+          phase,
+          damageType,
+          preliminaryCompletedAt,
           claimNumber,
           policyNumber,
           carrierName,
@@ -2753,6 +2769,17 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/InspectionStatus"
+        phase:
+          $ref: "#/components/schemas/InspectionPhase"
+        damageType:
+          type: [string, "null"]
+          description: Phase 1 light damage type (P2). Null for forensic-first records.
+        preliminaryCompletedAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            Set at the P4 checkpoint when Phase 1 is marked complete (resume
+            later) or as provenance when advancing to forensic.
         claimNumber:
           type: [string, "null"]
         policyNumber:
@@ -2879,6 +2906,11 @@ components:
             start can be safely retried.
         status:
           $ref: "#/components/schemas/InspectionStatus"
+        phase:
+          $ref: "#/components/schemas/InspectionPhase"
+        damageType:
+          type: [string, "null"]
+          description: Phase 1 light damage type (P2).
         pinId:
           type: [string, "null"]
         inspectorUserId:
@@ -2907,6 +2939,17 @@ components:
       properties:
         status:
           $ref: "#/components/schemas/InspectionStatus"
+        phase:
+          $ref: "#/components/schemas/InspectionPhase"
+        damageType:
+          type: [string, "null"]
+          description: Phase 1 light damage type (P2).
+        preliminaryCompletedAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            P4 checkpoint marker. Set when Phase 1 is marked complete or as
+            provenance when advancing to forensic.
         pinId:
           type: [string, "null"]
         claimNumber:
@@ -3372,6 +3415,7 @@ components:
           subjectType,
           subjectId,
           triadRole,
+          preliminaryRole,
           url,
           sha256,
           exifJson,
@@ -3399,6 +3443,10 @@ components:
         triadRole:
           oneOf:
             - $ref: "#/components/schemas/PhotoTriadRole"
+            - type: "null"
+        preliminaryRole:
+          oneOf:
+            - $ref: "#/components/schemas/PreliminaryPhotoRole"
             - type: "null"
         url:
           type: string
@@ -3440,6 +3488,10 @@ components:
         triadRole:
           oneOf:
             - $ref: "#/components/schemas/PhotoTriadRole"
+            - type: "null"
+        preliminaryRole:
+          oneOf:
+            - $ref: "#/components/schemas/PreliminaryPhotoRole"
             - type: "null"
         url:
           type: string

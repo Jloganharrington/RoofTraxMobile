@@ -43,7 +43,6 @@ export interface PhotoAnnotation {
 
 export interface CapturedEvidencePhoto {
   localUri: string;
-  triadRole: TriadRole;
   mimeType: string;
   /** Raw EXIF tags reported by the camera, if any (make/model/orientation/etc). */
   exif: Record<string, unknown> | null;
@@ -99,12 +98,14 @@ function parseExifDateTimeUtc(exif: Record<string, unknown>): string | null {
 }
 
 /**
- * Launches the camera for one triad role (wide / mid / close), then derives
- * capture metadata: EXIF (if the device/OS reports it), a best-effort
- * capture timestamp, and a best-effort GPS fix (EXIF GPS tags first, a live
- * one-shot location read as fallback). Returns null if the user cancels.
+ * Launches the camera for a single evidence shot, then derives capture
+ * metadata: EXIF (if the device/OS reports it), a best-effort capture
+ * timestamp, and a best-effort GPS fix (EXIF GPS tags first, a live one-shot
+ * location read as fallback). Role-agnostic — the caller assigns the slot
+ * (forensic triadRole or Phase 1 preliminaryRole) when it queues the photo.
+ * Returns null if the user cancels.
  */
-export async function captureEvidencePhoto(triadRole: TriadRole): Promise<CapturedEvidencePhoto | null> {
+export async function captureEvidencePhoto(): Promise<CapturedEvidencePhoto | null> {
   const result = await ImagePicker.launchCameraAsync({
     quality: 0.8,
     mediaTypes: ['images'],
@@ -139,7 +140,6 @@ export async function captureEvidencePhoto(triadRole: TriadRole): Promise<Captur
 
   return {
     localUri: asset.uri,
-    triadRole,
     mimeType: asset.mimeType ?? 'image/jpeg',
     exif,
     capturedAtUtc,

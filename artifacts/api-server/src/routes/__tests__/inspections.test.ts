@@ -1126,4 +1126,232 @@ describe('inspection routes', () => {
       expect(detail.body.inspection.status).toBe('submitted');
     });
   });
+
+  // Phase 1 (preliminary) funnel: a light top-of-funnel record that advances
+  // by identity (same row) to the unchanged forensic model at the P4
+  // checkpoint. Covers the testing gate: create/default phase, forward-only
+  // advance + resume, storm relocation + inherited-readonly, preliminary
+  // photos, and the permission gate.
+  describe('preliminary phase funnel (Phase 1 -> forensic)', () => {
+    const validStorm = {
+      date: '2026-05-01',
+      type: 'hail',
+      hailSize: 1.75,
+      windSpeed: null,
+      distance: 2.1,
+      description: 'Severe hail reported 2mi from property',
+      queriedLocation: '123 Main St',
+      dateOfLoss: '2026-05-01',
+      confirmedAtUtc: new Date().toISOString(),
+    };
+
+    it('defaults new inspections to the forensic phase (existing model untouched)', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-PH-DEFAULT' });
+      expect(res.status).toBe(201);
+      expect(res.body.inspection.phase).toBe('forensic');
+    });
+
+    it('creates a preliminary record with a damage type and no claim identity', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary', address: '9 Storm Way', damageType: 'wind_and_hail' });
+      expect(res.status).toBe(201);
+      expect(res.body.inspection.phase).toBe('preliminary');
+      expect(res.body.inspection.damageType).toBe('wind_and_hail');
+    });
+
+    it('advances a preliminary record to forensic in place, carrying its Phase 1 data', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary', address: '10 Hail Rd', damageType: 'hail' });
+      const inspectionId = create.body.inspection.id as string;
+
+      // Confirm the storm in Phase 1 (relocated out of forensic).
+      const storm = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: validStorm });
+      expect(storm.status).toBe(200);
+
+      // P4 advance: same id, phase -> forensic + claim identity + completion.
+      const completedAt = new Date().toISOString();
+      const advance = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({
+          phase: 'forensic',
+          preliminaryCompletedAt: completedAt,
+          insuredName: 'Jane Homeowner',
+          claimNumber: 'CLM-ADV',
+        });
+      expect(advance.status).toBe(200);
+      expect(advance.body.inspection.id).toBe(inspectionId);
+      expect(advance.body.inspection.phase).toBe('forensic');
+      expect(advance.body.inspection.preliminaryCompletedAt).toBeTruthy();
+
+      // Storm + damage type inherited without a re-pull; claim identity added.
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      expect(detail.body.inspection.phase).toBe('forensic');
+      expect(detail.body.inspection.damageType).toBe('hail');
+      expect(detail.body.inspection.stormConfirmedRef.type).toBe('hail');
+      expect(detail.body.inspection.insuredName).toBe('Jane Homeowner');
+      expect(detail.body.inspection.claimNumber).toBe('CLM-ADV');
+    });
+
+    it('rejects a backwards phase transition (forensic -> preliminary) with 400', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-REGRESS' });
+      const inspectionId = create.body.inspection.id as string;
+      const res = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary' });
+      expect(res.status).toBe(400);
+    });
+
+    it('leaves a preliminary record resumable when marked complete without advancing', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary', address: '11 Resume Ln', damageType: 'wind' });
+      const inspectionId = create.body.inspection.id as string;
+
+      const mark = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ preliminaryCompletedAt: new Date().toISOString() });
+      expect(mark.status).toBe(200);
+      // It stays preliminary (resumable), not forensic.
+      expect(mark.body.inspection.phase).toBe('preliminary');
+      expect(mark.body.inspection.preliminaryCompletedAt).toBeTruthy();
+    });
+
+    it('captures a preliminary photo tagged with a preliminaryRole and hydrates it', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary', address: '12 Photo Ct', damageType: 'hail' });
+      const inspectionId = create.body.inspection.id as string;
+
+      const photo = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({
+          subjectType: 'inspection',
+          preliminaryRole: 'front_of_home',
+          url: 'https://example.test/front.jpg',
+          sha256: 'f'.repeat(64),
+        });
+      expect(photo.status).toBe(201);
+      expect(photo.body.photo.preliminaryRole).toBe('front_of_home');
+
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      const roles = (detail.body.inspection.photos as Array<{ preliminaryRole: string | null }>).map(
+        (p) => p.preliminaryRole,
+      );
+      expect(roles).toContain('front_of_home');
+    });
+
+    it('allows storm confirm in preliminary but rejects any storm change once forensic', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary', address: '13 Storm Lock', damageType: 'hail' });
+      const inspectionId = create.body.inspection.id as string;
+
+      // Storm can be confirmed while preliminary.
+      const confirm = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: validStorm });
+      expect(confirm.status).toBe(200);
+
+      // Advance to forensic.
+      const advance = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'forensic', claimNumber: 'CLM-LOCK' });
+      expect(advance.status).toBe(200);
+
+      // A genuine storm CHANGE on the forensic record is rejected (read-only).
+      const changed = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: { ...validStorm, type: 'tornado', description: 'different event' } });
+      expect(changed.status).toBe(400);
+
+      // An idempotent replay of the SAME storm value is tolerated (no-op 200),
+      // so a re-drained outbox item doesn't wedge.
+      const detailBefore = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      const replay = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: detailBefore.body.inspection.stormConfirmedRef });
+      expect(replay.status).toBe(200);
+
+      // The stored storm never changed to the rejected value.
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      expect(detail.body.inspection.stormConfirmedRef.type).toBe('hail');
+    });
+
+    it('lets a forensic-first record confirm its storm once, then locks it', async () => {
+      // A record created directly as forensic (never through Phase 1) has no
+      // storm yet, so the first confirmation must succeed even in forensic.
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-FORENSIC-FIRST' });
+      const inspectionId = create.body.inspection.id as string;
+      expect(create.body.inspection.phase).toBe('forensic');
+      expect(create.body.inspection.stormConfirmedRef).toBeNull();
+
+      // First storm confirmation on a forensic-first record: allowed.
+      const confirm = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: validStorm });
+      expect(confirm.status).toBe(200);
+      expect(confirm.body.inspection.stormConfirmedRef.type).toBe('hail');
+
+      // Once established it is read-only: a genuine change is rejected.
+      const change = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: { ...validStorm, type: 'wind', description: 'other' } });
+      expect(change.status).toBe(400);
+
+      // An idempotent replay of the same value still passes.
+      const detail = await request(app)
+        .get(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid));
+      const replay = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ stormConfirmedRef: detail.body.inspection.stormConfirmedRef });
+      expect(replay.status).toBe(200);
+    });
+
+    it('still gates the preliminary flow to the inspection module (canvasser 403)', async () => {
+      const res = await request(app)
+        .post('/api/inspections')
+        .set(auth(canvasserA.sid))
+        .send({ phase: 'preliminary', address: 'blocked', damageType: 'hail' });
+      expect(res.status).toBe(403);
+    });
+  });
 });

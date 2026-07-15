@@ -23,6 +23,26 @@ export const INSPECTION_STATUSES = [
 ] as const;
 export type InspectionStatus = (typeof INSPECTION_STATUSES)[number];
 
+// Business phase of a single inspection record. An inspection begins as a
+// light top-of-funnel `preliminary` (address + damage type + 4 single-shot
+// photos + storm confirm + a homeowner report) and, at the P4 checkpoint,
+// advances IN PLACE to `forensic` — the same row inherits its Phase 1 data by
+// identity, so there are never two records for one property. `forensic` is the
+// default so every pre-existing inspection (and the unchanged forensic
+// create/gate model) keeps behaving exactly as before.
+export const INSPECTION_PHASES = ['preliminary', 'forensic'] as const;
+export type InspectionPhase = (typeof INSPECTION_PHASES)[number];
+
+// The four single-shot Phase 1 evidence slots (P2). Captured through the same
+// evidence module as the forensic triad but WITHOUT a triad (one shot each,
+// still hashed + GPS-stamped). `damage_closeup` is captured twice.
+export const PRELIMINARY_PHOTO_ROLES = [
+  'front_of_home',
+  'roof_overview',
+  'damage_closeup',
+] as const;
+export type PreliminaryPhotoRole = (typeof PRELIMINARY_PHOTO_ROLES)[number];
+
 // S0-S9 capture-stage vocabulary that lib/protocol (a later phase) will
 // attach rules to. Stored here as plain values now so photos/attestations
 // can reference a stage without a hard dependency on that package.
@@ -206,6 +226,18 @@ export const inspectionsTable = pgTable('inspections', {
     .notNull()
     .references(() => usersTable.id),
   status: varchar('status', { enum: INSPECTION_STATUSES }).notNull().default('scheduled'),
+  // Business phase (P0). Defaults to `forensic` so every pre-existing row and
+  // the unchanged forensic create path are untouched; the Phase 1 flow sets
+  // `preliminary` explicitly, and the P4 checkpoint advances it in place.
+  phase: varchar('phase', { enum: INSPECTION_PHASES }).notNull().default('forensic'),
+  // Phase 1 light damage type (P2), e.g. "hail" / "wind" / "wind_and_hail".
+  // Free text so the mobile choice set can evolve without a migration. Nullable
+  // because forensic-first inspections never capture it here.
+  damageType: text('damage_type'),
+  // Set when the inspector marks Phase 1 done at the P4 checkpoint (either
+  // "preliminary complete — resume later" or as provenance when advancing to
+  // forensic). Nullable until then.
+  preliminaryCompletedAt: timestamp('preliminary_completed_at', { withTimezone: true }),
   claimNumber: text('claim_number'),
   policyNumber: text('policy_number'),
   carrierName: text('carrier_name'),
@@ -363,6 +395,10 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   subjectType: varchar('subject_type', { enum: INSPECTION_SUBJECT_TYPES }).notNull(),
   subjectId: varchar('subject_id'),
   triadRole: varchar('triad_role', { enum: PHOTO_TRIAD_ROLES }),
+  // Phase 1 single-shot slot (P2). Mutually exclusive with `triadRole`: a
+  // preliminary photo sets this and leaves triadRole null; a forensic triad
+  // photo sets triadRole and leaves this null. Nullable for every existing row.
+  preliminaryRole: varchar('preliminary_role', { enum: PRELIMINARY_PHOTO_ROLES }),
   url: text('url').notNull(),
   sha256: text('sha256').notNull(),
   exifJson: jsonb('exif_json'),

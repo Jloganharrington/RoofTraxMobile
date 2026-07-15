@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { PreliminaryHub } from '@/components/PreliminaryHub';
 import { attestInspection } from '@/lib/inspectionSync';
 import {
   buildProtocolState,
@@ -60,12 +61,6 @@ export default function InspectionDetailScreen() {
     }
   }
 
-  const location = inspection?.address
-    ? inspection.address
-    : inspection?.latitude != null && inspection?.longitude != null
-      ? `${inspection.latitude},${inspection.longitude}`
-      : '';
-
   if (inspectionQuery.isLoading && !inspection) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -81,6 +76,13 @@ export default function InspectionDetailScreen() {
         <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Inspection not found.</Text>
       </View>
     );
+  }
+
+  // Phase 1 records get the light preliminary hub instead of the full forensic
+  // protocol dashboard. The record advances to forensic (this dashboard) only
+  // at the P4 checkpoint inside the hub.
+  if (inspection.phase === 'preliminary') {
+    return <PreliminaryHub inspection={inspection} id={id} />;
   }
 
   return (
@@ -153,28 +155,37 @@ export default function InspectionDetailScreen() {
         )}
       </View>
 
-      {/* B5 — Storm of record */}
+      {/* B5 — Storm of record. Once established the storm is read-only in
+          forensic: a storm confirmed in Phase 1 (preliminary) is inherited here
+          without a re-pull and never re-opened. But a forensic-first record
+          (started directly in forensic, never through Phase 1) has no storm yet,
+          so it still exposes a one-time confirm action. */}
       <Text style={[styles.section, { color: colors.foreground }]}>Storm of record</Text>
       <StageCard
-        icon="cloud"
-        title={inspection.stormConfirmedRef ? 'Storm confirmed' : 'Confirm the storm'}
+        icon={inspection.stormConfirmedRef ? 'check' : 'cloud'}
+        title={inspection.stormConfirmedRef ? 'Storm confirmed' : 'Confirm storm'}
         subtitle={
           inspection.stormConfirmedRef
-            ? `${inspection.stormConfirmedRef.type} · ${inspection.stormConfirmedRef.date}`
-            : 'Match the claim to a severe-weather event'
+            ? `${inspection.stormConfirmedRef.type} · ${inspection.stormConfirmedRef.date} — inherited from Phase 1`
+            : 'Match the property to a severe-weather event'
         }
         done={!!inspection.stormConfirmedRef}
-        onPress={() =>
-          router.push({
-            pathname: '/inspection-storm',
-            params: {
-              id,
-              location,
-              dateOfLoss: inspection.dateOfLoss ?? '',
-            },
-          })
-        }
         colors={colors}
+        // Read-only once set/inherited; only a forensic-first record without a
+        // storm can navigate to confirm it.
+        onPress={
+          inspection.stormConfirmedRef
+            ? undefined
+            : () =>
+                router.push({
+                  pathname: '/inspection-storm',
+                  params: {
+                    id,
+                    location: inspection.address ?? '',
+                    dateOfLoss: inspection.dateOfLoss ?? '',
+                  },
+                })
+        }
       />
 
       {/* Arrival (B6) — a pre-inspection step, NOT a protocol capture stage.
@@ -461,14 +472,12 @@ function StageCard({
   title: string;
   subtitle: string;
   done: boolean;
-  onPress: () => void;
+  // Omitting onPress renders a non-pressable, read-only card (no chevron).
+  onPress?: () => void;
   colors: ReturnType<typeof useColors>;
 }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.stageCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-    >
+  const body = (
+    <>
       <View
         style={[
           styles.stageIcon,
@@ -481,7 +490,19 @@ function StageCard({
         <Text style={[styles.stageTitle, { color: colors.foreground }]}>{title}</Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>{subtitle}</Text>
       </View>
-      <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+      {onPress ? <Icon name="chevron-right" size={20} color={colors.mutedForeground} /> : null}
+    </>
+  );
+  const cardStyle = [
+    styles.stageCard,
+    { backgroundColor: colors.card, borderColor: colors.border },
+  ];
+  if (!onPress) {
+    return <View style={cardStyle}>{body}</View>;
+  }
+  return (
+    <Pressable onPress={onPress} style={cardStyle}>
+      {body}
     </Pressable>
   );
 }

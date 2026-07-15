@@ -12,6 +12,7 @@ import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
 import type { InspectionPenetration } from './inspectionPenetration';
+import type { InspectionPhase } from './inspectionPhase';
 import type { InspectionPhoto } from './inspectionPhoto';
 import type { InspectionProduct } from './inspectionProduct';
 import type { InspectionSlope } from './inspectionSlope';
@@ -30,6 +31,17 @@ export interface Inspection {
   pinId: string | null;
   inspectorUserId: string;
   status: InspectionStatus;
+  phase: InspectionPhase;
+  /**
+     * Phase 1 light damage type (P2). Null for forensic-first records.
+     * @nullable
+     */
+  damageType: string | null;
+  /**
+     * Set at the P4 checkpoint when Phase 1 is marked complete (resume later) or as provenance when advancing to forensic.
+     * @nullable
+     */
+  preliminaryCompletedAt: Date | null;
   /** @nullable */
   claimNumber: string | null;
   /** @nullable */

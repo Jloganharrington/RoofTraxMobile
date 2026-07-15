@@ -141,11 +141,17 @@ export default function InspectionsScreen() {
                 {item.claimNumber ? `Claim ${item.claimNumber}` : item.address ?? '—'}
               </Text>
             </View>
-            <View style={[styles.badge, { backgroundColor: colors.accent }]}>
-              <Text style={[styles.badgeText, { color: colors.accentForeground }]}>
-                {STATUS_LABEL[item.status]}
-              </Text>
-            </View>
+            {item.phase === 'preliminary' ? (
+              <View style={[styles.badge, { backgroundColor: colors.insurance }]}>
+                <Text style={[styles.badgeText, { color: '#fff' }]}>Phase 1</Text>
+              </View>
+            ) : (
+              <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+                <Text style={[styles.badgeText, { color: colors.accentForeground }]}>
+                  {STATUS_LABEL[item.status]}
+                </Text>
+              </View>
+            )}
           </Pressable>
         ))
       )}

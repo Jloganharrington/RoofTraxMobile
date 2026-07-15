@@ -10,6 +10,7 @@ import type { InspectionPhotoExifJson } from './inspectionPhotoExifJson';
 import type { InspectionPhotoOverlayJson } from './inspectionPhotoOverlayJson';
 import type { InspectionSubjectType } from './inspectionSubjectType';
 import type { PhotoTriadRole } from './photoTriadRole';
+import type { PreliminaryPhotoRole } from './preliminaryPhotoRole';
 
 export interface InspectionPhoto {
   id: string;
@@ -20,6 +21,7 @@ export interface InspectionPhoto {
   /** @nullable */
   subjectId: string | null;
   triadRole: PhotoTriadRole | null;
+  preliminaryRole: PreliminaryPhotoRole | null;
   url: string;
   sha256: string;
   /** @nullable */

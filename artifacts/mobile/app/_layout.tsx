@@ -64,6 +64,15 @@ function AuthenticatedStack() {
         options={{ presentation: 'modal', title: 'Evidence Photos' }}
       />
       <Stack.Screen name="inspection-start" options={{ title: 'Start Inspection' }} />
+      <Stack.Screen
+        name="inspection-preliminary-intake"
+        options={{ title: 'Preliminary Intake' }}
+      />
+      <Stack.Screen
+        name="inspection-preliminary-photos"
+        options={{ title: 'Phase 1 Photos' }}
+      />
+      <Stack.Screen name="inspection-report" options={{ title: 'Homeowner Report' }} />
       <Stack.Screen name="inspection-intake" options={{ title: 'Claim Intake' }} />
       <Stack.Screen name="inspection/[id]" options={{ title: 'Inspection' }} />
       <Stack.Screen name="inspection-storm" options={{ title: 'Confirm Storm' }} />

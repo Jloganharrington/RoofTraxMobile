@@ -10,6 +10,7 @@ import type { CreateInspectionPhotoInputExifJson } from './createInspectionPhoto
 import type { CreateInspectionPhotoInputOverlayJson } from './createInspectionPhotoInputOverlayJson';
 import type { InspectionSubjectType } from './inspectionSubjectType';
 import type { PhotoTriadRole } from './photoTriadRole';
+import type { PreliminaryPhotoRole } from './preliminaryPhotoRole';
 
 export interface CreateInspectionPhotoInput {
   /** Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row. */
@@ -19,6 +20,7 @@ export interface CreateInspectionPhotoInput {
   /** @nullable */
   subjectId?: string | null;
   triadRole?: PhotoTriadRole | null;
+  preliminaryRole?: PreliminaryPhotoRole | null;
   /** @minLength 1 */
   url: string;
   /** @minLength 1 */

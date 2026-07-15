@@ -70,6 +70,20 @@ import { getCompanyCrmConfig } from '../lib/crm';
 
 const router: IRouter = Router();
 
+// Order-independent JSON comparison. A zod-parsed request body and a jsonb
+// value read back from Postgres can serialize their keys in different orders,
+// so a raw JSON.stringify comparison of two structurally-equal objects can
+// wrongly differ. Recursively sorting object keys makes equality stable.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+  return `{${entries.join(',')}}`;
+}
+
 // This entire module is thin CRUD by design (per Phase M-A's isolation
 // boundary): validate the payload, stamp the tenant, store it. No
 // squares/waste/pricing/scoring/derived logic lives here — that belongs to
@@ -361,6 +375,11 @@ router.post('/inspections', async (req: Request, res: Response) => {
     companyId: actor.companyId,
     inspectorUserId: requestedOwnerId,
     status: parsed.data.status ?? undefined,
+    // P0/P2 — a new record may open as a light `preliminary` (Phase 1) or, by
+    // default, straight into the unchanged `forensic` model. `damageType` is
+    // the Phase 1 light damage classification.
+    phase: parsed.data.phase ?? undefined,
+    damageType: parsed.data.damageType ?? undefined,
     pinId: parsed.data.pinId ?? undefined,
     claimNumber: parsed.data.claimNumber ?? undefined,
     policyNumber: parsed.data.policyNumber ?? undefined,
@@ -470,10 +489,51 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     return;
   }
 
+  // P0/P4 — phase transitions are forward-only. A record may advance from
+  // `preliminary` to `forensic` (in place, carrying its Phase 1 data), but it
+  // can never regress: forensic is terminal and a no-op re-set of the current
+  // phase is fine. Any other transition is rejected so the funnel can't run
+  // backwards or skip the checkpoint.
+  if (parsed.data.phase !== undefined && parsed.data.phase !== inspection.phase) {
+    const isForwardAdvance =
+      inspection.phase === 'preliminary' && parsed.data.phase === 'forensic';
+    if (!isForwardAdvance) {
+      res.status(400).json({ error: 'Invalid phase transition' });
+      return;
+    }
+  }
+
+  // P1/P5 — once a storm of record is established it is read-only in the
+  // forensic phase: a storm confirmed in Phase 1 (preliminary) is inherited
+  // here without a re-pull and can never be re-written downstream. But a
+  // forensic-first record (created directly as forensic, never through Phase 1,
+  // storm still unset) must still be able to confirm its storm once. So: allow
+  // the first confirmation when none exists, tolerate an idempotent offline
+  // replay of the exact same value, and reject any genuine change once set.
+  if (
+    parsed.data.stormConfirmedRef !== undefined &&
+    inspection.phase === 'forensic' &&
+    inspection.stormConfirmedRef !== null
+  ) {
+    const incoming = stableStringify(parsed.data.stormConfirmedRef ?? null);
+    const existing = stableStringify(inspection.stormConfirmedRef);
+    if (incoming !== existing) {
+      res
+        .status(400)
+        .json({ error: 'Storm of record is read-only once confirmed in the forensic phase' });
+      return;
+    }
+  }
+
   const [updated] = await db
     .update(inspectionsTable)
     .set({
       ...(parsed.data.status !== undefined && { status: parsed.data.status }),
+      ...(parsed.data.phase !== undefined && { phase: parsed.data.phase }),
+      ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
+      ...(parsed.data.preliminaryCompletedAt !== undefined && {
+        preliminaryCompletedAt: parsed.data.preliminaryCompletedAt,
+      }),
       ...(parsed.data.pinId !== undefined && { pinId: parsed.data.pinId }),
       ...(parsed.data.claimNumber !== undefined && { claimNumber: parsed.data.claimNumber }),
       ...(parsed.data.policyNumber !== undefined && { policyNumber: parsed.data.policyNumber }),
@@ -1035,6 +1095,7 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     subjectType: parsed.data.subjectType,
     subjectId: parsed.data.subjectId ?? undefined,
     triadRole: parsed.data.triadRole ?? undefined,
+    preliminaryRole: parsed.data.preliminaryRole ?? undefined,
     url: parsed.data.url,
     sha256: parsed.data.sha256,
     exifJson: parsed.data.exifJson ?? undefined,
