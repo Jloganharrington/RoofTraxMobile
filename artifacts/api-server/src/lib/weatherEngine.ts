@@ -9,6 +9,8 @@ export type WeatherEventType = 'hail' | 'wind' | 'tornado';
 export interface NormalizedWeatherEvent {
   type: WeatherEventType;
   date: string;
+  // Local time of day "HH:MM" (24h) when the provider reported one, else null.
+  time: string | null;
   size: number | null;
   distance: number | null;
   magnitude: number | null;
@@ -54,10 +56,15 @@ export function normalizeEvents(raw: RawVisualCrossingResponse): NormalizedWeath
       const type = classifyType(ev.type);
       if (type === 'other') continue;
 
-      const date = (ev.datetime ?? day.datetime ?? '').slice(0, 10);
+      const datetime = ev.datetime ?? day.datetime ?? '';
+      const date = datetime.slice(0, 10);
+      // VisualCrossing event datetimes look like "2025-04-17T23:47:00"; a
+      // date-only string has no time component worth surfacing.
+      const time = /^\d{2}:\d{2}/.test(datetime.slice(11)) ? datetime.slice(11, 16) : null;
       events.push({
         type,
         date,
+        time,
         size: numOrNull(ev.size),
         distance: numOrNull(ev.distance),
         magnitude: numOrNull(ev.magnitude ?? ev.speed ?? ev.windspeed),
@@ -77,6 +84,11 @@ export interface AggregatedDay {
   distance: number | null;
   types: Set<WeatherEventType>;
   description: string | null;
+  // Time of day of the event that set each per-type extreme, so the surfaced
+  // time always belongs to the day's headline report (see primaryTime).
+  hailTime: string | null;
+  windTime: string | null;
+  tornadoTime: string | null;
 }
 
 export function aggregateByDate(events: NormalizedWeatherEvent[]): Map<string, AggregatedDay> {
@@ -92,6 +104,9 @@ export function aggregateByDate(events: NormalizedWeatherEvent[]): Map<string, A
         distance: null,
         types: new Set(),
         description: null,
+        hailTime: null,
+        windTime: null,
+        tornadoTime: null,
       };
       byDate.set(ev.date, day);
     }
@@ -99,10 +114,22 @@ export function aggregateByDate(events: NormalizedWeatherEvent[]): Map<string, A
     day.types.add(ev.type);
 
     if (ev.type === 'hail' && ev.size != null) {
+      if (day.hailSize == null || ev.size > day.hailSize) day.hailTime = ev.time;
       day.hailSize = day.hailSize == null ? ev.size : Math.max(day.hailSize, ev.size);
     }
     if ((ev.type === 'wind' || ev.type === 'tornado') && ev.magnitude != null) {
+      if (day.windSpeed == null || ev.magnitude > day.windSpeed) {
+        day.windTime = ev.time;
+        // The day's strongest wind-family signal came from a tornado: that
+        // tornado is the day's tornado extreme too.
+        if (ev.type === 'tornado') day.tornadoTime = ev.time;
+      }
       day.windSpeed = day.windSpeed == null ? ev.magnitude : Math.max(day.windSpeed, ev.magnitude);
+    }
+    // Magnitude-less tornado reports can still contribute a first-seen time,
+    // but never displace the time of a tornado that set the day's extreme.
+    if (ev.type === 'tornado' && day.tornadoTime == null) {
+      day.tornadoTime = ev.time;
     }
     if (ev.distance != null) {
       day.distance = day.distance == null ? ev.distance : Math.min(day.distance, ev.distance);
@@ -147,4 +174,14 @@ export function primaryType(day: AggregatedDay): WeatherEventType {
   if (day.types.has('tornado')) return 'tornado';
   if (day.types.has('hail')) return 'hail';
   return 'wind';
+}
+
+// Time of day of the day's primary event (mirrors primaryType's precedence),
+// falling back across types so a candidate shows SOME reported time whenever
+// the provider gave one.
+export function primaryTime(day: AggregatedDay): string | null {
+  const type = primaryType(day);
+  if (type === 'tornado') return day.tornadoTime ?? day.hailTime ?? day.windTime;
+  if (type === 'hail') return day.hailTime ?? day.windTime ?? day.tornadoTime;
+  return day.windTime ?? day.hailTime ?? day.tornadoTime;
 }

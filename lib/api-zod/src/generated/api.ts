@@ -669,7 +669,8 @@ export const ListInspectionsResponse = zod.object({
   "description": zod.string().nullable(),
   "queriedLocation": zod.string(),
   "dateOfLoss": zod.string().nullable(),
-  "confirmedAtUtc": zod.string()
+  "confirmedAtUtc": zod.string(),
+  "time": zod.string().nullish()
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
@@ -904,7 +905,8 @@ export const CreateInspectionResponse = zod.object({
   "description": zod.string().nullable(),
   "queriedLocation": zod.string(),
   "dateOfLoss": zod.string().nullable(),
-  "confirmedAtUtc": zod.string()
+  "confirmedAtUtc": zod.string(),
+  "time": zod.string().nullish()
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
@@ -1125,7 +1127,8 @@ export const GetInspectionResponse = zod.object({
   "description": zod.string().nullable(),
   "queriedLocation": zod.string(),
   "dateOfLoss": zod.string().nullable(),
-  "confirmedAtUtc": zod.string()
+  "confirmedAtUtc": zod.string(),
+  "time": zod.string().nullish()
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
@@ -1342,7 +1345,8 @@ export const UpdateInspectionBody = zod.object({
   "description": zod.string().nullable(),
   "queriedLocation": zod.string(),
   "dateOfLoss": zod.string().nullable(),
-  "confirmedAtUtc": zod.string()
+  "confirmedAtUtc": zod.string(),
+  "time": zod.string().nullish()
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]).optional(),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
@@ -1387,7 +1391,8 @@ export const UpdateInspectionResponse = zod.object({
   "description": zod.string().nullable(),
   "queriedLocation": zod.string(),
   "dateOfLoss": zod.string().nullable(),
-  "confirmedAtUtc": zod.string()
+  "confirmedAtUtc": zod.string(),
+  "time": zod.string().nullish()
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
@@ -2041,7 +2046,8 @@ export const SubmitInspectionResponse = zod.object({
   "description": zod.string().nullable(),
   "queriedLocation": zod.string(),
   "dateOfLoss": zod.string().nullable(),
-  "confirmedAtUtc": zod.string()
+  "confirmedAtUtc": zod.string(),
+  "time": zod.string().nullish()
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
@@ -2459,6 +2465,7 @@ export const GetWeatherEventsQueryParams = zod.object({
 export const GetWeatherEventsResponse = zod.object({
   "candidates": zod.array(zod.object({
   "date": zod.string(),
+  "time": zod.string().nullable(),
   "type": zod.enum(['hail', 'wind', 'tornado']),
   "hailSize": zod.number().nullable(),
   "windSpeed": zod.number().nullable(),

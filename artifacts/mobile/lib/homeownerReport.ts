@@ -154,9 +154,30 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+// Title-case each word ("hail" -> "Hail", "wind and hail" -> "Wind and Hail"),
+// leaving connector words like "and"/"&" lowercase.
+function titleCaseType(value: string): string {
+  return value
+    .split(' ')
+    .map((w) => (w === 'and' || w === '&' ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+}
+
+// Formats "HH:MM" (24h) as a friendly "11:47 PM"-style time.
+function formatTime(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm);
+  if (!m) return hhmm;
+  const h = Number(m[1]);
+  if (h > 23) return hhmm;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]} ${suffix}`;
+}
+
 function damageLabel(inspection: Inspection): string {
   return inspection.damageType
-    ? DAMAGE_TYPE_LABEL[inspection.damageType] ?? inspection.damageType
+    ? DAMAGE_TYPE_LABEL[inspection.damageType] ??
+        titleCaseType(inspection.damageType.replace(/_/g, ' '))
     : 'Storm-related damage';
 }
 
@@ -193,9 +214,12 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
     })
     .join('');
 
-  const weatherValue = storm ? esc(storm.type) : 'Not yet matched';
+  const weatherValue = storm ? esc(titleCaseType(storm.type)) : 'Not yet matched';
+  const stormWhen = storm
+    ? esc(storm.date) + (storm.time ? ` at ${esc(formatTime(storm.time))}` : '')
+    : '';
   const weatherSub = storm
-    ? esc(storm.date) + (storm.description ? ` &mdash; ${esc(storm.description)}` : '')
+    ? stormWhen + (storm.description ? ` &mdash; ${esc(storm.description)}` : '')
     : 'A severe-weather event has not been matched yet.';
 
   const steps = NEXT_STEPS.map(

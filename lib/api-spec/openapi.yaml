@@ -2636,6 +2636,10 @@ components:
           type: [string, "null"]
         confirmedAtUtc:
           type: string
+        # Local time of day (HH:MM, 24h) of the confirmed event. Optional so
+        # storms confirmed before this field existed keep parsing.
+        time:
+          type: [string, "null"]
     ArrivalConditions:
       type: object
       description: Arrival-conditions log captured in S1 (B6).
@@ -3967,10 +3971,14 @@ components:
     WeatherCandidate:
       type: object
       description: A deterministic candidate storm event (B5). No AI scoring.
-      required: [date, type, hailSize, windSpeed, tornado, severityScore, description]
+      required: [date, type, hailSize, windSpeed, tornado, severityScore, description, time]
       properties:
         date:
           type: string
+        # Local time of day (HH:MM, 24h) of the day's primary event, when the
+        # provider reported one.
+        time:
+          type: [string, "null"]
         type:
           type: string
           enum: [hail, wind, tornado]

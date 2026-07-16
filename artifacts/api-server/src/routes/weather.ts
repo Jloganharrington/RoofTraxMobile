@@ -9,6 +9,7 @@ import {
   aggregateByDate,
   normalizeEvents,
   passesHardGates,
+  primaryTime,
   primaryType,
   severityScore,
   type NormalizedWeatherEvent,
@@ -175,6 +176,7 @@ router.get('/weather/events', async (req: Request, res: Response) => {
 
   const candidates = qualifying.slice(0, MAX_CANDIDATES).map((day) => ({
     date: day.date,
+    time: primaryTime(day),
     type: primaryType(day),
     hailSize: day.hailSize,
     windSpeed: day.windSpeed,

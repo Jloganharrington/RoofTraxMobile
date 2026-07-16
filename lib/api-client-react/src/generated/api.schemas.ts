@@ -503,6 +503,8 @@ export interface StormConfirmedRef {
   /** @nullable */
   dateOfLoss: string | null;
   confirmedAtUtc: string;
+  /** @nullable */
+  time?: string | null;
 }
 
 /**
@@ -1415,6 +1417,8 @@ export const WeatherCandidateType = {
  */
 export interface WeatherCandidate {
   date: string;
+  /** @nullable */
+  time: string | null;
   type: WeatherCandidateType;
   /** @nullable */
   hailSize: number | null;

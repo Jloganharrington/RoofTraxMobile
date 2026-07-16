@@ -6,6 +6,7 @@ import {
   normalizeEvents,
   numOrNull,
   passesHardGates,
+  primaryTime,
   primaryType,
   severityScore,
   type RawVisualCrossingResponse,
@@ -21,9 +22,15 @@ const raw: RawVisualCrossingResponse = {
     {
       datetime: '2025-06-01',
       events: [
-        { type: 'Hail', datetime: '2025-06-01', size: 1.5, distance: 3 },
-        { type: 'Hail', datetime: '2025-06-01', size: 2.0, distance: 5, description: 'Large hail' },
-        { type: 'Thunderstorm Wind', datetime: '2025-06-01', speed: 70, distance: 2 },
+        { type: 'Hail', datetime: '2025-06-01T14:05:00', size: 1.5, distance: 3 },
+        {
+          type: 'Hail',
+          datetime: '2025-06-01T15:32:00',
+          size: 2.0,
+          distance: 5,
+          description: 'Large hail',
+        },
+        { type: 'Thunderstorm Wind', datetime: '2025-06-01T16:10:00', speed: 70, distance: 2 },
       ],
     },
     {
@@ -65,6 +72,14 @@ describe('normalizeEvents', () => {
     expect(events).toHaveLength(5);
     expect(events[0].date).toBe('2025-06-03'); // tornado, most recent
     expect(events.every((e) => e.type !== ('other' as never))).toBe(true);
+  });
+
+  it('extracts time of day from event datetimes, null for date-only', () => {
+    const events = normalizeEvents(raw);
+    const bigHail = events.find((e) => e.date === '2025-06-01' && e.size === 2.0);
+    expect(bigHail?.time).toBe('15:32');
+    const wind0602 = events.find((e) => e.date === '2025-06-02');
+    expect(wind0602?.time).toBeNull(); // date-only datetime
   });
 
   it('pulls wind magnitude from speed/windspeed fields', () => {
@@ -128,5 +143,36 @@ describe('severityScore + primaryType', () => {
     const byDate = aggregateByDate(normalizeEvents(raw));
     expect(primaryType(byDate.get('2025-06-03')!)).toBe('tornado');
     expect(primaryType(byDate.get('2025-06-01')!)).toBe('hail');
+  });
+
+  it('primaryTime follows the event that set the primary extreme', () => {
+    const byDate = aggregateByDate(normalizeEvents(raw));
+    // Hail day: time of the max-size hail report, not the first or the wind.
+    expect(primaryTime(byDate.get('2025-06-01')!)).toBe('15:32');
+    // Date-only datetimes yield no time.
+    expect(primaryTime(byDate.get('2025-06-02')!)).toBeNull();
+  });
+
+  it('tornado time follows the strongest tornado, with magnitude-less fallback', () => {
+    const byDate = aggregateByDate(
+      normalizeEvents({
+        days: [
+          {
+            datetime: '2025-06-10',
+            events: [
+              { type: 'Tornado', datetime: '2025-06-10T13:00:00', magnitude: 1, distance: 9 },
+              { type: 'Tornado', datetime: '2025-06-10T18:20:00', magnitude: 3, distance: 4 },
+              { type: 'Tornado', datetime: '2025-06-10T19:00:00', magnitude: 2, distance: 6 },
+            ],
+          },
+          {
+            datetime: '2025-06-11',
+            events: [{ type: 'Tornado', datetime: '2025-06-11T07:45:00', distance: 12 }],
+          },
+        ],
+      }),
+    );
+    expect(primaryTime(byDate.get('2025-06-10')!)).toBe('18:20'); // strongest tornado
+    expect(primaryTime(byDate.get('2025-06-11')!)).toBe('07:45'); // magnitude-less fallback
   });
 });

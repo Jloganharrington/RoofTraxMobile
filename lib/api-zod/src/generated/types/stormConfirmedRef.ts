@@ -25,4 +25,6 @@ export interface StormConfirmedRef {
   /** @nullable */
   dateOfLoss: string | null;
   confirmedAtUtc: string;
+  /** @nullable */
+  time?: string | null;
 }

@@ -12,6 +12,8 @@ import type { WeatherCandidateType } from './weatherCandidateType';
  */
 export interface WeatherCandidate {
   date: string;
+  /** @nullable */
+  time: string | null;
   type: WeatherCandidateType;
   /** @nullable */
   hailSize: number | null;

@@ -41,6 +41,7 @@ export default function InspectionStormScreen() {
     await patchInspection(queryClient, id, {
       stormConfirmedRef: {
         date: candidate.date,
+        time: candidate.time ?? null,
         type: candidate.type,
         hailSize: candidate.hailSize,
         windSpeed: candidate.windSpeed,
