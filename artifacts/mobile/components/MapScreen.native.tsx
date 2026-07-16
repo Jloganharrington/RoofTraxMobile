@@ -195,6 +195,7 @@ export default function MapScreen() {
       <AddressSearchBar
         onSelect={handleSearchSelect}
         localItems={pins.filter((p): p is typeof p & { address: string } => !!p.address)}
+        near={coords}
       />
 
       {(locLoading || pinsQuery.isLoading) && (

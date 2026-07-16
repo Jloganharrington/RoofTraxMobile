@@ -31,6 +31,7 @@ export function AddressSearchBar({
   placeholder = 'Search an address…',
   variant = 'floating',
   localItems = [],
+  near,
 }: {
   onSelect: (result: GeocodeSearchResult) => void;
   placeholder?: string;
@@ -41,6 +42,9 @@ export function AddressSearchBar({
   // Already-loaded records (e.g. the map's pins) matched locally before any
   // network lookup happens.
   localItems?: LocalAddressItem[];
+  // Rep's current position; biases the remote (US-only) lookup so nearby
+  // streets rank first instead of matches from across the country.
+  near?: { latitude: number; longitude: number } | null;
 }) {
   const colors = useColors();
   const [query, setQuery] = useState('');
@@ -68,7 +72,9 @@ export function AddressSearchBar({
   // `debouncedQuery === trimmed` prevents a stale fetch (and stale results)
   // during the window where the user has edited the text but the debounce
   // hasn't fired yet — e.g. backspacing below 3 chars.
-  const params = { q: debouncedQuery };
+  const params = near
+    ? { q: debouncedQuery, latitude: near.latitude, longitude: near.longitude }
+    : { q: debouncedQuery };
   const remoteEnabled =
     trimmed.length >= 3 && debouncedQuery === trimmed && localMatches.length === 0;
   const searchQuery = useSearchAddress(params, {
