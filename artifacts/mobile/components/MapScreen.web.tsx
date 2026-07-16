@@ -66,6 +66,7 @@ export default function MapScreenWeb() {
       <AddressSearchBar
         variant="inline"
         onSelect={(result) => setSearchedLocation(result)}
+        localItems={pins.filter((p): p is typeof p & { address: string } => !!p.address)}
       />
 
       {searchedLocation && (

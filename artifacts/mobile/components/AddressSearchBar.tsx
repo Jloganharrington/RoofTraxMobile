@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -13,15 +13,24 @@ import { getSearchAddressQueryKey, useSearchAddress } from '@workspace/api-clien
 import type { GeocodeSearchResult } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 
-// Debounced free-text address search, backed by /geocode/search. Lets a rep
-// look up a specific address instead of only working off their current GPS
-// position. Renders as a floating search bar with a results dropdown; the
-// caller decides what happens when a result is picked (recenter a real map,
-// or offer to drop a pin, on platforms with no map to pan).
+export interface LocalAddressItem {
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+// Free-text address search. Matches the caller's own pins/records FIRST with an
+// instant, case-insensitive substring match (no network) — that covers the
+// common "find a property we already pinned" case. Only when nothing local
+// matches does it fall back to the debounced /geocode/search worldwide lookup,
+// which can be slow (public Nominatim). The caller decides what happens when a
+// result is picked (recenter a real map, or offer to drop a pin, on platforms
+// with no map to pan).
 export function AddressSearchBar({
   onSelect,
   placeholder = 'Search an address…',
   variant = 'floating',
+  localItems = [],
 }: {
   onSelect: (result: GeocodeSearchResult) => void;
   placeholder?: string;
@@ -29,6 +38,9 @@ export function AddressSearchBar({
   // renders in normal document flow, for the web list fallback which has
   // no map to overlay.
   variant?: 'floating' | 'inline';
+  // Already-loaded records (e.g. the map's pins) matched locally before any
+  // network lookup happens.
+  localItems?: LocalAddressItem[];
 }) {
   const colors = useColors();
   const [query, setQuery] = useState('');
@@ -40,15 +52,35 @@ export function AddressSearchBar({
     return () => clearTimeout(handle);
   }, [query]);
 
+  // Instant local matching: plain case-insensitive substring over the caller's
+  // records. Uses the live (undebounced) query so results update per keystroke.
+  const trimmed = query.trim();
+  const localMatches = useMemo(() => {
+    if (trimmed.length < 2) return [];
+    const needle = trimmed.toLowerCase();
+    return localItems
+      .filter((item) => item.address.toLowerCase().includes(needle))
+      .slice(0, 8);
+  }, [localItems, trimmed]);
+
+  // Only hit the (slow, external) geocoder when nothing local matches AND the
+  // debounced query has caught up with what the user currently sees. Gating on
+  // `debouncedQuery === trimmed` prevents a stale fetch (and stale results)
+  // during the window where the user has edited the text but the debounce
+  // hasn't fired yet — e.g. backspacing below 3 chars.
   const params = { q: debouncedQuery };
+  const remoteEnabled =
+    trimmed.length >= 3 && debouncedQuery === trimmed && localMatches.length === 0;
   const searchQuery = useSearchAddress(params, {
     query: {
-      enabled: debouncedQuery.length >= 3,
+      enabled: remoteEnabled,
       queryKey: getSearchAddressQueryKey(params),
     },
   });
 
-  const results = searchQuery.data?.results ?? [];
+  // Remote results render only while remote mode is genuinely active for the
+  // current input; otherwise they'd flash stale content mid-typing.
+  const results = remoteEnabled ? searchQuery.data?.results ?? [] : [];
 
   function handleSelect(result: GeocodeSearchResult) {
     setQuery(result.address);
@@ -79,7 +111,7 @@ export function AddressSearchBar({
           placeholderTextColor={colors.mutedForeground}
           style={[styles.input, { color: colors.foreground }]}
         />
-        {searchQuery.isFetching ? (
+        {remoteEnabled && searchQuery.isFetching ? (
           <ActivityIndicator size="small" />
         ) : query.length > 0 ? (
           <Pressable onPress={handleClear} hitSlop={8}>
@@ -88,11 +120,44 @@ export function AddressSearchBar({
         ) : null}
       </View>
 
-      {open && debouncedQuery.length >= 3 && (
+      {open && (localMatches.length > 0 || trimmed.length >= 3) && (
         <View
           style={[styles.dropdown, { backgroundColor: colors.card, borderColor: colors.border }]}
         >
-          {results.length === 0 && !searchQuery.isFetching ? (
+          {localMatches.length > 0 ? (
+            localMatches.map((item, index) => (
+              <Pressable
+                key={`${item.latitude},${item.longitude},${index}`}
+                onPress={() =>
+                  handleSelect({
+                    address: item.address,
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                  })
+                }
+                style={[
+                  styles.resultRow,
+                  index < localMatches.length - 1 && {
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                  },
+                ]}
+              >
+                <Icon name="map-pin" size={14} color={colors.primary} />
+                <Text
+                  style={[styles.resultText, { color: colors.foreground }]}
+                  numberOfLines={2}
+                >
+                  {item.address}
+                </Text>
+                <Text style={[styles.tag, { color: colors.mutedForeground }]}>Pinned</Text>
+              </Pressable>
+            ))
+          ) : !remoteEnabled || searchQuery.isFetching ? (
+            <Text style={[styles.empty, { color: colors.mutedForeground }]}>
+              Searching…
+            </Text>
+          ) : results.length === 0 ? (
             <Text style={[styles.empty, { color: colors.mutedForeground }]}>
               No matches found
             </Text>
@@ -172,5 +237,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   resultText: { flex: 1, fontSize: 14 },
+  tag: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   empty: { padding: 12, fontSize: 13, textAlign: 'center' },
 });

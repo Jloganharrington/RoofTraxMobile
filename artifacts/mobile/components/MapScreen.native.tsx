@@ -192,7 +192,10 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      <AddressSearchBar onSelect={handleSearchSelect} />
+      <AddressSearchBar
+        onSelect={handleSearchSelect}
+        localItems={pins.filter((p): p is typeof p & { address: string } => !!p.address)}
+      />
 
       {(locLoading || pinsQuery.isLoading) && (
         <View style={styles.loadingBadge} pointerEvents="none">
