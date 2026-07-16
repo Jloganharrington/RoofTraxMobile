@@ -1,71 +1,44 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
-import type { Inspection } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
+import {
+  emailHomeownerReport,
+  generateHomeownerReportPdf,
+  shareHomeownerReport,
+} from '@/lib/homeownerReport';
 
-// P3 — on-device shareable homeowner report. A plain-language summary of the
-// Phase 1 findings: what damage was found, the severe-weather event it ties to,
-// and the fixed next-steps path. It is deliberately NOT a quote or a coverage
-// opinion — no pricing, no "you are covered / not covered" language — so the
-// homeowner leaves with facts and a process, nothing that reads as a promise.
+// P3 — the homeowner report. This screen previews the Phase 1 findings and then
+// turns everything captured — property, damage type, matched storm, homeowner
+// facts, and the four evidence photos — into a PDF. That PDF IS the summary: it
+// can be downloaded via the OS share sheet, or attached to a new email in the
+// device's mail app for the inspector to send to the homeowner. It is
+// deliberately NOT a quote or a coverage opinion.
 const NEXT_STEPS: Array<{ title: string; detail: string }> = [
-  {
-    title: 'File a claim',
-    detail: 'Open a claim with your insurance carrier for the storm date noted above.',
-  },
-  {
-    title: 'Pay for a forensic inspection',
-    detail: 'Authorize the detailed, documented forensic roof inspection.',
-  },
-  {
-    title: 'Forensic inspection',
-    detail: 'A full evidence capture of every slope, elevation, and damaged component.',
-  },
-  {
-    title: 'Proof package',
-    detail: 'The findings are compiled into a documented, photo-backed report.',
-  },
-  {
-    title: 'Claim negotiation',
-    detail: 'The proof package supports the conversation with your carrier.',
-  },
+  { title: 'File a claim', detail: 'Open a claim with your insurance carrier for the storm date noted above.' },
+  { title: 'Pay for a forensic inspection', detail: 'Authorize the detailed, documented forensic roof inspection.' },
+  { title: 'Forensic inspection', detail: 'A full evidence capture of every slope, elevation, and damaged component.' },
+  { title: 'Proof package', detail: 'The findings are compiled into a documented, photo-backed report.' },
+  { title: 'Claim negotiation', detail: 'The proof package supports the conversation with your carrier.' },
 ];
 
-function buildShareText(inspection: Inspection): string {
-  const lines: string[] = [];
-  lines.push('Preliminary Roof Inspection Summary');
-  if (inspection.address) lines.push(inspection.address);
-  lines.push('');
-
-  const damage = inspection.damageType
-    ? DAMAGE_TYPE_LABEL[inspection.damageType] ?? inspection.damageType
-    : 'Storm-related damage';
-  lines.push(`Damage found: ${damage}`);
-
-  const storm = inspection.stormConfirmedRef;
-  if (storm) {
-    lines.push(`Weather event: ${storm.type} on ${storm.date}`);
-  }
-  lines.push('');
-
-  lines.push('Next steps:');
-  NEXT_STEPS.forEach((step, i) => {
-    lines.push(`${i + 1}. ${step.title} — ${step.detail}`);
-  });
-
-  return lines.join('\n');
+function parseRecipients(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.includes('@'));
 }
 
 export default function InspectionReportScreen() {
@@ -77,17 +50,43 @@ export default function InspectionReportScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  const shareText = useMemo(
-    () => (inspection ? buildShareText(inspection) : ''),
-    [inspection],
-  );
+  const [recipientText, setRecipientText] = useState('');
+  const [busy, setBusy] = useState<null | 'email' | 'download'>(null);
 
-  async function handleShare() {
-    if (!shareText) return;
+  async function handleEmail() {
+    if (!inspection || busy) return;
+    setBusy('email');
     try {
-      await Share.share({ message: shareText });
-    } catch {
-      // The user dismissing the share sheet is not an error worth surfacing.
+      const pdfUri = await generateHomeownerReportPdf(inspection);
+      const sent = await emailHomeownerReport(pdfUri, inspection, parseRecipients(recipientText));
+      if (!sent) {
+        // No mail client set up — fall back to the share sheet so the report
+        // still leaves the device.
+        await shareHomeownerReport(pdfUri);
+        Alert.alert(
+          'No email app found',
+          'This device has no email account set up, so the share sheet opened instead — you can still send or save the report from there.',
+        );
+      }
+    } catch (err) {
+      console.warn('[report] email failed', err);
+      Alert.alert('Could not create report', 'Something went wrong generating the PDF. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDownload() {
+    if (!inspection || busy) return;
+    setBusy('download');
+    try {
+      const pdfUri = await generateHomeownerReportPdf(inspection);
+      await shareHomeownerReport(pdfUri);
+    } catch (err) {
+      console.warn('[report] download failed', err);
+      Alert.alert('Could not create report', 'Something went wrong generating the PDF. Try again.');
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -112,6 +111,8 @@ export default function InspectionReportScreen() {
     ? DAMAGE_TYPE_LABEL[inspection.damageType] ?? inspection.damageType
     : 'Storm-related damage';
   const storm = inspection.stormConfirmedRef;
+  const facts = inspection.homeownerFacts;
+  const photoCount = (inspection.photos ?? []).filter((p) => p.preliminaryRole).length;
 
   return (
     <ScrollView
@@ -166,6 +167,25 @@ export default function InspectionReportScreen() {
         </View>
       </View>
 
+      {facts ? (
+        <>
+          <Text style={[styles.section, { color: colors.foreground }]}>Homeowner-reported facts</Text>
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <FactRow
+              label="Aware of the date of loss"
+              value={facts.awareOfDateOfLoss === true ? 'Yes' : facts.awareOfDateOfLoss === false ? 'No' : 'Unsure'}
+              colors={colors}
+            />
+            {facts.priorRepairs ? (
+              <FactRow label="Prior repairs reported" value={facts.priorRepairs} colors={colors} />
+            ) : null}
+            {facts.priorClaims ? (
+              <FactRow label="Prior claims reported" value={facts.priorClaims} colors={colors} />
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
       <Text style={[styles.section, { color: colors.foreground }]}>Next steps</Text>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {NEXT_STEPS.map((step, i) => (
@@ -183,18 +203,78 @@ export default function InspectionReportScreen() {
         ))}
       </View>
 
-      <Pressable
-        onPress={handleShare}
-        style={[styles.shareBtn, { backgroundColor: colors.primary }]}
-      >
-        <Icon name="upload" size={18} color={colors.primaryForeground} />
-        <Text style={[styles.shareText, { color: colors.primaryForeground }]}>
-          Share this summary
+      <Text style={[styles.section, { color: colors.foreground }]}>Send the report</Text>
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+          Generates a PDF with the summary above and all {photoCount} photo{photoCount === 1 ? '' : 's'}.
+          Email it to the homeowner, or download it to share anywhere.
         </Text>
-      </Pressable>
+        <TextInput
+          value={recipientText}
+          onChangeText={setRecipientText}
+          placeholder="Recipient email(s), comma-separated (optional)"
+          placeholderTextColor={colors.mutedForeground}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          editable={!busy}
+          style={[
+            styles.input,
+            { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground },
+          ]}
+        />
+
+        <Pressable
+          onPress={handleEmail}
+          disabled={!!busy}
+          style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 }]}
+        >
+          {busy === 'email' ? (
+            <ActivityIndicator color={colors.primaryForeground} />
+          ) : (
+            <>
+              <Icon name="file-text" size={18} color={colors.primaryForeground} />
+              <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Email report (PDF)</Text>
+            </>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={handleDownload}
+          disabled={!!busy}
+          style={[styles.secondaryBtn, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}
+        >
+          {busy === 'download' ? (
+            <ActivityIndicator color={colors.foreground} />
+          ) : (
+            <>
+              <Icon name="upload" size={18} color={colors.foreground} />
+              <Text style={[styles.btnText, { color: colors.foreground }]}>Download PDF</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
 
       <View style={{ height: 40 }} />
     </ScrollView>
+  );
+}
+
+function FactRow({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={styles.factRow}>
+      <Text style={{ color: colors.mutedForeground, fontSize: 13, flex: 1 }}>{label}</Text>
+      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' }}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -213,14 +293,24 @@ const styles = StyleSheet.create({
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   stepNumber: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   stepNumberText: { fontSize: 13, fontWeight: '800' },
-  shareBtn: {
+  factRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 15,
     borderRadius: 14,
-    marginTop: 14,
   },
-  shareText: { fontSize: 16, fontWeight: '700' },
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  btnText: { fontSize: 16, fontWeight: '700' },
 });
