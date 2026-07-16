@@ -38,7 +38,16 @@ router.get('/geocode/search', async (req: Request, res: Response) => {
     return;
   }
 
-  const results = await searchAddress(q);
+  // Optional location bias: only apply when BOTH coordinates parse as finite
+  // numbers, otherwise fall back to an unbiased search.
+  const latitude = Number(req.query.latitude);
+  const longitude = Number(req.query.longitude);
+  const near =
+    Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? { latitude, longitude }
+      : undefined;
+
+  const results = await searchAddress(q, near);
   res.json(SearchAddressResponse.parse({ results }));
 });
 

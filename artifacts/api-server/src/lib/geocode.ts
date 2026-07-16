@@ -76,13 +76,36 @@ export async function reverseGeocode(
 // let a rep look up a specific address instead of only working off their
 // current GPS position. Best-effort only: failures resolve to an empty
 // array rather than throwing.
-export async function searchAddress(query: string): Promise<GeocodeSearchResult[]> {
+//
+// When `near` (the rep's current location) is supplied we bias results toward
+// that area and restrict to the US. Without a bias, a partial query like
+// "2333 ol" makes Nominatim guess globally and surface zip codes / far-away
+// places; a viewbox around the rep boosts nearby street addresses to the top.
+export async function searchAddress(
+  query: string,
+  near?: { latitude: number; longitude: number },
+): Promise<GeocodeSearchResult[]> {
   try {
     const url = new URL('https://nominatim.openstreetmap.org/search');
     url.searchParams.set('q', query);
     url.searchParams.set('format', 'jsonv2');
     url.searchParams.set('addressdetails', '1');
-    url.searchParams.set('limit', '5');
+    url.searchParams.set('limit', '8');
+    url.searchParams.set('countrycodes', 'us');
+
+    if (near) {
+      // Nominatim viewbox order is left,top,right,bottom (minLon,maxLat,maxLon,
+      // minLat). ~0.35 deg (~25-30km) around the rep, with bounded=0 so it's a
+      // preference/boost rather than a hard filter — exact out-of-area lookups
+      // still work.
+      const delta = 0.35;
+      const left = near.longitude - delta;
+      const right = near.longitude + delta;
+      const top = near.latitude + delta;
+      const bottom = near.latitude - delta;
+      url.searchParams.set('viewbox', `${left},${top},${right},${bottom}`);
+      url.searchParams.set('bounded', '0');
+    }
 
     const response = await fetch(url, {
       headers: {

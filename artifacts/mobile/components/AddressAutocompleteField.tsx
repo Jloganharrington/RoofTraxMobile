@@ -4,6 +4,7 @@ import { Icon } from '@/components/Icon';
 import { getSearchAddressQueryKey, useSearchAddress } from '@workspace/api-client-react';
 import type { GeocodeSearchResult } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 
 // A labeled address field with debounced autocomplete, backed by /geocode/search.
 // It stays a CONTROLLED text input so manual entry always works (offline-first:
@@ -24,6 +25,10 @@ export function AddressAutocompleteField({
   placeholder?: string;
 }) {
   const colors = useColors();
+  // GPS-assisted search: the rep's current location biases results so a partial
+  // address surfaces nearby streets first. Best-effort — if permission is
+  // denied or unavailable, coords stay null and we fall back to a plain search.
+  const { coords } = useCurrentLocation();
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
   // The exact text last chosen from a suggestion. While the input still shows
@@ -37,7 +42,9 @@ export function AddressAutocompleteField({
   }, [value]);
 
   const suppressed = selectedRef.current !== null && selectedRef.current === value.trim();
-  const params = { q: debounced };
+  const params = coords
+    ? { q: debounced, latitude: coords.latitude, longitude: coords.longitude }
+    : { q: debounced };
   const searchQuery = useSearchAddress(params, {
     query: {
       enabled: open && !suppressed && debounced.length >= 3,

@@ -608,7 +608,9 @@ export const ReverseGeocodeCoordinatesResponse = zod.object({
  * @summary Look up coordinates for a specific address
  */
 export const SearchAddressQueryParams = zod.object({
-  "q": zod.coerce.string().describe('Free-text address or place query.')
+  "q": zod.coerce.string().describe('Free-text address or place query.'),
+  "latitude": zod.coerce.number().optional().describe('Optional latitude of the rep\'s current location. When provided with longitude, nearby results are boosted so a partial address surfaces local streets first instead of far-away zip\/place matches.'),
+  "longitude": zod.coerce.number().optional().describe('Optional longitude of the rep\'s current location.')
 })
 
 export const SearchAddressResponse = zod.object({

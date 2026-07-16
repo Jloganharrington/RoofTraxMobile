@@ -11,4 +11,12 @@ export type SearchAddressParams = {
  * Free-text address or place query.
  */
 q: string;
+/**
+ * Optional latitude of the rep's current location. When provided with longitude, nearby results are boosted so a partial address surfaces local streets first instead of far-away zip/place matches.
+ */
+latitude?: number;
+/**
+ * Optional longitude of the rep's current location.
+ */
+longitude?: number;
 };

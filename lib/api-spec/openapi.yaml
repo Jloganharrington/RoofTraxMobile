@@ -756,6 +756,21 @@ paths:
           schema:
             type: string
           description: Free-text address or place query.
+        - name: latitude
+          in: query
+          required: false
+          schema:
+            type: number
+          description: >-
+            Optional latitude of the rep's current location. When provided
+            with longitude, nearby results are boosted so a partial address
+            surfaces local streets first instead of far-away zip/place matches.
+        - name: longitude
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Optional longitude of the rep's current location.
       responses:
         "200":
           description: Matching candidates, best match first.
