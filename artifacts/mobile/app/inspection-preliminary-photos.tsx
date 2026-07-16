@@ -18,7 +18,9 @@ import { useColors } from '@/hooks/useColors';
 import { appendOptimisticPhotos } from '@/lib/inspectionSync';
 import {
   captureEvidencePhoto,
+  pickEvidencePhotoFromLibrary,
   CameraPermissionDeniedError,
+  MediaLibraryPermissionDeniedError,
   persistCapturedPhotoForOutbox,
   type CapturedEvidencePhoto,
 } from '@/lib/inspectionPhoto';
@@ -60,10 +62,10 @@ export default function PreliminaryPhotosScreen() {
     return onRecord > 0;
   }
 
-  async function handleCapture(key: string) {
+  async function runPicker(key: string, pick: () => Promise<CapturedEvidencePhoto | null>) {
     setCapturingKey(key);
     try {
-      const captured = await captureEvidencePhoto();
+      const captured = await pick();
       if (captured) setShots((prev) => ({ ...prev, [key]: captured }));
     } catch (err) {
       if (err instanceof CameraPermissionDeniedError) {
@@ -71,14 +73,22 @@ export default function PreliminaryPhotosScreen() {
           'Camera access needed',
           'RoofTrax needs camera access to capture inspection photos. Enable it for RoofTrax in your device Settings, then try again.',
         );
+      } else if (err instanceof MediaLibraryPermissionDeniedError) {
+        Alert.alert(
+          'Photo access needed',
+          'RoofTrax needs access to your photos to upload an image. Enable it for RoofTrax in your device Settings, then try again.',
+        );
       } else {
-        console.warn('[preliminary-photos] capture failed', err);
-        Alert.alert('Capture failed', 'Could not take the photo. Try again.');
+        console.warn('[preliminary-photos] photo failed', err);
+        Alert.alert('Photo failed', 'Could not add the photo. Try again.');
       }
     } finally {
       setCapturingKey(null);
     }
   }
+
+  const handleCapture = (key: string) => runPicker(key, captureEvidencePhoto);
+  const handleUpload = (key: string) => runPicker(key, pickEvidencePhotoFromLibrary);
 
   function handleRetake(key: string) {
     setShots((prev) => {
@@ -192,21 +202,29 @@ export default function PreliminaryPhotosScreen() {
                   <Text style={{ color: colors.foreground }}>Retake</Text>
                 </Pressable>
               </View>
+            ) : isCapturingThis ? (
+              <View style={[styles.captureButton, { borderColor: colors.border }]}>
+                <ActivityIndicator />
+              </View>
             ) : (
-              <Pressable
-                onPress={() => handleCapture(slot.key)}
-                style={[styles.captureButton, { borderColor: colors.border }]}
-                disabled={isBusy}
-              >
-                {isCapturingThis ? (
-                  <ActivityIndicator />
-                ) : (
-                  <>
-                    <Icon name="camera" size={18} color={colors.foreground} />
-                    <Text style={{ color: colors.foreground }}>Take photo</Text>
-                  </>
-                )}
-              </Pressable>
+              <View style={styles.captureRow}>
+                <Pressable
+                  onPress={() => handleCapture(slot.key)}
+                  style={[styles.captureButton, styles.captureHalf, { borderColor: colors.border }]}
+                  disabled={isBusy}
+                >
+                  <Icon name="camera" size={18} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground }}>Take photo</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleUpload(slot.key)}
+                  style={[styles.captureButton, styles.captureHalf, { borderColor: colors.border }]}
+                  disabled={isBusy}
+                >
+                  <Icon name="upload" size={18} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground }}>Upload</Text>
+                </Pressable>
+              </View>
             )}
           </View>
         );
@@ -254,6 +272,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     width: PREVIEW_SIZE,
   },
+  captureRow: { flexDirection: 'row', gap: 8, width: PREVIEW_SIZE },
+  captureHalf: { flex: 1, width: undefined },
   secondaryButton: {
     alignSelf: 'flex-start',
     borderWidth: 1,

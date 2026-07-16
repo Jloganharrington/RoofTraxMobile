@@ -44,6 +44,18 @@ export class CameraPermissionDeniedError extends Error {
   }
 }
 
+/**
+ * Thrown when the OS photo-library permission is not granted, so callers can
+ * show an actionable "enable photo access" prompt when a rep tries to upload an
+ * existing photo instead of taking a new one.
+ */
+export class MediaLibraryPermissionDeniedError extends Error {
+  constructor() {
+    super('Photo library permission was not granted');
+    this.name = 'MediaLibraryPermissionDeniedError';
+  }
+}
+
 /** A single free-form annotation dropped on top of the photo preview. Kept
  * as normalized (0-1) coordinates so it survives independent of the
  * original image's pixel dimensions, and stored as overlay metadata only —
@@ -119,22 +131,14 @@ function parseExifDateTimeUtc(exif: Record<string, unknown>): string | null {
  * (forensic triadRole or Phase 1 preliminaryRole) when it queues the photo.
  * Returns null if the user cancels.
  */
-export async function captureEvidencePhoto(): Promise<CapturedEvidencePhoto | null> {
-  // Must request camera permission before launching — launchCameraAsync throws
-  // (rather than prompting) when the permission is undetermined or denied.
-  const permission = await ImagePicker.requestCameraPermissionsAsync();
-  if (!permission.granted) {
-    throw new CameraPermissionDeniedError();
-  }
-
-  const result = await ImagePicker.launchCameraAsync({
-    quality: 0.8,
-    mediaTypes: ['images'],
-    exif: true,
-  });
-  if (result.canceled || !result.assets[0]) return null;
-
-  const asset = result.assets[0];
+// Derives our CapturedEvidencePhoto metadata from a picker asset. `allowLiveGpsFallback`
+// controls whether a missing EXIF GPS location may be backfilled with the
+// device's CURRENT position — appropriate for a freshly-taken photo, but NOT
+// for an uploaded library photo (see pickEvidencePhotoFromLibrary).
+async function assetToEvidencePhoto(
+  asset: ImagePicker.ImagePickerAsset,
+  { allowLiveGpsFallback }: { allowLiveGpsFallback: boolean },
+): Promise<CapturedEvidencePhoto> {
   const exif = (asset.exif as Record<string, unknown> | null | undefined) ?? null;
 
   let latitude: number | null = null;
@@ -144,7 +148,7 @@ export async function captureEvidencePhoto(): Promise<CapturedEvidencePhoto | nu
     latitude = gps.latitude;
     longitude = gps.longitude;
   }
-  if (latitude === null || longitude === null) {
+  if (allowLiveGpsFallback && (latitude === null || longitude === null)) {
     try {
       const permission = await Location.getForegroundPermissionsAsync();
       if (permission.granted) {
@@ -168,6 +172,50 @@ export async function captureEvidencePhoto(): Promise<CapturedEvidencePhoto | nu
     longitude,
     annotations: [],
   };
+}
+
+export async function captureEvidencePhoto(): Promise<CapturedEvidencePhoto | null> {
+  // Must request camera permission before launching — launchCameraAsync throws
+  // (rather than prompting) when the permission is undetermined or denied.
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    throw new CameraPermissionDeniedError();
+  }
+
+  const result = await ImagePicker.launchCameraAsync({
+    quality: 0.8,
+    mediaTypes: ['images'],
+    exif: true,
+  });
+  if (result.canceled || !result.assets[0]) return null;
+
+  // A freshly-taken photo is at the rep's current location, so backfilling a
+  // missing EXIF GPS tag with the live device fix is accurate.
+  return assetToEvidencePhoto(result.assets[0], { allowLiveGpsFallback: true });
+}
+
+/**
+ * Lets a rep attach an EXISTING photo from their device library instead of
+ * taking a new one. Same metadata extraction as capture, but we deliberately do
+ * NOT backfill a missing location with the device's current GPS fix: an
+ * uploaded photo may have been shot at another place/time, so inventing a
+ * "current location" would fabricate evidence. GPS/time come from the file's
+ * own EXIF or stay null. Returns null if the user cancels.
+ */
+export async function pickEvidencePhotoFromLibrary(): Promise<CapturedEvidencePhoto | null> {
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) {
+    throw new MediaLibraryPermissionDeniedError();
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    quality: 0.8,
+    mediaTypes: ['images'],
+    exif: true,
+  });
+  if (result.canceled || !result.assets[0]) return null;
+
+  return assetToEvidencePhoto(result.assets[0], { allowLiveGpsFallback: false });
 }
 
 /**

@@ -21,7 +21,9 @@ import { useColors } from '@/hooks/useColors';
 import { appendOptimisticPhotos } from '@/lib/inspectionSync';
 import {
   captureEvidencePhoto,
+  pickEvidencePhotoFromLibrary,
   CameraPermissionDeniedError,
+  MediaLibraryPermissionDeniedError,
   persistCapturedPhotoForOutbox,
   type CapturedEvidencePhoto,
   type PhotoAnnotation,
@@ -100,10 +102,10 @@ export default function InspectionPhotoCaptureScreen() {
   const nextStep = useMemo(() => steps.find((step) => !shots[step.role]), [steps, shots]);
   const allCaptured = !nextStep;
 
-  async function handleCapture(role: TriadRole) {
+  async function runPicker(role: TriadRole, pick: () => Promise<CapturedEvidencePhoto | null>) {
     setCapturingRole(role);
     try {
-      const captured = await captureEvidencePhoto();
+      const captured = await pick();
       if (captured) {
         setShots((prev) => ({ ...prev, [role]: captured }));
       }
@@ -113,14 +115,22 @@ export default function InspectionPhotoCaptureScreen() {
           'Camera access needed',
           'RoofTrax needs camera access to capture inspection photos. Enable it for RoofTrax in your device Settings, then try again.',
         );
+      } else if (err instanceof MediaLibraryPermissionDeniedError) {
+        Alert.alert(
+          'Photo access needed',
+          'RoofTrax needs access to your photos to upload an image. Enable it for RoofTrax in your device Settings, then try again.',
+        );
       } else {
-        console.warn('[photo-capture] capture failed', err);
-        Alert.alert('Capture failed', 'Could not take the photo. Try again.');
+        console.warn('[photo-capture] photo failed', err);
+        Alert.alert('Photo failed', 'Could not add the photo. Try again.');
       }
     } finally {
       setCapturingRole(null);
     }
   }
+
+  const handleCapture = (role: TriadRole) => runPicker(role, captureEvidencePhoto);
+  const handleUpload = (role: TriadRole) => runPicker(role, pickEvidencePhotoFromLibrary);
 
   function handleRetake(role: TriadRole) {
     setShots((prev) => {
@@ -281,21 +291,29 @@ export default function InspectionPhotoCaptureScreen() {
                   <Text style={{ color: colors.foreground }}>Retake</Text>
                 </Pressable>
               </View>
+            ) : isCapturingThis ? (
+              <View style={[styles.captureButton, { borderColor: colors.border }]}>
+                <ActivityIndicator />
+              </View>
             ) : (
-              <Pressable
-                onPress={() => handleCapture(step.role)}
-                style={[styles.captureButton, { borderColor: colors.border }]}
-                disabled={isBusy}
-              >
-                {isCapturingThis ? (
-                  <ActivityIndicator />
-                ) : (
-                  <>
-                    <Icon name="camera" size={18} color={colors.foreground} />
-                    <Text style={{ color: colors.foreground }}>Take photo</Text>
-                  </>
-                )}
-              </Pressable>
+              <View style={styles.captureRow}>
+                <Pressable
+                  onPress={() => handleCapture(step.role)}
+                  style={[styles.captureButton, styles.captureHalf, { borderColor: colors.border }]}
+                  disabled={isBusy}
+                >
+                  <Icon name="camera" size={18} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground }}>Take photo</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleUpload(step.role)}
+                  style={[styles.captureButton, styles.captureHalf, { borderColor: colors.border }]}
+                  disabled={isBusy}
+                >
+                  <Icon name="upload" size={18} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground }}>Upload</Text>
+                </Pressable>
+              </View>
             )}
             {isUploadingThis && (
               <Text style={[styles.stepHint, { color: colors.mutedForeground }]}>Saving locally…</Text>
@@ -379,6 +397,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     width: PREVIEW_SIZE,
   },
+  captureRow: { flexDirection: 'row', gap: 8, width: PREVIEW_SIZE },
+  captureHalf: { flex: 1, width: undefined },
   secondaryButton: {
     alignSelf: 'flex-start',
     borderWidth: 1,
