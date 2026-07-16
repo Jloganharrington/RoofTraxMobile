@@ -30,6 +30,20 @@ function asDirectory(dir: Directory): UsableDirectory {
 
 export type TriadRole = 'wide' | 'mid' | 'close';
 
+/**
+ * Thrown when the OS camera permission is not granted. Callers can catch this
+ * specifically to show an actionable "enable camera access" prompt instead of a
+ * generic failure. expo-image-picker's `launchCameraAsync` does NOT prompt for
+ * permission on its own in SDK 17 — it throws if the permission is missing — so
+ * we must request it explicitly before launching.
+ */
+export class CameraPermissionDeniedError extends Error {
+  constructor() {
+    super('Camera permission was not granted');
+    this.name = 'CameraPermissionDeniedError';
+  }
+}
+
 /** A single free-form annotation dropped on top of the photo preview. Kept
  * as normalized (0-1) coordinates so it survives independent of the
  * original image's pixel dimensions, and stored as overlay metadata only —
@@ -106,6 +120,13 @@ function parseExifDateTimeUtc(exif: Record<string, unknown>): string | null {
  * Returns null if the user cancels.
  */
 export async function captureEvidencePhoto(): Promise<CapturedEvidencePhoto | null> {
+  // Must request camera permission before launching — launchCameraAsync throws
+  // (rather than prompting) when the permission is undetermined or denied.
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    throw new CameraPermissionDeniedError();
+  }
+
   const result = await ImagePicker.launchCameraAsync({
     quality: 0.8,
     mediaTypes: ['images'],

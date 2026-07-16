@@ -28,7 +28,21 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "RoofTrax uses the camera to capture inspection and evidence photos.",
+          "photosPermission": "RoofTrax accesses your photo library to attach inspection images."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RoofTrax uses your location to GPS-stamp inspection photos and dropped pins.",
+          "locationAlwaysAndWhenInUsePermission": "RoofTrax uses your location to GPS-stamp inspection photos and dropped pins."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

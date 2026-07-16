@@ -18,6 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import { appendOptimisticPhotos } from '@/lib/inspectionSync';
 import {
   captureEvidencePhoto,
+  CameraPermissionDeniedError,
   persistCapturedPhotoForOutbox,
   type CapturedEvidencePhoto,
 } from '@/lib/inspectionPhoto';
@@ -64,8 +65,16 @@ export default function PreliminaryPhotosScreen() {
     try {
       const captured = await captureEvidencePhoto();
       if (captured) setShots((prev) => ({ ...prev, [key]: captured }));
-    } catch {
-      Alert.alert('Capture failed', 'Could not take the photo. Try again.');
+    } catch (err) {
+      if (err instanceof CameraPermissionDeniedError) {
+        Alert.alert(
+          'Camera access needed',
+          'RoofTrax needs camera access to capture inspection photos. Enable it for RoofTrax in your device Settings, then try again.',
+        );
+      } else {
+        console.warn('[preliminary-photos] capture failed', err);
+        Alert.alert('Capture failed', 'Could not take the photo. Try again.');
+      }
     } finally {
       setCapturingKey(null);
     }
