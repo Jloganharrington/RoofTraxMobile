@@ -18,6 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { inspectionsListKey, patchInspection, startInspection } from '@/lib/inspectionSync';
+import { AddressAutocompleteField } from '@/components/AddressAutocompleteField';
 
 // Claim intake (B4): captures the claim/policy header for a new forensic
 // inspection. Offline-first — the inspection is created against a durable
@@ -54,8 +55,12 @@ export default function InspectionIntakeScreen() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const latitude = params.latitude ? Number(params.latitude) : null;
-  const longitude = params.longitude ? Number(params.longitude) : null;
+  const [latitude, setLatitude] = useState<number | null>(
+    params.latitude ? Number(params.latitude) : null,
+  );
+  const [longitude, setLongitude] = useState<number | null>(
+    params.longitude ? Number(params.longitude) : null,
+  );
 
   async function handleCreate() {
     setSaving(true);
@@ -69,6 +74,8 @@ export default function InspectionIntakeScreen() {
           preliminaryCompletedAt: new Date().toISOString(),
           insuredName: insuredName.trim() || null,
           address: address.trim() || null,
+          ...(latitude != null && { latitude }),
+          ...(longitude != null && { longitude }),
           claimNumber: claimNumber.trim() || null,
           policyNumber: policyNumber.trim() || null,
           carrierName: carrierName.trim() || null,
@@ -172,7 +179,21 @@ export default function InspectionIntakeScreen() {
         ) : null}
 
         <Field label="Insured name" value={insuredName} onChange={setInsuredName} placeholder="Homeowner name" />
-        <Field label="Property address" value={address} onChange={setAddress} placeholder="123 Main St" />
+        <AddressAutocompleteField
+          value={address}
+          // Any manual edit drops the coordinates so we never submit a typed
+          // address paired with a previously-selected location. Picking a
+          // suggestion re-sets them immediately via onSelectResult.
+          onChangeText={(text) => {
+            setAddress(text);
+            setLatitude(null);
+            setLongitude(null);
+          }}
+          onSelectResult={(result) => {
+            setLatitude(result.latitude);
+            setLongitude(result.longitude);
+          }}
+        />
         <Field label="Carrier" value={carrierName} onChange={setCarrierName} placeholder="Insurance carrier" />
         <Field label="Policy number" value={policyNumber} onChange={setPolicyNumber} />
         <Field label="Claim number" value={claimNumber} onChange={setClaimNumber} />

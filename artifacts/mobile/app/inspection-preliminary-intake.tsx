@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,6 +18,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { inspectionsListKey, patchInspection, startInspection } from '@/lib/inspectionSync';
 import { DAMAGE_TYPE_OPTIONS } from '@/lib/preliminary';
+import { AddressAutocompleteField } from '@/components/AddressAutocompleteField';
 
 // Phase 1 intake (P2): a light top-of-funnel start. Address + a single damage
 // type only — deliberately NO contact/claim info (that is captured later, at
@@ -44,8 +44,12 @@ export default function PreliminaryIntakeScreen() {
   const [damageType, setDamageType] = useState(params.damageType ?? '');
   const [saving, setSaving] = useState(false);
 
-  const latitude = params.latitude ? Number(params.latitude) : null;
-  const longitude = params.longitude ? Number(params.longitude) : null;
+  const [latitude, setLatitude] = useState<number | null>(
+    params.latitude ? Number(params.latitude) : null,
+  );
+  const [longitude, setLongitude] = useState<number | null>(
+    params.longitude ? Number(params.longitude) : null,
+  );
 
   async function handleSubmit() {
     if (!address.trim()) {
@@ -58,6 +62,8 @@ export default function PreliminaryIntakeScreen() {
         await patchInspection(queryClient, editingId, {
           address: address.trim(),
           damageType: damageType || null,
+          ...(latitude != null && { latitude }),
+          ...(longitude != null && { longitude }),
         });
         await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
         router.back();
@@ -106,19 +112,21 @@ export default function PreliminaryIntakeScreen() {
           </View>
         ) : null}
 
-        <View style={styles.field}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>Property address</Text>
-          <TextInput
-            value={address}
-            onChangeText={setAddress}
-            placeholder="123 Main St"
-            placeholderTextColor={colors.mutedForeground}
-            style={[
-              styles.input,
-              { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground },
-            ]}
-          />
-        </View>
+        <AddressAutocompleteField
+          value={address}
+          // Any manual edit drops the coordinates so we never submit a typed
+          // address paired with a previously-selected location. Picking a
+          // suggestion re-sets them immediately via onSelectResult.
+          onChangeText={(text) => {
+            setAddress(text);
+            setLatitude(null);
+            setLongitude(null);
+          }}
+          onSelectResult={(result) => {
+            setLatitude(result.latitude);
+            setLongitude(result.longitude);
+          }}
+        />
 
         <View style={styles.field}>
           <Text style={[styles.label, { color: colors.mutedForeground }]}>Damage type</Text>
@@ -175,13 +183,6 @@ const styles = StyleSheet.create({
   pinNote: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },
   field: { gap: 8 },
   label: { fontSize: 13, fontWeight: '600' },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1 },
   submit: { paddingVertical: 15, borderRadius: 14, alignItems: 'center', marginTop: 8 },
