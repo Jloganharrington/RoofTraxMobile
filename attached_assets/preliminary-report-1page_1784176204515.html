@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preliminary Roof Inspection Summary</title>
+<meta name="description" content="Phase 1 — Preliminary Roof Inspection Summary. One-page homeowner handout with 4 photos. Renders via expo-print / print-to-PDF.">
+<style>
+  /* ============================================================
+     PRELIMINARY ROOF INSPECTION SUMMARY (business Phase 1)
+     One US-Letter page. Homeowner-facing handout: findings +
+     weather event + the four preliminary photos + next steps.
+     Part of the RoofTrax report suite (Arial, navy + brass).
+     Data merges into [data-field] / [data-photo] via REPORT_DATA.
+     ============================================================ */
+  :root{
+    --ink:#191E24; --ink-soft:#3A424C; --slate:#667080; --slate-soft:#99A1AC;
+    --line:#D9DEE3; --line-soft:#ECEEF1; --paper:#FFFFFF; --paper-alt:#F5F6F8;
+    --navy:#1E2A3A; --accent:#A6431F; --accent-soft:#F1E1D9;
+    --sans: Arial, Helvetica, "Liberation Sans", "Arimo", sans-serif;
+    --page-w:8.5in; --page-h:11in;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:#7B8290; font-family:var(--sans); color:var(--ink); }
+
+  .page{
+    width:var(--page-w); height:var(--page-h); margin:0.35in auto; background:var(--paper);
+    box-shadow:0 0 0 1px rgba(0,0,0,.04), 0 12px 30px rgba(0,0,0,.28);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .body{ flex:1 1 auto; padding:0.42in 0.5in 0.34in 0.5in; display:flex; flex-direction:column; }
+
+  /* ---- header ---- */
+  .head{ display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+  .head__left{ min-width:0; }
+  .brandline{ display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+  .logo{ width:30px; height:30px; border-radius:5px; background:var(--paper-alt); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:9px; color:var(--slate-soft); overflow:hidden; flex:none; }
+  .logo img{ width:100%; height:100%; object-fit:contain; }
+  .brand{ font-size:13px; font-weight:700; color:var(--navy); }
+  .eyebrow{ font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:700; margin:0 0 4px 0; }
+  .address{ font-size:19px; font-weight:700; color:var(--ink); line-height:1.15; }
+  .subtitle{ font-size:11px; color:var(--slate); margin-top:3px; }
+  .head__right{ text-align:right; flex:none; }
+  .head__right .m{ font-size:10px; color:var(--slate); }
+  .head__right .m b{ color:var(--ink); font-weight:700; }
+  .head__right .stamp{ margin-top:8px; display:inline-block; font-size:9px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--navy); border:1px solid var(--line); border-radius:4px; padding:4px 8px; font-weight:700; }
+  .rule{ height:2px; background:var(--navy); margin:12px 0 0 0; }
+
+  /* ---- findings row ---- */
+  .facts{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px; }
+  .fact{ border:1px solid var(--line); border-radius:7px; padding:10px 12px; background:var(--paper-alt); }
+  .fact .l{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--slate); font-weight:700; margin-bottom:5px; }
+  .fact .v{ font-size:14px; font-weight:700; color:var(--ink); line-height:1.2; }
+  .fact .s{ font-size:10px; color:var(--slate); margin-top:3px; line-height:1.35; }
+  .fact.accent{ border-left:3px solid var(--accent); }
+
+  /* ---- photos ---- */
+  .section-label{ font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--slate); font-weight:700;
+    margin:16px 0 8px 0; display:flex; align-items:center; gap:10px; }
+  .section-label::after{ content:""; flex:1; height:1px; background:var(--line); }
+  .photos{ display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:11px; flex:1 1 auto; min-height:0; }
+  .photo{ display:flex; flex-direction:column; border:1px solid var(--line); border-radius:7px; overflow:hidden; min-height:0; }
+  .photo__img{ flex:1 1 auto; min-height:0; position:relative; background:
+      repeating-linear-gradient(135deg, #EDEAE4 0 14px, #E4E0D8 14px 28px); }
+  .photo__img img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .photo__ph{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px;
+    letter-spacing:.06em; text-transform:uppercase; color:#B7ACA0; }
+  .photo__cap{ flex:none; padding:6px 10px; font-size:10.5px; font-weight:700; color:var(--ink-soft);
+    border-top:1px solid var(--line); background:#fff; display:flex; justify-content:space-between; align-items:center; }
+  .photo__cap .tag{ font-size:9px; font-weight:700; color:var(--slate-soft); letter-spacing:.04em; }
+
+  /* ---- next steps ---- */
+  .steps{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:6px; }
+  .step{ position:relative; }
+  .step .n{ width:19px; height:19px; border-radius:50%; background:var(--navy); color:#fff; font-size:10px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; margin-bottom:5px; }
+  .step .t{ font-size:10px; font-weight:700; color:var(--ink); line-height:1.2; }
+  .step .d{ font-size:8.5px; color:var(--slate); line-height:1.3; margin-top:2px; }
+
+  /* ---- footer ---- */
+  .foot{ margin-top:auto; padding-top:10px; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; align-items:flex-end; }
+  .foot .disc{ font-size:8.5px; color:var(--slate); line-height:1.4; max-width:5.6in; text-align:justify; }
+  .foot .disc b{ color:var(--ink-soft); }
+  .foot .prep{ font-size:9px; color:var(--slate-soft); text-align:right; flex:none; }
+  .foot .prep b{ color:var(--ink-soft); }
+
+  @media print{
+    html,body{ background:none; }
+    .page{ margin:0; box-shadow:none; }
+    @page{ size:8.5in 11in; margin:0; }
+    .toolbar{ display:none; }
+  }
+  .toolbar{ position:sticky; top:0; z-index:9; background:#12151A; color:#cfd4da; font-family:var(--sans);
+    font-size:12px; padding:9px 18px; text-align:center; }
+  .toolbar button{ font-family:var(--sans); font-size:12px; background:var(--accent); color:#fff; border:none; padding:5px 13px; border-radius:5px; cursor:pointer; font-weight:700; margin-left:10px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">Preliminary Roof Inspection Summary — one-page template <button onclick="window.print()">Print / Save as PDF</button></div>
+
+<div class="page">
+  <div class="body">
+
+    <!-- HEADER -->
+    <div class="head">
+      <div class="head__left">
+        <div class="brandline">
+          <div class="logo" id="logo"><span>LOGO</span></div>
+          <div class="brand" data-field="companyName">—</div>
+        </div>
+        <div class="eyebrow">Preliminary Roof Inspection Summary</div>
+        <div class="address" data-field="propertyAddress">—</div>
+        <div class="subtitle">A summary of what was found and what comes next.</div>
+      </div>
+      <div class="head__right">
+        <div class="m">Prepared <b data-field="preparedDate">—</b></div>
+        <div class="m" data-field="inspectorLine">Inspector —</div>
+        <div class="stamp">Phase 1 of 2</div>
+      </div>
+    </div>
+    <div class="rule"></div>
+
+    <!-- FINDINGS -->
+    <div class="facts">
+      <div class="fact accent">
+        <div class="l">Damage Found</div>
+        <div class="v" data-field="damageType">—</div>
+        <div class="s" data-field="damageNote">Observed during the preliminary roof review.</div>
+      </div>
+      <div class="fact">
+        <div class="l">Weather Event</div>
+        <div class="v" data-field="weatherType">—</div>
+        <div class="s" data-field="weatherDate">—</div>
+      </div>
+      <div class="fact">
+        <div class="l">Review Type</div>
+        <div class="v">Preliminary</div>
+        <div class="s">Initial, ground/drone-level review.</div>
+      </div>
+    </div>
+
+    <!-- PHOTOS -->
+    <div class="section-label">Photos (4)</div>
+    <div class="photos" id="photos"></div>
+
+    <!-- NEXT STEPS -->
+    <div class="section-label">Next Steps</div>
+    <div class="steps" id="steps"></div>
+
+    <!-- FOOTER -->
+    <div class="foot">
+      <div class="disc" data-field="disclaimer">
+        <b>This preliminary summary</b> documents observations from an initial review and the severe-weather event on record.
+        It is not a quote, a repair estimate, or a coverage determination. The next step is a documented forensic inspection.
+      </div>
+      <div class="prep">Report <b data-field="reportId">—</b></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   REPORT_DATA — merge target from the RoofTrax app (Phase 1).
+   Sample = 2333 Old Trail Drive. Photos: set .src to real image
+   URLs / data-URIs; leave empty to show the neutral placeholder.
+   ============================================================ */
+const REPORT_DATA = {
+  logoUrl: "",
+  companyName: "NuHome Exteriors",
+  propertyAddress: "2333 Old Trail Drive, Reston, Virginia, 20191",
+  preparedDate: "July 15, 2026",
+  inspectorName: "Sam Whitfield",
+  reportId: "PRE-2026-0715",
+
+  damageType: "Wind",
+  damageNote: "Observed during the preliminary roof review.",
+  weatherType: "Wind",
+  weatherDate: "2025-06-19",
+
+  // Exactly four, in order. src = image URL/data-URI (empty -> placeholder).
+  photos: [
+    { label: "Front of home",  tag: "S0", src: "" },
+    { label: "Roof overview",  tag: "S3", src: "" },
+    { label: "Damage close-up", tag: "S5", src: "" },
+    { label: "Damage close-up", tag: "S5", src: "" }
+  ],
+
+  nextSteps: [
+    { t: "File a claim",        d: "Open a claim with your carrier for the storm date noted." },
+    { t: "Pay for forensic",    d: "Authorize the detailed forensic roof inspection." },
+    { t: "Forensic inspection", d: "Full evidence capture of every slope & component." },
+    { t: "Proof package",       d: "Findings compiled into a documented, photo-backed report." },
+    { t: "Claim negotiation",   d: "The proof package supports the conversation with your carrier." }
+  ],
+
+  disclaimer: "This preliminary summary documents observations from an initial, ground- or drone-level review and the severe-weather event on record. It is not a quote, a repair estimate, or a coverage determination. The next step is a documented forensic inspection."
+};
+
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function bindFields(d){
+  const map = {
+    companyName:d.companyName, propertyAddress:d.propertyAddress, preparedDate:d.preparedDate,
+    inspectorLine: d.inspectorName ? "Inspector "+d.inspectorName : "",
+    reportId:d.reportId, damageType:d.damageType, damageNote:d.damageNote,
+    weatherType:d.weatherType, weatherDate:d.weatherDate, disclaimer:d.disclaimer
+  };
+  document.querySelectorAll("[data-field]").forEach(el=>{
+    const v = map[el.getAttribute("data-field")];
+    if (v !== undefined && v !== null && v !== "") el.textContent = v;
+  });
+}
+
+function renderPhotos(d){
+  const wrap = document.getElementById("photos");
+  wrap.innerHTML = (d.photos||[]).slice(0,4).map(p=>`
+    <div class="photo">
+      <div class="photo__img">
+        ${p.src ? `<img src="${esc(p.src)}" alt="${esc(p.label)}">` : `<div class="photo__ph">Photo</div>`}
+      </div>
+      <div class="photo__cap"><span>${esc(p.label)}</span><span class="tag">${esc(p.tag||"")}</span></div>
+    </div>`).join("");
+}
+
+function renderSteps(d){
+  document.getElementById("steps").innerHTML = (d.nextSteps||[]).map((s,i)=>`
+    <div class="step"><div class="n">${i+1}</div><div class="t">${esc(s.t)}</div><div class="d">${esc(s.d)}</div></div>`).join("");
+}
+
+function renderLogo(d){
+  if (!d.logoUrl) return;
+  const el = document.getElementById("logo");
+  if (el) el.innerHTML = `<img src="${esc(d.logoUrl)}" alt="${esc(d.companyName||"Company")} logo">`;
+}
+
+bindFields(REPORT_DATA);
+renderPhotos(REPORT_DATA);
+renderSteps(REPORT_DATA);
+renderLogo(REPORT_DATA);
+</script>
+</body>
+</html>

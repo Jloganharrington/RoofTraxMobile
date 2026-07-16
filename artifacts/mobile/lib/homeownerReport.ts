@@ -36,10 +36,10 @@ const ROLE_LABEL: Record<PreliminaryPhotoRole, string> = {
 const ROLE_ORDER: PreliminaryPhotoRole[] = ['front_of_home', 'roof_overview', 'damage_closeup'];
 
 const NEXT_STEPS: Array<{ title: string; detail: string }> = [
-  { title: 'File a claim', detail: 'Open a claim with your insurance carrier for the storm date noted above.' },
-  { title: 'Pay for a forensic inspection', detail: 'Authorize the detailed, documented forensic roof inspection.' },
-  { title: 'Forensic inspection', detail: 'A full evidence capture of every slope, elevation, and damaged component.' },
-  { title: 'Proof package', detail: 'The findings are compiled into a documented, photo-backed report.' },
+  { title: 'File a claim', detail: 'Open a claim with your carrier for the storm date noted.' },
+  { title: 'Pay for a forensic inspection', detail: 'Authorize the detailed forensic roof inspection.' },
+  { title: 'Forensic inspection', detail: 'Full evidence capture of every slope and component.' },
+  { title: 'Proof package', detail: 'Findings compiled into a documented, photo-backed report.' },
   { title: 'Claim negotiation', detail: 'The proof package supports the conversation with your carrier.' },
 ];
 
@@ -160,49 +160,54 @@ function damageLabel(inspection: Inspection): string {
     : 'Storm-related damage';
 }
 
-function homeownerFactRows(inspection: Inspection): string {
+// Compact one-line strip of homeowner-reported facts (replaces the old table).
+// Returns '' when no facts were captured, so the section simply doesn't appear.
+function homeownerFactsStrip(inspection: Inspection): string {
   const facts = inspection.homeownerFacts;
   if (!facts) return '';
   const awareness =
     facts.awareOfDateOfLoss === true ? 'Yes' : facts.awareOfDateOfLoss === false ? 'No' : 'Unsure';
-  const rows: string[] = [`<tr><td>Aware of the date of loss</td><td>${esc(awareness)}</td></tr>`];
-  if (facts.priorRepairs) {
-    rows.push(`<tr><td>Prior repairs reported</td><td>${esc(facts.priorRepairs)}</td></tr>`);
-  }
-  if (facts.priorClaims) {
-    rows.push(`<tr><td>Prior claims reported</td><td>${esc(facts.priorClaims)}</td></tr>`);
-  }
-  return `
-    <h2>Homeowner-reported facts</h2>
-    <table class="facts">${rows.join('')}</table>`;
+  const parts: string[] = [`Aware of date of loss: <b>${esc(awareness)}</b>`];
+  if (facts.priorRepairs) parts.push(`Prior repairs: <b>${esc(facts.priorRepairs)}</b>`);
+  if (facts.priorClaims) parts.push(`Prior claims: <b>${esc(facts.priorClaims)}</b>`);
+  return `<div class="hofacts"><span class="l">Homeowner reported</span>${parts.join(
+    '<span class="sep">&middot;</span>',
+  )}</div>`;
 }
 
 function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): string {
   const generatedOn = formatDate(new Date().toISOString());
   const storm = inspection.stormConfirmedRef;
 
+  // Caption the two close-ups distinctly (both share the "Damage close-up" role
+  // label): append an ordinal only when a role appears more than once.
+  const roleTotals: Record<string, number> = {};
+  for (const p of photos) roleTotals[p.role] = (roleTotals[p.role] ?? 0) + 1;
+  const roleSeen: Record<string, number> = {};
   const photoCards = photos
-    .map(
-      (p) => `
-        <figure class="photo">
-          <img src="${p.dataUri}" />
-          <figcaption>${esc(ROLE_LABEL[p.role])}</figcaption>
-        </figure>`,
-    )
+    .map((p) => {
+      roleSeen[p.role] = (roleSeen[p.role] ?? 0) + 1;
+      const base = ROLE_LABEL[p.role];
+      const caption = roleTotals[p.role] > 1 ? `${base} ${roleSeen[p.role]}` : base;
+      return `<figure class="photo"><img src="${p.dataUri}" /><figcaption>${esc(caption)}</figcaption></figure>`;
+    })
     .join('');
 
-  const stormBlock = storm
-    ? `<p><strong>${esc(storm.type)}</strong> · ${esc(storm.date)}</p>${
-        storm.description ? `<p class="muted">${esc(storm.description)}</p>` : ''
-      }`
-    : `<p class="muted">A severe-weather event has not been matched yet.</p>`;
+  const weatherValue = storm ? esc(storm.type) : 'Not yet matched';
+  const weatherSub = storm
+    ? esc(storm.date) + (storm.description ? ` &mdash; ${esc(storm.description)}` : '')
+    : 'A severe-weather event has not been matched yet.';
 
-  const nextSteps = NEXT_STEPS.map(
+  const steps = NEXT_STEPS.map(
     (s, i) =>
-      `<li><span class="step-n">${i + 1}</span><div><strong>${esc(s.title)}</strong><br/><span class="muted">${esc(
-        s.detail,
-      )}</span></div></li>`,
+      `<div class="step"><div class="n">${i + 1}</div><div class="t">${esc(
+        s.title,
+      )}</div><div class="d">${esc(s.detail)}</div></div>`,
   ).join('');
+
+  const photosBlock = photos.length
+    ? `<div class="slabel">Photos (${photos.length})</div><div class="photos">${photoCards}</div>`
+    : `<div class="slabel">Photos</div><p class="muted">No preliminary photos are attached to this report.</p>`;
 
   return `<!DOCTYPE html>
 <html>
@@ -211,55 +216,107 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #1a202c; margin: 0; padding: 0 32px 40px; }
-  .header { background: #0f2942; color: #fff; margin: 0 -32px 24px; padding: 28px 32px; }
-  .eyebrow { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #9fb3c8; margin: 0 0 6px; }
-  .header h1 { font-size: 22px; margin: 0 0 6px; }
-  .header .addr { font-size: 15px; color: #cbd5e0; margin: 0; }
-  .header .gen { font-size: 12px; color: #7c93a8; margin: 10px 0 0; }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; color: #4a5568; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin: 28px 0 12px; }
+  @page { size: Letter; margin: 0.4in; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, Helvetica, Arial, sans-serif;
+    color: #191e24;
+    font-size: 11px;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   .muted { color: #718096; }
-  .lead { font-size: 15px; font-weight: 600; margin: 4px 0; }
-  table.facts { width: 100%; border-collapse: collapse; font-size: 13px; }
-  table.facts td { padding: 8px 10px; border-bottom: 1px solid #edf2f7; vertical-align: top; }
-  table.facts td:first-child { color: #718096; width: 42%; }
-  .photos { display: flex; flex-wrap: wrap; gap: 14px; }
-  figure.photo { width: calc(50% - 7px); margin: 0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
-  figure.photo img { width: 100%; height: 200px; object-fit: cover; display: block; }
-  figure.photo figcaption { font-size: 12px; font-weight: 600; color: #4a5568; padding: 8px 10px; background: #f7fafc; }
-  ol.steps { list-style: none; padding: 0; margin: 0; }
-  ol.steps li { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; font-size: 13px; }
-  .step-n { flex: 0 0 24px; height: 24px; border-radius: 12px; background: #0f2942; color: #fff; font-weight: 700; text-align: center; line-height: 24px; font-size: 12px; }
-  .disclaimer { margin-top: 30px; padding: 14px 16px; background: #f7fafc; border-radius: 8px; font-size: 11px; color: #718096; line-height: 1.5; }
+
+  /* header */
+  .head { background: #0f2942; color: #fff; border-radius: 8px; padding: 16px 18px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .head .eyebrow { font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+    color: #9fb3c8; font-weight: 700; margin: 0 0 5px; }
+  .head h1 { font-size: 19px; line-height: 1.15; font-weight: 800; margin: 0 0 4px; }
+  .head .sub { font-size: 11px; color: #cbd5e0; margin: 0; }
+  .head .meta { text-align: right; font-size: 10px; color: #9fb3c8; white-space: nowrap; }
+  .head .meta b { color: #fff; }
+  .head .stamp { display: inline-block; margin-top: 8px; font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; border: 1px solid rgba(255,255,255,.35); border-radius: 4px;
+    padding: 3px 8px; color: #e2e8f0; font-weight: 700; }
+
+  /* findings row */
+  .facts3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .fcard { border: 1px solid #e2e8f0; border-radius: 7px; padding: 10px 12px; background: #f7fafc; }
+  .fcard.acc { border-left: 3px solid #a6431f; }
+  .fcard .l { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #718096;
+    font-weight: 700; margin: 0 0 5px; }
+  .fcard .v { font-size: 14px; font-weight: 700; color: #1a202c; line-height: 1.2; margin: 0; }
+  .fcard .s { font-size: 10px; color: #718096; line-height: 1.35; margin: 3px 0 0; }
+
+  /* homeowner facts strip */
+  .hofacts { margin-top: 10px; border: 1px solid #e2e8f0; border-radius: 7px; padding: 9px 12px;
+    font-size: 10px; color: #4a5568; line-height: 1.5; }
+  .hofacts .l { text-transform: uppercase; letter-spacing: .06em; color: #718096; font-weight: 700;
+    margin-right: 8px; }
+  .hofacts b { color: #1a202c; }
+  .hofacts .sep { color: #cbd5e0; margin: 0 8px; }
+
+  /* section label */
+  .slabel { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #718096;
+    font-weight: 700; margin: 16px 0 8px; }
+
+  /* photos */
+  .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  figure.photo { margin: 0; border: 1px solid #e2e8f0; border-radius: 7px; overflow: hidden; }
+  figure.photo img { width: 100%; height: 1.55in; object-fit: cover; display: block; }
+  figure.photo figcaption { font-size: 10.5px; font-weight: 700; color: #4a5568;
+    padding: 6px 10px; background: #f7fafc; border-top: 1px solid #e2e8f0; }
+
+  /* next steps */
+  .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .step .n { width: 19px; height: 19px; border-radius: 50%; background: #0f2942; color: #fff;
+    font-size: 10px; font-weight: 700; text-align: center; line-height: 19px; margin-bottom: 5px; }
+  .step .t { font-size: 10.5px; font-weight: 700; color: #1a202c; line-height: 1.2; }
+  .step .d { font-size: 10px; color: #718096; line-height: 1.3; margin-top: 2px; }
+
+  /* disclaimer */
+  .disc { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e2e8f0;
+    font-size: 10px; color: #718096; line-height: 1.45; text-align: justify; }
 </style>
 </head>
 <body>
-  <div class="header">
-    <p class="eyebrow">Preliminary Roof Inspection Summary</p>
-    <h1>${esc(inspection.address ?? 'Your property')}</h1>
-    <p class="addr">A summary of what was found and what comes next.</p>
-    <p class="gen">Prepared ${esc(generatedOn)}</p>
+  <div class="head">
+    <div>
+      <p class="eyebrow">Preliminary Roof Inspection Summary</p>
+      <h1>${esc(inspection.address ?? 'Your property')}</h1>
+      <p class="sub">A summary of what was found and what comes next.</p>
+    </div>
+    <div class="meta">Prepared <b>${esc(generatedOn)}</b><br /><span class="stamp">Phase 1 of 2</span></div>
   </div>
 
-  <h2>Damage found</h2>
-  <p class="lead">${esc(damageLabel(inspection))}</p>
-  <p class="muted">Observed during the preliminary roof review.</p>
+  <div class="facts3">
+    <div class="fcard acc">
+      <p class="l">Damage found</p>
+      <p class="v">${esc(damageLabel(inspection))}</p>
+      <p class="s">Observed during the preliminary roof review.</p>
+    </div>
+    <div class="fcard">
+      <p class="l">Weather event</p>
+      <p class="v">${weatherValue}</p>
+      <p class="s">${weatherSub}</p>
+    </div>
+    <div class="fcard">
+      <p class="l">Review type</p>
+      <p class="v">Preliminary</p>
+      <p class="s">Initial, ground- or drone-level review.</p>
+    </div>
+  </div>
 
-  <h2>Weather event</h2>
-  ${stormBlock}
+  ${homeownerFactsStrip(inspection)}
 
-  ${homeownerFactRows(inspection)}
+  ${photosBlock}
 
-  ${
-    photos.length
-      ? `<h2>Photos (${photos.length})</h2><div class="photos">${photoCards}</div>`
-      : `<h2>Photos</h2><p class="muted">No preliminary photos are attached to this report.</p>`
-  }
+  <div class="slabel">Next steps</div>
+  <div class="steps">${steps}</div>
 
-  <h2>Next steps</h2>
-  <ol class="steps">${nextSteps}</ol>
-
-  <div class="disclaimer">
+  <div class="disc">
     This preliminary summary documents observations from an initial, ground-level review and the
     severe-weather event on record. It is not a quote, a repair estimate, or a determination of
     insurance coverage. A full forensic inspection is required to document the extent of any damage.
