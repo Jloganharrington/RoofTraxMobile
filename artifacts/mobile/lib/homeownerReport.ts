@@ -287,12 +287,21 @@ function toFriendlyPdf(printUri: string, inspection: Inspection): string {
   }
 }
 
-/** Builds the homeowner PDF and returns a local file:// URI to it. */
-export async function generateHomeownerReportPdf(inspection: Inspection): Promise<string> {
+export interface HomeownerReport {
+  /** Local file:// URI of the generated PDF (what gets shared). */
+  pdfUri: string;
+  /** The exact HTML the PDF was rendered from (photos embedded as data URIs) —
+   * used for the in-app "View report" screen, since Android WebViews can't
+   * render a local PDF directly. Content is identical to the PDF. */
+  html: string;
+}
+
+/** Builds the homeowner PDF and returns its file URI plus the source HTML. */
+export async function generateHomeownerReport(inspection: Inspection): Promise<HomeownerReport> {
   const photos = await resolvePreliminaryPhotos(inspection);
   const html = buildReportHtml(inspection, photos);
   const { uri } = await Print.printToFileAsync({ html });
-  return toFriendlyPdf(uri, inspection);
+  return { pdfUri: toFriendlyPdf(uri, inspection), html };
 }
 
 /**

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,11 +10,16 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { WebView } from 'react-native-webview';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
-import { generateHomeownerReportPdf, shareHomeownerReport } from '@/lib/homeownerReport';
+import {
+  generateHomeownerReport,
+  shareHomeownerReport,
+  type HomeownerReport,
+} from '@/lib/homeownerReport';
 
 // P3 — the homeowner report. This screen previews the Phase 1 findings, then
 // turns everything captured — property, damage type, matched storm, homeowner
@@ -38,15 +44,15 @@ export default function InspectionReportScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  const [pdfUri, setPdfUri] = useState<string | null>(null);
+  const [report, setReport] = useState<HomeownerReport | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const [busy, setBusy] = useState<null | 'generate' | 'share'>(null);
 
   async function handleGenerate() {
     if (!inspection || busy) return;
     setBusy('generate');
     try {
-      const uri = await generateHomeownerReportPdf(inspection);
-      setPdfUri(uri);
+      setReport(await generateHomeownerReport(inspection));
     } catch (err) {
       console.warn('[report] generate failed', err);
       Alert.alert('Could not create report', 'Something went wrong generating the PDF. Try again.');
@@ -56,10 +62,10 @@ export default function InspectionReportScreen() {
   }
 
   async function handleShare() {
-    if (!pdfUri || busy) return;
+    if (!report || busy) return;
     setBusy('share');
     try {
-      await shareHomeownerReport(pdfUri);
+      await shareHomeownerReport(report.pdfUri);
     } catch (err) {
       console.warn('[report] share failed', err);
       Alert.alert('Could not share report', 'Something went wrong opening the share sheet. Try again.');
@@ -183,7 +189,7 @@ export default function InspectionReportScreen() {
 
       <Text style={[styles.section, { color: colors.foreground }]}>Homeowner report</Text>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {pdfUri ? (
+        {report ? (
           <>
             <View style={styles.rowIcon}>
               <View style={[styles.iconBubble, { backgroundColor: colors.accent }]}>
@@ -210,6 +216,15 @@ export default function InspectionReportScreen() {
                   <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Share report</Text>
                 </>
               )}
+            </Pressable>
+
+            <Pressable
+              onPress={() => setViewerOpen(true)}
+              disabled={!!busy}
+              style={[styles.secondaryBtn, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}
+            >
+              <Icon name="file-text" size={18} color={colors.foreground} />
+              <Text style={[styles.btnText, { color: colors.foreground }]}>View report</Text>
             </Pressable>
 
             <Pressable
@@ -249,6 +264,31 @@ export default function InspectionReportScreen() {
       </View>
 
       <View style={{ height: 40 }} />
+
+      <Modal
+        visible={viewerOpen && !!report}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setViewerOpen(false)}
+      >
+        <View style={[styles.viewerHeader, { backgroundColor: colors.secondary }]}>
+          <Text style={styles.viewerTitle}>Homeowner report</Text>
+          <Pressable onPress={() => setViewerOpen(false)} hitSlop={12} style={styles.viewerClose}>
+            <Icon name="x" size={22} color="#fff" />
+          </Pressable>
+        </View>
+        {report ? (
+          <WebView
+            originWhitelist={['about:blank']}
+            source={{ html: report.html }}
+            style={{ flex: 1, backgroundColor: '#fff' }}
+            // The report is self-contained HTML (photos are inline data URIs);
+            // allow only the initial inline-html load, never a navigation out.
+            onShouldStartLoadWithRequest={(req) => req.url === 'about:blank'}
+            javaScriptEnabled={false}
+          />
+        ) : null}
+      </Modal>
     </ScrollView>
   );
 }
@@ -306,4 +346,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   btnText: { fontSize: 16, fontWeight: '700' },
+  viewerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  viewerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  viewerClose: { padding: 2 },
 });
