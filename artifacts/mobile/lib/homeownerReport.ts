@@ -1,4 +1,3 @@
-import * as MailComposer from 'expo-mail-composer';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
@@ -269,26 +268,7 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
 </html>`;
 }
 
-function buildEmailBody(inspection: Inspection): string {
-  const lines = [
-    'Hello,',
-    '',
-    `Attached is the preliminary roof inspection summary${
-      inspection.address ? ` for ${inspection.address}` : ''
-    }.`,
-    '',
-    `It covers the ${damageLabel(inspection).toLowerCase()} observed during the initial review${
-      inspection.stormConfirmedRef
-        ? ` and the ${inspection.stormConfirmedRef.type} on ${inspection.stormConfirmedRef.date}`
-        : ''
-    }, along with the recommended next steps.`,
-    '',
-    'Please review the attached PDF and reach out with any questions.',
-  ];
-  return lines.join('\n');
-}
-
-// Copies the print output to a stable, human-readable filename so the email
+// Copies the print output to a stable, human-readable filename so the shared
 // attachment and downloaded file read as "RoofTrax-Preliminary-Report-...pdf".
 // Falls back to the raw print URI if the copy fails for any reason.
 function toFriendlyPdf(printUri: string, inspection: Inspection): string {
@@ -316,28 +296,9 @@ export async function generateHomeownerReportPdf(inspection: Inspection): Promis
 }
 
 /**
- * Opens the device's email app with the report attached, subject/body filled,
- * and any provided recipients prefilled in the To field. The inspector reviews
- * and taps send in their mail app. Returns false if no mail client is available
- * so the caller can fall back to the share sheet.
+ * Opens the OS share sheet for the generated report — Mail/email, Messages,
+ * AirDrop, or Save to Files. This is how the report leaves the device.
  */
-export async function emailHomeownerReport(
-  pdfUri: string,
-  inspection: Inspection,
-  recipients: string[],
-): Promise<boolean> {
-  if (!(await MailComposer.isAvailableAsync())) return false;
-  await MailComposer.composeAsync({
-    recipients: recipients.length ? recipients : undefined,
-    subject: `Preliminary Roof Inspection Summary${inspection.address ? ` — ${inspection.address}` : ''}`,
-    body: buildEmailBody(inspection),
-    isHtml: false,
-    attachments: [pdfUri],
-  });
-  return true;
-}
-
-/** Opens the OS share sheet so the report can be saved to Files or sent anywhere. */
 export async function shareHomeownerReport(pdfUri: string): Promise<void> {
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(pdfUri, {

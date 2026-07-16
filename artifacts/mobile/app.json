@@ -42,8 +42,7 @@
           "locationWhenInUsePermission": "RoofTrax uses your location to GPS-stamp inspection photos and dropped pins.",
           "locationAlwaysAndWhenInUsePermission": "RoofTrax uses your location to GPS-stamp inspection photos and dropped pins."
         }
-      ],
-      "expo-mail-composer"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

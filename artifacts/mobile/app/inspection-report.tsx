@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -14,18 +13,14 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
-import {
-  emailHomeownerReport,
-  generateHomeownerReportPdf,
-  shareHomeownerReport,
-} from '@/lib/homeownerReport';
+import { generateHomeownerReportPdf, shareHomeownerReport } from '@/lib/homeownerReport';
 
-// P3 — the homeowner report. This screen previews the Phase 1 findings and then
+// P3 — the homeowner report. This screen previews the Phase 1 findings, then
 // turns everything captured — property, damage type, matched storm, homeowner
-// facts, and the four evidence photos — into a PDF. That PDF IS the summary: it
-// can be downloaded via the OS share sheet, or attached to a new email in the
-// device's mail app for the inspector to send to the homeowner. It is
-// deliberately NOT a quote or a coverage opinion.
+// facts, and the four evidence photos — into a PDF. The flow is two steps:
+//   1. Generate the report (builds the PDF on-device; that PDF IS the summary).
+//   2. Share it via the device's share sheet, which includes Mail/email.
+// It is deliberately NOT a quote or a coverage opinion.
 const NEXT_STEPS: Array<{ title: string; detail: string }> = [
   { title: 'File a claim', detail: 'Open a claim with your insurance carrier for the storm date noted above.' },
   { title: 'Pay for a forensic inspection', detail: 'Authorize the detailed, documented forensic roof inspection.' },
@@ -33,13 +28,6 @@ const NEXT_STEPS: Array<{ title: string; detail: string }> = [
   { title: 'Proof package', detail: 'The findings are compiled into a documented, photo-backed report.' },
   { title: 'Claim negotiation', detail: 'The proof package supports the conversation with your carrier.' },
 ];
-
-function parseRecipients(raw: string): string[] {
-  return raw
-    .split(/[,;\s]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.includes('@'));
-}
 
 export default function InspectionReportScreen() {
   const colors = useColors();
@@ -50,41 +38,31 @@ export default function InspectionReportScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  const [recipientText, setRecipientText] = useState('');
-  const [busy, setBusy] = useState<null | 'email' | 'download'>(null);
+  const [pdfUri, setPdfUri] = useState<string | null>(null);
+  const [busy, setBusy] = useState<null | 'generate' | 'share'>(null);
 
-  async function handleEmail() {
+  async function handleGenerate() {
     if (!inspection || busy) return;
-    setBusy('email');
+    setBusy('generate');
     try {
-      const pdfUri = await generateHomeownerReportPdf(inspection);
-      const sent = await emailHomeownerReport(pdfUri, inspection, parseRecipients(recipientText));
-      if (!sent) {
-        // No mail client set up — fall back to the share sheet so the report
-        // still leaves the device.
-        await shareHomeownerReport(pdfUri);
-        Alert.alert(
-          'No email app found',
-          'This device has no email account set up, so the share sheet opened instead — you can still send or save the report from there.',
-        );
-      }
+      const uri = await generateHomeownerReportPdf(inspection);
+      setPdfUri(uri);
     } catch (err) {
-      console.warn('[report] email failed', err);
+      console.warn('[report] generate failed', err);
       Alert.alert('Could not create report', 'Something went wrong generating the PDF. Try again.');
     } finally {
       setBusy(null);
     }
   }
 
-  async function handleDownload() {
-    if (!inspection || busy) return;
-    setBusy('download');
+  async function handleShare() {
+    if (!pdfUri || busy) return;
+    setBusy('share');
     try {
-      const pdfUri = await generateHomeownerReportPdf(inspection);
       await shareHomeownerReport(pdfUri);
     } catch (err) {
-      console.warn('[report] download failed', err);
-      Alert.alert('Could not create report', 'Something went wrong generating the PDF. Try again.');
+      console.warn('[report] share failed', err);
+      Alert.alert('Could not share report', 'Something went wrong opening the share sheet. Try again.');
     } finally {
       setBusy(null);
     }
@@ -203,55 +181,71 @@ export default function InspectionReportScreen() {
         ))}
       </View>
 
-      <Text style={[styles.section, { color: colors.foreground }]}>Send the report</Text>
+      <Text style={[styles.section, { color: colors.foreground }]}>Homeowner report</Text>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          Generates a PDF with the summary above and all {photoCount} photo{photoCount === 1 ? '' : 's'}.
-          Email it to the homeowner, or download it to share anywhere.
-        </Text>
-        <TextInput
-          value={recipientText}
-          onChangeText={setRecipientText}
-          placeholder="Recipient email(s), comma-separated (optional)"
-          placeholderTextColor={colors.mutedForeground}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          editable={!busy}
-          style={[
-            styles.input,
-            { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground },
-          ]}
-        />
+        {pdfUri ? (
+          <>
+            <View style={styles.rowIcon}>
+              <View style={[styles.iconBubble, { backgroundColor: colors.accent }]}>
+                <Icon name="check" size={18} color={colors.secondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Report ready</Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                  PDF with the summary above and all {photoCount} photo{photoCount === 1 ? '' : 's'}.
+                </Text>
+              </View>
+            </View>
 
-        <Pressable
-          onPress={handleEmail}
-          disabled={!!busy}
-          style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 }]}
-        >
-          {busy === 'email' ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <>
-              <Icon name="file-text" size={18} color={colors.primaryForeground} />
-              <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Email report (PDF)</Text>
-            </>
-          )}
-        </Pressable>
+            <Pressable
+              onPress={handleShare}
+              disabled={!!busy}
+              style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 }]}
+            >
+              {busy === 'share' ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Icon name="upload" size={18} color={colors.primaryForeground} />
+                  <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Share report</Text>
+                </>
+              )}
+            </Pressable>
 
-        <Pressable
-          onPress={handleDownload}
-          disabled={!!busy}
-          style={[styles.secondaryBtn, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}
-        >
-          {busy === 'download' ? (
-            <ActivityIndicator color={colors.foreground} />
-          ) : (
-            <>
-              <Icon name="upload" size={18} color={colors.foreground} />
-              <Text style={[styles.btnText, { color: colors.foreground }]}>Download PDF</Text>
-            </>
-          )}
-        </Pressable>
+            <Pressable
+              onPress={handleGenerate}
+              disabled={!!busy}
+              style={[styles.secondaryBtn, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}
+            >
+              {busy === 'generate' ? (
+                <ActivityIndicator color={colors.foreground} />
+              ) : (
+                <Text style={[styles.btnText, { color: colors.foreground }]}>Regenerate</Text>
+              )}
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Generate a PDF with the summary above and all {photoCount} photo
+              {photoCount === 1 ? '' : 's'}. You can share it once it's ready.
+            </Text>
+            <Pressable
+              onPress={handleGenerate}
+              disabled={!!busy}
+              style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 }]}
+            >
+              {busy === 'generate' ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Icon name="file-text" size={18} color={colors.primaryForeground} />
+                  <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Generate report</Text>
+                </>
+              )}
+            </Pressable>
+          </>
+        )}
       </View>
 
       <View style={{ height: 40 }} />
@@ -294,7 +288,6 @@ const styles = StyleSheet.create({
   stepNumber: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   stepNumberText: { fontSize: 13, fontWeight: '800' },
   factRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
