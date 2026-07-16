@@ -50,6 +50,7 @@ import {
   inspectionProductsTable,
   inspectionSlopesTable,
   inspectionsTable,
+  pinsTable,
   testSquareHitsTable,
   testSquaresTable,
   measurementsTable,
@@ -57,7 +58,7 @@ import {
   usersTable,
 } from '@workspace/db';
 import type { Role } from '@workspace/db';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
@@ -338,6 +339,74 @@ router.get('/inspections', async (req: Request, res: Response) => {
   res.json(ListInspectionsResponse.parse({ inspections: rows }));
 });
 
+// When an inspection is started without a canvassing pin, drop one so the
+// property shows on the team map. If a company pin already exists at that spot
+// (same non-empty address, case-insensitive, or within ~10m), link to it
+// instead of duplicating. Runs only for a genuinely NEW inspection row —
+// idempotent offline replays hit the conflict path and never get here, so a
+// replay can't double-drop. Returns the pin id to store on the inspection, or
+// null when there are no coordinates to pin.
+async function ensurePinForInspection(inspection: {
+  companyId: string;
+  inspectorUserId: string;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}): Promise<string | null> {
+  const { latitude, longitude } = inspection;
+  if (latitude == null || longitude == null) return null;
+
+  const address = inspection.address?.trim();
+  const nearby = sql`abs(${pinsTable.latitude} - ${latitude}) < 0.0001 and abs(${pinsTable.longitude} - ${longitude}) < 0.0001`;
+  const [existing] = await db
+    .select({ id: pinsTable.id })
+    .from(pinsTable)
+    .where(
+      and(
+        eq(pinsTable.companyId, inspection.companyId),
+        address ? sql`(lower(${pinsTable.address}) = lower(${address}) or (${nearby}))` : nearby,
+      ),
+    )
+    .limit(1);
+  if (existing) return existing.id;
+
+  // Note: the pin's damageType vocabulary (roof/siding) differs from the
+  // inspection's Phase 1 vocabulary (hail/wind), so it is left unset here.
+  const [pin] = await db
+    .insert(pinsTable)
+    .values({
+      userId: inspection.inspectorUserId,
+      companyId: inspection.companyId,
+      latitude,
+      longitude,
+      address: address || null,
+      workflow: 'insurance',
+    })
+    .returning({ id: pinsTable.id });
+  return pin?.id ?? null;
+}
+
+// Applies ensurePinForInspection to a freshly-inserted inspection row and
+// stores the link. Best-effort: a pin failure must never fail the inspection
+// create itself (the pin is map convenience, not part of the record's truth).
+type InspectionRow = typeof inspectionsTable.$inferSelect;
+async function attachAutoPin(inspection: InspectionRow): Promise<InspectionRow> {
+  if (inspection.pinId) return inspection;
+  try {
+    const pinId = await ensurePinForInspection(inspection);
+    if (!pinId) return inspection;
+    const [updated] = await db
+      .update(inspectionsTable)
+      .set({ pinId })
+      .where(eq(inspectionsTable.id, inspection.id))
+      .returning();
+    return updated ?? inspection;
+  } catch (err) {
+    console.warn('[inspections] auto-pin failed', err);
+    return inspection;
+  }
+}
+
 router.post('/inspections', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -404,7 +473,8 @@ router.post('/inspections', async (req: Request, res: Response) => {
       .returning();
 
     if (inserted) {
-      res.status(201).json(CreateInspectionResponse.parse({ inspection: inserted }));
+      const finished = await attachAutoPin(inserted);
+      res.status(201).json(CreateInspectionResponse.parse({ inspection: finished }));
       return;
     }
 
@@ -420,7 +490,8 @@ router.post('/inspections', async (req: Request, res: Response) => {
 
   const [inspection] = await db.insert(inspectionsTable).values(values).returning();
 
-  res.status(201).json(CreateInspectionResponse.parse({ inspection }));
+  const finished = await attachAutoPin(inspection);
+  res.status(201).json(CreateInspectionResponse.parse({ inspection: finished }));
 });
 
 // CRM seam (B3 / M-F F4): scheduled inspections come from the external CRM,
