@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,6 +27,15 @@ import { buildProtocolState } from '@/lib/inspectionProtocolState';
 // inspector picks the damage type and records each damage instance with a
 // photo captioned `F{n}-Damage {k}`. Facets are removable — the list is
 // never fixed.
+
+// Fixed roofing material options (dropdown — no free text).
+const MATERIAL_OPTIONS = [
+  'Asphalt - 3-Tab',
+  'Asphalt - Laminate',
+  'Cedar Shake',
+  'Standing Seam Metal',
+  'Bitumen',
+] as const;
 
 // The two independently toggleable tie-in flags (multi-select).
 const TIE_IN_OPTIONS = ['valley', 'hip_ridge'] as const;
@@ -69,6 +79,7 @@ export default function InspectionFacetScreen() {
   const [material, setMaterial] = React.useState<string | null>(null);
   const [pitch, setPitch] = React.useState<string | null>(null);
   const [savingDetails, setSavingDetails] = React.useState(false);
+  const [materialPickerOpen, setMaterialPickerOpen] = React.useState(false);
   const [addingDamage, setAddingDamage] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
   // Which tie-in option was just selected for the first time this session —
@@ -241,7 +252,25 @@ export default function InspectionFacetScreen() {
               <Field label="Area (sq ft)" value={areaValue} onChange={setArea} placeholder="320" keyboardType="numeric" colors={colors} />
             </View>
             <View style={{ flex: 1.4 }}>
-              <Field label="Material" value={materialValue} onChange={setMaterial} placeholder="Asphalt" colors={colors} />
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Material</Text>
+                <Pressable
+                  onPress={() => setMaterialPickerOpen(true)}
+                  style={[
+                    styles.inputWrap,
+                    styles.dropdown,
+                    { backgroundColor: colors.background, borderColor: colors.border },
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{ flex: 1, fontSize: 15, color: materialValue ? colors.foreground : colors.mutedForeground }}
+                  >
+                    {materialValue || 'Select'}
+                  </Text>
+                  <Icon name="chevron-down" size={18} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
             </View>
             <View style={{ flex: 1 }}>
               <Field label="Pitch (/12)" value={pitchValue} onChange={setPitch} placeholder="6" keyboardType="numeric" suffix="/12" colors={colors} />
@@ -431,6 +460,38 @@ export default function InspectionFacetScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Material picker */}
+      <Modal
+        visible={materialPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMaterialPickerOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setMaterialPickerOpen(false)}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.label, { color: colors.mutedForeground, marginBottom: 4 }]}>Material</Text>
+            {MATERIAL_OPTIONS.map((option) => {
+              const selected = materialValue === option;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    setMaterial(option);
+                    setMaterialPickerOpen(false);
+                  }}
+                  style={[styles.modalOption, { backgroundColor: selected ? colors.accent : 'transparent' }]}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: selected ? '700' : '400', flex: 1 }}>
+                    {option}
+                  </Text>
+                  {selected ? <Icon name="check" size={18} color={colors.primary} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -508,5 +569,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   saveBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  dropdown: { paddingVertical: 12, gap: 6 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: { borderRadius: 14, borderWidth: 1, padding: 12, gap: 2 },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
   removeBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, marginTop: 12 },
 });
