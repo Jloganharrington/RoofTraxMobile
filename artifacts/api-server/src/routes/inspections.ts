@@ -340,7 +340,23 @@ router.get('/inspections', async (req: Request, res: Response) => {
     )
     .orderBy(desc(inspectionsTable.createdAt));
 
-  res.json(ListInspectionsResponse.parse({ inspections: rows }));
+  // One row with legacy-shaped jsonb (e.g. an arrivalConditions written by an
+  // older client) must not 500 the entire list — the list only needs identity
+  // and status fields, so blank out any nested jsonb blob that no longer
+  // matches its current schema instead of failing the response.
+  const safeRows = rows.map((row) => {
+    const parsed = ListInspectionsResponse.shape.inspections.element.safeParse(row);
+    if (parsed.success) return row;
+    return {
+      ...row,
+      arrivalConditions: null,
+      homeownerFacts: null,
+      stormConfirmedRef: null,
+      submissionManifest: null,
+    };
+  });
+
+  res.json(ListInspectionsResponse.parse({ inspections: safeRows }));
 });
 
 // When an inspection is started without a canvassing pin, drop one so the

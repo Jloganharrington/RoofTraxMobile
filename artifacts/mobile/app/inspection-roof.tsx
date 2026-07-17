@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { WHOLE_ROOF_LINEAR_TYPES } from '@workspace/protocol';
@@ -36,7 +36,11 @@ const LINEAR_LABELS: Record<(typeof WHOLE_ROOF_LINEAR_TYPES)[number], string> = 
 
 export default function InspectionRoofScreen() {
   const colors = useColors();
-  const headerHeight = useHeaderHeight();
+  // Approximate the native-stack header height (status bar inset + 44pt bar
+  // on iOS) — @react-navigation/elements' useHeaderHeight can't be imported
+  // directly without breaking Metro's resolution of the tab bar package.
+  const insets = useSafeAreaInsets();
+  const headerHeight = insets.top + 44;
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
 
