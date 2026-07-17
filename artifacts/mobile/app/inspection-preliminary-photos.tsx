@@ -46,6 +46,9 @@ export default function PreliminaryPhotosScreen() {
   const [shots, setShots] = useState<Record<string, CapturedEvidencePhoto>>({});
   const [capturingKey, setCapturingKey] = useState<string | null>(null);
   const [queueing, setQueueing] = useState(false);
+  // Whether anything was saved this session — the auto-close effect only
+  // fires after a save, never on merely opening a fully-captured screen.
+  const [savedThisSession, setSavedThisSession] = useState(false);
 
   // A slot is already satisfied if a photo for its role is on the record. Both
   // close-up slots share the `damage_closeup` role, so once 2 are on the record
@@ -62,11 +65,83 @@ export default function PreliminaryPhotosScreen() {
     return onRecord > 0;
   }
 
-  async function runPicker(key: string, pick: () => Promise<CapturedEvidencePhoto | null>) {
+  // Persists + queues one shot to the outbox and reflects it optimistically in
+  // the inspection cache (which flips the slot to "Captured"). Returns true on
+  // success. Shared by the camera auto-save path and the save button.
+  async function queueShot(
+    slotKey: string,
+    shot: CapturedEvidencePhoto,
+  ): Promise<boolean> {
+    const slot = PRELIMINARY_PHOTO_SLOTS.find((s) => s.key === slotKey);
+    if (!id || !slot) {
+      Alert.alert('Missing context', 'This screen must be opened from an inspection.');
+      return false;
+    }
+    try {
+      const persisted = await persistCapturedPhotoForOutbox(shot);
+      const photoId = Crypto.randomUUID();
+      const payload: InspectionPhotoOutboxPayload = {
+        id: photoId,
+        inspectionId: id,
+        subjectType: 'inspection',
+        subjectId: null,
+        stage: null,
+        triadRole: null,
+        preliminaryRole: slot.role,
+        localFilePath: persisted.localFilePath,
+        mimeType: shot.mimeType,
+        sha256: persisted.sha256,
+        exifJson: persisted.exifJson,
+        overlayJson: persisted.overlayJson,
+        capturedAtUtc: persisted.capturedAtUtc,
+        latitude: persisted.latitude,
+        longitude: persisted.longitude,
+      };
+      await enqueueOutboxItem('inspection.photo', payload);
+      appendOptimisticPhotos(queryClient, id, [
+        {
+          id: photoId,
+          subjectType: 'inspection',
+          subjectId: null,
+          stage: null,
+          triadRole: null,
+          preliminaryRole: slot.role,
+          sha256: persisted.sha256,
+        },
+      ]);
+      // The optimistic cache row now marks the slot captured; drop the local
+      // pending shot so the UI reads from the record.
+      setShots((prev) => {
+        const next = { ...prev };
+        delete next[slotKey];
+        return next;
+      });
+      setSavedThisSession(true);
+      drainOutbox();
+      return true;
+    } catch {
+      Alert.alert('Could not save photo', 'Something went wrong saving locally. Try again.');
+      return false;
+    }
+  }
+
+  async function runPicker(
+    key: string,
+    pick: () => Promise<CapturedEvidencePhoto | null>,
+    // Camera shots save immediately ("Use Photo" = done); the screen closes
+    // once every slot is captured. Uploads stay for review (Retake / Replace)
+    // until the save button is pressed.
+    autoSave: boolean,
+  ) {
     setCapturingKey(key);
     try {
       const captured = await pick();
-      if (captured) setShots((prev) => ({ ...prev, [key]: captured }));
+      if (captured) {
+        setShots((prev) => ({ ...prev, [key]: captured }));
+        if (autoSave) await queueShot(key, captured);
+        // Auto-close (once every slot is captured) is handled by the effect
+        // below, off committed state — not stale closure snapshots.
+      }
     } catch (err) {
       if (err instanceof CameraPermissionDeniedError) {
         Alert.alert(
@@ -87,16 +162,12 @@ export default function PreliminaryPhotosScreen() {
     }
   }
 
-  const handleCapture = (key: string) => runPicker(key, captureEvidencePhoto);
-  const handleUpload = (key: string) => runPicker(key, pickEvidencePhotoFromLibrary);
-
-  function handleRetake(key: string) {
-    setShots((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }
+  const handleCapture = (key: string) => runPicker(key, captureEvidencePhoto, true);
+  const handleUpload = (key: string) => runPicker(key, pickEvidencePhotoFromLibrary, false);
+  // Retake: reshoot with the camera (auto-saves). Replace: pick a different
+  // photo from the library (stays for review).
+  const handleRetake = (key: string) => runPicker(key, captureEvidencePhoto, true);
+  const handleReplace = (key: string) => runPicker(key, pickEvidencePhotoFromLibrary, false);
 
   // Which slots still need a shot this session (not on the record, not queued).
   const pendingSlots = PRELIMINARY_PHOTO_SLOTS.filter(
@@ -105,69 +176,42 @@ export default function PreliminaryPhotosScreen() {
   const readyToSave = PRELIMINARY_PHOTO_SLOTS.some((slot) => shots[slot.key]);
   const allDone = pendingSlots.length === 0 && !readyToSave;
 
+  // Saves any uploaded, not-yet-saved shots, then closes. Camera shots were
+  // already queued the moment they were taken; the outbox drainer uploads in
+  // the background (immediately if online, later if not) with no popup.
   async function handleSaveAll() {
-    if (!id) {
-      Alert.alert('Missing context', 'This screen must be opened from an inspection.');
-      return;
-    }
     setQueueing(true);
-    const queued: Array<{
-      id: string;
-      preliminaryRole: (typeof PRELIMINARY_PHOTO_SLOTS)[number]['role'];
-      sha256: string;
-    }> = [];
     try {
       for (const slot of PRELIMINARY_PHOTO_SLOTS) {
         const shot = shots[slot.key];
         if (!shot) continue;
-        const persisted = await persistCapturedPhotoForOutbox(shot);
-        const photoId = Crypto.randomUUID();
-        const payload: InspectionPhotoOutboxPayload = {
-          id: photoId,
-          inspectionId: id,
-          subjectType: 'inspection',
-          subjectId: null,
-          stage: null,
-          triadRole: null,
-          preliminaryRole: slot.role,
-          localFilePath: persisted.localFilePath,
-          mimeType: shot.mimeType,
-          sha256: persisted.sha256,
-          exifJson: persisted.exifJson,
-          overlayJson: persisted.overlayJson,
-          capturedAtUtc: persisted.capturedAtUtc,
-          latitude: persisted.latitude,
-          longitude: persisted.longitude,
-        };
-        await enqueueOutboxItem('inspection.photo', payload);
-        queued.push({ id: photoId, preliminaryRole: slot.role, sha256: persisted.sha256 });
+        const ok = await queueShot(slot.key, shot);
+        if (!ok) return; // queueShot already alerted
       }
-    } catch {
+    } finally {
       setQueueing(false);
-      Alert.alert('Could not queue photos', 'Something went wrong saving locally. Try again.');
-      return;
     }
-    setQueueing(false);
-
-    appendOptimisticPhotos(
-      queryClient,
-      id,
-      queued.map((q) => ({
-        id: q.id,
-        subjectType: 'inspection',
-        subjectId: null,
-        stage: null,
-        triadRole: null,
-        preliminaryRole: q.preliminaryRole,
-        sha256: q.sha256,
-      })),
-    );
-    drainOutbox();
-    Alert.alert('Photos queued', 'They will upload automatically once you have a connection.');
-    router.back();
+    // The auto-close effect pops the screen once everything is captured; no
+    // explicit back() here or the navigator would pop twice.
   }
 
   const isBusy = capturingKey !== null || queueing;
+
+  // Auto-close once every slot is on the record (optimistic rows included)
+  // and nothing uploaded is still awaiting review. Derived from committed
+  // state so async save races can't skip the close; gated on a save having
+  // happened this session so merely opening a completed screen never pops.
+  const closedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (
+      savedThisSession &&
+      allDone &&
+      !closedRef.current
+    ) {
+      closedRef.current = true;
+      router.back();
+    }
+  }, [savedThisSession, allDone]);
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
@@ -194,13 +238,22 @@ export default function PreliminaryPhotosScreen() {
             ) : shot ? (
               <View>
                 <Image source={{ uri: shot.localUri }} style={styles.preview} />
-                <Pressable
-                  onPress={() => handleRetake(slot.key)}
-                  style={[styles.secondaryButton, { borderColor: colors.border }]}
-                  disabled={isBusy}
-                >
-                  <Text style={{ color: colors.foreground }}>Retake</Text>
-                </Pressable>
+                <View style={styles.actionRow}>
+                  <Pressable
+                    onPress={() => handleRetake(slot.key)}
+                    style={[styles.secondaryButton, { borderColor: colors.border }]}
+                    disabled={isBusy}
+                  >
+                    <Text style={{ color: colors.foreground }}>Retake</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleReplace(slot.key)}
+                    style={[styles.secondaryButton, { borderColor: colors.border }]}
+                    disabled={isBusy}
+                  >
+                    <Text style={{ color: colors.foreground }}>Replace</Text>
+                  </Pressable>
+                </View>
               </View>
             ) : isCapturingThis ? (
               <View style={[styles.captureButton, { borderColor: colors.border }]}>
@@ -273,6 +326,7 @@ const styles = StyleSheet.create({
     width: PREVIEW_SIZE,
   },
   captureRow: { flexDirection: 'row', gap: 8, width: PREVIEW_SIZE },
+  actionRow: { flexDirection: 'row', gap: 8 },
   captureHalf: { flex: 1, width: undefined },
   secondaryButton: {
     alignSelf: 'flex-start',

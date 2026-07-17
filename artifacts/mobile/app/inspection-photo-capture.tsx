@@ -92,6 +92,8 @@ export default function InspectionPhotoCaptureScreen() {
   }>();
   const steps = useMemo(() => parseRoles(params.roles).map((role) => ALL_STEPS[role]), [params.roles]);
   const [shots, setShots] = useState<Partial<Record<TriadRole, AnnotatedShot>>>({});
+  // Roles already queued to the outbox this session (camera shots auto-save).
+  const [savedRoles, setSavedRoles] = useState<Set<TriadRole>>(new Set());
   const [capturingRole, setCapturingRole] = useState<TriadRole | null>(null);
   const [uploadingRole, setUploadingRole] = useState<TriadRole | null>(null);
   const [queueing, setQueueing] = useState(false);
@@ -101,13 +103,88 @@ export default function InspectionPhotoCaptureScreen() {
 
   const nextStep = useMemo(() => steps.find((step) => !shots[step.role]), [steps, shots]);
   const allCaptured = !nextStep;
+  const unsavedSteps = steps.filter((step) => shots[step.role] && !savedRoles.has(step.role));
 
-  async function runPicker(role: TriadRole, pick: () => Promise<CapturedEvidencePhoto | null>) {
+  // Auto-close once every required role has been saved (camera shots
+  // auto-save, so a pure camera session finishes hands-free). Derived from
+  // committed state so async save races can't skip the close.
+  const allSaved = steps.length > 0 && steps.every((step) => savedRoles.has(step.role));
+  const closedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (allSaved && !closedRef.current) {
+      closedRef.current = true;
+      router.back();
+    }
+  }, [allSaved]);
+
+  // Persists + queues one shot to the outbox and reflects it optimistically.
+  // Returns true on success. Shared by the camera auto-save path and the
+  // explicit save button for uploaded photos.
+  async function queueShot(role: TriadRole, shot: AnnotatedShot): Promise<boolean> {
+    const inspectionId = params.inspectionId;
+    const subjectType = params.subjectType;
+    if (!inspectionId || !subjectType) {
+      Alert.alert('Missing context', 'This screen must be opened from an inspection subject.');
+      return false;
+    }
+    setUploadingRole(role);
+    try {
+      const persisted = await persistCapturedPhotoForOutbox(shot);
+      const photoId = Crypto.randomUUID();
+      const payload: InspectionPhotoOutboxPayload = {
+        id: photoId,
+        inspectionId,
+        subjectType,
+        subjectId: params.subjectId ?? null,
+        stage: params.stage ?? null,
+        triadRole: role,
+        localFilePath: persisted.localFilePath,
+        mimeType: shot.mimeType,
+        sha256: persisted.sha256,
+        exifJson: persisted.exifJson,
+        overlayJson: persisted.overlayJson,
+        capturedAtUtc: persisted.capturedAtUtc,
+        latitude: persisted.latitude,
+        longitude: persisted.longitude,
+      };
+      await enqueueOutboxItem('inspection.photo', payload);
+      appendOptimisticPhotos(queryClient, inspectionId, [
+        {
+          id: photoId,
+          subjectType,
+          subjectId: params.subjectId ?? null,
+          stage: params.stage ?? null,
+          triadRole: role,
+          sha256: persisted.sha256,
+        },
+      ]);
+      setSavedRoles((prev) => new Set(prev).add(role));
+      drainOutbox();
+      return true;
+    } catch {
+      Alert.alert('Could not save photo', 'Something went wrong saving the photo locally. Try again.');
+      return false;
+    } finally {
+      setUploadingRole(null);
+    }
+  }
+
+  async function runPicker(
+    role: TriadRole,
+    pick: () => Promise<CapturedEvidencePhoto | null>,
+    // Camera shots save immediately ("Use Photo" = done); the screen closes
+    // itself once every required role has been saved. Uploads stay on screen
+    // for review (Retake / Replace) until the save button is pressed.
+    autoSave: boolean,
+  ) {
     setCapturingRole(role);
     try {
       const captured = await pick();
       if (captured) {
         setShots((prev) => ({ ...prev, [role]: captured }));
+        if (autoSave) await queueShot(role, captured);
+        // Auto-close (once everything is saved) is handled by the effect
+        // below, off committed state — not stale closure snapshots.
       }
     } catch (err) {
       if (err instanceof CameraPermissionDeniedError) {
@@ -129,16 +206,12 @@ export default function InspectionPhotoCaptureScreen() {
     }
   }
 
-  const handleCapture = (role: TriadRole) => runPicker(role, captureEvidencePhoto);
-  const handleUpload = (role: TriadRole) => runPicker(role, pickEvidencePhotoFromLibrary);
-
-  function handleRetake(role: TriadRole) {
-    setShots((prev) => {
-      const next = { ...prev };
-      delete next[role];
-      return next;
-    });
-  }
+  const handleCapture = (role: TriadRole) => runPicker(role, captureEvidencePhoto, true);
+  const handleUpload = (role: TriadRole) => runPicker(role, pickEvidencePhotoFromLibrary, false);
+  // Retake: reshoot with the camera (auto-saves). Replace: pick a different
+  // photo from the library (stays for review).
+  const handleRetake = (role: TriadRole) => runPicker(role, captureEvidencePhoto, true);
+  const handleReplace = (role: TriadRole) => runPicker(role, pickEvidencePhotoFromLibrary, false);
 
   function handlePreviewTap(role: TriadRole, event: GestureResponderEvent) {
     const { locationX, locationY } = event.nativeEvent;
@@ -163,80 +236,24 @@ export default function InspectionPhotoCaptureScreen() {
     setNoteText('');
   }
 
+  // Saves any remaining (uploaded, not-yet-saved) shots, then closes. Camera
+  // shots were already queued the moment they were taken. Queueing is
+  // local-first and network-independent: the outbox drainer uploads
+  // immediately if online, or automatically once connectivity returns.
   async function handleSubmitAll() {
-    const inspectionId = params.inspectionId;
-    const subjectType = params.subjectType;
-    if (!inspectionId || !subjectType) {
-      Alert.alert('Missing context', 'This screen must be opened from an inspection subject.');
-      return;
-    }
-
-    // Queueing is local-first and network-independent: each shot is
-    // copied to durable storage and hashed on-device, then handed to the
-    // outbox. The outbox's own drainer uploads and posts it — immediately
-    // if online, automatically once connectivity returns if not. That
-    // means this screen can finish (and the inspector can move on) even in
-    // airplane mode.
     setQueueing(true);
-    const queued: Array<{ id: string; triadRole: TriadRole; sha256: string }> = [];
     try {
-      for (const step of steps) {
+      for (const step of unsavedSteps) {
         const shot = shots[step.role];
         if (!shot) continue;
-
-        setUploadingRole(step.role);
-        const persisted = await persistCapturedPhotoForOutbox(shot);
-        const photoId = Crypto.randomUUID();
-        const payload: InspectionPhotoOutboxPayload = {
-          id: photoId,
-          inspectionId,
-          subjectType,
-          subjectId: params.subjectId ?? null,
-          stage: params.stage ?? null,
-          triadRole: step.role,
-          localFilePath: persisted.localFilePath,
-          mimeType: shot.mimeType,
-          sha256: persisted.sha256,
-          exifJson: persisted.exifJson,
-          overlayJson: persisted.overlayJson,
-          capturedAtUtc: persisted.capturedAtUtc,
-          latitude: persisted.latitude,
-          longitude: persisted.longitude,
-        };
-        await enqueueOutboxItem('inspection.photo', payload);
-        queued.push({ id: photoId, triadRole: step.role, sha256: persisted.sha256 });
+        const ok = await queueShot(step.role, shot);
+        if (!ok) return; // queueShot already alerted
       }
-    } catch {
+    } finally {
       setQueueing(false);
-      setUploadingRole(null);
-      Alert.alert('Could not queue photos', 'Something went wrong saving the photos locally. Try again.');
-      return;
     }
-    setUploadingRole(null);
-    setQueueing(false);
-
-    // Reflect the captures in the cached inspection detail immediately so
-    // gate progress updates even before (or without) a sync.
-    appendOptimisticPhotos(
-      queryClient,
-      inspectionId,
-      queued.map((q) => ({
-        id: q.id,
-        subjectType,
-        subjectId: params.subjectId ?? null,
-        stage: params.stage ?? null,
-        triadRole: q.triadRole,
-        sha256: q.sha256,
-      })),
-    );
-
-    // Fire-and-forget: attempt an immediate sync if online, but don't make
-    // the inspector wait on it — the periodic/connectivity-triggered drain
-    // will retry regardless of whether this attempt succeeds.
-    drainOutbox();
-
-    Alert.alert('Photos queued', 'They will upload automatically once you have a connection.');
-    router.back();
+    // The all-saved effect closes the screen; no explicit back() here or the
+    // navigator would pop twice.
   }
 
   const isBusy = capturingRole !== null || uploadingRole !== null || queueing;
@@ -248,15 +265,17 @@ export default function InspectionPhotoCaptureScreen() {
     >
       <Text style={[styles.title, { color: colors.foreground }]}>{params.title ?? 'Evidence photos'}</Text>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-        {steps.length === 1
-          ? 'Capture the overview shot. Tap the photo afterward to drop a note marker.'
-          : 'Capture a wide, mid, and close-up shot. Tap a photo afterward to drop a note marker.'}
+        {(steps.length === 1
+          ? 'Capture the overview shot.'
+          : 'Capture a wide, mid, and close-up shot.') +
+          ' Camera shots save automatically. Tap an uploaded photo to drop a note marker before saving.'}
       </Text>
 
       {steps.map((step) => {
         const shot = shots[step.role];
         const isCapturingThis = capturingRole === step.role;
         const isUploadingThis = uploadingRole === step.role;
+        const isSaved = savedRoles.has(step.role);
 
         return (
           <View key={step.role} style={styles.stepBlock}>
@@ -265,7 +284,10 @@ export default function InspectionPhotoCaptureScreen() {
 
             {shot ? (
               <View>
-                <Pressable onPress={(e) => handlePreviewTap(step.role, e)}>
+                <Pressable
+                  onPress={isSaved ? undefined : (e) => handlePreviewTap(step.role, e)}
+                  disabled={isSaved}
+                >
                   <Image source={{ uri: shot.localUri }} style={styles.preview} />
                   {shot.annotations.map((a, idx) => (
                     <View
@@ -283,13 +305,29 @@ export default function InspectionPhotoCaptureScreen() {
                     {shot.annotations.length} note{shot.annotations.length === 1 ? '' : 's'} added
                   </Text>
                 )}
-                <Pressable
-                  onPress={() => handleRetake(step.role)}
-                  style={[styles.secondaryButton, { borderColor: colors.border }]}
-                  disabled={isBusy}
-                >
-                  <Text style={{ color: colors.foreground }}>Retake</Text>
-                </Pressable>
+                {isSaved ? (
+                  <View style={styles.savedRow}>
+                    <Icon name="check" size={16} color={colors.success} />
+                    <Text style={{ color: colors.foreground }}>Saved</Text>
+                  </View>
+                ) : (
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      onPress={() => handleRetake(step.role)}
+                      style={[styles.secondaryButton, { borderColor: colors.border }]}
+                      disabled={isBusy}
+                    >
+                      <Text style={{ color: colors.foreground }}>Retake</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleReplace(step.role)}
+                      style={[styles.secondaryButton, { borderColor: colors.border }]}
+                      disabled={isBusy}
+                    >
+                      <Text style={{ color: colors.foreground }}>Replace</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             ) : isCapturingThis ? (
               <View style={[styles.captureButton, { borderColor: colors.border }]}>
@@ -322,22 +360,30 @@ export default function InspectionPhotoCaptureScreen() {
         );
       })}
 
-      <Pressable
-        onPress={handleSubmitAll}
-        disabled={!allCaptured || isBusy}
-        style={[
-          styles.submitButton,
-          { backgroundColor: allCaptured && !isBusy ? colors.primary : colors.border },
-        ]}
-      >
-        {isBusy ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>
-            {allCaptured ? 'Save all photos' : 'Capture all three shots to continue'}
-          </Text>
-        )}
-      </Pressable>
+      {/* Camera shots save themselves (and the screen closes once every shot
+          is in); this button only remains for saving reviewed uploads. */}
+      {(!allCaptured || unsavedSteps.length > 0) && (
+        <Pressable
+          onPress={handleSubmitAll}
+          disabled={!allCaptured || isBusy}
+          style={[
+            styles.submitButton,
+            { backgroundColor: allCaptured && !isBusy ? colors.primary : colors.border },
+          ]}
+        >
+          {isBusy ? (
+            <ActivityIndicator color={colors.primaryForeground} />
+          ) : (
+            <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>
+              {allCaptured
+                ? 'Save photos'
+                : steps.length === 1
+                  ? 'Capture the shot to continue'
+                  : 'Capture all shots to continue'}
+            </Text>
+          )}
+        </Pressable>
+      )}
 
       <Modal visible={annotatingRole !== null} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -387,6 +433,8 @@ const styles = StyleSheet.create({
   preview: { width: PREVIEW_SIZE, height: PREVIEW_SIZE, borderRadius: 8 },
   marker: { position: 'absolute', width: 12, height: 12, borderRadius: 6 },
   annotationCount: { fontSize: 12 },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  actionRow: { flexDirection: 'row', gap: 8 },
   captureButton: {
     flexDirection: 'row',
     alignItems: 'center',
