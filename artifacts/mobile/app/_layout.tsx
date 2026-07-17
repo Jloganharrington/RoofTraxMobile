@@ -77,13 +77,13 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection/[id]" options={{ title: 'Inspection' }} />
       <Stack.Screen name="inspection-storm" options={{ title: 'Confirm Storm' }} />
       <Stack.Screen name="inspection-arrival" options={{ title: 'Log Arrival' }} />
-      <Stack.Screen name="inspection-elevations" options={{ title: 'Elevation Walk' }} />
-      <Stack.Screen name="inspection-roof" options={{ title: 'Roof & Slopes' }} />
+      <Stack.Screen name="inspection-elevations" options={{ title: 'Elevations & Access' }} />
+      <Stack.Screen name="inspection-roof" options={{ title: 'Roof Facets' }} />
       <Stack.Screen name="inspection-test-squares" options={{ title: 'Test Squares' }} />
-      <Stack.Screen name="inspection-collateral" options={{ title: 'Collateral Sweep' }} />
+      <Stack.Screen name="inspection-collateral" options={{ title: 'Collateral & Ground' }} />
       <Stack.Screen name="inspection-components" options={{ title: 'Components' }} />
       <Stack.Screen name="inspection-product" options={{ title: 'Product ID' }} />
-      <Stack.Screen name="inspection-measurements" options={{ title: 'Measurements' }} />
+      <Stack.Screen name="inspection-facet" options={{ title: 'Facet Detail' }} />
       <Stack.Screen name="inspection-interior" options={{ title: 'Interior / Attic' }} />
       <Stack.Screen name="inspection-homeowner" options={{ title: 'Homeowner' }} />
       <Stack.Screen name="inspection-readiness" options={{ title: 'Readiness' }} />

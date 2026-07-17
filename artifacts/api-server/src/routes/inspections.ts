@@ -17,6 +17,8 @@ import {
   CreateInspectionResponse,
   CreateInspectionSlopeBody,
   CreateInspectionSlopeResponse,
+  UpdateInspectionSlopeBody,
+  UpdateInspectionSlopeResponse,
   CreateInteriorObservationBody,
   CreateInteriorObservationResponse,
   CreateMeasurementBody,
@@ -159,7 +161,7 @@ async function loadWritableInspection(
 async function hydrateInspectionChildren(
   inspectionId: string,
   companyId: string,
-): Promise<HydratedInspectionChildren & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }> {
+): Promise<Omit<HydratedInspectionChildren, 'arrivalConditions'> & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }> {
   const [
     slopes,
     elevations,
@@ -653,6 +655,9 @@ router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Respo
     pitchRise: parsed.data.pitchRise ?? undefined,
     pitchRun: parsed.data.pitchRun ?? undefined,
     materialType: parsed.data.materialType ?? undefined,
+    areaSqft: parsed.data.areaSqft ?? undefined,
+    damageType: parsed.data.damageType ?? undefined,
+    damagePresent: parsed.data.damagePresent ?? undefined,
     notes: parsed.data.notes ?? undefined,
   };
 
@@ -691,6 +696,84 @@ router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Respo
 
   res.status(201).json(CreateInspectionSlopeResponse.parse({ slope }));
 });
+
+// Protocol v2 — facet detail editing (area/material/pitch/damage fields).
+router.patch(
+  '/inspections/:inspectionId/slopes/:slopeId',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const parsed = UpdateInspectionSlopeBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid facet payload' });
+      return;
+    }
+
+    const [updated] = await db
+      .update(inspectionSlopesTable)
+      .set({
+        ...(parsed.data.label !== undefined && { label: parsed.data.label }),
+        ...(parsed.data.pitchRise !== undefined && { pitchRise: parsed.data.pitchRise }),
+        ...(parsed.data.pitchRun !== undefined && { pitchRun: parsed.data.pitchRun }),
+        ...(parsed.data.materialType !== undefined && { materialType: parsed.data.materialType }),
+        ...(parsed.data.areaSqft !== undefined && { areaSqft: parsed.data.areaSqft }),
+        ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
+        ...(parsed.data.damagePresent !== undefined && {
+          damagePresent: parsed.data.damagePresent,
+        }),
+        ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
+      })
+      .where(
+        and(
+          eq(inspectionSlopesTable.id, req.params.slopeId as string),
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+          eq(inspectionSlopesTable.companyId, actor.companyId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Facet not found' });
+      return;
+    }
+    res.json(UpdateInspectionSlopeResponse.parse({ slope: updated }));
+  },
+);
+
+// Protocol v2 — facet removal (the facet list is editable, never fixed).
+router.delete(
+  '/inspections/:inspectionId/slopes/:slopeId',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const [deleted] = await db
+      .delete(inspectionSlopesTable)
+      .where(
+        and(
+          eq(inspectionSlopesTable.id, req.params.slopeId as string),
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+          eq(inspectionSlopesTable.companyId, actor.companyId),
+        ),
+      )
+      .returning();
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Facet not found' });
+      return;
+    }
+    res.status(204).end();
+  },
+);
 
 router.post('/inspections/:inspectionId/elevations', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
@@ -1479,7 +1562,10 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
   // (F2) Server-side gate re-run. The client blocks submit on a clean gate, but
   // the server must not trust that — re-derive the protocol state from stored
   // rows and re-run the shared engine. Any hard deficiency rejects.
-  const evaluation = evaluateServerInspection(children);
+  const evaluation = evaluateServerInspection({
+    ...children,
+    arrivalConditions: inspection.arrivalConditions ?? null,
+  });
   if (evaluation.deficiencies.length > 0) {
     res.status(422).json({
       error: 'Inspection has unresolved deficiencies and cannot be submitted',
@@ -1531,7 +1617,10 @@ router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Re
   if (!inspection) return;
 
   const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
-  const evaluation = evaluateServerInspection(children);
+  const evaluation = evaluateServerInspection({
+    ...children,
+    arrivalConditions: inspection.arrivalConditions ?? null,
+  });
 
   res.json(
     PreflightInspectionResponse.parse({

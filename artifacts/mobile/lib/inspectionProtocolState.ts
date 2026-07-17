@@ -1,7 +1,9 @@
 import {
   ELEVATION_DIRECTIONS,
+  WHOLE_ROOF_LINEAR_TYPES,
   evaluate,
   type Deficiency,
+  type FacetDamageType,
   type InspectionProtocolState,
   type Stage,
 } from '@workspace/protocol';
@@ -13,38 +15,38 @@ import type { Inspection } from '@workspace/api-client-react';
 // mapping here — not in lib/protocol — preserves that package's freedom from
 // any transport/DB shape. The app computes nothing derivable: it only reports
 // which raw captures exist, exactly as the evidentiary protocol requires.
+//
+// This mapping MUST stay byte-for-byte equivalent to the server mapping in
+// artifacts/api-server/src/lib/inspectionProtocolState.ts (see the parity
+// notes there).
 
 type Photo = NonNullable<Inspection['photos']>[number];
 
-function hasTriad(photos: Photo[], subjectId: string, role: 'wide' | 'mid' | 'close'): boolean {
-  return photos.some(
-    (p) => p.subjectId === subjectId && p.triadRole === role,
-  );
-}
+const WHOLE_ROOF_LINEARS: readonly string[] = WHOLE_ROOF_LINEAR_TYPES;
 
-/** Builds the protocol state from an inspection detail. Every stage the app
- * captures is mapped from its raw rows: elevations/slopes/damage triads/test
- * squares (M-A–M-D), plus M-E's measurements (S7), interior observations and
- * no-interior-claim waiver (S6), methodology signature (S8) and final-review
- * confirmation (S9). The app reports only raw facts; the shared gate engine
- * derives blocking deficiencies and soft flags from them. */
+/** Builds the protocol-v2 state from an inspection detail. Every step the app
+ * captures is mapped from its raw rows. The app reports only raw facts; the
+ * shared gate engine derives blocking deficiencies and soft flags from them. */
 export function buildProtocolState(inspection: Inspection): InspectionProtocolState {
-  const photos = inspection.photos ?? [];
+  const photos: Photo[] = inspection.photos ?? [];
   const elevations = inspection.elevations ?? [];
   const slopes = inspection.slopes ?? [];
   const damageInstances = inspection.damageInstances ?? [];
+  const components = inspection.components ?? [];
   const products = inspection.products ?? [];
   const testSquares = inspection.testSquares ?? [];
   const testSquareHits = inspection.testSquareHits ?? [];
   const attestations = inspection.attestations ?? [];
   const interiorObservations = inspection.interiorObservations ?? [];
   const measurements = inspection.measurements ?? [];
+  const arrivalConditions = inspection.arrivalConditions ?? null;
 
-  // A stage_signoff attestation filed on a specific stage clears that stage's
-  // hard gate (S8 methodology/signature, S9 final review) or its conditional
-  // soft flag (S6 no-interior-claim waiver). Qualify BOTH the stage and the
-  // attestationType — a bare stage match would let an unrelated attestation
-  // (e.g. a GPS override) bypass the gate. (see protocol-gate-mapping-layer.)
+  // A stage_signoff attestation filed on a specific step clears that step's
+  // hard gate (declaration signature, submit final review) or its conditional
+  // soft flag (interior no-interior-claim waiver). Qualify BOTH the stage and
+  // the attestationType — a bare stage match would let an unrelated
+  // attestation (e.g. a GPS override) bypass the gate. (see
+  // protocol-gate-mapping-layer.)
   const hasStageSignoff = (stage: string, kind?: string): boolean =>
     attestations.some((attestation) => {
       if (attestation.stage !== stage || attestation.attestationType !== 'stage_signoff') {
@@ -54,16 +56,6 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       const details = attestation.details as { kind?: string } | null;
       return details?.kind === kind;
     });
-
-  // D2 — slopes the inspector documented as inaccessible via an S4 reason
-  // attestation. Such a slope clears its test-square requirement while
-  // recording why no square could be marked.
-  const inaccessibleSlopeIds = attestations.flatMap((attestation) => {
-    if (attestation.stage !== 'S4' || attestation.attestationType !== 'stage_signoff') return [];
-    const details = attestation.details as { kind?: string; slopeId?: string } | null;
-    if (details?.kind !== 'inaccessible_slope' || !details.slopeId) return [];
-    return [details.slopeId];
-  });
 
   const elevationState: InspectionProtocolState['elevations'] = {};
   for (const elevation of elevations) {
@@ -78,75 +70,80 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
   }
 
   return {
-    overviewPhotoCaptured: photos.some(
-      (p) => p.subjectType === 'inspection' && p.stage === 'S0',
-    ),
+    arrival: {
+      skyLogged: Boolean(arrivalConditions?.sky),
+      windLogged: Boolean(arrivalConditions?.windCondition),
+      tempLogged: Boolean(arrivalConditions?.temp),
+      personnelRecorded: (arrivalConditions?.personnelPresent?.length ?? 0) > 0,
+      gpsPresent:
+        arrivalConditions?.gpsLatitude != null && arrivalConditions?.gpsLongitude != null,
+      timePresent: Boolean(arrivalConditions?.timeLocal ?? arrivalConditions?.recordedAtUtc),
+    },
     elevations: elevationState,
     roofAccessPhotoCaptured: photos.some(
-      (p) => p.subjectType === 'inspection' && p.stage === 'S2',
+      (p) => p.subjectType === 'inspection' && p.stage === 'elevation_access',
     ),
-    slopes: slopes.map((slope) => ({
+    facets: slopes.map((slope) => ({
       id: slope.id,
-      widePhotoCaptured: photos.some(
-        (p) => p.subjectType === 'slope' && p.subjectId === slope.id && p.triadRole === 'wide',
+      label: slope.label,
+      hasArea: slope.areaSqft != null,
+      hasMaterial: Boolean(slope.materialType),
+      hasPitch: slope.pitchRise != null && slope.pitchRun != null,
+      damagePresent: Boolean(slope.damagePresent),
+      damageType: (slope.damageType as FacetDamageType | null) ?? null,
+    })),
+    damageInstances: damageInstances.map((instance) => ({
+      id: instance.id,
+      slopeId: instance.slopeId ?? '',
+      photoCaptured: photos.some(
+        (p) => p.subjectType === 'damage_instance' && p.subjectId === instance.id,
       ),
     })),
+    // Whole-roof linears: measurements recorded against the inspection itself
+    // (no slope subject) with a linear measurement type.
+    wholeRoofLinearCount: measurements.filter(
+      (m) => m.subjectType !== 'slope' && WHOLE_ROOF_LINEARS.includes(m.measurementType),
+    ).length,
     testSquares: testSquares.map((square) => ({
       id: square.id,
       slopeId: square.slopeId ?? '',
-      overviewPhotoCaptured: photos.some(
-        (p) =>
-          p.subjectType === 'test_square' &&
-          p.subjectId === square.id &&
-          p.triadRole === 'wide',
+      photoCaptured: photos.some(
+        (p) => p.subjectType === 'test_square' && p.subjectId === square.id,
       ),
       hitCount: testSquareHits.filter((hit) => hit.testSquareId === square.id).length,
     })),
-    inaccessibleSlopeIds,
-    damageInstances: damageInstances.map((instance) => {
-      const own = photos.filter(
-        (p) => p.subjectType === 'damage_instance' && p.subjectId === instance.id,
-      );
-      return {
-        id: instance.id,
-        widePhotoCaptured: hasTriad(own, instance.id, 'wide'),
-        midPhotoCaptured: hasTriad(own, instance.id, 'mid'),
-        closePhotoCaptured: hasTriad(own, instance.id, 'close'),
-      };
-    }),
-    interiorPhotoCaptured: photos.some((p) => p.subjectType === 'interior_observation'),
-    interiorObservationCount: interiorObservations.length,
-    interiorClaimWaived: hasStageSignoff('S6', 'no_interior_claim'),
+    components: components.map((component) => ({
+      id: component.id,
+      photoCaptured: photos.some(
+        (p) => p.subjectType === 'component' && p.subjectId === component.id,
+      ),
+    })),
     productIdentifications: products.map((product) => ({
       id: product.id,
       unidentifiable: product.identificationMethod === 'unidentifiable',
     })),
-    // E1 — a whole-roof measurement carries no slopeId (empty string); a
-    // per-slope measurement ties to the slope it was taken on, which the S7
-    // cross-check reconciles against the S3 slope inventory.
-    measurements: measurements.map((measurement) => ({
-      id: measurement.id,
-      slopeId: measurement.subjectType === 'slope' ? (measurement.subjectId ?? '') : '',
-    })),
-    attestationRecorded: hasStageSignoff('S8'),
-    finalReviewConfirmed: hasStageSignoff('S9'),
+    interiorPhotoCaptured: photos.some((p) => p.subjectType === 'interior_observation'),
+    interiorObservationCount: interiorObservations.length,
+    interiorClaimWaived: hasStageSignoff('interior', 'no_interior_claim'),
+    declarationSigned: hasStageSignoff('declaration'),
+    finalReviewConfirmed: hasStageSignoff('submit'),
     observedIndicators: [],
   };
 }
 
 /** Full gate evaluation (hard deficiencies + soft flags) for the readiness
- * screen (E4). The centerpiece runs exactly this shared engine — the app never
+ * screen. The centerpiece runs exactly this shared engine — the app never
  * re-implements gate logic. */
 export function evaluateInspection(inspection: Inspection) {
   return evaluate(buildProtocolState(inspection));
 }
 
-/** Deficiencies for a single stage, computed from the current capture state. */
+/** Deficiencies for a single step, computed from the current capture state. */
 export function stageDeficiencies(inspection: Inspection, stage: Stage): Deficiency[] {
   return evaluate(buildProtocolState(inspection)).deficiencies.filter((d) => d.stage === stage);
 }
 
-/** True when the given stage has no blocking deficiencies. */
+/** True when the given step has no blocking deficiencies. */
 export function isStageComplete(inspection: Inspection, stage: Stage): boolean {
   return stageDeficiencies(inspection, stage).length === 0;
 }

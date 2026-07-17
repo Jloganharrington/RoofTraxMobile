@@ -34,19 +34,21 @@ import { drainOutbox } from '@/lib/outbox/drain';
 // blocks submission (hard deficiencies) versus what merely warrants review
 // (soft flags). The app derives nothing itself — it renders the engine's
 // verdict. E6 (final-review confirm + submit) lives at the bottom, unlocked
-// only once every hard gate but S9 is clear.
+// only once every hard gate but the submit step is clear.
 
-// Stages the field rep can jump to in order to clear a deficiency. S9 is
+// Stages the field rep can jump to in order to clear a deficiency. the submit step is
 // resolved in-place here (final-review confirm), so it is intentionally absent.
 const STAGE_FIX_ROUTES: Partial<Record<Stage, string>> = {
-  S1: '/inspection-elevations',
-  S2: '/inspection-roof',
-  S3: '/inspection-roof',
-  S4: '/inspection-test-squares',
-  S5: '/inspection-collateral',
-  S6: '/inspection-interior',
-  S7: '/inspection-measurements',
-  S8: '/inspection-declaration',
+  arrival: '/inspection-arrival',
+  elevation_access: '/inspection-elevations',
+  facets: '/inspection-roof',
+  test_squares: '/inspection-test-squares',
+  components: '/inspection-components',
+  collateral: '/inspection-collateral',
+  product: '/inspection-product',
+  interior: '/inspection-interior',
+  homeowner: '/inspection-homeowner',
+  declaration: '/inspection-declaration',
 };
 
 function assembleManifest(
@@ -167,7 +169,7 @@ export default function InspectionReadinessScreen() {
   // S9 (final review) is the last hard gate the rep clears here. Everything
   // else must be green before the confirm unlocks; once S9 is filed too, the
   // deficiency list is empty and submit unlocks.
-  const nonFinalDeficiencies = deficiencies.filter((d) => d.stage !== 'S9');
+  const nonFinalDeficiencies = deficiencies.filter((d) => d.stage !== 'submit');
   const canConfirmFinalReview =
     nonFinalDeficiencies.length === 0 && !state.finalReviewConfirmed;
   // pendingWrites === null means we haven't finished the first outbox read yet;
@@ -327,8 +329,8 @@ export default function InspectionReadinessScreen() {
               />
               <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>
                 {state.finalReviewConfirmed
-                  ? 'Final review confirmed (S9)'
-                  : 'Confirm you have reviewed the full package (S9)'}
+                  ? 'Final review confirmed (final review)'
+                  : 'Confirm you have reviewed the full package (final review)'}
               </Text>
             </View>
             {!state.finalReviewConfirmed ? (

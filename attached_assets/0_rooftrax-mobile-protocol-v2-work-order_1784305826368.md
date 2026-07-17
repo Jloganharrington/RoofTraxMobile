@@ -1,0 +1,166 @@
+# Work Order — Forensic Protocol v2 (mobile reflow)
+
+**Repo:** RoofTraxMobile · **Who builds:** Replit (mobile screens + gate engine).
+**Companion:** the Brain-side contract/exhibit changes are done separately by Claude —
+this order calls out exactly which contract fields Replit must emit so both sides agree.
+
+**Goal:** reflow the Phase-2 forensic inspection into an 11-step, physically-ordered
+flow that follows the inspector's actual path. Merge/absorb several current stages,
+redesign three screens, and rewrite the gate rules. Full confirmed spec:
+`rooftrax-mobile-protocol-v2.md` (read it — this order implements it).
+
+> Build the v2 flow faithfully as a working skeleton; Logan will refine on-device from
+> there. Favor clarity and correct data flow over polish on this pass.
+
+---
+
+## 0. The 11 steps (user-facing label → stable internal key)
+
+Labels are **"Step N · Name"**; the **key** is the stable identifier used by the gate
+engine, the photo `stage` tag, and the Brain contract. **S-numbers are retired.**
+
+| Step | Label | key | Was |
+|---|---|---|---|
+| 1 | Arrival Log | `arrival` | arrival (B6) + S0 |
+| 2 | Elevation Walk & Access | `elevation_access` | **S1 + S2 merged** |
+| 3 | Facets & Measurements | `facets` | **S3 + S5-functional + S7 absorbed** |
+| 4 | Test Squares | `test_squares` | S4 (redesigned) |
+| 5 | Components & Penetrations | `components` | components/penetrations |
+| 6 | Collateral Sweep | `collateral` | collateral (redesigned) |
+| 7 | Product ID | `product` | product identification |
+| 8 | Interior / Attic | `interior` | S6 |
+| 9 | Homeowner | `homeowner` | homeowner facts |
+| 10 | Declaration | `declaration` | S8 |
+| 11 | Readiness & Submit | `submit` | S9 |
+
+**Do this once, centrally:** define an ordered `PROTOCOL_STEPS` constant (key + label +
+order) in `lib/protocol` and import it everywhere (step hub, gate, server). No more
+hard-coded `S3` strings scattered across screens.
+
+---
+
+## 1. Gate engine rewrite (3 field-identical builders — keep them identical)
+
+Files: `lib/protocol/src/rules.ts` + `stages.ts`, `artifacts/mobile/lib/inspectionProtocolState.ts`,
+and the server-side pre-flight builder. The `Deficiency.stage` / `SoftFlag.stage` union
+changes from `'S0'..'S9'` to the **step keys** above. Replace `checkS0..checkS9` with:
+
+- `arrival` — conditions logged (sky, wind, temp), personnel recorded, GPS+time present.
+- `elevation_access` — 4 elevations each photographed **AND** roof-access photo present
+  *(this is the old checkS1 + checkS2, merged)*.
+- `facets` — ≥1 facet; **every facet** has area + material + pitch; every facet with
+  `damagePresent=true` has **≥1 photo per damage**; whole-roof linears recorded
+  *(old checkS3 + checkS5 + checkS7)*.
+- `test_squares` — **hail-gated:** every facet whose `damageType` ∈ {`hail`,`hail_and_wind`}
+  has a test-square photo. Wind-only facets are not required.
+- `components` — each documented component has a photo (soft flag if none documented).
+- `collateral` — no hard gate (optional evidence).
+- `product` — ≥1 product record.
+- `interior` — attested if skipped (existing S6 behavior).
+- `declaration` — attestation + signature present (old checkS8).
+- `submit` — zero hard deficiencies (old checkS9 aggregate).
+
+Keep the "each check returns deficiencies for exactly one step" shape. The three
+builders must stay byte-identical in logic (there's a parity test — keep it green).
+
+---
+
+## 2. Schema changes (`lib/db/src/schema/inspections.ts`) + `db:push`
+
+- **`inspection_slopes`** (the facet table): add
+  - `area_sqft` `doublePrecision` (per-facet area — feeds squares/pricing).
+  - `damage_type` `varchar` enum `hail | wind | hail_and_wind | none` (drives the Step-4 hail gate).
+  - `damage_present` `boolean` default false.
+  - keep `label` as the facet label (`F1`,`F2`,…), `pitchRise`/`pitchRun`, `materialType`.
+- **`ArrivalConditions`** type: ensure fields `sky`, `windCondition`, `temp`,
+  `personnelPresent` (array or delimited). Add any missing.
+- **Whole-roof linears** reuse the existing `measurements` table with `slopeId = null`
+  and `measurementType ∈ {ridge_lf, hip_lf, valley_lf, eave_lf, rake_lf}`. No new table.
+- **Damage instances** stay as-is (each per-damage record with its photo), tied to the
+  facet's `slopeId`. "# of damages" drives how many damage-instance records + photo slots.
+- Pre-launch, no prod inspection data — a destructive migration / reset of dev
+  inspections is fine. Don't attempt to migrate v1 in-flight inspections.
+
+---
+
+## 3. Screen changes
+
+### Step 1 — Arrival Log (`inspection-arrival.tsx`) — data only, NO photos
+- Auto-capture **time** + **GPS** (already partially there via B6 geo check).
+- Inputs: **Sky** picker (Sunny / Partly Cloudy / Overcast / Rain / Other), **Wind
+  condition**, **Temp**, **Personnel present** multi-select (Homeowner, Adjuster, Public
+  Adjuster, Contractor/Rep, Other). No camera on this screen.
+
+### Step 2 — Elevation Walk & Access (merge `inspection-elevations` + the S2 access photo from `inspection-roof`)
+- One screen: the 4 elevations (front/right/back/left) each with a photo, **plus** the
+  single roof-access photo. Remove the standalone S2 piece from the roof screen.
+
+### Step 3 — Facets & Measurements (rebuild `inspection-roof.tsx` → facet-first) — **the core change**
+- Replace the "Add Slope" fixed window with: **"How many facets?"** numeric → auto-generate
+  `F1…FXX`. The list is **editable** (add / remove a facet after seeding — never a fixed count).
+- Each facet row is tappable → **facet detail**:
+  - **Area** (sqft, numeric)
+  - **Material** (picker)
+  - **Simple pitch** (picker of standard pitches; must resolve the steep-adder **>8/12**)
+  - **Damage present?** toggle → if yes: **Damage type** (Hail / Wind / Hail & Wind) +
+    **# of damages** → for each damage, capture **≥1 photo**, auto-captioned **`F{n}-Damage {k}`**
+- **Measurements subsection** on the same step: whole-roof linears (ridge / hip / valley /
+  eave / rake LF) as numeric inputs (stored with `slopeId=null`).
+- The old separate **S5 Functional damage** and **S7 Measurements** entries are removed
+  from the hub — they now live here.
+
+### Step 4 — Test Squares (rebuild `inspection-test-squares.tsx` → facet checklist)
+- Pull the facet list. Show a **checkbox per facet that carries hail** (`damageType` ∈
+  {hail, hail_and_wind}). Tapping a checkbox opens that facet and lets the inspector
+  **capture the test-square photo**. Wind-only facets don't appear / aren't required.
+
+### Step 5 — Components & Penetrations
+- Keep the existing component/penetration capture; make it its own step in the hub.
+
+### Step 6 — Collateral Sweep (rebuild `inspection-collateral.tsx` → simple)
+- Two sub-sections: **Roof-level** (first) then **Ground-level**.
+- Each: **Take Photo → Upload → label the photo → save.** After a save, show an
+  **"Add Additional Collateral"** button to add the next. No structured form — just
+  labeled photos.
+
+### Steps 7–11
+- **Product ID**, **Interior/Attic**, **Homeowner**, **Declaration**, **Readiness &
+  Submit** — keep existing screens; just reorder + relabel to "Step 7…11" and point the
+  gate at the new keys.
+
+### Step hub (`inspection/[id].tsx`)
+- Rebuild the section list to the ordered 11 steps from `PROTOCOL_STEPS`, each showing
+  "Step N · Name", completion state, and remaining-deficiency count from the new gate.
+- Remove the standalone Storm-confirm entry (storm now lives in Phase 1 preliminary).
+
+---
+
+## 4. Contract fields Replit must emit (Brain side handled by Claude)
+
+The Brain's `SubmittedInspection` will be updated by Claude to consume these — just make
+sure the submission emits them:
+- `slopes[]` gains **`areaSqft`** and **`damageType`** per facet; `label` = `F{n}`.
+- `arrival` block: `sky`, `windCondition`, `temp`, `personnelPresent`, `timeLocal`, GPS.
+- Whole-roof linears in `measurements[]` with `slopeId: null`.
+- Photo **`stage`** tag = the new step **key** (`facets`, `test_squares`, …), not `S3`.
+- Photo captions for facet damage: **`F{n}-Damage {k}`**.
+
+Don't rename `subjectType` values (`elevation`, `slope`, `test_square`, `damage_instance`,
+`component`, `penetration`, `product`, `interior`) — the Brain groups on those.
+
+---
+
+## 5. Verification (state in the completion report)
+1. New inspection walks all 11 steps in order with "Step N" labels.
+2. Facets: set count → F1…FXX appear, add/remove works; per-facet area/material/pitch/damage
+   save; damage photos captioned `F{n}-Damage {k}`.
+3. Test Squares shows only hail/hail&wind facets; gate blocks submit if one lacks a square.
+4. Collateral: photo → label → save → "Add Additional Collateral" appears; roof + ground.
+5. Gate parity: the 3 builders agree (parity test green); Readiness blocks on any hard
+   deficiency and clears when resolved.
+6. Submission emits the new contract fields (§4). Workspace typecheck clean.
+7. `pnpm -C artifacts/mobile typecheck` (or workspace) passes.
+
+## 6. Out of scope (don't change here)
+- Phase-1 preliminary flow, storm confirmation, canvassing, CRM sync.
+- The Brain's exhibits/contract consumption (Claude handles, coordinated via §4).

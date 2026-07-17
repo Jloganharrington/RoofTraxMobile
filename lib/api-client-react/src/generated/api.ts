@@ -88,6 +88,7 @@ import type {
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateInspectionInput,
+  UpdateInspectionSlopeInput,
   UpdatePinInput,
   UpdateProfileSignatureInput,
   UpdateTeamUserInput,
@@ -2488,6 +2489,153 @@ export const useUpdateInspection = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getUpdateInspectionMutationOptions(options));
+    }
+
+export const getUpdateInspectionSlopeUrl = (inspectionId: string,
+    slopeId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/slopes/${slopeId}`
+}
+
+/**
+ * @summary Update a roof facet's details
+ */
+export const updateInspectionSlope = async (inspectionId: string,
+    slopeId: string,
+    updateInspectionSlopeInput: UpdateInspectionSlopeInput, options?: RequestInit): Promise<InspectionSlopeEnvelope> => {
+
+  return customFetch<InspectionSlopeEnvelope>(getUpdateInspectionSlopeUrl(inspectionId,slopeId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateInspectionSlopeInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateInspectionSlopeMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSlope>>, TError,{inspectionId: string;slopeId: string;data: BodyType<UpdateInspectionSlopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSlope>>, TError,{inspectionId: string;slopeId: string;data: BodyType<UpdateInspectionSlopeInput>}, TContext> => {
+
+const mutationKey = ['updateInspectionSlope'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInspectionSlope>>, {inspectionId: string;slopeId: string;data: BodyType<UpdateInspectionSlopeInput>}> = (props) => {
+          const {inspectionId,slopeId,data} = props ?? {};
+
+          return  updateInspectionSlope(inspectionId,slopeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInspectionSlopeMutationResult = NonNullable<Awaited<ReturnType<typeof updateInspectionSlope>>>
+    export type UpdateInspectionSlopeMutationBody = BodyType<UpdateInspectionSlopeInput>
+    export type UpdateInspectionSlopeMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a roof facet's details
+ */
+export const useUpdateInspectionSlope = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSlope>>, TError,{inspectionId: string;slopeId: string;data: BodyType<UpdateInspectionSlopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInspectionSlope>>,
+        TError,
+        {inspectionId: string;slopeId: string;data: BodyType<UpdateInspectionSlopeInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInspectionSlopeMutationOptions(options));
+    }
+
+export const getDeleteInspectionSlopeUrl = (inspectionId: string,
+    slopeId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/slopes/${slopeId}`
+}
+
+/**
+ * @summary Remove a roof facet
+ */
+export const deleteInspectionSlope = async (inspectionId: string,
+    slopeId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteInspectionSlopeUrl(inspectionId,slopeId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteInspectionSlopeMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionSlope>>, TError,{inspectionId: string;slopeId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionSlope>>, TError,{inspectionId: string;slopeId: string}, TContext> => {
+
+const mutationKey = ['deleteInspectionSlope'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInspectionSlope>>, {inspectionId: string;slopeId: string}> = (props) => {
+          const {inspectionId,slopeId} = props ?? {};
+
+          return  deleteInspectionSlope(inspectionId,slopeId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInspectionSlopeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInspectionSlope>>>
+
+    export type DeleteInspectionSlopeMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Remove a roof facet
+ */
+export const useDeleteInspectionSlope = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionSlope>>, TError,{inspectionId: string;slopeId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInspectionSlope>>,
+        TError,
+        {inspectionId: string;slopeId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteInspectionSlopeMutationOptions(options));
     }
 
 export const getCreateInspectionSlopeUrl = (inspectionId: string,) => {

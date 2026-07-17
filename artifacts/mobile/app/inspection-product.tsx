@@ -107,7 +107,7 @@ export default function InspectionProductScreen() {
         subjectType: 'product',
         subjectId: productId,
         roles: role,
-        stage: 'S4',
+        stage: 'product',
         title,
       },
     });
@@ -132,7 +132,7 @@ export default function InspectionProductScreen() {
       // then let the shared gate engine raise its non-blocking S4 soft flag.
       if (method === ProductIdMethod.unidentifiable) {
         await attestInspection(id, {
-          stage: 'S4',
+          stage: 'product',
           attestationType: 'stage_signoff',
           details: {
             kind: 'product_unidentifiable',

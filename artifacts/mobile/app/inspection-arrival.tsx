@@ -22,10 +22,21 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { attestInspection, patchInspection } from '@/lib/inspectionSync';
 
-// Arrival flow (B6 / S1). Reads the device GPS, compares it to the claim's
-// geocoded coordinates via the shared pure tolerance check, and records
-// arrival conditions. Beyond tolerance, the inspector must justify the
-// mismatch with a GPS-override attestation before continuing.
+// Step 1 · Arrival Log (protocol v2). Data-only — no photos here. Records sky
+// / wind / temp via pickers, personnel present as a multi-select, and
+// auto-captures device GPS + local time into the arrival block. GPS is also
+// compared to the claim's geocoded coordinates; beyond tolerance the inspector
+// must justify the mismatch with a GPS-override attestation before continuing.
+
+const SKY_OPTIONS = ['Sunny', 'Partly Cloudy', 'Overcast', 'Rain', 'Other'] as const;
+const PERSONNEL_OPTIONS = [
+  'Homeowner',
+  'Adjuster',
+  'Public Adjuster',
+  'Contractor Rep',
+  'Other',
+] as const;
+
 export default function InspectionArrivalScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -42,11 +53,12 @@ export default function InspectionArrivalScreen() {
   const [locating, setLocating] = useState(true);
   const [locError, setLocError] = useState<string | null>(null);
   const [tolerance, setTolerance] = useState<GpsToleranceResult | null>(null);
+  const [gps, setGps] = useState<{ latitude: number; longitude: number } | null>(null);
 
-  const [sky, setSky] = useState('');
+  const [sky, setSky] = useState<string | null>(null);
   const [wind, setWind] = useState('');
   const [temp, setTemp] = useState('');
-  const [personnel, setPersonnel] = useState('');
+  const [personnel, setPersonnel] = useState<Record<string, boolean>>({});
   const [overrideReason, setOverrideReason] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -61,6 +73,7 @@ export default function InspectionArrivalScreen() {
         }
         const pos = await Location.getCurrentPositionAsync({});
         if (cancelled) return;
+        setGps({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
         if (hasGeocode) {
           setTolerance(
             evaluateGpsTolerance(pos.coords.latitude, pos.coords.longitude, geoLat!, geoLng!),
@@ -80,13 +93,21 @@ export default function InspectionArrivalScreen() {
 
   const outOfTolerance = tolerance != null && !tolerance.pass;
   const overrideNeeded = outOfTolerance && overrideReason.trim().length === 0;
+  const personnelSelected = PERSONNEL_OPTIONS.filter((p) => personnel[p]);
+  const canSave =
+    !saving &&
+    !overrideNeeded &&
+    sky != null &&
+    wind.trim().length > 0 &&
+    temp.trim().length > 0 &&
+    personnelSelected.length > 0;
 
   async function handleConfirm() {
     setSaving(true);
     try {
       if (outOfTolerance) {
         await attestInspection(id, {
-          stage: 'S1',
+          stage: 'arrival',
           attestationType: 'gps_override',
           details: {
             distanceMeters: tolerance?.distanceMeters ?? null,
@@ -95,13 +116,17 @@ export default function InspectionArrivalScreen() {
           },
         });
       }
+      const now = new Date();
       await patchInspection(queryClient, id, {
         arrivalConditions: {
-          sky: sky.trim() || null,
-          wind: wind.trim() || null,
-          temp: temp.trim() || null,
-          personnelPresent: personnel.trim() || null,
-          recordedAtUtc: new Date().toISOString(),
+          sky,
+          windCondition: wind.trim(),
+          temp: temp.trim(),
+          personnelPresent: personnelSelected,
+          timeLocal: now.toLocaleString(),
+          gpsLatitude: gps?.latitude ?? null,
+          gpsLongitude: gps?.longitude ?? null,
+          recordedAtUtc: now.toISOString(),
         },
       });
       router.back();
@@ -116,50 +141,35 @@ export default function InspectionArrivalScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* GPS status */}
+        {/* GPS + time (auto-captured) */}
         {locating ? (
           <View style={[styles.statusCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ActivityIndicator color={colors.primary} />
-            <Text style={{ color: colors.mutedForeground }}>Checking your location…</Text>
+            <Text style={{ color: colors.mutedForeground }}>Reading your location…</Text>
           </View>
         ) : locError ? (
           <View style={[styles.statusCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Icon name="alert-circle" size={20} color={colors.destructive} />
             <Text style={{ color: colors.foreground, flex: 1 }}>{locError}</Text>
           </View>
-        ) : !hasGeocode ? (
+        ) : (
           <View style={[styles.statusCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Icon name="alert-circle" size={20} color={colors.mutedForeground} />
-            <Text style={{ color: colors.mutedForeground, flex: 1 }}>
-              No claim coordinates on file — arrival will be recorded without a distance check.
-            </Text>
-          </View>
-        ) : tolerance ? (
-          <View
-            style={[
-              styles.statusCard,
-              {
-                backgroundColor: tolerance.pass ? colors.card : '#fef2f2',
-                borderColor: tolerance.pass ? colors.border : colors.destructive,
-              },
-            ]}
-          >
-            <Icon
-              name={tolerance.pass ? 'check' : 'alert-circle'}
-              size={22}
-              color={tolerance.pass ? colors.success : colors.destructive}
-            />
+            <Icon name="check" size={20} color={colors.success} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.foreground, fontWeight: '700' }}>
-                {tolerance.pass ? 'On-site confirmed' : 'Outside tolerance'}
+                GPS &amp; time captured automatically
               </Text>
               <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                {Math.round(tolerance.distanceMeters)} m from the claim address (limit{' '}
-                {tolerance.toleranceMeters} m)
+                {gps
+                  ? `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`
+                  : 'Position unavailable'}
+                {tolerance
+                  ? ` · ${Math.round(tolerance.distanceMeters)} m from claim address`
+                  : ''}
               </Text>
             </View>
           </View>
-        ) : null}
+        )}
 
         {outOfTolerance ? (
           <View style={styles.field}>
@@ -180,25 +190,63 @@ export default function InspectionArrivalScreen() {
           </View>
         ) : null}
 
-        <Text style={[styles.section, { color: colors.foreground }]}>Arrival conditions</Text>
-        <Field label="Sky" value={sky} onChange={setSky} placeholder="Clear, overcast…" colors={colors} />
-        <Field label="Wind" value={wind} onChange={setWind} placeholder="Calm, gusty…" colors={colors} />
+        {/* Sky */}
+        <Text style={[styles.section, { color: colors.foreground }]}>Sky</Text>
+        <View style={styles.chipRow}>
+          {SKY_OPTIONS.map((option) => {
+            const selected = sky === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setSky(option)}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: selected ? colors.primary : colors.card,
+                    borderColor: selected ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
+                  {option}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Field label="Wind" value={wind} onChange={setWind} placeholder="Calm, gusty, 10–15 mph…" colors={colors} />
         <Field label="Temperature" value={temp} onChange={setTemp} placeholder="e.g. 72°F" colors={colors} />
-        <Field
-          label="Personnel present"
-          value={personnel}
-          onChange={setPersonnel}
-          placeholder="Homeowner, adjuster…"
-          colors={colors}
-        />
+
+        {/* Personnel present */}
+        <Text style={[styles.section, { color: colors.foreground }]}>Personnel present</Text>
+        <View style={styles.chipRow}>
+          {PERSONNEL_OPTIONS.map((option) => {
+            const selected = Boolean(personnel[option]);
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setPersonnel((prev) => ({ ...prev, [option]: !prev[option] }))}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: selected ? colors.primary : colors.card,
+                    borderColor: selected ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
+                  {option}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <Pressable
           onPress={handleConfirm}
-          disabled={saving || overrideNeeded}
-          style={[
-            styles.submit,
-            { backgroundColor: colors.primary, opacity: saving || overrideNeeded ? 0.5 : 1 },
-          ]}
+          disabled={!canSave}
+          style={[styles.submit, { backgroundColor: colors.primary, opacity: canSave ? 1 : 0.5 }]}
         >
           {saving ? (
             <ActivityIndicator color={colors.primaryForeground} />
@@ -250,6 +298,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   section: { fontSize: 16, fontWeight: '700', marginTop: 6 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '600' },
   input: {

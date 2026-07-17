@@ -15,6 +15,7 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  UpdateInspectionSlopeInput,
   CreateInteriorObservationInput,
   CreateMeasurementInput,
   CreateTestSquareInput,
@@ -204,6 +205,9 @@ export async function createSlope(
       pitchRise: fields.pitchRise ?? null,
       pitchRun: fields.pitchRun ?? null,
       materialType: fields.materialType ?? null,
+      areaSqft: fields.areaSqft ?? null,
+      damageType: fields.damageType ?? null,
+      damagePresent: fields.damagePresent ?? false,
       notes: fields.notes ?? null,
       createdAt: now,
     };
@@ -213,6 +217,37 @@ export async function createSlope(
   await enqueueOutboxItem('inspection.slope', { inspectionId, input });
   void drainOutbox();
   return id;
+}
+
+/** Updates a facet's details offline-first (partial patch). */
+export async function updateSlope(
+  queryClient: QueryClient,
+  inspectionId: string,
+  slopeId: string,
+  patch: UpdateInspectionSlopeInput,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    slopes: (inspection.slopes ?? []).map((slope) =>
+      slope.id === slopeId ? { ...slope, ...patch } : slope,
+    ),
+  }));
+  await enqueueOutboxItem('inspection.slopeUpdate', { inspectionId, slopeId, patch });
+  void drainOutbox();
+}
+
+/** Removes a facet offline-first. */
+export async function deleteSlope(
+  queryClient: QueryClient,
+  inspectionId: string,
+  slopeId: string,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    slopes: (inspection.slopes ?? []).filter((slope) => slope.id !== slopeId),
+  }));
+  await enqueueOutboxItem('inspection.slopeDelete', { inspectionId, slopeId });
+  void drainOutbox();
 }
 
 /** Creates a damage instance offline-first and returns its client id. */
@@ -417,7 +452,7 @@ export async function markSlopeInaccessible(
       companyId: inspection.companyId,
       inspectionId,
       userId: actorUserId,
-      stage: 'S4',
+      stage: 'facets',
       attestationType: 'stage_signoff',
       details,
       signatureData: null,
@@ -427,7 +462,7 @@ export async function markSlopeInaccessible(
   });
   const input: CreateAttestationInput = {
     id,
-    stage: 'S4',
+    stage: 'facets',
     attestationType: 'stage_signoff',
     details,
   };
@@ -515,7 +550,7 @@ export async function markNoInteriorClaim(
       companyId: inspection.companyId,
       inspectionId,
       userId: actorUserId,
-      stage: 'S6',
+      stage: 'interior',
       attestationType: 'stage_signoff',
       details,
       signatureData: null,
@@ -525,7 +560,7 @@ export async function markNoInteriorClaim(
   });
   const input: CreateAttestationInput = {
     id,
-    stage: 'S6',
+    stage: 'interior',
     attestationType: 'stage_signoff',
     details,
   };
@@ -578,7 +613,7 @@ export async function recordSignatureAttestation(
       companyId: inspection.companyId,
       inspectionId,
       userId: actorUserId,
-      stage: 'S8',
+      stage: 'declaration',
       attestationType: 'stage_signoff',
       details,
       // The on-file signature hash stands in as the attestation's signature
@@ -590,7 +625,7 @@ export async function recordSignatureAttestation(
   });
   const input: CreateAttestationInput = {
     id,
-    stage: 'S8',
+    stage: 'declaration',
     attestationType: 'stage_signoff',
     details,
     signatureData: args.signatureSha256,
@@ -616,7 +651,7 @@ export async function confirmFinalReview(
       companyId: inspection.companyId,
       inspectionId,
       userId: actorUserId,
-      stage: 'S9',
+      stage: 'submit',
       attestationType: 'stage_signoff',
       details,
       signatureData: null,
@@ -626,7 +661,7 @@ export async function confirmFinalReview(
   });
   const input: CreateAttestationInput = {
     id,
-    stage: 'S9',
+    stage: 'submit',
     attestationType: 'stage_signoff',
     details,
   };

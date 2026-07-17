@@ -958,6 +958,95 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/slopes/{slopeId}:
+    patch:
+      tags: [Inspections]
+      operationId: updateInspectionSlope
+      summary: Update a roof facet's details
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: slopeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInspectionSlopeInput"
+      responses:
+        "200":
+          description: Facet updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSlopeEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or facet not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Inspections]
+      operationId: deleteInspectionSlope
+      summary: Remove a roof facet
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: slopeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Facet removed.
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or facet not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /inspections/{inspectionId}/slopes:
     post:
       tags: [Inspections]
@@ -2598,7 +2687,27 @@ components:
       enum: [wide, mid, close]
     CaptureStage:
       type: string
-      enum: [S0, S1, S2, S3, S4, S5, S6, S7, S8, S9]
+      description: Protocol v2 step key. S-numbers are retired.
+      enum:
+        [
+          arrival,
+          elevation_access,
+          facets,
+          test_squares,
+          components,
+          collateral,
+          product,
+          interior,
+          homeowner,
+          declaration,
+          submit,
+        ]
+    FacetDamageType:
+      type: string
+      description: >-
+        Per-facet damage classification. hail / hail_and_wind facets drive
+        the Step-4 test-square gate.
+      enum: [hail, wind, hail_and_wind, none]
     AttestationType:
       type: string
       enum: [equipment, gps_override, stage_signoff]
@@ -2642,17 +2751,37 @@ components:
           type: [string, "null"]
     ArrivalConditions:
       type: object
-      description: Arrival-conditions log captured in S1 (B6).
-      required: [sky, wind, temp, personnelPresent, recordedAtUtc]
+      description: >-
+        Arrival-conditions log captured in Step 1 · Arrival Log (protocol
+        v2 — windCondition replaces wind; personnelPresent is an array).
+      required:
+        [
+          sky,
+          windCondition,
+          temp,
+          personnelPresent,
+          timeLocal,
+          gpsLatitude,
+          gpsLongitude,
+          recordedAtUtc,
+        ]
       properties:
         sky:
           type: [string, "null"]
-        wind:
+        windCondition:
           type: [string, "null"]
         temp:
           type: [string, "null"]
         personnelPresent:
+          type: array
+          items:
+            type: string
+        timeLocal:
           type: [string, "null"]
+        gpsLatitude:
+          type: [number, "null"]
+        gpsLongitude:
+          type: [number, "null"]
         recordedAtUtc:
           type: string
     HomeownerFacts:
@@ -3018,7 +3147,21 @@ components:
 
     InspectionSlope:
       type: object
-      required: [id, companyId, inspectionId, label, pitchRise, pitchRun, materialType, notes, createdAt]
+      required:
+        [
+          id,
+          companyId,
+          inspectionId,
+          label,
+          pitchRise,
+          pitchRun,
+          materialType,
+          areaSqft,
+          damageType,
+          damagePresent,
+          notes,
+          createdAt,
+        ]
       properties:
         id:
           type: string
@@ -3034,6 +3177,14 @@ components:
           type: [number, "null"]
         materialType:
           type: [string, "null"]
+        areaSqft:
+          type: [number, "null"]
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/FacetDamageType"
+            - type: "null"
+        damagePresent:
+          type: boolean
         notes:
           type: [string, "null"]
         createdAt:
@@ -3059,6 +3210,37 @@ components:
           type: [number, "null"]
         materialType:
           type: [string, "null"]
+        areaSqft:
+          type: [number, "null"]
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/FacetDamageType"
+            - type: "null"
+        damagePresent:
+          type: boolean
+        notes:
+          type: [string, "null"]
+    UpdateInspectionSlopeInput:
+      type: object
+      description: Partial facet update — only supplied fields change.
+      properties:
+        label:
+          type: string
+          minLength: 1
+        pitchRise:
+          type: [number, "null"]
+        pitchRun:
+          type: [number, "null"]
+        materialType:
+          type: [string, "null"]
+        areaSqft:
+          type: [number, "null"]
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/FacetDamageType"
+            - type: "null"
+        damagePresent:
+          type: boolean
         notes:
           type: [string, "null"]
     InspectionSlopeEnvelope:

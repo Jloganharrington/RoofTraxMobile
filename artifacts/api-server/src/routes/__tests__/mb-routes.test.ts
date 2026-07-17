@@ -259,7 +259,7 @@ describe('M-B routes', () => {
         .post(`/api/inspections/${inspectionId}/attestations`)
         .set(auth(inspectorA.sid))
         .send({
-          stage: 'S0',
+          stage: 'arrival',
           attestationType: 'equipment',
           details: { ladder: true, chalk: true, camera: true },
           signatureData: 'Inspector Test',

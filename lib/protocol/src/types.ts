@@ -1,52 +1,51 @@
-import type { ElevationDirection, Stage } from './stages';
+import type { ElevationDirection, FacetDamageType, Stage } from './stages';
 import type { ObservedIndicator } from './indicators';
 
-// Raw capture-completion state for a single inspection. Every field is a
-// plain fact ("was this captured?", "how many hits?") — no computed
+// Raw capture-completion state for a single inspection (Protocol v2). Every
+// field is a plain fact ("was this captured?", "how many?") — no computed
 // squares/waste/pricing lives here or anywhere in this package.
 export interface InspectionProtocolState {
-  overviewPhotoCaptured: boolean;
+  // Step 1 — Arrival Log (data only, no photos).
+  arrival: {
+    skyLogged: boolean;
+    windLogged: boolean;
+    tempLogged: boolean;
+    personnelRecorded: boolean;
+    gpsPresent: boolean;
+    timePresent: boolean;
+  };
+  // Step 2 — Elevation Walk & Access.
   elevations: Partial<Record<ElevationDirection, { widePhotoCaptured: boolean }>>;
   roofAccessPhotoCaptured: boolean;
-  slopes: Array<{ id: string; widePhotoCaptured: boolean }>;
-  // One test square per directional slope (D1). `overviewPhotoCaptured` is the
-  // chalked full-square shot; `hitCount` is the raw number of recorded hits (a
-  // documented zero-hit square is valid — see the S4 soft flag). `slopeId` ties
-  // the square to the slope whose S4 gate it satisfies.
-  testSquares: Array<{
+  // Step 3 — Facets & Measurements. One entry per documented facet.
+  facets: Array<{
     id: string;
-    slopeId: string;
-    overviewPhotoCaptured: boolean;
-    hitCount: number;
+    label: string;
+    hasArea: boolean;
+    hasMaterial: boolean;
+    hasPitch: boolean;
+    damagePresent: boolean;
+    damageType: FacetDamageType | null;
   }>;
-  // Slopes the inspector documented as inaccessible via a reason attestation
-  // (D2). Such a slope clears its S4 test-square requirement while recording
-  // *why* no square could be marked. An undocumented missing square still
-  // fails the gate.
-  inaccessibleSlopeIds: string[];
-  damageInstances: Array<{
-    id: string;
-    widePhotoCaptured: boolean;
-    midPhotoCaptured: boolean;
-    closePhotoCaptured: boolean;
-  }>;
+  // Per-damage records tied to a facet (slopeId). Each needs ≥1 photo.
+  damageInstances: Array<{ id: string; slopeId: string; photoCaptured: boolean }>;
+  // Count of whole-roof linear measurements recorded (slopeId = null,
+  // measurementType ∈ WHOLE_ROOF_LINEAR_TYPES).
+  wholeRoofLinearCount: number;
+  // Step 4 — Test Squares. `photoCaptured` is the chalked square shot;
+  // `slopeId` ties the square to the facet whose hail gate it satisfies.
+  testSquares: Array<{ id: string; slopeId: string; photoCaptured: boolean; hitCount: number }>;
+  // Step 5 — each documented component, and whether it has a photo.
+  components: Array<{ id: string; photoCaptured: boolean }>;
+  // Step 7 — product identification records.
+  productIdentifications: Array<{ id: string; unidentifiable: boolean }>;
+  // Step 8 — interior/attic (conditional; soft-flagged, never hard-blocked).
   interiorPhotoCaptured: boolean;
-  // How many interior/attic observations were recorded (E2), and whether the
-  // inspector explicitly waived interior documentation via a "no interior
-  // claim" attestation. An inspection with neither raises a soft flag — it is
-  // never a hard block, since many roofs have no interior claim at all.
   interiorObservationCount: number;
   interiorClaimWaived: boolean;
-  // Product identifications captured during S4 close-up documentation. Each is
-  // a plain fact: was the roofing product identified in the field, or flagged
-  // as unidentifiable (deferred to lab/ITEL)? Drives a non-blocking soft flag.
-  productIdentifications: Array<{ id: string; unidentifiable: boolean }>;
-  // Raw measurements recorded (E1). `slopeId` is the slope a per-slope
-  // measurement is tied to (empty for whole-roof measurements). Used to
-  // cross-check against the S3 slope inventory (a measurement referencing a
-  // slope that was never documented is soft-flagged).
-  measurements: Array<{ id: string; slopeId: string }>;
-  attestationRecorded: boolean;
+  // Step 10 — declaration attestation + signature.
+  declarationSigned: boolean;
+  // Step 11 — explicit final-review confirmation.
   finalReviewConfirmed: boolean;
   observedIndicators: ObservedIndicator[];
 }

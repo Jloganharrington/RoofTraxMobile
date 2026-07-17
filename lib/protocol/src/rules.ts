@@ -1,4 +1,4 @@
-import { ELEVATION_DIRECTIONS } from './stages';
+import { ELEVATION_DIRECTIONS, carriesHail } from './stages';
 import type { Deficiency, EvaluationResult, InspectionProtocolState, SoftFlag } from './types';
 
 function deficiency(stage: Deficiency['stage'], code: string, message: string): Deficiency {
@@ -9,130 +9,242 @@ function softFlag(stage: SoftFlag['stage'], code: string, message: string): Soft
   return { stage, code, message };
 }
 
-// Hard gates: each returns the deficiencies for exactly one stage. Kept as
+// Hard gates: each returns the deficiencies for exactly one step. Kept as
 // small, independent functions (rather than one big switch) so a fixture
 // with exactly one thing missing produces exactly one deficiency.
-function checkS0(state: InspectionProtocolState): Deficiency[] {
-  if (!state.overviewPhotoCaptured) {
-    return [deficiency('S0', 'MISSING_OVERVIEW_PHOTO', 'Property overview photo not captured.')];
+
+// Step 1 — conditions logged (sky, wind, temp), personnel recorded,
+// GPS + time present.
+function checkArrival(state: InspectionProtocolState): Deficiency[] {
+  const out: Deficiency[] = [];
+  const { arrival } = state;
+  if (!arrival.skyLogged) {
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_SKY', 'Sky condition not logged.'));
   }
-  return [];
+  if (!arrival.windLogged) {
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_WIND', 'Wind condition not logged.'));
+  }
+  if (!arrival.tempLogged) {
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_TEMP', 'Temperature not logged.'));
+  }
+  if (!arrival.personnelRecorded) {
+    out.push(
+      deficiency('arrival', 'MISSING_ARRIVAL_PERSONNEL', 'Personnel present not recorded.'),
+    );
+  }
+  if (!arrival.gpsPresent) {
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_GPS', 'Arrival GPS position not captured.'));
+  }
+  if (!arrival.timePresent) {
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_TIME', 'Arrival time not captured.'));
+  }
+  return out;
 }
 
-function checkS1(state: InspectionProtocolState): Deficiency[] {
-  return ELEVATION_DIRECTIONS.filter(
+// Step 2 — 4 elevations each photographed AND the roof-access photo present.
+function checkElevationAccess(state: InspectionProtocolState): Deficiency[] {
+  const out: Deficiency[] = ELEVATION_DIRECTIONS.filter(
     (direction) => !state.elevations[direction]?.widePhotoCaptured,
   ).map((direction) =>
     deficiency(
-      'S1',
+      'elevation_access',
       `MISSING_ELEVATION_PHOTO_${direction.toUpperCase()}`,
       `Wide photo missing for the ${direction} elevation.`,
     ),
   );
-}
-
-function checkS2(state: InspectionProtocolState): Deficiency[] {
   if (!state.roofAccessPhotoCaptured) {
-    return [deficiency('S2', 'MISSING_ROOF_ACCESS_PHOTO', 'Roof access photo not captured.')];
-  }
-  return [];
-}
-
-function checkS3(state: InspectionProtocolState): Deficiency[] {
-  if (state.slopes.length === 0) {
-    return [deficiency('S3', 'NO_SLOPES_CAPTURED', 'No roof slopes have been documented.')];
-  }
-  return state.slopes
-    .filter((slope) => !slope.widePhotoCaptured)
-    .map((slope) =>
+    out.push(
       deficiency(
-        'S3',
-        `MISSING_SLOPE_PHOTO_${slope.id}`,
-        `Wide photo missing for slope ${slope.id}.`,
+        'elevation_access',
+        'MISSING_ROOF_ACCESS_PHOTO',
+        'Roof access photo not captured.',
       ),
     );
+  }
+  return out;
 }
 
-// D1/D2 — Every documented slope needs either a test square (with its chalked
-// overview photo) or a documented inaccessible-slope attestation. A square with
-// no overview photo does not count. Reported per-slope so one missing square is
-// exactly one deficiency, mirroring the S3 per-slope shape.
-function checkS4(state: InspectionProtocolState): Deficiency[] {
-  const inaccessible = new Set(state.inaccessibleSlopeIds);
-  return state.slopes
-    .filter((slope) => {
-      if (inaccessible.has(slope.id)) return false;
-      return !state.testSquares.some(
-        (square) => square.slopeId === slope.id && square.overviewPhotoCaptured,
+// Step 3 — ≥1 facet; every facet has area + material + pitch; every facet
+// with damagePresent has ≥1 damage record, each with ≥1 photo; whole-roof
+// linears recorded.
+function checkFacets(state: InspectionProtocolState): Deficiency[] {
+  if (state.facets.length === 0) {
+    return [deficiency('facets', 'NO_FACETS_DOCUMENTED', 'No roof facets have been documented.')];
+  }
+  const out: Deficiency[] = [];
+  for (const facet of state.facets) {
+    if (!facet.hasArea) {
+      out.push(
+        deficiency(
+          'facets',
+          `MISSING_FACET_AREA_${facet.id}`,
+          `Facet ${facet.label} is missing its area (sqft).`,
+        ),
       );
-    })
-    .map((slope) =>
+    }
+    if (!facet.hasMaterial) {
+      out.push(
+        deficiency(
+          'facets',
+          `MISSING_FACET_MATERIAL_${facet.id}`,
+          `Facet ${facet.label} is missing its material.`,
+        ),
+      );
+    }
+    if (!facet.hasPitch) {
+      out.push(
+        deficiency(
+          'facets',
+          `MISSING_FACET_PITCH_${facet.id}`,
+          `Facet ${facet.label} is missing its pitch.`,
+        ),
+      );
+    }
+    if (facet.damagePresent) {
+      const damages = state.damageInstances.filter((instance) => instance.slopeId === facet.id);
+      if (damages.length === 0) {
+        out.push(
+          deficiency(
+            'facets',
+            `MISSING_FACET_DAMAGE_RECORDS_${facet.id}`,
+            `Facet ${facet.label} is marked damaged but has no damage records.`,
+          ),
+        );
+      }
+    }
+  }
+  // Every facet-attached damage record needs at least one photo. Records
+  // detached from any live facet (slopeId null — e.g. the FK was nulled when
+  // its facet was deleted) can no longer be resolved from the facet flow, so
+  // they must not hard-block; they simply carry no gate.
+  const liveFacetIds = new Set(state.facets.map((facet) => facet.id));
+  for (const instance of state.damageInstances) {
+    if (instance.slopeId == null || !liveFacetIds.has(instance.slopeId)) continue;
+    if (!instance.photoCaptured) {
+      out.push(
+        deficiency(
+          'facets',
+          `MISSING_DAMAGE_PHOTO_${instance.id}`,
+          `Damage record ${instance.id} has no photo.`,
+        ),
+      );
+    }
+  }
+  if (state.wholeRoofLinearCount === 0) {
+    out.push(
       deficiency(
-        'S4',
-        `MISSING_TEST_SQUARE_${slope.id}`,
-        `Slope ${slope.id} needs a test square with an overview photo, or a documented inaccessible-slope attestation.`,
+        'facets',
+        'NO_WHOLE_ROOF_LINEARS',
+        'No whole-roof linear measurements (ridge/hip/valley/eave/rake) recorded.',
       ),
     );
+  }
+  return out;
 }
 
-function checkS5(state: InspectionProtocolState): Deficiency[] {
-  return state.damageInstances
+// Step 4 — hail-gated: every facet whose damageType carries hail has a
+// test-square photo. Wind-only facets are not required.
+function checkTestSquares(state: InspectionProtocolState): Deficiency[] {
+  return state.facets
+    .filter((facet) => carriesHail(facet.damageType))
     .filter(
-      (instance) =>
-        !instance.widePhotoCaptured || !instance.midPhotoCaptured || !instance.closePhotoCaptured,
+      (facet) =>
+        !state.testSquares.some(
+          (square) => square.slopeId === facet.id && square.photoCaptured,
+        ),
     )
-    .map((instance) =>
+    .map((facet) =>
       deficiency(
-        'S5',
-        `INCOMPLETE_DAMAGE_TRIAD_${instance.id}`,
-        `Damage instance ${instance.id} is missing wide/mid/close photos.`,
+        'test_squares',
+        `MISSING_TEST_SQUARE_${facet.id}`,
+        `Facet ${facet.label} carries hail damage and needs a test-square photo.`,
       ),
     );
 }
 
-function checkS7(state: InspectionProtocolState): Deficiency[] {
-  if (state.measurements.length === 0) {
-    return [deficiency('S7', 'NO_MEASUREMENTS_RECORDED', 'No measurements have been recorded.')];
-  }
-  return [];
+// Step 5 — each documented component has a photo (none documented at all is
+// a soft flag, not a hard block).
+function checkComponents(state: InspectionProtocolState): Deficiency[] {
+  return state.components
+    .filter((component) => !component.photoCaptured)
+    .map((component) =>
+      deficiency(
+        'components',
+        `MISSING_COMPONENT_PHOTO_${component.id}`,
+        `Documented component ${component.id} has no photo.`,
+      ),
+    );
 }
 
-function checkS8(state: InspectionProtocolState): Deficiency[] {
-  if (!state.attestationRecorded) {
-    return [deficiency('S8', 'MISSING_ATTESTATION', 'Inspector attestation not recorded.')];
-  }
-  return [];
-}
+// Step 6 (collateral) — no hard gate: optional evidence.
 
-function checkS9(state: InspectionProtocolState): Deficiency[] {
-  if (!state.finalReviewConfirmed) {
+// Step 7 — at least one product record.
+function checkProduct(state: InspectionProtocolState): Deficiency[] {
+  if (state.productIdentifications.length === 0) {
     return [
-      deficiency('S9', 'FINAL_REVIEW_NOT_CONFIRMED', 'Final review has not been confirmed.'),
+      deficiency('product', 'NO_PRODUCT_RECORD', 'No roofing-product identification recorded.'),
     ];
   }
   return [];
 }
 
-const HARD_GATE_CHECKS = [
-  checkS0,
-  checkS1,
-  checkS2,
-  checkS3,
-  checkS4,
-  checkS5,
-  checkS7,
-  checkS8,
-  checkS9,
+// Step 8 (interior) — conditional; soft-flagged only, never a hard block.
+
+// Step 10 — declaration attestation + signature present.
+function checkDeclaration(state: InspectionProtocolState): Deficiency[] {
+  if (!state.declarationSigned) {
+    return [
+      deficiency(
+        'declaration',
+        'MISSING_DECLARATION',
+        'Inspector declaration (attestation + signature) not recorded.',
+      ),
+    ];
+  }
+  return [];
+}
+
+const STEP_CHECKS = [
+  checkArrival,
+  checkElevationAccess,
+  checkFacets,
+  checkTestSquares,
+  checkComponents,
+  checkProduct,
+  checkDeclaration,
 ];
 
-// Soft flags: non-blocking observations. S6 (Interior/Ancillary) has no
-// hard requirement of its own — it is purely a soft-flag stage, since not
-// every inspection has interior damage to document.
+// Step 11 — submit: zero hard deficiencies across every prior step, plus the
+// explicit final-review confirmation. Computed from the other checks'
+// results (the old checkS9 aggregate).
+function checkSubmit(
+  state: InspectionProtocolState,
+  priorDeficiencies: Deficiency[],
+): Deficiency[] {
+  const out: Deficiency[] = [];
+  if (priorDeficiencies.length > 0) {
+    out.push(
+      deficiency(
+        'submit',
+        'HARD_DEFICIENCIES_REMAIN',
+        `${priorDeficiencies.length} blocking deficiencies remain across earlier steps.`,
+      ),
+    );
+  }
+  if (!state.finalReviewConfirmed) {
+    out.push(
+      deficiency('submit', 'FINAL_REVIEW_NOT_CONFIRMED', 'Final review has not been confirmed.'),
+    );
+  }
+  return out;
+}
+
+// Soft flags: non-blocking observations.
 function checkInteriorLeakWithoutPhoto(state: InspectionProtocolState): SoftFlag[] {
   if (state.observedIndicators.includes('interior_leak_reported') && !state.interiorPhotoCaptured) {
     return [
       softFlag(
-        'S6',
+        'interior',
         'INTERIOR_LEAK_REPORTED_WITHOUT_PHOTO',
         'Interior leak was reported but no interior photo was captured.',
       ),
@@ -146,7 +258,7 @@ function checkZeroHitTestSquares(state: InspectionProtocolState): SoftFlag[] {
     .filter((square) => square.hitCount === 0)
     .map((square) =>
       softFlag(
-        'S4',
+        'test_squares',
         `TEST_SQUARE_ZERO_HITS_${square.id}`,
         `Test square ${square.id} recorded zero hits — confirm this was intentional.`,
       ),
@@ -158,22 +270,36 @@ function checkUnidentifiedProducts(state: InspectionProtocolState): SoftFlag[] {
     .filter((product) => product.unidentifiable)
     .map((product) =>
       softFlag(
-        'S4',
+        'product',
         `PRODUCT_UNIDENTIFIED_${product.id}`,
         `Roofing product ${product.id} could not be identified in the field — confirm a sample was bagged or the attestation was filed.`,
       ),
     );
 }
 
-// E2 — Interior/attic is conditional: an inspection either records at least
-// one interior observation OR the inspector explicitly waives it with a "no
-// interior claim" attestation. Neither is a soft flag (an undocumented skip),
-// never a hard block.
+// No components documented at all — worth a look, never a block.
+function checkNoComponentsDocumented(state: InspectionProtocolState): SoftFlag[] {
+  if (state.components.length === 0) {
+    return [
+      softFlag(
+        'components',
+        'NO_COMPONENTS_DOCUMENTED',
+        'No existing components were documented — confirm this was intentional.',
+      ),
+    ];
+  }
+  return [];
+}
+
+// Interior/attic is conditional: an inspection either records at least one
+// interior observation OR the inspector explicitly waives it with a "no
+// interior claim" attestation. Neither is a soft flag (an undocumented
+// skip), never a hard block.
 function checkInteriorNotAddressed(state: InspectionProtocolState): SoftFlag[] {
   if (state.interiorObservationCount === 0 && !state.interiorClaimWaived) {
     return [
       softFlag(
-        'S6',
+        'interior',
         'INTERIOR_NOT_ADDRESSED',
         'Interior/attic was neither documented nor explicitly waived with a no-interior-claim attestation.',
       ),
@@ -182,35 +308,20 @@ function checkInteriorNotAddressed(state: InspectionProtocolState): SoftFlag[] {
   return [];
 }
 
-// E1 — A measurement recorded against a slope that is not in the S3 slope
-// inventory is almost always a typo or a stale reference. Soft-flagged (not a
-// block) so the inspector can reconcile it against the documented slopes.
-function checkMeasurementSlopeMismatch(state: InspectionProtocolState): SoftFlag[] {
-  const slopeIds = new Set(state.slopes.map((slope) => slope.id));
-  return state.measurements
-    .filter((measurement) => measurement.slopeId !== '' && !slopeIds.has(measurement.slopeId))
-    .map((measurement) =>
-      softFlag(
-        'S7',
-        `MEASUREMENT_SLOPE_MISMATCH_${measurement.id}`,
-        `Measurement ${measurement.id} references slope ${measurement.slopeId}, which is not in the documented slope inventory.`,
-      ),
-    );
-}
-
 const SOFT_FLAG_CHECKS = [
   checkInteriorLeakWithoutPhoto,
   checkZeroHitTestSquares,
   checkUnidentifiedProducts,
+  checkNoComponentsDocumented,
   checkInteriorNotAddressed,
-  checkMeasurementSlopeMismatch,
 ];
 
 // Single entry point: given the raw capture state of an inspection, returns
 // every hard-gate deficiency (blocking) and soft flag (non-blocking).
 export function evaluate(state: InspectionProtocolState): EvaluationResult {
+  const stepDeficiencies = STEP_CHECKS.flatMap((check) => check(state));
   return {
-    deficiencies: HARD_GATE_CHECKS.flatMap((check) => check(state)),
+    deficiencies: [...stepDeficiencies, ...checkSubmit(state, stepDeficiencies)],
     softFlags: SOFT_FLAG_CHECKS.flatMap((check) => check(state)),
   };
 }

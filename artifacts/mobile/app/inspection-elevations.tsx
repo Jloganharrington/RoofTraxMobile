@@ -7,13 +7,16 @@ import { ELEVATION_DIRECTIONS, type ElevationDirection } from '@workspace/protoc
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createElevation } from '@/lib/inspectionSync';
-import { elevationWideCaptured, stageDeficiencies } from '@/lib/inspectionProtocolState';
+import {
+  buildProtocolState,
+  elevationWideCaptured,
+  stageDeficiencies,
+} from '@/lib/inspectionProtocolState';
 
-// C1 — Elevation walk (S1). Walks the inspector around the structure in a
-// fixed front -> right -> rear -> left order, capturing one wide overview
-// photo per elevation. The wide shot is the only hard-gate requirement for
-// S1; collateral damage on each face is a separate sweep (C2). The gate is
-// derived from photo linkage, never asserted by this screen.
+// Step 2 · Elevations & Access (protocol v2). Walks the inspector around the
+// structure in a fixed front -> right -> rear -> left order, capturing one
+// wide overview photo per elevation, then the single roof-access photo. The
+// gate is derived from photo linkage, never asserted by this screen.
 
 const DIRECTION_LABELS: Record<ElevationDirection, string> = {
   front: 'Front',
@@ -50,7 +53,8 @@ export default function InspectionElevationsScreen() {
   }
 
   const captured = elevationWideCaptured(inspection);
-  const remaining = stageDeficiencies(inspection, 'S1').length;
+  const roofAccessDone = buildProtocolState(inspection).roofAccessPhotoCaptured;
+  const remaining = stageDeficiencies(inspection, 'elevation_access').length;
   const doneCount = ELEVATION_DIRECTIONS.filter((d) => captured[d]).length;
   // The current step is the first direction still missing its wide photo.
   const currentDirection = ELEVATION_DIRECTIONS.find((d) => !captured[d]) ?? null;
@@ -68,7 +72,7 @@ export default function InspectionElevationsScreen() {
           subjectType: 'elevation',
           subjectId: elevationId,
           roles: 'wide',
-          stage: 'S1',
+          stage: 'elevation_access',
           title: `${DIRECTION_LABELS[direction]} elevation`,
         },
       });
@@ -95,7 +99,9 @@ export default function InspectionElevationsScreen() {
         />
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
-            {remaining === 0 ? 'All four elevations captured' : `${doneCount} of 4 elevations captured`}
+            {remaining === 0
+              ? 'Elevations and roof access captured'
+              : `${doneCount} of 4 elevations captured${roofAccessDone ? '' : ' · roof access pending'}`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
             One wide overview photo per face, walked front → right → rear → left.
@@ -149,6 +155,51 @@ export default function InspectionElevationsScreen() {
           </Pressable>
         );
       })}
+
+      {/* Roof access photo — part of Step 2 in protocol v2. */}
+      <Pressable
+        onPress={() =>
+          router.push({
+            pathname: '/inspection-photo-capture',
+            params: {
+              inspectionId: id,
+              subjectType: 'inspection',
+              roles: 'wide',
+              stage: 'elevation_access',
+              title: 'Roof access',
+            },
+          })
+        }
+        style={[
+          styles.row,
+          {
+            backgroundColor: colors.card,
+            borderColor: roofAccessDone ? colors.success : colors.border,
+            borderWidth: 1,
+          },
+        ]}
+      >
+        <View
+          style={[styles.badge, { backgroundColor: roofAccessDone ? colors.success : colors.accent }]}
+        >
+          <Icon
+            name={roofAccessDone ? 'check' : 'camera'}
+            size={18}
+            color={roofAccessDone ? '#fff' : colors.secondary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+            5. Roof access photo
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {roofAccessDone
+              ? 'Roof access captured'
+              : 'How the roof was reached (ladder, hatch, drone launch point)'}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+      </Pressable>
 
       <View style={{ height: 40 }} />
     </ScrollView>

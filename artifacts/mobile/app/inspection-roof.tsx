@@ -13,16 +13,25 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
+import { WHOLE_ROOF_LINEAR_TYPES } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { createSlope } from '@/lib/inspectionSync';
+import { createMeasurement, createSlope } from '@/lib/inspectionSync';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
 
-// C3 — Roof access + slope inventory (S2 / S3). Records the single roof-access
-// photo (S2) and lets the inspector build the slope inventory: each slope is a
-// raw fact (label + optional pitch/material), documented with one wide
-// overview photo (S3). No squares/pitch math happens here — steepness and
-// area are downstream of raw capture.
+// Step 3 · Roof Facets (protocol v2). Facet-first: the inspector answers
+// "How many facets does this roof have?" once, which seeds an editable
+// F1..FXX facet list. Each facet row opens the facet detail screen (area,
+// material, pitch, damage documentation). Whole-roof linears (ridge / hip /
+// valley / eave / rake LF) are recorded here against the inspection itself.
+
+const LINEAR_LABELS: Record<(typeof WHOLE_ROOF_LINEAR_TYPES)[number], string> = {
+  ridge_lf: 'Ridge',
+  hip_lf: 'Hip',
+  valley_lf: 'Valley',
+  eave_lf: 'Eave',
+  rake_lf: 'Rake',
+};
 
 export default function InspectionRoofScreen() {
   const colors = useColors();
@@ -34,11 +43,11 @@ export default function InspectionRoofScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  const [label, setLabel] = React.useState('');
-  const [pitchRise, setPitchRise] = React.useState('');
-  const [pitchRun, setPitchRun] = React.useState('');
-  const [material, setMaterial] = React.useState('');
-  const [adding, setAdding] = React.useState(false);
+  const [facetCount, setFacetCount] = React.useState('');
+  const [seeding, setSeeding] = React.useState(false);
+  const [addingFacet, setAddingFacet] = React.useState(false);
+  const [linearDrafts, setLinearDrafts] = React.useState<Record<string, string>>({});
+  const [savingLinear, setSavingLinear] = React.useState<string | null>(null);
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -57,62 +66,79 @@ export default function InspectionRoofScreen() {
   }
 
   const state = buildProtocolState(inspection);
-  const roofAccessDone = state.roofAccessPhotoCaptured;
-  const slopeCaptured = new Map(state.slopes.map((s) => [s.id, s.widePhotoCaptured]));
-  const slopes = inspection.slopes ?? [];
-  const s3Remaining = stageDeficiencies(inspection, 'S3').length;
+  const facets = inspection.slopes ?? [];
+  const facetById = new Map(state.facets.map((f) => [f.id, f]));
+  const remaining = stageDeficiencies(inspection, 'facets').length;
+  const measurements = inspection.measurements ?? [];
+  const linearsByType = new Map(
+    measurements
+      .filter((m) => m.subjectType !== 'slope')
+      .map((m) => [m.measurementType, m.value] as const),
+  );
 
-  function captureRoofAccess() {
-    router.push({
-      pathname: '/inspection-photo-capture',
-      params: {
-        inspectionId: id,
-        subjectType: 'inspection',
-        roles: 'wide',
-        stage: 'S2',
-        title: 'Roof access',
-      },
-    });
+  // Next facet label: F{n} past the highest existing F-number.
+  function nextFacetLabel(offset = 0): string {
+    const max = facets.reduce((acc, facet) => {
+      const match = /^F(\d+)$/.exec(facet.label);
+      return match ? Math.max(acc, Number(match[1])) : acc;
+    }, 0);
+    return `F${max + 1 + offset}`;
   }
 
-  function captureSlopeOverview(slopeId: string, slopeLabel: string) {
-    router.push({
-      pathname: '/inspection-photo-capture',
-      params: {
-        inspectionId: id,
-        subjectType: 'slope',
-        subjectId: slopeId,
-        roles: 'wide',
-        stage: 'S3',
-        title: `${slopeLabel} overview`,
-      },
-    });
-  }
-
-  async function addSlope() {
-    if (!label.trim() || adding) return;
-    setAdding(true);
+  async function seedFacets() {
+    const count = Number(facetCount);
+    if (!Number.isInteger(count) || count < 1 || count > 40 || seeding) return;
+    setSeeding(true);
     try {
-      const slopeId = await createSlope(queryClient, id, {
-        label: label.trim(),
-        pitchRise: pitchRise.trim() ? Number(pitchRise) : null,
-        pitchRun: pitchRun.trim() ? Number(pitchRun) : null,
-        materialType: material.trim() || null,
-      });
-      const created = label.trim();
-      setLabel('');
-      setPitchRise('');
-      setPitchRun('');
-      setMaterial('');
-      captureSlopeOverview(slopeId, created);
+      for (let i = 0; i < count; i += 1) {
+        // Sequential (not parallel) so F-numbers assign deterministically.
+        // eslint-disable-next-line no-await-in-loop
+        await createSlope(queryClient, id, { label: `F${i + 1}` });
+      }
+      setFacetCount('');
     } finally {
-      setAdding(false);
+      setSeeding(false);
     }
   }
 
-  const pitchValid =
-    (pitchRise.trim() === '' || !Number.isNaN(Number(pitchRise))) &&
-    (pitchRun.trim() === '' || !Number.isNaN(Number(pitchRun)));
+  async function addFacet() {
+    if (addingFacet) return;
+    setAddingFacet(true);
+    try {
+      const slopeId = await createSlope(queryClient, id, { label: nextFacetLabel() });
+      router.push({ pathname: '/inspection-facet', params: { id, slopeId } });
+    } finally {
+      setAddingFacet(false);
+    }
+  }
+
+  async function saveLinear(type: string) {
+    const raw = (linearDrafts[type] ?? '').trim();
+    const value = Number(raw);
+    if (!raw || Number.isNaN(value) || value <= 0 || savingLinear) return;
+    setSavingLinear(type);
+    try {
+      await createMeasurement(queryClient, id, {
+        subjectType: 'inspection',
+        subjectId: null,
+        measurementType: type,
+        value,
+        unit: 'lf',
+      });
+      setLinearDrafts((prev) => ({ ...prev, [type]: '' }));
+    } finally {
+      setSavingLinear(null);
+    }
+  }
+
+  const facetComplete = (facetId: string): boolean => {
+    const facet = facetById.get(facetId);
+    if (!facet) return false;
+    if (!(facet.hasArea && facet.hasMaterial && facet.hasPitch)) return false;
+    if (!facet.damagePresent) return true;
+    const records = state.damageInstances.filter((d) => d.slopeId === facetId);
+    return records.length > 0 && records.every((d) => d.photoCaptured);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -120,131 +146,146 @@ export default function InspectionRoofScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* S2 — Roof access */}
-        <Text style={[styles.section, { color: colors.foreground }]}>S2 · Roof access</Text>
-        <Pressable
-          onPress={captureRoofAccess}
-          style={[styles.row, { backgroundColor: colors.card, borderColor: roofAccessDone ? colors.success : colors.border }]}
-        >
-          <View style={[styles.badge, { backgroundColor: roofAccessDone ? colors.success : colors.accent }]}>
-            <Icon name={roofAccessDone ? 'check' : 'camera'} size={18} color={roofAccessDone ? '#fff' : colors.secondary} />
-          </View>
-          <View style={{ flex: 1 }}>
+        {facets.length === 0 ? (
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-              {roofAccessDone ? 'Roof access photo captured' : 'Capture roof access photo'}
+              How many facets does this roof have?
             </Text>
             <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              How the roof was reached (ladder, hatch, drone launch point).
+              Every distinct roof plane is a facet. This seeds an F1…F{'{n}'} list you can edit —
+              add or remove facets at any time.
             </Text>
+            <TextInput
+              value={facetCount}
+              onChangeText={setFacetCount}
+              placeholder="e.g. 4"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+            />
+            <Pressable
+              onPress={seedFacets}
+              disabled={seeding || !facetCount.trim()}
+              style={[styles.addBtn, { backgroundColor: colors.primary, opacity: seeding || !facetCount.trim() ? 0.5 : 1 }]}
+            >
+              {seeding ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={[styles.addText, { color: colors.primaryForeground }]}>Create facet list</Text>
+              )}
+            </Pressable>
           </View>
-          <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-        </Pressable>
-
-        {/* S3 — Slopes */}
-        <Text style={[styles.section, { color: colors.foreground }]}>
-          S3 · Slopes {slopes.length > 0 ? `(${slopes.length})` : ''}
-        </Text>
-        {slopes.length === 0 ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 13, marginBottom: 4 }}>
-            Document each roof slope below. At least one slope with a wide overview photo is required.
-          </Text>
         ) : (
-          slopes.map((slope) => {
-            const done = slopeCaptured.get(slope.id) ?? false;
-            const pitch =
-              slope.pitchRise != null && slope.pitchRun != null
-                ? `${slope.pitchRise}:${slope.pitchRun} pitch`
-                : null;
-            const meta = [pitch, slope.materialType].filter(Boolean).join(' · ');
-            return (
-              <Pressable
-                key={slope.id}
-                onPress={() => captureSlopeOverview(slope.id, slope.label)}
-                style={[styles.row, { backgroundColor: colors.card, borderColor: done ? colors.success : colors.border }]}
-              >
-                <View style={[styles.badge, { backgroundColor: done ? colors.success : colors.accent }]}>
-                  <Icon name={done ? 'check' : 'camera'} size={18} color={done ? '#fff' : colors.secondary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>{slope.label}</Text>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                    {done ? 'Overview captured' : 'Tap to capture overview'}
-                    {meta ? ` · ${meta}` : ''}
+          <>
+            <Text style={[styles.section, { color: colors.foreground }]}>
+              Facets ({facets.length})
+            </Text>
+            {facets.map((facet) => {
+              const done = facetComplete(facet.id);
+              const info = facetById.get(facet.id);
+              const missing: string[] = [];
+              if (info && !info.hasArea) missing.push('area');
+              if (info && !info.hasMaterial) missing.push('material');
+              if (info && !info.hasPitch) missing.push('pitch');
+              return (
+                <Pressable
+                  key={facet.id}
+                  onPress={() =>
+                    router.push({ pathname: '/inspection-facet', params: { id, slopeId: facet.id } })
+                  }
+                  style={[styles.row, { backgroundColor: colors.card, borderColor: done ? colors.success : colors.border }]}
+                >
+                  <View style={[styles.badge, { backgroundColor: done ? colors.success : colors.accent }]}>
+                    <Icon name={done ? 'check' : 'clipboard'} size={18} color={done ? '#fff' : colors.secondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rowTitle, { color: colors.foreground }]}>{facet.label}</Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                      {done
+                        ? `Documented${facet.damagePresent ? ` · ${facet.damageType ?? 'damage'}` : ' · no damage'}`
+                        : missing.length > 0
+                          ? `Needs ${missing.join(', ')}`
+                          : facet.damagePresent
+                            ? 'Damage documentation incomplete'
+                            : 'Tap to document'}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={addFacet}
+              disabled={addingFacet}
+              style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border, borderStyle: 'dashed' }]}
+            >
+              <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+                {addingFacet ? (
+                  <ActivityIndicator color={colors.secondary} />
+                ) : (
+                  <Icon name="plus" size={18} color={colors.secondary} />
+                )}
+              </View>
+              <Text style={[styles.rowTitle, { color: colors.foreground, flex: 1 }]}>Add facet</Text>
+            </Pressable>
+
+            {/* Whole-roof linears */}
+            <Text style={[styles.section, { color: colors.foreground }]}>Whole-roof linears (LF)</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Recorded once for the whole roof — at least one linear is required.
+            </Text>
+            {WHOLE_ROOF_LINEAR_TYPES.map((type) => {
+              const saved = linearsByType.get(type);
+              return (
+                <View
+                  key={type}
+                  style={[styles.linearRow, { backgroundColor: colors.card, borderColor: saved != null ? colors.success : colors.border }]}
+                >
+                  <Text style={{ color: colors.foreground, fontWeight: '600', width: 64 }}>
+                    {LINEAR_LABELS[type]}
                   </Text>
+                  {saved != null ? (
+                    <Text style={{ color: colors.success, fontWeight: '700', flex: 1 }}>
+                      {saved} lf recorded
+                    </Text>
+                  ) : (
+                    <>
+                      <TextInput
+                        value={linearDrafts[type] ?? ''}
+                        onChangeText={(v) => setLinearDrafts((prev) => ({ ...prev, [type]: v }))}
+                        placeholder="0"
+                        placeholderTextColor={colors.mutedForeground}
+                        keyboardType="numeric"
+                        style={[styles.linearInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                      />
+                      <Pressable
+                        onPress={() => saveLinear(type)}
+                        disabled={savingLinear === type}
+                        style={[styles.linearSave, { backgroundColor: colors.primary, opacity: savingLinear === type ? 0.5 : 1 }]}
+                      >
+                        {savingLinear === type ? (
+                          <ActivityIndicator color={colors.primaryForeground} size="small" />
+                        ) : (
+                          <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save</Text>
+                        )}
+                      </Pressable>
+                    </>
+                  )}
                 </View>
-                <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-              </Pressable>
-            );
-          })
+              );
+            })}
+
+            <Text style={{ color: remaining === 0 ? colors.success : colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
+              {remaining === 0
+                ? 'Facet documentation complete.'
+                : `${remaining} item${remaining === 1 ? '' : 's'} still required on this step.`}
+            </Text>
+          </>
         )}
-
-        {slopes.length > 0 ? (
-          <Text style={{ color: s3Remaining === 0 ? colors.success : colors.mutedForeground, fontSize: 13 }}>
-            {s3Remaining === 0
-              ? 'All slopes have an overview photo.'
-              : `${s3Remaining} slope${s3Remaining === 1 ? '' : 's'} still need an overview photo.`}
-          </Text>
-        ) : null}
-
-        {/* Add slope form */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.rowTitle, { color: colors.foreground }]}>Add a slope</Text>
-          <Field label="Label" value={label} onChange={setLabel} placeholder="e.g. Front-left, Main ridge" colors={colors} />
-          <View style={styles.pitchRow}>
-            <View style={{ flex: 1 }}>
-              <Field label="Pitch rise" value={pitchRise} onChange={setPitchRise} placeholder="e.g. 6" keyboardType="numeric" colors={colors} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Field label="Pitch run" value={pitchRun} onChange={setPitchRun} placeholder="e.g. 12" keyboardType="numeric" colors={colors} />
-            </View>
-          </View>
-          <Field label="Material" value={material} onChange={setMaterial} placeholder="e.g. Asphalt shingle" colors={colors} />
-          <Pressable
-            onPress={addSlope}
-            disabled={!label.trim() || !pitchValid || adding}
-            style={[styles.addBtn, { backgroundColor: colors.primary, opacity: !label.trim() || !pitchValid || adding ? 0.5 : 1 }]}
-          >
-            {adding ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text style={[styles.addText, { color: colors.primaryForeground }]}>Add slope & photograph</Text>
-            )}
-          </Pressable>
-        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  keyboardType,
-  colors,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'numeric';
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={colors.mutedForeground}
-        keyboardType={keyboardType ?? 'default'}
-        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
-      />
-    </View>
   );
 }
 
@@ -256,10 +297,10 @@ const styles = StyleSheet.create({
   badge: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10, marginTop: 6 },
-  pitchRow: { flexDirection: 'row', gap: 12 },
-  field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: '600' },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   addBtn: { paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 4 },
   addText: { fontSize: 15, fontWeight: '700' },
+  linearRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
+  linearInput: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
+  linearSave: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
 });

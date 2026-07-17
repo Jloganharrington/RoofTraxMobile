@@ -11,6 +11,8 @@ export type OutboxItemKind =
   | 'inspection.attestation'
   | 'inspection.elevation'
   | 'inspection.slope'
+  | 'inspection.slopeUpdate'
+  | 'inspection.slopeDelete'
   | 'inspection.damage'
   | 'inspection.component'
   | 'inspection.penetration'
@@ -74,6 +76,22 @@ export interface InspectionAttestationOutboxPayload {
 export interface InspectionChildCreateOutboxPayload {
   inspectionId: string;
   input: Record<string, unknown>;
+}
+
+/** Offline-first facet (slope) update. Replays after the facet's own create
+ * (FIFO) and is idempotent server-side — re-applying the same partial patch
+ * converges on the same row. */
+export interface InspectionSlopeUpdateOutboxPayload {
+  inspectionId: string;
+  slopeId: string;
+  patch: Record<string, unknown>;
+}
+
+/** Offline-first facet (slope) delete. Idempotent: a 404 on replay means the
+ * facet is already gone and counts as success. */
+export interface InspectionSlopeDeleteOutboxPayload {
+  inspectionId: string;
+  slopeId: string;
 }
 
 /** Offline-first test-square hit create (D1). Carries the parent

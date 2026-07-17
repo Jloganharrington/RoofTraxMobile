@@ -437,20 +437,37 @@ export const PhotoTriadRole = {
   close: 'close',
 } as const;
 
+/**
+ * Protocol v2 step key. S-numbers are retired.
+ */
 export type CaptureStage = typeof CaptureStage[keyof typeof CaptureStage];
 
 
 export const CaptureStage = {
-  S0: 'S0',
-  S1: 'S1',
-  S2: 'S2',
-  S3: 'S3',
-  S4: 'S4',
-  S5: 'S5',
-  S6: 'S6',
-  S7: 'S7',
-  S8: 'S8',
-  S9: 'S9',
+  arrival: 'arrival',
+  elevation_access: 'elevation_access',
+  facets: 'facets',
+  test_squares: 'test_squares',
+  components: 'components',
+  collateral: 'collateral',
+  product: 'product',
+  interior: 'interior',
+  homeowner: 'homeowner',
+  declaration: 'declaration',
+  submit: 'submit',
+} as const;
+
+/**
+ * Per-facet damage classification. hail / hail_and_wind facets drive the Step-4 test-square gate.
+ */
+export type FacetDamageType = typeof FacetDamageType[keyof typeof FacetDamageType];
+
+
+export const FacetDamageType = {
+  hail: 'hail',
+  wind: 'wind',
+  hail_and_wind: 'hail_and_wind',
+  none: 'none',
 } as const;
 
 export type AttestationType = typeof AttestationType[keyof typeof AttestationType];
@@ -508,17 +525,22 @@ export interface StormConfirmedRef {
 }
 
 /**
- * Arrival-conditions log captured in S1 (B6).
+ * Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).
  */
 export interface ArrivalConditions {
   /** @nullable */
   sky: string | null;
   /** @nullable */
-  wind: string | null;
+  windCondition: string | null;
   /** @nullable */
   temp: string | null;
+  personnelPresent: string[];
   /** @nullable */
-  personnelPresent: string | null;
+  timeLocal: string | null;
+  /** @nullable */
+  gpsLatitude: number | null;
+  /** @nullable */
+  gpsLongitude: number | null;
   recordedAtUtc: string;
 }
 
@@ -590,6 +612,10 @@ export interface InspectionSlope {
   pitchRun: number | null;
   /** @nullable */
   materialType: string | null;
+  /** @nullable */
+  areaSqft: number | null;
+  damageType: FacetDamageType | null;
+  damagePresent: boolean;
   /** @nullable */
   notes: string | null;
   createdAt: string;
@@ -987,6 +1013,30 @@ export interface CreateInspectionSlopeInput {
   pitchRun?: number | null;
   /** @nullable */
   materialType?: string | null;
+  /** @nullable */
+  areaSqft?: number | null;
+  damageType?: FacetDamageType | null;
+  damagePresent?: boolean;
+  /** @nullable */
+  notes?: string | null;
+}
+
+/**
+ * Partial facet update — only supplied fields change.
+ */
+export interface UpdateInspectionSlopeInput {
+  /** @minLength 1 */
+  label?: string;
+  /** @nullable */
+  pitchRise?: number | null;
+  /** @nullable */
+  pitchRun?: number | null;
+  /** @nullable */
+  materialType?: string | null;
+  /** @nullable */
+  areaSqft?: number | null;
+  damageType?: FacetDamageType | null;
+  damagePresent?: boolean;
   /** @nullable */
   notes?: string | null;
 }

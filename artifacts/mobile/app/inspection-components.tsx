@@ -162,7 +162,7 @@ export default function InspectionComponentsScreen() {
         subjectType,
         subjectId,
         roles: 'wide',
-        stage: 'S3',
+        stage: 'components',
         title,
       },
     });

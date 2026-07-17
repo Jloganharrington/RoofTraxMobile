@@ -114,7 +114,7 @@ async function seed(label: 'a' | 'b'): Promise<SeededCompany> {
 
   const [attestation] = await db
     .insert(attestationsTable)
-    .values({ companyId, inspectionId: inspection.id, userId: user.id, stage: 'S1' })
+    .values({ companyId, inspectionId: inspection.id, userId: user.id, stage: 'arrival' })
     .returning();
 
   const [component] = await db

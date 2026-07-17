@@ -43,20 +43,22 @@ export const PRELIMINARY_PHOTO_ROLES = [
 ] as const;
 export type PreliminaryPhotoRole = (typeof PRELIMINARY_PHOTO_ROLES)[number];
 
-// S0-S9 capture-stage vocabulary that lib/protocol (a later phase) will
-// attach rules to. Stored here as plain values now so photos/attestations
-// can reference a stage without a hard dependency on that package.
+// Protocol v2 step-key vocabulary that lib/protocol attaches rules to.
+// Stored here as plain values so photos/attestations can reference a step
+// without a hard dependency on that package. S-numbers are retired — these
+// mirror (by key only) PROTOCOL_STEPS in @workspace/protocol.
 export const CAPTURE_STAGES = [
-  'S0',
-  'S1',
-  'S2',
-  'S3',
-  'S4',
-  'S5',
-  'S6',
-  'S7',
-  'S8',
-  'S9',
+  'arrival',
+  'elevation_access',
+  'facets',
+  'test_squares',
+  'components',
+  'collateral',
+  'product',
+  'interior',
+  'homeowner',
+  'declaration',
+  'submit',
 ] as const;
 export type CaptureStage = (typeof CAPTURE_STAGES)[number];
 
@@ -126,6 +128,12 @@ export type PenetrationType = (typeof PENETRATION_TYPES)[number];
 export const PRODUCT_ID_METHODS = ['field_identified', 'itel_sample', 'unidentifiable'] as const;
 export type ProductIdMethod = (typeof PRODUCT_ID_METHODS)[number];
 
+// Protocol v2 — per-facet damage classification. Drives the Step-4 hail
+// gate: only facets carrying hail (hail | hail_and_wind) require a test
+// square.
+export const FACET_DAMAGE_TYPES = ['hail', 'wind', 'hail_and_wind', 'none'] as const;
+export type FacetDamageType = (typeof FACET_DAMAGE_TYPES)[number];
+
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
 
@@ -162,13 +170,19 @@ export type TestSquareHitType = (typeof TEST_SQUARE_HIT_TYPES)[number];
 export const ATTESTATION_TYPES = ['equipment', 'gps_override', 'stage_signoff'] as const;
 export type AttestationType = (typeof ATTESTATION_TYPES)[number];
 
-// Structured arrival-conditions log recorded on arrival (B6 / S1). Stored
-// verbatim on the inspection row; no derived logic.
+// Structured arrival-conditions log recorded on arrival (Step 1 · Arrival
+// Log). Stored verbatim on the inspection row; no derived logic.
+// `windCondition` replaces the old `wind` field and `personnelPresent` is an
+// array (protocol v2) — pre-launch, no prod data to migrate.
 export interface ArrivalConditions {
   sky: string | null;
-  wind: string | null;
+  windCondition: string | null;
   temp: string | null;
-  personnelPresent: string | null;
+  personnelPresent: string[];
+  // Auto-captured on arrival: device local time + GPS position (§4 contract).
+  timeLocal: string | null;
+  gpsLatitude: number | null;
+  gpsLongitude: number | null;
   recordedAtUtc: string;
 }
 
@@ -288,6 +302,12 @@ export const inspectionSlopesTable = pgTable('inspection_slopes', {
   pitchRise: doublePrecision('pitch_rise'),
   pitchRun: doublePrecision('pitch_run'),
   materialType: text('material_type'),
+  // Protocol v2 facet fields: per-facet area (feeds squares/pricing), the
+  // damage classification that drives the Step-4 hail gate, and whether the
+  // inspector observed damage on this facet at all.
+  areaSqft: doublePrecision('area_sqft'),
+  damageType: varchar('damage_type', { enum: FACET_DAMAGE_TYPES }),
+  damagePresent: boolean('damage_present').notNull().default(false),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

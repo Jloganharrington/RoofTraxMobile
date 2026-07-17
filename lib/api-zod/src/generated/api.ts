@@ -674,11 +674,14 @@ export const ListInspectionsResponse = zod.object({
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
-  "wind": zod.string().nullable(),
+  "windCondition": zod.string().nullable(),
   "temp": zod.string().nullable(),
-  "personnelPresent": zod.string().nullable(),
+  "personnelPresent": zod.array(zod.string()),
+  "timeLocal": zod.string().nullable(),
+  "gpsLatitude": zod.number().nullable(),
+  "gpsLongitude": zod.number().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+}).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "priorRepairs": zod.string().nullable(),
@@ -722,6 +725,9 @@ export const ListInspectionsResponse = zod.object({
   "pitchRise": zod.number().nullable(),
   "pitchRun": zod.number().nullable(),
   "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -749,7 +755,7 @@ export const ListInspectionsResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -825,7 +831,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -910,11 +916,14 @@ export const CreateInspectionResponse = zod.object({
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
-  "wind": zod.string().nullable(),
+  "windCondition": zod.string().nullable(),
   "temp": zod.string().nullable(),
-  "personnelPresent": zod.string().nullable(),
+  "personnelPresent": zod.array(zod.string()),
+  "timeLocal": zod.string().nullable(),
+  "gpsLatitude": zod.number().nullable(),
+  "gpsLongitude": zod.number().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+}).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "priorRepairs": zod.string().nullable(),
@@ -958,6 +967,9 @@ export const CreateInspectionResponse = zod.object({
   "pitchRise": zod.number().nullable(),
   "pitchRun": zod.number().nullable(),
   "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -985,7 +997,7 @@ export const CreateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1061,7 +1073,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1132,11 +1144,14 @@ export const GetInspectionResponse = zod.object({
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
-  "wind": zod.string().nullable(),
+  "windCondition": zod.string().nullable(),
   "temp": zod.string().nullable(),
-  "personnelPresent": zod.string().nullable(),
+  "personnelPresent": zod.array(zod.string()),
+  "timeLocal": zod.string().nullable(),
+  "gpsLatitude": zod.number().nullable(),
+  "gpsLongitude": zod.number().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+}).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "priorRepairs": zod.string().nullable(),
@@ -1180,6 +1195,9 @@ export const GetInspectionResponse = zod.object({
   "pitchRise": zod.number().nullable(),
   "pitchRun": zod.number().nullable(),
   "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -1207,7 +1225,7 @@ export const GetInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1283,7 +1301,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1350,11 +1368,14 @@ export const UpdateInspectionBody = zod.object({
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]).optional(),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
-  "wind": zod.string().nullable(),
+  "windCondition": zod.string().nullable(),
   "temp": zod.string().nullable(),
-  "personnelPresent": zod.string().nullable(),
+  "personnelPresent": zod.array(zod.string()),
+  "timeLocal": zod.string().nullable(),
+  "gpsLatitude": zod.number().nullable(),
+  "gpsLongitude": zod.number().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]).optional(),
+}).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]).optional(),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "priorRepairs": zod.string().nullable(),
@@ -1396,11 +1417,14 @@ export const UpdateInspectionResponse = zod.object({
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
-  "wind": zod.string().nullable(),
+  "windCondition": zod.string().nullable(),
   "temp": zod.string().nullable(),
-  "personnelPresent": zod.string().nullable(),
+  "personnelPresent": zod.array(zod.string()),
+  "timeLocal": zod.string().nullable(),
+  "gpsLatitude": zod.number().nullable(),
+  "gpsLongitude": zod.number().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+}).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "priorRepairs": zod.string().nullable(),
@@ -1444,6 +1468,9 @@ export const UpdateInspectionResponse = zod.object({
   "pitchRise": zod.number().nullable(),
   "pitchRun": zod.number().nullable(),
   "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -1471,7 +1498,7 @@ export const UpdateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1547,7 +1574,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1579,6 +1606,57 @@ export const UpdateInspectionResponse = zod.object({
 
 
 /**
+ * @summary Update a roof facet's details
+ */
+export const UpdateInspectionSlopeParams = zod.object({
+  "inspectionId": zod.coerce.string(),
+  "slopeId": zod.coerce.string()
+})
+
+
+
+
+export const UpdateInspectionSlopeBody = zod.object({
+  "label": zod.string().min(1).optional(),
+  "pitchRise": zod.number().nullish(),
+  "pitchRun": zod.number().nullish(),
+  "materialType": zod.string().nullish(),
+  "areaSqft": zod.number().nullish(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]).optional(),
+  "damagePresent": zod.boolean().optional(),
+  "notes": zod.string().nullish()
+}).describe('Partial facet update — only supplied fields change.')
+
+export const UpdateInspectionSlopeResponse = zod.object({
+  "slope": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "inspectionId": zod.string(),
+  "label": zod.string(),
+  "pitchRise": zod.number().nullable(),
+  "pitchRun": zod.number().nullable(),
+  "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Remove a roof facet
+ */
+export const DeleteInspectionSlopeParams = zod.object({
+  "inspectionId": zod.coerce.string(),
+  "slopeId": zod.coerce.string()
+})
+
+export const DeleteInspectionSlopeResponse = zod.void()
+
+
+/**
  * @summary Add a roof slope to an inspection
  */
 export const CreateInspectionSlopeParams = zod.object({
@@ -1594,6 +1672,9 @@ export const CreateInspectionSlopeBody = zod.object({
   "pitchRise": zod.number().nullish(),
   "pitchRun": zod.number().nullish(),
   "materialType": zod.string().nullish(),
+  "areaSqft": zod.number().nullish(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]).optional(),
+  "damagePresent": zod.boolean().optional(),
   "notes": zod.string().nullish()
 })
 
@@ -1606,6 +1687,9 @@ export const CreateInspectionSlopeResponse = zod.object({
   "pitchRise": zod.number().nullable(),
   "pitchRun": zod.number().nullable(),
   "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -1842,7 +1926,7 @@ export const CreateInspectionPhotoParams = zod.object({
 
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
@@ -1865,7 +1949,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1929,7 +2013,7 @@ export const CreateAttestationParams = zod.object({
 
 export const CreateAttestationBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the attestation write is idempotent, so a queued offline attestation can be retried without duplicating the row.'),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]).optional(),
   "details": zod.record(zod.string(), zod.unknown()).nullish(),
   "signatureData": zod.string().nullish()
@@ -1941,7 +2025,7 @@ export const CreateAttestationResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -2051,11 +2135,14 @@ export const SubmitInspectionResponse = zod.object({
 }).describe('The inspector-confirmed storm of record (B5). Raw snapshot of the single severe-weather event selected as cause of loss.'),zod.null()]),
   "arrivalConditions": zod.union([zod.object({
   "sky": zod.string().nullable(),
-  "wind": zod.string().nullable(),
+  "windCondition": zod.string().nullable(),
   "temp": zod.string().nullable(),
-  "personnelPresent": zod.string().nullable(),
+  "personnelPresent": zod.array(zod.string()),
+  "timeLocal": zod.string().nullable(),
+  "gpsLatitude": zod.number().nullable(),
+  "gpsLongitude": zod.number().nullable(),
   "recordedAtUtc": zod.string()
-}).describe('Arrival-conditions log captured in S1 (B6).'),zod.null()]),
+}).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "priorRepairs": zod.string().nullable(),
@@ -2099,6 +2186,9 @@ export const SubmitInspectionResponse = zod.object({
   "pitchRise": zod.number().nullable(),
   "pitchRun": zod.number().nullable(),
   "materialType": zod.string().nullable(),
+  "areaSqft": zod.number().nullable(),
+  "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
+  "damagePresent": zod.boolean(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -2126,7 +2216,7 @@ export const SubmitInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -2202,7 +2292,7 @@ export const SubmitInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9']),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),

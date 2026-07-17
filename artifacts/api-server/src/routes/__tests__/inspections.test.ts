@@ -181,7 +181,7 @@ describe('inspection routes', () => {
     const inspectionId = createRes.body.inspection.id as string;
 
     const clientId = `att-${RUN_ID}-idem`;
-    const body = { id: clientId, attestationType: 'equipment', stage: 'S0', details: { ok: true } };
+    const body = { id: clientId, attestationType: 'equipment', stage: 'arrival', details: { ok: true } };
 
     const first = await request(app)
       .post(`/api/inspections/${inspectionId}/attestations`)
@@ -279,7 +279,7 @@ describe('inspection routes', () => {
     const attestationRes = await request(app)
       .post(`/api/inspections/${inspectionId}/attestations`)
       .set(auth(inspectorA.sid))
-      .send({ stage: 'S8', signatureData: 'Jane Inspector' });
+      .send({ stage: 'declaration', signatureData: 'Jane Inspector' });
     expect(attestationRes.status).toBe(201);
     expect(attestationRes.body.attestation.userId).toBe(inspectorA.userId);
   });
@@ -359,7 +359,7 @@ describe('inspection routes', () => {
         ['create measurement', () =>
           request(app).post(`/api/inspections/${inspectionId}/measurements`).set(auth(sid)).send({ subjectType: 'slope', measurementType: 'length', value: 12 })],
         ['create attestation', () =>
-          request(app).post(`/api/inspections/${inspectionId}/attestations`).set(auth(sid)).send({ stage: 'S2', signatureData: 'C0' })],
+          request(app).post(`/api/inspections/${inspectionId}/attestations`).set(auth(sid)).send({ stage: 'elevation_access', signatureData: 'C0' })],
         ['create interior observation', () =>
           request(app).post(`/api/inspections/${inspectionId}/interior-observations`).set(auth(sid)).send({ location: 'Kitchen', observationType: 'ceiling_stain' })],
         ['submit inspection', () =>
@@ -467,7 +467,7 @@ describe('inspection routes', () => {
           subjectType: 'slope',
           subjectId: slopeId,
           triadRole: 'wide',
-          stage: 'S3',
+          stage: 'facets',
           url: 'https://example.test/mc.jpg',
           sha256: 'd'.repeat(64),
         });
@@ -480,7 +480,7 @@ describe('inspection routes', () => {
       expect(detail.body.inspection.elevations).toHaveLength(1);
       expect(detail.body.inspection.damageInstances).toHaveLength(1);
       expect(detail.body.inspection.photos).toHaveLength(1);
-      expect(detail.body.inspection.photos[0].stage).toBe('S3');
+      expect(detail.body.inspection.photos[0].stage).toBe('facets');
     });
 
     it('returns the existing child (200) on a retried create with the same client id', async () => {
@@ -589,12 +589,12 @@ describe('inspection routes', () => {
         { path: `/api/inspections/${inspectionId}/elevations`, body: { id: elevId, direction: 'front' } },
         { path: `/api/inspections/${inspectionId}/slopes`, body: { id: slopeId, label: 'Mini-pass slope' } },
         { path: `/api/inspections/${inspectionId}/damage-instances`, body: { id: dmgId, slopeId, damageType: 'hail', causationNote: 'Mat exposure compromises water shedding' } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-elev`, subjectType: 'elevation', subjectId: elevId, triadRole: 'wide', stage: 'S1', url: 'https://example.test/e.jpg', sha256: '1'.repeat(64) } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-roof`, subjectType: 'inspection', triadRole: 'wide', stage: 'S2', url: 'https://example.test/r.jpg', sha256: '2'.repeat(64) } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-slope`, subjectType: 'slope', subjectId: slopeId, triadRole: 'wide', stage: 'S3', url: 'https://example.test/s.jpg', sha256: '3'.repeat(64) } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dw`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'wide', stage: 'S5', url: 'https://example.test/dw.jpg', sha256: '4'.repeat(64) } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dm`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'mid', stage: 'S5', url: 'https://example.test/dm.jpg', sha256: '5'.repeat(64) } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dc`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'close', stage: 'S5', url: 'https://example.test/dc.jpg', sha256: '6'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-elev`, subjectType: 'elevation', subjectId: elevId, triadRole: 'wide', stage: 'elevation_access', url: 'https://example.test/e.jpg', sha256: '1'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-roof`, subjectType: 'inspection', triadRole: 'wide', stage: 'elevation_access', url: 'https://example.test/r.jpg', sha256: '2'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-slope`, subjectType: 'slope', subjectId: slopeId, triadRole: 'wide', stage: 'facets', url: 'https://example.test/s.jpg', sha256: '3'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dw`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'wide', stage: 'facets', url: 'https://example.test/dw.jpg', sha256: '4'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dm`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'mid', stage: 'facets', url: 'https://example.test/dm.jpg', sha256: '5'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-dc`, subjectType: 'damage_instance', subjectId: dmgId, triadRole: 'close', stage: 'facets', url: 'https://example.test/dc.jpg', sha256: '6'.repeat(64) } },
       ];
 
       // Drain in queue order (sequential), mirroring the outbox: FK-dependent
@@ -631,7 +631,7 @@ describe('inspection routes', () => {
       const body = {
         id: photoId,
         subjectType: 'inspection',
-        stage: 'S2',
+        stage: 'elevation_access',
         triadRole: 'wide',
         url: 'https://example.test/idem.jpg',
         sha256: 'e'.repeat(64),
@@ -754,14 +754,14 @@ describe('inspection routes', () => {
       const seed = await request(app)
         .post(`/api/inspections/${first.body.inspection.id}/attestations`)
         .set(auth(inspectorA.sid))
-        .send({ id: attId, stage: 'S4', attestationType: 'stage_signoff', details: { kind: 'inaccessible_slope', slopeId: 's', reason: 'steep' } });
+        .send({ id: attId, stage: 'facets', attestationType: 'stage_signoff', details: { kind: 'inaccessible_slope', slopeId: 's', reason: 'steep' } });
       expect(seed.status).toBe(201);
       // Before D0 the re-select was only id+company, so this replay leaked the
       // other inspection's attestation as a 200. It must 409.
       const collide = await request(app)
         .post(`/api/inspections/${second.body.inspection.id}/attestations`)
         .set(auth(inspectorA.sid))
-        .send({ id: attId, stage: 'S4', attestationType: 'stage_signoff', details: {} });
+        .send({ id: attId, stage: 'facets', attestationType: 'stage_signoff', details: {} });
       expect(collide.status).toBe(409);
     });
 
@@ -776,7 +776,7 @@ describe('inspection routes', () => {
         .post(`/api/inspections/${inspectionId}/attestations`)
         .set(auth(inspectorA.sid))
         .send({
-          stage: 'S4',
+          stage: 'facets',
           attestationType: 'stage_signoff',
           details: { kind: 'inaccessible_slope', slopeId: slope.body.slope.id, reason: 'Too steep to walk safely' },
         });
@@ -784,7 +784,7 @@ describe('inspection routes', () => {
 
       const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
       const hydrated = detail.body.inspection.attestations as Array<{ stage: string; details: { kind?: string } }>;
-      expect(hydrated.some((a) => a.stage === 'S4' && a.details?.kind === 'inaccessible_slope')).toBe(true);
+      expect(hydrated.some((a) => a.stage === 'facets' && a.details?.kind === 'inaccessible_slope')).toBe(true);
     });
 
     it('rejects a subject-attached photo with no subjectId (D4 orphan guard)', async () => {
@@ -795,14 +795,14 @@ describe('inspection routes', () => {
       const orphan = await request(app)
         .post(`/api/inspections/${inspectionId}/photos`)
         .set(auth(inspectorA.sid))
-        .send({ subjectType: 'test_square', triadRole: 'wide', stage: 'S4', url: 'https://example.test/o.jpg', sha256: '7'.repeat(64) });
+        .send({ subjectType: 'test_square', triadRole: 'wide', stage: 'test_squares', url: 'https://example.test/o.jpg', sha256: '7'.repeat(64) });
       expect(orphan.status).toBe(400);
 
       // A whole-inspection photo legitimately has no subjectId — allowed.
       const rootPhoto = await request(app)
         .post(`/api/inspections/${inspectionId}/photos`)
         .set(auth(inspectorA.sid))
-        .send({ subjectType: 'inspection', triadRole: 'wide', stage: 'S2', url: 'https://example.test/root.jpg', sha256: '8'.repeat(64) });
+        .send({ subjectType: 'inspection', triadRole: 'wide', stage: 'elevation_access', url: 'https://example.test/root.jpg', sha256: '8'.repeat(64) });
       expect(rootPhoto.status).toBe(201);
     });
 
@@ -814,9 +814,9 @@ describe('inspection routes', () => {
 
       const batch: Array<{ path: string; body: Record<string, unknown> }> = [
         { path: `/api/inspections/${inspectionId}/test-squares`, body: { id: tsId, label: 'Offline square' } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-ov`, subjectType: 'test_square', subjectId: tsId, triadRole: 'wide', stage: 'S4', url: 'https://example.test/ov.jpg', sha256: 'a'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-ov`, subjectType: 'test_square', subjectId: tsId, triadRole: 'wide', stage: 'test_squares', url: 'https://example.test/ov.jpg', sha256: 'a'.repeat(64) } },
         { path: `/api/inspections/${inspectionId}/test-squares/${tsId}/hits`, body: { id: hitId, hitType: 'hail_strike' } },
-        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-cu`, subjectType: 'test_square_hit', subjectId: hitId, triadRole: 'close', stage: 'S4', url: 'https://example.test/cu.jpg', sha256: 'b'.repeat(64) } },
+        { path: `/api/inspections/${inspectionId}/photos`, body: { id: `p-${RUN_ID}-cu`, subjectType: 'test_square_hit', subjectId: hitId, triadRole: 'close', stage: 'test_squares', url: 'https://example.test/cu.jpg', sha256: 'b'.repeat(64) } },
       ];
 
       const drain = async () => {
@@ -1089,7 +1089,7 @@ describe('inspection routes', () => {
         .post(`/api/inspections/${inspectionId}/attestations`)
         .set(auth(inspectorA.sid))
         .send({
-          stage: 'S8',
+          stage: 'declaration',
           attestationType: 'stage_signoff',
           signatureData: signatureHash,
           details: { kind: 'methodology_declaration', declarationHash: 'b'.repeat(64) },
@@ -1097,7 +1097,7 @@ describe('inspection routes', () => {
       expect(res.status).toBe(201);
       const detail = await request(app).get(`/api/inspections/${inspectionId}`).set(auth(inspectorA.sid));
       const s8 = detail.body.inspection.attestations.find(
-        (a: { stage: string }) => a.stage === 'S8',
+        (a: { stage: string }) => a.stage === 'declaration',
       );
       expect(s8.signatureData).toBe(signatureHash);
       expect(s8.details.declarationHash).toBe('b'.repeat(64));

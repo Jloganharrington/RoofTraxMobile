@@ -34,13 +34,13 @@ export async function enqueueOutboxItem(kind: OutboxItemKind, payload: unknown):
 export async function listSyncableOutboxItems(): Promise<OutboxItem[]> {
   const db = await getOutboxDb();
   return db.getAllAsync<OutboxItem>(
-    `SELECT * FROM outbox_items WHERE status IN ('pending', 'failed', 'syncing') ORDER BY createdAt ASC`,
+    `SELECT * FROM outbox_items WHERE status IN ('pending', 'failed', 'syncing') ORDER BY createdAt ASC, rowid ASC`,
   );
 }
 
 export async function listAllOutboxItems(): Promise<OutboxItem[]> {
   const db = await getOutboxDb();
-  return db.getAllAsync<OutboxItem>(`SELECT * FROM outbox_items ORDER BY createdAt ASC`);
+  return db.getAllAsync<OutboxItem>(`SELECT * FROM outbox_items ORDER BY createdAt ASC, rowid ASC`);
 }
 
 /**

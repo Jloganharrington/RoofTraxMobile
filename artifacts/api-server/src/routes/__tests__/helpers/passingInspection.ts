@@ -3,11 +3,11 @@ import { expect } from 'vitest';
 
 import app from '../../../app';
 
-// Shared test helpers for building an inspection that satisfies every hard gate
-// (S0-S9), so the M-F server-side gate re-run passes and the record can actually
-// be submitted and locked. Used by both the M-F suite and the core inspection
-// suite, since Phase M-F made a full passing gate + signature-on-file a
-// precondition of submission.
+// Shared test helpers for building an inspection that satisfies every hard
+// gate of protocol v2 (arrival … submit), so the server-side gate re-run
+// passes and the record can actually be submitted and locked. Used by both
+// the M-F suite and the core inspection suite, since a full passing gate +
+// signature-on-file is a precondition of submission.
 
 function auth(sid: string) {
   return { Authorization: `Bearer ${sid}` };
@@ -51,11 +51,25 @@ export async function buildPassingInspection(sid: string): Promise<PassingInspec
     return res.body.photo.id as string;
   }
 
-  // S0 overview + S2 roof access.
-  await addPhoto({ subjectType: 'inspection', stage: 'S0', triadRole: 'wide' });
-  await addPhoto({ subjectType: 'inspection', stage: 'S2', triadRole: 'wide' });
+  // Step 1 — arrival conditions (sky/wind/temp/personnel + GPS + time).
+  const arrival = await request(app)
+    .patch(`/api/inspections/${inspectionId}`)
+    .set(auth(sid))
+    .send({
+      arrivalConditions: {
+        sky: 'Sunny',
+        windCondition: 'Calm',
+        temp: '72F',
+        personnelPresent: ['Homeowner'],
+        timeLocal: '7/17/2026, 9:00:00 AM',
+        gpsLatitude: 32.7767,
+        gpsLongitude: -96.797,
+        recordedAtUtc: new Date().toISOString(),
+      },
+    });
+  expect(arrival.status).toBe(200);
 
-  // S1 — a wide photo for all four elevation directions.
+  // Step 2 — a wide photo for all four elevations + the roof-access photo.
   const elevationIds: string[] = [];
   for (const direction of ['front', 'right', 'back', 'left'] as const) {
     const elev = await request(app)
@@ -66,48 +80,54 @@ export async function buildPassingInspection(sid: string): Promise<PassingInspec
     elevationIds.push(elev.body.elevation.id);
     await addPhoto({ subjectType: 'elevation', subjectId: elev.body.elevation.id, triadRole: 'wide' });
   }
+  await addPhoto({ subjectType: 'inspection', stage: 'elevation_access', triadRole: 'wide' });
 
-  // S3 — one slope with a wide photo.
+  // Step 3 — one fully documented facet (area/material/pitch, no damage) and
+  // one whole-roof linear. No damage means no test square is required.
   const slope = await request(app)
     .post(`/api/inspections/${inspectionId}/slopes`)
     .set(auth(sid))
-    .send({ label: 'Front slope', pitchRise: 6, pitchRun: 12 });
+    .send({
+      label: 'F1',
+      pitchRise: 6,
+      pitchRun: 12,
+      areaSqft: 320,
+      materialType: 'Asphalt shingle',
+      damageType: 'none',
+      damagePresent: false,
+    });
   expect(slope.status).toBe(201);
   const slopeId = slope.body.slope.id as string;
-  await addPhoto({ subjectType: 'slope', subjectId: slopeId, triadRole: 'wide' });
 
-  // S4 — a test square for that slope with its overview photo.
-  const square = await request(app)
-    .post(`/api/inspections/${inspectionId}/test-squares`)
-    .set(auth(sid))
-    .send({ slopeId, label: 'TS-1', sizeSqFt: 100 });
-  expect(square.status).toBe(201);
-  const testSquareId = square.body.testSquare.id as string;
-  await addPhoto({ subjectType: 'test_square', subjectId: testSquareId, triadRole: 'wide' });
-
-  // S7 — at least one measurement (tied to the documented slope).
   const measurement = await request(app)
     .post(`/api/inspections/${inspectionId}/measurements`)
     .set(auth(sid))
-    .send({ subjectType: 'slope', subjectId: slopeId, measurementType: 'length', value: 40, unit: 'ft' });
+    .send({ subjectType: 'inspection', measurementType: 'ridge_lf', value: 40, unit: 'lf' });
   expect(measurement.status).toBe(201);
 
-  // S8 methodology/signature + S9 final review, as stage_signoff attestations.
-  const s8 = await request(app)
+  // Step 7 — at least one product record.
+  const product = await request(app)
+    .post(`/api/inspections/${inspectionId}/products`)
+    .set(auth(sid))
+    .send({ category: 'Shingle', brand: 'Acme', identificationMethod: 'field_identified' });
+  expect(product.status).toBe(201);
+
+  // Step 10 declaration + Step 11 final review, as stage_signoff attestations.
+  const declaration = await request(app)
     .post(`/api/inspections/${inspectionId}/attestations`)
     .set(auth(sid))
-    .send({ stage: 'S8', attestationType: 'stage_signoff', signatureData: 'x' });
-  expect(s8.status).toBe(201);
-  const s9 = await request(app)
+    .send({ stage: 'declaration', attestationType: 'stage_signoff', signatureData: 'x' });
+  expect(declaration.status).toBe(201);
+  const finalReview = await request(app)
     .post(`/api/inspections/${inspectionId}/attestations`)
     .set(auth(sid))
-    .send({ stage: 'S9', attestationType: 'stage_signoff' });
-  expect(s9.status).toBe(201);
+    .send({ stage: 'submit', attestationType: 'stage_signoff' });
+  expect(finalReview.status).toBe(201);
 
   return {
     inspectionId,
     photoHashes,
-    recordIds: { slopes: [slopeId], elevations: elevationIds, testSquares: [testSquareId] },
+    recordIds: { slopes: [slopeId], elevations: elevationIds, testSquares: [] },
   };
 }
 

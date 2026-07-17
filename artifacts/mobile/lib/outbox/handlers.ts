@@ -13,8 +13,10 @@ import {
   createMeasurement,
   createTestSquare,
   createTestSquareHit,
+  deleteInspectionSlope,
   submitInspection,
   updateInspection,
+  updateInspectionSlope,
 } from '@workspace/api-client-react';
 import type {
   CreateAttestationInput,
@@ -34,6 +36,7 @@ import type {
   PhotoTriadRole,
   SubmitInspectionInput,
   UpdateInspectionInput,
+  UpdateInspectionSlopeInput,
 } from '@workspace/api-client-react';
 
 import { uploadFile } from '../upload';
@@ -42,6 +45,8 @@ import type {
   InspectionChildCreateOutboxPayload,
   InspectionCreateOutboxPayload,
   InspectionPhotoOutboxPayload,
+  InspectionSlopeDeleteOutboxPayload,
+  InspectionSlopeUpdateOutboxPayload,
   InspectionSubmissionOutboxPayload,
   InspectionTestSquareHitOutboxPayload,
   InspectionUpdateOutboxPayload,
@@ -127,6 +132,26 @@ async function syncInspectionSlope(payloadJson: string): Promise<void> {
   );
 }
 
+async function syncInspectionSlopeUpdate(payloadJson: string): Promise<void> {
+  const payload: InspectionSlopeUpdateOutboxPayload = JSON.parse(payloadJson);
+  await updateInspectionSlope(
+    payload.inspectionId,
+    payload.slopeId,
+    payload.patch as unknown as UpdateInspectionSlopeInput,
+  );
+}
+
+async function syncInspectionSlopeDelete(payloadJson: string): Promise<void> {
+  const payload: InspectionSlopeDeleteOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await deleteInspectionSlope(payload.inspectionId, payload.slopeId);
+  } catch (error) {
+    // Idempotent replay: the facet already being gone is success.
+    if (error instanceof Error && /404/.test(error.message)) return;
+    throw error;
+  }
+}
+
 async function syncInspectionDamage(payloadJson: string): Promise<void> {
   const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
   await createDamageInstance(
@@ -207,6 +232,8 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.attestation': syncInspectionAttestation,
   'inspection.elevation': syncInspectionElevation,
   'inspection.slope': syncInspectionSlope,
+  'inspection.slopeUpdate': syncInspectionSlopeUpdate,
+  'inspection.slopeDelete': syncInspectionSlopeDelete,
   'inspection.damage': syncInspectionDamage,
   'inspection.component': syncInspectionComponent,
   'inspection.penetration': syncInspectionPenetration,

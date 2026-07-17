@@ -10,6 +10,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { PROTOCOL_STEPS, stepLabel, type StepKey } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
@@ -18,9 +19,13 @@ import { attestInspection } from '@/lib/inspectionSync';
 import {
   buildProtocolState,
   evaluateInspection,
-  isStageComplete,
   stageDeficiencies,
 } from '@/lib/inspectionProtocolState';
+
+// Forensic hub (protocol v2). Renders the 11 ordered protocol steps from
+// PROTOCOL_STEPS — the single source of step identity/order — plus the
+// pre-inspection equipment attestation. Step completion is always derived
+// from the gate engine (stageDeficiencies), never asserted locally.
 
 const EQUIPMENT_ITEMS = [
   'Ladder',
@@ -30,6 +35,34 @@ const EQUIPMENT_ITEMS = [
   'Camera / phone',
   'Fall protection',
 ];
+
+const STEP_ICONS: Record<StepKey, IconName> = {
+  arrival: 'navigation',
+  elevation_access: 'home',
+  facets: 'square',
+  test_squares: 'square',
+  components: 'clipboard',
+  collateral: 'camera',
+  product: 'camera',
+  interior: 'home',
+  homeowner: 'clipboard',
+  declaration: 'check',
+  submit: 'clipboard',
+};
+
+const STEP_ROUTES: Record<StepKey, string> = {
+  arrival: '/inspection-arrival',
+  elevation_access: '/inspection-elevations',
+  facets: '/inspection-roof',
+  test_squares: '/inspection-test-squares',
+  components: '/inspection-components',
+  collateral: '/inspection-collateral',
+  product: '/inspection-product',
+  interior: '/inspection-interior',
+  homeowner: '/inspection-homeowner',
+  declaration: '/inspection-declaration',
+  submit: '/inspection-readiness',
+};
 
 export default function InspectionDetailScreen() {
   const colors = useColors();
@@ -51,7 +84,7 @@ export default function InspectionDetailScreen() {
     setSavingEquipment(true);
     try {
       await attestInspection(id, {
-        stage: 'S0',
+        stage: 'arrival',
         attestationType: 'equipment',
         details: { items: checked, confirmedAllPresent: allChecked },
       });
@@ -85,6 +118,131 @@ export default function InspectionDetailScreen() {
     return <PreliminaryHub inspection={inspection} id={id} />;
   }
 
+  const state = buildProtocolState(inspection);
+  const gate = evaluateInspection(inspection);
+  const submitted = inspection.status === 'submitted' || inspection.status === 'package_ready';
+  const collateralCount = (inspection.photos ?? []).filter((p) => p.stage === 'collateral').length;
+  const interiorAddressed =
+    (inspection.interiorObservations?.length ?? 0) > 0 || state.interiorClaimWaived;
+  const remaining = gate.deficiencies.length;
+
+  // Per-step completion + subtitle, all derived from the gate engine.
+  function stepStatus(key: StepKey): { done: boolean; subtitle: string } {
+    const missing = stageDeficiencies(inspection!, key).length;
+    switch (key) {
+      case 'arrival':
+        return {
+          done: inspection!.arrivalConditions != null && missing === 0,
+          subtitle:
+            inspection!.arrivalConditions != null
+              ? `Recorded ${new Date(inspection!.arrivalConditions.recordedAtUtc).toLocaleTimeString()}`
+              : 'Sky, wind, temp, personnel — GPS & time auto-captured',
+        };
+      case 'elevation_access':
+        return {
+          done: missing === 0,
+          subtitle:
+            missing === 0
+              ? 'Four elevations + roof access captured'
+              : `${missing} photo${missing === 1 ? '' : 's'} outstanding`,
+        };
+      case 'facets': {
+        const facetCount = inspection!.slopes?.length ?? 0;
+        return {
+          done: facetCount > 0 && missing === 0,
+          subtitle:
+            facetCount === 0
+              ? 'How many facets? Seed and document F1…FN'
+              : missing === 0
+                ? `${facetCount} facet${facetCount === 1 ? '' : 's'} fully documented`
+                : `${missing} item${missing === 1 ? '' : 's'} outstanding across facets`,
+        };
+      }
+      case 'test_squares': {
+        const squares = state.testSquares.length;
+        return {
+          done: missing === 0,
+          subtitle:
+            missing === 0
+              ? squares === 0
+                ? 'No hail facets — no squares required'
+                : `${squares} square${squares === 1 ? '' : 's'} — hail facets covered`
+              : `${missing} hail facet${missing === 1 ? '' : 's'} still need a square`,
+        };
+      }
+      case 'components': {
+        const count = inspection!.components?.length ?? 0;
+        return {
+          done: count > 0 && missing === 0,
+          subtitle:
+            count === 0
+              ? 'Existing components, layer count, penetrations'
+              : missing === 0
+                ? `${count} component${count === 1 ? '' : 's'} documented`
+                : `${missing} component photo${missing === 1 ? '' : 's'} missing`,
+        };
+      }
+      case 'collateral':
+        return {
+          done: collateralCount > 0,
+          subtitle:
+            collateralCount === 0
+              ? 'Roof- and ground-level labeled photos (optional)'
+              : `${collateralCount} labeled photo${collateralCount === 1 ? '' : 's'} captured`,
+        };
+      case 'product': {
+        const count = inspection!.products?.length ?? 0;
+        const unidentified =
+          inspection!.products?.filter((p) => p.identificationMethod === 'unidentifiable').length ?? 0;
+        return {
+          done: count > 0 && missing === 0,
+          subtitle:
+            count === 0
+              ? 'Brand, exposure, granule & accessory close-ups'
+              : unidentified > 0
+                ? `${count} product${count === 1 ? '' : 's'} · ${unidentified} flagged for review`
+                : `${count} product${count === 1 ? '' : 's'} identified`,
+        };
+      }
+      case 'interior':
+        return {
+          done: interiorAddressed,
+          subtitle:
+            (inspection!.interiorObservations?.length ?? 0) > 0
+              ? `${inspection!.interiorObservations!.length} observation${inspection!.interiorObservations!.length === 1 ? '' : 's'} recorded`
+              : state.interiorClaimWaived
+                ? 'No interior claim — waived'
+                : 'Record interior evidence or waive',
+        };
+      case 'homeowner':
+        return {
+          done: inspection!.homeownerFacts != null,
+          subtitle:
+            inspection!.homeownerFacts != null
+              ? 'Homeowner facts recorded'
+              : 'What the homeowner reported (optional)',
+        };
+      case 'declaration':
+        return {
+          done: state.declarationSigned,
+          subtitle: state.declarationSigned
+            ? 'Methodology attestation signed'
+            : 'Read & sign the inspector attestation',
+        };
+      case 'submit':
+        return {
+          done: submitted,
+          subtitle: submitted
+            ? 'Package submitted'
+            : remaining === 0
+              ? 'All gates satisfied — ready to submit'
+              : `${remaining} gate${remaining === 1 ? '' : 's'} remaining before submit`,
+        };
+      default:
+        return { done: false, subtitle: '' };
+    }
+  }
+
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
@@ -103,8 +261,8 @@ export default function InspectionDetailScreen() {
         </View>
       </View>
 
-      {/* S0 — Equipment attestation (B4) */}
-      <Text style={[styles.section, { color: colors.foreground }]}>S0 · Equipment check</Text>
+      {/* Pre-inspection equipment attestation (not a protocol step). */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Equipment check</Text>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {equipmentDone ? (
           <View style={styles.doneRow}>
@@ -155,305 +313,47 @@ export default function InspectionDetailScreen() {
         )}
       </View>
 
-      {/* B5 — Storm of record. Once established the storm is read-only in
-          forensic: a storm confirmed in Phase 1 (preliminary) is inherited here
-          without a re-pull and never re-opened. But a forensic-first record
-          (started directly in forensic, never through Phase 1) has no storm yet,
-          so it still exposes a one-time confirm action. */}
-      <Text style={[styles.section, { color: colors.foreground }]}>Storm of record</Text>
-      <StageCard
-        icon={inspection.stormConfirmedRef ? 'check' : 'cloud'}
-        title={inspection.stormConfirmedRef ? 'Storm confirmed' : 'Confirm storm'}
-        subtitle={
-          inspection.stormConfirmedRef
-            ? `${inspection.stormConfirmedRef.type} · ${inspection.stormConfirmedRef.date} — inherited from Phase 1`
-            : 'Match the property to a severe-weather event'
-        }
-        done={!!inspection.stormConfirmedRef}
-        colors={colors}
-        // Read-only once set/inherited; only a forensic-first record without a
-        // storm can navigate to confirm it.
-        onPress={
-          inspection.stormConfirmedRef
-            ? undefined
-            : () =>
-                router.push({
-                  pathname: '/inspection-storm',
-                  params: {
-                    id,
-                    location: inspection.address ?? '',
-                    dateOfLoss: inspection.dateOfLoss ?? '',
-                  },
-                })
-        }
-      />
+      {/* Protocol steps 1–11 */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Forensic protocol</Text>
+      {gate.deficiencies.length > 0 ? (
+        <View style={[styles.gateCard, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
+          <Icon name="alert-circle" size={18} color="#b45309" />
+          <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
+            {gate.deficiencies.length} gate{gate.deficiencies.length === 1 ? '' : 's'} remaining
+            before this inspection can be submitted.
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.gateCard, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
+          <Icon name="check" size={18} color={colors.success} />
+          <Text style={{ color: colors.foreground, fontSize: 13, flex: 1 }}>
+            All hard gates satisfied.
+          </Text>
+        </View>
+      )}
 
-      {/* Arrival (B6) — a pre-inspection step, NOT a protocol capture stage.
-          The protocol's S1 is Elevations (see the Exterior capture section
-          below), so this header must not carry an "S1" tag. */}
-      <Text style={[styles.section, { color: colors.foreground }]}>Arrival</Text>
-      <StageCard
-        icon="navigation"
-        title={inspection.arrivalConditions ? 'Arrival logged' : 'Log arrival'}
-        subtitle={
-          inspection.arrivalConditions
-            ? `Recorded ${new Date(inspection.arrivalConditions.recordedAtUtc).toLocaleTimeString()}`
-            : 'Verify you are on-site and note conditions'
-        }
-        done={!!inspection.arrivalConditions}
-        onPress={() =>
-          router.push({
-            pathname: '/inspection-arrival',
-            params: {
-              id,
-              latitude: inspection.latitude != null ? String(inspection.latitude) : '',
-              longitude: inspection.longitude != null ? String(inspection.longitude) : '',
-            },
-          })
-        }
-        colors={colors}
-      />
-
-      {/* Exterior capture (M-C) */}
-      <Text style={[styles.section, { color: colors.foreground }]}>Exterior capture</Text>
-
-      {(() => {
-        const s1Missing = stageDeficiencies(inspection, 'S1').length;
-        const s3Missing = stageDeficiencies(inspection, 'S3').length;
-        const s4Missing = stageDeficiencies(inspection, 'S4').length;
-        const s5Missing = stageDeficiencies(inspection, 'S5').length;
-        const slopeCount = inspection.slopes?.length ?? 0;
-        const testSquareCount = inspection.testSquares?.length ?? 0;
-        const damageInstances = inspection.damageInstances ?? [];
-        const collateralCount = damageInstances.filter((d) => d.elevationId != null).length;
-        const functionalCount = damageInstances.filter((d) => d.slopeId != null).length;
-        const componentCount = inspection.components?.length ?? 0;
-        const penetrationCount = inspection.penetrations?.length ?? 0;
-        const productCount = inspection.products?.length ?? 0;
-        const unidentifiedProducts =
-          inspection.products?.filter((p) => p.identificationMethod === 'unidentifiable').length ?? 0;
-        const roofSlopeDone = isStageComplete(inspection, 'S2') && isStageComplete(inspection, 'S3');
-        const blockers = [
-          ...stageDeficiencies(inspection, 'S1'),
-          ...stageDeficiencies(inspection, 'S2'),
-          ...stageDeficiencies(inspection, 'S3'),
-          ...stageDeficiencies(inspection, 'S4'),
-          ...stageDeficiencies(inspection, 'S5'),
-        ];
+      {PROTOCOL_STEPS.map((step) => {
+        const { done, subtitle } = stepStatus(step.key);
+        const params: Record<string, string> =
+          step.key === 'arrival'
+            ? {
+                id,
+                latitude: inspection.latitude != null ? String(inspection.latitude) : '',
+                longitude: inspection.longitude != null ? String(inspection.longitude) : '',
+              }
+            : { id };
         return (
-          <>
-            {blockers.length > 0 ? (
-              <View style={[styles.gateCard, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
-                <Icon name="alert-circle" size={18} color="#b45309" />
-                <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
-                  {blockers.length} capture gate{blockers.length === 1 ? '' : 's'} remaining before this
-                  inspection can advance.
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.gateCard, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
-                <Icon name="check" size={18} color={colors.success} />
-                <Text style={{ color: colors.foreground, fontSize: 13, flex: 1 }}>
-                  Exterior capture gates satisfied.
-                </Text>
-              </View>
-            )}
-
-            <StageCard
-              icon="home"
-              title="S1 · Elevation walk"
-              subtitle={
-                s1Missing === 0
-                  ? 'All four elevations captured'
-                  : `${4 - s1Missing} of 4 elevations captured`
-              }
-              done={s1Missing === 0}
-              onPress={() => router.push({ pathname: '/inspection-elevations', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="navigation"
-              title="S2 · S3 · Roof & slopes"
-              subtitle={
-                roofSlopeDone
-                  ? `Roof access + ${slopeCount} slope${slopeCount === 1 ? '' : 's'} documented`
-                  : slopeCount === 0
-                    ? 'Roof access photo + slope inventory'
-                    : `${s3Missing} slope${s3Missing === 1 ? '' : 's'} / roof access outstanding`
-              }
-              done={roofSlopeDone}
-              onPress={() => router.push({ pathname: '/inspection-roof', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="square"
-              title="S4 · Test squares"
-              subtitle={
-                slopeCount === 0
-                  ? 'Chalk one test square per accessible slope'
-                  : s4Missing === 0
-                    ? `${testSquareCount} square${testSquareCount === 1 ? '' : 's'} — every slope covered`
-                    : `${s4Missing} slope${s4Missing === 1 ? '' : 's'} need a square or a documented reason`
-              }
-              done={slopeCount > 0 && s4Missing === 0}
-              onPress={() => router.push({ pathname: '/inspection-test-squares', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="clipboard"
-              title="S5 · Collateral sweep"
-              subtitle={
-                collateralCount === 0
-                  ? 'Record collateral damage per elevation'
-                  : s5Missing === 0
-                    ? `${collateralCount} instance${collateralCount === 1 ? '' : 's'} — triads complete`
-                    : `${s5Missing} instance${s5Missing === 1 ? '' : 's'} missing wide/mid/close`
-              }
-              done={collateralCount > 0 && s5Missing === 0}
-              onPress={() => router.push({ pathname: '/inspection-collateral', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="clipboard"
-              title="S5 · Functional damage"
-              subtitle={
-                functionalCount === 0
-                  ? 'Whole-roof functional damage, tagged by slope'
-                  : `${functionalCount} instance${functionalCount === 1 ? '' : 's'} recorded across slopes`
-              }
-              done={functionalCount > 0 && s5Missing === 0}
-              onPress={() =>
-                router.push({
-                  pathname: '/inspection-collateral',
-                  params: { id, mode: 'functional' },
-                })
-              }
-              colors={colors}
-            />
-
-            <StageCard
-              icon="clipboard"
-              title="Components & penetrations"
-              subtitle={
-                componentCount === 0 && penetrationCount === 0
-                  ? 'Existing components, layer count, penetrations'
-                  : `${componentCount} component${componentCount === 1 ? '' : 's'} · ${penetrationCount} penetration${penetrationCount === 1 ? '' : 's'}`
-              }
-              done={componentCount > 0}
-              onPress={() => router.push({ pathname: '/inspection-components', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="camera"
-              title="Product identification"
-              subtitle={
-                productCount === 0
-                  ? 'Brand, exposure, granule & accessory close-ups'
-                  : unidentifiedProducts > 0
-                    ? `${productCount} product${productCount === 1 ? '' : 's'} · ${unidentifiedProducts} flagged for review`
-                    : `${productCount} product${productCount === 1 ? '' : 's'} identified`
-              }
-              done={productCount > 0 && unidentifiedProducts === 0}
-              onPress={() => router.push({ pathname: '/inspection-product', params: { id } })}
-              colors={colors}
-            />
-          </>
+          <StageCard
+            key={step.key}
+            icon={STEP_ICONS[step.key]}
+            title={stepLabel(step.key)}
+            subtitle={subtitle}
+            done={done}
+            onPress={() => router.push({ pathname: STEP_ROUTES[step.key] as never, params })}
+            colors={colors}
+          />
         );
-      })()}
-
-      {/* Measurements & wrap-up (M-E) */}
-      <Text style={[styles.section, { color: colors.foreground }]}>Measurements & wrap-up</Text>
-
-      {(() => {
-        const state = buildProtocolState(inspection);
-        const gate = evaluateInspection(inspection);
-        const s6Missing = stageDeficiencies(inspection, 'S6').length;
-        const s7Missing = stageDeficiencies(inspection, 'S7').length;
-        const measurementCount = inspection.measurements?.length ?? 0;
-        const interiorCount = inspection.interiorObservations?.length ?? 0;
-        const interiorAddressed = interiorCount > 0 || state.interiorClaimWaived;
-        const homeownerDone = inspection.homeownerFacts != null;
-        const submitted =
-          inspection.status === 'submitted' || inspection.status === 'package_ready';
-        const remaining = gate.deficiencies.length;
-        return (
-          <>
-            <StageCard
-              icon="navigation"
-              title="S7 · Measurements"
-              subtitle={
-                measurementCount === 0
-                  ? 'Record raw roof measurements'
-                  : s7Missing === 0
-                    ? `${measurementCount} measurement${measurementCount === 1 ? '' : 's'} recorded`
-                    : 'At least one measurement required'
-              }
-              done={measurementCount > 0 && s7Missing === 0}
-              onPress={() => router.push({ pathname: '/inspection-measurements', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="home"
-              title="S6 · Interior / attic"
-              subtitle={
-                interiorCount > 0
-                  ? `${interiorCount} observation${interiorCount === 1 ? '' : 's'} recorded`
-                  : state.interiorClaimWaived
-                    ? 'No interior claim — waived'
-                    : s6Missing > 0
-                      ? 'Interior not yet addressed'
-                      : 'Record interior evidence or waive'
-              }
-              done={interiorAddressed}
-              onPress={() => router.push({ pathname: '/inspection-interior', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="clipboard"
-              title="Homeowner"
-              subtitle={homeownerDone ? 'Homeowner facts recorded' : 'What the homeowner reported'}
-              done={homeownerDone}
-              onPress={() => router.push({ pathname: '/inspection-homeowner', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="check"
-              title="S8 · Declaration"
-              subtitle={
-                state.attestationRecorded
-                  ? 'Methodology attestation signed'
-                  : 'Read & sign the inspector attestation'
-              }
-              done={state.attestationRecorded}
-              onPress={() => router.push({ pathname: '/inspection-declaration', params: { id } })}
-              colors={colors}
-            />
-
-            <StageCard
-              icon="clipboard"
-              title="Readiness & submit"
-              subtitle={
-                submitted
-                  ? 'Package submitted'
-                  : remaining === 0
-                    ? 'All gates satisfied — ready to submit'
-                    : `${remaining} gate${remaining === 1 ? '' : 's'} remaining before submit`
-              }
-              done={submitted}
-              onPress={() => router.push({ pathname: '/inspection-readiness', params: { id } })}
-              colors={colors}
-            />
-          </>
-        );
-      })()}
+      })}
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -472,7 +372,6 @@ function StageCard({
   title: string;
   subtitle: string;
   done: boolean;
-  // Omitting onPress renders a non-pressable, read-only card (no chevron).
   onPress?: () => void;
   colors: ReturnType<typeof useColors>;
 }) {

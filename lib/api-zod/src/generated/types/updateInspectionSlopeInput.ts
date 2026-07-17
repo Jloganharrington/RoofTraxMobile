@@ -7,11 +7,12 @@
  */
 import type { FacetDamageType } from './facetDamageType';
 
-export interface CreateInspectionSlopeInput {
-  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
-  id?: string;
+/**
+ * Partial facet update — only supplied fields change.
+ */
+export interface UpdateInspectionSlopeInput {
   /** @minLength 1 */
-  label: string;
+  label?: string;
   /** @nullable */
   pitchRise?: number | null;
   /** @nullable */

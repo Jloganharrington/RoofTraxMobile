@@ -7,16 +7,21 @@
  */
 
 /**
- * Arrival-conditions log captured in S1 (B6).
+ * Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).
  */
 export interface ArrivalConditions {
   /** @nullable */
   sky: string | null;
   /** @nullable */
-  wind: string | null;
+  windCondition: string | null;
   /** @nullable */
   temp: string | null;
+  personnelPresent: string[];
   /** @nullable */
-  personnelPresent: string | null;
+  timeLocal: string | null;
+  /** @nullable */
+  gpsLatitude: number | null;
+  /** @nullable */
+  gpsLongitude: number | null;
   recordedAtUtc: string;
 }

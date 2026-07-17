@@ -69,7 +69,7 @@ export default function InspectionDeclarationScreen() {
   }
 
   const state = buildProtocolState(inspection);
-  const alreadySigned = state.attestationRecorded;
+  const alreadySigned = state.declarationSigned;
   const hasSignatureOnFile = !!signatureUrl && !!signatureSha256;
 
   // Applies the on-file signature to this inspection. We hash the exact

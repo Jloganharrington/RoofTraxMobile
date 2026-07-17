@@ -6,18 +6,22 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Protocol v2 step key. S-numbers are retired.
+ */
 export type CaptureStage = typeof CaptureStage[keyof typeof CaptureStage];
 
 
 export const CaptureStage = {
-  S0: 'S0',
-  S1: 'S1',
-  S2: 'S2',
-  S3: 'S3',
-  S4: 'S4',
-  S5: 'S5',
-  S6: 'S6',
-  S7: 'S7',
-  S8: 'S8',
-  S9: 'S9',
+  arrival: 'arrival',
+  elevation_access: 'elevation_access',
+  facets: 'facets',
+  test_squares: 'test_squares',
+  components: 'components',
+  collateral: 'collateral',
+  product: 'product',
+  interior: 'interior',
+  homeowner: 'homeowner',
+  declaration: 'declaration',
+  submit: 'submit',
 } as const;
