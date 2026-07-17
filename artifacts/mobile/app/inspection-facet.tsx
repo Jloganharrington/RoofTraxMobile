@@ -14,7 +14,12 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
-import { FACET_DAMAGE_TYPES, type FacetDamageType } from '@workspace/protocol';
+import {
+  FACET_DAMAGE_TYPES,
+  TIE_IN_PROTOCOLS,
+  type FacetDamageType,
+  type TieInProtocol,
+} from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope } from '@/lib/inspectionSync';
@@ -26,6 +31,11 @@ import { buildProtocolState } from '@/lib/inspectionProtocolState';
 // inspector picks the damage type and records each damage instance with a
 // photo captioned `F{n}-Damage {k}`. Facets are removable — the list is
 // never fixed.
+
+const TIE_IN_LABELS: Record<TieInProtocol, string> = {
+  valley: 'Valley',
+  hip_ridge: 'Hip/Ridge',
+};
 
 const DAMAGE_TYPE_LABELS: Record<FacetDamageType, string> = {
   hail: 'Hail',
@@ -47,8 +57,7 @@ export default function InspectionFacetScreen() {
 
   const [area, setArea] = React.useState<string | null>(null);
   const [material, setMaterial] = React.useState<string | null>(null);
-  const [pitchRise, setPitchRise] = React.useState<string | null>(null);
-  const [pitchRun, setPitchRun] = React.useState<string | null>(null);
+  const [pitch, setPitch] = React.useState<string | null>(null);
   const [savingDetails, setSavingDetails] = React.useState(false);
   const [addingDamage, setAddingDamage] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
@@ -72,12 +81,10 @@ export default function InspectionFacetScreen() {
   // Draft values fall back to the stored row so reopening shows saved facts.
   const areaValue = area ?? (facet.areaSqft != null ? String(facet.areaSqft) : '');
   const materialValue = material ?? (facet.materialType ?? '');
-  const riseValue = pitchRise ?? (facet.pitchRise != null ? String(facet.pitchRise) : '');
-  const runValue = pitchRun ?? (facet.pitchRun != null ? String(facet.pitchRun) : '');
-
-  const riseNum = Number(riseValue);
-  const runNum = Number(runValue);
-  const steep = riseValue.trim() !== '' && runValue.trim() !== '' && runNum > 0 && riseNum / runNum > 8 / 12;
+  // Pitch is always {rise}/12; stored run stays 12, only rise is edited.
+  const pitchValue = pitch ?? (facet.pitchRise != null ? String(facet.pitchRise) : '');
+  const pitchNum = Number(pitchValue);
+  const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
 
   const state = buildProtocolState(inspection);
   const damageRecords = state.damageInstances.filter((d) => d.slopeId === slopeId);
@@ -87,12 +94,10 @@ export default function InspectionFacetScreen() {
   const detailsDirty =
     areaValue !== (facet.areaSqft != null ? String(facet.areaSqft) : '') ||
     materialValue !== (facet.materialType ?? '') ||
-    riseValue !== (facet.pitchRise != null ? String(facet.pitchRise) : '') ||
-    runValue !== (facet.pitchRun != null ? String(facet.pitchRun) : '');
+    pitchValue !== (facet.pitchRise != null ? String(facet.pitchRise) : '');
   const detailsValid =
     (areaValue.trim() === '' || !Number.isNaN(Number(areaValue))) &&
-    (riseValue.trim() === '' || !Number.isNaN(riseNum)) &&
-    (runValue.trim() === '' || !Number.isNaN(runNum));
+    (pitchValue.trim() === '' || !Number.isNaN(pitchNum));
 
   async function saveDetails() {
     if (!detailsValid || savingDetails) return;
@@ -101,12 +106,16 @@ export default function InspectionFacetScreen() {
       await updateSlope(queryClient, id, slopeId, {
         areaSqft: areaValue.trim() ? Number(areaValue) : null,
         materialType: materialValue.trim() || null,
-        pitchRise: riseValue.trim() ? riseNum : null,
-        pitchRun: runValue.trim() ? runNum : null,
+        pitchRise: pitchValue.trim() ? pitchNum : null,
+        pitchRun: pitchValue.trim() ? 12 : null,
       });
     } finally {
       setSavingDetails(false);
     }
+  }
+
+  async function setTieIn(protocol: TieInProtocol) {
+    await updateSlope(queryClient, id, slopeId, { tieInProtocol: protocol });
   }
 
   async function setDamage(type: FacetDamageType) {
@@ -170,14 +179,15 @@ export default function InspectionFacetScreen() {
 
         {/* Details */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Field label="Area (sq ft)" value={areaValue} onChange={setArea} placeholder="e.g. 320" keyboardType="numeric" colors={colors} />
-          <Field label="Material" value={materialValue} onChange={setMaterial} placeholder="e.g. Asphalt shingle" colors={colors} />
           <View style={styles.pitchRow}>
-            <View style={{ flex: 1 }}>
-              <Field label="Pitch rise" value={riseValue} onChange={setPitchRise} placeholder="e.g. 6" keyboardType="numeric" colors={colors} />
+            <View style={{ flex: 1.2 }}>
+              <Field label="Area (sq ft)" value={areaValue} onChange={setArea} placeholder="320" keyboardType="numeric" colors={colors} />
+            </View>
+            <View style={{ flex: 1.4 }}>
+              <Field label="Material" value={materialValue} onChange={setMaterial} placeholder="Asphalt" colors={colors} />
             </View>
             <View style={{ flex: 1 }}>
-              <Field label="Pitch run" value={runValue} onChange={setPitchRun} placeholder="12" keyboardType="numeric" colors={colors} />
+              <Field label="Pitch (/12)" value={pitchValue} onChange={setPitch} placeholder="6" keyboardType="numeric" suffix="/12" colors={colors} />
             </View>
           </View>
           {steep ? (
@@ -199,6 +209,31 @@ export default function InspectionFacetScreen() {
               <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save details</Text>
             )}
           </Pressable>
+        </View>
+
+        {/* Tie-in protocol */}
+        <Text style={[styles.section, { color: colors.foreground }]}>Tie-In Protocol</Text>
+        <View style={styles.chipRow}>
+          {TIE_IN_PROTOCOLS.map((protocol) => {
+            const selected = facet.tieInProtocol === protocol;
+            return (
+              <Pressable
+                key={protocol}
+                onPress={() => setTieIn(protocol)}
+                style={[
+                  styles.tieInBtn,
+                  {
+                    backgroundColor: selected ? colors.primary : colors.card,
+                    borderColor: selected ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '700' }}>
+                  {TIE_IN_LABELS[protocol]}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {/* Damage */}
@@ -309,6 +344,7 @@ function Field({
   onChange,
   placeholder,
   keyboardType,
+  suffix,
   colors,
 }: {
   label: string;
@@ -316,19 +352,30 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   keyboardType?: 'default' | 'numeric';
+  suffix?: string;
   colors: ReturnType<typeof useColors>;
 }) {
   return (
     <View style={styles.field}>
       <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={colors.mutedForeground}
-        keyboardType={keyboardType ?? 'default'}
-        style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
-      />
+      <View
+        style={[
+          styles.inputWrap,
+          { backgroundColor: colors.background, borderColor: colors.border },
+        ]}
+      >
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={colors.mutedForeground}
+          keyboardType={keyboardType ?? 'default'}
+          style={[styles.input, { color: colors.foreground }]}
+        />
+        {suffix ? (
+          <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>{suffix}</Text>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -348,7 +395,21 @@ const styles = StyleSheet.create({
   steepNote: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10 },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '600' },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+  },
+  input: { flex: 1, paddingVertical: 12, fontSize: 15 },
+  tieInBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
   saveBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   removeBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, marginTop: 12 },
 });

@@ -658,6 +658,7 @@ router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Respo
     areaSqft: parsed.data.areaSqft ?? undefined,
     damageType: parsed.data.damageType ?? undefined,
     damagePresent: parsed.data.damagePresent ?? undefined,
+    tieInProtocol: parsed.data.tieInProtocol ?? undefined,
     notes: parsed.data.notes ?? undefined,
   };
 
@@ -725,6 +726,9 @@ router.patch(
         ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
         ...(parsed.data.damagePresent !== undefined && {
           damagePresent: parsed.data.damagePresent,
+        }),
+        ...(parsed.data.tieInProtocol !== undefined && {
+          tieInProtocol: parsed.data.tieInProtocol,
         }),
         ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
       })

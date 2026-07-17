@@ -208,6 +208,7 @@ export async function createSlope(
       areaSqft: fields.areaSqft ?? null,
       damageType: fields.damageType ?? null,
       damagePresent: fields.damagePresent ?? false,
+      tieInProtocol: fields.tieInProtocol ?? null,
       notes: fields.notes ?? null,
       createdAt: now,
     };

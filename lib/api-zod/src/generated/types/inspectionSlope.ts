@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FacetDamageType } from './facetDamageType';
+import type { TieInProtocol } from './tieInProtocol';
 
 export interface InspectionSlope {
   id: string;
@@ -22,6 +23,7 @@ export interface InspectionSlope {
   areaSqft: number | null;
   damageType: FacetDamageType | null;
   damagePresent: boolean;
+  tieInProtocol: TieInProtocol | null;
   /** @nullable */
   notes: string | null;
   createdAt: Date;

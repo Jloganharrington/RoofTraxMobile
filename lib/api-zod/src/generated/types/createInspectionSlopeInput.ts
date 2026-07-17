@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FacetDamageType } from './facetDamageType';
+import type { TieInProtocol } from './tieInProtocol';
 
 export interface CreateInspectionSlopeInput {
   /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
@@ -22,6 +23,7 @@ export interface CreateInspectionSlopeInput {
   areaSqft?: number | null;
   damageType?: FacetDamageType | null;
   damagePresent?: boolean;
+  tieInProtocol?: TieInProtocol | null;
   /** @nullable */
   notes?: string | null;
 }
