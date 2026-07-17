@@ -728,7 +728,7 @@ export const ListInspectionsResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -971,7 +971,7 @@ export const CreateInspectionResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -1200,7 +1200,7 @@ export const GetInspectionResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -1474,7 +1474,7 @@ export const UpdateInspectionResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
@@ -1628,7 +1628,7 @@ export const UpdateInspectionSlopeBody = zod.object({
   "areaSqft": zod.number().nullish(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]).optional(),
   "damagePresent": zod.boolean().optional(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]).optional(),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]).optional(),
   "notes": zod.string().nullish()
 }).describe('Partial facet update — only supplied fields change.')
 
@@ -1644,7 +1644,7 @@ export const UpdateInspectionSlopeResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -1681,7 +1681,7 @@ export const CreateInspectionSlopeBody = zod.object({
   "areaSqft": zod.number().nullish(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]).optional(),
   "damagePresent": zod.boolean().optional(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]).optional(),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]).optional(),
   "notes": zod.string().nullish()
 })
 
@@ -1697,7 +1697,7 @@ export const CreateInspectionSlopeResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -2197,7 +2197,7 @@ export const SubmitInspectionResponse = zod.object({
   "areaSqft": zod.number().nullable(),
   "damageType": zod.union([zod.enum(['hail', 'wind', 'hail_and_wind', 'none']).describe('Per-facet damage classification. hail \/ hail_and_wind facets drive the Step-4 test-square gate.'),zod.null()]),
   "damagePresent": zod.boolean(),
-  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
+  "tieInProtocol": zod.union([zod.enum(['valley', 'hip_ridge', 'both']).describe('How this facet ties into its neighbors (cut protocol).'),zod.null()]),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),

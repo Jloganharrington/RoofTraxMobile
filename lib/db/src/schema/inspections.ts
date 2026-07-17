@@ -135,7 +135,7 @@ export const FACET_DAMAGE_TYPES = ['hail', 'wind', 'hail_and_wind', 'none'] as c
 export type FacetDamageType = (typeof FACET_DAMAGE_TYPES)[number];
 
 // How a facet ties into its neighbors — drives the tie-in cut protocol.
-export const TIE_IN_PROTOCOLS = ['valley', 'hip_ridge'] as const;
+export const TIE_IN_PROTOCOLS = ['valley', 'hip_ridge', 'both'] as const;
 export type TieInProtocol = (typeof TIE_IN_PROTOCOLS)[number];
 
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;

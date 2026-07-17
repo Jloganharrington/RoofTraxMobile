@@ -16,7 +16,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import {
   FACET_DAMAGE_TYPES,
-  TIE_IN_PROTOCOLS,
   type FacetDamageType,
   type TieInProtocol,
 } from '@workspace/protocol';
@@ -32,7 +31,9 @@ import { buildProtocolState } from '@/lib/inspectionProtocolState';
 // photo captioned `F{n}-Damage {k}`. Facets are removable — the list is
 // never fixed.
 
-const TIE_IN_LABELS: Record<TieInProtocol, string> = {
+// The two toggleable tie-in options; both selected persists as 'both'.
+const TIE_IN_OPTIONS = ['valley', 'hip_ridge'] as const;
+const TIE_IN_LABELS: Record<(typeof TIE_IN_OPTIONS)[number], string> = {
   valley: 'Valley',
   hip_ridge: 'Hip/Ridge',
 };
@@ -114,8 +115,18 @@ export default function InspectionFacetScreen() {
     }
   }
 
-  async function setTieIn(protocol: TieInProtocol) {
-    await updateSlope(queryClient, id, slopeId, { tieInProtocol: protocol });
+  // Each button toggles independently; both on persists as 'both'.
+  async function toggleTieIn(option: (typeof TIE_IN_OPTIONS)[number]) {
+    const current = (facet?.tieInProtocol ?? null) as TieInProtocol | null;
+    const valley = current === 'valley' || current === 'both';
+    const hipRidge = current === 'hip_ridge' || current === 'both';
+    const next = {
+      valley: option === 'valley' ? !valley : valley,
+      hip_ridge: option === 'hip_ridge' ? !hipRidge : hipRidge,
+    };
+    const value: TieInProtocol | null =
+      next.valley && next.hip_ridge ? 'both' : next.valley ? 'valley' : next.hip_ridge ? 'hip_ridge' : null;
+    await updateSlope(queryClient, id, slopeId, { tieInProtocol: value });
   }
 
   async function setDamage(type: FacetDamageType) {
@@ -214,12 +225,12 @@ export default function InspectionFacetScreen() {
         {/* Tie-in protocol */}
         <Text style={[styles.section, { color: colors.foreground }]}>Tie-In Protocol</Text>
         <View style={styles.chipRow}>
-          {TIE_IN_PROTOCOLS.map((protocol) => {
-            const selected = facet.tieInProtocol === protocol;
+          {TIE_IN_OPTIONS.map((protocol) => {
+            const selected = facet.tieInProtocol === protocol || facet.tieInProtocol === 'both';
             return (
               <Pressable
                 key={protocol}
-                onPress={() => setTieIn(protocol)}
+                onPress={() => toggleTieIn(protocol)}
                 style={[
                   styles.tieInBtn,
                   {

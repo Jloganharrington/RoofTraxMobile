@@ -2711,7 +2711,7 @@ components:
     TieInProtocol:
       type: string
       description: How this facet ties into its neighbors (cut protocol).
-      enum: [valley, hip_ridge]
+      enum: [valley, hip_ridge, both]
     AttestationType:
       type: string
       enum: [equipment, gps_override, stage_signoff]

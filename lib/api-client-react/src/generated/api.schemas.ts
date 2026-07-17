@@ -479,6 +479,7 @@ export type TieInProtocol = typeof TieInProtocol[keyof typeof TieInProtocol];
 export const TieInProtocol = {
   valley: 'valley',
   hip_ridge: 'hip_ridge',
+  both: 'both',
 } as const;
 
 export type AttestationType = typeof AttestationType[keyof typeof AttestationType];
