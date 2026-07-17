@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -205,8 +206,32 @@ export default function ProfileScreen() {
           />
         ) : null}
 
-        {capturing ? (
-          <>
+        <Pressable
+          onPress={() => setCapturing(true)}
+          style={[styles.sigButton, { backgroundColor: colors.secondary }]}
+        >
+          <Text style={styles.sigButtonText}>
+            {signatureUrl ? 'Replace signature' : 'Capture signature'}
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Signature capture lives in a fixed modal (not inline in the
+          ScrollView) so drawing strokes never fight the scroll gesture and
+          the pad stays put on screen. */}
+      <Modal
+        visible={capturing}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!savingSignature) setCapturing(false);
+        }}
+      >
+        <View style={styles.sigModalOverlay}>
+          <View style={[styles.sigModalCard, { backgroundColor: colors.background }]}>
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>
+              Draw your signature
+            </Text>
             <View style={[styles.sigPadWrap, { borderColor: colors.border }]}>
               <SignatureScreen
                 ref={signatureRef}
@@ -227,18 +252,9 @@ export default function ProfileScreen() {
                 <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>Cancel</Text>
               </Pressable>
             )}
-          </>
-        ) : (
-          <Pressable
-            onPress={() => setCapturing(true)}
-            style={[styles.sigButton, { backgroundColor: colors.secondary }]}
-          >
-            <Text style={styles.sigButtonText}>
-              {signatureUrl ? 'Replace signature' : 'Capture signature'}
-            </Text>
-          </Pressable>
-        )}
-      </View>
+          </View>
+        </View>
+      </Modal>
 
       <Pressable
         onPress={handleLogout}
@@ -319,6 +335,13 @@ const styles = StyleSheet.create({
   sigBadgeText: { fontSize: 12, fontWeight: '700' },
   sigPreview: { width: '100%', height: 90, backgroundColor: '#fff', borderRadius: 8 },
   sigPadWrap: { height: 220, borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  sigModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  sigModalCard: { borderRadius: 16, padding: 16, gap: 12 },
   sigSavingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
   sigCancel: { alignItems: 'center', paddingVertical: 8 },
   sigButton: { paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
