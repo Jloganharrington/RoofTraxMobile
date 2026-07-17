@@ -2708,10 +2708,6 @@ components:
         Per-facet damage classification. hail / hail_and_wind facets drive
         the Step-4 test-square gate.
       enum: [hail, wind, hail_and_wind, none]
-    TieInProtocol:
-      type: string
-      description: How this facet ties into its neighbors (cut protocol).
-      enum: [valley, hip_ridge, both]
     AttestationType:
       type: string
       enum: [equipment, gps_override, stage_signoff]
@@ -3163,7 +3159,8 @@ components:
           areaSqft,
           damageType,
           damagePresent,
-          tieInProtocol,
+          tieInValley,
+          tieInHipRidge,
           notes,
           createdAt,
         ]
@@ -3190,10 +3187,10 @@ components:
             - type: "null"
         damagePresent:
           type: boolean
-        tieInProtocol:
-          oneOf:
-            - $ref: "#/components/schemas/TieInProtocol"
-            - type: "null"
+        tieInValley:
+          type: boolean
+        tieInHipRidge:
+          type: boolean
         notes:
           type: [string, "null"]
         createdAt:
@@ -3227,10 +3224,10 @@ components:
             - type: "null"
         damagePresent:
           type: boolean
-        tieInProtocol:
-          oneOf:
-            - $ref: "#/components/schemas/TieInProtocol"
-            - type: "null"
+        tieInValley:
+          type: boolean
+        tieInHipRidge:
+          type: boolean
         notes:
           type: [string, "null"]
     UpdateInspectionSlopeInput:
@@ -3254,10 +3251,10 @@ components:
             - type: "null"
         damagePresent:
           type: boolean
-        tieInProtocol:
-          oneOf:
-            - $ref: "#/components/schemas/TieInProtocol"
-            - type: "null"
+        tieInValley:
+          type: boolean
+        tieInHipRidge:
+          type: boolean
         notes:
           type: [string, "null"]
     InspectionSlopeEnvelope:

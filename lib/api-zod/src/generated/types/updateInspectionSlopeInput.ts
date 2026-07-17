@@ -6,7 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FacetDamageType } from './facetDamageType';
-import type { TieInProtocol } from './tieInProtocol';
 
 /**
  * Partial facet update — only supplied fields change.
@@ -24,7 +23,8 @@ export interface UpdateInspectionSlopeInput {
   areaSqft?: number | null;
   damageType?: FacetDamageType | null;
   damagePresent?: boolean;
-  tieInProtocol?: TieInProtocol | null;
+  tieInValley?: boolean;
+  tieInHipRidge?: boolean;
   /** @nullable */
   notes?: string | null;
 }

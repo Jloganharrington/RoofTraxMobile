@@ -131,10 +131,6 @@ export const FACET_DAMAGE_TYPES = ['hail', 'wind', 'hail_and_wind', 'none'] as c
 export type FacetDamageType = (typeof FACET_DAMAGE_TYPES)[number];
 
 /** True when a facet's damage classification requires a Step-4 test square. */
-// How a facet ties into its neighbors — drives the tie-in cut protocol.
-export const TIE_IN_PROTOCOLS = ['valley', 'hip_ridge', 'both'] as const;
-export type TieInProtocol = (typeof TIE_IN_PROTOCOLS)[number];
-
 export function carriesHail(damageType: FacetDamageType | null | undefined): boolean {
   return damageType === 'hail' || damageType === 'hail_and_wind';
 }

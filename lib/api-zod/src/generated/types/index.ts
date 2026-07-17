@@ -147,7 +147,6 @@ export * from './testSquareEnvelope';
 export * from './testSquareHit';
 export * from './testSquareHitEnvelope';
 export * from './testSquareHitType';
-export * from './tieInProtocol';
 export * from './updateInspectionInput';
 export * from './updateInspectionSlopeInput';
 export * from './updatePinInput';

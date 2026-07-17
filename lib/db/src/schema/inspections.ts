@@ -134,10 +134,6 @@ export type ProductIdMethod = (typeof PRODUCT_ID_METHODS)[number];
 export const FACET_DAMAGE_TYPES = ['hail', 'wind', 'hail_and_wind', 'none'] as const;
 export type FacetDamageType = (typeof FACET_DAMAGE_TYPES)[number];
 
-// How a facet ties into its neighbors — drives the tie-in cut protocol.
-export const TIE_IN_PROTOCOLS = ['valley', 'hip_ridge', 'both'] as const;
-export type TieInProtocol = (typeof TIE_IN_PROTOCOLS)[number];
-
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
 
@@ -312,8 +308,11 @@ export const inspectionSlopesTable = pgTable('inspection_slopes', {
   areaSqft: doublePrecision('area_sqft'),
   damageType: varchar('damage_type', { enum: FACET_DAMAGE_TYPES }),
   damagePresent: boolean('damage_present').notNull().default(false),
-  // How this facet ties into its neighbors (valley vs hip/ridge cut protocol).
-  tieInProtocol: varchar('tie_in_protocol', { enum: TIE_IN_PROTOCOLS }),
+  // Tie-in protocol: how this facet meets its neighbors. Multi-select — a
+  // facet can carry both, either, or neither. The Brain uses these to
+  // conditionally include the fixed tie-in exhibit.
+  tieInValley: boolean('tie_in_valley').notNull().default(false),
+  tieInHipRidge: boolean('tie_in_hip_ridge').notNull().default(false),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

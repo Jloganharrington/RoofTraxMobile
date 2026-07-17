@@ -470,18 +470,6 @@ export const FacetDamageType = {
   none: 'none',
 } as const;
 
-/**
- * How this facet ties into its neighbors (cut protocol).
- */
-export type TieInProtocol = typeof TieInProtocol[keyof typeof TieInProtocol];
-
-
-export const TieInProtocol = {
-  valley: 'valley',
-  hip_ridge: 'hip_ridge',
-  both: 'both',
-} as const;
-
 export type AttestationType = typeof AttestationType[keyof typeof AttestationType];
 
 
@@ -628,7 +616,8 @@ export interface InspectionSlope {
   areaSqft: number | null;
   damageType: FacetDamageType | null;
   damagePresent: boolean;
-  tieInProtocol: TieInProtocol | null;
+  tieInValley: boolean;
+  tieInHipRidge: boolean;
   /** @nullable */
   notes: string | null;
   createdAt: string;
@@ -1030,7 +1019,8 @@ export interface CreateInspectionSlopeInput {
   areaSqft?: number | null;
   damageType?: FacetDamageType | null;
   damagePresent?: boolean;
-  tieInProtocol?: TieInProtocol | null;
+  tieInValley?: boolean;
+  tieInHipRidge?: boolean;
   /** @nullable */
   notes?: string | null;
 }
@@ -1051,7 +1041,8 @@ export interface UpdateInspectionSlopeInput {
   areaSqft?: number | null;
   damageType?: FacetDamageType | null;
   damagePresent?: boolean;
-  tieInProtocol?: TieInProtocol | null;
+  tieInValley?: boolean;
+  tieInHipRidge?: boolean;
   /** @nullable */
   notes?: string | null;
 }

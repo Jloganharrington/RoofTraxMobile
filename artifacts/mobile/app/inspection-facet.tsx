@@ -14,11 +14,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
-import {
-  FACET_DAMAGE_TYPES,
-  type FacetDamageType,
-  type TieInProtocol,
-} from '@workspace/protocol';
+import { FACET_DAMAGE_TYPES, type FacetDamageType } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope } from '@/lib/inspectionSync';
@@ -31,7 +27,7 @@ import { buildProtocolState } from '@/lib/inspectionProtocolState';
 // photo captioned `F{n}-Damage {k}`. Facets are removable — the list is
 // never fixed.
 
-// The two toggleable tie-in options; both selected persists as 'both'.
+// The two independently toggleable tie-in flags (multi-select).
 const TIE_IN_OPTIONS = ['valley', 'hip_ridge'] as const;
 const TIE_IN_LABELS: Record<(typeof TIE_IN_OPTIONS)[number], string> = {
   valley: 'Valley',
@@ -115,18 +111,17 @@ export default function InspectionFacetScreen() {
     }
   }
 
-  // Each button toggles independently; both on persists as 'both'.
+  // Each button toggles its own boolean flag independently.
   async function toggleTieIn(option: (typeof TIE_IN_OPTIONS)[number]) {
-    const current = (facet?.tieInProtocol ?? null) as TieInProtocol | null;
-    const valley = current === 'valley' || current === 'both';
-    const hipRidge = current === 'hip_ridge' || current === 'both';
-    const next = {
-      valley: option === 'valley' ? !valley : valley,
-      hip_ridge: option === 'hip_ridge' ? !hipRidge : hipRidge,
-    };
-    const value: TieInProtocol | null =
-      next.valley && next.hip_ridge ? 'both' : next.valley ? 'valley' : next.hip_ridge ? 'hip_ridge' : null;
-    await updateSlope(queryClient, id, slopeId, { tieInProtocol: value });
+    if (!facet) return;
+    await updateSlope(
+      queryClient,
+      id,
+      slopeId,
+      option === 'valley'
+        ? { tieInValley: !facet.tieInValley }
+        : { tieInHipRidge: !facet.tieInHipRidge },
+    );
   }
 
   async function setDamage(type: FacetDamageType) {
@@ -226,7 +221,7 @@ export default function InspectionFacetScreen() {
         <Text style={[styles.section, { color: colors.foreground }]}>Tie-In Protocol</Text>
         <View style={styles.chipRow}>
           {TIE_IN_OPTIONS.map((protocol) => {
-            const selected = facet.tieInProtocol === protocol || facet.tieInProtocol === 'both';
+            const selected = protocol === 'valley' ? facet.tieInValley : facet.tieInHipRidge;
             return (
               <Pressable
                 key={protocol}
