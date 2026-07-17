@@ -86,6 +86,8 @@ export default function InspectionFacetScreen() {
   const [calcL, setCalcL] = React.useState('');
   const [calcH, setCalcH] = React.useState('');
   const [addingDamage, setAddingDamage] = React.useState(false);
+  const [causationOpen, setCausationOpen] = React.useState(false);
+  const [causationNote, setCausationNote] = React.useState('');
   const [removing, setRemoving] = React.useState(false);
   // Which tie-in option was just selected for the first time this session —
   // drives the one-time instructions + photo-capture prompt.
@@ -187,14 +189,21 @@ export default function InspectionFacetScreen() {
   }
 
   async function addDamageRecord() {
-    if (addingDamage || !damageType || damageType === 'none' || !facet) return;
+    // Server enforces (E0): slope-tagged (functional) damage requires a
+    // causation note — collect it before creating the record or the create
+    // is rejected and the documentation silently never persists.
+    const note = causationNote.trim();
+    if (addingDamage || !damageType || damageType === 'none' || !facet || !note) return;
     setAddingDamage(true);
     try {
       const k = damageRecords.length + 1;
       const damageId = await createDamageInstance(queryClient, id, {
         slopeId,
         damageType,
+        causationNote: note,
       });
+      setCausationNote('');
+      setCausationOpen(false);
       router.push({
         pathname: '/inspection-photo-capture',
         params: {
@@ -438,7 +447,7 @@ export default function InspectionFacetScreen() {
               </Pressable>
             ))}
             <Pressable
-              onPress={addDamageRecord}
+              onPress={() => setCausationOpen(true)}
               disabled={addingDamage}
               style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border, borderStyle: 'dashed' }]}
             >
@@ -489,6 +498,56 @@ export default function InspectionFacetScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Causation note — required before a functional damage record is created */}
+      <Modal
+        visible={causationOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCausationOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setCausationOpen(false)}>
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, gap: 10 }]}
+            onPress={() => {}}
+          >
+            <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 16 }}>
+              Causation note
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Why does this mark compromise the roof&apos;s water-shedding function? Required for
+              every functional damage record.
+            </Text>
+            <TextInput
+              value={causationNote}
+              onChangeText={setCausationNote}
+              placeholder="e.g. Hail bruise fractured the mat; granule loss exposes it to UV and water intrusion."
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              style={[
+                styles.causationInput,
+                { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground },
+              ]}
+            />
+            <Pressable
+              onPress={addDamageRecord}
+              disabled={addingDamage || !causationNote.trim()}
+              style={[
+                styles.saveBtn,
+                { backgroundColor: colors.primary, opacity: addingDamage || !causationNote.trim() ? 0.5 : 1 },
+              ]}
+            >
+              {addingDamage ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>
+                  Continue to photo
+                </Text>
+              )}
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Area calculator */}
       <Modal
@@ -675,6 +734,15 @@ const styles = StyleSheet.create({
   },
   saveBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   dropdown: { paddingVertical: 12, gap: 6 },
+  causationInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
