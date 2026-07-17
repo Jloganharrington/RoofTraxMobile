@@ -78,3 +78,5 @@ async function setStatus(id: string, status: OutboxStatus, lastError: string | n
 export const markOutboxItemSyncing = (id: string) => setStatus(id, 'syncing', null, false);
 export const markOutboxItemDone = (id: string) => setStatus(id, 'done', null, false);
 export const markOutboxItemFailed = (id: string, error: string) => setStatus(id, 'failed', error, true);
+/** Permanently rejected (4xx) — excluded from every future drain. */
+export const markOutboxItemDead = (id: string, error: string) => setStatus(id, 'dead', error, true);

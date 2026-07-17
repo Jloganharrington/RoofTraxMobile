@@ -1,5 +1,22 @@
 import { OUTBOX_HANDLERS } from './handlers';
-import { listSyncableOutboxItems, markOutboxItemDone, markOutboxItemFailed, markOutboxItemSyncing } from './queue';
+import {
+  listSyncableOutboxItems,
+  markOutboxItemDead,
+  markOutboxItemDone,
+  markOutboxItemFailed,
+  markOutboxItemSyncing,
+} from './queue';
+
+// HTTP statuses that mean "the server understood and permanently rejected
+// this payload" — retrying an identical body can never succeed. Transient
+// (5xx), auth (401/403 — a session refresh may fix it), timeout (408) and
+// rate-limit (429) statuses stay retryable.
+function isPermanentRejection(error: unknown): boolean {
+  const status = (error as { status?: unknown })?.status;
+  if (typeof status !== 'number') return false;
+  if (status === 401 || status === 403 || status === 408 || status === 429) return false;
+  return status >= 400 && status < 500;
+}
 
 let draining = false;
 
@@ -34,7 +51,12 @@ export async function drainOutbox(): Promise<{ synced: number; failed: number }>
         await markOutboxItemDone(item.id);
         synced++;
       } catch (error) {
-        await markOutboxItemFailed(item.id, error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        if (isPermanentRejection(error)) {
+          await markOutboxItemDead(item.id, message);
+        } else {
+          await markOutboxItemFailed(item.id, message);
+        }
         failed++;
       }
     }

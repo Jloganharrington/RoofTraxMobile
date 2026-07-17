@@ -113,7 +113,10 @@ export interface InspectionSubmissionOutboxPayload {
   input: Record<string, unknown>;
 }
 
-export type OutboxStatus = 'pending' | 'syncing' | 'done' | 'failed';
+// `dead` — permanently rejected by the server (4xx on a well-formed replay,
+// e.g. an item queued under an older contract). Never retried, so one
+// poisoned item can't spam the server or mask real sync progress.
+export type OutboxStatus = 'pending' | 'syncing' | 'done' | 'failed' | 'dead';
 
 export interface OutboxItem {
   id: string;

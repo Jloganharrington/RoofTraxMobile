@@ -716,10 +716,8 @@ router.patch(
       return;
     }
 
-    const [updated] = await db
-      .update(inspectionSlopesTable)
-      .set({
-        ...(parsed.data.label !== undefined && { label: parsed.data.label }),
+    const setValues = {
+      ...(parsed.data.label !== undefined && { label: parsed.data.label }),
         ...(parsed.data.pitchRise !== undefined && { pitchRise: parsed.data.pitchRise }),
         ...(parsed.data.pitchRun !== undefined && { pitchRun: parsed.data.pitchRun }),
         ...(parsed.data.materialType !== undefined && { materialType: parsed.data.materialType }),
@@ -733,14 +731,30 @@ router.patch(
           tieInHipRidge: parsed.data.tieInHipRidge,
         }),
         ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
-      })
-      .where(
-        and(
-          eq(inspectionSlopesTable.id, req.params.slopeId as string),
-          eq(inspectionSlopesTable.inspectionId, inspectionId),
-          eq(inspectionSlopesTable.companyId, actor.companyId),
-        ),
-      )
+    };
+    const slopeWhere = and(
+      eq(inspectionSlopesTable.id, req.params.slopeId as string),
+      eq(inspectionSlopesTable.inspectionId, inspectionId),
+      eq(inspectionSlopesTable.companyId, actor.companyId),
+    );
+
+    // Replay tolerance: a patch whose recognized fields are all absent (e.g.
+    // a stale offline-queued patch written under an older contract) is a
+    // no-op, not a 500 — return the current row so the client can settle.
+    if (Object.keys(setValues).length === 0) {
+      const [current] = await db.select().from(inspectionSlopesTable).where(slopeWhere);
+      if (!current) {
+        res.status(404).json({ error: 'Facet not found' });
+        return;
+      }
+      res.json(UpdateInspectionSlopeResponse.parse({ slope: current }));
+      return;
+    }
+
+    const [updated] = await db
+      .update(inspectionSlopesTable)
+      .set(setValues)
+      .where(slopeWhere)
       .returning();
 
     if (!updated) {

@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { WHOLE_ROOF_LINEAR_TYPES } from '@workspace/protocol';
@@ -42,6 +42,15 @@ export default function InspectionRoofScreen() {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
+
+  // Returning from the facet detail screen must always show the current
+  // facet list — refetch on focus so the list can never render stale.
+  const refetch = inspectionQuery.refetch;
+  useFocusEffect(
+    React.useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   const [facetCount, setFacetCount] = React.useState('');
   const [seeding, setSeeding] = React.useState(false);
