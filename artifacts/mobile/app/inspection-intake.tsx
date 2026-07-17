@@ -121,41 +121,6 @@ export default function InspectionIntakeScreen() {
     }
   }
 
-  function Field({
-    label,
-    value,
-    onChange,
-    placeholder,
-    multiline,
-    keyboardType,
-  }: {
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-    multiline?: boolean;
-    keyboardType?: 'default' | 'numeric';
-  }) {
-    return (
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor={colors.mutedForeground}
-          multiline={multiline}
-          keyboardType={keyboardType}
-          style={[
-            styles.input,
-            multiline && { height: 88, textAlignVertical: 'top' },
-            { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground },
-          ]}
-        />
-      </View>
-    );
-  }
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -178,7 +143,7 @@ export default function InspectionIntakeScreen() {
           </View>
         ) : null}
 
-        <Field label="Insured name" value={insuredName} onChange={setInsuredName} placeholder="Homeowner name" />
+        <Field label="Owners name" value={insuredName} onChange={setInsuredName} placeholder="Homeowner name" />
         <AddressAutocompleteField
           value={address}
           // Any manual edit drops the coordinates so we never submit a typed
@@ -216,6 +181,45 @@ export default function InspectionIntakeScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+// Defined at module level ON PURPOSE: an inline component defined inside the
+// screen's render function gets a new identity every keystroke, which remounts
+// the TextInput and dismisses the keyboard after each character.
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  multiline,
+  keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: 'default' | 'numeric';
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={colors.mutedForeground}
+        multiline={multiline}
+        keyboardType={keyboardType}
+        style={[
+          styles.input,
+          multiline && { height: 88, textAlignVertical: 'top' },
+          { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground },
+        ]}
+      />
+    </View>
   );
 }
 
