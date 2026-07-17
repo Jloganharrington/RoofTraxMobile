@@ -34,6 +34,9 @@ const EQUIPMENT_ITEMS = [
   'Moisture meter',
   'Camera / phone',
   'Fall protection',
+  'Measuring tape',
+  'Shingle gauge',
+  'Pitch gauge',
 ];
 
 const STEP_ICONS: Record<StepKey, IconName> = {
