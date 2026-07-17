@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { WHOLE_ROOF_LINEAR_TYPES } from '@workspace/protocol';
@@ -35,6 +36,7 @@ const LINEAR_LABELS: Record<(typeof WHOLE_ROOF_LINEAR_TYPES)[number], string> = 
 
 export default function InspectionRoofScreen() {
   const colors = useColors();
+  const headerHeight = useHeaderHeight();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -154,6 +156,10 @@ export default function InspectionRoofScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Without this offset the avoiding view thinks the screen starts at the
+      // very top of the display, so it under-shifts by exactly the height of
+      // the navigation header and the focused input stays behind the keyboard.
+      keyboardVerticalOffset={headerHeight}
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -266,7 +272,7 @@ export default function InspectionRoofScreen() {
                         onChangeText={(v) => setLinearDrafts((prev) => ({ ...prev, [type]: v }))}
                         placeholder="0"
                         placeholderTextColor={colors.mutedForeground}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         style={[styles.linearInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
                       />
                       <Pressable
