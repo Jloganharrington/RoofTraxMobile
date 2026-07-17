@@ -132,7 +132,9 @@ export default function InspectionDeclarationScreen() {
                 future inspection declaration.
               </Text>
               <Pressable
-                onPress={() => router.push('/(tabs)/profile')}
+                onPress={() =>
+                  router.push({ pathname: '/(tabs)/profile', params: { returnTo: '1' } })
+                }
                 style={[styles.actionBtn, { backgroundColor: colors.secondary, marginTop: 10 }]}
               >
                 <Text style={styles.actionText}>Set up my signature</Text>

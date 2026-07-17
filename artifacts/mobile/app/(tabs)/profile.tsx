@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Icon } from '@/components/Icon';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import {
@@ -89,8 +89,18 @@ export default function ProfileScreen() {
   const pinsQuery = useListPins();
   const pins = pinsQuery.data?.pins ?? [];
 
+  // Set when another screen (e.g. the inspection declaration) sent the user
+  // here specifically to capture a signature: auto-open the pad, and return
+  // to where they came from once it's saved so they don't lose their place
+  // mid-inspection.
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const cameToCapture = returnTo === '1';
+
   const signatureRef = React.useRef<SignatureViewRef>(null);
-  const [capturing, setCapturing] = React.useState(false);
+  const [capturing, setCapturing] = React.useState(cameToCapture);
+  React.useEffect(() => {
+    if (cameToCapture) setCapturing(true);
+  }, [cameToCapture]);
   const [savingSignature, setSavingSignature] = React.useState(false);
   const updateSignature = useUpdateProfileSignature();
 
@@ -107,6 +117,11 @@ export default function ProfileScreen() {
       });
       await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
       setCapturing(false);
+      if (cameToCapture && router.canGoBack()) {
+        // Return to the screen that sent us here (the inspection declaration),
+        // so the rep can finish signing without hunting for their inspection.
+        router.back();
+      }
     } catch {
       Alert.alert(
         'Could not save signature',

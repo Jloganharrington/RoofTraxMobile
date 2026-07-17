@@ -23,7 +23,7 @@ import { useColors } from '@/hooks/useColors';
 
 const STATUS_LABEL: Record<InspectionStatus, string> = {
   scheduled: 'Scheduled',
-  capturing: 'Capturing',
+  capturing: 'In progress',
   validating: 'Validating',
   submitted: 'Submitted',
   package_ready: 'Package ready',
