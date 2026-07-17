@@ -34,6 +34,19 @@ const TIE_IN_LABELS: Record<(typeof TIE_IN_OPTIONS)[number], string> = {
   hip_ridge: 'Hip/Ridge',
 };
 
+// Chalk-marking instructions shown once, when the rep first selects a
+// tie-in protocol on this facet.
+const TIE_IN_INSTRUCTIONS: Record<(typeof TIE_IN_OPTIONS)[number], string[]> = {
+  valley: [
+    "Mark a 3' solid line down the center of the valley.",
+    'Using your tape measurer, chalk dotted lines 18" parallel to the center line on both sides of the valley.',
+  ],
+  hip_ridge: [
+    "Mark a solid line, 3' long at the center of the ridge/hip.",
+    'Measure 6" from this line and mark a dotted line on each side of the ridge/hip.',
+  ],
+};
+
 const DAMAGE_TYPE_LABELS: Record<FacetDamageType, string> = {
   hail: 'Hail',
   wind: 'Wind',
@@ -58,6 +71,12 @@ export default function InspectionFacetScreen() {
   const [savingDetails, setSavingDetails] = React.useState(false);
   const [addingDamage, setAddingDamage] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
+  // Which tie-in option was just selected for the first time this session —
+  // drives the one-time instructions + photo-capture prompt.
+  const [tieInPrompt, setTieInPrompt] = React.useState<{ valley: boolean; hip_ridge: boolean }>({
+    valley: false,
+    hip_ridge: false,
+  });
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -111,9 +130,13 @@ export default function InspectionFacetScreen() {
     }
   }
 
-  // Each button toggles its own boolean flag independently.
+  // Each button toggles its own boolean flag independently. Turning an
+  // option ON surfaces its marking instructions + photo capture (first
+  // selection only); turning it OFF dismisses them.
   async function toggleTieIn(option: (typeof TIE_IN_OPTIONS)[number]) {
     if (!facet) return;
+    const turningOn = option === 'valley' ? !facet.tieInValley : !facet.tieInHipRidge;
+    setTieInPrompt((prev) => ({ ...prev, [option]: turningOn }));
     await updateSlope(
       queryClient,
       id,
@@ -122,6 +145,22 @@ export default function InspectionFacetScreen() {
         ? { tieInValley: !facet.tieInValley }
         : { tieInHipRidge: !facet.tieInHipRidge },
     );
+  }
+
+  function captureTieInPhoto(option: (typeof TIE_IN_OPTIONS)[number]) {
+    if (!facet) return;
+    setTieInPrompt((prev) => ({ ...prev, [option]: false }));
+    router.push({
+      pathname: '/inspection-photo-capture',
+      params: {
+        inspectionId: id,
+        subjectType: 'slope',
+        subjectId: slopeId,
+        roles: 'wide',
+        stage: 'facets',
+        title: `${facet.label} Tie-In: ${TIE_IN_LABELS[option]}`,
+      },
+    });
   }
 
   async function setDamage(type: FacetDamageType) {
@@ -241,6 +280,33 @@ export default function InspectionFacetScreen() {
             );
           })}
         </View>
+        {TIE_IN_OPTIONS.map((option) => {
+          const selected = option === 'valley' ? facet.tieInValley : facet.tieInHipRidge;
+          if (!selected || !tieInPrompt[option]) return null;
+          return (
+            <View
+              key={option}
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: '700' }}>
+                {TIE_IN_LABELS[option]} marking protocol
+              </Text>
+              {TIE_IN_INSTRUCTIONS[option].map((line, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
+                  <Text style={{ color: colors.mutedForeground }}>•</Text>
+                  <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>{line}</Text>
+                </View>
+              ))}
+              <Pressable
+                onPress={() => captureTieInPhoto(option)}
+                style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+              >
+                <Icon name="camera" size={18} color={colors.primaryForeground} />
+                <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Capture Photo</Text>
+              </Pressable>
+            </View>
+          );
+        })}
 
         {/* Damage */}
         <Text style={[styles.section, { color: colors.foreground }]}>Damage on this facet</Text>
