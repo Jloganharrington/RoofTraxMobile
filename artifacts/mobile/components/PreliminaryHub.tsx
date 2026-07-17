@@ -57,7 +57,9 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
       params: {
         id,
         address: inspection.address ?? '',
-        dateOfLoss: inspection.dateOfLoss ?? '',
+        // Prefer the confirmed storm's date as the date of loss: if Phase 1
+        // matched a storm, that storm IS the loss event.
+        dateOfLoss: inspection.stormConfirmedRef?.date ?? inspection.dateOfLoss ?? '',
       },
     });
   }
