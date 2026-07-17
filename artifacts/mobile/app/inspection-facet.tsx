@@ -80,6 +80,11 @@ export default function InspectionFacetScreen() {
   const [pitch, setPitch] = React.useState<string | null>(null);
   const [savingDetails, setSavingDetails] = React.useState(false);
   const [materialPickerOpen, setMaterialPickerOpen] = React.useState(false);
+  // Built-in area calculator: standard rectangle (L × H) or triangle (L × H / 2).
+  const [calcOpen, setCalcOpen] = React.useState(false);
+  const [calcShape, setCalcShape] = React.useState<'standard' | 'triangle'>('standard');
+  const [calcL, setCalcL] = React.useState('');
+  const [calcH, setCalcH] = React.useState('');
   const [addingDamage, setAddingDamage] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
   // Which tie-in option was just selected for the first time this session —
@@ -218,6 +223,13 @@ export default function InspectionFacetScreen() {
     router.back();
   }
 
+  function openAreaCalc() {
+    setCalcL('');
+    setCalcH('');
+    setCalcShape('standard');
+    setCalcOpen(true);
+  }
+
   function confirmRemove() {
     Alert.alert('Remove facet', `Remove ${facet?.label}? Its damage records stay on file.`, [
       { text: 'Cancel', style: 'cancel' },
@@ -249,7 +261,24 @@ export default function InspectionFacetScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.pitchRow}>
             <View style={{ flex: 1.2 }}>
-              <Field label="Area (sq ft)" value={areaValue} onChange={setArea} placeholder="320" keyboardType="numeric" colors={colors} />
+              <View style={styles.field}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={[styles.label, { color: colors.mutedForeground }]}>Area (sq ft)</Text>
+                  <Pressable onPress={openAreaCalc} hitSlop={8}>
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700' }}>Calc</Text>
+                  </Pressable>
+                </View>
+                <View style={[styles.inputWrap, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <TextInput
+                    value={areaValue}
+                    onChangeText={setArea}
+                    placeholder="320"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="numeric"
+                    style={[styles.input, { color: colors.foreground }]}
+                  />
+                </View>
+              </View>
             </View>
             <View style={{ flex: 1.4 }}>
               <View style={styles.field}>
@@ -460,6 +489,82 @@ export default function InspectionFacetScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Area calculator */}
+      <Modal
+        visible={calcOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalcOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setCalcOpen(false)}>
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, gap: 10 }]}
+            onPress={() => {}}
+          >
+            <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 16 }}>Area calculator</Text>
+            <View style={styles.chipRow}>
+              {(
+                [
+                  { key: 'standard', label: 'Standard (L × H)' },
+                  { key: 'triangle', label: 'Triangle (L × H ÷ 2)' },
+                ] as const
+              ).map(({ key, label }) => {
+                const selected = calcShape === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setCalcShape(key)}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: selected ? colors.primary : colors.background,
+                        borderColor: selected ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '600', fontSize: 13 }}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.pitchRow}>
+              <View style={{ flex: 1 }}>
+                <Field label="Length (ft)" value={calcL} onChange={setCalcL} placeholder="20" keyboardType="numeric" colors={colors} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="Height (ft)" value={calcH} onChange={setCalcH} placeholder="16" keyboardType="numeric" colors={colors} />
+              </View>
+            </View>
+            {(() => {
+              const l = Number(calcL);
+              const h = Number(calcH);
+              const valid = calcL.trim() !== '' && calcH.trim() !== '' && !Number.isNaN(l) && !Number.isNaN(h) && l > 0 && h > 0;
+              const result = valid ? (calcShape === 'triangle' ? (l * h) / 2 : l * h) : null;
+              const rounded = result != null ? Math.round(result * 100) / 100 : null;
+              return (
+                <>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
+                    {rounded != null ? `= ${rounded} sq ft` : 'Enter length and height.'}
+                  </Text>
+                  <Pressable
+                    disabled={rounded == null}
+                    onPress={() => {
+                      setArea(String(rounded));
+                      setCalcOpen(false);
+                    }}
+                    style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: rounded == null ? 0.5 : 1 }]}
+                  >
+                    <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Use as area</Text>
+                  </Pressable>
+                </>
+              );
+            })()}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Material picker */}
       <Modal
