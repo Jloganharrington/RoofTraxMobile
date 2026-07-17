@@ -195,6 +195,18 @@ export default function InspectionFacetScreen() {
     }
   }
 
+  // Saves any unsaved detail edits, then returns to the facet list so the
+  // rep can proceed to the next facet. Photos and toggles are already
+  // persisted as they happen — this is the explicit "done with this facet"
+  // exit, so nothing is lost by leaving.
+  async function saveFacetAndReturn() {
+    if (savingDetails) return;
+    if (detailsDirty && detailsValid) {
+      await saveDetails();
+    }
+    router.back();
+  }
+
   function confirmRemove() {
     Alert.alert('Remove facet', `Remove ${facet?.label}? Its damage records stay on file.`, [
       { text: 'Cancel', style: 'cancel' },
@@ -390,6 +402,19 @@ export default function InspectionFacetScreen() {
             ) : null}
           </>
         ) : null}
+
+        {/* Save facet — persists pending edits and returns to the facet list */}
+        <Pressable
+          onPress={saveFacetAndReturn}
+          disabled={savingDetails}
+          style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 16, opacity: savingDetails ? 0.5 : 1 }]}
+        >
+          {savingDetails ? (
+            <ActivityIndicator color={colors.primaryForeground} />
+          ) : (
+            <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save Facet</Text>
+          )}
+        </Pressable>
 
         {/* Remove facet */}
         <Pressable
