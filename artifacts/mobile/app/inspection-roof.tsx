@@ -124,7 +124,9 @@ export default function InspectionRoofScreen() {
   async function saveLinear(type: string) {
     const raw = (linearDrafts[type] ?? '').trim();
     const value = Number(raw);
-    if (!raw || Number.isNaN(value) || value <= 0 || savingLinear) return;
+    // 0 is a legitimate whole-roof linear (e.g. a roof with no valleys) —
+    // only empty, non-numeric, or negative entries are rejected.
+    if (!raw || Number.isNaN(value) || value < 0 || savingLinear) return;
     setSavingLinear(type);
     try {
       await createMeasurement(queryClient, id, {
