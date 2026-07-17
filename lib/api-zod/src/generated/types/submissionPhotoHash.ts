@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ComponentZone } from './componentZone';
 
 export interface SubmissionPhotoHash {
   photoId: string;
   sha256: string;
+  zone?: ComponentZone | null;
 }

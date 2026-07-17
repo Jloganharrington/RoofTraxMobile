@@ -1,6 +1,8 @@
 import {
+  COMPONENT_ZONES,
   ELEVATION_DIRECTIONS,
   WHOLE_ROOF_LINEAR_TYPES,
+  componentZoneForType,
   evaluate,
   type Deficiency,
   type FacetDamageType,
@@ -33,6 +35,7 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
   const slopes = inspection.slopes ?? [];
   const damageInstances = inspection.damageInstances ?? [];
   const components = inspection.components ?? [];
+  const penetrations = inspection.penetrations ?? [];
   const products = inspection.products ?? [];
   const testSquares = inspection.testSquares ?? [];
   const testSquareHits = inspection.testSquareHits ?? [];
@@ -112,10 +115,20 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       ),
       hitCount: testSquareHits.filter((hit) => hit.testSquareId === square.id).length,
     })),
+    // Zone-based component capture: one shared zone photo (subjectType
+    // 'component' + a zone tag) evidences every component documented in that
+    // zone. Penetrations stay discrete — each keeps its own photo.
     components: components.map((component) => ({
       id: component.id,
+      zone: componentZoneForType(component.componentType),
+    })),
+    componentZonePhotos: COMPONENT_ZONES.filter((zone) =>
+      photos.some((p) => p.subjectType === 'component' && p.zone === zone),
+    ),
+    penetrations: penetrations.map((penetration) => ({
+      id: penetration.id,
       photoCaptured: photos.some(
-        (p) => p.subjectType === 'component' && p.subjectId === component.id,
+        (p) => p.subjectType === 'penetration' && p.subjectId === penetration.id,
       ),
     })),
     productIdentifications: products.map((product) => ({

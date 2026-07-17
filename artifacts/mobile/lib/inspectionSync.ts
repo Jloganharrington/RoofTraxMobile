@@ -742,6 +742,7 @@ export function appendOptimisticPhotos(
     triadRole?: PhotoTriadRole | null;
     preliminaryRole?: PreliminaryPhotoRole | null;
     sha256: string;
+    zone?: 'eave_edge' | 'ridge_hip' | null;
   }>,
 ): void {
   const now = new Date().toISOString();
@@ -762,6 +763,7 @@ export function appendOptimisticPhotos(
       capturedAtUtc: now,
       latitude: null,
       longitude: null,
+      zone: p.zone ?? null,
       createdAt: now,
     }));
     return { ...inspection, photos: [...(inspection.photos ?? []), ...optimistic] };

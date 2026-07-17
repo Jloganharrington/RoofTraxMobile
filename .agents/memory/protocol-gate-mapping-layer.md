@@ -30,3 +30,5 @@ the mapping.
 **How to apply:** any new stage gate → mirror the existing `triadRole`/subject
 qualification pattern in `buildProtocolState`, and remember the mapping itself
 is only covered by `tsc`, so review it by hand.
+
+**Zone-based Step 5 (Components):** component photos are per-ZONE, not per-record — a shared photo has `subjectType:'component'` + `zone` (`eave_edge`/`ridge_hip`) and NO subjectId. Server rejects `zone` on other subject types and `zone`+`subjectId` together; the orphan-photo check has an explicit zone-photo exception. Penetrations stay per-record. Any new component type must be added to `componentZoneForType` in lib/protocol or its documentation never demands a photo.

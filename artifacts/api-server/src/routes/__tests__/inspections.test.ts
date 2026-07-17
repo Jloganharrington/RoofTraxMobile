@@ -483,6 +483,45 @@ describe('inspection routes', () => {
       expect(detail.body.inspection.photos[0].stage).toBe('facets');
     });
 
+    it('enforces zone-photo invariants on POST /photos', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ claimNumber: 'CLM-ZONE-PHOTO' });
+      const inspectionId = create.body.inspection.id as string;
+      const base = { triadRole: 'wide', stage: 'components', url: 'https://example.test/z.jpg', sha256: 'e'.repeat(64) };
+
+      // A shared zone photo: subjectType 'component', zone set, no subjectId.
+      const ok = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ ...base, subjectType: 'component', zone: 'eave_edge' });
+      expect(ok.status).toBe(201);
+      expect(ok.body.photo.zone).toBe('eave_edge');
+      expect(ok.body.photo.subjectId).toBeNull();
+
+      // zone on a non-component subject is rejected.
+      const wrongSubject = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ ...base, subjectType: 'slope', subjectId: 'any', zone: 'eave_edge' });
+      expect(wrongSubject.status).toBe(400);
+
+      // zone + subjectId is ambiguous and rejected.
+      const withSubject = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ ...base, subjectType: 'component', subjectId: 'comp-1', zone: 'eave_edge' });
+      expect(withSubject.status).toBe(400);
+
+      // component photo without zone still needs a subjectId (orphan check).
+      const orphan = await request(app)
+        .post(`/api/inspections/${inspectionId}/photos`)
+        .set(auth(inspectorA.sid))
+        .send({ ...base, subjectType: 'component' });
+      expect(orphan.status).toBe(400);
+    });
+
     it('returns the existing child (200) on a retried create with the same client id', async () => {
       const create = await request(app).post('/api/inspections').set(auth(inspectorA.sid)).send({});
       const inspectionId = create.body.inspection.id as string;

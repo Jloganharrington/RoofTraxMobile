@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CaptureStage } from './captureStage';
+import type { ComponentZone } from './componentZone';
 import type { InspectionPhotoExifJson } from './inspectionPhotoExifJson';
 import type { InspectionPhotoOverlayJson } from './inspectionPhotoOverlayJson';
 import type { InspectionSubjectType } from './inspectionSubjectType';
@@ -34,5 +35,6 @@ export interface InspectionPhoto {
   latitude: number | null;
   /** @nullable */
   longitude: number | null;
+  zone: ComponentZone | null;
   createdAt: Date;
 }

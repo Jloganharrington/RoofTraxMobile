@@ -106,6 +106,9 @@ export default function InspectionPhotoCaptureScreen() {
      * note on every slope-tagged damage instance. */
     damageSlopeId?: string;
     damageType?: string;
+    /** Component-zone tag for a shared zone photo (subjectType 'component',
+     * no subjectId): one shot evidences every component in the zone. */
+    zone?: 'eave_edge' | 'ridge_hip';
   }>();
   const steps = useMemo(() => parseRoles(params.roles).map((role) => ALL_STEPS[role]), [params.roles]);
   const [shots, setShots] = useState<Partial<Record<TriadRole, AnnotatedShot>>>({});
@@ -181,10 +184,12 @@ export default function InspectionPhotoCaptureScreen() {
         setDamageId(subjectId);
       }
       const persisted = await persistCapturedPhotoForOutbox(shot);
-      // The causation selection travels as the photo caption in the evidence
-      // output, alongside any tap annotations.
-      const overlayJson = causation
-        ? { ...(persisted.overlayJson ?? {}), caption: causation }
+      // The causation selection (damage) or zone title (shared zone photo)
+      // travels as the photo caption in the evidence output, alongside any
+      // tap annotations.
+      const caption = causation ?? (params.zone ? params.title ?? null : null);
+      const overlayJson = caption
+        ? { ...(persisted.overlayJson ?? {}), caption }
         : persisted.overlayJson;
       const photoId = Crypto.randomUUID();
       const payload: InspectionPhotoOutboxPayload = {
@@ -202,6 +207,7 @@ export default function InspectionPhotoCaptureScreen() {
         capturedAtUtc: persisted.capturedAtUtc,
         latitude: persisted.latitude,
         longitude: persisted.longitude,
+        zone: params.zone ?? null,
       };
       await enqueueOutboxItem('inspection.photo', payload);
       appendOptimisticPhotos(queryClient, inspectionId, [
@@ -212,6 +218,7 @@ export default function InspectionPhotoCaptureScreen() {
           stage: params.stage ?? null,
           triadRole: role,
           sha256: persisted.sha256,
+          zone: params.zone ?? null,
         },
       ]);
       setSavedRoles((prev) => new Set(prev).add(role));

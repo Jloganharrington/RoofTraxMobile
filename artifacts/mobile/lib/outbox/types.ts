@@ -51,6 +51,9 @@ export interface InspectionPhotoOutboxPayload {
   capturedAtUtc: string;
   latitude: number | null;
   longitude: number | null;
+  /** Component-zone tag for shared zone photos (subjectType 'component',
+   * no subjectId). Null/omitted for every other photo. */
+  zone?: 'eave_edge' | 'ridge_hip' | null;
 }
 
 /** Offline-first inspection create. Carries a client-generated `id` so the

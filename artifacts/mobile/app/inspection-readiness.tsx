@@ -86,7 +86,7 @@ function assembleManifest(
     records,
     photoHashes: photos
       .filter((p) => p.sha256)
-      .map((p) => ({ photoId: p.id, sha256: p.sha256 as string })),
+      .map((p) => ({ photoId: p.id, sha256: p.sha256 as string, zone: p.zone ?? null })),
     gateResults: { deficiencies: gate.deficiencies, softFlags: gate.softFlags },
     tieInProtocols,
     // M-F (F0) — carry the inspector's on-file signature so the package is

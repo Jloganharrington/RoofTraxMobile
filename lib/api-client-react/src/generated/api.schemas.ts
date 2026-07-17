@@ -566,9 +566,21 @@ export interface GateFinding {
   message: string;
 }
 
+/**
+ * Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.
+ */
+export type ComponentZone = typeof ComponentZone[keyof typeof ComponentZone];
+
+
+export const ComponentZone = {
+  eave_edge: 'eave_edge',
+  ridge_hip: 'ridge_hip',
+} as const;
+
 export interface SubmissionPhotoHash {
   photoId: string;
   sha256: string;
+  zone?: ComponentZone | null;
 }
 
 /**
@@ -694,6 +706,7 @@ export interface InspectionPhoto {
   latitude: number | null;
   /** @nullable */
   longitude: number | null;
+  zone: ComponentZone | null;
   createdAt: string;
 }
 
@@ -1227,6 +1240,7 @@ export interface CreateInspectionPhotoInput {
   latitude?: number | null;
   /** @nullable */
   longitude?: number | null;
+  zone?: ComponentZone | null;
 }
 
 export interface InspectionPhotoEnvelope {

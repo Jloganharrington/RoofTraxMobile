@@ -109,6 +109,11 @@ export const COMPONENT_TYPES = [
 ] as const;
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
+// Zone-based component capture (Step 5). One shared zone photo evidences
+// every component documented in that zone.
+export const COMPONENT_ZONES = ['eave_edge', 'ridge_hip'] as const;
+export type ComponentZone = (typeof COMPONENT_ZONES)[number];
+
 export const COMPONENT_STATUSES = ['present', 'absent', 'not_determined'] as const;
 export type ComponentStatus = (typeof COMPONENT_STATUSES)[number];
 
@@ -434,6 +439,9 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   capturedAtUtc: timestamp('captured_at_utc', { withTimezone: true }),
   latitude: doublePrecision('latitude'),
   longitude: doublePrecision('longitude'),
+  // Component-zone tag: set only on shared zone photos (subjectType
+  // 'component', no subjectId) so the Brain can group them. Null elsewhere.
+  zone: varchar('zone', { enum: COMPONENT_ZONES }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

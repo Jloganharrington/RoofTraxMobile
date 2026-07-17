@@ -87,6 +87,7 @@ async function syncInspectionPhoto(payloadJson: string): Promise<void> {
     capturedAtUtc: payload.capturedAtUtc,
     latitude: payload.latitude,
     longitude: payload.longitude,
+    zone: payload.zone ?? undefined,
   });
 
   // Best-effort cleanup of the local copy now that the server has the

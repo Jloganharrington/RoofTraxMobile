@@ -694,7 +694,8 @@ export const ListInspectionsResponse = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -783,6 +784,7 @@ export const ListInspectionsResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -948,7 +950,8 @@ export const CreateInspectionResponse = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -1037,6 +1040,7 @@ export const CreateInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -1188,7 +1192,8 @@ export const GetInspectionResponse = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -1277,6 +1282,7 @@ export const GetInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -1473,7 +1479,8 @@ export const UpdateInspectionResponse = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -1562,6 +1569,7 @@ export const UpdateInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -2037,7 +2045,8 @@ export const CreateInspectionPhotoBody = zod.object({
 }).passthrough().nullish(),
   "capturedAtUtc": zod.coerce.date().nullish(),
   "latitude": zod.number().nullish(),
-  "longitude": zod.number().nullish()
+  "longitude": zod.number().nullish(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })
 
 export const CreateInspectionPhotoResponse = zod.object({
@@ -2061,6 +2070,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "createdAt": zod.coerce.date()
 })
 })
@@ -2176,7 +2186,8 @@ export const SubmitInspectionBody = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -2261,7 +2272,8 @@ export const SubmitInspectionResponse = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -2350,6 +2362,7 @@ export const SubmitInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -2499,7 +2512,8 @@ export const GetInspectionStatusResponse = zod.object({
   "records": zod.record(zod.string(), zod.array(zod.string())).describe('Map of record type to the list of record ids included in the package.'),
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
-  "sha256": zod.string()
+  "sha256": zod.string(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({

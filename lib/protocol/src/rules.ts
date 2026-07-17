@@ -1,5 +1,11 @@
 import { ELEVATION_DIRECTIONS, carriesHail } from './stages';
-import type { Deficiency, EvaluationResult, InspectionProtocolState, SoftFlag } from './types';
+import type {
+  ComponentZone,
+  Deficiency,
+  EvaluationResult,
+  InspectionProtocolState,
+  SoftFlag,
+} from './types';
 
 function deficiency(stage: Deficiency['stage'], code: string, message: string): Deficiency {
   return { stage, code, message };
@@ -162,16 +168,40 @@ function checkTestSquares(state: InspectionProtocolState): Deficiency[] {
     );
 }
 
-// Step 5 — each documented component has a photo (none documented at all is
-// a soft flag, not a hard block).
+// Step 5 — zone-based capture: each zone with ≥1 documented component needs
+// one shared zone photo (a single eave shot evidences every eave-edge
+// component at once). None documented at all is a soft flag, not a hard
+// block.
+const ZONE_LABELS: Record<ComponentZone, string> = {
+  eave_edge: 'Eave/Edge',
+  ridge_hip: 'Ridge/Hip',
+};
+
 function checkComponents(state: InspectionProtocolState): Deficiency[] {
-  return state.components
-    .filter((component) => !component.photoCaptured)
-    .map((component) =>
+  const documentedZones = new Set<ComponentZone>();
+  for (const component of state.components) {
+    if (component.zone) documentedZones.add(component.zone);
+  }
+  return [...documentedZones]
+    .filter((zone) => !state.componentZonePhotos.includes(zone))
+    .map((zone) =>
       deficiency(
         'components',
-        `MISSING_COMPONENT_PHOTO_${component.id}`,
-        `Documented component ${component.id} has no photo.`,
+        `MISSING_ZONE_PHOTO_${zone}`,
+        `${ZONE_LABELS[zone]} components are documented but the zone has no photo.`,
+      ),
+    );
+}
+
+// Step 5 — penetrations are discrete objects; each keeps its own photo.
+function checkPenetrations(state: InspectionProtocolState): Deficiency[] {
+  return state.penetrations
+    .filter((penetration) => !penetration.photoCaptured)
+    .map((penetration) =>
+      deficiency(
+        'components',
+        `MISSING_PENETRATION_PHOTO_${penetration.id}`,
+        `Documented penetration ${penetration.id} has no photo.`,
       ),
     );
 }
@@ -210,6 +240,7 @@ const STEP_CHECKS = [
   checkFacets,
   checkTestSquares,
   checkComponents,
+  checkPenetrations,
   checkProduct,
   checkDeclaration,
 ];

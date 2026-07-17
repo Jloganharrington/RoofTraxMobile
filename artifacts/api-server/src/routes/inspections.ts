@@ -1339,10 +1339,24 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
   }
 
   // D4 — Orphan-photo prevention. Every subject-attached photo (test square,
-  // hit, damage instance, slope, elevation, component, penetration, product)
-  // must reference the record it documents. Only whole-inspection photos (S0
-  // overview, S2 roof access) legitimately have no subjectId.
-  if (parsed.data.subjectType !== 'inspection' && !parsed.data.subjectId) {
+  // hit, damage instance, slope, elevation, penetration, product) must
+  // reference the record it documents. Exceptions: whole-inspection photos
+  // (S0 overview, S2 roof access) and shared component ZONE photos
+  // (subjectType 'component' + zone tag — one photo evidences every
+  // component documented in that zone) legitimately have no subjectId.
+  const isZonePhoto = parsed.data.subjectType === 'component' && Boolean(parsed.data.zone);
+  // Zone-photo invariants: `zone` is meaningful only on shared component
+  // zone photos, and a zone photo documents the zone — never a specific
+  // record. Rejecting ambiguous combinations keeps the gate unambiguous.
+  if (parsed.data.zone && parsed.data.subjectType !== 'component') {
+    res.status(400).json({ error: 'zone is only valid on component zone photos' });
+    return;
+  }
+  if (isZonePhoto && parsed.data.subjectId) {
+    res.status(400).json({ error: 'A zone photo must not reference a subjectId' });
+    return;
+  }
+  if (parsed.data.subjectType !== 'inspection' && !isZonePhoto && !parsed.data.subjectId) {
     res.status(400).json({ error: 'A subjectId is required for subject-attached photos' });
     return;
   }
@@ -1363,6 +1377,7 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     capturedAtUtc: parsed.data.capturedAtUtc ?? undefined,
     latitude: parsed.data.latitude ?? undefined,
     longitude: parsed.data.longitude ?? undefined,
+    zone: parsed.data.zone ?? undefined,
   };
 
   // Offline-first idempotent create. Evidence photos are queued in the mobile

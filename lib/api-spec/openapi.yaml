@@ -2907,6 +2907,12 @@ components:
           type: string
         sha256:
           type: string
+        # Component-zone tag (additive, v2 Components step). Lets the Brain
+        # group shared zone photos without re-fetching photo rows.
+        zone:
+          oneOf:
+            - $ref: "#/components/schemas/ComponentZone"
+            - type: "null"
     SubmissionManifestV1:
       type: object
       description: >-
@@ -3475,6 +3481,13 @@ components:
     ComponentStatus:
       type: string
       enum: [present, absent, not_determined]
+    ComponentZone:
+      type: string
+      description: >-
+        Zone-based component capture (Step 5). One shared zone photo evidences
+        every component documented in that zone; the Brain groups component
+        evidence photos by this value.
+      enum: [eave_edge, ridge_hip]
     InspectionComponent:
       type: object
       required:
@@ -3761,6 +3774,7 @@ components:
           capturedAtUtc,
           latitude,
           longitude,
+          zone,
           createdAt,
         ]
       properties:
@@ -3801,6 +3815,10 @@ components:
           type: [number, "null"]
         longitude:
           type: [number, "null"]
+        zone:
+          oneOf:
+            - $ref: "#/components/schemas/ComponentZone"
+            - type: "null"
         createdAt:
           type: string
           format: date-time
@@ -3848,6 +3866,10 @@ components:
           type: [number, "null"]
         longitude:
           type: [number, "null"]
+        zone:
+          oneOf:
+            - $ref: "#/components/schemas/ComponentZone"
+            - type: "null"
     InspectionPhotoEnvelope:
       type: object
       required: [photo]

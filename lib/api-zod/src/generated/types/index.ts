@@ -33,6 +33,7 @@ export * from './companyEnvelope';
 export * from './competitivePanel';
 export * from './componentStatus';
 export * from './componentType';
+export * from './componentZone';
 export * from './contactOutcome';
 export * from './createAttestationInput';
 export * from './createAttestationInputDetails';
