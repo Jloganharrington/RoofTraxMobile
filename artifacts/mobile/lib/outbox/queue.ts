@@ -50,10 +50,14 @@ export async function listAllOutboxItems(): Promise<OutboxItem[]> {
  * until this reaches zero, so the submission manifest can never reference a
  * child record that has not durably persisted server-side. A permanently
  * failing child therefore surfaces as "still uploading" rather than a silently
- * invalid package.
+ * invalid package. `dead` (permanently rejected) items count too: they will
+ * never sync, so the package is missing evidence and must not be submittable.
  */
 export async function countUnsyncedWritesForInspection(inspectionId: string): Promise<number> {
-  const items = await listSyncableOutboxItems();
+  const db = await getOutboxDb();
+  const items = await db.getAllAsync<OutboxItem>(
+    `SELECT * FROM outbox_items WHERE status IN ('pending', 'failed', 'syncing', 'dead')`,
+  );
   return items.filter((item) => {
     if (item.kind === 'inspection.submission') return false;
     try {

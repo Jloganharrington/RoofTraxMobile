@@ -10,3 +10,8 @@ description: Two protocol-v2 review lessons — timestamp-only outbox ordering b
 **Rule 2:** Gate/deficiency rules must not hard-block on child records orphaned by a parent delete (e.g. damage records whose slopeId was FK-nulled or points at a deleted facet). Only require evidence for children attached to a *live* parent; otherwise the user has no UI path to clear the deficiency.
 **Why:** Deleting a facet left MISSING_DAMAGE_PHOTO deficiencies that were unresolvable from any screen.
 **How to apply:** When a rule iterates child records, filter to those whose parent id is in the live-parent set first. Builders coerce null slopeId to `''`, so filter via set membership, not null checks.
+
+## Dead-lettered items must still block submission
+Permanently rejected (4xx) outbox items are marked `dead` and never retried — but readiness/unsynced counts MUST include `dead` rows, or a package silently submits with evidence that never reached the server.
+**Why:** dropping poisoned items from retry AND from the pending count broke the "submit only when fully drained" guarantee (caught in review).
+**How to apply:** any new status that removes items from the drain loop must be added to `countUnsyncedWritesForInspection`-style gating queries.

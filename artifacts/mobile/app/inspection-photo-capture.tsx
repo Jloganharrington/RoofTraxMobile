@@ -18,7 +18,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { CaptureStage, InspectionSubjectType } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { appendOptimisticPhotos } from '@/lib/inspectionSync';
+import { appendOptimisticPhotos, createDamageInstance } from '@/lib/inspectionSync';
 import {
   captureEvidencePhoto,
   pickEvidencePhotoFromLibrary,
@@ -59,6 +59,17 @@ const ALL_STEPS: Record<TriadRole, { role: TriadRole; title: string; hint: strin
 
 const ROLE_ORDER: TriadRole[] = ['wide', 'mid', 'close'];
 
+// Fixed causation vocabulary for functional damage evidence. The selection
+// becomes the damage record's causation note and the photo's caption in the
+// evidence output.
+const CAUSATION_OPTIONS = [
+  'Missing Shingle',
+  'Wind Creased Shingle',
+  'Wind Lifted Shingle',
+  'Hail Damage',
+  'Damage Excluded from Peril',
+] as const;
+
 // Parses the optional `roles` route param (e.g. "wide" for a single overview
 // shot, or "wide,mid,close" for the full damage triad). Defaults to the full
 // triad so existing callers keep their behaviour.
@@ -89,6 +100,12 @@ export default function InspectionPhotoCaptureScreen() {
     stage?: CaptureStage;
     /** Optional header title override. */
     title?: string;
+    /** When set (with `damageType`), this is a NEW functional damage capture:
+     * the screen shows a causation selection and creates the damage record
+     * itself once the first shot is saved — the server requires a causation
+     * note on every slope-tagged damage instance. */
+    damageSlopeId?: string;
+    damageType?: string;
   }>();
   const steps = useMemo(() => parseRoles(params.roles).map((role) => ALL_STEPS[role]), [params.roles]);
   const [shots, setShots] = useState<Partial<Record<TriadRole, AnnotatedShot>>>({});
@@ -100,6 +117,23 @@ export default function InspectionPhotoCaptureScreen() {
   const [annotatingRole, setAnnotatingRole] = useState<TriadRole | null>(null);
   const [pendingAnnotation, setPendingAnnotation] = useState<{ x: number; y: number } | null>(null);
   const [noteText, setNoteText] = useState('');
+
+  // Causation selection for a new functional damage record. The selection is
+  // stored as the damage instance's causation note AND travels as the photo
+  // caption in the evidence output. Free to change until the first shot is
+  // saved (the record is created lazily at that point).
+  const isNewDamageCapture = Boolean(params.damageSlopeId && params.damageType);
+  const [causation, setCausation] = useState<string | null>(null);
+  const [damageId, setDamageId] = useState<string | null>(null);
+  // Ref mirror of damageId: multi-shot save loops can re-enter queueShot
+  // before the state update commits; the ref guarantees every shot in the
+  // session reuses the single created damage record.
+  const damageIdRef = React.useRef<string | null>(null);
+  const causationLocked = damageId !== null;
+  // Damage evidence shows the causation selection with just the capture
+  // buttons below it — no "Wide shot" step label.
+  const hideStepLabels = params.subjectType === 'damage_instance';
+  const captureBlocked = isNewDamageCapture && !causation;
 
   const nextStep = useMemo(() => steps.find((step) => !shots[step.role]), [steps, shots]);
   const allCaptured = !nextStep;
@@ -127,22 +161,44 @@ export default function InspectionPhotoCaptureScreen() {
       Alert.alert('Missing context', 'This screen must be opened from an inspection subject.');
       return false;
     }
+    if (isNewDamageCapture && !causation) {
+      Alert.alert('Select a causation', 'Pick the causation before saving the photo.');
+      return false;
+    }
     setUploadingRole(role);
     try {
+      // New damage capture: create the damage record (with the selected
+      // causation as its required causation note) before the first photo is
+      // queued, so the outbox replays the create ahead of its child photo.
+      let subjectId = params.subjectId ?? damageIdRef.current;
+      if (isNewDamageCapture && !subjectId) {
+        subjectId = await createDamageInstance(queryClient, inspectionId, {
+          slopeId: params.damageSlopeId,
+          damageType: params.damageType as string,
+          causationNote: causation,
+        });
+        damageIdRef.current = subjectId;
+        setDamageId(subjectId);
+      }
       const persisted = await persistCapturedPhotoForOutbox(shot);
+      // The causation selection travels as the photo caption in the evidence
+      // output, alongside any tap annotations.
+      const overlayJson = causation
+        ? { ...(persisted.overlayJson ?? {}), caption: causation }
+        : persisted.overlayJson;
       const photoId = Crypto.randomUUID();
       const payload: InspectionPhotoOutboxPayload = {
         id: photoId,
         inspectionId,
         subjectType,
-        subjectId: params.subjectId ?? null,
+        subjectId: subjectId ?? null,
         stage: params.stage ?? null,
         triadRole: role,
         localFilePath: persisted.localFilePath,
         mimeType: shot.mimeType,
         sha256: persisted.sha256,
         exifJson: persisted.exifJson,
-        overlayJson: persisted.overlayJson,
+        overlayJson,
         capturedAtUtc: persisted.capturedAtUtc,
         latitude: persisted.latitude,
         longitude: persisted.longitude,
@@ -152,7 +208,7 @@ export default function InspectionPhotoCaptureScreen() {
         {
           id: photoId,
           subjectType,
-          subjectId: params.subjectId ?? null,
+          subjectId: subjectId ?? null,
           stage: params.stage ?? null,
           triadRole: role,
           sha256: persisted.sha256,
@@ -264,12 +320,49 @@ export default function InspectionPhotoCaptureScreen() {
       contentContainerStyle={styles.container}
     >
       <Text style={[styles.title, { color: colors.foreground }]}>{params.title ?? 'Evidence photos'}</Text>
-      <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-        {(steps.length === 1
-          ? 'Capture the overview shot.'
-          : 'Capture a wide, mid, and close-up shot.') +
-          ' Camera shots save automatically. Tap an uploaded photo to drop a note marker before saving.'}
-      </Text>
+      {!hideStepLabels && (
+        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          {(steps.length === 1
+            ? 'Capture the overview shot.'
+            : 'Capture a wide, mid, and close-up shot.') +
+            ' Camera shots save automatically. Tap an uploaded photo to drop a note marker before saving.'}
+        </Text>
+      )}
+
+      {isNewDamageCapture && (
+        <View style={styles.stepBlock}>
+          <Text style={[styles.stepTitle, { color: colors.foreground }]}>Causation Selection</Text>
+          {CAUSATION_OPTIONS.map((option) => {
+            const selected = causation === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => {
+                  if (!causationLocked) setCausation(option);
+                }}
+                disabled={causationLocked && !selected}
+                style={[
+                  styles.causationOption,
+                  {
+                    borderColor: selected ? colors.primary : colors.border,
+                    backgroundColor: selected ? colors.primary : colors.card,
+                    opacity: causationLocked && !selected ? 0.4 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: selected ? colors.primaryForeground : colors.foreground,
+                    fontWeight: selected ? '700' : '400',
+                  }}
+                >
+                  {option}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {steps.map((step) => {
         const shot = shots[step.role];
@@ -279,8 +372,12 @@ export default function InspectionPhotoCaptureScreen() {
 
         return (
           <View key={step.role} style={styles.stepBlock}>
-            <Text style={[styles.stepTitle, { color: colors.foreground }]}>{step.title}</Text>
-            <Text style={[styles.stepHint, { color: colors.mutedForeground }]}>{step.hint}</Text>
+            {!hideStepLabels && (
+              <>
+                <Text style={[styles.stepTitle, { color: colors.foreground }]}>{step.title}</Text>
+                <Text style={[styles.stepHint, { color: colors.mutedForeground }]}>{step.hint}</Text>
+              </>
+            )}
 
             {shot ? (
               <View>
@@ -334,11 +431,11 @@ export default function InspectionPhotoCaptureScreen() {
                 <ActivityIndicator />
               </View>
             ) : (
-              <View style={styles.captureRow}>
+              <View style={[styles.captureRow, captureBlocked && { opacity: 0.4 }]}>
                 <Pressable
                   onPress={() => handleCapture(step.role)}
                   style={[styles.captureButton, styles.captureHalf, { borderColor: colors.border }]}
-                  disabled={isBusy}
+                  disabled={isBusy || captureBlocked}
                 >
                   <Icon name="camera" size={18} color={colors.foreground} />
                   <Text style={{ color: colors.foreground }}>Take photo</Text>
@@ -346,7 +443,7 @@ export default function InspectionPhotoCaptureScreen() {
                 <Pressable
                   onPress={() => handleUpload(step.role)}
                   style={[styles.captureButton, styles.captureHalf, { borderColor: colors.border }]}
-                  disabled={isBusy}
+                  disabled={isBusy || captureBlocked}
                 >
                   <Icon name="upload" size={18} color={colors.foreground} />
                   <Text style={{ color: colors.foreground }}>Upload</Text>
@@ -457,6 +554,13 @@ const styles = StyleSheet.create({
   },
   submitButton: { borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   input: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
+  causationOption: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    width: PREVIEW_SIZE,
+  },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' },
   modalCard: { width: '85%', borderRadius: 12, padding: 20, gap: 12 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
