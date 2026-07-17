@@ -248,9 +248,27 @@ export default function ProfileScreen() {
                 <Text style={{ color: colors.mutedForeground }}>Saving signature…</Text>
               </View>
             ) : (
-              <Pressable onPress={() => setCapturing(false)} style={styles.sigCancel}>
-                <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>Cancel</Text>
-              </Pressable>
+              <>
+                <View style={styles.sigModalActions}>
+                  <Pressable
+                    onPress={() => signatureRef.current?.clearSignature()}
+                    style={[styles.sigModalBtn, { borderColor: colors.border, borderWidth: 1 }]}
+                  >
+                    <Text style={{ color: colors.foreground, fontWeight: '600' }}>Clear</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => signatureRef.current?.readSignature()}
+                    style={[styles.sigModalBtn, { backgroundColor: colors.primary }]}
+                  >
+                    <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>
+                      Save signature
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable onPress={() => setCapturing(false)} style={styles.sigCancel}>
+                  <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>Cancel</Text>
+                </Pressable>
+              </>
             )}
           </View>
         </View>
@@ -316,7 +334,7 @@ export default function ProfileScreen() {
 const SIGNATURE_WEB_STYLE = `
   .m-signature-pad { box-shadow: none; border: none; margin: 0; }
   .m-signature-pad--body { border: none; }
-  .m-signature-pad--footer { margin: 8px 0; }
+  .m-signature-pad--footer { display: none; }
   body, html { height: 100%; margin: 0; }
 `;
 
@@ -342,6 +360,14 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   sigModalCard: { borderRadius: 16, padding: 16, gap: 12 },
+  sigModalActions: { flexDirection: 'row', gap: 10 },
+  sigModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sigSavingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
   sigCancel: { alignItems: 'center', paddingVertical: 8 },
   sigButton: { paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
