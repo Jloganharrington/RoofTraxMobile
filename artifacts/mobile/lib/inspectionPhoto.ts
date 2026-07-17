@@ -152,9 +152,27 @@ async function assetToEvidencePhoto(
     try {
       const permission = await Location.getForegroundPermissionsAsync();
       if (permission.granted) {
-        const position = await Location.getCurrentPositionAsync({});
-        latitude = position.coords.latitude;
-        longitude = position.coords.longitude;
+        // Speed matters more than precision here: a cold getCurrentPositionAsync
+        // fix can take 5-10+ seconds PER PHOTO, which made every capture feel
+        // frozen. The OS keeps a recent cached fix (the rep is standing at the
+        // property, so a fix from the last couple of minutes is accurate) —
+        // use it instantly and only fall back to a live read, capped at 3s.
+        const lastKnown = await Location.getLastKnownPositionAsync({
+          maxAge: 2 * 60 * 1000,
+        });
+        if (lastKnown) {
+          latitude = lastKnown.coords.latitude;
+          longitude = lastKnown.coords.longitude;
+        } else {
+          const position = await Promise.race([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+          ]);
+          if (position) {
+            latitude = position.coords.latitude;
+            longitude = position.coords.longitude;
+          }
+        }
       }
     } catch {
       // Best-effort only — a missing GPS fix does not block evidence capture.
