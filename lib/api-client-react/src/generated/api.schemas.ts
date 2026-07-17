@@ -701,11 +701,13 @@ export type ComponentType = typeof ComponentType[keyof typeof ComponentType];
 
 
 export const ComponentType = {
+  gutter_apron: 'gutter_apron',
   drip_edge: 'drip_edge',
   ice_and_water_shield: 'ice_and_water_shield',
-  ventilation: 'ventilation',
-  decking: 'decking',
   underlayment: 'underlayment',
+  starter: 'starter',
+  decking: 'decking',
+  ventilation: 'ventilation',
   flashing: 'flashing',
   layer_count: 'layer_count',
 } as const;
@@ -1101,6 +1103,17 @@ export interface CreateInspectionComponentInput {
   /** @nullable */
   slopeId?: string | null;
   componentType: ComponentType;
+  status?: ComponentStatus | null;
+  /** @nullable */
+  layerCount?: number | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+/**
+ * Partial component update — only supplied fields change.
+ */
+export interface UpdateInspectionComponentInput {
   status?: ComponentStatus | null;
   /** @nullable */
   layerCount?: number | null;

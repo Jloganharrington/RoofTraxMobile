@@ -96,11 +96,14 @@ export type InspectionSubjectType = (typeof INSPECTION_SUBJECT_TYPES)[number];
 // logic: `status` is a raw present/absent/not-determined observation and
 // `layerCount` is a raw integer, both captured by the inspector.
 export const COMPONENT_TYPES = [
+  'gutter_apron',
   'drip_edge',
   'ice_and_water_shield',
-  'ventilation',
-  'decking',
   'underlayment',
+  'starter',
+  'decking',
+  'ventilation',
+  // Retired from the checklist UI but kept for legacy rows.
   'flashing',
   'layer_count',
 ] as const;

@@ -23,7 +23,7 @@ import {
 import type { ComponentStatus as ComponentStatusValue } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { createComponent, createPenetration } from '@/lib/inspectionSync';
+import { createComponent, createPenetration, deleteComponent, updateComponent } from '@/lib/inspectionSync';
 
 // C4 — Components documentation (grouped under the S3 slope/roof phase). Pure
 // documentation, no protocol gate: the inspector records which existing roof
@@ -32,17 +32,54 @@ import { createComponent, createPenetration } from '@/lib/inspectionSync';
 // eave/rake edge, and builds a roof-penetration inventory. Every record is a
 // raw fact — no derived quantities live here.
 
-const CHECKLIST: Array<{ type: ComponentTypeValue; label: string; hint: string }> = [
-  { type: ComponentType.drip_edge, label: 'Drip edge', hint: 'Metal edge at eaves & rakes' },
+// Checklist items are either a present/absent status observation or a
+// pick-one detail selection (stored in `notes`, with a raw present/absent
+// status derived from the option). Selections are editable: tapping a
+// different chip changes the record, tapping the active chip clears it.
+type ChecklistItem =
+  | { kind: 'status'; type: ComponentTypeValue; label: string; hint: string }
+  | {
+      kind: 'options';
+      type: ComponentTypeValue;
+      label: string;
+      hint: string;
+      options: Array<{ label: string; status: ComponentStatusValue }>;
+    };
+
+const CHECKLIST: ChecklistItem[] = [
+  { kind: 'status', type: ComponentType.gutter_apron, label: 'Gutter apron', hint: 'Metal edge at the eaves over the gutter' },
+  { kind: 'status', type: ComponentType.drip_edge, label: 'Drip edge', hint: 'Metal edge at eaves & rakes' },
   {
+    kind: 'status',
     type: ComponentType.ice_and_water_shield,
     label: 'Ice & water shield',
     hint: 'Peel-and-stick membrane at eaves/valleys',
   },
-  { type: ComponentType.ventilation, label: 'Ventilation', hint: 'Ridge / box / soffit vents' },
-  { type: ComponentType.decking, label: 'Decking', hint: 'Sheathing beneath the covering' },
-  { type: ComponentType.underlayment, label: 'Underlayment', hint: 'Felt / synthetic beneath shingles' },
-  { type: ComponentType.flashing, label: 'Flashing', hint: 'Wall / chimney / valley metal' },
+  { kind: 'status', type: ComponentType.underlayment, label: 'Underlayment', hint: 'Felt / synthetic beneath shingles' },
+  { kind: 'status', type: ComponentType.starter, label: 'Starter', hint: 'Starter strip at eaves & rakes' },
+  {
+    kind: 'options',
+    type: ComponentType.decking,
+    label: 'Decking',
+    hint: 'Sheathing beneath the covering',
+    options: [
+      { label: 'Plywood 3/8"', status: ComponentStatus.present },
+      { label: 'Plywood 1/2"+', status: ComponentStatus.present },
+      { label: 'Spaced Decking', status: ComponentStatus.present },
+    ],
+  },
+  {
+    kind: 'options',
+    type: ComponentType.ventilation,
+    label: 'Ventilation',
+    hint: 'Ridge / box / soffit vents',
+    options: [
+      { label: 'None', status: ComponentStatus.absent },
+      { label: 'Box Vents', status: ComponentStatus.present },
+      { label: 'Alum Ridge', status: ComponentStatus.present },
+      { label: 'SOS Ridge', status: ComponentStatus.present },
+    ],
+  },
 ];
 
 type ComponentTypeValue = (typeof ComponentType)[keyof typeof ComponentType];
@@ -75,6 +112,10 @@ export default function InspectionComponentsScreen() {
   const inspection = inspectionQuery.data?.inspection;
 
   const [savingType, setSavingType] = React.useState<ComponentTypeValue | null>(null);
+  // Synchronous single-flight guard: React state alone can't stop a rapid
+  // double-tap (the disabled prop only applies after a re-render), which
+  // could enqueue conflicting create/update/delete ops for the same type.
+  const inFlightTypes = React.useRef<Set<ComponentTypeValue>>(new Set());
   const [layerCount, setLayerCount] = React.useState('');
   const [savingLayer, setSavingLayer] = React.useState(false);
   const [penetrationModal, setPenetrationModal] = React.useState(false);
@@ -108,12 +149,52 @@ export default function InspectionComponentsScreen() {
   );
   const layerRecord = components.find((c) => c.componentType === ComponentType.layer_count) ?? null;
 
-  async function recordStatus(type: ComponentTypeValue, status: ComponentStatusValue) {
-    if (savingType || checklistRecords.has(type)) return;
+  // Tapping a chip creates the observation; tapping a different chip changes
+  // it; tapping the active chip deselects (removes the record).
+  async function tapStatus(type: ComponentTypeValue, status: ComponentStatusValue) {
+    if (inFlightTypes.current.has(type)) return;
+    inFlightTypes.current.add(type);
+    const record = checklistRecords.get(type);
     setSavingType(type);
     try {
-      await createComponent(queryClient, id, { componentType: type, status });
+      if (!record) {
+        await createComponent(queryClient, id, { componentType: type, status });
+      } else if (record.status === status) {
+        await deleteComponent(queryClient, id, record.id);
+      } else {
+        await updateComponent(queryClient, id, record.id, { status });
+      }
     } finally {
+      inFlightTypes.current.delete(type);
+      setSavingType(null);
+    }
+  }
+
+  async function tapOption(
+    type: ComponentTypeValue,
+    option: { label: string; status: ComponentStatusValue },
+  ) {
+    if (inFlightTypes.current.has(type)) return;
+    inFlightTypes.current.add(type);
+    const record = checklistRecords.get(type);
+    setSavingType(type);
+    try {
+      if (!record) {
+        await createComponent(queryClient, id, {
+          componentType: type,
+          status: option.status,
+          notes: option.label,
+        });
+      } else if (record.notes === option.label) {
+        await deleteComponent(queryClient, id, record.id);
+      } else {
+        await updateComponent(queryClient, id, record.id, {
+          status: option.status,
+          notes: option.label,
+        });
+      }
+    } finally {
+      inFlightTypes.current.delete(type);
       setSavingType(null);
     }
   }
@@ -177,10 +258,24 @@ export default function InspectionComponentsScreen() {
         {/* Existing components checklist */}
         <Text style={[styles.section, { color: colors.foreground }]}>Existing components</Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 13, marginBottom: 2 }}>
-          Record what the roof assembly already has. Each is captured once.
+          Record what the roof assembly already has. Tap again to deselect.
         </Text>
         {CHECKLIST.map((item) => {
           const record = checklistRecords.get(item.type);
+          const chips =
+            item.kind === 'status'
+              ? (Object.keys(STATUS_LABELS) as ComponentStatusValue[]).map((status) => ({
+                  key: status,
+                  label: STATUS_LABELS[status],
+                  active: record?.status === status,
+                  onPress: () => tapStatus(item.type, status),
+                }))
+              : item.options.map((option) => ({
+                  key: option.label,
+                  label: option.label,
+                  active: record?.notes === option.label,
+                  onPress: () => tapOption(item.type, option),
+                }));
           return (
             <View
               key={item.type}
@@ -192,35 +287,30 @@ export default function InspectionComponentsScreen() {
               </View>
               <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>{item.hint}</Text>
               <View style={styles.statusRow}>
-                {(Object.keys(STATUS_LABELS) as ComponentStatusValue[]).map((status) => {
-                  const active = record?.status === status;
-                  const disabled = !!record && !active;
-                  return (
-                    <Pressable
-                      key={status}
-                      onPress={() => recordStatus(item.type, status)}
-                      disabled={!!record || savingType === item.type}
-                      style={[
-                        styles.statusChip,
-                        {
-                          backgroundColor: active ? colors.primary : 'transparent',
-                          borderColor: active ? colors.primary : colors.border,
-                          opacity: disabled ? 0.4 : 1,
-                        },
-                      ]}
+                {chips.map((chip) => (
+                  <Pressable
+                    key={chip.key}
+                    onPress={chip.onPress}
+                    disabled={savingType === item.type}
+                    style={[
+                      styles.statusChip,
+                      {
+                        backgroundColor: chip.active ? colors.primary : 'transparent',
+                        borderColor: chip.active ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: chip.active ? colors.primaryForeground : colors.foreground,
+                        fontSize: 13,
+                        fontWeight: '600',
+                      }}
                     >
-                      <Text
-                        style={{
-                          color: active ? colors.primaryForeground : colors.foreground,
-                          fontSize: 13,
-                          fontWeight: '600',
-                        }}
-                      >
-                        {STATUS_LABELS[status]}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                      {chip.label}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
           );

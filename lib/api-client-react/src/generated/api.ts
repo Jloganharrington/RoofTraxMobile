@@ -87,6 +87,7 @@ import type {
   TeamUserListEnvelope,
   TestSquareEnvelope,
   TestSquareHitEnvelope,
+  UpdateInspectionComponentInput,
   UpdateInspectionInput,
   UpdateInspectionSlopeInput,
   UpdatePinInput,
@@ -2924,6 +2925,153 @@ export const useCreateInspectionComponent = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getCreateInspectionComponentMutationOptions(options));
+    }
+
+export const getUpdateInspectionComponentUrl = (inspectionId: string,
+    componentId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/components/${componentId}`
+}
+
+/**
+ * @summary Update an existing-component observation
+ */
+export const updateInspectionComponent = async (inspectionId: string,
+    componentId: string,
+    updateInspectionComponentInput: UpdateInspectionComponentInput, options?: RequestInit): Promise<InspectionComponentEnvelope> => {
+
+  return customFetch<InspectionComponentEnvelope>(getUpdateInspectionComponentUrl(inspectionId,componentId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateInspectionComponentInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateInspectionComponentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionComponent>>, TError,{inspectionId: string;componentId: string;data: BodyType<UpdateInspectionComponentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInspectionComponent>>, TError,{inspectionId: string;componentId: string;data: BodyType<UpdateInspectionComponentInput>}, TContext> => {
+
+const mutationKey = ['updateInspectionComponent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInspectionComponent>>, {inspectionId: string;componentId: string;data: BodyType<UpdateInspectionComponentInput>}> = (props) => {
+          const {inspectionId,componentId,data} = props ?? {};
+
+          return  updateInspectionComponent(inspectionId,componentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInspectionComponentMutationResult = NonNullable<Awaited<ReturnType<typeof updateInspectionComponent>>>
+    export type UpdateInspectionComponentMutationBody = BodyType<UpdateInspectionComponentInput>
+    export type UpdateInspectionComponentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update an existing-component observation
+ */
+export const useUpdateInspectionComponent = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionComponent>>, TError,{inspectionId: string;componentId: string;data: BodyType<UpdateInspectionComponentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInspectionComponent>>,
+        TError,
+        {inspectionId: string;componentId: string;data: BodyType<UpdateInspectionComponentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInspectionComponentMutationOptions(options));
+    }
+
+export const getDeleteInspectionComponentUrl = (inspectionId: string,
+    componentId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/components/${componentId}`
+}
+
+/**
+ * @summary Remove an existing-component observation
+ */
+export const deleteInspectionComponent = async (inspectionId: string,
+    componentId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteInspectionComponentUrl(inspectionId,componentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteInspectionComponentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionComponent>>, TError,{inspectionId: string;componentId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionComponent>>, TError,{inspectionId: string;componentId: string}, TContext> => {
+
+const mutationKey = ['deleteInspectionComponent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInspectionComponent>>, {inspectionId: string;componentId: string}> = (props) => {
+          const {inspectionId,componentId} = props ?? {};
+
+          return  deleteInspectionComponent(inspectionId,componentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInspectionComponentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInspectionComponent>>>
+
+    export type DeleteInspectionComponentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Remove an existing-component observation
+ */
+export const useDeleteInspectionComponent = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionComponent>>, TError,{inspectionId: string;componentId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInspectionComponent>>,
+        TError,
+        {inspectionId: string;componentId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteInspectionComponentMutationOptions(options));
     }
 
 export const getCreateInspectionPenetrationUrl = (inspectionId: string,) => {

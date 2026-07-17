@@ -15,3 +15,5 @@ description: Two protocol-v2 review lessons — timestamp-only outbox ordering b
 Permanently rejected (4xx) outbox items are marked `dead` and never retried — but readiness/unsynced counts MUST include `dead` rows, or a package silently submits with evidence that never reached the server.
 **Why:** dropping poisoned items from retry AND from the pending count broke the "submit only when fully drained" guarantee (caught in review).
 **How to apply:** any new status that removes items from the drain loop must be added to `countUnsyncedWritesForInspection`-style gating queries.
+
+- Editable child records (toggle-style UI) need: 404-tolerant replay on BOTH delete and update handlers (a queued update can trail a local delete), and a synchronous ref-based in-flight guard in the tap handler — React `disabled` state alone can't stop a double-tap from enqueuing conflicting ops.

@@ -1251,6 +1251,95 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/components/{componentId}:
+    patch:
+      tags: [Inspections]
+      operationId: updateInspectionComponent
+      summary: Update an existing-component observation
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: componentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInspectionComponentInput"
+      responses:
+        "200":
+          description: Component updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionComponentEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or component not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Inspections]
+      operationId: deleteInspectionComponent
+      summary: Remove an existing-component observation
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: componentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Component removed.
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or component not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /inspections/{inspectionId}/penetrations:
     post:
       tags: [Inspections]
@@ -3382,7 +3471,7 @@ components:
 
     ComponentType:
       type: string
-      enum: [drip_edge, ice_and_water_shield, ventilation, decking, underlayment, flashing, layer_count]
+      enum: [gutter_apron, drip_edge, ice_and_water_shield, underlayment, starter, decking, ventilation, flashing, layer_count]
     ComponentStatus:
       type: string
       enum: [present, absent, not_determined]
@@ -3425,6 +3514,18 @@ components:
           type: [string, "null"]
         componentType:
           $ref: "#/components/schemas/ComponentType"
+        status:
+          oneOf:
+            - $ref: "#/components/schemas/ComponentStatus"
+            - type: "null"
+        layerCount:
+          type: [number, "null"]
+        notes:
+          type: [string, "null"]
+    UpdateInspectionComponentInput:
+      type: object
+      description: Partial component update — only supplied fields change.
+      properties:
         status:
           oneOf:
             - $ref: "#/components/schemas/ComponentStatus"

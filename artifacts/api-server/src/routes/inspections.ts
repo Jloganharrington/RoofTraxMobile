@@ -17,6 +17,8 @@ import {
   CreateInspectionResponse,
   CreateInspectionSlopeBody,
   CreateInspectionSlopeResponse,
+  UpdateInspectionComponentBody,
+  UpdateInspectionComponentResponse,
   UpdateInspectionSlopeBody,
   UpdateInspectionSlopeResponse,
   CreateInteriorObservationBody,
@@ -979,6 +981,90 @@ router.post('/inspections/:inspectionId/components', async (req: Request, res: R
 
   res.status(201).json(CreateInspectionComponentResponse.parse({ component }));
 });
+
+// C4 — existing-component observations are editable: the inspector can change
+// a status/detail selection or clear it entirely.
+router.patch(
+  '/inspections/:inspectionId/components/:componentId',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const parsed = UpdateInspectionComponentBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid component payload' });
+      return;
+    }
+
+    const setValues = {
+      ...(parsed.data.status !== undefined && { status: parsed.data.status }),
+      ...(parsed.data.layerCount !== undefined && { layerCount: parsed.data.layerCount }),
+      ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
+    };
+    const componentWhere = and(
+      eq(inspectionComponentsTable.id, req.params.componentId as string),
+      eq(inspectionComponentsTable.inspectionId, inspectionId),
+      eq(inspectionComponentsTable.companyId, actor.companyId),
+    );
+
+    // Replay tolerance: a patch with no recognized fields is a no-op, not a
+    // 500 — return the current row so the client can settle.
+    if (Object.keys(setValues).length === 0) {
+      const [current] = await db.select().from(inspectionComponentsTable).where(componentWhere);
+      if (!current) {
+        res.status(404).json({ error: 'Component not found' });
+        return;
+      }
+      res.json(UpdateInspectionComponentResponse.parse({ component: current }));
+      return;
+    }
+
+    const [updated] = await db
+      .update(inspectionComponentsTable)
+      .set(setValues)
+      .where(componentWhere)
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Component not found' });
+      return;
+    }
+    res.json(UpdateInspectionComponentResponse.parse({ component: updated }));
+  },
+);
+
+router.delete(
+  '/inspections/:inspectionId/components/:componentId',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const [deleted] = await db
+      .delete(inspectionComponentsTable)
+      .where(
+        and(
+          eq(inspectionComponentsTable.id, req.params.componentId as string),
+          eq(inspectionComponentsTable.inspectionId, inspectionId),
+          eq(inspectionComponentsTable.companyId, actor.companyId),
+        ),
+      )
+      .returning();
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Component not found' });
+      return;
+    }
+    res.status(204).end();
+  },
+);
 
 router.post('/inspections/:inspectionId/penetrations', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);

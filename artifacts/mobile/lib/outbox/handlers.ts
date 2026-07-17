@@ -13,7 +13,9 @@ import {
   createMeasurement,
   createTestSquare,
   createTestSquareHit,
+  deleteInspectionComponent,
   deleteInspectionSlope,
+  updateInspectionComponent,
   submitInspection,
   updateInspection,
   updateInspectionSlope,
@@ -35,6 +37,7 @@ import type {
   InspectionSubjectType,
   PhotoTriadRole,
   SubmitInspectionInput,
+  UpdateInspectionComponentInput,
   UpdateInspectionInput,
   UpdateInspectionSlopeInput,
 } from '@workspace/api-client-react';
@@ -43,6 +46,8 @@ import { uploadFile } from '../upload';
 import type {
   InspectionAttestationOutboxPayload,
   InspectionChildCreateOutboxPayload,
+  InspectionComponentDeleteOutboxPayload,
+  InspectionComponentUpdateOutboxPayload,
   InspectionCreateOutboxPayload,
   InspectionPhotoOutboxPayload,
   InspectionSlopeDeleteOutboxPayload,
@@ -168,6 +173,35 @@ async function syncInspectionComponent(payloadJson: string): Promise<void> {
   );
 }
 
+async function syncInspectionComponentUpdate(payloadJson: string): Promise<void> {
+  const payload: InspectionComponentUpdateOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await updateInspectionComponent(
+      payload.inspectionId,
+      payload.componentId,
+      payload.patch as unknown as UpdateInspectionComponentInput,
+    );
+  } catch (error) {
+    // Replay tolerance: a queued update whose component was deleted by a
+    // later local action would otherwise be permanently rejected (dead) and
+    // block submission readiness. The row being gone means the update is
+    // moot — treat it as success.
+    if (error instanceof Error && /404/.test(error.message)) return;
+    throw error;
+  }
+}
+
+async function syncInspectionComponentDelete(payloadJson: string): Promise<void> {
+  const payload: InspectionComponentDeleteOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await deleteInspectionComponent(payload.inspectionId, payload.componentId);
+  } catch (error) {
+    // Idempotent replay: the component already being gone is success.
+    if (error instanceof Error && /404/.test(error.message)) return;
+    throw error;
+  }
+}
+
 async function syncInspectionPenetration(payloadJson: string): Promise<void> {
   const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
   await createInspectionPenetration(
@@ -236,6 +270,8 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.slopeDelete': syncInspectionSlopeDelete,
   'inspection.damage': syncInspectionDamage,
   'inspection.component': syncInspectionComponent,
+  'inspection.componentUpdate': syncInspectionComponentUpdate,
+  'inspection.componentDelete': syncInspectionComponentDelete,
   'inspection.penetration': syncInspectionPenetration,
   'inspection.product': syncInspectionProduct,
   'inspection.testSquare': syncInspectionTestSquare,

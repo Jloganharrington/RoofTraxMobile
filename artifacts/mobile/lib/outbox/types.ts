@@ -15,6 +15,8 @@ export type OutboxItemKind =
   | 'inspection.slopeDelete'
   | 'inspection.damage'
   | 'inspection.component'
+  | 'inspection.componentUpdate'
+  | 'inspection.componentDelete'
   | 'inspection.penetration'
   | 'inspection.product'
   | 'inspection.testSquare'
@@ -92,6 +94,21 @@ export interface InspectionSlopeUpdateOutboxPayload {
 export interface InspectionSlopeDeleteOutboxPayload {
   inspectionId: string;
   slopeId: string;
+}
+
+/** Offline-first component update. Replays after the component's own create
+ * (FIFO) and is idempotent server-side. */
+export interface InspectionComponentUpdateOutboxPayload {
+  inspectionId: string;
+  componentId: string;
+  patch: Record<string, unknown>;
+}
+
+/** Offline-first component delete. Idempotent: a 404 on replay means the
+ * component is already gone and counts as success. */
+export interface InspectionComponentDeleteOutboxPayload {
+  inspectionId: string;
+  componentId: string;
 }
 
 /** Offline-first test-square hit create (D1). Carries the parent

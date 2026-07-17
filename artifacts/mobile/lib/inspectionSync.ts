@@ -15,6 +15,7 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
   CreateInspectionSlopeInput,
+  UpdateInspectionComponentInput,
   UpdateInspectionSlopeInput,
   CreateInteriorObservationInput,
   CreateMeasurementInput,
@@ -311,6 +312,37 @@ export async function createComponent(
   await enqueueOutboxItem('inspection.component', { inspectionId, input });
   void drainOutbox();
   return id;
+}
+
+/** Updates a C4 component observation offline-first (change a selection). */
+export async function updateComponent(
+  queryClient: QueryClient,
+  inspectionId: string,
+  componentId: string,
+  patch: UpdateInspectionComponentInput,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    components: (inspection.components ?? []).map((component) =>
+      component.id === componentId ? { ...component, ...patch } : component,
+    ),
+  }));
+  await enqueueOutboxItem('inspection.componentUpdate', { inspectionId, componentId, patch });
+  void drainOutbox();
+}
+
+/** Removes a C4 component observation offline-first (deselect). */
+export async function deleteComponent(
+  queryClient: QueryClient,
+  inspectionId: string,
+  componentId: string,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    components: (inspection.components ?? []).filter((component) => component.id !== componentId),
+  }));
+  await enqueueOutboxItem('inspection.componentDelete', { inspectionId, componentId });
+  void drainOutbox();
 }
 
 /** Creates a C4 roof-penetration inventory record offline-first and returns

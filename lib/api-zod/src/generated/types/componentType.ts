@@ -10,11 +10,13 @@ export type ComponentType = typeof ComponentType[keyof typeof ComponentType];
 
 
 export const ComponentType = {
+  gutter_apron: 'gutter_apron',
   drip_edge: 'drip_edge',
   ice_and_water_shield: 'ice_and_water_shield',
-  ventilation: 'ventilation',
-  decking: 'decking',
   underlayment: 'underlayment',
+  starter: 'starter',
+  decking: 'decking',
+  ventilation: 'ventilation',
   flashing: 'flashing',
   layer_count: 'layer_count',
 } as const;
