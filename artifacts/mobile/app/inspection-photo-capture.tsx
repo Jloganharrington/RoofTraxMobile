@@ -133,9 +133,12 @@ export default function InspectionPhotoCaptureScreen() {
   // session reuses the single created damage record.
   const damageIdRef = React.useRef<string | null>(null);
   const causationLocked = damageId !== null;
-  // Damage evidence shows the causation selection with just the capture
-  // buttons below it — no "Wide shot" step label.
-  const hideStepLabels = params.subjectType === 'damage_instance';
+  // Step labels ("Wide shot" / "Mid shot" / "Close-up") only make sense when
+  // a full triad is being captured. Damage evidence shows the causation
+  // selection with just the capture buttons below it, and single-shot
+  // sessions already name the subject in the header title — the generic
+  // "Wide shot" label adds nothing.
+  const hideStepLabels = params.subjectType === 'damage_instance' || steps.length === 1;
   const captureBlocked = isNewDamageCapture && !causation;
 
   const nextStep = useMemo(() => steps.find((step) => !shots[step.role]), [steps, shots]);
