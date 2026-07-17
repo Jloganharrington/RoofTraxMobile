@@ -581,6 +581,16 @@ export type SubmissionManifestV1GateResults = {
   softFlags: GateFinding[];
 };
 
+export interface TieInFacetRef {
+  slopeId: string;
+  label: string;
+}
+
+export type SubmissionManifestV1TieInProtocols = {
+  valley: TieInFacetRef[];
+  hipRidge: TieInFacetRef[];
+};
+
 export interface SignatureOnFileRef {
   url: string;
   sha256: string;
@@ -599,6 +609,7 @@ export interface SubmissionManifestV1 {
   photoHashes: SubmissionPhotoHash[];
   gateResults: SubmissionManifestV1GateResults;
   signatureOnFile?: SignatureOnFileRef | null;
+  tieInProtocols?: SubmissionManifestV1TieInProtocols;
 }
 
 export interface InspectionSlope {

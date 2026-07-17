@@ -712,7 +712,17 @@ export const ListInspectionsResponse = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
@@ -956,7 +966,17 @@ export const CreateInspectionResponse = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
@@ -1186,7 +1206,17 @@ export const GetInspectionResponse = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
@@ -1461,7 +1491,17 @@ export const UpdateInspectionResponse = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
@@ -2114,7 +2154,17 @@ export const SubmitInspectionBody = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.')
 })
 
@@ -2189,7 +2239,17 @@ export const SubmitInspectionResponse = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "lockedAt": zod.coerce.date().nullable().describe('Set at submission verification (M-F \/ F2); non-null means the record is locked and immutable — corrections must be filed as addenda.'),
   "createdAt": zod.coerce.date(),
@@ -2417,7 +2477,17 @@ export const GetInspectionStatusResponse = zod.object({
   "url": zod.string(),
   "sha256": zod.string(),
   "signedAt": zod.coerce.date().nullish()
-}),zod.null()]).optional()
+}),zod.null()]).optional(),
+  "tieInProtocols": zod.object({
+  "valley": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+})),
+  "hipRidge": zod.array(zod.object({
+  "slopeId": zod.string(),
+  "label": zod.string()
+}))
+}).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.'),zod.null()]),
   "receipt": zod.union([zod.object({
   "stage": zod.enum(['pending', 'received', 'validated']),

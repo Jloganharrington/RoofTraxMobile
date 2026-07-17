@@ -71,6 +71,15 @@ function assembleManifest(
     attestations: (inspection.attestations ?? []).map((r) => r.id),
     photos: photos.map((r) => r.id),
   };
+  // Tie-in summary — which facets each cut protocol applies to. The Brain
+  // keys the fixed tie-in exhibit off these lists.
+  const slopes = inspection.slopes ?? [];
+  const tieInProtocols = {
+    valley: slopes.filter((s) => s.tieInValley).map((s) => ({ slopeId: s.id, label: s.label })),
+    hipRidge: slopes
+      .filter((s) => s.tieInHipRidge)
+      .map((s) => ({ slopeId: s.id, label: s.label })),
+  };
   return {
     protocolVersion: 'v1',
     generatedAtUtc: new Date().toISOString(),
@@ -79,6 +88,7 @@ function assembleManifest(
       .filter((p) => p.sha256)
       .map((p) => ({ photoId: p.id, sha256: p.sha256 as string })),
     gateResults: { deficiencies: gate.deficiencies, softFlags: gate.softFlags },
+    tieInProtocols,
     // M-F (F0) — carry the inspector's on-file signature so the package is
     // self-contained. The server is the source of truth and re-stamps this from
     // the profile, but including it keeps the client-assembled manifest complete.

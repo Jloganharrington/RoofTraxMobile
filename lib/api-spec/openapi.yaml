@@ -2865,6 +2865,28 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SignatureOnFileRef"
             - type: "null"
+        # Tie-in protocol summary — which facets each cut protocol applies
+        # to. The Brain keys the fixed tie-in exhibit off these lists.
+        tieInProtocols:
+          type: object
+          required: [valley, hipRidge]
+          properties:
+            valley:
+              type: array
+              items:
+                $ref: "#/components/schemas/TieInFacetRef"
+            hipRidge:
+              type: array
+              items:
+                $ref: "#/components/schemas/TieInFacetRef"
+    TieInFacetRef:
+      type: object
+      required: [slopeId, label]
+      properties:
+        slopeId:
+          type: string
+        label:
+          type: string
     SignatureOnFileRef:
       type: object
       required: [url, sha256]

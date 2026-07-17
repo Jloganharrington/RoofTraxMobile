@@ -8,6 +8,7 @@
 import type { SignatureOnFileRef } from './signatureOnFileRef';
 import type { SubmissionManifestV1GateResults } from './submissionManifestV1GateResults';
 import type { SubmissionManifestV1Records } from './submissionManifestV1Records';
+import type { SubmissionManifestV1TieInProtocols } from './submissionManifestV1TieInProtocols';
 import type { SubmissionPhotoHash } from './submissionPhotoHash';
 
 /**
@@ -21,4 +22,5 @@ export interface SubmissionManifestV1 {
   photoHashes: SubmissionPhotoHash[];
   gateResults: SubmissionManifestV1GateResults;
   signatureOnFile?: SignatureOnFileRef | null;
+  tieInProtocols?: SubmissionManifestV1TieInProtocols;
 }
