@@ -143,7 +143,7 @@ export default function InspectionIntakeScreen() {
           </View>
         ) : null}
 
-        <Field label="Owners name" value={insuredName} onChange={setInsuredName} placeholder="Homeowner name" />
+        <Field label="Owners name" value={insuredName} onChange={setInsuredName} placeholder="Homeowner name" autoCapitalize="words" />
         <AddressAutocompleteField
           value={address}
           // Any manual edit drops the coordinates so we never submit a typed
@@ -159,7 +159,7 @@ export default function InspectionIntakeScreen() {
             setLongitude(result.longitude);
           }}
         />
-        <Field label="Carrier" value={carrierName} onChange={setCarrierName} placeholder="Insurance carrier" />
+        <Field label="Carrier" value={carrierName} onChange={setCarrierName} placeholder="Insurance carrier" autoCapitalize="words" />
         <Field label="Policy number" value={policyNumber} onChange={setPolicyNumber} />
         <Field label="Claim number" value={claimNumber} onChange={setClaimNumber} />
         <Field label="Date of loss" value={dateOfLoss} onChange={setDateOfLoss} placeholder="YYYY-MM-DD" />
@@ -194,6 +194,7 @@ function Field({
   placeholder,
   multiline,
   keyboardType,
+  autoCapitalize,
 }: {
   label: string;
   value: string;
@@ -201,6 +202,7 @@ function Field({
   placeholder?: string;
   multiline?: boolean;
   keyboardType?: 'default' | 'numeric';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }) {
   const colors = useColors();
   return (
@@ -213,6 +215,7 @@ function Field({
         placeholderTextColor={colors.mutedForeground}
         multiline={multiline}
         keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
         style={[
           styles.input,
           multiline && { height: 88, textAlignVertical: 'top' },
