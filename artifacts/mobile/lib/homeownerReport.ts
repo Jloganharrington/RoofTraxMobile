@@ -100,23 +100,53 @@ async function imageToDataUri(uri: string, headers?: Record<string, string>): Pr
   }
 }
 
+// expo-file-system v19 File methods aren't on the exported type; see
+// UsableFile above. `write` accepts a base64 payload when told so.
+interface WritableFile extends UsableFile {
+  write(content: string, options?: { encoding?: 'base64' | 'utf8' }): void;
+}
+
 // Downscale + recompress a photo before it's embedded in the report. Evidence
 // photos are full-resolution camera captures (8-12MB each); embedding them
 // verbatim produces a PDF so large that the iOS Mail compose extension (which
 // runs under a strict memory cap) is killed by the OS seconds after the user
 // picks Email from the share sheet — the "share sheet keeps closing" bug.
-// ~1280px JPEG is plenty for an emailed summary. Falls back to the original
-// on any failure so a manipulation error never sinks the report.
+// ~1280px JPEG is plenty for an emailed summary.
+//
+// The manipulator is fed a real temp FILE, not the base64 data URI — data-URI
+// input silently fails on some platforms, which made the earlier version fall
+// back to the uncompressed original (and Mail kept dying). Failures are now
+// logged instead of swallowed silently, but still fall back to the original
+// so one bad photo never sinks the report.
 async function compressForReport(dataUri: string): Promise<string> {
+  const comma = dataUri.indexOf(',');
+  const srcBase64 = comma >= 0 ? dataUri.slice(comma + 1) : '';
+  if (!srcBase64) return dataUri;
+  let tmp: WritableFile | null = null;
   try {
+    tmp = new File(
+      Paths.cache,
+      `report-src-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`,
+    ) as unknown as WritableFile;
+    tmp.write(srcBase64, { encoding: 'base64' });
     const result = await ImageManipulator.manipulateAsync(
-      dataUri,
+      tmp.uri,
       [{ resize: { width: 1280 } }],
       { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
     );
-    if (result.base64) return `data:image/jpeg;base64,${result.base64}`;
-  } catch {
-    // fall through to the uncompressed original
+    if (result.base64) {
+      console.log(
+        `[report] photo compressed ${Math.round(srcBase64.length / 1024)}KB -> ${Math.round(result.base64.length / 1024)}KB`,
+      );
+      return `data:image/jpeg;base64,${result.base64}`;
+    }
+    console.warn('[report] compress returned no base64; using original');
+  } catch (err) {
+    console.warn('[report] compress failed; using original', err);
+  } finally {
+    try {
+      if (tmp?.exists) tmp.delete();
+    } catch {}
   }
   return dataUri;
 }
