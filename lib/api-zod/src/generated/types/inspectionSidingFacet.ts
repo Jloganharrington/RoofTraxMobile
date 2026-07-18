@@ -20,6 +20,11 @@ export interface InspectionSidingFacet {
      * @nullable
      */
   wrbPresent: boolean | null;
+  /**
+     * Is this an isolated siding facet? Null until answered.
+     * @nullable
+     */
+  isolated?: boolean | null;
   /** Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own 'component'-role photo whose sidingComponentIndex matches. */
   components: SidingFacetComponent[];
   /** @nullable */

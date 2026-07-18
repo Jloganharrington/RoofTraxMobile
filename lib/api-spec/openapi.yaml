@@ -4098,6 +4098,9 @@ components:
         wrbPresent:
           type: [boolean, "null"]
           description: Water-resistive barrier present? Null until answered.
+        isolated:
+          type: [boolean, "null"]
+          description: Is this an isolated siding facet? Null until answered.
         components:
           type: array
           description: >-
@@ -4133,6 +4136,8 @@ components:
             - type: "null"
         wrbPresent:
           type: [boolean, "null"]
+        isolated:
+          type: [boolean, "null"]
         components:
           type: array
           items:
@@ -4153,6 +4158,8 @@ components:
             - $ref: "#/components/schemas/SidingDamageType"
             - type: "null"
         wrbPresent:
+          type: [boolean, "null"]
+        isolated:
           type: [boolean, "null"]
         components:
           type: array

@@ -278,6 +278,7 @@ export async function createSidingFacet(
       damaged: fields.damaged ?? false,
       damageType: fields.damageType ?? null,
       wrbPresent: fields.wrbPresent ?? null,
+      isolated: fields.isolated ?? null,
       components: fields.components ?? [],
       notes: fields.notes ?? null,
       createdAt: now,

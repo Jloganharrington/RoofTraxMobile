@@ -941,6 +941,7 @@ router.post('/inspections/:inspectionId/siding-facets', async (req: Request, res
     damaged: parsed.data.damaged ?? undefined,
     damageType: parsed.data.damageType ?? undefined,
     wrbPresent: parsed.data.wrbPresent ?? undefined,
+    isolated: parsed.data.isolated ?? undefined,
     components: parsed.data.components ?? undefined,
     notes: parsed.data.notes ?? undefined,
   };
@@ -1004,6 +1005,7 @@ router.patch(
       ...(parsed.data.damaged !== undefined && { damaged: parsed.data.damaged }),
       ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
       ...(parsed.data.wrbPresent !== undefined && { wrbPresent: parsed.data.wrbPresent }),
+      ...(parsed.data.isolated !== undefined && { isolated: parsed.data.isolated }),
       ...(parsed.data.components !== undefined && { components: parsed.data.components }),
       ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
     };

@@ -938,6 +938,7 @@ export const ListInspectionsResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
@@ -1225,6 +1226,7 @@ export const CreateInspectionResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
@@ -1495,6 +1497,7 @@ export const GetInspectionResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
@@ -1815,6 +1818,7 @@ export const UpdateInspectionResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
@@ -1895,6 +1899,7 @@ export const CreateInspectionSidingFacetBody = zod.object({
   "damaged": zod.boolean().optional(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]).optional(),
   "wrbPresent": zod.boolean().nullish(),
+  "isolated": zod.boolean().nullish(),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).optional(),
@@ -1910,6 +1915,7 @@ export const CreateInspectionSidingFacetResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
@@ -1935,6 +1941,7 @@ export const UpdateInspectionSidingFacetBody = zod.object({
   "damaged": zod.boolean().optional(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]).optional(),
   "wrbPresent": zod.boolean().nullish(),
+  "isolated": zod.boolean().nullish(),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).optional(),
@@ -1950,6 +1957,7 @@ export const UpdateInspectionSidingFacetResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
@@ -2765,6 +2773,7 @@ export const SubmitInspectionResponse = zod.object({
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
   "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),

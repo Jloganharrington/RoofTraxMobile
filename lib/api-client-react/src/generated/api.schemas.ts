@@ -1107,6 +1107,11 @@ export interface InspectionSidingFacet {
      * @nullable
      */
   wrbPresent: boolean | null;
+  /**
+     * Is this an isolated siding facet? Null until answered.
+     * @nullable
+     */
+  isolated?: boolean | null;
   /** Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own 'component'-role photo whose sidingComponentIndex matches. */
   components: SidingFacetComponent[];
   /** @nullable */
@@ -1379,6 +1384,8 @@ export interface CreateInspectionSidingFacetInput {
   damageType?: SidingDamageType | null;
   /** @nullable */
   wrbPresent?: boolean | null;
+  /** @nullable */
+  isolated?: boolean | null;
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
@@ -1394,6 +1401,8 @@ export interface UpdateInspectionSidingFacetInput {
   damageType?: SidingDamageType | null;
   /** @nullable */
   wrbPresent?: boolean | null;
+  /** @nullable */
+  isolated?: boolean | null;
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;

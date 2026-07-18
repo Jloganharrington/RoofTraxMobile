@@ -81,6 +81,7 @@ export default function InspectionSidingFacetScreen() {
   const facetState = state.sidingFacets.find((f) => f.id === sidingFacetId);
   const damaged = Boolean(facet.damaged);
   const damageType = (facet.damageType as SidingDamageType | null) ?? null;
+  const isolated = (facet.isolated as boolean | null) ?? null;
   const components = ((facet.components ?? []) as FacetComponent[]);
 
   const facetPhotoDone = facetState?.facetPhotoCaptured ?? false;
@@ -98,6 +99,11 @@ export default function InspectionSidingFacetScreen() {
 
   async function setDamageType(type: SidingDamageType) {
     await updateSidingFacet(queryClient, id, sidingFacetId, { damageType: type });
+  }
+
+  async function setIsolated(value: boolean) {
+    if (isolated === value) return;
+    await updateSidingFacet(queryClient, id, sidingFacetId, { isolated: value });
   }
 
   async function setComponents(next: FacetComponent[]) {
@@ -250,6 +256,12 @@ export default function InspectionSidingFacetScreen() {
           </Pressable>
         </>
       ) : null}
+
+      {/* Isolated facet — Yes/No */}
+      <Text style={[styles.section, { color: colors.foreground }]}>
+        Is this an isolated Siding Facet?
+      </Text>
+      {yesNoRow(isolated, (v) => void setIsolated(v))}
 
       {/* Facet overview photo — always required */}
       <Text style={[styles.section, { color: colors.foreground }]}>Facet photo</Text>

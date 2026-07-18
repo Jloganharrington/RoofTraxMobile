@@ -18,6 +18,8 @@ export interface UpdateInspectionSidingFacetInput {
   damageType?: SidingDamageType | null;
   /** @nullable */
   wrbPresent?: boolean | null;
+  /** @nullable */
+  isolated?: boolean | null;
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;

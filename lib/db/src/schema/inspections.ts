@@ -531,6 +531,8 @@ export const inspectionSidingFacetsTable = pgTable('inspection_siding_facets', {
   // Water-resistive barrier present? Null until the inspector answers; new
   // facets default from the first facet's answer client-side.
   wrbPresent: boolean('wrb_present'),
+  // Is this an isolated siding facet? Null until the inspector answers.
+  isolated: boolean('isolated'),
   // Positional component list: components[k-1] is S{n}C{k}. Each entry holds
   // its disposition (`action`: 'detach_reset' | 'remove_replace' | null).
   components: jsonb('components')
