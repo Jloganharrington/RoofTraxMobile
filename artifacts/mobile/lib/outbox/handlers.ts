@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import {
   createAttestation,
+  createBugReport,
   createDamageInstance,
   createInspection,
   createInspectionComponent,
@@ -25,6 +26,7 @@ import {
 } from '@workspace/api-client-react';
 import type {
   CreateAttestationInput,
+  CreateBugReportInput,
   CreateDamageInstanceInput,
   CreateInspectionComponentInput,
   CreateInspectionElevationInput,
@@ -50,6 +52,7 @@ import type {
 
 import { uploadFile } from '../upload';
 import type {
+  BugReportOutboxPayload,
   InspectionAttestationOutboxPayload,
   InspectionChildCreateOutboxPayload,
   InspectionComponentDeleteOutboxPayload,
@@ -296,6 +299,36 @@ async function syncInspectionInteriorObservation(payloadJson: string): Promise<v
   );
 }
 
+// Beta bug report. Idempotent by client-generated id (the server treats a
+// replayed id as success). Screenshot (if any) rides the existing presigned
+// photo-upload path first; a retry after a partial failure re-uploads the
+// file, same accepted caveat as inspection photos.
+async function syncBugReport(payloadJson: string): Promise<void> {
+  const payload: BugReportOutboxPayload = JSON.parse(payloadJson);
+
+  let screenshotUrl: string | null = null;
+  if (payload.screenshotLocalPath) {
+    screenshotUrl = await uploadFile(
+      payload.screenshotLocalPath,
+      payload.screenshotMimeType ?? 'image/jpeg',
+    );
+  }
+
+  await createBugReport({
+    id: payload.id,
+    route: payload.route,
+    routeParams: payload.routeParams ?? undefined,
+    severity: payload.severity,
+    description: payload.description,
+    context: payload.context,
+    screenshotUrl,
+    appVersion: payload.appVersion,
+    platform: payload.platform,
+    osVersion: payload.osVersion,
+    capturedAt: payload.capturedAt,
+  } as unknown as CreateBugReportInput);
+}
+
 // The submission is the last write in the queue for an inspection — it replays
 // after every child create it references (FIFO), so by the time it lands the
 // records and photo hashes in its manifest already exist server-side.
@@ -327,4 +360,5 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.measurement': syncInspectionMeasurement,
   'inspection.interiorObservation': syncInspectionInteriorObservation,
   'inspection.submission': syncInspectionSubmission,
+  'bug_report': syncBugReport,
 };

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { BugReportButton } from '@/components/BugReportButton';
 import { CompanyGateScreen } from '@/components/CompanyGateScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import '@/lib/api';
@@ -48,6 +49,7 @@ function AuthenticatedStack() {
   useOutboxSync();
 
   return (
+    <View style={{ flex: 1 }}>
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="map" options={{ title: 'Add Pins' }} />
@@ -90,7 +92,14 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection-homeowner" options={{ title: 'Homeowner' }} />
       <Stack.Screen name="inspection-readiness" options={{ title: 'Readiness' }} />
       <Stack.Screen name="inspection-declaration" options={{ title: 'Declaration' }} />
+      <Stack.Screen name="bug-reports" options={{ title: 'Bug Reports' }} />
     </Stack>
+    {/* Beta bug-report pill: mounted ONCE here (never per-screen), renders
+        above every authenticated screen, hidden on login by construction
+        (this component only exists inside the authenticated stack). Gated on
+        the company betaBugReporting flag internally. */}
+    <BugReportButton />
+    </View>
   );
 }
 

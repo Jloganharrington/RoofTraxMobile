@@ -172,6 +172,45 @@ export const userLocationsTable = pgTable('user_locations', {
     .defaultNow(),
 });
 
+// Beta bug reports — temporary beta instrument (flag-gated by
+// companies.beta_bug_reporting). The value of a report is the auto-captured
+// context, stored whole as jsonb: over-capture now, because context can never
+// be collected retroactively once the beta ends. Descriptions and screenshots
+// WILL contain homeowner PII, so rows are company-scoped exactly like
+// inspection data and screenshots live in the same object storage.
+export const BUG_REPORT_SEVERITIES = ['blocks_me', 'annoying', 'cosmetic'] as const;
+export const BUG_REPORT_STATUSES = ['new', 'triaged', 'fixed'] as const;
+
+export const bugReportsTable = pgTable('bug_reports', {
+  // Client-generated UUID: bug reports replay from the mobile outbox, so the
+  // id must be idempotent across retries (a lost response must not duplicate
+  // the row on the next drain).
+  id: varchar('id').primaryKey(),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  userId: varchar('user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  route: varchar('route').notNull(),
+  routeParams: jsonb('route_params'),
+  severity: varchar('severity', { enum: BUG_REPORT_SEVERITIES }).notNull(),
+  description: text('description').notNull(),
+  context: jsonb('context').notNull(),
+  screenshotUrl: text('screenshot_url'),
+  appVersion: varchar('app_version'),
+  platform: varchar('platform'),
+  osVersion: varchar('os_version'),
+  status: varchar('status', { enum: BUG_REPORT_STATUSES }).notNull().default('new'),
+  internalNote: text('internal_note'),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type BugReport = typeof bugReportsTable.$inferSelect;
+
 export type UserProfile = typeof userProfilesTable.$inferSelect;
 export type Pin = typeof pinsTable.$inferSelect;
 export type InsertPin = typeof pinsTable.$inferInsert;

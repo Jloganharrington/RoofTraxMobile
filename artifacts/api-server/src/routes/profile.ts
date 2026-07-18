@@ -16,7 +16,7 @@ const router: IRouter = Router();
 // envelope (both must include the signature-on-file fields — M-F / F0).
 function toProfileEnvelope(
   profile: typeof userProfilesTable.$inferSelect,
-  company: { companyId: string; companyName: string },
+  company: { companyId: string; companyName: string; betaBugReporting: boolean },
 ) {
   return GetMyProfileResponse.parse({
     profile: {
@@ -40,6 +40,10 @@ function toProfileEnvelope(
       smtpSecure: profile.smtpSecure ?? null,
       smtpUsername: profile.smtpUsername ?? null,
       smtpFromEmail: profile.smtpFromEmail ?? null,
+      // Beta instrument gate — company-level flag, surfaced here so the
+      // mobile client can show/hide the bug-report button without another
+      // request.
+      betaBugReporting: company.betaBugReporting,
     },
   });
 }
@@ -49,6 +53,7 @@ async function loadCompany(userId: string) {
     .select({
       companyId: usersTable.companyId,
       companyName: companiesTable.name,
+      betaBugReporting: companiesTable.betaBugReporting,
     })
     .from(usersTable)
     .innerJoin(companiesTable, eq(companiesTable.id, usersTable.companyId))

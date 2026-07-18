@@ -24,6 +24,8 @@ export function useProfile() {
     signatureUrl: query.data?.profile.signatureUrl ?? null,
     signatureSha256: query.data?.profile.signatureSha256 ?? null,
     signatureSignedAt: query.data?.profile.signatureSignedAt ?? null,
+    // Beta instrument gate (company flag): shows/hides the bug-report button.
+    betaBugReporting: query.data?.profile.betaBugReporting ?? false,
     refetch: query.refetch,
   };
 }

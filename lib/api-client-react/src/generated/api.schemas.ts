@@ -171,6 +171,123 @@ export interface Profile {
   smtpUsername?: string | null;
   /** @nullable */
   smtpFromEmail?: string | null;
+  betaBugReporting?: boolean;
+}
+
+export type BugReportSeverity = typeof BugReportSeverity[keyof typeof BugReportSeverity];
+
+
+export const BugReportSeverity = {
+  blocks_me: 'blocks_me',
+  annoying: 'annoying',
+  cosmetic: 'cosmetic',
+} as const;
+
+export type BugReportStatus = typeof BugReportStatus[keyof typeof BugReportStatus];
+
+
+export const BugReportStatus = {
+  new: 'new',
+  triaged: 'triaged',
+  fixed: 'fixed',
+} as const;
+
+export type CreateBugReportInputRouteParams = { [key: string]: unknown };
+
+export type CreateBugReportInputContext = { [key: string]: unknown };
+
+export interface CreateBugReportInput {
+  /**
+     * @minLength 8
+     * @maxLength 64
+     */
+  id: string;
+  /** @maxLength 300 */
+  route: string;
+  routeParams?: CreateBugReportInputRouteParams;
+  severity: BugReportSeverity;
+  /**
+     * @minLength 1
+     * @maxLength 5000
+     */
+  description: string;
+  context: CreateBugReportInputContext;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  screenshotUrl?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  appVersion?: string | null;
+  /**
+     * @maxLength 30
+     * @nullable
+     */
+  platform?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  osVersion?: string | null;
+  /** @nullable */
+  capturedAt?: string | null;
+}
+
+export interface UpdateBugReportInput {
+  status?: BugReportStatus;
+  /**
+     * @maxLength 5000
+     * @nullable
+     */
+  internalNote?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type BugReportRouteParams = { [key: string]: unknown } | null;
+
+export type BugReportContext = { [key: string]: unknown };
+
+export interface BugReport {
+  id: string;
+  companyId: string;
+  userId: string;
+  /** @nullable */
+  reporterName?: string | null;
+  /** @nullable */
+  reporterEmail?: string | null;
+  route: string;
+  /** @nullable */
+  routeParams?: BugReportRouteParams;
+  severity: BugReportSeverity;
+  description: string;
+  context: BugReportContext;
+  /** @nullable */
+  screenshotUrl?: string | null;
+  /** @nullable */
+  appVersion?: string | null;
+  /** @nullable */
+  platform?: string | null;
+  /** @nullable */
+  osVersion?: string | null;
+  status: BugReportStatus;
+  /** @nullable */
+  internalNote?: string | null;
+  /** @nullable */
+  resolvedAt?: string | null;
+  createdAt: string;
+}
+
+export interface BugReportEnvelope {
+  bugReport: BugReport;
+}
+
+export interface BugReportListEnvelope {
+  bugReports: BugReport[];
 }
 
 /**

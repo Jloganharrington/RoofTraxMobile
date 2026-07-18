@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const sessionsTable = pgTable(
@@ -22,6 +22,10 @@ export const companiesTable = pgTable('companies', {
   id: varchar('id').primaryKey(),
   name: varchar('name').notNull(),
   founderUserId: varchar('founder_user_id'),
+  // Beta instrument gate: shows/hides the in-app bug-report button. Defaults
+  // ON for the beta cohort; end of beta = flip the flag (no code change, no
+  // revert). Reports already stored stay readable when this is off.
+  betaBugReporting: boolean('beta_bug_reporting').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

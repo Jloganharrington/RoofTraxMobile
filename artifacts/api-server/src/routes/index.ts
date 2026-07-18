@@ -13,6 +13,7 @@ import canvassingRouter from "./canvassing";
 import activityRouter from "./activity";
 import weatherRouter from "./weather";
 import crmRouter from "./crm";
+import bugReportsRouter from "./bugReports";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(canvassingRouter);
 router.use(activityRouter);
 router.use(weatherRouter);
 router.use(crmRouter);
+router.use(bugReportsRouter);
 
 export default router;

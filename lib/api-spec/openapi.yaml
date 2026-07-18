@@ -2205,6 +2205,140 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /bug-reports:
+    post:
+      tags: [BugReports]
+      operationId: createBugReport
+      summary: File a beta bug report (offline-replayable; idempotent by client id)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBugReportInput"
+      responses:
+        "201":
+          description: Report stored (or already stored — idempotent replay).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BugReportEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (max 10 reports per user per hour).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    get:
+      tags: [BugReports]
+      operationId: listBugReports
+      summary: List this company's bug reports (admin/super_admin only), newest first
+      responses:
+        "200":
+          description: Reports for the caller's company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BugReportListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /bug-reports/export.csv:
+    get:
+      tags: [BugReports]
+      operationId: exportBugReportsCsv
+      summary: Export this company's bug reports as CSV (admin/super_admin only)
+      responses:
+        "200":
+          description: CSV export.
+          content:
+            text/csv:
+              schema:
+                type: string
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /bug-reports/{bugReportId}:
+    patch:
+      tags: [BugReports]
+      operationId: updateBugReport
+      summary: Update a bug report's triage status / internal note (admin/super_admin only)
+      parameters:
+        - name: bugReportId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBugReportInput"
+      responses:
+        "200":
+          description: Updated report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BugReportEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Report not found in this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /crm/status:
     get:
       tags: [Crm]
@@ -2609,6 +2743,136 @@ components:
           type: [string, "null"]
         smtpFromEmail:
           type: [string, "null"]
+        # Beta instrument gate (company-level): whether the in-app bug-report
+        # button renders. Exposed on the profile so the mobile client needs no
+        # separate settings fetch.
+        betaBugReporting:
+          type: boolean
+    BugReportSeverity:
+      type: string
+      enum: [blocks_me, annoying, cosmetic]
+    BugReportStatus:
+      type: string
+      enum: [new, triaged, fixed]
+    CreateBugReportInput:
+      type: object
+      required: [id, route, severity, description, context]
+      properties:
+        # Client-generated UUID — bug reports replay from the mobile outbox,
+        # so creation must be idempotent across retries.
+        id:
+          type: string
+          minLength: 8
+          maxLength: 64
+        route:
+          type: string
+          maxLength: 300
+        routeParams:
+          type: object
+          additionalProperties: true
+        severity:
+          $ref: "#/components/schemas/BugReportSeverity"
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        # The auto-captured context blob (whole, unflattened): inspection
+        # state, outbox counts, connectivity, etc.
+        context:
+          type: object
+          additionalProperties: true
+        screenshotUrl:
+          type: [string, "null"]
+          maxLength: 1000
+        appVersion:
+          type: [string, "null"]
+          maxLength: 50
+        platform:
+          type: [string, "null"]
+          maxLength: 30
+        osVersion:
+          type: [string, "null"]
+          maxLength: 50
+        capturedAt:
+          type: [string, "null"]
+          format: date-time
+    UpdateBugReportInput:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/BugReportStatus"
+        internalNote:
+          type: [string, "null"]
+          maxLength: 5000
+    BugReport:
+      type: object
+      required:
+        [
+          id,
+          companyId,
+          userId,
+          route,
+          severity,
+          description,
+          context,
+          status,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        userId:
+          type: string
+        reporterName:
+          type: [string, "null"]
+        reporterEmail:
+          type: [string, "null"]
+        route:
+          type: string
+        routeParams:
+          type: [object, "null"]
+          additionalProperties: true
+        severity:
+          $ref: "#/components/schemas/BugReportSeverity"
+        description:
+          type: string
+        context:
+          type: object
+          additionalProperties: true
+        screenshotUrl:
+          type: [string, "null"]
+        appVersion:
+          type: [string, "null"]
+        platform:
+          type: [string, "null"]
+        osVersion:
+          type: [string, "null"]
+        status:
+          $ref: "#/components/schemas/BugReportStatus"
+        internalNote:
+          type: [string, "null"]
+        resolvedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    BugReportEnvelope:
+      type: object
+      required: [bugReport]
+      properties:
+        bugReport:
+          $ref: "#/components/schemas/BugReport"
+    BugReportListEnvelope:
+      type: object
+      required: [bugReports]
+      properties:
+        bugReports:
+          type: array
+          items:
+            $ref: "#/components/schemas/BugReport"
     UpdateProfileSmtpInput:
       type: object
       description: >-

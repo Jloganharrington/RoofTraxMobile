@@ -60,6 +60,10 @@ export async function countUnsyncedWritesForInspection(inspectionId: string): Pr
   );
   return items.filter((item) => {
     if (item.kind === 'inspection.submission') return false;
+    // Bug reports are a beta side-channel, never inspection evidence — a
+    // wedged/dead bug report must not make an inspection unsubmittable, even
+    // though its context blob may mention an inspectionId.
+    if (item.kind === 'bug_report') return false;
     try {
       const payload = JSON.parse(item.payload) as { inspectionId?: string };
       return payload.inspectionId === inspectionId;

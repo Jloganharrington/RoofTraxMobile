@@ -26,7 +26,10 @@ export type OutboxItemKind =
   | 'inspection.testSquareHit'
   | 'inspection.measurement'
   | 'inspection.interiorObservation'
-  | 'inspection.submission';
+  | 'inspection.submission'
+  // Beta bug report — deliberately NOT an inspection write: it never gates
+  // inspection submission and a dead bug report must never block the queue.
+  | 'bug_report';
 
 export interface InspectionPhotoOutboxPayload {
   /** Client-generated photo id so a replayed outbox item (e.g. after a lost
@@ -163,6 +166,28 @@ export interface InspectionTestSquareHitOutboxPayload {
 export interface InspectionSubmissionOutboxPayload {
   inspectionId: string;
   input: Record<string, unknown>;
+}
+
+/** Beta bug report (flag-gated instrument). `id` is client-generated so a
+ * replay after a lost response is idempotent server-side. The screenshot (if
+ * any) is a stable copy in app document storage, uploaded via the existing
+ * photo-upload path when the item drains. NOTE: this payload intentionally
+ * has no top-level `inspectionId` — any inspection context lives inside
+ * `context`, so the inspection submission gate (which matches payloads by
+ * `inspectionId`) can never be blocked by a wedged bug report. */
+export interface BugReportOutboxPayload {
+  id: string;
+  route: string;
+  routeParams: Record<string, unknown> | null;
+  severity: 'blocks_me' | 'annoying' | 'cosmetic';
+  description: string;
+  context: Record<string, unknown>;
+  screenshotLocalPath: string | null;
+  screenshotMimeType: string | null;
+  appVersion: string | null;
+  platform: string | null;
+  osVersion: string | null;
+  capturedAt: string;
 }
 
 // `dead` — permanently rejected by the server (4xx on a well-formed replay,

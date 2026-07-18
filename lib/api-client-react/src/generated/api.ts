@@ -26,11 +26,14 @@ import type {
   AttestationEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  BugReportEnvelope,
+  BugReportListEnvelope,
   BulkCreatePinsInput,
   CanvassingCurrentEnvelope,
   CanvassingSessionEnvelope,
   CompanyEnvelope,
   CreateAttestationInput,
+  CreateBugReportInput,
   CreateCompanyRequest,
   CreateDamageInstanceInput,
   CreateInspectionAddendumInput,
@@ -91,6 +94,7 @@ import type {
   TeamUserListEnvelope,
   TestSquareEnvelope,
   TestSquareHitEnvelope,
+  UpdateBugReportInput,
   UpdateInspectionComponentInput,
   UpdateInspectionInput,
   UpdateInspectionSidingFacetInput,
@@ -4388,6 +4392,303 @@ export const useCreateInspectionAddendum = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getCreateInspectionAddendumMutationOptions(options));
+    }
+
+export const getCreateBugReportUrl = () => {
+
+
+
+
+  return `/api/bug-reports`
+}
+
+/**
+ * @summary File a beta bug report (offline-replayable; idempotent by client id)
+ */
+export const createBugReport = async (createBugReportInput: CreateBugReportInput, options?: RequestInit): Promise<BugReportEnvelope> => {
+
+  return customFetch<BugReportEnvelope>(getCreateBugReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createBugReportInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBugReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBugReport>>, TError,{data: BodyType<CreateBugReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBugReport>>, TError,{data: BodyType<CreateBugReportInput>}, TContext> => {
+
+const mutationKey = ['createBugReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBugReport>>, {data: BodyType<CreateBugReportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBugReport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBugReportMutationResult = NonNullable<Awaited<ReturnType<typeof createBugReport>>>
+    export type CreateBugReportMutationBody = BodyType<CreateBugReportInput>
+    export type CreateBugReportMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary File a beta bug report (offline-replayable; idempotent by client id)
+ */
+export const useCreateBugReport = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBugReport>>, TError,{data: BodyType<CreateBugReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBugReport>>,
+        TError,
+        {data: BodyType<CreateBugReportInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBugReportMutationOptions(options));
+    }
+
+export const getListBugReportsUrl = () => {
+
+
+
+
+  return `/api/bug-reports`
+}
+
+/**
+ * @summary List this company's bug reports (admin/super_admin only), newest first
+ */
+export const listBugReports = async ( options?: RequestInit): Promise<BugReportListEnvelope> => {
+
+  return customFetch<BugReportListEnvelope>(getListBugReportsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBugReportsQueryKey = () => {
+    return [
+    `/api/bug-reports`
+    ] as const;
+    }
+
+
+export const getListBugReportsQueryOptions = <TData = Awaited<ReturnType<typeof listBugReports>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBugReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBugReportsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBugReports>>> = ({ signal }) => listBugReports({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBugReports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBugReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listBugReports>>>
+export type ListBugReportsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List this company's bug reports (admin/super_admin only), newest first
+ */
+
+export function useListBugReports<TData = Awaited<ReturnType<typeof listBugReports>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBugReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBugReportsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExportBugReportsCsvUrl = () => {
+
+
+
+
+  return `/api/bug-reports/export.csv`
+}
+
+/**
+ * @summary Export this company's bug reports as CSV (admin/super_admin only)
+ */
+export const exportBugReportsCsv = async ( options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportBugReportsCsvUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportBugReportsCsvQueryKey = () => {
+    return [
+    `/api/bug-reports/export.csv`
+    ] as const;
+    }
+
+
+export const getExportBugReportsCsvQueryOptions = <TData = Awaited<ReturnType<typeof exportBugReportsCsv>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportBugReportsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportBugReportsCsvQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportBugReportsCsv>>> = ({ signal }) => exportBugReportsCsv({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportBugReportsCsv>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportBugReportsCsvQueryResult = NonNullable<Awaited<ReturnType<typeof exportBugReportsCsv>>>
+export type ExportBugReportsCsvQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Export this company's bug reports as CSV (admin/super_admin only)
+ */
+
+export function useExportBugReportsCsv<TData = Awaited<ReturnType<typeof exportBugReportsCsv>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportBugReportsCsv>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportBugReportsCsvQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateBugReportUrl = (bugReportId: string,) => {
+
+
+
+
+  return `/api/bug-reports/${bugReportId}`
+}
+
+/**
+ * @summary Update a bug report's triage status / internal note (admin/super_admin only)
+ */
+export const updateBugReport = async (bugReportId: string,
+    updateBugReportInput: UpdateBugReportInput, options?: RequestInit): Promise<BugReportEnvelope> => {
+
+  return customFetch<BugReportEnvelope>(getUpdateBugReportUrl(bugReportId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateBugReportInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateBugReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBugReport>>, TError,{bugReportId: string;data: BodyType<UpdateBugReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBugReport>>, TError,{bugReportId: string;data: BodyType<UpdateBugReportInput>}, TContext> => {
+
+const mutationKey = ['updateBugReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBugReport>>, {bugReportId: string;data: BodyType<UpdateBugReportInput>}> = (props) => {
+          const {bugReportId,data} = props ?? {};
+
+          return  updateBugReport(bugReportId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBugReportMutationResult = NonNullable<Awaited<ReturnType<typeof updateBugReport>>>
+    export type UpdateBugReportMutationBody = BodyType<UpdateBugReportInput>
+    export type UpdateBugReportMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a bug report's triage status / internal note (admin/super_admin only)
+ */
+export const useUpdateBugReport = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBugReport>>, TError,{bugReportId: string;data: BodyType<UpdateBugReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBugReport>>,
+        TError,
+        {bugReportId: string;data: BodyType<UpdateBugReportInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateBugReportMutationOptions(options));
     }
 
 export const getGetCrmStatusUrl = () => {

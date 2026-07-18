@@ -22,6 +22,7 @@ import type { Department, Role, WorkflowAssignment } from '@workspace/api-client
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
+import { router } from 'expo-router';
 
 const ROLE_LABELS: Record<Role, string> = {
   field_rep: 'Field Rep',
@@ -174,6 +175,29 @@ export default function TeamScreen() {
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
         Overview
       </Text>
+      {/* Beta instrument: bug-report triage list, admins only. */}
+      {(actorRole === 'admin' || actorRole === 'super_admin') && (
+        <Pressable
+          onPress={() => router.push('/bug-reports')}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card,
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 8,
+          }}
+        >
+          <Icon name="alert-circle" size={16} color={colors.foreground} />
+          <Text style={{ color: colors.foreground, fontWeight: '600', flex: 1 }}>
+            Beta bug reports
+          </Text>
+          <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+        </Pressable>
+      )}
       {statsQuery.isLoading ? (
         <ActivityIndicator />
       ) : (

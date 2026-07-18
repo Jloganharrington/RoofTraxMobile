@@ -33,4 +33,5 @@ export interface Profile {
   smtpUsername?: string | null;
   /** @nullable */
   smtpFromEmail?: string | null;
+  betaBugReporting?: boolean;
 }

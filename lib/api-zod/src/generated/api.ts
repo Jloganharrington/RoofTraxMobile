@@ -220,7 +220,8 @@ export const GetMyProfileResponse = zod.object({
   "smtpPort": zod.number().nullish(),
   "smtpSecure": zod.boolean().nullish(),
   "smtpUsername": zod.string().nullish(),
-  "smtpFromEmail": zod.string().nullish()
+  "smtpFromEmail": zod.string().nullish(),
+  "betaBugReporting": zod.boolean().optional()
 })
 })
 
@@ -253,7 +254,8 @@ export const UpdateProfileSignatureResponse = zod.object({
   "smtpPort": zod.number().nullish(),
   "smtpSecure": zod.boolean().nullish(),
   "smtpUsername": zod.string().nullish(),
-  "smtpFromEmail": zod.string().nullish()
+  "smtpFromEmail": zod.string().nullish(),
+  "betaBugReporting": zod.boolean().optional()
 })
 })
 
@@ -295,7 +297,8 @@ export const UpdateProfileSmtpResponse = zod.object({
   "smtpPort": zod.number().nullish(),
   "smtpSecure": zod.boolean().nullish(),
   "smtpUsername": zod.string().nullish(),
-  "smtpFromEmail": zod.string().nullish()
+  "smtpFromEmail": zod.string().nullish(),
+  "betaBugReporting": zod.boolean().optional()
 })
 })
 
@@ -2902,6 +2905,137 @@ export const CreateInspectionAddendumResponse = zod.object({
   "inspectionId": zod.string(),
   "userId": zod.string(),
   "body": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary File a beta bug report (offline-replayable; idempotent by client id)
+ */
+export const createBugReportBodyIdMin = 8;
+export const createBugReportBodyIdMax = 64;
+
+export const createBugReportBodyRouteMax = 300;
+
+export const createBugReportBodyDescriptionMax = 5000;
+
+export const createBugReportBodyScreenshotUrlMax = 1000;
+
+export const createBugReportBodyAppVersionMax = 50;
+
+export const createBugReportBodyPlatformMax = 30;
+
+export const createBugReportBodyOsVersionMax = 50;
+
+
+
+export const CreateBugReportBody = zod.object({
+  "id": zod.string().min(createBugReportBodyIdMin).max(createBugReportBodyIdMax),
+  "route": zod.string().max(createBugReportBodyRouteMax),
+  "routeParams": zod.record(zod.string(), zod.unknown()).optional(),
+  "severity": zod.enum(['blocks_me', 'annoying', 'cosmetic']),
+  "description": zod.string().min(1).max(createBugReportBodyDescriptionMax),
+  "context": zod.record(zod.string(), zod.unknown()),
+  "screenshotUrl": zod.string().max(createBugReportBodyScreenshotUrlMax).nullish(),
+  "appVersion": zod.string().max(createBugReportBodyAppVersionMax).nullish(),
+  "platform": zod.string().max(createBugReportBodyPlatformMax).nullish(),
+  "osVersion": zod.string().max(createBugReportBodyOsVersionMax).nullish(),
+  "capturedAt": zod.coerce.date().nullish()
+})
+
+export const CreateBugReportResponse = zod.object({
+  "bugReport": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "reporterName": zod.string().nullish(),
+  "reporterEmail": zod.string().nullish(),
+  "route": zod.string(),
+  "routeParams": zod.record(zod.string(), zod.unknown()).nullish(),
+  "severity": zod.enum(['blocks_me', 'annoying', 'cosmetic']),
+  "description": zod.string(),
+  "context": zod.record(zod.string(), zod.unknown()),
+  "screenshotUrl": zod.string().nullish(),
+  "appVersion": zod.string().nullish(),
+  "platform": zod.string().nullish(),
+  "osVersion": zod.string().nullish(),
+  "status": zod.enum(['new', 'triaged', 'fixed']),
+  "internalNote": zod.string().nullish(),
+  "resolvedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary List this company's bug reports (admin/super_admin only), newest first
+ */
+export const ListBugReportsResponse = zod.object({
+  "bugReports": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "reporterName": zod.string().nullish(),
+  "reporterEmail": zod.string().nullish(),
+  "route": zod.string(),
+  "routeParams": zod.record(zod.string(), zod.unknown()).nullish(),
+  "severity": zod.enum(['blocks_me', 'annoying', 'cosmetic']),
+  "description": zod.string(),
+  "context": zod.record(zod.string(), zod.unknown()),
+  "screenshotUrl": zod.string().nullish(),
+  "appVersion": zod.string().nullish(),
+  "platform": zod.string().nullish(),
+  "osVersion": zod.string().nullish(),
+  "status": zod.enum(['new', 'triaged', 'fixed']),
+  "internalNote": zod.string().nullish(),
+  "resolvedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Export this company's bug reports as CSV (admin/super_admin only)
+ */
+export const ExportBugReportsCsvResponse = zod.unknown()
+
+
+/**
+ * @summary Update a bug report's triage status / internal note (admin/super_admin only)
+ */
+export const UpdateBugReportParams = zod.object({
+  "bugReportId": zod.coerce.string()
+})
+
+export const updateBugReportBodyInternalNoteMax = 5000;
+
+
+
+export const UpdateBugReportBody = zod.object({
+  "status": zod.enum(['new', 'triaged', 'fixed']).optional(),
+  "internalNote": zod.string().max(updateBugReportBodyInternalNoteMax).nullish()
+})
+
+export const UpdateBugReportResponse = zod.object({
+  "bugReport": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "reporterName": zod.string().nullish(),
+  "reporterEmail": zod.string().nullish(),
+  "route": zod.string(),
+  "routeParams": zod.record(zod.string(), zod.unknown()).nullish(),
+  "severity": zod.enum(['blocks_me', 'annoying', 'cosmetic']),
+  "description": zod.string(),
+  "context": zod.record(zod.string(), zod.unknown()),
+  "screenshotUrl": zod.string().nullish(),
+  "appVersion": zod.string().nullish(),
+  "platform": zod.string().nullish(),
+  "osVersion": zod.string().nullish(),
+  "status": zod.enum(['new', 'triaged', 'fixed']),
+  "internalNote": zod.string().nullish(),
+  "resolvedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date()
 })
 })
