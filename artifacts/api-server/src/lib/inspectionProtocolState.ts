@@ -3,8 +3,10 @@ import {
   WHOLE_ROOF_LINEAR_TYPES,
   componentZoneForType,
   evaluate,
+  type DamageFlags,
   type EvaluationResult,
   type InspectionProtocolState,
+  type SidingDamageType,
 } from '@workspace/protocol';
 import type {
   ArrivalConditions,
@@ -17,6 +19,7 @@ import type {
   InspectionPenetration,
   InspectionPhoto,
   InspectionProduct,
+  InspectionSidingFacet,
   InspectionSlope,
   Measurement,
   TestSquare,
@@ -37,9 +40,15 @@ import type {
 
 export interface HydratedInspectionChildren {
   arrivalConditions: ArrivalConditions | null;
+  // v2.1 — the Elevation Walk damage flags + the optional siding measurement
+  // report ref live on the inspection row itself, so the caller passes them
+  // alongside the hydrated child collections.
+  damageFlags: DamageFlags;
+  sidingMeasurementReportRef: string | null;
   photos: InspectionPhoto[];
   elevations: InspectionElevation[];
   slopes: InspectionSlope[];
+  sidingFacets: InspectionSidingFacet[];
   damageInstances: DamageInstance[];
   components: InspectionComponent[];
   penetrations: InspectionPenetration[];
@@ -58,9 +67,12 @@ export function buildServerProtocolState(
 ): InspectionProtocolState {
   const {
     arrivalConditions,
+    damageFlags,
+    sidingMeasurementReportRef,
     photos,
     elevations,
     slopes,
+    sidingFacets,
     damageInstances,
     components,
     penetrations,
@@ -110,9 +122,7 @@ export function buildServerProtocolState(
       timePresent: Boolean(arrivalConditions?.timeLocal ?? arrivalConditions?.recordedAtUtc),
     },
     elevations: elevationState,
-    roofAccessPhotoCaptured: photos.some(
-      (p) => p.subjectType === 'inspection' && p.stage === 'elevation_access',
-    ),
+    damageFlags,
     facets: slopes.map((slope) => ({
       id: slope.id,
       label: slope.label,
@@ -162,6 +172,26 @@ export function buildServerProtocolState(
       id: product.id,
       unidentifiable: product.identificationMethod === 'unidentifiable',
     })),
+    // v2.1 — Siding facets. Photos are discriminated by subjectType
+    // 'siding_facet' + the sidingRole tag (never by caption strings), so the
+    // gate can tell the damage close-up, facet shot, and per-component photos
+    // apart deterministically.
+    sidingFacets: sidingFacets.map((facet) => {
+      const facetPhotos = photos.filter(
+        (p) => p.subjectType === 'siding_facet' && p.subjectId === facet.id,
+      );
+      return {
+        id: facet.id,
+        label: facet.label,
+        damaged: Boolean(facet.damaged),
+        damageType: (facet.damageType as SidingDamageType | null) ?? null,
+        componentCount: facet.componentCount ?? 0,
+        facetPhotoCaptured: facetPhotos.some((p) => p.sidingRole === 'facet'),
+        damagePhotoCount: facetPhotos.filter((p) => p.sidingRole === 'damage').length,
+        componentPhotoCount: facetPhotos.filter((p) => p.sidingRole === 'component').length,
+      };
+    }),
+    sidingMeasurementReportUploaded: Boolean(sidingMeasurementReportRef),
     interiorPhotoCaptured: photos.some((p) => p.subjectType === 'interior_observation'),
     interiorObservationCount: interiorObservations.length,
     interiorClaimWaived: hasStageSignoff('interior', 'no_interior_claim'),

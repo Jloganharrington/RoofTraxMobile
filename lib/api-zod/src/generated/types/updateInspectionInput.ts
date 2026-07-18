@@ -47,4 +47,9 @@ export interface UpdateInspectionInput {
   stormConfirmedRef?: StormConfirmedRef | null;
   arrivalConditions?: ArrivalConditions | null;
   homeownerFacts?: HomeownerFacts | null;
+  roofDamageFound?: boolean;
+  sidingDamageFound?: boolean;
+  collateralDamageFound?: boolean;
+  /** @nullable */
+  sidingMeasurementReportRef?: string | null;
 }

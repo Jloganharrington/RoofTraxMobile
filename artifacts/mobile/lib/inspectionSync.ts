@@ -14,7 +14,9 @@ import type {
   CreateInspectionInput,
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
+  CreateInspectionSidingFacetInput,
   CreateInspectionSlopeInput,
+  UpdateInspectionSidingFacetInput,
   UpdateInspectionComponentInput,
   UpdateInspectionSlopeInput,
   CreateInteriorObservationInput,
@@ -31,7 +33,9 @@ import type {
   InspectionPenetration,
   InspectionPhoto,
   InspectionProduct,
+  InspectionSidingFacet,
   InspectionSlope,
+  SidingPhotoRole,
   InspectionSubjectType,
   InteriorObservation,
   Measurement,
@@ -96,6 +100,10 @@ export async function startInspection({
     homeownerFacts: null,
     submissionManifest: null,
     lockedAt: null,
+    roofDamageFound: false,
+    sidingDamageFound: false,
+    collateralDamageFound: false,
+    sidingMeasurementReportRef: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -250,6 +258,65 @@ export async function deleteSlope(
     slopes: (inspection.slopes ?? []).filter((slope) => slope.id !== slopeId),
   }));
   await enqueueOutboxItem('inspection.slopeDelete', { inspectionId, slopeId });
+  void drainOutbox();
+}
+
+/** Creates a siding facet (v2.1) offline-first and returns its client id. */
+export async function createSidingFacet(
+  queryClient: QueryClient,
+  inspectionId: string,
+  fields: Omit<CreateInspectionSidingFacetInput, 'id'>,
+): Promise<string> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: InspectionSidingFacet = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      label: fields.label,
+      damaged: fields.damaged ?? false,
+      damageType: fields.damageType ?? null,
+      componentCount: fields.componentCount ?? 0,
+      notes: fields.notes ?? null,
+      createdAt: now,
+    };
+    return { ...inspection, sidingFacets: [...(inspection.sidingFacets ?? []), optimistic] };
+  });
+  const input: CreateInspectionSidingFacetInput = { id, ...fields };
+  await enqueueOutboxItem('inspection.sidingFacet', { inspectionId, input });
+  void drainOutbox();
+  return id;
+}
+
+/** Updates a siding facet offline-first (partial patch). */
+export async function updateSidingFacet(
+  queryClient: QueryClient,
+  inspectionId: string,
+  sidingFacetId: string,
+  patch: UpdateInspectionSidingFacetInput,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    sidingFacets: (inspection.sidingFacets ?? []).map((facet) =>
+      facet.id === sidingFacetId ? { ...facet, ...patch } : facet,
+    ),
+  }));
+  await enqueueOutboxItem('inspection.sidingFacetUpdate', { inspectionId, sidingFacetId, patch });
+  void drainOutbox();
+}
+
+/** Removes a siding facet offline-first. */
+export async function deleteSidingFacet(
+  queryClient: QueryClient,
+  inspectionId: string,
+  sidingFacetId: string,
+): Promise<void> {
+  patchCachedInspection(queryClient, inspectionId, (inspection) => ({
+    ...inspection,
+    sidingFacets: (inspection.sidingFacets ?? []).filter((facet) => facet.id !== sidingFacetId),
+  }));
+  await enqueueOutboxItem('inspection.sidingFacetDelete', { inspectionId, sidingFacetId });
   void drainOutbox();
 }
 
@@ -778,6 +845,7 @@ export function appendOptimisticPhotos(
     preliminaryRole?: PreliminaryPhotoRole | null;
     sha256: string;
     zone?: 'eave_edge' | 'ridge_hip' | null;
+    sidingRole?: SidingPhotoRole | null;
   }>,
 ): void {
   const now = new Date().toISOString();
@@ -799,6 +867,7 @@ export function appendOptimisticPhotos(
       latitude: null,
       longitude: null,
       zone: p.zone ?? null,
+      sidingRole: p.sidingRole ?? null,
       createdAt: now,
     }));
     return { ...inspection, photos: [...(inspection.photos ?? []), ...optimistic] };

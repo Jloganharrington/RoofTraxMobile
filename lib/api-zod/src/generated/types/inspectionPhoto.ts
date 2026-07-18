@@ -12,6 +12,7 @@ import type { InspectionPhotoOverlayJson } from './inspectionPhotoOverlayJson';
 import type { InspectionSubjectType } from './inspectionSubjectType';
 import type { PhotoTriadRole } from './photoTriadRole';
 import type { PreliminaryPhotoRole } from './preliminaryPhotoRole';
+import type { SidingPhotoRole } from './sidingPhotoRole';
 
 export interface InspectionPhoto {
   id: string;
@@ -36,5 +37,6 @@ export interface InspectionPhoto {
   /** @nullable */
   longitude: number | null;
   zone: ComponentZone | null;
+  sidingRole: SidingPhotoRole | null;
   createdAt: Date;
 }

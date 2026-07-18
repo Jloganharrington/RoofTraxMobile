@@ -22,4 +22,5 @@
 - [Nominatim location bias](nominatim-location-bias.md) — unbiased forward-search returns global junk for partial addresses; bias with countrycodes=us + viewbox (order: minLon,maxLat,maxLon,minLat), bounded=0.
 - [jsonb vs zod equality + replay-tolerant immutability](jsonb-zod-equality-and-replayable-immutability.md) — key order differs between jsonb read-back and zod-parsed body; use canonical stringify, and immutability guards must allow idempotent outbox replays (reject only genuine changes).
 - [Outbox replay ordering & orphan gates](outbox-replay-ordering-and-orphan-gates.md) — drain by createdAt+rowid or delete-before-create replay resurrects records; gate rules must skip children orphaned by a parent delete.
+- [Stage vocabulary mirrors](stage-vocab-mirrors.md) — protocol/db/openapi step lists mirror by key with no enforced link; keep all three in identical order when adding a step.
 - [Data-driven URL auth gating](data-driven-url-auth-gating.md) — never attach the session Bearer token to a fetch whose URL comes from a record; gate to the trusted API origin with a `/` boundary check or the token can leak.

@@ -20,6 +20,7 @@ export const CaptureStage = {
   components: 'components',
   collateral: 'collateral',
   product: 'product',
+  siding: 'siding',
   interior: 'interior',
   homeowner: 'homeowner',
   declaration: 'declaration',

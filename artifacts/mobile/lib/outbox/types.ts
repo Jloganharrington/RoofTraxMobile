@@ -13,6 +13,9 @@ export type OutboxItemKind =
   | 'inspection.slope'
   | 'inspection.slopeUpdate'
   | 'inspection.slopeDelete'
+  | 'inspection.sidingFacet'
+  | 'inspection.sidingFacetUpdate'
+  | 'inspection.sidingFacetDelete'
   | 'inspection.damage'
   | 'inspection.component'
   | 'inspection.componentUpdate'
@@ -54,6 +57,10 @@ export interface InspectionPhotoOutboxPayload {
   /** Component-zone tag for shared zone photos (subjectType 'component',
    * no subjectId). Null/omitted for every other photo. */
   zone?: 'eave_edge' | 'ridge_hip' | null;
+  /** v2.1 siding-photo role tag for subjectType 'siding_facet' photos
+   * (damage close-up / facet shot / per-component photo). Null/omitted for
+   * every other photo. */
+  sidingRole?: 'damage' | 'facet' | 'component' | null;
 }
 
 /** Offline-first inspection create. Carries a client-generated `id` so the
@@ -97,6 +104,21 @@ export interface InspectionSlopeUpdateOutboxPayload {
 export interface InspectionSlopeDeleteOutboxPayload {
   inspectionId: string;
   slopeId: string;
+}
+
+/** Offline-first siding-facet update. Replays after the facet's own create
+ * (FIFO) and is idempotent server-side. */
+export interface InspectionSidingFacetUpdateOutboxPayload {
+  inspectionId: string;
+  sidingFacetId: string;
+  patch: Record<string, unknown>;
+}
+
+/** Offline-first siding-facet delete. Idempotent: a 404 on replay means the
+ * facet is already gone and counts as success. */
+export interface InspectionSidingFacetDeleteOutboxPayload {
+  inspectionId: string;
+  sidingFacetId: string;
 }
 
 /** Offline-first component update. Replays after the component's own create

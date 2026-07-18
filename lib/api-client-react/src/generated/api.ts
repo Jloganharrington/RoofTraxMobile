@@ -40,6 +40,7 @@ import type {
   CreateInspectionPenetrationInput,
   CreateInspectionPhotoInput,
   CreateInspectionProductInput,
+  CreateInspectionSidingFacetInput,
   CreateInspectionSlopeInput,
   CreateInteriorObservationInput,
   CreateMeasurementInput,
@@ -62,6 +63,7 @@ import type {
   InspectionPenetrationEnvelope,
   InspectionPhotoEnvelope,
   InspectionProductEnvelope,
+  InspectionSidingFacetEnvelope,
   InspectionSlopeEnvelope,
   InspectionStatusEnvelope,
   InteriorObservationEnvelope,
@@ -89,6 +91,7 @@ import type {
   TestSquareHitEnvelope,
   UpdateInspectionComponentInput,
   UpdateInspectionInput,
+  UpdateInspectionSidingFacetInput,
   UpdateInspectionSlopeInput,
   UpdatePinInput,
   UpdateProfileSignatureInput,
@@ -2490,6 +2493,225 @@ export const useUpdateInspection = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getUpdateInspectionMutationOptions(options));
+    }
+
+export const getCreateInspectionSidingFacetUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/siding-facets`
+}
+
+/**
+ * @summary Add a siding facet to an inspection (v2.1)
+ */
+export const createInspectionSidingFacet = async (inspectionId: string,
+    createInspectionSidingFacetInput: CreateInspectionSidingFacetInput, options?: RequestInit): Promise<InspectionSidingFacetEnvelope> => {
+
+  return customFetch<InspectionSidingFacetEnvelope>(getCreateInspectionSidingFacetUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInspectionSidingFacetInput)
+  }
+);}
+
+
+
+
+
+export const getCreateInspectionSidingFacetMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionSidingFacet>>, TError,{inspectionId: string;data: BodyType<CreateInspectionSidingFacetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInspectionSidingFacet>>, TError,{inspectionId: string;data: BodyType<CreateInspectionSidingFacetInput>}, TContext> => {
+
+const mutationKey = ['createInspectionSidingFacet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInspectionSidingFacet>>, {inspectionId: string;data: BodyType<CreateInspectionSidingFacetInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  createInspectionSidingFacet(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInspectionSidingFacetMutationResult = NonNullable<Awaited<ReturnType<typeof createInspectionSidingFacet>>>
+    export type CreateInspectionSidingFacetMutationBody = BodyType<CreateInspectionSidingFacetInput>
+    export type CreateInspectionSidingFacetMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Add a siding facet to an inspection (v2.1)
+ */
+export const useCreateInspectionSidingFacet = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInspectionSidingFacet>>, TError,{inspectionId: string;data: BodyType<CreateInspectionSidingFacetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInspectionSidingFacet>>,
+        TError,
+        {inspectionId: string;data: BodyType<CreateInspectionSidingFacetInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInspectionSidingFacetMutationOptions(options));
+    }
+
+export const getUpdateInspectionSidingFacetUrl = (inspectionId: string,
+    sidingFacetId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/siding-facets/${sidingFacetId}`
+}
+
+/**
+ * @summary Update a siding facet's details
+ */
+export const updateInspectionSidingFacet = async (inspectionId: string,
+    sidingFacetId: string,
+    updateInspectionSidingFacetInput: UpdateInspectionSidingFacetInput, options?: RequestInit): Promise<InspectionSidingFacetEnvelope> => {
+
+  return customFetch<InspectionSidingFacetEnvelope>(getUpdateInspectionSidingFacetUrl(inspectionId,sidingFacetId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateInspectionSidingFacetInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateInspectionSidingFacetMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSidingFacet>>, TError,{inspectionId: string;sidingFacetId: string;data: BodyType<UpdateInspectionSidingFacetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSidingFacet>>, TError,{inspectionId: string;sidingFacetId: string;data: BodyType<UpdateInspectionSidingFacetInput>}, TContext> => {
+
+const mutationKey = ['updateInspectionSidingFacet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInspectionSidingFacet>>, {inspectionId: string;sidingFacetId: string;data: BodyType<UpdateInspectionSidingFacetInput>}> = (props) => {
+          const {inspectionId,sidingFacetId,data} = props ?? {};
+
+          return  updateInspectionSidingFacet(inspectionId,sidingFacetId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInspectionSidingFacetMutationResult = NonNullable<Awaited<ReturnType<typeof updateInspectionSidingFacet>>>
+    export type UpdateInspectionSidingFacetMutationBody = BodyType<UpdateInspectionSidingFacetInput>
+    export type UpdateInspectionSidingFacetMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a siding facet's details
+ */
+export const useUpdateInspectionSidingFacet = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSidingFacet>>, TError,{inspectionId: string;sidingFacetId: string;data: BodyType<UpdateInspectionSidingFacetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInspectionSidingFacet>>,
+        TError,
+        {inspectionId: string;sidingFacetId: string;data: BodyType<UpdateInspectionSidingFacetInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInspectionSidingFacetMutationOptions(options));
+    }
+
+export const getDeleteInspectionSidingFacetUrl = (inspectionId: string,
+    sidingFacetId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/siding-facets/${sidingFacetId}`
+}
+
+/**
+ * @summary Remove a siding facet
+ */
+export const deleteInspectionSidingFacet = async (inspectionId: string,
+    sidingFacetId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteInspectionSidingFacetUrl(inspectionId,sidingFacetId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteInspectionSidingFacetMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionSidingFacet>>, TError,{inspectionId: string;sidingFacetId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionSidingFacet>>, TError,{inspectionId: string;sidingFacetId: string}, TContext> => {
+
+const mutationKey = ['deleteInspectionSidingFacet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInspectionSidingFacet>>, {inspectionId: string;sidingFacetId: string}> = (props) => {
+          const {inspectionId,sidingFacetId} = props ?? {};
+
+          return  deleteInspectionSidingFacet(inspectionId,sidingFacetId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInspectionSidingFacetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInspectionSidingFacet>>>
+
+    export type DeleteInspectionSidingFacetMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Remove a siding facet
+ */
+export const useDeleteInspectionSidingFacet = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspectionSidingFacet>>, TError,{inspectionId: string;sidingFacetId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInspectionSidingFacet>>,
+        TError,
+        {inspectionId: string;sidingFacetId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteInspectionSidingFacetMutationOptions(options));
     }
 
 export const getUpdateInspectionSlopeUrl = (inspectionId: string,

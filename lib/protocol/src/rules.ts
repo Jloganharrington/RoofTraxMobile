@@ -1,4 +1,5 @@
-import { ELEVATION_DIRECTIONS, carriesHail } from './stages';
+import { ELEVATION_DIRECTIONS, carriesHail, stepApplies } from './stages';
+import type { Stage } from './stages';
 import type {
   ComponentZone,
   Deficiency,
@@ -47,9 +48,12 @@ function checkArrival(state: InspectionProtocolState): Deficiency[] {
   return out;
 }
 
-// Step 2 — 4 elevations each photographed AND the roof-access photo present.
+// Step 2 — 4 elevations each photographed. (v2.1: the roof-access photo is
+// retired; the damage-found flags captured here are gated on submit via
+// NO_DAMAGE_SURFACE_SELECTED, not here, so an untouched walk-through doesn't
+// scream before the inspector has walked.)
 function checkElevationAccess(state: InspectionProtocolState): Deficiency[] {
-  const out: Deficiency[] = ELEVATION_DIRECTIONS.filter(
+  return ELEVATION_DIRECTIONS.filter(
     (direction) => !state.elevations[direction]?.widePhotoCaptured,
   ).map((direction) =>
     deficiency(
@@ -58,16 +62,6 @@ function checkElevationAccess(state: InspectionProtocolState): Deficiency[] {
       `Wide photo missing for the ${direction} elevation.`,
     ),
   );
-  if (!state.roofAccessPhotoCaptured) {
-    out.push(
-      deficiency(
-        'elevation_access',
-        'MISSING_ROOF_ACCESS_PHOTO',
-        'Roof access photo not captured.',
-      ),
-    );
-  }
-  return out;
 }
 
 // Step 3 — ≥1 facet; every facet has area + material + pitch; every facet
@@ -206,6 +200,63 @@ function checkPenetrations(state: InspectionProtocolState): Deficiency[] {
     );
 }
 
+// Siding Inspection (v2.1) — ≥1 siding facet; every facet has its facet
+// photo; each damaged facet has a damage type and ≥1 damage photo; every
+// declared component is photographed (componentPhotoCount ≥ componentCount).
+function checkSiding(state: InspectionProtocolState): Deficiency[] {
+  if (state.sidingFacets.length === 0) {
+    return [
+      deficiency(
+        'siding',
+        'NO_SIDING_FACETS_DOCUMENTED',
+        'Siding damage was reported but no siding facets have been documented.',
+      ),
+    ];
+  }
+  const out: Deficiency[] = [];
+  for (const facet of state.sidingFacets) {
+    if (!facet.facetPhotoCaptured) {
+      out.push(
+        deficiency(
+          'siding',
+          `MISSING_SIDING_FACET_PHOTO_${facet.id}`,
+          `Siding facet ${facet.label} has no facet photo.`,
+        ),
+      );
+    }
+    if (facet.damaged) {
+      if (!facet.damageType) {
+        out.push(
+          deficiency(
+            'siding',
+            `MISSING_SIDING_DAMAGE_TYPE_${facet.id}`,
+            `Siding facet ${facet.label} is marked damaged but has no damage type.`,
+          ),
+        );
+      }
+      if (facet.damagePhotoCount === 0) {
+        out.push(
+          deficiency(
+            'siding',
+            `MISSING_SIDING_DAMAGE_PHOTO_${facet.id}`,
+            `Siding facet ${facet.label} is marked damaged but has no damage photo.`,
+          ),
+        );
+      }
+    }
+    if (facet.componentPhotoCount < facet.componentCount) {
+      out.push(
+        deficiency(
+          'siding',
+          `MISSING_SIDING_COMPONENT_PHOTOS_${facet.id}`,
+          `Siding facet ${facet.label} declares ${facet.componentCount} component${facet.componentCount === 1 ? '' : 's'} but only ${facet.componentPhotoCount} ${facet.componentPhotoCount === 1 ? 'is' : 'are'} photographed.`,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
 // Step 7 (collateral) — no hard gate: optional evidence.
 
 // Step 6 — at least one product record.
@@ -234,15 +285,23 @@ function checkDeclaration(state: InspectionProtocolState): Deficiency[] {
   return [];
 }
 
-const STEP_CHECKS = [
-  checkArrival,
-  checkElevationAccess,
-  checkFacets,
-  checkTestSquares,
-  checkComponents,
-  checkPenetrations,
-  checkProduct,
-  checkDeclaration,
+// Each check is tagged with the step it gates so `evaluate` can skip checks
+// whose step does not apply for this inspection's damage flags — the SAME
+// applicability predicate the step hub uses for visibility (stepApplies), so
+// a hidden step can never block submission.
+const STEP_CHECKS: Array<{
+  stage: Stage;
+  check: (state: InspectionProtocolState) => Deficiency[];
+}> = [
+  { stage: 'arrival', check: checkArrival },
+  { stage: 'elevation_access', check: checkElevationAccess },
+  { stage: 'facets', check: checkFacets },
+  { stage: 'test_squares', check: checkTestSquares },
+  { stage: 'components', check: checkComponents },
+  { stage: 'components', check: checkPenetrations },
+  { stage: 'product', check: checkProduct },
+  { stage: 'siding', check: checkSiding },
+  { stage: 'declaration', check: checkDeclaration },
 ];
 
 // Step 11 — submit: zero hard deficiencies across every prior step, plus the
@@ -259,6 +318,16 @@ function checkSubmit(
         'submit',
         'HARD_DEFICIENCIES_REMAIN',
         `${priorDeficiencies.length} blocking deficiencies remain across earlier steps.`,
+      ),
+    );
+  }
+  const { roofDamageFound, sidingDamageFound, collateralDamageFound } = state.damageFlags;
+  if (!roofDamageFound && !sidingDamageFound && !collateralDamageFound) {
+    out.push(
+      deficiency(
+        'submit',
+        'NO_DAMAGE_SURFACE_SELECTED',
+        'No damage surface was selected on the Elevation Walk — mark roof, siding, or collateral damage before submitting.',
       ),
     );
   }
@@ -339,20 +408,46 @@ function checkInteriorNotAddressed(state: InspectionProtocolState): SoftFlag[] {
   return [];
 }
 
-const SOFT_FLAG_CHECKS = [
-  checkInteriorLeakWithoutPhoto,
-  checkZeroHitTestSquares,
-  checkUnidentifiedProducts,
-  checkNoComponentsDocumented,
-  checkInteriorNotAddressed,
+// Siding measurement report is optional — soft-flag its absence so the
+// reviewer sees the gap without blocking the field submission.
+function checkSidingMeasurementReport(state: InspectionProtocolState): SoftFlag[] {
+  if (!state.sidingMeasurementReportUploaded) {
+    return [
+      softFlag(
+        'siding',
+        'SIDING_MEASUREMENT_REPORT_MISSING',
+        'No siding measurement report was uploaded — attach one if available.',
+      ),
+    ];
+  }
+  return [];
+}
+
+const SOFT_FLAG_CHECKS: Array<{
+  stage: Stage;
+  check: (state: InspectionProtocolState) => SoftFlag[];
+}> = [
+  { stage: 'interior', check: checkInteriorLeakWithoutPhoto },
+  { stage: 'test_squares', check: checkZeroHitTestSquares },
+  { stage: 'product', check: checkUnidentifiedProducts },
+  { stage: 'components', check: checkNoComponentsDocumented },
+  { stage: 'interior', check: checkInteriorNotAddressed },
+  { stage: 'siding', check: checkSidingMeasurementReport },
 ];
 
 // Single entry point: given the raw capture state of an inspection, returns
 // every hard-gate deficiency (blocking) and soft flag (non-blocking).
+// v2.1: checks for conditional steps run only when the step applies for the
+// inspection's damage flags.
 export function evaluate(state: InspectionProtocolState): EvaluationResult {
-  const stepDeficiencies = STEP_CHECKS.flatMap((check) => check(state));
+  const flags = state.damageFlags;
+  const stepDeficiencies = STEP_CHECKS.filter(({ stage }) => stepApplies(stage, flags)).flatMap(
+    ({ check }) => check(state),
+  );
   return {
     deficiencies: [...stepDeficiencies, ...checkSubmit(state, stepDeficiencies)],
-    softFlags: SOFT_FLAG_CHECKS.flatMap((check) => check(state)),
+    softFlags: SOFT_FLAG_CHECKS.filter(({ stage }) => stepApplies(stage, flags)).flatMap(
+      ({ check }) => check(state),
+    ),
   };
 }

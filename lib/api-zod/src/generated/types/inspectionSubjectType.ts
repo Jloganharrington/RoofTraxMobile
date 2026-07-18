@@ -20,4 +20,5 @@ export const InspectionSubjectType = {
   penetration: 'penetration',
   product: 'product',
   interior_observation: 'interior_observation',
+  siding_facet: 'siding_facet',
 } as const;

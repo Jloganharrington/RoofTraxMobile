@@ -53,8 +53,9 @@ export const CAPTURE_STAGES = [
   'facets',
   'test_squares',
   'components',
-  'collateral',
   'product',
+  'siding',
+  'collateral',
   'interior',
   'homeowner',
   'declaration',
@@ -87,6 +88,9 @@ export const INSPECTION_SUBJECT_TYPES = [
   // M-E (E2) additive subject: an interior/attic observation the evidence
   // capture flow attaches room-stain / moisture / attic photos to.
   'interior_observation',
+  // v2.1 additive subject: a siding facet (S1, S2, …) the siding-inspection
+  // flow attaches damage / facet / component photos to.
+  'siding_facet',
 ] as const;
 export type InspectionSubjectType = (typeof INSPECTION_SUBJECT_TYPES)[number];
 
@@ -141,6 +145,18 @@ export type ProductIdMethod = (typeof PRODUCT_ID_METHODS)[number];
 // square.
 export const FACET_DAMAGE_TYPES = ['hail', 'wind', 'hail_and_wind', 'none'] as const;
 export type FacetDamageType = (typeof FACET_DAMAGE_TYPES)[number];
+
+// v2.1 — Siding facet damage classification (distinct vocabulary from roof
+// facets: siding claims classify wind / hail / tree impact).
+export const SIDING_DAMAGE_TYPES = ['wind', 'hail', 'tree'] as const;
+export type SidingDamageType = (typeof SIDING_DAMAGE_TYPES)[number];
+
+// v2.1 — Which role a siding-facet photo plays: the damage close-up, the
+// whole-facet shot, or one declared component's photo. Deterministic gate
+// discrimination (mirrors the `zone` tag pattern) — never inferred from
+// caption strings.
+export const SIDING_PHOTO_ROLES = ['damage', 'facet', 'component'] as const;
+export type SidingPhotoRole = (typeof SIDING_PHOTO_ROLES)[number];
 
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
@@ -287,6 +303,15 @@ export const inspectionsTable = pgTable('inspections', {
   // and a correction must be filed as an addendum instead. Nullable until the
   // inspection is successfully submitted.
   lockedAt: timestamp('locked_at', { withTimezone: true }),
+  // v2.1 — the three "damage found" flags captured on the Elevation Walk.
+  // They drive which conditional protocol steps apply (roof group / siding /
+  // collateral). Raw booleans; default false for every pre-v2.1 row.
+  roofDamageFound: boolean('roof_damage_found').notNull().default(false),
+  sidingDamageFound: boolean('siding_damage_found').notNull().default(false),
+  collateralDamageFound: boolean('collateral_damage_found').notNull().default(false),
+  // v2.1 — optional siding measurement report reference (the client id of the
+  // uploaded report photo). Nullable; absence is a soft flag, never a block.
+  sidingMeasurementReportRef: text('siding_measurement_report_ref'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -442,6 +467,33 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   // Component-zone tag: set only on shared zone photos (subjectType
   // 'component', no subjectId) so the Brain can group them. Null elsewhere.
   zone: varchar('zone', { enum: COMPONENT_ZONES }),
+  // v2.1 — Siding-photo role tag: set only on subjectType 'siding_facet'
+  // photos so the gate can tell the damage close-up, the facet shot, and the
+  // per-component photos apart deterministically. Null elsewhere.
+  sidingRole: varchar('siding_role', { enum: SIDING_PHOTO_ROLES }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// v2.1 — A siding facet (S1, S2, …) documented during the Siding Inspection
+// step. Raw facts only: label, whether the inspector observed damage (and
+// its classification), and how many components the facet declares — the gate
+// requires one 'component'-role photo per declared component. No area /
+// pitch / material fields by design.
+export const inspectionSidingFacetsTable = pgTable('inspection_siding_facets', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  damaged: boolean('damaged').notNull().default(false),
+  damageType: varchar('damage_type', { enum: SIDING_DAMAGE_TYPES }),
+  componentCount: doublePrecision('component_count').notNull().default(0),
+  notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -639,6 +691,7 @@ export type CompanyCrmConfig = typeof companyCrmConfigTable.$inferSelect;
 export type InteriorObservation = typeof inspectionInteriorObservationsTable.$inferSelect;
 export type InsertInspection = typeof inspectionsTable.$inferInsert;
 export type InspectionSlope = typeof inspectionSlopesTable.$inferSelect;
+export type InspectionSidingFacet = typeof inspectionSidingFacetsTable.$inferSelect;
 export type InspectionElevation = typeof inspectionElevationsTable.$inferSelect;
 export type DamageInstance = typeof damageInstancesTable.$inferSelect;
 export type TestSquare = typeof testSquaresTable.$inferSelect;

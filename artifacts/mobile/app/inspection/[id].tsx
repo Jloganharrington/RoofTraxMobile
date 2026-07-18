@@ -10,7 +10,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { PROTOCOL_STEPS, stepLabel, type StepKey } from '@workspace/protocol';
+import { applicableSteps, stepLabel, type StepKey } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
@@ -46,6 +46,7 @@ const STEP_ICONS: Record<StepKey, IconName> = {
   facets: 'square',
   test_squares: 'square',
   components: 'clipboard',
+  siding: 'grid',
   collateral: 'camera',
   product: 'camera',
   interior: 'home',
@@ -60,6 +61,7 @@ const STEP_ROUTES: Record<StepKey, string> = {
   facets: '/inspection-roof',
   test_squares: '/inspection-test-squares',
   components: '/inspection-components',
+  siding: '/inspection-siding',
   collateral: '/inspection-collateral',
   product: '/inspection-product',
   interior: '/inspection-interior',
@@ -148,8 +150,8 @@ export default function InspectionDetailScreen() {
           done: missing === 0,
           subtitle:
             missing === 0
-              ? 'Four elevations + roof access captured'
-              : `${missing} photo${missing === 1 ? '' : 's'} outstanding`,
+              ? 'Four elevations captured'
+              : `${missing} item${missing === 1 ? '' : 's'} outstanding`,
         };
       case 'facets': {
         const facetCount = inspection!.slopes?.length ?? 0;
@@ -185,6 +187,18 @@ export default function InspectionDetailScreen() {
               : missing === 0
                 ? `${count} component${count === 1 ? '' : 's'} documented`
                 : `${missing} component photo${missing === 1 ? '' : 's'} missing`,
+        };
+      }
+      case 'siding': {
+        const facetCount = inspection!.sidingFacets?.length ?? 0;
+        return {
+          done: facetCount > 0 && missing === 0,
+          subtitle:
+            facetCount === 0
+              ? 'How many siding facets? Seed and document S1…SN'
+              : missing === 0
+                ? `${facetCount} facet${facetCount === 1 ? '' : 's'} fully documented`
+                : `${missing} item${missing === 1 ? '' : 's'} outstanding across facets`,
         };
       }
       case 'collateral':
@@ -339,7 +353,7 @@ export default function InspectionDetailScreen() {
         </View>
       )}
 
-      {PROTOCOL_STEPS.map((step) => {
+      {applicableSteps(state.damageFlags).map((step) => {
         const { done, subtitle } = stepStatus(step.key);
         const params: Record<string, string> =
           step.key === 'arrival'

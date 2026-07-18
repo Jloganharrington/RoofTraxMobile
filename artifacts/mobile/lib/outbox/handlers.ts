@@ -8,16 +8,19 @@ import {
   createInspectionPenetration,
   createInspectionPhoto,
   createInspectionProduct,
+  createInspectionSidingFacet,
   createInspectionSlope,
   createInteriorObservation,
   createMeasurement,
   createTestSquare,
   createTestSquareHit,
   deleteInspectionComponent,
+  deleteInspectionSidingFacet,
   deleteInspectionSlope,
   updateInspectionComponent,
   submitInspection,
   updateInspection,
+  updateInspectionSidingFacet,
   updateInspectionSlope,
 } from '@workspace/api-client-react';
 import type {
@@ -28,6 +31,7 @@ import type {
   CreateInspectionInput,
   CreateInspectionPenetrationInput,
   CreateInspectionProductInput,
+  CreateInspectionSidingFacetInput,
   CreateInspectionSlopeInput,
   CreateInteriorObservationInput,
   CreateMeasurementInput,
@@ -37,8 +41,10 @@ import type {
   InspectionSubjectType,
   PhotoTriadRole,
   SubmitInspectionInput,
+  SidingPhotoRole,
   UpdateInspectionComponentInput,
   UpdateInspectionInput,
+  UpdateInspectionSidingFacetInput,
   UpdateInspectionSlopeInput,
 } from '@workspace/api-client-react';
 
@@ -50,6 +56,8 @@ import type {
   InspectionComponentUpdateOutboxPayload,
   InspectionCreateOutboxPayload,
   InspectionPhotoOutboxPayload,
+  InspectionSidingFacetDeleteOutboxPayload,
+  InspectionSidingFacetUpdateOutboxPayload,
   InspectionSlopeDeleteOutboxPayload,
   InspectionSlopeUpdateOutboxPayload,
   InspectionSubmissionOutboxPayload,
@@ -88,6 +96,7 @@ async function syncInspectionPhoto(payloadJson: string): Promise<void> {
     latitude: payload.latitude,
     longitude: payload.longitude,
     zone: payload.zone ?? undefined,
+    sidingRole: (payload.sidingRole as SidingPhotoRole | null | undefined) ?? undefined,
   });
 
   // Best-effort cleanup of the local copy now that the server has the
@@ -151,6 +160,40 @@ async function syncInspectionSlopeDelete(payloadJson: string): Promise<void> {
   const payload: InspectionSlopeDeleteOutboxPayload = JSON.parse(payloadJson);
   try {
     await deleteInspectionSlope(payload.inspectionId, payload.slopeId);
+  } catch (error) {
+    // Idempotent replay: the facet already being gone is success.
+    if (error instanceof Error && /404/.test(error.message)) return;
+    throw error;
+  }
+}
+
+async function syncInspectionSidingFacet(payloadJson: string): Promise<void> {
+  const payload: InspectionChildCreateOutboxPayload = JSON.parse(payloadJson);
+  await createInspectionSidingFacet(
+    payload.inspectionId,
+    payload.input as unknown as CreateInspectionSidingFacetInput,
+  );
+}
+
+async function syncInspectionSidingFacetUpdate(payloadJson: string): Promise<void> {
+  const payload: InspectionSidingFacetUpdateOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await updateInspectionSidingFacet(
+      payload.inspectionId,
+      payload.sidingFacetId,
+      payload.patch as unknown as UpdateInspectionSidingFacetInput,
+    );
+  } catch (error) {
+    // Replay tolerance: the row being gone means the update is moot.
+    if (error instanceof Error && /404/.test(error.message)) return;
+    throw error;
+  }
+}
+
+async function syncInspectionSidingFacetDelete(payloadJson: string): Promise<void> {
+  const payload: InspectionSidingFacetDeleteOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await deleteInspectionSidingFacet(payload.inspectionId, payload.sidingFacetId);
   } catch (error) {
     // Idempotent replay: the facet already being gone is success.
     if (error instanceof Error && /404/.test(error.message)) return;
@@ -269,6 +312,9 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.slope': syncInspectionSlope,
   'inspection.slopeUpdate': syncInspectionSlopeUpdate,
   'inspection.slopeDelete': syncInspectionSlopeDelete,
+  'inspection.sidingFacet': syncInspectionSidingFacet,
+  'inspection.sidingFacetUpdate': syncInspectionSidingFacetUpdate,
+  'inspection.sidingFacetDelete': syncInspectionSidingFacetDelete,
   'inspection.damage': syncInspectionDamage,
   'inspection.component': syncInspectionComponent,
   'inspection.componentUpdate': syncInspectionComponentUpdate,

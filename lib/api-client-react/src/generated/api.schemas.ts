@@ -413,6 +413,7 @@ export const InspectionSubjectType = {
   penetration: 'penetration',
   product: 'product',
   interior_observation: 'interior_observation',
+  siding_facet: 'siding_facet',
 } as const;
 
 /**
@@ -451,6 +452,7 @@ export const CaptureStage = {
   components: 'components',
   collateral: 'collateral',
   product: 'product',
+  siding: 'siding',
   interior: 'interior',
   homeowner: 'homeowner',
   declaration: 'declaration',
@@ -468,6 +470,30 @@ export const FacetDamageType = {
   wind: 'wind',
   hail_and_wind: 'hail_and_wind',
   none: 'none',
+} as const;
+
+/**
+ * v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).
+ */
+export type SidingDamageType = typeof SidingDamageType[keyof typeof SidingDamageType];
+
+
+export const SidingDamageType = {
+  wind: 'wind',
+  hail: 'hail',
+  tree: 'tree',
+} as const;
+
+/**
+ * v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component's photo). Set only on subjectType 'siding_facet' photos.
+ */
+export type SidingPhotoRole = typeof SidingPhotoRole[keyof typeof SidingPhotoRole];
+
+
+export const SidingPhotoRole = {
+  damage: 'damage',
+  facet: 'facet',
+  component: 'component',
 } as const;
 
 export type AttestationType = typeof AttestationType[keyof typeof AttestationType];
@@ -707,6 +733,7 @@ export interface InspectionPhoto {
   /** @nullable */
   longitude: number | null;
   zone: ComponentZone | null;
+  sidingRole: SidingPhotoRole | null;
   createdAt: string;
 }
 
@@ -850,6 +877,19 @@ export interface Attestation {
   attestedAt: string;
 }
 
+export interface InspectionSidingFacet {
+  id: string;
+  companyId: string;
+  inspectionId: string;
+  label: string;
+  damaged: boolean;
+  damageType: SidingDamageType | null;
+  componentCount: number;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+}
+
 export interface InteriorObservation {
   id: string;
   companyId: string;
@@ -944,6 +984,19 @@ export interface Inspection {
   testSquareHits?: TestSquareHit[];
   /** Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only. */
   attestations?: Attestation[];
+  /** v2.1 Elevation Walk flag — roof damage observed. */
+  roofDamageFound: boolean;
+  /** v2.1 Elevation Walk flag — siding damage observed. */
+  sidingDamageFound: boolean;
+  /** v2.1 Elevation Walk flag — collateral damage observed. */
+  collateralDamageFound: boolean;
+  /**
+     * v2.1 optional siding measurement report reference (client id of the uploaded report photo).
+     * @nullable
+     */
+  sidingMeasurementReportRef: string | null;
+  /** v2.1 siding facets, populated by the detail view only. */
+  sidingFacets?: InspectionSidingFacet[];
   /** E2 interior/attic observations, populated by the detail view only. */
   interiorObservations?: InteriorObservation[];
   /** E1 (S7) raw measurements, populated by the detail view only. */
@@ -1020,6 +1073,11 @@ export interface UpdateInspectionInput {
   stormConfirmedRef?: StormConfirmedRef | null;
   arrivalConditions?: ArrivalConditions | null;
   homeownerFacts?: HomeownerFacts | null;
+  roofDamageFound?: boolean;
+  sidingDamageFound?: boolean;
+  collateralDamageFound?: boolean;
+  /** @nullable */
+  sidingMeasurementReportRef?: string | null;
 }
 
 export interface InspectionEnvelope {
@@ -1071,6 +1129,37 @@ export interface UpdateInspectionSlopeInput {
   tieInHipRidge?: boolean;
   /** @nullable */
   notes?: string | null;
+}
+
+export interface CreateInspectionSidingFacetInput {
+  /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
+  id?: string;
+  /** @minLength 1 */
+  label: string;
+  damaged?: boolean;
+  damageType?: SidingDamageType | null;
+  /** @minimum 0 */
+  componentCount?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+/**
+ * Partial siding-facet update — only supplied fields change.
+ */
+export interface UpdateInspectionSidingFacetInput {
+  /** @minLength 1 */
+  label?: string;
+  damaged?: boolean;
+  damageType?: SidingDamageType | null;
+  /** @minimum 0 */
+  componentCount?: number;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export interface InspectionSidingFacetEnvelope {
+  sidingFacet: InspectionSidingFacet;
 }
 
 export interface InspectionSlopeEnvelope {
@@ -1241,6 +1330,7 @@ export interface CreateInspectionPhotoInput {
   /** @nullable */
   longitude?: number | null;
   zone?: ComponentZone | null;
+  sidingRole?: SidingPhotoRole | null;
 }
 
 export interface InspectionPhotoEnvelope {

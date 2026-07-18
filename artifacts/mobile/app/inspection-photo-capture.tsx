@@ -15,7 +15,7 @@ import {
 import * as Crypto from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import type { CaptureStage, InspectionSubjectType } from '@workspace/api-client-react';
+import type { CaptureStage, InspectionSubjectType, SidingPhotoRole } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { appendOptimisticPhotos, createDamageInstance } from '@/lib/inspectionSync';
@@ -109,6 +109,13 @@ export default function InspectionPhotoCaptureScreen() {
     /** Component-zone tag for a shared zone photo (subjectType 'component',
      * no subjectId): one shot evidences every component in the zone. */
     zone?: 'eave_edge' | 'ridge_hip';
+    /** v2.1 siding-photo role tag: required when subjectType is
+     * 'siding_facet' so the gate can tell damage/facet/component shots
+     * apart deterministically. */
+    sidingRole?: SidingPhotoRole;
+    /** Optional explicit caption stored in the photo's overlayJson (e.g.
+     * "S1 Damage"). Falls back to the causation / zone-title behaviour. */
+    caption?: string;
   }>();
   const steps = useMemo(() => parseRoles(params.roles).map((role) => ALL_STEPS[role]), [params.roles]);
   const [shots, setShots] = useState<Partial<Record<TriadRole, AnnotatedShot>>>({});
@@ -190,7 +197,8 @@ export default function InspectionPhotoCaptureScreen() {
       // The causation selection (damage) or zone title (shared zone photo)
       // travels as the photo caption in the evidence output, alongside any
       // tap annotations.
-      const caption = causation ?? (params.zone ? params.title ?? null : null);
+      const caption =
+        params.caption ?? causation ?? (params.zone ? params.title ?? null : null);
       const overlayJson = caption
         ? { ...(persisted.overlayJson ?? {}), caption }
         : persisted.overlayJson;
@@ -211,6 +219,7 @@ export default function InspectionPhotoCaptureScreen() {
         latitude: persisted.latitude,
         longitude: persisted.longitude,
         zone: params.zone ?? null,
+        sidingRole: params.sidingRole ?? null,
       };
       await enqueueOutboxItem('inspection.photo', payload);
       appendOptimisticPhotos(queryClient, inspectionId, [
@@ -222,6 +231,7 @@ export default function InspectionPhotoCaptureScreen() {
           triadRole: role,
           sha256: persisted.sha256,
           zone: params.zone ?? null,
+          sidingRole: params.sidingRole ?? null,
         },
       ]);
       setSavedRoles((prev) => new Set(prev).add(role));

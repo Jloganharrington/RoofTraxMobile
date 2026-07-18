@@ -15,8 +15,12 @@ import {
   CreateInspectionProductBody,
   CreateInspectionProductResponse,
   CreateInspectionResponse,
+  CreateInspectionSidingFacetBody,
+  CreateInspectionSidingFacetResponse,
   CreateInspectionSlopeBody,
   CreateInspectionSlopeResponse,
+  UpdateInspectionSidingFacetBody,
+  UpdateInspectionSidingFacetResponse,
   UpdateInspectionComponentBody,
   UpdateInspectionComponentResponse,
   UpdateInspectionSlopeBody,
@@ -52,6 +56,7 @@ import {
   inspectionPenetrationsTable,
   inspectionPhotosTable,
   inspectionProductsTable,
+  inspectionSidingFacetsTable,
   inspectionSlopesTable,
   inspectionsTable,
   pinsTable,
@@ -163,9 +168,15 @@ async function loadWritableInspection(
 async function hydrateInspectionChildren(
   inspectionId: string,
   companyId: string,
-): Promise<Omit<HydratedInspectionChildren, 'arrivalConditions'> & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }> {
+): Promise<
+  Omit<
+    HydratedInspectionChildren,
+    'arrivalConditions' | 'damageFlags' | 'sidingMeasurementReportRef'
+  > & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }
+> {
   const [
     slopes,
+    sidingFacets,
     elevations,
     damageInstances,
     photos,
@@ -187,6 +198,16 @@ async function hydrateInspectionChildren(
         ),
       )
       .orderBy(inspectionSlopesTable.createdAt),
+    db
+      .select()
+      .from(inspectionSidingFacetsTable)
+      .where(
+        and(
+          eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
+          eq(inspectionSidingFacetsTable.companyId, companyId),
+        ),
+      )
+      .orderBy(inspectionSidingFacetsTable.createdAt),
     db
       .select()
       .from(inspectionElevationsTable)
@@ -308,6 +329,7 @@ async function hydrateInspectionChildren(
 
   return {
     slopes,
+    sidingFacets,
     elevations,
     damageInstances,
     photos,
@@ -644,6 +666,20 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       ...(parsed.data.homeownerFacts !== undefined && {
         homeownerFacts: parsed.data.homeownerFacts,
       }),
+      // v2.1 — Elevation Walk damage flags + the optional siding measurement
+      // report reference.
+      ...(parsed.data.roofDamageFound !== undefined && {
+        roofDamageFound: parsed.data.roofDamageFound,
+      }),
+      ...(parsed.data.sidingDamageFound !== undefined && {
+        sidingDamageFound: parsed.data.sidingDamageFound,
+      }),
+      ...(parsed.data.collateralDamageFound !== undefined && {
+        collateralDamageFound: parsed.data.collateralDamageFound,
+      }),
+      ...(parsed.data.sidingMeasurementReportRef !== undefined && {
+        sidingMeasurementReportRef: parsed.data.sidingMeasurementReportRef,
+      }),
     })
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
@@ -807,6 +843,157 @@ router.delete(
 
     if (!deleted) {
       res.status(404).json({ error: 'Facet not found' });
+      return;
+    }
+    res.status(204).end();
+  },
+);
+
+// v2.1 — Siding facets (S1, S2, …), captured when the Elevation Walk flags
+// siding damage. Same offline-first idempotent-create / parent-scoped
+// conflict pattern as slopes.
+router.post('/inspections/:inspectionId/siding-facets', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  const parsed = CreateInspectionSidingFacetBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid siding facet payload' });
+    return;
+  }
+
+  const values = {
+    ...(parsed.data.id ? { id: parsed.data.id } : {}),
+    companyId: actor.companyId,
+    inspectionId,
+    label: parsed.data.label,
+    damaged: parsed.data.damaged ?? undefined,
+    damageType: parsed.data.damageType ?? undefined,
+    componentCount: parsed.data.componentCount ?? undefined,
+    notes: parsed.data.notes ?? undefined,
+  };
+
+  if (parsed.data.id) {
+    const [inserted] = await db
+      .insert(inspectionSidingFacetsTable)
+      .values(values)
+      .onConflictDoNothing({ target: inspectionSidingFacetsTable.id })
+      .returning();
+    if (inserted) {
+      res
+        .status(201)
+        .json(CreateInspectionSidingFacetResponse.parse({ sidingFacet: inserted }));
+      return;
+    }
+    const [existing] = await db
+      .select()
+      .from(inspectionSidingFacetsTable)
+      .where(
+        and(
+          eq(inspectionSidingFacetsTable.id, parsed.data.id),
+          eq(inspectionSidingFacetsTable.companyId, actor.companyId),
+          eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!existing) {
+      res.status(409).json({ error: 'Siding facet id already exists' });
+      return;
+    }
+    res.status(200).json(CreateInspectionSidingFacetResponse.parse({ sidingFacet: existing }));
+    return;
+  }
+
+  const [sidingFacet] = await db
+    .insert(inspectionSidingFacetsTable)
+    .values(values)
+    .returning();
+
+  res.status(201).json(CreateInspectionSidingFacetResponse.parse({ sidingFacet }));
+});
+
+router.patch(
+  '/inspections/:inspectionId/siding-facets/:sidingFacetId',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const parsed = UpdateInspectionSidingFacetBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid siding facet payload' });
+      return;
+    }
+
+    const setValues = {
+      ...(parsed.data.label !== undefined && { label: parsed.data.label }),
+      ...(parsed.data.damaged !== undefined && { damaged: parsed.data.damaged }),
+      ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
+      ...(parsed.data.componentCount !== undefined && {
+        componentCount: parsed.data.componentCount,
+      }),
+      ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
+    };
+    const facetWhere = and(
+      eq(inspectionSidingFacetsTable.id, req.params.sidingFacetId as string),
+      eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
+      eq(inspectionSidingFacetsTable.companyId, actor.companyId),
+    );
+
+    // Replay tolerance: an all-absent patch is a no-op, not a 500.
+    if (Object.keys(setValues).length === 0) {
+      const [current] = await db.select().from(inspectionSidingFacetsTable).where(facetWhere);
+      if (!current) {
+        res.status(404).json({ error: 'Siding facet not found' });
+        return;
+      }
+      res.json(UpdateInspectionSidingFacetResponse.parse({ sidingFacet: current }));
+      return;
+    }
+
+    const [updated] = await db
+      .update(inspectionSidingFacetsTable)
+      .set(setValues)
+      .where(facetWhere)
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Siding facet not found' });
+      return;
+    }
+    res.json(UpdateInspectionSidingFacetResponse.parse({ sidingFacet: updated }));
+  },
+);
+
+router.delete(
+  '/inspections/:inspectionId/siding-facets/:sidingFacetId',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const inspection = await loadWritableInspection(inspectionId, actor, res);
+    if (!inspection) return;
+
+    const [deleted] = await db
+      .delete(inspectionSidingFacetsTable)
+      .where(
+        and(
+          eq(inspectionSidingFacetsTable.id, req.params.sidingFacetId as string),
+          eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
+          eq(inspectionSidingFacetsTable.companyId, actor.companyId),
+        ),
+      )
+      .returning();
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Siding facet not found' });
       return;
     }
     res.status(204).end();
@@ -1376,6 +1563,17 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     res.status(400).json({ error: 'A subjectId is required for subject-attached photos' });
     return;
   }
+  // v2.1 — sidingRole invariants: the role tag is meaningful only on siding
+  // facet photos, and every siding-facet photo must declare its role so the
+  // gate can discriminate damage/facet/component shots deterministically.
+  if (parsed.data.sidingRole && parsed.data.subjectType !== 'siding_facet') {
+    res.status(400).json({ error: 'sidingRole is only valid on siding facet photos' });
+    return;
+  }
+  if (parsed.data.subjectType === 'siding_facet' && !parsed.data.sidingRole) {
+    res.status(400).json({ error: 'A sidingRole is required for siding facet photos' });
+    return;
+  }
 
   const values = {
     ...(parsed.data.id ? { id: parsed.data.id } : {}),
@@ -1394,6 +1592,7 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     latitude: parsed.data.latitude ?? undefined,
     longitude: parsed.data.longitude ?? undefined,
     zone: parsed.data.zone ?? undefined,
+    sidingRole: parsed.data.sidingRole ?? undefined,
   };
 
   // Offline-first idempotent create. Evidence photos are queued in the mobile
@@ -1702,6 +1901,12 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
   const evaluation = evaluateServerInspection({
     ...children,
     arrivalConditions: inspection.arrivalConditions ?? null,
+    damageFlags: {
+      roofDamageFound: inspection.roofDamageFound,
+      sidingDamageFound: inspection.sidingDamageFound,
+      collateralDamageFound: inspection.collateralDamageFound,
+    },
+    sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
   });
   if (evaluation.deficiencies.length > 0) {
     res.status(422).json({
@@ -1757,6 +1962,12 @@ router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Re
   const evaluation = evaluateServerInspection({
     ...children,
     arrivalConditions: inspection.arrivalConditions ?? null,
+    damageFlags: {
+      roofDamageFound: inspection.roofDamageFound,
+      sidingDamageFound: inspection.sidingDamageFound,
+      collateralDamageFound: inspection.collateralDamageFound,
+    },
+    sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
   });
 
   res.json(

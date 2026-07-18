@@ -1,4 +1,10 @@
-import type { ElevationDirection, FacetDamageType, Stage } from './stages';
+import type {
+  DamageFlags,
+  ElevationDirection,
+  FacetDamageType,
+  SidingDamageType,
+  Stage,
+} from './stages';
 import type { ObservedIndicator } from './indicators';
 
 // Step 5 — Components capture is zone-based: one shared "zone photo"
@@ -40,9 +46,10 @@ export interface InspectionProtocolState {
     gpsPresent: boolean;
     timePresent: boolean;
   };
-  // Step 2 — Elevation Walk & Access.
+  // Step 2 — Elevation Walk: four wide elevation photos plus the three
+  // damage-found flags. The flags drive which conditional steps apply.
   elevations: Partial<Record<ElevationDirection, { widePhotoCaptured: boolean }>>;
-  roofAccessPhotoCaptured: boolean;
+  damageFlags: DamageFlags;
   // Step 3 — Facets & Measurements. One entry per documented facet.
   facets: Array<{
     id: string;
@@ -73,6 +80,22 @@ export interface InspectionProtocolState {
   penetrations: Array<{ id: string; photoCaptured: boolean }>;
   // Step 6 — product identification records.
   productIdentifications: Array<{ id: string; unidentifiable: boolean }>;
+  // Siding Inspection (v2.1, applies when sidingDamageFound). One entry per
+  // documented siding facet (S1, S2, …). Photo counts are derived from
+  // siding_facet-subject photos discriminated by their sidingRole tag.
+  sidingFacets: Array<{
+    id: string;
+    label: string;
+    damaged: boolean;
+    damageType: SidingDamageType | null;
+    componentCount: number;
+    facetPhotoCaptured: boolean;
+    damagePhotoCount: number;
+    componentPhotoCount: number;
+  }>;
+  // Optional siding measurement report (soft-flagged when siding applies and
+  // it's missing — never a hard block).
+  sidingMeasurementReportUploaded: boolean;
   // Step 8 — interior/attic (conditional; soft-flagged, never hard-blocked).
   interiorPhotoCaptured: boolean;
   interiorObservationCount: number;

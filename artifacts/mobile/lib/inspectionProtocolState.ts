@@ -7,6 +7,7 @@ import {
   type Deficiency,
   type FacetDamageType,
   type InspectionProtocolState,
+  type SidingDamageType,
   type Stage,
 } from '@workspace/protocol';
 import type { Inspection } from '@workspace/api-client-react';
@@ -33,6 +34,7 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
   const photos: Photo[] = inspection.photos ?? [];
   const elevations = inspection.elevations ?? [];
   const slopes = inspection.slopes ?? [];
+  const sidingFacets = inspection.sidingFacets ?? [];
   const damageInstances = inspection.damageInstances ?? [];
   const components = inspection.components ?? [];
   const penetrations = inspection.penetrations ?? [];
@@ -83,9 +85,11 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       timePresent: Boolean(arrivalConditions?.timeLocal ?? arrivalConditions?.recordedAtUtc),
     },
     elevations: elevationState,
-    roofAccessPhotoCaptured: photos.some(
-      (p) => p.subjectType === 'inspection' && p.stage === 'elevation_access',
-    ),
+    damageFlags: {
+      roofDamageFound: Boolean(inspection.roofDamageFound),
+      sidingDamageFound: Boolean(inspection.sidingDamageFound),
+      collateralDamageFound: Boolean(inspection.collateralDamageFound),
+    },
     facets: slopes.map((slope) => ({
       id: slope.id,
       label: slope.label,
@@ -135,6 +139,26 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       id: product.id,
       unidentifiable: product.identificationMethod === 'unidentifiable',
     })),
+    // v2.1 — Siding facets. Photos are discriminated by subjectType
+    // 'siding_facet' + the sidingRole tag (never by caption strings), so the
+    // gate can tell the damage close-up, facet shot, and per-component photos
+    // apart deterministically.
+    sidingFacets: sidingFacets.map((facet) => {
+      const facetPhotos = photos.filter(
+        (p) => p.subjectType === 'siding_facet' && p.subjectId === facet.id,
+      );
+      return {
+        id: facet.id,
+        label: facet.label,
+        damaged: Boolean(facet.damaged),
+        damageType: (facet.damageType as SidingDamageType | null) ?? null,
+        componentCount: facet.componentCount ?? 0,
+        facetPhotoCaptured: facetPhotos.some((p) => p.sidingRole === 'facet'),
+        damagePhotoCount: facetPhotos.filter((p) => p.sidingRole === 'damage').length,
+        componentPhotoCount: facetPhotos.filter((p) => p.sidingRole === 'component').length,
+      };
+    }),
+    sidingMeasurementReportUploaded: Boolean(inspection.sidingMeasurementReportRef),
     interiorPhotoCaptured: photos.some((p) => p.subjectType === 'interior_observation'),
     interiorObservationCount: interiorObservations.length,
     interiorClaimWaived: hasStageSignoff('interior', 'no_interior_claim'),

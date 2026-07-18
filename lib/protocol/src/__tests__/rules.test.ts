@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { evaluate } from '../rules';
+import { applicableSteps, stepApplies } from '../stages';
 import type { InspectionProtocolState } from '../types';
 
-// Protocol v2 — a state that satisfies every hard gate across the 11 steps.
+// Protocol v2.1 — a state that satisfies every hard gate across all steps,
+// with every damage surface selected so all conditional steps apply.
 function completeState(): InspectionProtocolState {
   return {
     arrival: {
@@ -20,7 +22,11 @@ function completeState(): InspectionProtocolState {
       back: { widePhotoCaptured: true },
       left: { widePhotoCaptured: true },
     },
-    roofAccessPhotoCaptured: true,
+    damageFlags: {
+      roofDamageFound: true,
+      sidingDamageFound: true,
+      collateralDamageFound: true,
+    },
     facets: [
       {
         id: 'facet-1',
@@ -39,6 +45,19 @@ function completeState(): InspectionProtocolState {
     componentZonePhotos: ['eave_edge'],
     penetrations: [{ id: 'pen-1', photoCaptured: true }],
     productIdentifications: [{ id: 'prod-1', unidentifiable: false }],
+    sidingFacets: [
+      {
+        id: 'sf-1',
+        label: 'S1',
+        damaged: true,
+        damageType: 'hail',
+        componentCount: 2,
+        facetPhotoCaptured: true,
+        damagePhotoCount: 1,
+        componentPhotoCount: 2,
+      },
+    ],
+    sidingMeasurementReportUploaded: true,
     interiorPhotoCaptured: false,
     interiorObservationCount: 1,
     interiorClaimWaived: false,
@@ -48,7 +67,7 @@ function completeState(): InspectionProtocolState {
   };
 }
 
-describe('evaluate (protocol v2)', () => {
+describe('evaluate (protocol v2.1)', () => {
   it('returns zero deficiencies and zero soft flags for a fully complete state', () => {
     const result = evaluate(completeState());
     expect(result.deficiencies).toEqual([]);
@@ -146,6 +165,78 @@ describe('evaluate (protocol v2)', () => {
     expect(submit.map((d) => d.code)).toEqual(['HARD_DEFICIENCIES_REMAIN']);
   });
 
+  // ---- v2.1 conditional applicability ---------------------------------------
+
+  it('skips every roof gate when roofDamageFound is false', () => {
+    const state = completeState();
+    state.damageFlags.roofDamageFound = false;
+    state.facets = [];
+    state.damageInstances = [];
+    state.testSquares = [];
+    state.components = [];
+    state.componentZonePhotos = [];
+    state.penetrations = [];
+    state.productIdentifications = [];
+    state.wholeRoofLinearCount = 0;
+    const result = evaluate(state);
+    expect(result.deficiencies).toEqual([]);
+    // Roof soft flags (no components) must not fire either.
+    expect(result.softFlags).toEqual([]);
+  });
+
+  it('skips the siding gate when sidingDamageFound is false', () => {
+    const state = completeState();
+    state.damageFlags.sidingDamageFound = false;
+    state.sidingFacets = [];
+    state.sidingMeasurementReportUploaded = false;
+    const result = evaluate(state);
+    expect(result.deficiencies).toEqual([]);
+    expect(result.softFlags).toEqual([]);
+  });
+
+  it('hard-blocks submit with NO_DAMAGE_SURFACE_SELECTED when no flag is set', () => {
+    const state = completeState();
+    state.damageFlags = {
+      roofDamageFound: false,
+      sidingDamageFound: false,
+      collateralDamageFound: false,
+    };
+    const result = evaluate(state);
+    expect(result.deficiencies.map((d) => d.code)).toContain('NO_DAMAGE_SURFACE_SELECTED');
+    expect(result.deficiencies.filter((d) => d.stage !== 'submit')).toEqual([]);
+  });
+
+  it('soft-flags a missing siding measurement report only when siding applies', () => {
+    const state = completeState();
+    state.sidingMeasurementReportUploaded = false;
+    expect(evaluate(state).softFlags.map((f) => f.code)).toContain(
+      'SIDING_MEASUREMENT_REPORT_MISSING',
+    );
+    state.damageFlags.sidingDamageFound = false;
+    state.sidingFacets = [];
+    expect(evaluate(state).softFlags).toEqual([]);
+  });
+
+  it('applicableSteps drops exactly the unselected surfaces', () => {
+    const flags = {
+      roofDamageFound: false,
+      sidingDamageFound: true,
+      collateralDamageFound: false,
+    };
+    const keys = applicableSteps(flags).map((s) => s.key);
+    expect(keys).toEqual([
+      'arrival',
+      'elevation_access',
+      'siding',
+      'interior',
+      'homeowner',
+      'declaration',
+      'submit',
+    ]);
+    expect(stepApplies('facets', flags)).toBe(false);
+    expect(stepApplies('collateral', flags)).toBe(false);
+  });
+
   // ---- Gate-engine regression: single-deficiency fixtures ------------------
   // Each fixture mutates exactly one thing out of a complete state and must
   // yield exactly one hard deficiency on its own step (plus the submit
@@ -168,7 +259,6 @@ describe('evaluate (protocol v2)', () => {
     { name: 'elevation right deleted', mutate: (s) => { delete s.elevations.right; }, stage: 'elevation_access', code: 'MISSING_ELEVATION_PHOTO_RIGHT' },
     { name: 'elevation back deleted', mutate: (s) => { delete s.elevations.back; }, stage: 'elevation_access', code: 'MISSING_ELEVATION_PHOTO_BACK' },
     { name: 'elevation left wide false', mutate: (s) => { s.elevations.left = { widePhotoCaptured: false }; }, stage: 'elevation_access', code: 'MISSING_ELEVATION_PHOTO_LEFT' },
-    { name: 'roof access missing', mutate: (s) => { s.roofAccessPhotoCaptured = false; }, stage: 'elevation_access', code: 'MISSING_ROOF_ACCESS_PHOTO' },
     { name: 'no facets', mutate: (s) => { s.facets = []; s.damageInstances = []; s.testSquares = []; }, stage: 'facets', code: 'NO_FACETS_DOCUMENTED' },
     { name: 'facet area missing', mutate: (s) => { s.facets[0]!.hasArea = false; }, stage: 'facets', code: 'MISSING_FACET_AREA_facet-1' },
     { name: 'facet material missing', mutate: (s) => { s.facets[0]!.hasMaterial = false; }, stage: 'facets', code: 'MISSING_FACET_MATERIAL_facet-1' },
@@ -185,6 +275,11 @@ describe('evaluate (protocol v2)', () => {
     { name: 'ridge/hip component w/o zone photo', mutate: (s) => { s.components.push({ id: 'comp-2', zone: 'ridge_hip' }); }, stage: 'components', code: 'MISSING_ZONE_PHOTO_ridge_hip' },
     { name: 'penetration w/o photo', mutate: (s) => { s.penetrations[0]!.photoCaptured = false; }, stage: 'components', code: 'MISSING_PENETRATION_PHOTO_pen-1' },
     { name: 'no product record', mutate: (s) => { s.productIdentifications = []; }, stage: 'product', code: 'NO_PRODUCT_RECORD' },
+    { name: 'siding damage found w/o siding facets', mutate: (s) => { s.sidingFacets = []; }, stage: 'siding', code: 'NO_SIDING_FACETS_DOCUMENTED' },
+    { name: 'siding facet w/o facet photo', mutate: (s) => { s.sidingFacets[0]!.facetPhotoCaptured = false; }, stage: 'siding', code: 'MISSING_SIDING_FACET_PHOTO_sf-1' },
+    { name: 'damaged siding facet w/o damage type', mutate: (s) => { s.sidingFacets[0]!.damageType = null; }, stage: 'siding', code: 'MISSING_SIDING_DAMAGE_TYPE_sf-1' },
+    { name: 'damaged siding facet w/o damage photo', mutate: (s) => { s.sidingFacets[0]!.damagePhotoCount = 0; }, stage: 'siding', code: 'MISSING_SIDING_DAMAGE_PHOTO_sf-1' },
+    { name: 'siding components not all photographed', mutate: (s) => { s.sidingFacets[0]!.componentPhotoCount = 1; }, stage: 'siding', code: 'MISSING_SIDING_COMPONENT_PHOTOS_sf-1' },
     { name: 'declaration missing', mutate: (s) => { s.declarationSigned = false; }, stage: 'declaration', code: 'MISSING_DECLARATION' },
   ];
 
@@ -198,6 +293,14 @@ describe('evaluate (protocol v2)', () => {
     );
     const result = evaluate(state);
     expect(result.deficiencies).toHaveLength(0);
+  });
+
+  it('an undamaged siding facet needs no damage type or damage photo', () => {
+    const state = completeState();
+    state.sidingFacets[0]!.damaged = false;
+    state.sidingFacets[0]!.damageType = null;
+    state.sidingFacets[0]!.damagePhotoCount = 0;
+    expect(evaluate(state).deficiencies).toEqual([]);
   });
 
   it('exercises at least 20 distinct single-deficiency fixtures', () => {

@@ -1,9 +1,10 @@
-// Forensic Protocol v2 — the 11 physically-ordered steps of a forensic
+// Forensic Protocol v2.1 — the physically-ordered steps of a forensic
 // inspection. These keys mirror (by id only — no runtime dependency) the
 // CAPTURE_STAGES values stored on `inspection_photos`/`attestations` rows in
 // @workspace/db. This package owns the *meaning* of each step and the rules
 // for progressing through them; the DB just persists which step a given
-// record belongs to. S-numbers are retired.
+// record belongs to. S-numbers are retired, and (v2.1) so are user-facing
+// "Step N" prefixes — steps are named only.
 export const STAGES = [
   'arrival',
   'elevation_access',
@@ -11,6 +12,7 @@ export const STAGES = [
   'test_squares',
   'components',
   'product',
+  'siding',
   'collateral',
   'interior',
   'homeowner',
@@ -23,14 +25,30 @@ export type Stage = (typeof STAGES)[number];
 // primary exported name so Deficiency/SoftFlag consumers don't churn.
 export type StepKey = Stage;
 
+// v2.1 — the three "damage found" flags captured on the Elevation Walk.
+// They drive which conditional steps apply (are shown + gated) for this
+// inspection. Raw booleans stored on the inspection row.
+export interface DamageFlags {
+  roofDamageFound: boolean;
+  sidingDamageFound: boolean;
+  collateralDamageFound: boolean;
+}
+
 export interface ProtocolStep {
   key: Stage;
   order: number;
   name: string;
   description: string;
+  /** v2.1 conditional steps: present only when the predicate passes. Steps
+   * without a predicate always apply. */
+  appliesWhen?: (flags: DamageFlags) => boolean;
 }
 
-// THE ordered source of truth for the 11-step flow. Imported by the step
+const whenRoof = (flags: DamageFlags) => flags.roofDamageFound;
+const whenSiding = (flags: DamageFlags) => flags.sidingDamageFound;
+const whenCollateral = (flags: DamageFlags) => flags.collateralDamageFound;
+
+// THE ordered source of truth for the step flow. Imported by the step
 // hub, the gate engine, and the server — no hard-coded step strings
 // scattered across screens.
 export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
@@ -43,61 +61,75 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
   {
     key: 'elevation_access',
     order: 2,
-    name: 'Elevation Walk & Access',
-    description: 'A wide photo of each of the four elevations plus the roof-access photo.',
+    name: 'Elevation Walk',
+    description:
+      'A wide photo of each of the four elevations, plus the three damage-found flags.',
   },
   {
     key: 'facets',
     order: 3,
-    name: 'Facets & Measurements',
+    name: 'Roof Facets & Measurements',
     description:
       'Every roof facet with area, material, pitch and damage documentation, plus whole-roof linears.',
+    appliesWhen: whenRoof,
   },
   {
     key: 'test_squares',
     order: 4,
     name: 'Test Squares',
     description: 'A test-square photo on every facet that carries hail damage.',
+    appliesWhen: whenRoof,
   },
   {
     key: 'components',
     order: 5,
-    name: 'Components & Penetrations',
+    name: 'Roof Components & Penetrations',
     description: 'Existing components and roof penetrations, each with a photo.',
+    appliesWhen: whenRoof,
   },
   {
     key: 'product',
     order: 6,
-    name: 'Product ID',
+    name: 'Roofing Product ID',
     description: 'At least one roofing-product identification record.',
+    appliesWhen: whenRoof,
+  },
+  {
+    key: 'siding',
+    order: 7,
+    name: 'Siding Inspection',
+    description:
+      'Siding facets S1…S{n}: damage classification, facet photo, and per-component photos.',
+    appliesWhen: whenSiding,
   },
   {
     key: 'collateral',
-    order: 7,
+    order: 8,
     name: 'Collateral Sweep',
-    description: 'Optional labeled collateral photos, roof-level then ground-level.',
+    description: 'Labeled collateral photos, roof-level then ground-level.',
+    appliesWhen: whenCollateral,
   },
   {
     key: 'interior',
-    order: 8,
+    order: 9,
     name: 'Interior / Attic',
     description: 'Interior/attic evidence, or an explicit no-interior-claim waiver.',
   },
   {
     key: 'homeowner',
-    order: 9,
+    order: 10,
     name: 'Homeowner',
     description: 'Factual homeowner intake (prior repairs, prior claims).',
   },
   {
     key: 'declaration',
-    order: 10,
+    order: 11,
     name: 'Declaration',
     description: 'The inspector signs off on the completeness of the capture.',
   },
   {
     key: 'submit',
-    order: 11,
+    order: 12,
     name: 'Readiness & Submit',
     description: 'Zero hard deficiencies remain and the package is confirmed ready.',
   },
@@ -111,10 +143,23 @@ export function protocolStep(key: Stage): ProtocolStep {
   return step;
 }
 
-/** User-facing label, e.g. `Step 3 · Facets & Measurements`. */
-export function stepLabel(key: Stage): string {
+/** True when the given step applies for this inspection's damage flags. Used
+ * by the hub (visibility) and the gate engine (which steps to gate) — the two
+ * must never disagree, so both call exactly this. */
+export function stepApplies(key: Stage, flags: DamageFlags): boolean {
   const step = protocolStep(key);
-  return `Step ${step.order} · ${step.name}`;
+  return step.appliesWhen ? step.appliesWhen(flags) : true;
+}
+
+/** The ordered steps that apply for this inspection's damage flags. */
+export function applicableSteps(flags: DamageFlags): ProtocolStep[] {
+  return PROTOCOL_STEPS.filter((step) => stepApplies(step.key, flags));
+}
+
+/** User-facing label. v2.1: the step's name only — "Step N" prefixes are
+ * retired (conditional steps make fixed numbering meaningless). */
+export function stepLabel(key: Stage): string {
+  return protocolStep(key).name;
 }
 
 // Back-compat shaped lookup (name + description keyed by step key).
@@ -129,6 +174,19 @@ export type ElevationDirection = (typeof ELEVATION_DIRECTIONS)[number];
 // Facet damage classification (mirrors FACET_DAMAGE_TYPES in @workspace/db).
 export const FACET_DAMAGE_TYPES = ['hail', 'wind', 'hail_and_wind', 'none'] as const;
 export type FacetDamageType = (typeof FACET_DAMAGE_TYPES)[number];
+
+// Siding facet damage classification (v2.1 — mirrors SIDING_DAMAGE_TYPES in
+// @workspace/db). Distinct vocabulary from roof facets: siding claims
+// classify wind / hail / tree impact.
+export const SIDING_DAMAGE_TYPES = ['wind', 'hail', 'tree'] as const;
+export type SidingDamageType = (typeof SIDING_DAMAGE_TYPES)[number];
+
+// Which role a siding-facet photo plays (mirrors SIDING_PHOTO_ROLES in
+// @workspace/db): the damage close-up, the whole-facet shot, or one
+// component's photo. Deterministic gate discrimination — never inferred from
+// caption strings.
+export const SIDING_PHOTO_ROLES = ['damage', 'facet', 'component'] as const;
+export type SidingPhotoRole = (typeof SIDING_PHOTO_ROLES)[number];
 
 /** True when a facet's damage classification requires a Step-4 test square. */
 export function carriesHail(damageType: FacetDamageType | null | undefined): boolean {

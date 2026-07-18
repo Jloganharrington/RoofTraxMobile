@@ -44,6 +44,7 @@ const STAGE_FIX_ROUTES: Partial<Record<Stage, string>> = {
   facets: '/inspection-roof',
   test_squares: '/inspection-test-squares',
   components: '/inspection-components',
+  siding: '/inspection-siding',
   collateral: '/inspection-collateral',
   product: '/inspection-product',
   interior: '/inspection-interior',

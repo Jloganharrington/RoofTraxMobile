@@ -15,6 +15,7 @@ import type { InspectionPenetration } from './inspectionPenetration';
 import type { InspectionPhase } from './inspectionPhase';
 import type { InspectionPhoto } from './inspectionPhoto';
 import type { InspectionProduct } from './inspectionProduct';
+import type { InspectionSidingFacet } from './inspectionSidingFacet';
 import type { InspectionSlope } from './inspectionSlope';
 import type { InspectionStatus } from './inspectionStatus';
 import type { InteriorObservation } from './interiorObservation';
@@ -91,6 +92,19 @@ export interface Inspection {
   testSquareHits?: TestSquareHit[];
   /** Attestations recorded on this inspection (equipment checklist, GPS override, stage sign-offs incl. the D2 inaccessible-slope attestation), populated by the detail view only. */
   attestations?: Attestation[];
+  /** v2.1 Elevation Walk flag — roof damage observed. */
+  roofDamageFound: boolean;
+  /** v2.1 Elevation Walk flag — siding damage observed. */
+  sidingDamageFound: boolean;
+  /** v2.1 Elevation Walk flag — collateral damage observed. */
+  collateralDamageFound: boolean;
+  /**
+     * v2.1 optional siding measurement report reference (client id of the uploaded report photo).
+     * @nullable
+     */
+  sidingMeasurementReportRef: string | null;
+  /** v2.1 siding facets, populated by the detail view only. */
+  sidingFacets?: InspectionSidingFacet[];
   /** E2 interior/attic observations, populated by the detail view only. */
   interiorObservations?: InteriorObservation[];
   /** E1 (S7) raw measurements, populated by the detail view only. */

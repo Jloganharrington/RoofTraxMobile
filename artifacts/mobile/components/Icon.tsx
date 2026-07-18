@@ -37,7 +37,9 @@ export type IconName =
   | 'wind'
   | 'edit-3'
   | 'server'
-  | 'file-text';
+  | 'file-text'
+  | 'grid'
+  | 'minus';
 
 type IconProps = {
   name: IconName;
@@ -57,6 +59,17 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       {name === 'plus' && <Path d="M12 5v14M5 12h14" {...strokeProps} />}
+
+      {name === 'minus' && <Path d="M5 12h14" {...strokeProps} />}
+
+      {name === 'grid' && (
+        <>
+          <Rect x={3} y={3} width={7} height={7} {...strokeProps} />
+          <Rect x={14} y={3} width={7} height={7} {...strokeProps} />
+          <Rect x={14} y={14} width={7} height={7} {...strokeProps} />
+          <Rect x={3} y={14} width={7} height={7} {...strokeProps} />
+        </>
+      )}
 
       {name === 'x' && <Path d="M18 6 6 18M6 6l12 12" {...strokeProps} />}
 

@@ -958,6 +958,143 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/siding-facets:
+    post:
+      tags: [Inspections]
+      operationId: createInspectionSidingFacet
+      summary: Add a siding facet to an inspection (v2.1)
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInspectionSidingFacetInput"
+      responses:
+        "201":
+          description: Siding facet created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSidingFacetEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/siding-facets/{sidingFacetId}:
+    patch:
+      tags: [Inspections]
+      operationId: updateInspectionSidingFacet
+      summary: Update a siding facet's details
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sidingFacetId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInspectionSidingFacetInput"
+      responses:
+        "200":
+          description: Siding facet updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSidingFacetEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or siding facet not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Inspections]
+      operationId: deleteInspectionSidingFacet
+      summary: Remove a siding facet
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sidingFacetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Siding facet removed.
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection or siding facet not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /inspections/{inspectionId}/slopes/{slopeId}:
     patch:
       tags: [Inspections]
@@ -2763,7 +2900,7 @@ components:
       enum: [front, right, back, left]
     InspectionSubjectType:
       type: string
-      enum: [inspection, slope, elevation, damage_instance, test_square, test_square_hit, component, penetration, product, interior_observation]
+      enum: [inspection, slope, elevation, damage_instance, test_square, test_square_hit, component, penetration, product, interior_observation, siding_facet]
     TestSquareHitType:
       type: string
       description: >-
@@ -2784,8 +2921,9 @@ components:
           facets,
           test_squares,
           components,
-          collateral,
           product,
+          siding,
+          collateral,
           interior,
           homeowner,
           declaration,
@@ -2797,6 +2935,19 @@ components:
         Per-facet damage classification. hail / hail_and_wind facets drive
         the Step-4 test-square gate.
       enum: [hail, wind, hail_and_wind, none]
+    SidingDamageType:
+      type: string
+      description: >-
+        v2.1 — per-siding-facet damage classification (distinct vocabulary
+        from roof facets).
+      enum: [wind, hail, tree]
+    SidingPhotoRole:
+      type: string
+      description: >-
+        v2.1 — which role a siding-facet photo plays (damage close-up, whole-
+        facet shot, or one declared component's photo). Set only on
+        subjectType 'siding_facet' photos.
+      enum: [damage, facet, component]
     AttestationType:
       type: string
       enum: [equipment, gps_override, stage_signoff]
@@ -3020,6 +3171,10 @@ components:
           homeownerFacts,
           submissionManifest,
           lockedAt,
+          roofDamageFound,
+          sidingDamageFound,
+          collateralDamageFound,
+          sidingMeasurementReportRef,
           createdAt,
           updatedAt,
         ]
@@ -3150,6 +3305,25 @@ components:
             attestation), populated by the detail view only.
           items:
             $ref: "#/components/schemas/Attestation"
+        roofDamageFound:
+          type: boolean
+          description: v2.1 Elevation Walk flag — roof damage observed.
+        sidingDamageFound:
+          type: boolean
+          description: v2.1 Elevation Walk flag — siding damage observed.
+        collateralDamageFound:
+          type: boolean
+          description: v2.1 Elevation Walk flag — collateral damage observed.
+        sidingMeasurementReportRef:
+          type: [string, "null"]
+          description: >-
+            v2.1 optional siding measurement report reference (client id of
+            the uploaded report photo).
+        sidingFacets:
+          type: array
+          description: v2.1 siding facets, populated by the detail view only.
+          items:
+            $ref: "#/components/schemas/InspectionSidingFacet"
         interiorObservations:
           type: array
           description: E2 interior/attic observations, populated by the detail view only.
@@ -3247,6 +3421,14 @@ components:
           oneOf:
             - $ref: "#/components/schemas/HomeownerFacts"
             - type: "null"
+        roofDamageFound:
+          type: boolean
+        sidingDamageFound:
+          type: boolean
+        collateralDamageFound:
+          type: boolean
+        sidingMeasurementReportRef:
+          type: [string, "null"]
     InspectionEnvelope:
       type: object
       required: [inspection]
@@ -3374,6 +3556,91 @@ components:
           type: boolean
         notes:
           type: [string, "null"]
+    InspectionSidingFacet:
+      type: object
+      required:
+        [
+          id,
+          companyId,
+          inspectionId,
+          label,
+          damaged,
+          damageType,
+          componentCount,
+          notes,
+          createdAt,
+        ]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        inspectionId:
+          type: string
+        label:
+          type: string
+        damaged:
+          type: boolean
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/SidingDamageType"
+            - type: "null"
+        componentCount:
+          type: number
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    CreateInspectionSidingFacetInput:
+      type: object
+      required: [label]
+      properties:
+        id:
+          type: string
+          description: >-
+            Optional client-generated id for offline-first creation. When
+            supplied, creation is idempotent (upsert), so a queued offline
+            capture can be safely retried and referenced by child photos
+            before it has synced.
+        label:
+          type: string
+          minLength: 1
+        damaged:
+          type: boolean
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/SidingDamageType"
+            - type: "null"
+        componentCount:
+          type: number
+          minimum: 0
+        notes:
+          type: [string, "null"]
+    UpdateInspectionSidingFacetInput:
+      type: object
+      description: Partial siding-facet update — only supplied fields change.
+      properties:
+        label:
+          type: string
+          minLength: 1
+        damaged:
+          type: boolean
+        damageType:
+          oneOf:
+            - $ref: "#/components/schemas/SidingDamageType"
+            - type: "null"
+        componentCount:
+          type: number
+          minimum: 0
+        notes:
+          type: [string, "null"]
+    InspectionSidingFacetEnvelope:
+      type: object
+      required: [sidingFacet]
+      properties:
+        sidingFacet:
+          $ref: "#/components/schemas/InspectionSidingFacet"
     InspectionSlopeEnvelope:
       type: object
       required: [slope]
@@ -3775,6 +4042,7 @@ components:
           latitude,
           longitude,
           zone,
+          sidingRole,
           createdAt,
         ]
       properties:
@@ -3818,6 +4086,10 @@ components:
         zone:
           oneOf:
             - $ref: "#/components/schemas/ComponentZone"
+            - type: "null"
+        sidingRole:
+          oneOf:
+            - $ref: "#/components/schemas/SidingPhotoRole"
             - type: "null"
         createdAt:
           type: string
@@ -3869,6 +4141,10 @@ components:
         zone:
           oneOf:
             - $ref: "#/components/schemas/ComponentZone"
+            - type: "null"
+        sidingRole:
+          oneOf:
+            - $ref: "#/components/schemas/SidingPhotoRole"
             - type: "null"
     InspectionPhotoEnvelope:
       type: object
