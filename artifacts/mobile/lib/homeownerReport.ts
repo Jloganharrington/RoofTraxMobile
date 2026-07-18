@@ -127,10 +127,35 @@ function base64ToBytes(base64: string): Uint8Array {
 // back to the uncompressed original (and Mail kept dying). Failures are now
 // logged instead of swallowed silently, but still fall back to the original
 // so one bad photo never sinks the report.
+async function manipulate(uri: string): Promise<string | null> {
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: 1280 } }],
+    { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+  );
+  return result.base64 ? `data:image/jpeg;base64,${result.base64}` : null;
+}
+
 async function compressForReport(dataUri: string): Promise<string> {
   const comma = dataUri.indexOf(',');
   const srcBase64 = comma >= 0 ? dataUri.slice(comma + 1) : '';
   if (!srcBase64) return dataUri;
+  const srcKb = Math.round(srcBase64.length / 1024);
+
+  // Attempt 1: feed the manipulator the data URI directly.
+  try {
+    const out = await manipulate(dataUri);
+    if (out) {
+      console.log(`[report] photo compressed (data-uri) ${srcKb}KB -> ${Math.round(out.length / 1024)}KB`);
+      return out;
+    }
+    console.warn('[report] data-uri compress returned no base64; trying temp file');
+  } catch (err) {
+    console.warn('[report] data-uri compress failed; trying temp file', err);
+  }
+
+  // Attempt 2: write a temp file (single-argument write — the native module
+  // rejects an options object) and manipulate that.
   let tmp: WritableFile | null = null;
   try {
     tmp = new File(
@@ -138,20 +163,14 @@ async function compressForReport(dataUri: string): Promise<string> {
       `report-src-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`,
     ) as unknown as WritableFile;
     tmp.write(base64ToBytes(srcBase64));
-    const result = await ImageManipulator.manipulateAsync(
-      tmp.uri,
-      [{ resize: { width: 1280 } }],
-      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
-    );
-    if (result.base64) {
-      console.log(
-        `[report] photo compressed ${Math.round(srcBase64.length / 1024)}KB -> ${Math.round(result.base64.length / 1024)}KB`,
-      );
-      return `data:image/jpeg;base64,${result.base64}`;
+    const out = await manipulate(tmp.uri);
+    if (out) {
+      console.log(`[report] photo compressed (temp file) ${srcKb}KB -> ${Math.round(out.length / 1024)}KB`);
+      return out;
     }
-    console.warn('[report] compress returned no base64; using original');
+    console.warn('[report] temp-file compress returned no base64; using original');
   } catch (err) {
-    console.warn('[report] compress failed; using original', err);
+    console.warn('[report] temp-file compress failed; using original', err);
   } finally {
     try {
       if (tmp?.exists) tmp.delete();
@@ -455,6 +474,8 @@ function toFriendlyPdf(printUri: string, inspection: Inspection): string {
 export interface HomeownerReport {
   /** Local file:// URI of the generated PDF (what gets shared). */
   pdfUri: string;
+  /** Size of the generated PDF in bytes (0 if it couldn't be read). */
+  pdfBytes: number;
   /** The exact HTML the PDF was rendered from (photos embedded as data URIs) —
    * used for the in-app "View report" screen, since Android WebViews can't
    * render a local PDF directly. Content is identical to the PDF. */
@@ -466,7 +487,16 @@ export async function generateHomeownerReport(inspection: Inspection): Promise<H
   const photos = await resolvePreliminaryPhotos(inspection);
   const html = buildReportHtml(inspection, photos);
   const { uri } = await Print.printToFileAsync({ html });
-  return { pdfUri: toFriendlyPdf(uri, inspection), html };
+  const pdfUri = toFriendlyPdf(uri, inspection);
+  let pdfBytes = 0;
+  try {
+    const info = (new File(pdfUri) as unknown as { info(): { size?: number | null } }).info();
+    pdfBytes = info.size ?? 0;
+  } catch {
+    // size stays 0 — informational only
+  }
+  console.log(`[report] PDF generated: ${(pdfBytes / (1024 * 1024)).toFixed(1)}MB at ${pdfUri}`);
+  return { pdfUri, pdfBytes, html };
 }
 
 /**

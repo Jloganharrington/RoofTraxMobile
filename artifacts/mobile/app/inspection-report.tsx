@@ -196,7 +196,12 @@ export default function InspectionReportScreen() {
                 <Icon name="check" size={18} color={colors.secondary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Report ready</Text>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                  Report ready
+                  {report.pdfBytes > 0
+                    ? ` (${(report.pdfBytes / (1024 * 1024)).toFixed(1)} MB)`
+                    : ''}
+                </Text>
                 <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
                   PDF with the summary above and all {photoCount} photo{photoCount === 1 ? '' : 's'}.
                 </Text>
