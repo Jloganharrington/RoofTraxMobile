@@ -101,9 +101,18 @@ async function imageToDataUri(uri: string, headers?: Record<string, string>): Pr
 }
 
 // expo-file-system v19 File methods aren't on the exported type; see
-// UsableFile above. `write` accepts a base64 payload when told so.
+// UsableFile above. NOTE: the native `write` accepts exactly ONE argument
+// (string or bytes) — passing an options object throws InvalidArgsNumber,
+// so binary payloads must be pre-decoded to a Uint8Array.
 interface WritableFile extends UsableFile {
-  write(content: string, options?: { encoding?: 'base64' | 'utf8' }): void;
+  write(content: string | Uint8Array): void;
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 // Downscale + recompress a photo before it's embedded in the report. Evidence
@@ -128,7 +137,7 @@ async function compressForReport(dataUri: string): Promise<string> {
       Paths.cache,
       `report-src-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`,
     ) as unknown as WritableFile;
-    tmp.write(srcBase64, { encoding: 'base64' });
+    tmp.write(base64ToBytes(srcBase64));
     const result = await ImageManipulator.manipulateAsync(
       tmp.uri,
       [{ resize: { width: 1280 } }],

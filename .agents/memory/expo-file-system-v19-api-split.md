@@ -32,3 +32,5 @@ at raw source instead of a missing dependency or tsconfig issue.
 **How to apply:** `import { File, Directory, Paths } from 'expo-file-system'`
 (never `/legacy`), and cast through a local "usable" interface for any
 instance method call.
+
+**File.write takes exactly ONE argument** (string or Uint8Array). Passing an options object (e.g. `{ encoding: 'base64' }`, as the .d.ts suggests) throws `InvalidArgsNumberException: Received 2 arguments, but 1 was expected` at runtime. Pre-decode base64 to a Uint8Array yourself. Also: expo-image-manipulator silently fails on base64 data-URI input — feed it a real temp file URI.
