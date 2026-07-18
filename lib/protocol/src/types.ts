@@ -88,8 +88,6 @@ export interface InspectionProtocolState {
     label: string;
     damaged: boolean;
     damageType: SidingDamageType | null;
-    // Water-resistive barrier present? Null until the inspector answers.
-    wrbPresent: boolean | null;
     // Components S{n}C1…S{n}Ck, positional (index is 1-based). Each needs a
     // disposition selection and its own photo (a 'component'-role photo whose
     // sidingComponentIndex matches).

@@ -1215,6 +1215,11 @@ export interface Inspection {
   /** v2.1 Elevation Walk flag — collateral damage observed. */
   collateralDamageFound: boolean;
   /**
+     * v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.
+     * @nullable
+     */
+  sidingWrbPresent?: boolean | null;
+  /**
      * v2.1 optional siding measurement report reference (client id of the uploaded report photo).
      * @nullable
      */
@@ -1308,6 +1313,8 @@ export interface UpdateInspectionInput {
   roofDamageFound?: boolean;
   sidingDamageFound?: boolean;
   collateralDamageFound?: boolean;
+  /** @nullable */
+  sidingWrbPresent?: boolean | null;
   /** @nullable */
   sidingMeasurementReportRef?: string | null;
 }

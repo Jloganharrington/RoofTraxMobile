@@ -317,6 +317,12 @@ export const inspectionsTable = pgTable('inspections', {
   // collateral). Raw booleans; default false for every pre-v2.1 row.
   roofDamageFound: boolean('roof_damage_found').notNull().default(false),
   sidingDamageFound: boolean('siding_damage_found').notNull().default(false),
+  // v2.2 — Water-resistive barrier question, asked ONCE at the inspection
+  // level on the Siding Inspection step (shown when at least one siding facet
+  // is marked damaged). Null until answered. Replaces the old per-facet
+  // wrbPresent question (that column is retained for historical rows and
+  // offline outbox replay compatibility, but the UI no longer asks it).
+  sidingWrbPresent: boolean('siding_wrb_present'),
   collateralDamageFound: boolean('collateral_damage_found').notNull().default(false),
   // v2.1 — optional siding measurement report reference (the client id of the
   // uploaded report photo). Nullable; absence is a soft flag, never a block.

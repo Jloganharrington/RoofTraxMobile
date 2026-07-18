@@ -98,6 +98,14 @@ export default function InspectionSidingScreen() {
   const facetById = new Map(state.sidingFacets.map((f) => [f.id, f]));
   const remaining = stageDeficiencies(inspection, 'siding').length;
   const reportUploaded = state.sidingMeasurementReportUploaded;
+  // v2.2 — inspection-level WRB question, shown once any facet has damage.
+  const anyFacetDamaged = (inspection.sidingFacets ?? []).some((f) => Boolean(f.damaged));
+  const wrbPresent = (inspection.sidingWrbPresent as boolean | null) ?? null;
+
+  async function setWrbPresent(value: boolean) {
+    if (wrbPresent === value) return;
+    await patchInspection(queryClient, id, { sidingWrbPresent: value });
+  }
 
   // Next facet label: S{n} past the highest existing S-number.
   function nextFacetLabel(offset = 0): string {
@@ -114,11 +122,7 @@ export default function InspectionSidingScreen() {
     if (addingFacet || facets.length >= 40) return;
     setAddingFacet(true);
     try {
-      // New facets default their WRB answer to the first facet's answer.
-      await createSidingFacet(queryClient, id, {
-        label: nextFacetLabel(),
-        wrbPresent: (facets[0]?.wrbPresent as boolean | null) ?? null,
-      });
+      await createSidingFacet(queryClient, id, { label: nextFacetLabel() });
     } finally {
       setAddingFacet(false);
     }
@@ -308,6 +312,42 @@ export default function InspectionSidingScreen() {
                 </Pressable>
               );
             })}
+            {/* v2.2 — Water-resistive barrier, asked ONCE per inspection.
+                Only shown when at least one facet is marked damaged. */}
+            {anyFacetDamaged && (
+              <>
+                <Text style={[styles.section, { color: colors.foreground }]}>
+                  Does the home currently have water resistive barrier?
+                </Text>
+                <View style={styles.chipRow}>
+                  {([true, false] as const).map((v) => {
+                    const selected = wrbPresent === v;
+                    return (
+                      <Pressable
+                        key={String(v)}
+                        onPress={() => void setWrbPresent(v)}
+                        style={[
+                          styles.yesNo,
+                          {
+                            backgroundColor: selected ? colors.primary : colors.card,
+                            borderColor: selected ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: selected ? colors.primaryForeground : colors.foreground,
+                            fontWeight: '700',
+                          }}
+                        >
+                          {v ? 'Yes' : 'No'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
             {/* Optional measurement report — soft flag only when missing. */}
             <Text style={[styles.section, { color: colors.foreground }]}>Measurement report (optional)</Text>
             <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
@@ -364,4 +404,6 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   stepCount: { fontSize: 17, fontWeight: '800', minWidth: 24, textAlign: 'center' },
+  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  yesNo: { borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
 });

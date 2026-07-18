@@ -51,7 +51,6 @@ function completeState(): InspectionProtocolState {
         label: 'S1',
         damaged: true,
         damageType: 'hail',
-        wrbPresent: true,
         components: [
           { index: 1, actionSelected: true, photoCaptured: true },
           { index: 2, actionSelected: true, photoCaptured: true },

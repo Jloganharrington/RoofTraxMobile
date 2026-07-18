@@ -185,7 +185,6 @@ export function buildServerProtocolState(
         label: facet.label,
         damaged: Boolean(facet.damaged),
         damageType: (facet.damageType as SidingDamageType | null) ?? null,
-        wrbPresent: (facet.wrbPresent as boolean | null) ?? null,
         // Positional components: slot k (1-based) is satisfied by a
         // 'component'-role photo whose sidingComponentIndex === k.
         components: ((facet.components ?? []) as Array<{ action?: string | null }>).map(

@@ -3783,6 +3783,13 @@ components:
         collateralDamageFound:
           type: boolean
           description: v2.1 Elevation Walk flag — collateral damage observed.
+        sidingWrbPresent:
+          type: [boolean, "null"]
+          description: >-
+            v2.2 — Does the home currently have a water-resistive barrier?
+            Asked once at the inspection level on the Siding Inspection step
+            (shown when at least one siding facet has damage). Null until
+            answered.
         sidingMeasurementReportRef:
           type: [string, "null"]
           description: >-
@@ -3927,6 +3934,8 @@ components:
           type: boolean
         collateralDamageFound:
           type: boolean
+        sidingWrbPresent:
+          type: [boolean, "null"]
         sidingMeasurementReportRef:
           type: [string, "null"]
     InspectionEnvelope:

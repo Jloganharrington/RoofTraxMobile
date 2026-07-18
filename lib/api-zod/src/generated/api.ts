@@ -921,6 +921,7 @@ export const ListInspectionsResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "damageSurfaceChangeLog": zod.array(zod.object({
   "surface": zod.enum(['roof', 'siding', 'collateral']),
@@ -1207,6 +1208,7 @@ export const CreateInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "damageSurfaceChangeLog": zod.array(zod.object({
   "surface": zod.enum(['roof', 'siding', 'collateral']),
@@ -1476,6 +1478,7 @@ export const GetInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "damageSurfaceChangeLog": zod.array(zod.object({
   "surface": zod.enum(['roof', 'siding', 'collateral']),
@@ -1576,6 +1579,7 @@ export const UpdateInspectionBody = zod.object({
   "roofDamageFound": zod.boolean().optional(),
   "sidingDamageFound": zod.boolean().optional(),
   "collateralDamageFound": zod.boolean().optional(),
+  "sidingWrbPresent": zod.boolean().nullish(),
   "sidingMeasurementReportRef": zod.string().nullish()
 })
 
@@ -1794,6 +1798,7 @@ export const UpdateInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "damageSurfaceChangeLog": zod.array(zod.object({
   "surface": zod.enum(['roof', 'siding', 'collateral']),
@@ -2743,6 +2748,7 @@ export const SubmitInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "damageSurfaceChangeLog": zod.array(zod.object({
   "surface": zod.enum(['roof', 'siding', 'collateral']),

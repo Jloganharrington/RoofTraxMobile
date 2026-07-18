@@ -51,5 +51,7 @@ export interface UpdateInspectionInput {
   sidingDamageFound?: boolean;
   collateralDamageFound?: boolean;
   /** @nullable */
+  sidingWrbPresent?: boolean | null;
+  /** @nullable */
   sidingMeasurementReportRef?: string | null;
 }

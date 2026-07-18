@@ -24,8 +24,6 @@ import { buildProtocolState } from '@/lib/inspectionProtocolState';
 
 // Siding facet detail (protocol v2.1). One siding surface:
 // - "Is there damage?" Yes/No → damage type + damage photo(s) when Yes.
-// - Water-Resistive Barrier present? Yes/No (new facets inherit the first
-//   facet's answer as their default).
 // - Facet overview photo — always required.
 // - Components S{n}C1…S{n}Ck via a (−) N (+) stepper; each component needs
 //   its own photo and a disposition (Detach & Reset / Remove & Replace).
@@ -83,7 +81,6 @@ export default function InspectionSidingFacetScreen() {
   const facetState = state.sidingFacets.find((f) => f.id === sidingFacetId);
   const damaged = Boolean(facet.damaged);
   const damageType = (facet.damageType as SidingDamageType | null) ?? null;
-  const wrbPresent = (facet.wrbPresent as boolean | null) ?? null;
   const components = ((facet.components ?? []) as FacetComponent[]);
 
   const facetPhotoDone = facetState?.facetPhotoCaptured ?? false;
@@ -101,11 +98,6 @@ export default function InspectionSidingFacetScreen() {
 
   async function setDamageType(type: SidingDamageType) {
     await updateSidingFacet(queryClient, id, sidingFacetId, { damageType: type });
-  }
-
-  async function setWrbPresent(value: boolean) {
-    if (wrbPresent === value) return;
-    await updateSidingFacet(queryClient, id, sidingFacetId, { wrbPresent: value });
   }
 
   async function setComponents(next: FacetComponent[]) {
@@ -258,12 +250,6 @@ export default function InspectionSidingFacetScreen() {
           </Pressable>
         </>
       ) : null}
-
-      {/* Water-Resistive Barrier */}
-      <Text style={[styles.section, { color: colors.foreground }]}>
-        Water-Resistive Barrier present?
-      </Text>
-      {yesNoRow(wrbPresent, (v) => void setWrbPresent(v))}
 
       {/* Facet overview photo — always required */}
       <Text style={[styles.section, { color: colors.foreground }]}>Facet photo</Text>

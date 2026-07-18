@@ -739,6 +739,11 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       ...(parsed.data.collateralDamageFound !== undefined && {
         collateralDamageFound: parsed.data.collateralDamageFound,
       }),
+      // v2.2 — inspection-level WRB answer (asked on the Siding Inspection
+      // step when at least one facet is damaged).
+      ...(parsed.data.sidingWrbPresent !== undefined && {
+        sidingWrbPresent: parsed.data.sidingWrbPresent,
+      }),
       ...(parsed.data.sidingMeasurementReportRef !== undefined && {
         sidingMeasurementReportRef: parsed.data.sidingMeasurementReportRef,
       }),
