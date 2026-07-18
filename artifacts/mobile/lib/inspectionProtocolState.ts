@@ -147,6 +147,21 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
 /** Full gate evaluation (hard deficiencies + soft flags) for the readiness
  * screen. The centerpiece runs exactly this shared engine — the app never
  * re-implements gate logic. */
+/** True when the inspector filed a "no collateral damage found" attestation on
+ * the collateral stage. Qualifies stage + attestationType + details.kind so an
+ * unrelated attestation cannot mark the step addressed (see
+ * protocol-gate-mapping-layer). Collateral has no hard protocol gate — this
+ * only drives the hub's step-complete state. */
+export function isCollateralWaived(inspection: Inspection): boolean {
+  return (inspection.attestations ?? []).some((attestation) => {
+    if (attestation.stage !== 'collateral' || attestation.attestationType !== 'stage_signoff') {
+      return false;
+    }
+    const details = attestation.details as { kind?: string } | null;
+    return details?.kind === 'no_collateral_damage';
+  });
+}
+
 export function evaluateInspection(inspection: Inspection) {
   return evaluate(buildProtocolState(inspection));
 }

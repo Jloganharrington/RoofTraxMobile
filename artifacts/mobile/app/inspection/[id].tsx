@@ -19,6 +19,7 @@ import { attestInspection } from '@/lib/inspectionSync';
 import {
   buildProtocolState,
   evaluateInspection,
+  isCollateralWaived,
   stageDeficiencies,
 } from '@/lib/inspectionProtocolState';
 
@@ -125,6 +126,7 @@ export default function InspectionDetailScreen() {
   const gate = evaluateInspection(inspection);
   const submitted = inspection.status === 'submitted' || inspection.status === 'package_ready';
   const collateralCount = (inspection.photos ?? []).filter((p) => p.stage === 'collateral').length;
+  const collateralWaived = isCollateralWaived(inspection);
   const interiorAddressed =
     (inspection.interiorObservations?.length ?? 0) > 0 || state.interiorClaimWaived;
   const remaining = gate.deficiencies.length;
@@ -187,11 +189,13 @@ export default function InspectionDetailScreen() {
       }
       case 'collateral':
         return {
-          done: collateralCount > 0,
+          done: collateralCount > 0 || collateralWaived,
           subtitle:
-            collateralCount === 0
-              ? 'Roof- and ground-level labeled photos (optional)'
-              : `${collateralCount} labeled photo${collateralCount === 1 ? '' : 's'} captured`,
+            collateralCount > 0
+              ? `${collateralCount} labeled photo${collateralCount === 1 ? '' : 's'} captured`
+              : collateralWaived
+                ? 'No collateral damage found'
+                : 'Roof- and ground-level labeled photos (optional)',
         };
       case 'product': {
         const count = inspection!.products?.length ?? 0;

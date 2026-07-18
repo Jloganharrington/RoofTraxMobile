@@ -602,6 +602,41 @@ export async function markNoInteriorClaim(
   void drainOutbox();
 }
 
+/** Explicitly records that no collateral damage was found (Step 6) with a
+ * stage_signoff attestation on the collateral stage, marking the step complete
+ * without any labeled photos. Offline-first + idempotent by client id. */
+export async function markNoCollateralDamage(
+  queryClient: QueryClient,
+  inspectionId: string,
+  actorUserId: string,
+): Promise<void> {
+  const id = Crypto.randomUUID();
+  const now = new Date().toISOString();
+  const details = { kind: 'no_collateral_damage', reason: 'No collateral damage found' };
+  patchCachedInspection(queryClient, inspectionId, (inspection) => {
+    const optimistic: Attestation = {
+      id,
+      companyId: inspection.companyId,
+      inspectionId,
+      userId: actorUserId,
+      stage: 'collateral',
+      attestationType: 'stage_signoff',
+      details,
+      signatureData: null,
+      attestedAt: now,
+    };
+    return { ...inspection, attestations: [...(inspection.attestations ?? []), optimistic] };
+  });
+  const input: CreateAttestationInput = {
+    id,
+    stage: 'collateral',
+    attestationType: 'stage_signoff',
+    details,
+  };
+  await enqueueOutboxItem('inspection.attestation', { inspectionId, input });
+  void drainOutbox();
+}
+
 /** Stores homeowner facts (E3) offline-first. Thin wrapper over the inspection
  * patch — the facts live in a single additive jsonb column. */
 export async function updateHomeownerFacts(

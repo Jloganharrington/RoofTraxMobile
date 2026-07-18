@@ -10,9 +10,13 @@ import {
   View,
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { useAuth } from '@/lib/auth';
+import { markNoCollateralDamage } from '@/lib/inspectionSync';
+import { isCollateralWaived } from '@/lib/inspectionProtocolState';
 
 // Step 6 · Collateral & Ground Evidence (protocol v2). A simple labeled-photo
 // pass with no hard gate: the inspector shoots roof-level collateral first
@@ -28,7 +32,10 @@ const SUGGESTIONS: Record<'roof' | 'ground', string[]> = {
 
 export default function InspectionCollateralScreen() {
   const colors = useColors();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [waiving, setWaiving] = React.useState(false);
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -57,6 +64,18 @@ export default function InspectionCollateralScreen() {
   }
 
   const collateralPhotos = (inspection.photos ?? []).filter((p) => p.stage === 'collateral');
+  const waived = isCollateralWaived(inspection);
+  const addressed = collateralPhotos.length > 0 || waived;
+
+  async function markNoDamage() {
+    if (!user || waiving) return;
+    setWaiving(true);
+    try {
+      await markNoCollateralDamage(queryClient, id, user.id);
+    } finally {
+      setWaiving(false);
+    }
+  }
 
   function capture(section: 'roof' | 'ground', photoLabel: string) {
     setLabelTarget(null);
@@ -77,13 +96,27 @@ export default function InspectionCollateralScreen() {
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Collateral & Ground' }} />
 
-      <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Icon name="camera" size={22} color={colors.primary} />
+      <View
+        style={[
+          styles.summary,
+          {
+            backgroundColor: addressed ? '#ecfdf5' : colors.card,
+            borderColor: addressed ? colors.success : colors.border,
+          },
+        ]}
+      >
+        <Icon
+          name={addressed ? 'check' : 'camera'}
+          size={22}
+          color={addressed ? colors.success : colors.primary}
+        />
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
-            {collateralPhotos.length === 0
-              ? 'No collateral photos yet'
-              : `${collateralPhotos.length} collateral photo${collateralPhotos.length === 1 ? '' : 's'} captured`}
+            {collateralPhotos.length > 0
+              ? `${collateralPhotos.length} collateral photo${collateralPhotos.length === 1 ? '' : 's'} captured`
+              : waived
+                ? 'No collateral damage found'
+                : 'No collateral photos yet'}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
             Optional but powerful corroborating evidence. Label each shot, then capture it.
@@ -120,6 +153,22 @@ export default function InspectionCollateralScreen() {
           </Pressable>
         </View>
       ))}
+
+      {!waived && collateralPhotos.length === 0 ? (
+        <Pressable
+          onPress={markNoDamage}
+          disabled={waiving}
+          style={[styles.waiveBtn, { borderColor: colors.border, opacity: waiving ? 0.6 : 1 }]}
+        >
+          {waiving ? (
+            <ActivityIndicator color={colors.mutedForeground} />
+          ) : (
+            <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>
+              No Collateral Damage Found
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
 
       <View style={{ height: 40 }} />
 
@@ -184,6 +233,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderStyle: 'dashed',
+  },
+  waiveBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 4,
   },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
