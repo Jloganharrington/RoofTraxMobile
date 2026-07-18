@@ -70,7 +70,12 @@ export default function InspectionFacetScreen() {
   const { id, slopeId } = useLocalSearchParams<{ id: string; slopeId: string }>();
 
   const inspectionQuery = useGetInspection(id, {
-    query: { queryKey: getGetInspectionQueryKey(id) },
+    // A fresh-on-mount refetch can race the outbox drain right after "Add
+    // facet": the optimistic slope is in the cache, but a server response
+    // from before the sync completes would overwrite it and this screen
+    // would flash "Facet not found". A short staleTime keeps the optimistic
+    // cache authoritative across the navigation.
+    query: { queryKey: getGetInspectionQueryKey(id), staleTime: 15_000 },
   });
   const inspection = inspectionQuery.data?.inspection;
   const facet = inspection?.slopes?.find((slope) => slope.id === slopeId);
@@ -93,7 +98,10 @@ export default function InspectionFacetScreen() {
     hip_ridge: false,
   });
 
-  if (inspectionQuery.isLoading && !inspection) {
+  // Keep showing the spinner while a refetch is in flight and the facet
+  // hasn't appeared yet (it may land with the next response) instead of
+  // flashing "Facet not found".
+  if ((inspectionQuery.isLoading || inspectionQuery.isFetching) && !facet) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
