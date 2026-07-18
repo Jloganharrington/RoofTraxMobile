@@ -1,3 +1,4 @@
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
@@ -93,10 +94,31 @@ async function imageToDataUri(uri: string, headers?: Record<string, string>): Pr
     const res = await fetch(uri, headers ? { headers } : undefined);
     if (!res.ok) return null;
     const blob = await res.blob();
-    return await blobToDataUri(blob);
+    return await compressForReport(await blobToDataUri(blob));
   } catch {
     return null;
   }
+}
+
+// Downscale + recompress a photo before it's embedded in the report. Evidence
+// photos are full-resolution camera captures (8-12MB each); embedding them
+// verbatim produces a PDF so large that the iOS Mail compose extension (which
+// runs under a strict memory cap) is killed by the OS seconds after the user
+// picks Email from the share sheet — the "share sheet keeps closing" bug.
+// ~1280px JPEG is plenty for an emailed summary. Falls back to the original
+// on any failure so a manipulation error never sinks the report.
+async function compressForReport(dataUri: string): Promise<string> {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      dataUri,
+      [{ resize: { width: 1280 } }],
+      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+    );
+    if (result.base64) return `data:image/jpeg;base64,${result.base64}`;
+  } catch {
+    // fall through to the uncompressed original
+  }
+  return dataUri;
 }
 
 // Resolves the Phase 1 evidence photos to embeddable data URIs. A photo still
