@@ -523,9 +523,11 @@ export async function shareHomeownerReport(pdfUri: string): Promise<void> {
 export async function emailHomeownerReport(
   pdfUri: string,
   inspection: Inspection,
+  recipient?: string,
 ): Promise<boolean> {
   if (!(await MailComposer.isAvailableAsync())) return false;
   await MailComposer.composeAsync({
+    ...(recipient ? { recipients: [recipient] } : {}),
     subject: `Preliminary roof report — ${inspection.address ?? 'your property'}`,
     body: 'Attached is the preliminary storm-damage summary for your property.',
     attachments: [pdfUri],

@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -48,6 +49,11 @@ export default function InspectionReportScreen() {
   const [report, setReport] = useState<HomeownerReport | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [busy, setBusy] = useState<null | 'generate' | 'share' | 'email'>(null);
+  const [recipient, setRecipient] = useState('');
+
+  const recipientTrimmed = recipient.trim();
+  const recipientValid =
+    recipientTrimmed.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientTrimmed);
 
   async function handleGenerate() {
     if (!inspection || busy) return;
@@ -64,9 +70,17 @@ export default function InspectionReportScreen() {
 
   async function handleEmail() {
     if (!report || !inspection || busy) return;
+    if (recipientTrimmed && !recipientValid) {
+      Alert.alert('Invalid email', 'Check the recipient email address and try again.');
+      return;
+    }
     setBusy('email');
     try {
-      const opened = await emailHomeownerReport(report.pdfUri, inspection);
+      const opened = await emailHomeownerReport(
+        report.pdfUri,
+        inspection,
+        recipientTrimmed || undefined,
+      );
       if (!opened) {
         Alert.alert(
           'No mail account',
@@ -228,6 +242,24 @@ export default function InspectionReportScreen() {
               </View>
             </View>
 
+            <TextInput
+              value={recipient}
+              onChangeText={setRecipient}
+              placeholder="Homeowner's email (optional)"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={[
+                styles.recipientInput,
+                {
+                  color: colors.foreground,
+                  borderColor: recipientValid ? colors.border : '#c0392b',
+                  backgroundColor: colors.background,
+                },
+              ]}
+            />
+
             <Pressable
               onPress={handleEmail}
               disabled={!!busy}
@@ -386,6 +418,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   btnText: { fontSize: 16, fontWeight: '700' },
+  recipientInput: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
   viewerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
