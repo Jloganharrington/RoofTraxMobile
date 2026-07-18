@@ -18,7 +18,7 @@ import { useAuth } from '@/lib/auth';
 import { markNoCollateralDamage } from '@/lib/inspectionSync';
 import { isCollateralWaived } from '@/lib/inspectionProtocolState';
 
-// Step 6 · Collateral & Ground Evidence (protocol v2). A simple labeled-photo
+// Step 7 · Collateral & Ground Evidence (protocol v2). A simple labeled-photo
 // pass with no hard gate: the inspector shoots roof-level collateral first
 // (vents, flashing, gutters seen from the roof), then ground-level evidence
 // (screens, siding, AC fins, mailbox). Each shot gets a short label typed

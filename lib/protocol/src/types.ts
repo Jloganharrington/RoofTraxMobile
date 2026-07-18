@@ -71,7 +71,7 @@ export interface InspectionProtocolState {
   componentZonePhotos: ComponentZone[];
   // Roof penetrations are discrete objects — each keeps its own photo.
   penetrations: Array<{ id: string; photoCaptured: boolean }>;
-  // Step 7 — product identification records.
+  // Step 6 — product identification records.
   productIdentifications: Array<{ id: string; unidentifiable: boolean }>;
   // Step 8 — interior/attic (conditional; soft-flagged, never hard-blocked).
   interiorPhotoCaptured: boolean;

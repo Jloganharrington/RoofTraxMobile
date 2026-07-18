@@ -206,9 +206,9 @@ function checkPenetrations(state: InspectionProtocolState): Deficiency[] {
     );
 }
 
-// Step 6 (collateral) — no hard gate: optional evidence.
+// Step 7 (collateral) — no hard gate: optional evidence.
 
-// Step 7 — at least one product record.
+// Step 6 — at least one product record.
 function checkProduct(state: InspectionProtocolState): Deficiency[] {
   if (state.productIdentifications.length === 0) {
     return [

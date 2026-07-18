@@ -105,7 +105,7 @@ export async function buildPassingInspection(sid: string): Promise<PassingInspec
     .send({ subjectType: 'inspection', measurementType: 'ridge_lf', value: 40, unit: 'lf' });
   expect(measurement.status).toBe(201);
 
-  // Step 7 — at least one product record.
+  // Step 6 — at least one product record.
   const product = await request(app)
     .post(`/api/inspections/${inspectionId}/products`)
     .set(auth(sid))

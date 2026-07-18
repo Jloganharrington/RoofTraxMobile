@@ -602,7 +602,7 @@ export async function markNoInteriorClaim(
   void drainOutbox();
 }
 
-/** Explicitly records that no collateral damage was found (Step 6) with a
+/** Explicitly records that no collateral damage was found (Step 7) with a
  * stage_signoff attestation on the collateral stage, marking the step complete
  * without any labeled photos. Offline-first + idempotent by client id. */
 export async function markNoCollateralDamage(

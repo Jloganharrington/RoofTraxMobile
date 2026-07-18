@@ -10,8 +10,8 @@ export const STAGES = [
   'facets',
   'test_squares',
   'components',
-  'collateral',
   'product',
+  'collateral',
   'interior',
   'homeowner',
   'declaration',
@@ -66,16 +66,16 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
     description: 'Existing components and roof penetrations, each with a photo.',
   },
   {
-    key: 'collateral',
-    order: 6,
-    name: 'Collateral Sweep',
-    description: 'Optional labeled collateral photos, roof-level then ground-level.',
-  },
-  {
     key: 'product',
-    order: 7,
+    order: 6,
     name: 'Product ID',
     description: 'At least one roofing-product identification record.',
+  },
+  {
+    key: 'collateral',
+    order: 7,
+    name: 'Collateral Sweep',
+    description: 'Optional labeled collateral photos, roof-level then ground-level.',
   },
   {
     key: 'interior',
