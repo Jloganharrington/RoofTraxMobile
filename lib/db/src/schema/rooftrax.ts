@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   doublePrecision,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -70,6 +72,17 @@ export const userProfilesTable = pgTable('user_profiles', {
   signatureUrl: text('signature_url'),
   signatureSha256: text('signature_sha256'),
   signatureSignedAt: timestamp('signature_signed_at', { withTimezone: true }),
+  // Per-user outbound SMTP settings, so the server can email reports on the
+  // rep's behalf (no mail app needed on the device). The password is stored
+  // AES-256-GCM encrypted (keyed off SESSION_SECRET) and is NEVER returned by
+  // the API — reads expose only whether SMTP is configured plus the
+  // non-secret fields. All nullable: unset means "not configured".
+  smtpHost: text('smtp_host'),
+  smtpPort: integer('smtp_port'),
+  smtpSecure: boolean('smtp_secure'),
+  smtpUsername: text('smtp_username'),
+  smtpPasswordEnc: text('smtp_password_enc'),
+  smtpFromEmail: text('smtp_from_email'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

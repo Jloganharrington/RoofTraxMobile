@@ -44,7 +44,9 @@ import {
   CreateInspectionAddendumResponse,
   UpdateInspectionBody,
   UpdateInspectionResponse,
+  EmailInspectionReportBody,
 } from '@workspace/api-zod';
+import nodemailer from 'nodemailer';
 import {
   attestationsTable,
   damageInstancesTable,
@@ -77,6 +79,8 @@ import {
   type HydratedInspectionChildren,
 } from '../lib/inspectionProtocolState';
 import { getCompanyCrmConfig } from '../lib/crm';
+import { decryptSmtpPassword } from '../lib/smtpCrypto';
+import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 
 const router: IRouter = Router();
 
@@ -2190,6 +2194,101 @@ router.post('/inspections/:inspectionId/addenda', async (req: Request, res: Resp
 
   const [addendum] = await db.insert(inspectionAddendaTable).values(values).returning();
   res.status(201).json(CreateInspectionAddendumResponse.parse({ addendum }));
+});
+
+// Emails a generated report PDF to a homeowner via the *user's own* SMTP
+// settings (configured on their profile). The client generates the PDF
+// locally and posts it as base64; the server never re-renders it. Read-level
+// access is enough — sharing a report is not a mutation, so the C0
+// owner-or-manager write gate does not apply, but company scoping does.
+router.post('/inspections/:inspectionId/email-report', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const parsed = EmailInspectionReportBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid email payload' });
+    return;
+  }
+  const { recipient, pdfBase64, filename, subject, body } = parsed.data;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    res.status(400).json({ error: 'Invalid recipient email address' });
+    return;
+  }
+
+  const inspection = await loadInspectionInCompany(
+    String(req.params.inspectionId),
+    actor.companyId,
+  );
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, actor.userId));
+  if (!profile?.smtpHost || !profile.smtpPort || !profile.smtpUsername || !profile.smtpPasswordEnc) {
+    res.status(400).json({ error: 'SMTP is not configured on your profile' });
+    return;
+  }
+
+  let password: string;
+  try {
+    password = decryptSmtpPassword(profile.smtpPasswordEnc);
+  } catch {
+    res.status(400).json({ error: 'Stored SMTP password could not be read; please re-enter it' });
+    return;
+  }
+
+  // SSRF guard: resolve the user-supplied host ourselves, reject private /
+  // internal addresses, and connect to the vetted IP (servername keeps TLS
+  // certificate validation against the original hostname).
+  let smtpAddress: string;
+  try {
+    smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+  } catch {
+    res.status(400).json({ error: 'SMTP host is not a valid public mail server' });
+    return;
+  }
+
+  const transport = nodemailer.createTransport({
+    host: smtpAddress,
+    port: profile.smtpPort,
+    secure: profile.smtpSecure ?? profile.smtpPort === 465,
+    name: undefined,
+    auth: { user: profile.smtpUsername, pass: password },
+    tls: { servername: profile.smtpHost },
+    connectionTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+
+  try {
+    await transport.sendMail({
+      from: profile.smtpFromEmail || profile.smtpUsername,
+      to: recipient,
+      subject: subject || `Preliminary roof report — ${inspection.address ?? 'your property'}`,
+      text: body || 'Attached is the preliminary storm-damage summary for your property.',
+      attachments: [
+        {
+          filename,
+          content: pdfBase64,
+          encoding: 'base64',
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+  } catch (err) {
+    req.log.warn({ err }, 'SMTP report delivery failed');
+    res.status(502).json({
+      error:
+        'Email could not be sent. Check your SMTP settings (host, port, username, password) and try again.',
+    });
+    return;
+  }
+
+  res.json({ sent: true });
 });
 
 export default router;

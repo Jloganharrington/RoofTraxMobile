@@ -8,7 +8,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Icon } from '@/components/Icon';
@@ -19,6 +21,7 @@ import {
   getGetMyProfileQueryKey,
   useListPins,
   useUpdateProfileSignature,
+  useUpdateProfileSmtp,
 } from '@workspace/api-client-react';
 import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -77,6 +80,7 @@ export default function ProfileScreen() {
   const queryClient = useQueryClient();
   const { user, logout } = useAuth();
   const {
+    profile,
     role,
     workflowAssignment,
     department,
@@ -130,6 +134,82 @@ export default function ProfileScreen() {
     } finally {
       setSavingSignature(false);
     }
+  }
+
+  // Outbound email (SMTP) settings — lets the server email reports on the
+  // rep's behalf so no mail app is needed on the device. Password is
+  // write-only: it is stored encrypted server-side and never shown again.
+  const smtpConfigured = profile?.smtpConfigured ?? false;
+  const updateSmtp = useUpdateProfileSmtp();
+  const [smtpOpen, setSmtpOpen] = React.useState(false);
+  const [smtpSaving, setSmtpSaving] = React.useState(false);
+  const [smtpHost, setSmtpHost] = React.useState('');
+  const [smtpPort, setSmtpPort] = React.useState('587');
+  const [smtpSecure, setSmtpSecure] = React.useState(false);
+  const [smtpUsername, setSmtpUsername] = React.useState('');
+  const [smtpPassword, setSmtpPassword] = React.useState('');
+  const [smtpFromEmail, setSmtpFromEmail] = React.useState('');
+
+  function openSmtpForm() {
+    // Pre-fill from the saved (non-secret) values so edits don't start blank.
+    setSmtpHost(profile?.smtpHost ?? '');
+    setSmtpPort(profile?.smtpPort != null ? String(profile.smtpPort) : '587');
+    setSmtpSecure(profile?.smtpSecure ?? false);
+    setSmtpUsername(profile?.smtpUsername ?? '');
+    setSmtpPassword('');
+    setSmtpFromEmail(profile?.smtpFromEmail ?? '');
+    setSmtpOpen(true);
+  }
+
+  async function handleSaveSmtp() {
+    if (smtpSaving) return;
+    const port = Number(smtpPort.trim());
+    if (!smtpHost.trim() || !Number.isInteger(port) || port < 1 || port > 65535) {
+      Alert.alert('Check settings', 'Enter a valid SMTP server and port (e.g. 587 or 465).');
+      return;
+    }
+    if (!smtpUsername.trim() || !smtpPassword) {
+      Alert.alert('Check settings', 'Username and password are required.');
+      return;
+    }
+    setSmtpSaving(true);
+    try {
+      await updateSmtp.mutateAsync({
+        data: {
+          host: smtpHost.trim(),
+          port,
+          secure: smtpSecure,
+          username: smtpUsername.trim(),
+          password: smtpPassword,
+          ...(smtpFromEmail.trim() ? { fromEmail: smtpFromEmail.trim() } : {}),
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      setSmtpOpen(false);
+      Alert.alert('Saved', 'Email sending is set up. Reports can now be emailed directly.');
+    } catch {
+      Alert.alert('Could not save', 'Check your connection and try again.');
+    } finally {
+      setSmtpSaving(false);
+    }
+  }
+
+  function handleClearSmtp() {
+    Alert.alert('Remove email settings?', 'Reports will fall back to the device mail app.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await updateSmtp.mutateAsync({ data: { clear: true } });
+            await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+          } catch {
+            Alert.alert('Could not remove', 'Check your connection and try again.');
+          }
+        },
+      },
+    ]);
   }
 
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Field rep';
@@ -230,6 +310,153 @@ export default function ProfileScreen() {
           </Text>
         </Pressable>
       </View>
+
+      <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sigHeader}>
+          <Icon name="mail" size={18} color={colors.foreground} />
+          <Text style={[styles.sigTitle, { color: colors.foreground }]}>Report email (SMTP)</Text>
+          {smtpConfigured ? (
+            <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+              <Text style={[styles.sigBadgeText, { color: colors.success }]}>Configured</Text>
+            </View>
+          ) : (
+            <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
+              <Text style={[styles.sigBadgeText, { color: colors.mutedForeground }]}>Optional</Text>
+            </View>
+          )}
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+          {smtpConfigured
+            ? `Reports are emailed directly through ${profile?.smtpHost ?? 'your mail server'} as ${
+                profile?.smtpFromEmail || profile?.smtpUsername || 'you'
+              }.`
+            : 'Add your email provider\u2019s SMTP settings to send homeowner reports straight from the app \u2014 no mail app needed. For Gmail, use smtp.gmail.com with an app password.'}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Pressable
+            onPress={openSmtpForm}
+            style={[styles.sigButton, { backgroundColor: colors.secondary, flex: 1 }]}
+          >
+            <Text style={styles.sigButtonText}>
+              {smtpConfigured ? 'Edit settings' : 'Set up email sending'}
+            </Text>
+          </Pressable>
+          {smtpConfigured && (
+            <Pressable
+              onPress={handleClearSmtp}
+              style={[
+                styles.sigButton,
+                { borderColor: colors.destructive, borderWidth: 1, paddingHorizontal: 16 },
+              ]}
+            >
+              <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 14 }}>
+                Remove
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      <Modal
+        visible={smtpOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!smtpSaving) setSmtpOpen(false);
+        }}
+      >
+        <View style={styles.sigModalOverlay}>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={[styles.sigModalCard, { backgroundColor: colors.background }]}>
+              <Text style={[styles.sigTitle, { color: colors.foreground }]}>Email sending setup</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                Your password is stored encrypted and only used to send reports. It is never shown
+                again.
+              </Text>
+              <TextInput
+                value={smtpHost}
+                onChangeText={setSmtpHost}
+                placeholder="SMTP server (e.g. smtp.gmail.com)"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
+              />
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                <TextInput
+                  value={smtpPort}
+                  onChangeText={setSmtpPort}
+                  placeholder="Port"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="number-pad"
+                  style={[
+                    styles.smtpInput,
+                    { color: colors.foreground, borderColor: colors.border, flex: 1 },
+                  ]}
+                />
+                <Text style={{ color: colors.foreground, fontSize: 13 }}>SSL</Text>
+                <Switch value={smtpSecure} onValueChange={setSmtpSecure} />
+              </View>
+              <TextInput
+                value={smtpUsername}
+                onChangeText={setSmtpUsername}
+                placeholder="Username (usually your email)"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
+              />
+              <TextInput
+                value={smtpPassword}
+                onChangeText={setSmtpPassword}
+                placeholder={smtpConfigured ? 'Password (re-enter to save)' : 'Password'}
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
+              />
+              <TextInput
+                value={smtpFromEmail}
+                onChangeText={setSmtpFromEmail}
+                placeholder="From address (optional)"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
+              />
+              <View style={styles.sigModalActions}>
+                <Pressable
+                  onPress={() => setSmtpOpen(false)}
+                  disabled={smtpSaving}
+                  style={[styles.sigModalBtn, { borderColor: colors.border, borderWidth: 1 }]}
+                >
+                  <Text style={{ color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSaveSmtp}
+                  disabled={smtpSaving}
+                  style={[
+                    styles.sigModalBtn,
+                    { backgroundColor: colors.primary, opacity: smtpSaving ? 0.6 : 1 },
+                  ]}
+                >
+                  {smtpSaving ? (
+                    <ActivityIndicator color={colors.primaryForeground} />
+                  ) : (
+                    <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Signature capture lives in a fixed modal (not inline in the
           ScrollView) so drawing strokes never fight the scroll gesture and
@@ -385,7 +612,14 @@ const styles = StyleSheet.create({
   },
   sigSavingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center' },
   sigCancel: { alignItems: 'center', paddingVertical: 8 },
-  sigButton: { paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  sigButton: { paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  smtpInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
   sigButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   content: {
     padding: 16,

@@ -214,7 +214,13 @@ export const GetMyProfileResponse = zod.object({
   "companyName": zod.string(),
   "signatureUrl": zod.string().nullable(),
   "signatureSha256": zod.string().nullable(),
-  "signatureSignedAt": zod.coerce.date().nullable()
+  "signatureSignedAt": zod.coerce.date().nullable(),
+  "smtpConfigured": zod.boolean().optional(),
+  "smtpHost": zod.string().nullish(),
+  "smtpPort": zod.number().nullish(),
+  "smtpSecure": zod.boolean().nullish(),
+  "smtpUsername": zod.string().nullish(),
+  "smtpFromEmail": zod.string().nullish()
 })
 })
 
@@ -241,7 +247,55 @@ export const UpdateProfileSignatureResponse = zod.object({
   "companyName": zod.string(),
   "signatureUrl": zod.string().nullable(),
   "signatureSha256": zod.string().nullable(),
-  "signatureSignedAt": zod.coerce.date().nullable()
+  "signatureSignedAt": zod.coerce.date().nullable(),
+  "smtpConfigured": zod.boolean().optional(),
+  "smtpHost": zod.string().nullish(),
+  "smtpPort": zod.number().nullish(),
+  "smtpSecure": zod.boolean().nullish(),
+  "smtpUsername": zod.string().nullish(),
+  "smtpFromEmail": zod.string().nullish()
+})
+})
+
+
+/**
+ * @summary Set or clear the current user's outbound SMTP settings
+ */
+
+export const updateProfileSmtpBodyPortMax = 65535;
+
+
+
+
+
+
+export const UpdateProfileSmtpBody = zod.object({
+  "clear": zod.boolean().optional(),
+  "host": zod.string().min(1).optional(),
+  "port": zod.number().min(1).max(updateProfileSmtpBodyPortMax).optional(),
+  "secure": zod.boolean().optional(),
+  "username": zod.string().min(1).optional(),
+  "password": zod.string().min(1).optional(),
+  "fromEmail": zod.string().min(1).optional()
+}).describe('Sets the user\'s outbound SMTP configuration. Send all fields to configure; the password is stored encrypted and never returned. Setting clear=true removes the configuration entirely.')
+
+export const UpdateProfileSmtpResponse = zod.object({
+  "profile": zod.object({
+  "userId": zod.string(),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
+  "companyId": zod.string(),
+  "companyName": zod.string(),
+  "signatureUrl": zod.string().nullable(),
+  "signatureSha256": zod.string().nullable(),
+  "signatureSignedAt": zod.coerce.date().nullable(),
+  "smtpConfigured": zod.boolean().optional(),
+  "smtpHost": zod.string().nullish(),
+  "smtpPort": zod.number().nullish(),
+  "smtpSecure": zod.boolean().nullish(),
+  "smtpUsername": zod.string().nullish(),
+  "smtpFromEmail": zod.string().nullish()
 })
 })
 
@@ -1773,6 +1827,39 @@ export const UpdateInspectionResponse = zod.object({
   "createdAt": zod.coerce.date()
 })).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
 })
+})
+
+
+/**
+ * @summary Email a generated report PDF via the user's configured SMTP
+ */
+export const EmailInspectionReportParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const emailInspectionReportBodyRecipientMin = 3;
+export const emailInspectionReportBodyRecipientMax = 320;
+
+export const emailInspectionReportBodyPdfBase64Max = 14000000;
+
+export const emailInspectionReportBodyFilenameMax = 200;
+
+export const emailInspectionReportBodySubjectMax = 500;
+
+export const emailInspectionReportBodyBodyMax = 5000;
+
+
+
+export const EmailInspectionReportBody = zod.object({
+  "recipient": zod.string().min(emailInspectionReportBodyRecipientMin).max(emailInspectionReportBodyRecipientMax),
+  "pdfBase64": zod.string().min(1).max(emailInspectionReportBodyPdfBase64Max),
+  "filename": zod.string().min(1).max(emailInspectionReportBodyFilenameMax),
+  "subject": zod.string().max(emailInspectionReportBodySubjectMax).optional(),
+  "body": zod.string().max(emailInspectionReportBodyBodyMax).optional()
+})
+
+export const EmailInspectionReportResponse = zod.object({
+  "sent": zod.boolean()
 })
 
 

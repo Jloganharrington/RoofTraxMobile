@@ -12,13 +12,19 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
-import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
+import {
+  getGetInspectionQueryKey,
+  useEmailInspectionReport,
+  useGetInspection,
+} from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
 import { DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
 import {
   emailHomeownerReport,
   generateHomeownerReport,
+  readPdfBase64,
   shareHomeownerReport,
   type HomeownerReport,
 } from '@/lib/homeownerReport';
@@ -45,6 +51,10 @@ export default function InspectionReportScreen() {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
+
+  const { profile } = useProfile();
+  const smtpConfigured = profile?.smtpConfigured ?? false;
+  const emailReport = useEmailInspectionReport();
 
   const [report, setReport] = useState<HomeownerReport | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -74,6 +84,62 @@ export default function InspectionReportScreen() {
       Alert.alert('Invalid email', 'Check the recipient email address and try again.');
       return;
     }
+
+    // Preferred path: the rep configured SMTP on their profile, so the server
+    // sends the email directly — no mail app needed on the device. Requires a
+    // recipient since there's no compose window to type one into.
+    if (smtpConfigured) {
+      if (!recipientTrimmed) {
+        Alert.alert('Recipient needed', "Enter the homeowner's email address to send the report.");
+        return;
+      }
+      setBusy('email');
+      try {
+        const pdfBase64 = await readPdfBase64(report.pdfUri);
+        await emailReport.mutateAsync({
+          inspectionId: inspection.id,
+          data: {
+            recipient: recipientTrimmed,
+            pdfBase64,
+            filename: `RoofTrax-Preliminary-Report.pdf`,
+          },
+        });
+        Alert.alert('Report sent', `The report was emailed to ${recipientTrimmed}.`);
+      } catch (err) {
+        console.warn('[report] smtp send failed', err);
+        // Offline or SMTP failure — offer the device's own mail/share flow so
+        // the rep is never dead-ended in the field.
+        Alert.alert(
+          'Could not send',
+          'The report could not be emailed from the server (offline or SMTP problem). You can send it with your device instead.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Use device mail',
+              onPress: () => {
+                void (async () => {
+                  try {
+                    const opened = await emailHomeownerReport(
+                      report.pdfUri,
+                      inspection,
+                      recipientTrimmed || undefined,
+                    );
+                    if (!opened) await shareHomeownerReport(report.pdfUri);
+                  } catch {
+                    // Share sheet dismissed or unavailable — nothing to do.
+                  }
+                })();
+              },
+            },
+          ],
+        );
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+
+    // Fallback path: no SMTP configured — use the device's mail composer.
     setBusy('email');
     try {
       const opened = await emailHomeownerReport(

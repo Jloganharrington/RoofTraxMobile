@@ -160,6 +160,64 @@ export interface Profile {
   signatureSha256: string | null;
   /** @nullable */
   signatureSignedAt: string | null;
+  smtpConfigured?: boolean;
+  /** @nullable */
+  smtpHost?: string | null;
+  /** @nullable */
+  smtpPort?: number | null;
+  /** @nullable */
+  smtpSecure?: boolean | null;
+  /** @nullable */
+  smtpUsername?: string | null;
+  /** @nullable */
+  smtpFromEmail?: string | null;
+}
+
+/**
+ * Sets the user's outbound SMTP configuration. Send all fields to configure; the password is stored encrypted and never returned. Setting clear=true removes the configuration entirely.
+ */
+export interface UpdateProfileSmtpInput {
+  clear?: boolean;
+  /** @minLength 1 */
+  host?: string;
+  /**
+     * @minimum 1
+     * @maximum 65535
+     */
+  port?: number;
+  secure?: boolean;
+  /** @minLength 1 */
+  username?: string;
+  /** @minLength 1 */
+  password?: string;
+  /** @minLength 1 */
+  fromEmail?: string;
+}
+
+export interface EmailReportInput {
+  /**
+     * @minLength 3
+     * @maxLength 320
+     */
+  recipient: string;
+  /**
+     * @minLength 1
+     * @maxLength 14000000
+     */
+  pdfBase64: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  filename: string;
+  /** @maxLength 500 */
+  subject?: string;
+  /** @maxLength 5000 */
+  body?: string;
+}
+
+export interface EmailReportResult {
+  sent: boolean;
 }
 
 /**

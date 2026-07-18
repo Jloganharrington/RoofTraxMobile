@@ -50,6 +50,8 @@ import type {
   CrmStatusEnvelope,
   DamageInstanceEnvelope,
   DeleteSuccess,
+  EmailReportInput,
+  EmailReportResult,
   ErrorEnvelope,
   GetActivityStatsParams,
   GetWeatherEventsParams,
@@ -95,6 +97,7 @@ import type {
   UpdateInspectionSlopeInput,
   UpdatePinInput,
   UpdateProfileSignatureInput,
+  UpdateProfileSmtpInput,
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -1201,6 +1204,77 @@ export const useUpdateProfileSignature = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getUpdateProfileSignatureMutationOptions(options));
+    }
+
+export const getUpdateProfileSmtpUrl = () => {
+
+
+
+
+  return `/api/profile/smtp`
+}
+
+/**
+ * @summary Set or clear the current user's outbound SMTP settings
+ */
+export const updateProfileSmtp = async (updateProfileSmtpInput: UpdateProfileSmtpInput, options?: RequestInit): Promise<ProfileEnvelope> => {
+
+  return customFetch<ProfileEnvelope>(getUpdateProfileSmtpUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateProfileSmtpInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateProfileSmtpMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileSmtp>>, TError,{data: BodyType<UpdateProfileSmtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProfileSmtp>>, TError,{data: BodyType<UpdateProfileSmtpInput>}, TContext> => {
+
+const mutationKey = ['updateProfileSmtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProfileSmtp>>, {data: BodyType<UpdateProfileSmtpInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateProfileSmtp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProfileSmtpMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfileSmtp>>>
+    export type UpdateProfileSmtpMutationBody = BodyType<UpdateProfileSmtpInput>
+    export type UpdateProfileSmtpMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Set or clear the current user's outbound SMTP settings
+ */
+export const useUpdateProfileSmtp = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileSmtp>>, TError,{data: BodyType<UpdateProfileSmtpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProfileSmtp>>,
+        TError,
+        {data: BodyType<UpdateProfileSmtpInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateProfileSmtpMutationOptions(options));
     }
 
 export const getListPinsUrl = (params?: ListPinsParams,) => {
@@ -2493,6 +2567,78 @@ export const useUpdateInspection = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getUpdateInspectionMutationOptions(options));
+    }
+
+export const getEmailInspectionReportUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/email-report`
+}
+
+/**
+ * @summary Email a generated report PDF via the user's configured SMTP
+ */
+export const emailInspectionReport = async (inspectionId: string,
+    emailReportInput: EmailReportInput, options?: RequestInit): Promise<EmailReportResult> => {
+
+  return customFetch<EmailReportResult>(getEmailInspectionReportUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(emailReportInput)
+  }
+);}
+
+
+
+
+
+export const getEmailInspectionReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof emailInspectionReport>>, TError,{inspectionId: string;data: BodyType<EmailReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof emailInspectionReport>>, TError,{inspectionId: string;data: BodyType<EmailReportInput>}, TContext> => {
+
+const mutationKey = ['emailInspectionReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof emailInspectionReport>>, {inspectionId: string;data: BodyType<EmailReportInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  emailInspectionReport(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EmailInspectionReportMutationResult = NonNullable<Awaited<ReturnType<typeof emailInspectionReport>>>
+    export type EmailInspectionReportMutationBody = BodyType<EmailReportInput>
+    export type EmailInspectionReportMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Email a generated report PDF via the user's configured SMTP
+ */
+export const useEmailInspectionReport = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof emailInspectionReport>>, TError,{inspectionId: string;data: BodyType<EmailReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof emailInspectionReport>>,
+        TError,
+        {inspectionId: string;data: BodyType<EmailReportInput>},
+        TContext
+      > => {
+      return useMutation(getEmailInspectionReportMutationOptions(options));
     }
 
 export const getCreateInspectionSidingFacetUrl = (inspectionId: string,) => {

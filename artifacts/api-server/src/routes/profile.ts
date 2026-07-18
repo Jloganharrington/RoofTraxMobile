@@ -1,4 +1,10 @@
-import { GetMyProfileResponse, UpdateProfileSignatureBody } from '@workspace/api-zod';
+import {
+  GetMyProfileResponse,
+  UpdateProfileSignatureBody,
+  UpdateProfileSmtpBody,
+} from '@workspace/api-zod';
+
+import { encryptSmtpPassword } from '../lib/smtpCrypto';
 import { db, userProfilesTable, usersTable, companiesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -25,6 +31,15 @@ function toProfileEnvelope(
       signatureSignedAt: profile.signatureSignedAt
         ? profile.signatureSignedAt.toISOString()
         : null,
+      // SMTP: expose everything EXCEPT the password (write-only secret).
+      smtpConfigured: Boolean(
+        profile.smtpHost && profile.smtpPort && profile.smtpUsername && profile.smtpPasswordEnc,
+      ),
+      smtpHost: profile.smtpHost ?? null,
+      smtpPort: profile.smtpPort ?? null,
+      smtpSecure: profile.smtpSecure ?? null,
+      smtpUsername: profile.smtpUsername ?? null,
+      smtpFromEmail: profile.smtpFromEmail ?? null,
     },
   });
 }
@@ -108,6 +123,62 @@ router.patch('/profile/signature', async (req: Request, res: Response) => {
       signatureSha256: parsed.data.signatureSha256,
       signatureSignedAt: new Date(),
     })
+    .where(eq(userProfilesTable.userId, userId))
+    .returning();
+
+  const company = await loadCompany(userId);
+  res.json(toProfileEnvelope(updated, company));
+});
+
+// Sets or clears the current user's outbound SMTP configuration, used by the
+// server to email inspection reports on the rep's behalf. The password is
+// encrypted at rest and never echoed back. Per-user write; no module gate.
+router.patch('/profile/smtp', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = UpdateProfileSmtpBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid SMTP payload' });
+    return;
+  }
+
+  const userId = req.user.id;
+  await loadOrCreateProfile(userId);
+
+  const data = parsed.data;
+  let update: Partial<typeof userProfilesTable.$inferInsert>;
+  if (data.clear) {
+    update = {
+      smtpHost: null,
+      smtpPort: null,
+      smtpSecure: null,
+      smtpUsername: null,
+      smtpPasswordEnc: null,
+      smtpFromEmail: null,
+    };
+  } else {
+    if (!data.host || !data.port || !data.username || !data.password) {
+      res.status(400).json({
+        error: 'host, port, username, and password are required to configure SMTP',
+      });
+      return;
+    }
+    update = {
+      smtpHost: data.host,
+      smtpPort: data.port,
+      smtpSecure: data.secure ?? data.port === 465,
+      smtpUsername: data.username,
+      smtpPasswordEnc: encryptSmtpPassword(data.password),
+      smtpFromEmail: data.fromEmail ?? null,
+    };
+  }
+
+  const [updated] = await db
+    .update(userProfilesTable)
+    .set(update)
     .where(eq(userProfilesTable.userId, userId))
     .returning();
 

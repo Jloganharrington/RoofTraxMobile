@@ -514,6 +514,12 @@ export async function shareHomeownerReport(pdfUri: string): Promise<void> {
   }
 }
 
+/** Reads the generated PDF back as base64, for server-side (SMTP) emailing. */
+export async function readPdfBase64(pdfUri: string): Promise<string> {
+  const file = new File(pdfUri) as unknown as { base64(): Promise<string> };
+  return file.base64();
+}
+
 /**
  * Opens the device's in-app mail composer with the PDF attached. This
  * bypasses the share sheet's Mail extension entirely — the extension runs in

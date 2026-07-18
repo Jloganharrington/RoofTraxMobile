@@ -378,6 +378,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /profile/smtp:
+    patch:
+      tags: [Profile]
+      operationId: updateProfileSmtp
+      summary: Set or clear the current user's outbound SMTP settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileSmtpInput"
+      responses:
+        "200":
+          description: SMTP settings updated; updated profile returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /pins:
     get:
       tags: [Pins]
@@ -958,6 +989,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /inspections/{inspectionId}/email-report:
+    post:
+      tags: [Inspections]
+      operationId: emailInspectionReport
+      summary: Email a generated report PDF via the user's configured SMTP
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailReportInput"
+      responses:
+        "200":
+          description: Report emailed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailReportResult"
+        "400":
+          description: Invalid payload or SMTP not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: SMTP delivery failed (bad credentials, unreachable host, or rejected recipient).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /inspections/{inspectionId}/siding-facets:
     post:
       tags: [Inspections]
@@ -2508,6 +2594,77 @@ components:
         signatureSignedAt:
           type: [string, "null"]
           format: date-time
+        # Outbound SMTP settings (server-side report emailing). The password
+        # is write-only: it is never returned. smtpConfigured indicates a
+        # complete, usable configuration exists.
+        smtpConfigured:
+          type: boolean
+        smtpHost:
+          type: [string, "null"]
+        smtpPort:
+          type: [number, "null"]
+        smtpSecure:
+          type: [boolean, "null"]
+        smtpUsername:
+          type: [string, "null"]
+        smtpFromEmail:
+          type: [string, "null"]
+    UpdateProfileSmtpInput:
+      type: object
+      description: >-
+        Sets the user's outbound SMTP configuration. Send all fields to
+        configure; the password is stored encrypted and never returned.
+        Setting clear=true removes the configuration entirely.
+      properties:
+        clear:
+          type: boolean
+        host:
+          type: string
+          minLength: 1
+        port:
+          type: number
+          minimum: 1
+          maximum: 65535
+        secure:
+          type: boolean
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+        fromEmail:
+          type: string
+          minLength: 1
+    EmailReportInput:
+      type: object
+      required: [recipient, pdfBase64, filename]
+      properties:
+        recipient:
+          type: string
+          minLength: 3
+          maxLength: 320
+        pdfBase64:
+          type: string
+          minLength: 1
+          # ~10MB of PDF once base64-decoded; the route's body limit is 15MB.
+          maxLength: 14000000
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 200
+        subject:
+          type: string
+          maxLength: 500
+        body:
+          type: string
+          maxLength: 5000
+    EmailReportResult:
+      type: object
+      required: [sent]
+      properties:
+        sent:
+          type: boolean
     UpdateProfileSignatureInput:
       type: object
       required: [signatureUrl, signatureSha256]

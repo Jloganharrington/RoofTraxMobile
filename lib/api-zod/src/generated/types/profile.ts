@@ -22,4 +22,15 @@ export interface Profile {
   signatureSha256: string | null;
   /** @nullable */
   signatureSignedAt: Date | null;
+  smtpConfigured?: boolean;
+  /** @nullable */
+  smtpHost?: string | null;
+  /** @nullable */
+  smtpPort?: number | null;
+  /** @nullable */
+  smtpSecure?: boolean | null;
+  /** @nullable */
+  smtpUsername?: string | null;
+  /** @nullable */
+  smtpFromEmail?: string | null;
 }
