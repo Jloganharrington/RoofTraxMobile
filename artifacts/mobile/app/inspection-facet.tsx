@@ -109,11 +109,26 @@ export default function InspectionFacetScreen() {
     );
   }
 
+  // Roof-wide defaults: when this facet has no material/pitch of its own yet,
+  // prefill from the first facet that does (usually F1). Purely a draft-level
+  // default — it only persists when this facet is saved, and editing it never
+  // touches the donor facet.
+  const slopes = inspection.slopes ?? [];
+  const defaultMaterial =
+    slopes.find((s) => s.id !== slopeId && s.materialType)?.materialType ?? '';
+  const defaultPitchRise = slopes.find((s) => s.id !== slopeId && s.pitchRise != null)?.pitchRise;
+
   // Draft values fall back to the stored row so reopening shows saved facts.
   const areaValue = area ?? (facet.areaSqft != null ? String(facet.areaSqft) : '');
-  const materialValue = material ?? (facet.materialType ?? '');
+  const materialValue = material ?? facet.materialType ?? defaultMaterial;
   // Pitch is always {rise}/12; stored run stays 12, only rise is edited.
-  const pitchValue = pitch ?? (facet.pitchRise != null ? String(facet.pitchRise) : '');
+  const pitchValue =
+    pitch ??
+    (facet.pitchRise != null
+      ? String(facet.pitchRise)
+      : defaultPitchRise != null
+        ? String(defaultPitchRise)
+        : '');
   const pitchNum = Number(pitchValue);
   const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
 
