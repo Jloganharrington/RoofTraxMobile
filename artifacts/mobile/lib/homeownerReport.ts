@@ -321,7 +321,9 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
   /* photos */
   .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
   figure.photo { margin: 0; border: 1px solid #e2e8f0; border-radius: 7px; overflow: hidden; }
-  figure.photo img { width: 100%; height: 1.55in; object-fit: cover; display: block; }
+  /* contain, not cover: evidence photos must never be cropped — letterbox
+     within a fixed frame so the grid stays aligned but the full frame shows. */
+  figure.photo img { width: 100%; height: 1.55in; object-fit: contain; background: #f7fafc; display: block; }
   figure.photo figcaption { font-size: 10.5px; font-weight: 700; color: #4a5568;
     padding: 6px 10px; background: #f7fafc; border-top: 1px solid #e2e8f0; }
 
