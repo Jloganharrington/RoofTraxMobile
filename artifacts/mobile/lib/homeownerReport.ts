@@ -1,4 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as MailComposer from 'expo-mail-composer';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
@@ -511,4 +512,23 @@ export async function shareHomeownerReport(pdfUri: string): Promise<void> {
       dialogTitle: 'Homeowner report',
     });
   }
+}
+
+/**
+ * Opens the device's in-app mail composer with the PDF attached. This
+ * bypasses the share sheet's Mail extension entirely — the extension runs in
+ * a separate memory-capped process that iOS is prone to killing, whereas the
+ * in-app composer is stable. Returns false when no mail account is set up.
+ */
+export async function emailHomeownerReport(
+  pdfUri: string,
+  inspection: Inspection,
+): Promise<boolean> {
+  if (!(await MailComposer.isAvailableAsync())) return false;
+  await MailComposer.composeAsync({
+    subject: `Preliminary roof report — ${inspection.address ?? 'your property'}`,
+    body: 'Attached is the preliminary storm-damage summary for your property.',
+    attachments: [pdfUri],
+  });
+  return true;
 }

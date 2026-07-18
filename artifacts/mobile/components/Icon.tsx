@@ -39,7 +39,8 @@ export type IconName =
   | 'server'
   | 'file-text'
   | 'grid'
-  | 'minus';
+  | 'minus'
+  | 'mail';
 
 type IconProps = {
   name: IconName;
@@ -72,6 +73,13 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
       )}
 
       {name === 'x' && <Path d="M18 6 6 18M6 6l12 12" {...strokeProps} />}
+
+      {name === 'mail' && (
+        <>
+          <Rect x={2} y={4} width={20} height={16} rx={2} {...strokeProps} />
+          <Polyline points="22,6 12,13 2,6" {...strokeProps} />
+        </>
+      )}
 
       {name === 'check' && <Path d="M20 6 9 17l-5-5" {...strokeProps} />}
 

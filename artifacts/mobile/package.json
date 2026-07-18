@@ -61,6 +61,7 @@
     "expo-crypto": "~15.0.9",
     "expo-file-system": "~19.0.23",
     "expo-image-manipulator": "~14.0.8",
+    "expo-mail-composer": "~15.0.8",
     "expo-network": "~8.0.8",
     "expo-print": "~15.0.8",
     "expo-secure-store": "~15.0.8",

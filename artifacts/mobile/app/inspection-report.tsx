@@ -16,6 +16,7 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
 import {
+  emailHomeownerReport,
   generateHomeownerReport,
   shareHomeownerReport,
   type HomeownerReport,
@@ -46,7 +47,7 @@ export default function InspectionReportScreen() {
 
   const [report, setReport] = useState<HomeownerReport | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [busy, setBusy] = useState<null | 'generate' | 'share'>(null);
+  const [busy, setBusy] = useState<null | 'generate' | 'share' | 'email'>(null);
 
   async function handleGenerate() {
     if (!inspection || busy) return;
@@ -56,6 +57,25 @@ export default function InspectionReportScreen() {
     } catch (err) {
       console.warn('[report] generate failed', err);
       Alert.alert('Could not create report', 'Something went wrong generating the PDF. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleEmail() {
+    if (!report || !inspection || busy) return;
+    setBusy('email');
+    try {
+      const opened = await emailHomeownerReport(report.pdfUri, inspection);
+      if (!opened) {
+        Alert.alert(
+          'No mail account',
+          'No email account is set up on this device. Use Share instead, or add an account in Settings.',
+        );
+      }
+    } catch (err) {
+      console.warn('[report] email failed', err);
+      Alert.alert('Could not open email', 'Something went wrong opening the mail composer.');
     } finally {
       setBusy(null);
     }
@@ -209,16 +229,31 @@ export default function InspectionReportScreen() {
             </View>
 
             <Pressable
-              onPress={handleShare}
+              onPress={handleEmail}
               disabled={!!busy}
               style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 }]}
             >
-              {busy === 'share' ? (
+              {busy === 'email' ? (
                 <ActivityIndicator color={colors.primaryForeground} />
               ) : (
                 <>
-                  <Icon name="upload" size={18} color={colors.primaryForeground} />
-                  <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Share report</Text>
+                  <Icon name="mail" size={18} color={colors.primaryForeground} />
+                  <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Email report</Text>
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              onPress={handleShare}
+              disabled={!!busy}
+              style={[styles.secondaryBtn, { borderColor: colors.border, opacity: busy ? 0.6 : 1 }]}
+            >
+              {busy === 'share' ? (
+                <ActivityIndicator color={colors.foreground} />
+              ) : (
+                <>
+                  <Icon name="upload" size={18} color={colors.foreground} />
+                  <Text style={[styles.btnText, { color: colors.foreground }]}>Share report</Text>
                 </>
               )}
             </Pressable>
