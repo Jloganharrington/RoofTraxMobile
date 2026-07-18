@@ -27,7 +27,11 @@ import {
 import { drainOutbox } from '@/lib/outbox/drain';
 import { enqueueOutboxItem } from '@/lib/outbox/queue';
 import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
-import { PRELIMINARY_PHOTO_SLOTS } from '@/lib/preliminary';
+import {
+  preliminaryPhotoSlots,
+  selectedSurfaces,
+  type PreliminaryPhotoSlot,
+} from '@/lib/preliminary';
 
 // Phase 1 single-shot capture (P2). Walks the 4 preliminary evidence slots
 // (front of home, roof overview, 2 damage close-ups) using the SAME evidence
@@ -41,7 +45,19 @@ export default function PreliminaryPhotosScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const inspectionQuery = useGetInspection(id, { query: { queryKey: getGetInspectionQueryKey(id) } });
-  const existingPhotos = inspectionQuery.data?.inspection.photos ?? [];
+  const inspection = inspectionQuery.data?.inspection;
+  const existingPhotos = inspection?.photos ?? [];
+
+  // The close-up slots are surface-tagged: one (or two, when only one
+  // surface is selected) per damage surface chosen at Phase 1 intake.
+  const surfaces = selectedSurfaces(inspection ?? {});
+  const slots = preliminaryPhotoSlots(surfaces);
+
+  // A photo satisfies a slot if it carries the slot's role; roof close-up
+  // slots also accept the legacy generic `damage_closeup` role.
+  function rolesForSlot(slot: PreliminaryPhotoSlot): string[] {
+    return slot.role === 'damage_closeup_roof' ? ['damage_closeup_roof', 'damage_closeup'] : [slot.role];
+  }
 
   const [shots, setShots] = useState<Record<string, CapturedEvidencePhoto>>({});
   const [capturingKey, setCapturingKey] = useState<string | null>(null);
@@ -50,19 +66,19 @@ export default function PreliminaryPhotosScreen() {
   // fires after a save, never on merely opening a fully-captured screen.
   const [savedThisSession, setSavedThisSession] = useState(false);
 
-  // A slot is already satisfied if a photo for its role is on the record. Both
-  // close-up slots share the `damage_closeup` role, so once 2 are on the record
-  // both are considered captured.
+  // A slot is already satisfied if a photo for its role is on the record.
+  // When two slots share one role (single-surface flow captures two
+  // close-ups of the same surface), slot k needs k matching photos.
   function alreadyCaptured(slotIndex: number): boolean {
-    const slot = PRELIMINARY_PHOTO_SLOTS[slotIndex];
-    const onRecord = existingPhotos.filter((p) => p.preliminaryRole === slot.role).length;
-    if (slot.role === 'damage_closeup') {
-      const closeupSlotsBeforeInclusive = PRELIMINARY_PHOTO_SLOTS.slice(0, slotIndex + 1).filter(
-        (s) => s.role === 'damage_closeup',
-      ).length;
-      return onRecord >= closeupSlotsBeforeInclusive;
-    }
-    return onRecord > 0;
+    const slot = slots[slotIndex];
+    const accepted = rolesForSlot(slot);
+    const onRecord = existingPhotos.filter(
+      (p) => p.preliminaryRole && accepted.includes(p.preliminaryRole),
+    ).length;
+    const sameRoleSlotsBeforeInclusive = slots
+      .slice(0, slotIndex + 1)
+      .filter((s) => s.role === slot.role).length;
+    return onRecord >= sameRoleSlotsBeforeInclusive;
   }
 
   // Persists + queues one shot to the outbox and reflects it optimistically in
@@ -72,7 +88,7 @@ export default function PreliminaryPhotosScreen() {
     slotKey: string,
     shot: CapturedEvidencePhoto,
   ): Promise<boolean> {
-    const slot = PRELIMINARY_PHOTO_SLOTS.find((s) => s.key === slotKey);
+    const slot = slots.find((s) => s.key === slotKey);
     if (!id || !slot) {
       Alert.alert('Missing context', 'This screen must be opened from an inspection.');
       return false;
@@ -170,10 +186,8 @@ export default function PreliminaryPhotosScreen() {
   const handleReplace = (key: string) => runPicker(key, pickEvidencePhotoFromLibrary, false);
 
   // Which slots still need a shot this session (not on the record, not queued).
-  const pendingSlots = PRELIMINARY_PHOTO_SLOTS.filter(
-    (slot, idx) => !alreadyCaptured(idx) && !shots[slot.key],
-  );
-  const readyToSave = PRELIMINARY_PHOTO_SLOTS.some((slot) => shots[slot.key]);
+  const pendingSlots = slots.filter((slot, idx) => !alreadyCaptured(idx) && !shots[slot.key]);
+  const readyToSave = slots.some((slot) => shots[slot.key]);
   const allDone = pendingSlots.length === 0 && !readyToSave;
 
   // Saves any uploaded, not-yet-saved shots, then closes. Camera shots were
@@ -182,7 +196,7 @@ export default function PreliminaryPhotosScreen() {
   async function handleSaveAll() {
     setQueueing(true);
     try {
-      for (const slot of PRELIMINARY_PHOTO_SLOTS) {
+      for (const slot of slots) {
         const shot = shots[slot.key];
         if (!shot) continue;
         const ok = await queueShot(slot.key, shot);
@@ -217,10 +231,21 @@ export default function PreliminaryPhotosScreen() {
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.container}>
       <Text style={[styles.title, { color: colors.foreground }]}>Phase 1 photos</Text>
       <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-        Four single-shot photos. Each is hashed and GPS-stamped like forensic evidence.
+        Single-shot photos — front, roof overview, and a damage close-up for each selected
+        surface. Each is hashed and GPS-stamped like forensic evidence.
       </Text>
 
-      {PRELIMINARY_PHOTO_SLOTS.map((slot, idx) => {
+      {surfaces.length === 0 ? (
+        <View style={[styles.surfaceNote, { backgroundColor: colors.accent }]}>
+          <Icon name="alert-circle" size={16} color={colors.secondary} />
+          <Text style={{ color: colors.accentForeground, flex: 1, fontSize: 13 }}>
+            No damage surface selected yet — set the damage surface(s) on the intake step to
+            unlock the close-up slots.
+          </Text>
+        </View>
+      ) : null}
+
+      {slots.map((slot, idx) => {
         const shot = shots[slot.key];
         const onRecord = alreadyCaptured(idx);
         const isCapturingThis = capturingKey === slot.key;
@@ -311,6 +336,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '700' },
   subtitle: { fontSize: 13 },
   stepBlock: { gap: 8 },
+  surfaceNote: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12 },
   stepTitle: { fontSize: 16, fontWeight: '600' },
   stepHint: { fontSize: 12 },
   doneRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

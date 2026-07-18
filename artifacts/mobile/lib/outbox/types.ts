@@ -42,7 +42,14 @@ export interface InspectionPhotoOutboxPayload {
    * carry `preliminaryRole` instead. */
   triadRole?: 'wide' | 'mid' | 'close' | null;
   /** Phase 1 single-shot slot (P2). Mutually exclusive with `triadRole`. */
-  preliminaryRole?: 'front_of_home' | 'roof_overview' | 'damage_closeup' | null;
+  preliminaryRole?:
+    | 'front_of_home'
+    | 'roof_overview'
+    | 'damage_closeup'
+    | 'damage_closeup_roof'
+    | 'damage_closeup_siding'
+    | 'damage_closeup_collateral'
+    | null;
   /** Path to a copy of the photo in this app's stable document storage —
    * NOT the original camera-roll/cache URI, which the OS may evict before
    * connectivity returns. */

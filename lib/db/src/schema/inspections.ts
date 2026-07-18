@@ -40,7 +40,15 @@ export type InspectionPhase = (typeof INSPECTION_PHASES)[number];
 export const PRELIMINARY_PHOTO_ROLES = [
   'front_of_home',
   'roof_overview',
+  // Legacy generic close-up (pre surface-tagging). Counted as a ROOF
+  // close-up by the gates so old records stay green.
   'damage_closeup',
+  // Surface-tagged close-ups: >=1 required per damage surface selected in
+  // Phase 1 (roof/siding/collateral), so the preliminary report never
+  // asserts damage on a surface with no photo of it.
+  'damage_closeup_roof',
+  'damage_closeup_siding',
+  'damage_closeup_collateral',
 ] as const;
 export type PreliminaryPhotoRole = (typeof PRELIMINARY_PHOTO_ROLES)[number];
 
@@ -313,6 +321,22 @@ export const inspectionsTable = pgTable('inspections', {
   // v2.1 — optional siding measurement report reference (the client id of the
   // uploaded report photo). Nullable; absence is a soft flag, never a block.
   sidingMeasurementReportRef: text('siding_measurement_report_ref'),
+  // Audit trail for damage-surface flag REMOVALS during the forensic phase.
+  // The flags are first set in Phase 1 and drive measurement-report ordering
+  // between phases; if Phase 2 un-sets one, we record who/when/prior value
+  // (server-side, append-only) instead of silently flipping it.
+  damageSurfaceChangeLog: jsonb('damage_surface_change_log')
+    .$type<
+      Array<{
+        surface: 'roof' | 'siding' | 'collateral';
+        prior: boolean;
+        next: boolean;
+        changedByUserId: string;
+        changedAt: string;
+      }>
+    >()
+    .notNull()
+    .default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()

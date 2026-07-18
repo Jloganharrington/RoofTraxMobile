@@ -1207,7 +1207,12 @@ describe('inspection routes', () => {
       const create = await request(app)
         .post('/api/inspections')
         .set(auth(inspectorA.sid))
-        .send({ phase: 'preliminary', address: '10 Hail Rd', damageType: 'hail' });
+        .send({
+          phase: 'preliminary',
+          address: '10 Hail Rd',
+          damageType: 'hail',
+          roofDamageFound: true,
+        });
       const inspectionId = create.body.inspection.id as string;
 
       // Confirm the storm in Phase 1 (relocated out of forensic).
@@ -1261,7 +1266,13 @@ describe('inspection routes', () => {
       const create = await request(app)
         .post('/api/inspections')
         .set(auth(inspectorA.sid))
-        .send({ phase: 'preliminary', address: '11 Resume Ln', damageType: 'wind' });
+        .send({
+          phase: 'preliminary',
+          address: '11 Resume Ln',
+          damageType: 'wind',
+          roofDamageFound: true,
+          sidingDamageFound: true,
+        });
       const inspectionId = create.body.inspection.id as string;
 
       const mark = await request(app)
@@ -1272,6 +1283,75 @@ describe('inspection routes', () => {
       // It stays preliminary (resumable), not forensic.
       expect(mark.body.inspection.phase).toBe('preliminary');
       expect(mark.body.inspection.preliminaryCompletedAt).toBeTruthy();
+    });
+
+    it('rejects completing Phase 1 with zero damage surfaces selected (400)', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'preliminary', address: '12 No Surface St', damageType: 'wind' });
+      const inspectionId = create.body.inspection.id as string;
+
+      const mark = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ preliminaryCompletedAt: new Date().toISOString() });
+      expect(mark.status).toBe(400);
+
+      // Selecting a surface in the same patch satisfies the gate.
+      const withSurface = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ preliminaryCompletedAt: new Date().toISOString(), sidingDamageFound: true });
+      expect(withSurface.status).toBe(200);
+    });
+
+    it('records an audit entry when Phase 2 removes a Phase 1 damage surface', async () => {
+      const create = await request(app)
+        .post('/api/inspections')
+        .set(auth(inspectorA.sid))
+        .send({
+          phase: 'preliminary',
+          address: '13 Audit Ave',
+          damageType: 'hail',
+          roofDamageFound: true,
+          sidingDamageFound: true,
+        });
+      const inspectionId = create.body.inspection.id as string;
+
+      // Removing a surface while still preliminary is a free edit — no audit.
+      const prelimEdit = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ sidingDamageFound: false, collateralDamageFound: true });
+      expect(prelimEdit.status).toBe(200);
+      expect(prelimEdit.body.inspection.damageSurfaceChangeLog ?? []).toHaveLength(0);
+
+      // Advance to forensic, then remove a surface: recorded, not rejected.
+      await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ phase: 'forensic', preliminaryCompletedAt: new Date().toISOString() })
+        .expect(200);
+      const removal = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ roofDamageFound: false, sidingDamageFound: true });
+      expect(removal.status).toBe(200);
+      expect(removal.body.inspection.roofDamageFound).toBe(false);
+      const log = removal.body.inspection.damageSurfaceChangeLog;
+      expect(log).toHaveLength(1);
+      expect(log[0]).toMatchObject({ surface: 'roof', prior: true, next: false });
+      expect(log[0].changedByUserId).toBeTruthy();
+      expect(log[0].changedAt).toBeTruthy();
+
+      // Adding a surface back is free (no extra audit entry for additions).
+      const addBack = await request(app)
+        .patch(`/api/inspections/${inspectionId}`)
+        .set(auth(inspectorA.sid))
+        .send({ roofDamageFound: true });
+      expect(addBack.status).toBe(200);
+      expect(addBack.body.inspection.damageSurfaceChangeLog).toHaveLength(1);
     });
 
     it('captures a preliminary photo tagged with a preliminaryRole and hydrates it', async () => {

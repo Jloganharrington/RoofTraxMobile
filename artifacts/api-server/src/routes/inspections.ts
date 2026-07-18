@@ -501,6 +501,11 @@ router.post('/inspections', async (req: Request, res: Response) => {
     longitude: parsed.data.longitude ?? undefined,
     notes: parsed.data.notes ?? undefined,
     dateOfLoss: parsed.data.dateOfLoss ?? undefined,
+    // Phase 1 damage surfaces — determined at preliminary intake so they can
+    // drive measurement-report ordering before Phase 2 begins.
+    roofDamageFound: parsed.data.roofDamageFound ?? undefined,
+    sidingDamageFound: parsed.data.sidingDamageFound ?? undefined,
+    collateralDamageFound: parsed.data.collateralDamageFound ?? undefined,
   };
 
   // Offline-first: when the client supplies its own id, creation is
@@ -638,9 +643,62 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     }
   }
 
+  // Phase 1 completion gate: the damage surfaces drive which measurement
+  // report gets ordered between phases, so a preliminary can't be marked
+  // complete with zero surfaces selected. Evaluate against the merged state
+  // (incoming patch values win over the stored row).
+  if (parsed.data.preliminaryCompletedAt) {
+    const roof = parsed.data.roofDamageFound ?? inspection.roofDamageFound;
+    const siding = parsed.data.sidingDamageFound ?? inspection.sidingDamageFound;
+    const collateral = parsed.data.collateralDamageFound ?? inspection.collateralDamageFound;
+    if (!roof && !siding && !collateral) {
+      res.status(400).json({
+        error: 'Select at least one damage surface before completing the preliminary phase',
+      });
+      return;
+    }
+  }
+
+  // Phase 2 may ADD a damage surface freely (the elevation walk can catch
+  // what the Phase 1 ground look missed), but REMOVING one after Phase 1 is
+  // auditable — a measurement report may already have been ordered on that
+  // basis. Same spirit as the storm-confirmation rule, except we record the
+  // change (who/when/prior value) instead of rejecting it.
+  const surfaceRemovals: Array<{
+    surface: 'roof' | 'siding' | 'collateral';
+    prior: boolean;
+    next: boolean;
+    changedByUserId: string;
+    changedAt: string;
+  }> = [];
+  if (inspection.phase === 'forensic') {
+    const flagPairs = [
+      ['roof', 'roofDamageFound'],
+      ['siding', 'sidingDamageFound'],
+      ['collateral', 'collateralDamageFound'],
+    ] as const;
+    for (const [surface, field] of flagPairs) {
+      if (parsed.data[field] === false && inspection[field] === true) {
+        surfaceRemovals.push({
+          surface,
+          prior: true,
+          next: false,
+          changedByUserId: actor.userId,
+          changedAt: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
   const [updated] = await db
     .update(inspectionsTable)
     .set({
+      // Append-only, atomically against the CURRENT stored value (not the
+      // in-memory snapshot) so concurrent PATCHes can't drop each other's
+      // audit entries.
+      ...(surfaceRemovals.length > 0 && {
+        damageSurfaceChangeLog: sql`coalesce(${inspectionsTable.damageSurfaceChangeLog}, '[]'::jsonb) || ${JSON.stringify(surfaceRemovals)}::jsonb`,
+      }),
       ...(parsed.data.status !== undefined && { status: parsed.data.status }),
       ...(parsed.data.phase !== undefined && { phase: parsed.data.phase }),
       ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),

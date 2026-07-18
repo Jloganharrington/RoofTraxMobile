@@ -1,0 +1,23 @@
+Move damage-surface determination into Phase 1 (preliminary); Phase 2 confirms.
+
+Today the three damage flags (roofDamageFound / sidingDamageFound / collateralDamageFound) are first set in the Phase-2 Elevation Walk. They need to be determined in Phase 1, because they drive which measurement report gets ordered and how the forensic is scoped — both of which happen between Phase 1 and Phase 2.
+
+1. Phase 1 (preliminary intake) — add "Damage Surface(s)."
+
+A multi-select: Roof · Siding · Collateral (at least one required to complete Phase 1).
+This is orthogonal to the existing damage type (hail/wind/wind_and_hail/other) — that's the peril, this is the surface. Keep both.
+Writes the three existing boolean flags on the inspection row. Don't add new columns.
+2. Phase 1 photos — make the damage close-ups surface-specific.
+
+Keep front_of_home and roof_overview as always-required.
+The two damage_closeup slots become surface-tagged: require ≥1 damage close-up per selected surface (roof-only → roof close-ups as today; siding-only → siding close-ups; both → at least one of each). Update PRELIMINARY_PHOTO_SLOTS accordingly so the preliminary report never asserts siding damage with no siding photo.
+3. Phase 2 (Elevation Walk) — inherit + confirm, don't re-ask.
+
+Pre-fill the three toggles from Phase 1.
+The inspector may add a surface (a full elevation walk can catch what a 5-minute ground look missed).
+If they remove one, record the change (who/when/prior value) rather than silently flipping it — a measurement report may already have been ordered on that basis. Same spirit as the storm-confirmation immutability rule.
+4. Gates. Phase 1 can't complete with zero surfaces selected; Phase 2 submit still requires ≥1. Update the 3 field-identical gate builders, keep the parity test green.
+
+5. Contract. Flags already exist — just ensure Phase 1 populates them and any Phase-2 adjustment is carried. Regenerate types if the preliminary payload changes.
+
+Typecheck + protocol tests green.

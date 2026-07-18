@@ -772,7 +772,7 @@ export const ListInspectionsResponse = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -857,6 +857,13 @@ export const ListInspectionsResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "damageSurfaceChangeLog": zod.array(zod.object({
+  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "prior": zod.boolean(),
+  "next": zod.boolean(),
+  "changedByUserId": zod.string(),
+  "changedAt": zod.string()
+})).optional().describe('Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only).'),
   "sidingFacets": zod.array(zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
@@ -914,7 +921,10 @@ export const CreateInspectionBody = zod.object({
   "latitude": zod.number().nullish(),
   "longitude": zod.number().nullish(),
   "notes": zod.string().nullish(),
-  "dateOfLoss": zod.string().nullish()
+  "dateOfLoss": zod.string().nullish(),
+  "roofDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — roof.'),
+  "sidingDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — siding.'),
+  "collateralDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — collateral.')
 })
 
 export const CreateInspectionResponse = zod.object({
@@ -1048,7 +1058,7 @@ export const CreateInspectionResponse = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -1133,6 +1143,13 @@ export const CreateInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "damageSurfaceChangeLog": zod.array(zod.object({
+  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "prior": zod.boolean(),
+  "next": zod.boolean(),
+  "changedByUserId": zod.string(),
+  "changedAt": zod.string()
+})).optional().describe('Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only).'),
   "sidingFacets": zod.array(zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
@@ -1310,7 +1327,7 @@ export const GetInspectionResponse = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -1395,6 +1412,13 @@ export const GetInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "damageSurfaceChangeLog": zod.array(zod.object({
+  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "prior": zod.boolean(),
+  "next": zod.boolean(),
+  "changedByUserId": zod.string(),
+  "changedAt": zod.string()
+})).optional().describe('Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only).'),
   "sidingFacets": zod.array(zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
@@ -1621,7 +1645,7 @@ export const UpdateInspectionResponse = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -1706,6 +1730,13 @@ export const UpdateInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "damageSurfaceChangeLog": zod.array(zod.object({
+  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "prior": zod.boolean(),
+  "next": zod.boolean(),
+  "changedByUserId": zod.string(),
+  "changedAt": zod.string()
+})).optional().describe('Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only).'),
   "sidingFacets": zod.array(zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
@@ -2210,7 +2241,7 @@ export const CreateInspectionPhotoBody = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]).optional(),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]).optional(),
   "url": zod.string().min(1),
   "sha256": zod.string().min(1),
   "exifJson": zod.object({
@@ -2236,7 +2267,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -2530,7 +2561,7 @@ export const SubmitInspectionResponse = zod.object({
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -2615,6 +2646,13 @@ export const SubmitInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "damageSurfaceChangeLog": zod.array(zod.object({
+  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "prior": zod.boolean(),
+  "next": zod.boolean(),
+  "changedByUserId": zod.string(),
+  "changedAt": zod.string()
+})).optional().describe('Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only).'),
   "sidingFacets": zod.array(zod.object({
   "id": zod.string(),
   "companyId": zod.string(),

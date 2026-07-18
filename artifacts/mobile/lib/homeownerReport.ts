@@ -30,10 +30,20 @@ const ROLE_LABEL: Record<PreliminaryPhotoRole, string> = {
   front_of_home: 'Front of home',
   roof_overview: 'Roof overview',
   damage_closeup: 'Damage close-up',
+  damage_closeup_roof: 'Roof damage close-up',
+  damage_closeup_siding: 'Siding damage close-up',
+  damage_closeup_collateral: 'Collateral damage close-up',
 };
 
-// Fixed, presentation order for the four Phase 1 slots.
-const ROLE_ORDER: PreliminaryPhotoRole[] = ['front_of_home', 'roof_overview', 'damage_closeup'];
+// Fixed, presentation order for the Phase 1 slots.
+const ROLE_ORDER: PreliminaryPhotoRole[] = [
+  'front_of_home',
+  'roof_overview',
+  'damage_closeup',
+  'damage_closeup_roof',
+  'damage_closeup_siding',
+  'damage_closeup_collateral',
+];
 
 const NEXT_STEPS: Array<{ title: string; detail: string }> = [
   { title: 'File a claim', detail: 'Open a claim with your carrier for the storm date noted.' },

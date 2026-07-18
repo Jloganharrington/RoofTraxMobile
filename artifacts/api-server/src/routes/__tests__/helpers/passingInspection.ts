@@ -69,6 +69,14 @@ export async function buildPassingInspection(sid: string): Promise<PassingInspec
     });
   expect(arrival.status).toBe(200);
 
+  // Damage surfaces — submit requires at least one. Roof only: the fixture
+  // fully documents the roof and nothing siding/collateral-specific.
+  const surfaces = await request(app)
+    .patch(`/api/inspections/${inspectionId}`)
+    .set(auth(sid))
+    .send({ roofDamageFound: true });
+  expect(surfaces.status).toBe(200);
+
   // Step 2 — a wide photo for all four elevations + the roof-access photo.
   const elevationIds: string[] = [];
   for (const direction of ['front', 'right', 'back', 'left'] as const) {

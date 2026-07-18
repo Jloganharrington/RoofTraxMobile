@@ -2893,8 +2893,19 @@ components:
       type: string
       description: >-
         A Phase 1 single-shot evidence slot (P2). Captured through the evidence
-        module without a triad; `damage_closeup` is captured twice.
-      enum: [front_of_home, roof_overview, damage_closeup]
+        module without a triad. `damage_closeup` is the legacy generic
+        close-up (counted as a roof close-up); the `damage_closeup_*` roles
+        are surface-tagged — at least one is required per damage surface
+        selected in Phase 1.
+      enum:
+        [
+          front_of_home,
+          roof_overview,
+          damage_closeup,
+          damage_closeup_roof,
+          damage_closeup_siding,
+          damage_closeup_collateral,
+        ]
     ElevationDirection:
       type: string
       enum: [front, right, back, left]
@@ -3319,6 +3330,13 @@ components:
           description: >-
             v2.1 optional siding measurement report reference (client id of
             the uploaded report photo).
+        damageSurfaceChangeLog:
+          type: array
+          description: >-
+            Append-only audit trail of damage-surface flag removals made
+            during the forensic phase (server-recorded; read-only).
+          items:
+            $ref: "#/components/schemas/DamageSurfaceChange"
         sidingFacets:
           type: array
           description: v2.1 siding facets, populated by the detail view only.
@@ -3373,6 +3391,30 @@ components:
           type: [string, "null"]
         dateOfLoss:
           type: [string, "null"]
+        roofDamageFound:
+          type: boolean
+          description: Phase 1 damage surface — roof.
+        sidingDamageFound:
+          type: boolean
+          description: Phase 1 damage surface — siding.
+        collateralDamageFound:
+          type: boolean
+          description: Phase 1 damage surface — collateral.
+    DamageSurfaceChange:
+      type: object
+      required: [surface, prior, next, changedByUserId, changedAt]
+      properties:
+        surface:
+          type: string
+          enum: [roof, siding, collateral]
+        prior:
+          type: boolean
+        next:
+          type: boolean
+        changedByUserId:
+          type: string
+        changedAt:
+          type: string
     UpdateInspectionInput:
       type: object
       properties:

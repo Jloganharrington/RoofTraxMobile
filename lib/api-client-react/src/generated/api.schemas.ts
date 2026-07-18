@@ -378,7 +378,7 @@ export const InspectionPhase = {
 } as const;
 
 /**
- * A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.
+ * A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.
  */
 export type PreliminaryPhotoRole = typeof PreliminaryPhotoRole[keyof typeof PreliminaryPhotoRole];
 
@@ -387,6 +387,9 @@ export const PreliminaryPhotoRole = {
   front_of_home: 'front_of_home',
   roof_overview: 'roof_overview',
   damage_closeup: 'damage_closeup',
+  damage_closeup_roof: 'damage_closeup_roof',
+  damage_closeup_siding: 'damage_closeup_siding',
+  damage_closeup_collateral: 'damage_closeup_collateral',
 } as const;
 
 export type ElevationDirection = typeof ElevationDirection[keyof typeof ElevationDirection];
@@ -882,6 +885,23 @@ export interface Attestation {
   attestedAt: string;
 }
 
+export type DamageSurfaceChangeSurface = typeof DamageSurfaceChangeSurface[keyof typeof DamageSurfaceChangeSurface];
+
+
+export const DamageSurfaceChangeSurface = {
+  roof: 'roof',
+  siding: 'siding',
+  collateral: 'collateral',
+} as const;
+
+export interface DamageSurfaceChange {
+  surface: DamageSurfaceChangeSurface;
+  prior: boolean;
+  next: boolean;
+  changedByUserId: string;
+  changedAt: string;
+}
+
 /**
  * v2.1 — siding component disposition.
  */
@@ -1024,6 +1044,8 @@ export interface Inspection {
      * @nullable
      */
   sidingMeasurementReportRef: string | null;
+  /** Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only). */
+  damageSurfaceChangeLog?: DamageSurfaceChange[];
   /** v2.1 siding facets, populated by the detail view only. */
   sidingFacets?: InspectionSidingFacet[];
   /** E2 interior/attic observations, populated by the detail view only. */
@@ -1064,6 +1086,12 @@ export interface CreateInspectionInput {
   notes?: string | null;
   /** @nullable */
   dateOfLoss?: string | null;
+  /** Phase 1 damage surface — roof. */
+  roofDamageFound?: boolean;
+  /** Phase 1 damage surface — siding. */
+  sidingDamageFound?: boolean;
+  /** Phase 1 damage surface — collateral. */
+  collateralDamageFound?: boolean;
 }
 
 export interface UpdateInspectionInput {

@@ -40,4 +40,10 @@ export interface CreateInspectionInput {
   notes?: string | null;
   /** @nullable */
   dateOfLoss?: string | null;
+  /** Phase 1 damage surface — roof. */
+  roofDamageFound?: boolean;
+  /** Phase 1 damage surface — siding. */
+  sidingDamageFound?: boolean;
+  /** Phase 1 damage surface — collateral. */
+  collateralDamageFound?: boolean;
 }

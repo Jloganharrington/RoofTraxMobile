@@ -17,7 +17,7 @@ import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { inspectionsListKey, patchInspection, startInspection } from '@/lib/inspectionSync';
-import { DAMAGE_TYPE_OPTIONS } from '@/lib/preliminary';
+import { DAMAGE_SURFACE_OPTIONS, DAMAGE_TYPE_OPTIONS, type DamageSurface } from '@/lib/preliminary';
 import { AddressAutocompleteField } from '@/components/AddressAutocompleteField';
 
 // Phase 1 intake (P2): a light top-of-funnel start. Address + a single damage
@@ -37,11 +37,19 @@ export default function PreliminaryIntakeScreen() {
     damageType?: string;
     latitude?: string;
     longitude?: string;
+    /** Comma-separated preselected surfaces when editing (e.g. "roof,siding"). */
+    surfaces?: string;
   }>();
 
   const editingId = params.id;
   const [address, setAddress] = useState(params.address ?? '');
   const [damageType, setDamageType] = useState(params.damageType ?? '');
+  const [surfaces, setSurfaces] = useState<DamageSurface[]>(
+    () =>
+      (params.surfaces ?? '')
+        .split(',')
+        .filter((s): s is DamageSurface => s === 'roof' || s === 'siding' || s === 'collateral'),
+  );
   const [saving, setSaving] = useState(false);
 
   const [latitude, setLatitude] = useState<number | null>(
@@ -58,10 +66,16 @@ export default function PreliminaryIntakeScreen() {
     }
     setSaving(true);
     try {
+      const surfaceFlags = {
+        roofDamageFound: surfaces.includes('roof'),
+        sidingDamageFound: surfaces.includes('siding'),
+        collateralDamageFound: surfaces.includes('collateral'),
+      };
       if (editingId) {
         await patchInspection(queryClient, editingId, {
           address: address.trim(),
           damageType: damageType || null,
+          ...surfaceFlags,
           ...(latitude != null && { latitude }),
           ...(longitude != null && { longitude }),
         });
@@ -84,6 +98,7 @@ export default function PreliminaryIntakeScreen() {
           pinId: params.pinId ?? null,
           address: address.trim(),
           damageType: damageType || null,
+          ...surfaceFlags,
           latitude,
           longitude,
         },
@@ -157,6 +172,47 @@ export default function PreliminaryIntakeScreen() {
               );
             })}
           </View>
+        </View>
+
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Damage surface(s) — select all that apply
+          </Text>
+          <View style={styles.chips}>
+            {DAMAGE_SURFACE_OPTIONS.map((option) => {
+              const on = surfaces.includes(option.value);
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() =>
+                    setSurfaces((prev) =>
+                      on ? prev.filter((s) => s !== option.value) : [...prev, option.value],
+                    )
+                  }
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: on ? colors.primary : colors.card,
+                      borderColor: on ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: on ? colors.primaryForeground : colors.foreground,
+                      fontWeight: '600',
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            Drives which measurement report gets ordered. At least one is required before Phase 1
+            can be completed.
+          </Text>
         </View>
 
         <Pressable

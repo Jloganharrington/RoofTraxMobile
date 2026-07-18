@@ -17,3 +17,5 @@ Permanently rejected (4xx) outbox items are marked `dead` and never retried — 
 **How to apply:** any new status that removes items from the drain loop must be added to `countUnsyncedWritesForInspection`-style gating queries.
 
 - Editable child records (toggle-style UI) need: 404-tolerant replay on BOTH delete and update handlers (a queued update can trail a local delete), and a synchronous ref-based in-flight guard in the tap handler — React `disabled` state alone can't stop a double-tap from enqueuing conflicting ops.
+
+**Self-sufficient gated patches:** any server-side 4xx gate on a PATCH field (e.g. preliminaryCompletedAt requires >=1 damage surface) can dead-letter a replayed outbox item and permanently count as an unsynced write. Client patches that trip such gates must carry the qualifying fields in the SAME patch (server evaluates the merged state), so a replay can never 400.

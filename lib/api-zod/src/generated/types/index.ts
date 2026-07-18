@@ -60,6 +60,8 @@ export * from './crmStatusEnvelope';
 export * from './crmThreadStatus';
 export * from './damageInstance';
 export * from './damageInstanceEnvelope';
+export * from './damageSurfaceChange';
+export * from './damageSurfaceChangeSurface';
 export * from './damageType';
 export * from './deleteSuccess';
 export * from './department';

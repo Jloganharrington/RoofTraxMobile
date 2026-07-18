@@ -24,3 +24,4 @@
 - [Outbox replay ordering & orphan gates](outbox-replay-ordering-and-orphan-gates.md) — drain by createdAt+rowid or delete-before-create replay resurrects records; gate rules must skip children orphaned by a parent delete.
 - [Stage vocabulary mirrors](stage-vocab-mirrors.md) — protocol/db/openapi step lists mirror by key with no enforced link; keep all three in identical order when adding a step.
 - [Data-driven URL auth gating](data-driven-url-auth-gating.md) — never attach the session Bearer token to a fetch whose URL comes from a record; gate to the trusted API origin with a `/` boundary check or the token can leak.
+- [Append-only jsonb audit logs](outbox-replay-ordering-and-orphan-gates.md) — append via SQL `col || new::jsonb`, never read-modify-write in JS, or concurrent PATCHes drop audit entries.

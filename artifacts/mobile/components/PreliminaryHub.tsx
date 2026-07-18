@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Inspection } from '@workspace/api-client-react';
@@ -7,7 +7,7 @@ import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { inspectionsListKey, patchInspection } from '@/lib/inspectionSync';
-import { DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
+import { closeupRolesFor, preliminaryPhotoSlots, selectedSurfaces, DAMAGE_TYPE_LABEL } from '@/lib/preliminary';
 
 // Phase 1 (preliminary) capture hub. A light top-of-funnel flow: confirm the
 // property + damage type, capture the 4 single-shot photos, confirm the storm,
@@ -20,14 +20,31 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
   const [markingDone, setMarkingDone] = useState(false);
 
   const photos = inspection.photos ?? [];
+  const surfaces = selectedSurfaces(inspection);
+  const slotCount = preliminaryPhotoSlots(surfaces).length;
   const frontDone = photos.some((p) => p.preliminaryRole === 'front_of_home');
   const roofDone = photos.some((p) => p.preliminaryRole === 'roof_overview');
-  const closeupCount = photos.filter((p) => p.preliminaryRole === 'damage_closeup').length;
-  const capturedCount = (frontDone ? 1 : 0) + (roofDone ? 1 : 0) + Math.min(closeupCount, 2);
-  const photosDone = frontDone && roofDone && closeupCount >= 2;
+  // Close-ups are surface-tagged: every selected surface needs at least one
+  // matching close-up (roof also accepts the legacy generic role), and the
+  // single-surface flow captures two of that surface (as before).
+  const closeupCountFor = (surface: (typeof surfaces)[number]) =>
+    photos.filter(
+      (p) => p.preliminaryRole && (closeupRolesFor(surface) as string[]).includes(p.preliminaryRole),
+    ).length;
+  const closeupsRequired = slotCount - 2;
+  const closeupsDone =
+    surfaces.length > 0 &&
+    surfaces.every((s) => closeupCountFor(s) >= 1) &&
+    (surfaces.length > 1 || closeupCountFor(surfaces[0]) >= 2);
+  const closeupCaptured = Math.min(
+    surfaces.reduce((sum, s) => sum + closeupCountFor(s), 0),
+    closeupsRequired,
+  );
+  const capturedCount = (frontDone ? 1 : 0) + (roofDone ? 1 : 0) + closeupCaptured;
+  const photosDone = frontDone && roofDone && closeupsDone;
 
   const stormDone = !!inspection.stormConfirmedRef;
-  const damageDone = !!inspection.damageType;
+  const damageDone = !!inspection.damageType && surfaces.length > 0;
   const completed = !!inspection.preliminaryCompletedAt;
 
   const location = inspection.address
@@ -36,11 +53,32 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
       ? `${inspection.latitude},${inspection.longitude}`
       : '';
 
+  // Phase 1 cannot complete (nor advance to Phase 2) with zero damage
+  // surfaces — they drive which measurement report gets ordered between the
+  // phases. The server enforces the same rule on preliminaryCompletedAt.
+  function requireSurfaces(): boolean {
+    if (surfaces.length > 0) return true;
+    Alert.alert(
+      'Damage surface required',
+      'Select at least one damage surface (roof, siding, or collateral) on the intake step first.',
+    );
+    return false;
+  }
+
   async function markPreliminaryComplete() {
+    if (!requireSurfaces()) return;
     setMarkingDone(true);
     try {
+      // Carry the surface flags alongside the completion timestamp: the
+      // server gates preliminaryCompletedAt on >=1 surface after merging the
+      // incoming patch, so a self-sufficient patch can never be rejected on
+      // offline replay (a bare patch could race a stale server row and dead-
+      // letter in the outbox).
       await patchInspection(queryClient, id, {
         preliminaryCompletedAt: new Date().toISOString(),
+        roofDamageFound: !!inspection.roofDamageFound,
+        sidingDamageFound: !!inspection.sidingDamageFound,
+        collateralDamageFound: !!inspection.collateralDamageFound,
       });
       await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
     } finally {
@@ -49,6 +87,7 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
   }
 
   function proceedToPhase2() {
+    if (!requireSurfaces()) return;
     // Advance the SAME record: hand the forensic claim-intake screen this
     // inspection's id so it patches phase -> forensic in place (P0/P4),
     // carrying the Phase 1 property/damage/storm/photos already on the row.
@@ -80,11 +119,15 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
 
       <Card
         icon="clipboard"
-        title="Damage type"
+        title="Damage type & surfaces"
         subtitle={
           damageDone
-            ? DAMAGE_TYPE_LABEL[inspection.damageType!] ?? inspection.damageType!
-            : 'Set the damage type for this property'
+            ? `${DAMAGE_TYPE_LABEL[inspection.damageType!] ?? inspection.damageType!} · ${surfaces
+                .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+                .join(', ')}`
+            : !inspection.damageType
+              ? 'Set the damage type and surface(s) for this property'
+              : 'Select the damage surface(s) — roof, siding, or collateral'
         }
         done={damageDone}
         onPress={() =>
@@ -96,6 +139,7 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
               latitude: inspection.latitude != null ? String(inspection.latitude) : '',
               longitude: inspection.longitude != null ? String(inspection.longitude) : '',
               damageType: inspection.damageType ?? '',
+              surfaces: surfaces.join(','),
             },
           })
         }
@@ -107,8 +151,10 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
         title="Phase 1 photos"
         subtitle={
           photosDone
-            ? 'All 4 single-shot photos captured'
-            : `${capturedCount} of 4 captured — front, roof, 2 close-ups`
+            ? `All ${slotCount} single-shot photos captured`
+            : surfaces.length === 0
+              ? 'Select the damage surface(s) first to unlock the close-up slots'
+              : `${capturedCount} of ${slotCount} captured — front, roof, plus surface close-ups`
         }
         done={photosDone}
         onPress={() => router.push({ pathname: '/inspection-preliminary-photos', params: { id } })}

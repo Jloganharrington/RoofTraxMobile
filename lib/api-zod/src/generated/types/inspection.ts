@@ -8,6 +8,7 @@
 import type { ArrivalConditions } from './arrivalConditions';
 import type { Attestation } from './attestation';
 import type { DamageInstance } from './damageInstance';
+import type { DamageSurfaceChange } from './damageSurfaceChange';
 import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
@@ -103,6 +104,8 @@ export interface Inspection {
      * @nullable
      */
   sidingMeasurementReportRef: string | null;
+  /** Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only). */
+  damageSurfaceChangeLog?: DamageSurfaceChange[];
   /** v2.1 siding facets, populated by the detail view only. */
   sidingFacets?: InspectionSidingFacet[];
   /** E2 interior/attic observations, populated by the detail view only. */

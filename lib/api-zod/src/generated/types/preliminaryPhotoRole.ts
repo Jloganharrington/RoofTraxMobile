@@ -7,7 +7,7 @@
  */
 
 /**
- * A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad; `damage_closeup` is captured twice.
+ * A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.
  */
 export type PreliminaryPhotoRole = typeof PreliminaryPhotoRole[keyof typeof PreliminaryPhotoRole];
 
@@ -16,4 +16,7 @@ export const PreliminaryPhotoRole = {
   front_of_home: 'front_of_home',
   roof_overview: 'roof_overview',
   damage_closeup: 'damage_closeup',
+  damage_closeup_roof: 'damage_closeup_roof',
+  damage_closeup_siding: 'damage_closeup_siding',
+  damage_closeup_collateral: 'damage_closeup_collateral',
 } as const;

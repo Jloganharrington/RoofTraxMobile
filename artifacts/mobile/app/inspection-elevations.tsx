@@ -163,7 +163,9 @@ export default function InspectionElevationsScreen() {
         Damage observed during the walk
       </Text>
       <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: -6 }}>
-        Toggle every surface where you observed damage. This decides which capture steps apply.
+        Pre-filled from the Phase 1 damage surfaces — confirm what you observed on the walk. You
+        can add a surface the ground look missed; removing one is recorded (a measurement report
+        may already have been ordered on it).
       </Text>
       {(
         [
