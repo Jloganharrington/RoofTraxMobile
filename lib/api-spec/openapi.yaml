@@ -378,6 +378,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /profile/smtp/test:
+    post:
+      tags: [Profile]
+      operationId: testProfileSmtp
+      summary: Send a test email through the user's configured SMTP settings
+      responses:
+        "200":
+          description: Test email sent to the user's account email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailReportResult"
+        "400":
+          description: SMTP not configured or stored credentials unreadable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many test emails; try again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: SMTP delivery failed (bad credentials, unreachable host, or rejected recipient).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /profile/smtp:
     patch:
       tags: [Profile]

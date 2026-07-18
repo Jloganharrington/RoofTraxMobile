@@ -1210,6 +1210,77 @@ export const useUpdateProfileSignature = <TError = ErrorType<ErrorEnvelope>,
       return useMutation(getUpdateProfileSignatureMutationOptions(options));
     }
 
+export const getTestProfileSmtpUrl = () => {
+
+
+
+
+  return `/api/profile/smtp/test`
+}
+
+/**
+ * @summary Send a test email through the user's configured SMTP settings
+ */
+export const testProfileSmtp = async ( options?: RequestInit): Promise<EmailReportResult> => {
+
+  return customFetch<EmailReportResult>(getTestProfileSmtpUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestProfileSmtpMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testProfileSmtp>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testProfileSmtp>>, TError,void, TContext> => {
+
+const mutationKey = ['testProfileSmtp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testProfileSmtp>>, void> = () => {
+
+
+          return  testProfileSmtp(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestProfileSmtpMutationResult = NonNullable<Awaited<ReturnType<typeof testProfileSmtp>>>
+
+    export type TestProfileSmtpMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Send a test email through the user's configured SMTP settings
+ */
+export const useTestProfileSmtp = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testProfileSmtp>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testProfileSmtp>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestProfileSmtpMutationOptions(options));
+    }
+
 export const getUpdateProfileSmtpUrl = () => {
 
 

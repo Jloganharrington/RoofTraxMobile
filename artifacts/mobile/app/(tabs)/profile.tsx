@@ -22,6 +22,7 @@ import {
   useListPins,
   useUpdateProfileSignature,
   useUpdateProfileSmtp,
+  useTestProfileSmtp,
 } from '@workspace/api-client-react';
 import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -141,6 +142,27 @@ export default function ProfileScreen() {
   // write-only: it is stored encrypted server-side and never shown again.
   const smtpConfigured = profile?.smtpConfigured ?? false;
   const updateSmtp = useUpdateProfileSmtp();
+  const testSmtp = useTestProfileSmtp();
+  const [smtpTesting, setSmtpTesting] = React.useState(false);
+
+  async function handleTestSmtp() {
+    if (smtpTesting) return;
+    setSmtpTesting(true);
+    try {
+      await testSmtp.mutateAsync();
+      Alert.alert(
+        'Test email sent',
+        `Check ${user?.email ?? 'your inbox'} — if it arrives, your email settings work.`,
+      );
+    } catch (err: any) {
+      const message =
+        err?.data?.error ??
+        'Test email could not be sent. Check your SMTP settings and try again.';
+      Alert.alert('Test failed', message);
+    } finally {
+      setSmtpTesting(false);
+    }
+  }
   const [smtpOpen, setSmtpOpen] = React.useState(false);
   const [smtpSaving, setSmtpSaving] = React.useState(false);
   const [smtpHost, setSmtpHost] = React.useState('');
@@ -341,6 +363,25 @@ export default function ProfileScreen() {
               {smtpConfigured ? 'Edit settings' : 'Set up email sending'}
             </Text>
           </Pressable>
+          {smtpConfigured && (
+            <Pressable
+              onPress={handleTestSmtp}
+              disabled={smtpTesting}
+              style={[
+                styles.sigButton,
+                {
+                  borderColor: colors.border,
+                  borderWidth: 1,
+                  paddingHorizontal: 16,
+                  opacity: smtpTesting ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.sigButtonText, { color: colors.foreground }]}>
+                {smtpTesting ? 'Sending…' : 'Send test'}
+              </Text>
+            </Pressable>
+          )}
           {smtpConfigured && (
             <Pressable
               onPress={handleClearSmtp}

@@ -261,6 +261,14 @@ export const UpdateProfileSignatureResponse = zod.object({
 
 
 /**
+ * @summary Send a test email through the user's configured SMTP settings
+ */
+export const TestProfileSmtpResponse = zod.object({
+  "sent": zod.boolean()
+})
+
+
+/**
  * @summary Set or clear the current user's outbound SMTP settings
  */
 

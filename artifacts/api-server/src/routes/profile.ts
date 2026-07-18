@@ -4,12 +4,34 @@ import {
   UpdateProfileSmtpBody,
 } from '@workspace/api-zod';
 
-import { encryptSmtpPassword } from '../lib/smtpCrypto';
+import { encryptSmtpPassword, decryptSmtpPassword } from '../lib/smtpCrypto';
+import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
+import nodemailer from 'nodemailer';
 import { db, userProfilesTable, usersTable, companiesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 const router: IRouter = Router();
+
+// --- Rate limit for SMTP test emails: 5 / user / 10 minutes (in-memory
+// sliding window; same approach as bug reports — fine for a single instance).
+const smtpTestByUser = new Map<string, number[]>();
+const SMTP_TEST_LIMIT = 5;
+const SMTP_TEST_WINDOW_MS = 10 * 60 * 1000;
+
+function checkSmtpTestRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = (smtpTestByUser.get(userId) ?? []).filter(
+    (t) => now - t < SMTP_TEST_WINDOW_MS,
+  );
+  if (timestamps.length >= SMTP_TEST_LIMIT) {
+    smtpTestByUser.set(userId, timestamps);
+    return false;
+  }
+  timestamps.push(now);
+  smtpTestByUser.set(userId, timestamps);
+  return true;
+}
 
 // Serializes a profile row + its company into the API `Profile` shape. Kept in
 // one place so the GET and the signature PATCH always return an identical
@@ -189,6 +211,90 @@ router.patch('/profile/smtp', async (req: Request, res: Response) => {
 
   const company = await loadCompany(userId);
   res.json(toProfileEnvelope(updated, company));
+});
+
+// Sends a short test email through the user's stored SMTP settings, to their
+// own account email, so they can verify the configuration works before relying
+// on it for real report delivery. Mirrors the delivery path used by
+// email-report (decrypt password, SSRF-guarded host resolution, TLS servername
+// pinned to the original hostname).
+router.post('/profile/smtp/test', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const userId = req.user.id;
+  if (!checkSmtpTestRateLimit(userId)) {
+    res.status(429).json({ error: 'Too many test emails — wait a few minutes and try again' });
+    return;
+  }
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, userId));
+  if (
+    !profile?.smtpHost ||
+    !profile.smtpPort ||
+    !profile.smtpUsername ||
+    !profile.smtpPasswordEnc
+  ) {
+    res.status(400).json({ error: 'SMTP is not configured on your profile' });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const recipient = user?.email;
+  if (!recipient) {
+    res.status(400).json({ error: 'Your account has no email address to send the test to' });
+    return;
+  }
+
+  let password: string;
+  try {
+    password = decryptSmtpPassword(profile.smtpPasswordEnc);
+  } catch {
+    res.status(400).json({ error: 'Stored SMTP password could not be read; please re-enter it' });
+    return;
+  }
+
+  let smtpAddress: string;
+  try {
+    smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+  } catch {
+    res.status(400).json({ error: 'SMTP host is not a valid public mail server' });
+    return;
+  }
+
+  const transport = nodemailer.createTransport({
+    host: smtpAddress,
+    port: profile.smtpPort,
+    secure: profile.smtpSecure ?? profile.smtpPort === 465,
+    name: undefined,
+    auth: { user: profile.smtpUsername, pass: password },
+    tls: { servername: profile.smtpHost },
+    connectionTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+
+  try {
+    await transport.sendMail({
+      from: profile.smtpFromEmail || profile.smtpUsername,
+      to: recipient,
+      subject: 'RoofTrax test email',
+      text: 'Your email settings are working. Reports sent from RoofTrax will be delivered like this message.',
+    });
+  } catch (err) {
+    req.log.warn({ err }, 'SMTP test email failed');
+    res.status(502).json({
+      error:
+        'Test email could not be sent. Check your SMTP settings (host, port, username, password) and try again.',
+    });
+    return;
+  }
+
+  res.json({ sent: true });
 });
 
 export default router;
