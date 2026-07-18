@@ -265,6 +265,16 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
     ? `<div class="slabel">Photos (${photos.length})</div><div class="photos">${photoCards}</div>`
     : `<div class="slabel">Photos</div><p class="muted">No preliminary photos are attached to this report.</p>`;
 
+  // Size the photo frames to fill the remaining space of a single Letter page.
+  // Non-photo content (header, findings, facts, labels, next steps, disclaimer)
+  // occupies roughly 4.6in of the 10in printable height (0.5in margins); split
+  // the rest across the photo rows, minus caption + gap overhead per row.
+  const photoRows = Math.max(1, Math.ceil(photos.length / 2));
+  const photoImgHeightIn = Math.min(
+    3.4,
+    Math.max(1.55, (10 - 4.6) / photoRows - 0.35),
+  ).toFixed(2);
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -272,7 +282,7 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   * { box-sizing: border-box; }
-  @page { size: Letter; margin: 0.4in; }
+  @page { size: Letter; margin: 0.5in; }
   html, body { margin: 0; padding: 0; }
   body {
     font-family: -apple-system, Helvetica, Arial, sans-serif;
@@ -322,8 +332,9 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
   .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
   figure.photo { margin: 0; border: 1px solid #e2e8f0; border-radius: 7px; overflow: hidden; }
   /* contain, not cover: evidence photos must never be cropped — letterbox
-     within a fixed frame so the grid stays aligned but the full frame shows. */
-  figure.photo img { width: 100%; height: 1.55in; object-fit: contain; background: #f7fafc; display: block; }
+     within a fixed frame so the grid stays aligned but the full frame shows.
+     Frame height is computed per-report so the photos fill the page. */
+  figure.photo img { width: 100%; height: ${photoImgHeightIn}in; object-fit: contain; background: #f7fafc; display: block; }
   figure.photo figcaption { font-size: 10.5px; font-weight: 700; color: #4a5568;
     padding: 6px 10px; background: #f7fafc; border-top: 1px solid #e2e8f0; }
 
