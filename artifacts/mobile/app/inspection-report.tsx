@@ -82,10 +82,9 @@ export default function InspectionReportScreen() {
         recipientTrimmed || undefined,
       );
       if (!opened) {
-        Alert.alert(
-          'No mail account',
-          'No email account is set up on this device. Use Share instead, or add an account in Settings.',
-        );
+        // No Apple Mail account on this device — fall back to the share
+        // sheet, where Gmail/Outlook/etc. can take the PDF as an attachment.
+        await shareHomeownerReport(report.pdfUri);
       }
     } catch (err) {
       console.warn('[report] email failed', err);
