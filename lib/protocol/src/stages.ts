@@ -188,6 +188,12 @@ export type SidingDamageType = (typeof SIDING_DAMAGE_TYPES)[number];
 export const SIDING_PHOTO_ROLES = ['damage', 'facet', 'component'] as const;
 export type SidingPhotoRole = (typeof SIDING_PHOTO_ROLES)[number];
 
+// Disposition for each documented siding component (S1C1, S1C2, …): whether
+// the component can be detached and reset, or must be removed and replaced.
+// Every component requires a selection plus its own photo.
+export const SIDING_COMPONENT_ACTIONS = ['detach_reset', 'remove_replace'] as const;
+export type SidingComponentAction = (typeof SIDING_COMPONENT_ACTIONS)[number];
+
 /** True when a facet's damage classification requires a Step-4 test square. */
 export function carriesHail(damageType: FacetDamageType | null | undefined): boolean {
   return damageType === 'hail' || damageType === 'hail_and_wind';

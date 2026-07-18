@@ -113,6 +113,10 @@ export default function InspectionPhotoCaptureScreen() {
      * 'siding_facet' so the gate can tell damage/facet/component shots
      * apart deterministically. */
     sidingRole?: SidingPhotoRole;
+    /** 1-based component slot (S{n}C{k}) — required alongside
+     * sidingRole 'component' so the photo binds to its component. Arrives
+     * as a string via the router. */
+    sidingComponentIndex?: string;
     /** Optional explicit caption stored in the photo's overlayJson (e.g.
      * "S1 Damage"). Falls back to the causation / zone-title behaviour. */
     caption?: string;
@@ -220,6 +224,9 @@ export default function InspectionPhotoCaptureScreen() {
         longitude: persisted.longitude,
         zone: params.zone ?? null,
         sidingRole: params.sidingRole ?? null,
+        sidingComponentIndex: params.sidingComponentIndex
+          ? Number(params.sidingComponentIndex)
+          : null,
       };
       await enqueueOutboxItem('inspection.photo', payload);
       appendOptimisticPhotos(queryClient, inspectionId, [
@@ -232,6 +239,9 @@ export default function InspectionPhotoCaptureScreen() {
           sha256: persisted.sha256,
           zone: params.zone ?? null,
           sidingRole: params.sidingRole ?? null,
+          sidingComponentIndex: params.sidingComponentIndex
+            ? Number(params.sidingComponentIndex)
+            : null,
         },
       ]);
       setSavedRoles((prev) => new Set(prev).add(role));

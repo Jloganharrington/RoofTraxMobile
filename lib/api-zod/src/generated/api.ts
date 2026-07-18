@@ -768,7 +768,7 @@ export const ListInspectionsResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -786,6 +786,7 @@ export const ListInspectionsResponse = zod.object({
   "longitude": zod.number().nullable(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
+  "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -846,7 +847,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -863,7 +864,10 @@ export const ListInspectionsResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
@@ -1040,7 +1044,7 @@ export const CreateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1058,6 +1062,7 @@ export const CreateInspectionResponse = zod.object({
   "longitude": zod.number().nullable(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
+  "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -1118,7 +1123,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1135,7 +1140,10 @@ export const CreateInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
@@ -1298,7 +1306,7 @@ export const GetInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1316,6 +1324,7 @@ export const GetInspectionResponse = zod.object({
   "longitude": zod.number().nullable(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
+  "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -1376,7 +1385,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1393,7 +1402,10 @@ export const GetInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
@@ -1605,7 +1617,7 @@ export const UpdateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -1623,6 +1635,7 @@ export const UpdateInspectionResponse = zod.object({
   "longitude": zod.number().nullable(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
+  "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -1683,7 +1696,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1700,7 +1713,10 @@ export const UpdateInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
@@ -1737,8 +1753,6 @@ export const CreateInspectionSidingFacetParams = zod.object({
 })
 
 
-export const createInspectionSidingFacetBodyComponentCountMin = 0;
-
 
 
 export const CreateInspectionSidingFacetBody = zod.object({
@@ -1746,7 +1760,10 @@ export const CreateInspectionSidingFacetBody = zod.object({
   "label": zod.string().min(1),
   "damaged": zod.boolean().optional(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]).optional(),
-  "componentCount": zod.number().min(createInspectionSidingFacetBodyComponentCountMin).optional(),
+  "wrbPresent": zod.boolean().nullish(),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).optional(),
   "notes": zod.string().nullish()
 })
 
@@ -1758,7 +1775,10 @@ export const CreateInspectionSidingFacetResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -1774,15 +1794,16 @@ export const UpdateInspectionSidingFacetParams = zod.object({
 })
 
 
-export const updateInspectionSidingFacetBodyComponentCountMin = 0;
-
 
 
 export const UpdateInspectionSidingFacetBody = zod.object({
   "label": zod.string().min(1).optional(),
   "damaged": zod.boolean().optional(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]).optional(),
-  "componentCount": zod.number().min(updateInspectionSidingFacetBodyComponentCountMin).optional(),
+  "wrbPresent": zod.boolean().nullish(),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).optional(),
   "notes": zod.string().nullish()
 }).describe('Partial siding-facet update — only supplied fields change.')
 
@@ -1794,7 +1815,10 @@ export const UpdateInspectionSidingFacetResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })
@@ -2179,9 +2203,10 @@ export const CreateInspectionPhotoParams = zod.object({
 
 
 
+
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
@@ -2198,7 +2223,8 @@ export const CreateInspectionPhotoBody = zod.object({
   "latitude": zod.number().nullish(),
   "longitude": zod.number().nullish(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional(),
-  "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]).optional()
+  "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]).optional(),
+  "sidingComponentIndex": zod.number().min(1).nullish()
 })
 
 export const CreateInspectionPhotoResponse = zod.object({
@@ -2206,7 +2232,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -2224,6 +2250,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "longitude": zod.number().nullable(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
+  "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "createdAt": zod.coerce.date()
 })
 })
@@ -2272,7 +2299,7 @@ export const CreateAttestationParams = zod.object({
 
 export const CreateAttestationBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the attestation write is idempotent, so a queued offline attestation can be retried without duplicating the row.'),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]).optional(),
   "details": zod.record(zod.string(), zod.unknown()).nullish(),
   "signatureData": zod.string().nullish()
@@ -2284,7 +2311,7 @@ export const CreateAttestationResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -2499,7 +2526,7 @@ export const SubmitInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
@@ -2517,6 +2544,7 @@ export const SubmitInspectionResponse = zod.object({
   "longitude": zod.number().nullable(),
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
+  "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -2577,7 +2605,7 @@ export const SubmitInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'collateral', 'product', 'siding', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -2594,7 +2622,10 @@ export const SubmitInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "componentCount": zod.number(),
+  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "components": zod.array(zod.object({
+  "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
+}).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SidingDamageType } from './sidingDamageType';
+import type { SidingFacetComponent } from './sidingFacetComponent';
 
 /**
  * Partial siding-facet update — only supplied fields change.
@@ -15,8 +16,9 @@ export interface UpdateInspectionSidingFacetInput {
   label?: string;
   damaged?: boolean;
   damageType?: SidingDamageType | null;
-  /** @minimum 0 */
-  componentCount?: number;
+  /** @nullable */
+  wrbPresent?: boolean | null;
+  components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
 }

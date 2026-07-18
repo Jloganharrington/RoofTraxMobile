@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SidingDamageType } from './sidingDamageType';
+import type { SidingFacetComponent } from './sidingFacetComponent';
 
 export interface InspectionSidingFacet {
   id: string;
@@ -14,7 +15,13 @@ export interface InspectionSidingFacet {
   label: string;
   damaged: boolean;
   damageType: SidingDamageType | null;
-  componentCount: number;
+  /**
+     * Water-resistive barrier present? Null until answered.
+     * @nullable
+     */
+  wrbPresent: boolean | null;
+  /** Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own 'component'-role photo whose sidingComponentIndex matches. */
+  components: SidingFacetComponent[];
   /** @nullable */
   notes: string | null;
   createdAt: Date;

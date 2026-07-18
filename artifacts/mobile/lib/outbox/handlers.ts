@@ -97,6 +97,7 @@ async function syncInspectionPhoto(payloadJson: string): Promise<void> {
     longitude: payload.longitude,
     zone: payload.zone ?? undefined,
     sidingRole: (payload.sidingRole as SidingPhotoRole | null | undefined) ?? undefined,
+    sidingComponentIndex: payload.sidingComponentIndex ?? undefined,
   });
 
   // Best-effort cleanup of the local copy now that the server has the

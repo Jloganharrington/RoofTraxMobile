@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   doublePrecision,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -471,14 +472,19 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   // photos so the gate can tell the damage close-up, the facet shot, and the
   // per-component photos apart deterministically. Null elsewhere.
   sidingRole: varchar('siding_role', { enum: SIDING_PHOTO_ROLES }),
+  // 1-based component slot (S{n}C{k}) this photo evidences. Set only when
+  // sidingRole is 'component'; the gate matches it against the facet's
+  // components array positionally. Null elsewhere.
+  sidingComponentIndex: integer('siding_component_index'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // v2.1 — A siding facet (S1, S2, …) documented during the Siding Inspection
 // step. Raw facts only: label, whether the inspector observed damage (and
-// its classification), and how many components the facet declares — the gate
-// requires one 'component'-role photo per declared component. No area /
-// pitch / material fields by design.
+// its classification), whether a water-resistive barrier is present, and the
+// facet's component list (S{n}C1…S{n}Ck) — each component carries its
+// disposition and requires its own 'component'-role photo whose
+// sidingComponentIndex matches. No area / pitch / material fields by design.
 export const inspectionSidingFacetsTable = pgTable('inspection_siding_facets', {
   id: varchar('id')
     .primaryKey()
@@ -492,7 +498,15 @@ export const inspectionSidingFacetsTable = pgTable('inspection_siding_facets', {
   label: text('label').notNull(),
   damaged: boolean('damaged').notNull().default(false),
   damageType: varchar('damage_type', { enum: SIDING_DAMAGE_TYPES }),
-  componentCount: doublePrecision('component_count').notNull().default(0),
+  // Water-resistive barrier present? Null until the inspector answers; new
+  // facets default from the first facet's answer client-side.
+  wrbPresent: boolean('wrb_present'),
+  // Positional component list: components[k-1] is S{n}C{k}. Each entry holds
+  // its disposition (`action`: 'detach_reset' | 'remove_replace' | null).
+  components: jsonb('components')
+    .$type<Array<{ action: 'detach_reset' | 'remove_replace' | null }>>()
+    .notNull()
+    .default([]),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

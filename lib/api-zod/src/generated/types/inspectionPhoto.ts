@@ -38,5 +38,10 @@ export interface InspectionPhoto {
   longitude: number | null;
   zone: ComponentZone | null;
   sidingRole: SidingPhotoRole | null;
+  /**
+     * 1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is 'component'.
+     * @nullable
+     */
+  sidingComponentIndex: number | null;
   createdAt: Date;
 }

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SidingDamageType } from './sidingDamageType';
+import type { SidingFacetComponent } from './sidingFacetComponent';
 
 export interface CreateInspectionSidingFacetInput {
   /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
@@ -14,8 +15,9 @@ export interface CreateInspectionSidingFacetInput {
   label: string;
   damaged?: boolean;
   damageType?: SidingDamageType | null;
-  /** @minimum 0 */
-  componentCount?: number;
+  /** @nullable */
+  wrbPresent?: boolean | null;
+  components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
 }

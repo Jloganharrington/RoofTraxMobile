@@ -32,3 +32,5 @@ qualification pattern in `buildProtocolState`, and remember the mapping itself
 is only covered by `tsc`, so review it by hand.
 
 **Zone-based Step 5 (Components):** component photos are per-ZONE, not per-record — a shared photo has `subjectType:'component'` + `zone` (`eave_edge`/`ridge_hip`) and NO subjectId. Server rejects `zone` on other subject types and `zone`+`subjectId` together; the orphan-photo check has an explicit zone-photo exception. Penetrations stay per-record. Any new component type must be added to `componentZoneForType` in lib/protocol or its documentation never demands a photo.
+
+**Siding components (positional jsonb):** facet.components[k-1] is S{n}C{k}; a component photo binds via sidingComponentIndex (1-based, only with sidingRole 'component'). When the components array shrinks, both the server patch route and the mobile optimistic cache must UNBIND (null role+index, keep the row) photos with index > new length — otherwise a re-added component silently inherits a stale photo and bypasses the per-component gate.

@@ -277,7 +277,8 @@ export async function createSidingFacet(
       label: fields.label,
       damaged: fields.damaged ?? false,
       damageType: fields.damageType ?? null,
-      componentCount: fields.componentCount ?? 0,
+      wrbPresent: fields.wrbPresent ?? null,
+      components: fields.components ?? [],
       notes: fields.notes ?? null,
       createdAt: now,
     };
@@ -296,11 +297,25 @@ export async function updateSidingFacet(
   sidingFacetId: string,
   patch: UpdateInspectionSidingFacetInput,
 ): Promise<void> {
+  const componentLimit = patch.components !== undefined ? patch.components.length : null;
   patchCachedInspection(queryClient, inspectionId, (inspection) => ({
     ...inspection,
     sidingFacets: (inspection.sidingFacets ?? []).map((facet) =>
       facet.id === sidingFacetId ? { ...facet, ...patch } : facet,
     ),
+    // Mirror of the server's shrink rule: a component-role photo whose slot
+    // no longer exists is unbound (kept, but no longer satisfies any gate),
+    // so a re-added component can't inherit a stale photo optimistically.
+    photos:
+      componentLimit === null
+        ? inspection.photos
+        : (inspection.photos ?? []).map((photo) =>
+            photo.subjectId === sidingFacetId &&
+            photo.sidingRole === 'component' &&
+            (photo.sidingComponentIndex ?? 0) > componentLimit
+              ? { ...photo, sidingRole: null, sidingComponentIndex: null }
+              : photo,
+          ),
   }));
   await enqueueOutboxItem('inspection.sidingFacetUpdate', { inspectionId, sidingFacetId, patch });
   void drainOutbox();
@@ -846,6 +861,7 @@ export function appendOptimisticPhotos(
     sha256: string;
     zone?: 'eave_edge' | 'ridge_hip' | null;
     sidingRole?: SidingPhotoRole | null;
+    sidingComponentIndex?: number | null;
   }>,
 ): void {
   const now = new Date().toISOString();
@@ -868,6 +884,7 @@ export function appendOptimisticPhotos(
       longitude: null,
       zone: p.zone ?? null,
       sidingRole: p.sidingRole ?? null,
+      sidingComponentIndex: p.sidingComponentIndex ?? null,
       createdAt: now,
     }));
     return { ...inspection, photos: [...(inspection.photos ?? []), ...optimistic] };

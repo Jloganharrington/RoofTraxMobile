@@ -3566,7 +3566,8 @@ components:
           label,
           damaged,
           damageType,
-          componentCount,
+          wrbPresent,
+          components,
           notes,
           createdAt,
         ]
@@ -3585,8 +3586,17 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SidingDamageType"
             - type: "null"
-        componentCount:
-          type: number
+        wrbPresent:
+          type: [boolean, "null"]
+          description: Water-resistive barrier present? Null until answered.
+        components:
+          type: array
+          description: >-
+            Positional component list — components[k-1] is S{n}C{k}. Each
+            entry carries its disposition; each needs its own
+            'component'-role photo whose sidingComponentIndex matches.
+          items:
+            $ref: "#/components/schemas/SidingFacetComponent"
         notes:
           type: [string, "null"]
         createdAt:
@@ -3612,9 +3622,12 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SidingDamageType"
             - type: "null"
-        componentCount:
-          type: number
-          minimum: 0
+        wrbPresent:
+          type: [boolean, "null"]
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidingFacetComponent"
         notes:
           type: [string, "null"]
     UpdateInspectionSidingFacetInput:
@@ -3630,11 +3643,29 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SidingDamageType"
             - type: "null"
-        componentCount:
-          type: number
-          minimum: 0
+        wrbPresent:
+          type: [boolean, "null"]
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidingFacetComponent"
         notes:
           type: [string, "null"]
+    SidingFacetComponent:
+      type: object
+      description: >-
+        One siding component slot (S{n}C{k}). Disposition is required by the
+        gate before submission.
+      required: [action]
+      properties:
+        action:
+          oneOf:
+            - $ref: "#/components/schemas/SidingComponentAction"
+            - type: "null"
+    SidingComponentAction:
+      type: string
+      description: v2.1 — siding component disposition.
+      enum: [detach_reset, remove_replace]
     InspectionSidingFacetEnvelope:
       type: object
       required: [sidingFacet]
@@ -4043,6 +4074,7 @@ components:
           longitude,
           zone,
           sidingRole,
+          sidingComponentIndex,
           createdAt,
         ]
       properties:
@@ -4091,6 +4123,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SidingPhotoRole"
             - type: "null"
+        sidingComponentIndex:
+          type: [number, "null"]
+          description: >-
+            1-based component slot (S{n}C{k}) this photo evidences. Set only
+            when sidingRole is 'component'.
         createdAt:
           type: string
           format: date-time
@@ -4146,6 +4183,9 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SidingPhotoRole"
             - type: "null"
+        sidingComponentIndex:
+          type: [number, "null"]
+          minimum: 1
     InspectionPhotoEnvelope:
       type: object
       required: [photo]

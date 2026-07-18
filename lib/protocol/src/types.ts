@@ -88,10 +88,14 @@ export interface InspectionProtocolState {
     label: string;
     damaged: boolean;
     damageType: SidingDamageType | null;
-    componentCount: number;
+    // Water-resistive barrier present? Null until the inspector answers.
+    wrbPresent: boolean | null;
+    // Components S{n}C1…S{n}Ck, positional (index is 1-based). Each needs a
+    // disposition selection and its own photo (a 'component'-role photo whose
+    // sidingComponentIndex matches).
+    components: Array<{ index: number; actionSelected: boolean; photoCaptured: boolean }>;
     facetPhotoCaptured: boolean;
     damagePhotoCount: number;
-    componentPhotoCount: number;
   }>;
   // Optional siding measurement report (soft-flagged when siding applies and
   // it's missing — never a hard block).

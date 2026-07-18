@@ -114,7 +114,11 @@ export default function InspectionSidingScreen() {
     if (addingFacet || facets.length >= 40) return;
     setAddingFacet(true);
     try {
-      await createSidingFacet(queryClient, id, { label: nextFacetLabel() });
+      // New facets default their WRB answer to the first facet's answer.
+      await createSidingFacet(queryClient, id, {
+        label: nextFacetLabel(),
+        wrbPresent: (facets[0]?.wrbPresent as boolean | null) ?? null,
+      });
     } finally {
       setAddingFacet(false);
     }
@@ -213,7 +217,7 @@ export default function InspectionSidingScreen() {
     if (!facet) return false;
     if (!facet.facetPhotoCaptured) return false;
     if (facet.damaged && (!facet.damageType || facet.damagePhotoCount < 1)) return false;
-    return facet.componentPhotoCount >= facet.componentCount;
+    return facet.components.every((c) => c.actionSelected && c.photoCaptured);
   };
 
   return (
@@ -273,8 +277,9 @@ export default function InspectionSidingScreen() {
               if (info && !info.facetPhotoCaptured) missing.push('facet photo');
               if (info?.damaged && !info.damageType) missing.push('damage type');
               if (info?.damaged && info.damagePhotoCount < 1) missing.push('damage photo');
-              if (info && info.componentPhotoCount < info.componentCount)
-                missing.push('component photos');
+              if (info?.components.some((c) => !c.photoCaptured)) missing.push('component photos');
+              if (info?.components.some((c) => !c.actionSelected))
+                missing.push('component disposition');
               return (
                 <Pressable
                   key={facet.id}

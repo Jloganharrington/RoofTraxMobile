@@ -67,7 +67,7 @@ import {
   usersTable,
 } from '@workspace/db';
 import type { Role } from '@workspace/db';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
@@ -873,7 +873,8 @@ router.post('/inspections/:inspectionId/siding-facets', async (req: Request, res
     label: parsed.data.label,
     damaged: parsed.data.damaged ?? undefined,
     damageType: parsed.data.damageType ?? undefined,
-    componentCount: parsed.data.componentCount ?? undefined,
+    wrbPresent: parsed.data.wrbPresent ?? undefined,
+    components: parsed.data.components ?? undefined,
     notes: parsed.data.notes ?? undefined,
   };
 
@@ -935,9 +936,8 @@ router.patch(
       ...(parsed.data.label !== undefined && { label: parsed.data.label }),
       ...(parsed.data.damaged !== undefined && { damaged: parsed.data.damaged }),
       ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
-      ...(parsed.data.componentCount !== undefined && {
-        componentCount: parsed.data.componentCount,
-      }),
+      ...(parsed.data.wrbPresent !== undefined && { wrbPresent: parsed.data.wrbPresent }),
+      ...(parsed.data.components !== undefined && { components: parsed.data.components }),
       ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
     };
     const facetWhere = and(
@@ -966,6 +966,26 @@ router.patch(
     if (!updated) {
       res.status(404).json({ error: 'Siding facet not found' });
       return;
+    }
+
+    // When the component list shrinks, unbind component-role photos whose
+    // slot no longer exists (index > new length). The photo row stays on
+    // file as evidence, but it must never silently satisfy a component the
+    // inspector re-adds later — that would bypass the per-component photo
+    // gate. Idempotent, so outbox replays are safe.
+    if (parsed.data.components !== undefined) {
+      await db
+        .update(inspectionPhotosTable)
+        .set({ sidingRole: null, sidingComponentIndex: null })
+        .where(
+          and(
+            eq(inspectionPhotosTable.inspectionId, inspectionId),
+            eq(inspectionPhotosTable.companyId, actor.companyId),
+            eq(inspectionPhotosTable.subjectId, updated.id),
+            eq(inspectionPhotosTable.sidingRole, 'component'),
+            gt(inspectionPhotosTable.sidingComponentIndex, parsed.data.components.length),
+          ),
+        );
     }
     res.json(UpdateInspectionSidingFacetResponse.parse({ sidingFacet: updated }));
   },
@@ -1574,6 +1594,17 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     res.status(400).json({ error: 'A sidingRole is required for siding facet photos' });
     return;
   }
+  // sidingComponentIndex binds a 'component'-role photo to its S{n}C{k} slot;
+  // it is meaningless on any other photo, and every component photo needs one
+  // or the per-component gate could never be satisfied.
+  if (parsed.data.sidingComponentIndex != null && parsed.data.sidingRole !== 'component') {
+    res.status(400).json({ error: 'sidingComponentIndex is only valid on component-role siding photos' });
+    return;
+  }
+  if (parsed.data.sidingRole === 'component' && parsed.data.sidingComponentIndex == null) {
+    res.status(400).json({ error: 'A sidingComponentIndex is required for component-role siding photos' });
+    return;
+  }
 
   const values = {
     ...(parsed.data.id ? { id: parsed.data.id } : {}),
@@ -1593,6 +1624,7 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
     longitude: parsed.data.longitude ?? undefined,
     zone: parsed.data.zone ?? undefined,
     sidingRole: parsed.data.sidingRole ?? undefined,
+    sidingComponentIndex: parsed.data.sidingComponentIndex ?? undefined,
   };
 
   // Offline-first idempotent create. Evidence photos are queued in the mobile

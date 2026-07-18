@@ -450,9 +450,9 @@ export const CaptureStage = {
   facets: 'facets',
   test_squares: 'test_squares',
   components: 'components',
-  collateral: 'collateral',
   product: 'product',
   siding: 'siding',
+  collateral: 'collateral',
   interior: 'interior',
   homeowner: 'homeowner',
   declaration: 'declaration',
@@ -734,6 +734,11 @@ export interface InspectionPhoto {
   longitude: number | null;
   zone: ComponentZone | null;
   sidingRole: SidingPhotoRole | null;
+  /**
+     * 1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is 'component'.
+     * @nullable
+     */
+  sidingComponentIndex: number | null;
   createdAt: string;
 }
 
@@ -877,6 +882,24 @@ export interface Attestation {
   attestedAt: string;
 }
 
+/**
+ * v2.1 — siding component disposition.
+ */
+export type SidingComponentAction = typeof SidingComponentAction[keyof typeof SidingComponentAction];
+
+
+export const SidingComponentAction = {
+  detach_reset: 'detach_reset',
+  remove_replace: 'remove_replace',
+} as const;
+
+/**
+ * One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.
+ */
+export interface SidingFacetComponent {
+  action: SidingComponentAction | null;
+}
+
 export interface InspectionSidingFacet {
   id: string;
   companyId: string;
@@ -884,7 +907,13 @@ export interface InspectionSidingFacet {
   label: string;
   damaged: boolean;
   damageType: SidingDamageType | null;
-  componentCount: number;
+  /**
+     * Water-resistive barrier present? Null until answered.
+     * @nullable
+     */
+  wrbPresent: boolean | null;
+  /** Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own 'component'-role photo whose sidingComponentIndex matches. */
+  components: SidingFacetComponent[];
   /** @nullable */
   notes: string | null;
   createdAt: string;
@@ -1138,8 +1167,9 @@ export interface CreateInspectionSidingFacetInput {
   label: string;
   damaged?: boolean;
   damageType?: SidingDamageType | null;
-  /** @minimum 0 */
-  componentCount?: number;
+  /** @nullable */
+  wrbPresent?: boolean | null;
+  components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
 }
@@ -1152,8 +1182,9 @@ export interface UpdateInspectionSidingFacetInput {
   label?: string;
   damaged?: boolean;
   damageType?: SidingDamageType | null;
-  /** @minimum 0 */
-  componentCount?: number;
+  /** @nullable */
+  wrbPresent?: boolean | null;
+  components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
 }
@@ -1331,6 +1362,11 @@ export interface CreateInspectionPhotoInput {
   longitude?: number | null;
   zone?: ComponentZone | null;
   sidingRole?: SidingPhotoRole | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  sidingComponentIndex?: number | null;
 }
 
 export interface InspectionPhotoEnvelope {

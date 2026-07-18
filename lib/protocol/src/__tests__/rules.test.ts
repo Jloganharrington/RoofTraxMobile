@@ -51,10 +51,13 @@ function completeState(): InspectionProtocolState {
         label: 'S1',
         damaged: true,
         damageType: 'hail',
-        componentCount: 2,
+        wrbPresent: true,
+        components: [
+          { index: 1, actionSelected: true, photoCaptured: true },
+          { index: 2, actionSelected: true, photoCaptured: true },
+        ],
         facetPhotoCaptured: true,
         damagePhotoCount: 1,
-        componentPhotoCount: 2,
       },
     ],
     sidingMeasurementReportUploaded: true,
@@ -279,7 +282,8 @@ describe('evaluate (protocol v2.1)', () => {
     { name: 'siding facet w/o facet photo', mutate: (s) => { s.sidingFacets[0]!.facetPhotoCaptured = false; }, stage: 'siding', code: 'MISSING_SIDING_FACET_PHOTO_sf-1' },
     { name: 'damaged siding facet w/o damage type', mutate: (s) => { s.sidingFacets[0]!.damageType = null; }, stage: 'siding', code: 'MISSING_SIDING_DAMAGE_TYPE_sf-1' },
     { name: 'damaged siding facet w/o damage photo', mutate: (s) => { s.sidingFacets[0]!.damagePhotoCount = 0; }, stage: 'siding', code: 'MISSING_SIDING_DAMAGE_PHOTO_sf-1' },
-    { name: 'siding components not all photographed', mutate: (s) => { s.sidingFacets[0]!.componentPhotoCount = 1; }, stage: 'siding', code: 'MISSING_SIDING_COMPONENT_PHOTOS_sf-1' },
+    { name: 'siding component w/o photo', mutate: (s) => { s.sidingFacets[0]!.components[1]!.photoCaptured = false; }, stage: 'siding', code: 'MISSING_SIDING_COMPONENT_PHOTO_sf-1_2' },
+    { name: 'siding component w/o disposition', mutate: (s) => { s.sidingFacets[0]!.components[0]!.actionSelected = false; }, stage: 'siding', code: 'MISSING_SIDING_COMPONENT_ACTION_sf-1_1' },
     { name: 'declaration missing', mutate: (s) => { s.declarationSigned = false; }, stage: 'declaration', code: 'MISSING_DECLARATION' },
   ];
 

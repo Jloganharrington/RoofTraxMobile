@@ -39,4 +39,9 @@ export interface CreateInspectionPhotoInput {
   longitude?: number | null;
   zone?: ComponentZone | null;
   sidingRole?: SidingPhotoRole | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  sidingComponentIndex?: number | null;
 }

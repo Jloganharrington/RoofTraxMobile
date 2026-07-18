@@ -202,7 +202,7 @@ function checkPenetrations(state: InspectionProtocolState): Deficiency[] {
 
 // Siding Inspection (v2.1) — ≥1 siding facet; every facet has its facet
 // photo; each damaged facet has a damage type and ≥1 damage photo; every
-// declared component is photographed (componentPhotoCount ≥ componentCount).
+// declared component (S{n}C{k}) has a disposition selection and its own photo.
 function checkSiding(state: InspectionProtocolState): Deficiency[] {
   if (state.sidingFacets.length === 0) {
     return [
@@ -244,14 +244,26 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
         );
       }
     }
-    if (facet.componentPhotoCount < facet.componentCount) {
-      out.push(
-        deficiency(
-          'siding',
-          `MISSING_SIDING_COMPONENT_PHOTOS_${facet.id}`,
-          `Siding facet ${facet.label} declares ${facet.componentCount} component${facet.componentCount === 1 ? '' : 's'} but only ${facet.componentPhotoCount} ${facet.componentPhotoCount === 1 ? 'is' : 'are'} photographed.`,
-        ),
-      );
+    for (const component of facet.components) {
+      const componentLabel = `${facet.label}C${component.index}`;
+      if (!component.actionSelected) {
+        out.push(
+          deficiency(
+            'siding',
+            `MISSING_SIDING_COMPONENT_ACTION_${facet.id}_${component.index}`,
+            `Siding component ${componentLabel} has no disposition (Detach & Reset / Remove & Replace).`,
+          ),
+        );
+      }
+      if (!component.photoCaptured) {
+        out.push(
+          deficiency(
+            'siding',
+            `MISSING_SIDING_COMPONENT_PHOTO_${facet.id}_${component.index}`,
+            `Siding component ${componentLabel} has no photo.`,
+          ),
+        );
+      }
     }
   }
   return out;

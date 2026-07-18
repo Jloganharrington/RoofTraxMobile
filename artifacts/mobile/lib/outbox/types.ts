@@ -61,6 +61,9 @@ export interface InspectionPhotoOutboxPayload {
    * (damage close-up / facet shot / per-component photo). Null/omitted for
    * every other photo. */
   sidingRole?: 'damage' | 'facet' | 'component' | null;
+  /** 1-based component slot (S{n}C{k}) a 'component'-role photo evidences.
+   * Null/omitted for every other photo. */
+  sidingComponentIndex?: number | null;
 }
 
 /** Offline-first inspection create. Carries a client-generated `id` so the

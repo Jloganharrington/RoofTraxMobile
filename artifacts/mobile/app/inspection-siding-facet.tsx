@@ -2,35 +2,49 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
-import { SIDING_DAMAGE_TYPES, type SidingDamageType } from '@workspace/protocol';
+import {
+  SIDING_COMPONENT_ACTIONS,
+  SIDING_DAMAGE_TYPES,
+  type SidingComponentAction,
+  type SidingDamageType,
+} from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { deleteSidingFacet, updateSidingFacet } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 
-// Siding facet detail (protocol v2.1). One siding surface: damaged? → damage
-// type + damage photo(s); a facet overview photo is always required; then a
-// component count with one photo per component. Photos route through the
-// shared capture screen tagged subjectType 'siding_facet' + a sidingRole so
-// the gate discriminates damage/facet/component shots deterministically.
+// Siding facet detail (protocol v2.1). One siding surface:
+// - "Is there damage?" Yes/No → damage type + damage photo(s) when Yes.
+// - Water-Resistive Barrier present? Yes/No (new facets inherit the first
+//   facet's answer as their default).
+// - Facet overview photo — always required.
+// - Components S{n}C1…S{n}Ck via a (−) N (+) stepper; each component needs
+//   its own photo and a disposition (Detach & Reset / Remove & Replace).
+// Photos route through the shared capture screen tagged subjectType
+// 'siding_facet' + sidingRole (+ sidingComponentIndex for component shots)
+// so the gate discriminates shots deterministically.
 
 const DAMAGE_TYPE_LABELS: Record<SidingDamageType, string> = {
   wind: 'Wind',
   hail: 'Hail',
   tree: 'Tree',
 };
+
+const COMPONENT_ACTION_LABELS: Record<SidingComponentAction, string> = {
+  detach_reset: 'Detach & Reset',
+  remove_replace: 'Remove & Replace',
+};
+
+type FacetComponent = { action?: SidingComponentAction | null };
 
 export default function InspectionSidingFacetScreen() {
   const colors = useColors();
@@ -46,9 +60,8 @@ export default function InspectionSidingFacetScreen() {
   const inspection = inspectionQuery.data?.inspection;
   const facet = inspection?.sidingFacets?.find((f) => f.id === sidingFacetId);
 
-  const [countDraft, setCountDraft] = React.useState<string | null>(null);
-  const [savingCount, setSavingCount] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
+  const [componentBusy, setComponentBusy] = React.useState(false);
 
   if ((inspectionQuery.isLoading || inspectionQuery.isFetching) && !facet) {
     return (
@@ -70,23 +83,19 @@ export default function InspectionSidingFacetScreen() {
   const facetState = state.sidingFacets.find((f) => f.id === sidingFacetId);
   const damaged = Boolean(facet.damaged);
   const damageType = (facet.damageType as SidingDamageType | null) ?? null;
-  const componentCount = facet.componentCount ?? 0;
-  const countValue = countDraft ?? (componentCount > 0 ? String(componentCount) : '');
-  const countNum = Number(countValue);
-  const countValid = countValue.trim() === '' || (Number.isInteger(countNum) && countNum >= 0);
-  const countDirty = countValue !== (componentCount > 0 ? String(componentCount) : '');
+  const wrbPresent = (facet.wrbPresent as boolean | null) ?? null;
+  const components = ((facet.components ?? []) as FacetComponent[]);
 
   const facetPhotoDone = facetState?.facetPhotoCaptured ?? false;
   const damagePhotoCount = facetState?.damagePhotoCount ?? 0;
-  const componentPhotoCount = facetState?.componentPhotoCount ?? 0;
 
-  async function toggleDamaged() {
-    if (!facet) return;
-    // Turning damage off clears the type so the gate doesn't hold a stale
+  async function setDamaged(value: boolean) {
+    if (!facet || damaged === value) return;
+    // Answering "No" clears the type so the gate doesn't hold a stale
     // requirement against a facet marked undamaged.
     await updateSidingFacet(queryClient, id, sidingFacetId, {
-      damaged: !damaged,
-      ...(damaged ? { damageType: null } : {}),
+      damaged: value,
+      ...(value ? {} : { damageType: null }),
     });
   }
 
@@ -94,19 +103,34 @@ export default function InspectionSidingFacetScreen() {
     await updateSidingFacet(queryClient, id, sidingFacetId, { damageType: type });
   }
 
-  async function saveCount() {
-    if (!countValid || savingCount) return;
-    setSavingCount(true);
+  async function setWrbPresent(value: boolean) {
+    if (wrbPresent === value) return;
+    await updateSidingFacet(queryClient, id, sidingFacetId, { wrbPresent: value });
+  }
+
+  async function setComponents(next: FacetComponent[]) {
+    if (componentBusy) return;
+    setComponentBusy(true);
     try {
       await updateSidingFacet(queryClient, id, sidingFacetId, {
-        componentCount: countValue.trim() ? countNum : 0,
+        components: next.map((c) => ({ action: c.action ?? null })),
       });
     } finally {
-      setSavingCount(false);
+      setComponentBusy(false);
     }
   }
 
-  function capture(role: 'damage' | 'facet' | 'component', caption: string, title: string) {
+  async function setComponentAction(index: number, action: SidingComponentAction) {
+    const next = components.map((c, i) => (i === index ? { ...c, action } : c));
+    await setComponents(next);
+  }
+
+  function capture(
+    role: 'damage' | 'facet' | 'component',
+    caption: string,
+    title: string,
+    componentIndex?: number,
+  ) {
     router.push({
       pathname: '/inspection-photo-capture',
       params: {
@@ -116,6 +140,7 @@ export default function InspectionSidingFacetScreen() {
         roles: 'wide',
         stage: 'siding',
         sidingRole: role,
+        ...(componentIndex ? { sidingComponentIndex: String(componentIndex) } : {}),
         caption,
         title,
       },
@@ -141,175 +166,222 @@ export default function InspectionSidingFacetScreen() {
     ]);
   }
 
+  function yesNoRow(
+    value: boolean | null,
+    onSelect: (v: boolean) => void,
+  ): React.ReactElement {
+    return (
+      <View style={styles.chipRow}>
+        {([true, false] as const).map((v) => {
+          const selected = value === v;
+          return (
+            <Pressable
+              key={String(v)}
+              onPress={() => onSelect(v)}
+              style={[
+                styles.yesNo,
+                {
+                  backgroundColor: selected ? colors.primary : colors.card,
+                  borderColor: selected ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: selected ? colors.primaryForeground : colors.foreground,
+                  fontWeight: '700',
+                }}
+              >
+                {v ? 'Yes' : 'No'}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.heading, { color: colors.foreground }]}>{facet.label}</Text>
+      <Text style={[styles.heading, { color: colors.foreground }]}>{facet.label}</Text>
 
-        {/* Damage */}
-        <Text style={[styles.section, { color: colors.foreground }]}>Damage on this facet</Text>
-        <Pressable
-          onPress={toggleDamaged}
-          style={[
-            styles.row,
-            {
-              backgroundColor: colors.card,
-              borderColor: damaged ? colors.primary : colors.border,
-              borderWidth: damaged ? 2 : 1,
-            },
-          ]}
-        >
-          <View style={[styles.badge, { backgroundColor: damaged ? colors.primary : colors.accent }]}>
-            <Icon name={damaged ? 'check' : 'alert-circle'} size={18} color={damaged ? '#fff' : colors.secondary} />
+      {/* Damage — explicit Yes/No question */}
+      <Text style={[styles.section, { color: colors.foreground }]}>
+        Is there damage to this facet?
+      </Text>
+      {yesNoRow(damaged, (v) => void setDamaged(v))}
+
+      {damaged ? (
+        <>
+          <Text style={[styles.subLabel, { color: colors.mutedForeground }]}>Damage type</Text>
+          <View style={styles.chipRow}>
+            {SIDING_DAMAGE_TYPES.map((type) => {
+              const selected = damageType === type;
+              return (
+                <Pressable
+                  key={type}
+                  onPress={() => void setDamageType(type)}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: selected ? colors.primary : colors.card,
+                      borderColor: selected ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
+                    {DAMAGE_TYPE_LABELS[type]}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <Text style={[styles.rowTitle, { color: colors.foreground, flex: 1 }]}>
-            {damaged ? 'Damage present' : 'No damage on this facet'}
-          </Text>
-        </Pressable>
+          <Pressable
+            onPress={() => capture('damage', `${facet.label} Damage`, `${facet.label} damage photo`)}
+            style={[styles.row, { backgroundColor: colors.card, borderColor: damagePhotoCount > 0 ? colors.success : colors.border }]}
+          >
+            <View style={[styles.badge, { backgroundColor: damagePhotoCount > 0 ? colors.success : colors.accent }]}>
+              <Icon name={damagePhotoCount > 0 ? 'check' : 'camera'} size={18} color={damagePhotoCount > 0 ? '#fff' : colors.secondary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>Damage photos</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                {damagePhotoCount > 0
+                  ? `${damagePhotoCount} captured — tap to add more`
+                  : 'At least one damage close-up required'}
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+          </Pressable>
+        </>
+      ) : null}
 
-        {damaged ? (
-          <>
+      {/* Water-Resistive Barrier */}
+      <Text style={[styles.section, { color: colors.foreground }]}>
+        Water-Resistive Barrier present?
+      </Text>
+      {yesNoRow(wrbPresent, (v) => void setWrbPresent(v))}
+
+      {/* Facet overview photo — always required */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Facet photo</Text>
+      <Pressable
+        onPress={() => capture('facet', `${facet.label} Facet`, `${facet.label} facet photo`)}
+        style={[styles.row, { backgroundColor: colors.card, borderColor: facetPhotoDone ? colors.success : colors.border }]}
+      >
+        <View style={[styles.badge, { backgroundColor: facetPhotoDone ? colors.success : colors.accent }]}>
+          <Icon name={facetPhotoDone ? 'check' : 'camera'} size={18} color={facetPhotoDone ? '#fff' : colors.secondary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>Overview photo</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {facetPhotoDone ? 'Captured — tap to retake' : 'One wide shot of the whole facet'}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+      </Pressable>
+
+      {/* Components — (−) N (+) stepper, rows S{n}C1…S{n}Ck */}
+      <View style={styles.headerRow}>
+        <Text style={[styles.section, { color: colors.foreground, marginTop: 0 }]}>Components</Text>
+        <View style={styles.stepper}>
+          <Pressable
+            onPress={() => void setComponents(components.slice(0, -1))}
+            disabled={componentBusy || components.length === 0}
+            hitSlop={8}
+            style={[
+              styles.stepBtn,
+              { backgroundColor: colors.card, borderColor: colors.border, opacity: components.length === 0 ? 0.4 : 1 },
+            ]}
+          >
+            <Icon name="minus" size={18} color={colors.foreground} />
+          </Pressable>
+          <Text style={[styles.stepCount, { color: colors.foreground }]}>{components.length}</Text>
+          <Pressable
+            onPress={() => void setComponents([...components, { action: null }])}
+            disabled={componentBusy || components.length >= 40}
+            hitSlop={8}
+            style={[styles.stepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Icon name="plus" size={18} color={colors.foreground} />
+          </Pressable>
+        </View>
+      </View>
+      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+        Shutters, light fixtures, vents, downspouts… Each component needs a photo and a
+        disposition.
+      </Text>
+
+      {components.map((component, i) => {
+        const index = i + 1;
+        const label = `${facet.label}C${index}`;
+        const compState = facetState?.components?.[i];
+        const photoDone = compState?.photoCaptured ?? false;
+        const action = component.action ?? null;
+        return (
+          <View
+            key={index}
+            style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>{label}</Text>
             <View style={styles.chipRow}>
-              {SIDING_DAMAGE_TYPES.map((type) => {
-                const selected = damageType === type;
+              {SIDING_COMPONENT_ACTIONS.map((a) => {
+                const selected = action === a;
                 return (
                   <Pressable
-                    key={type}
-                    onPress={() => setDamageType(type)}
+                    key={a}
+                    onPress={() => void setComponentAction(i, a)}
                     style={[
                       styles.chip,
                       {
-                        backgroundColor: selected ? colors.primary : colors.card,
+                        backgroundColor: selected ? colors.primary : colors.background,
                         borderColor: selected ? colors.primary : colors.border,
                       },
                     ]}
                   >
-                    <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
-                      {DAMAGE_TYPE_LABELS[type]}
+                    <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '600', fontSize: 13 }}>
+                      {COMPONENT_ACTION_LABELS[a]}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
             <Pressable
-              onPress={() => capture('damage', `${facet.label} Damage`, `${facet.label} damage photo`)}
-              style={[styles.row, { backgroundColor: colors.card, borderColor: damagePhotoCount > 0 ? colors.success : colors.border }]}
+              onPress={() => capture('component', `${label}`, `${label} photo`, index)}
+              style={[styles.photoRow, { backgroundColor: colors.background, borderColor: photoDone ? colors.success : colors.border }]}
             >
-              <View style={[styles.badge, { backgroundColor: damagePhotoCount > 0 ? colors.success : colors.accent }]}>
-                <Icon name={damagePhotoCount > 0 ? 'check' : 'camera'} size={18} color={damagePhotoCount > 0 ? '#fff' : colors.secondary} />
+              <View style={[styles.smallBadge, { backgroundColor: photoDone ? colors.success : colors.accent }]}>
+                <Icon name={photoDone ? 'check' : 'camera'} size={16} color={photoDone ? '#fff' : colors.secondary} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.foreground }]}>Damage photos</Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  {damagePhotoCount > 0
-                    ? `${damagePhotoCount} captured — tap to add more`
-                    : 'At least one damage close-up required'}
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-            </Pressable>
-          </>
-        ) : null}
-
-        {/* Facet overview photo — always required */}
-        <Text style={[styles.section, { color: colors.foreground }]}>Facet photo</Text>
-        <Pressable
-          onPress={() => capture('facet', `${facet.label} Facet`, `${facet.label} facet photo`)}
-          style={[styles.row, { backgroundColor: colors.card, borderColor: facetPhotoDone ? colors.success : colors.border }]}
-        >
-          <View style={[styles.badge, { backgroundColor: facetPhotoDone ? colors.success : colors.accent }]}>
-            <Icon name={facetPhotoDone ? 'check' : 'camera'} size={18} color={facetPhotoDone ? '#fff' : colors.secondary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowTitle, { color: colors.foreground }]}>Overview photo</Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              {facetPhotoDone ? 'Captured — tap to retake' : 'One wide shot of the whole facet'}
-            </Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-        </Pressable>
-
-        {/* Components */}
-        <Text style={[styles.section, { color: colors.foreground }]}>Components</Text>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          Shutters, light fixtures, vents, downspouts… Each counted component needs its own photo.
-        </Text>
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.mutedForeground }]}>Component count</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextInput
-              value={countValue}
-              onChangeText={setCountDraft}
-              placeholder="0"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, flex: 1 }]}
-            />
-            <Pressable
-              onPress={saveCount}
-              disabled={!countDirty || !countValid || savingCount}
-              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: !countDirty || !countValid || savingCount ? 0.5 : 1 }]}
-            >
-              {savingCount ? (
-                <ActivityIndicator color={colors.primaryForeground} />
-              ) : (
-                <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-        {componentCount > 0 ? (
-          <Pressable
-            onPress={() =>
-              capture(
-                'component',
-                `${facet.label} Component ${Math.min(componentPhotoCount + 1, componentCount)}`,
-                `${facet.label} component photo`,
-              )
-            }
-            style={[styles.row, { backgroundColor: colors.card, borderColor: componentPhotoCount >= componentCount ? colors.success : colors.border }]}
-          >
-            <View style={[styles.badge, { backgroundColor: componentPhotoCount >= componentCount ? colors.success : colors.accent }]}>
-              <Icon
-                name={componentPhotoCount >= componentCount ? 'check' : 'camera'}
-                size={18}
-                color={componentPhotoCount >= componentCount ? '#fff' : colors.secondary}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.foreground }]}>Component photos</Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                {componentPhotoCount >= componentCount
-                  ? `All ${componentCount} captured`
-                  : `${componentPhotoCount} of ${componentCount} captured — tap for the next`}
+              <Text style={{ color: colors.foreground, fontWeight: '600', flex: 1 }}>
+                {photoDone ? 'Photo captured — tap to retake' : 'Photo required'}
               </Text>
-            </View>
-            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-          </Pressable>
-        ) : null}
-
-        {/* Remove */}
-        <Pressable
-          onPress={confirmRemove}
-          disabled={removing}
-          style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
-        >
-          <View style={[styles.badge, { backgroundColor: colors.accent }]}>
-            {removing ? (
-              <ActivityIndicator color={colors.destructive} />
-            ) : (
-              <Icon name="trash-2" size={18} color={colors.destructive} />
-            )}
+              <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+            </Pressable>
           </View>
-          <Text style={[styles.rowTitle, { color: colors.destructive, flex: 1 }]}>Remove this facet</Text>
-        </Pressable>
+        );
+      })}
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {/* Remove */}
+      <Pressable
+        onPress={confirmRemove}
+        disabled={removing}
+        style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 12 }]}
+      >
+        <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+          {removing ? (
+            <ActivityIndicator color={colors.destructive} />
+          ) : (
+            <Icon name="trash-2" size={18} color={colors.destructive} />
+          )}
+        </View>
+        <Text style={[styles.rowTitle, { color: colors.destructive, flex: 1 }]}>Remove this facet</Text>
+      </Pressable>
+
+      <View style={{ height: 40 }} />
+    </ScrollView>
   );
 }
 
@@ -318,13 +390,18 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   heading: { fontSize: 22, fontWeight: '800' },
   section: { fontSize: 16, fontWeight: '700', marginTop: 8 },
+  subLabel: { fontSize: 13, fontWeight: '600', marginTop: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1 },
   badge: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  smallBadge: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
-  label: { fontSize: 13, fontWeight: '600' },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
-  saveBtn: { paddingHorizontal: 18, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
   chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   chip: { borderWidth: 1, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16 },
+  yesNo: { borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  stepCount: { fontSize: 17, fontWeight: '800', minWidth: 24, textAlign: 'center' },
 });
