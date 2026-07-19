@@ -124,8 +124,8 @@ export default function InspectionPackageScreen() {
         )}
       </View>
 
-      {/* Brain delivery state — only shown once the courier has attempted delivery */}
-      {hasBrainState && (
+      {/* Brain delivery state — shown once courier has attempted, or always for super admins */}
+      {(hasBrainState || (isSuperAdmin && data.lockedAt)) && (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.headerRow}>
             {deliveryStatus === 'delivered' ? (
@@ -138,21 +138,23 @@ export default function InspectionPackageScreen() {
             <Text style={[styles.title, { color: colors.foreground }]}>Brain delivery</Text>
           </View>
 
-          <Text
-            style={[
-              styles.deliveryStatus,
-              {
-                color:
-                  deliveryStatus === 'delivered'
-                    ? colors.success
-                    : deliveryStatus === 'failed'
-                      ? colors.destructive
-                      : colors.primary,
-              },
-            ]}
-          >
-            {DELIVERY_LABELS[deliveryStatus ?? ''] ?? deliveryStatus}
-          </Text>
+          {hasBrainState && (
+            <Text
+              style={[
+                styles.deliveryStatus,
+                {
+                  color:
+                    deliveryStatus === 'delivered'
+                      ? colors.success
+                      : deliveryStatus === 'failed'
+                        ? colors.destructive
+                        : colors.primary,
+                },
+              ]}
+            >
+              {DELIVERY_LABELS[deliveryStatus ?? ''] ?? deliveryStatus}
+            </Text>
+          )}
 
           {/* Brain-side package status when available */}
           {brain?.available && brain.status && (
@@ -175,8 +177,8 @@ export default function InspectionPackageScreen() {
             </View>
           )}
 
-          {/* Super-admin retry button */}
-          {isSuperAdmin && deliveryStatus === 'failed' && (
+          {/* Super-admin retry button — always shown on locked inspections */}
+          {isSuperAdmin && data.lockedAt && (
             <Pressable
               onPress={() => redeliver.mutate({ inspectionId: id })}
               disabled={redeliver.isPending}
