@@ -462,6 +462,18 @@ export const inspectionsTable = pgTable('inspections', {
     >()
     .notNull()
     .default([]),
+  // Brain courier delivery state (App → Brain). Null until the inspection is
+  // submitted with the courier enabled; then 'pending' → 'delivered'/'failed'.
+  // Courier failure never fails the rep's submit — a background worker retries
+  // with backoff, and these columns make a stuck package visible.
+  brainDeliveryStatus: varchar('brain_delivery_status', {
+    enum: ['pending', 'delivered', 'failed'],
+  }),
+  brainSubmissionId: text('brain_submission_id'),
+  brainLastError: text('brain_last_error'),
+  brainDeliveryAttempts: integer('brain_delivery_attempts').notNull().default(0),
+  brainLastAttemptAt: timestamp('brain_last_attempt_at', { withTimezone: true }),
+  brainDeliveredAt: timestamp('brain_delivered_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()

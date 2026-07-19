@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { BrainStatus } from './brainStatus';
 import type { InspectionStatus } from './inspectionStatus';
 import type { PackageReceipt } from './packageReceipt';
 import type { SubmissionManifestV1 } from './submissionManifestV1';
@@ -15,4 +16,5 @@ export interface InspectionStatusEnvelope {
   lockedAt: Date | null;
   submissionManifest: SubmissionManifestV1 | null;
   receipt: PackageReceipt | null;
+  brain: BrainStatus;
 }

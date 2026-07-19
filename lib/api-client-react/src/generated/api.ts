@@ -4397,7 +4397,7 @@ export const getGetInspectionStatusUrl = (inspectionId: string,) => {
 }
 
 /**
- * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). When the Brain courier is configured and the submission has been delivered, the envelope carries the Brain's real package status; if the Brain is unreachable the app's local state is returned with the Brain portion marked unavailable — this call never fails on Brain outage.
  */
 export const getInspectionStatus = async (inspectionId: string, options?: RequestInit): Promise<InspectionStatusEnvelope> => {
 
@@ -4444,7 +4444,7 @@ export type GetInspectionStatusQueryError = ErrorType<ErrorEnvelope>
 
 
 /**
- * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). When the Brain courier is configured and the submission has been delivered, the envelope carries the Brain's real package status; if the Brain is unreachable the app's local state is returned with the Brain portion marked unavailable — this call never fails on Brain outage.
  */
 
 export function useGetInspectionStatus<TData = Awaited<ReturnType<typeof getInspectionStatus>>, TError = ErrorType<ErrorEnvelope>>(

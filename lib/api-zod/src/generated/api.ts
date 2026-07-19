@@ -3314,7 +3314,7 @@ export const PreflightInspectionResponse = zod.object({
 
 
 /**
- * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns a clearly-labeled STUB receipt until the standalone Brain exists.
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). When the Brain courier is configured and the submission has been delivered, the envelope carries the Brain's real package status; if the Brain is unreachable the app's local state is returned with the Brain portion marked unavailable — this call never fails on Brain outage.
  */
 export const GetInspectionStatusParams = zod.object({
   "inspectionId": zod.coerce.string()
@@ -3368,7 +3368,14 @@ export const GetInspectionStatusResponse = zod.object({
   "verifiedPhotoCount": zod.number(),
   "recordCount": zod.number(),
   "generatedAtUtc": zod.coerce.date()
-}).describe('STUB receipt (M-F \/ F3). The standalone Brain that renders the real package does not exist yet; this is a clearly-labeled placeholder that reports what the intake verified, never a fabricated deliverable.'),zod.null()])
+}).describe('STUB receipt (M-F \/ F3). The standalone Brain that renders the real package does not exist yet; this is a clearly-labeled placeholder that reports what the intake verified, never a fabricated deliverable.'),zod.null()]),
+  "brain": zod.object({
+  "available": zod.boolean().describe('Whether the Brain was reachable when this status was assembled.'),
+  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('delivered'),zod.literal('failed'),zod.literal(null)]).nullable(),
+  "brainSubmissionId": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "status": zod.union([zod.literal('received'),zod.literal('validating'),zod.literal('generating'),zod.literal('package_ready'),zod.literal('rejected'),zod.literal('generation_failed'),zod.literal(null)]).nullable()
+}).describe('App→Brain delivery + package state. `deliveryStatus` is the app\'s own courier state (null when the courier is disabled or the record predates it). `status` is the Brain\'s package status, present only when the Brain was reachable (`available: true`).')
 })
 
 
