@@ -180,7 +180,9 @@ export async function buildSubmittedInspection(inspection: InspectionRow) {
   const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
   return {
-    inspectionId,
+    id: inspectionId,
+    companyId,
+    stateCode: 'VA', // hardcoded for NuHome/Virginia-only phase; derive from address/service-areas when multi-state work begins
     submittedAtUtc: iso(inspection.lockedAt),
     phase: inspection.phase,
     property: {

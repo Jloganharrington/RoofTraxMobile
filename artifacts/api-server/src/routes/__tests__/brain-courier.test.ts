@@ -185,7 +185,9 @@ describe('delivery', () => {
     expect(init.headers.Authorization).toBe(`Bearer ${TOKEN}`);
     const body = JSON.parse(init.body);
     expect(body.manifest).toMatchObject({ photoHashes: [], records: {} });
-    expect(body.inspection.inspectionId).toBe(inspection.id);
+    expect(body.inspection.id).toBe(inspection.id);
+    expect(body.inspection.companyId).toBe(inspection.companyId);
+    expect(body.inspection.stateCode).toBe('VA');
 
     const [row] = await db
       .select()
