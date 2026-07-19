@@ -74,7 +74,17 @@ router.get('/internal/photos/:photoId', async (req: Request, res: Response) => {
   }
 
   try {
-    const file = await objectStorageService.getObjectEntityFile(row.photo.url);
+    // Normalize legacy full-URL rows (stored before the mobile upload fix) to
+    // the /objects/... path format that getObjectEntityFile expects.
+    let objectPath = row.photo.url;
+    if (objectPath.startsWith('http')) {
+      try {
+        const u = new URL(objectPath);
+        const m = u.pathname.match(/\/storage\/objects\/(.+)$/);
+        if (m) objectPath = `/objects/${m[1]}`;
+      } catch { /* leave objectPath as-is and let getObjectEntityFile 404 */ }
+    }
+    const file = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(file);
 
     res.status(response.status);

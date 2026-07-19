@@ -48,6 +48,9 @@ export async function uploadFile(
     throw new Error(`Failed to upload file: ${putRes.status}`);
   }
 
-  const objectId = objectPath.replace(/^\/objects\//, '');
-  return `${apiBase}/storage/objects/${objectId}`;
+  // objectPath is already in /objects/{id} format — return it directly so the
+  // DB stores the canonical path the photo proxy can resolve. Do NOT rebuild
+  // a full HTTPS URL here; getObjectEntityFile expects /objects/... and the
+  // proxy would throw ObjectNotFoundError on every photo if given a full URL.
+  return objectPath;
 }

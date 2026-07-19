@@ -73,6 +73,9 @@ import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
+import { ObjectNotFoundError, ObjectStorageService } from '../lib/objectStorage';
+
+const objectStorageService = new ObjectStorageService();
 import {
   buildServerProtocolState,
   evaluateServerInspection,
@@ -1817,6 +1820,25 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
   if (parsed.data.sidingRole === 'component' && parsed.data.sidingComponentIndex == null) {
     res.status(400).json({ error: 'A sidingComponentIndex is required for component-role siding photos' });
     return;
+  }
+
+  // Reject the row if the bytes are not actually in storage. Only applies to
+  // /objects/... paths (canonical format from the fixed mobile client). Legacy
+  // full-URL rows and test-fixture URLs are left through so existing tests and
+  // backward-compat replays are not disrupted.
+  if (parsed.data.url.startsWith('/objects/')) {
+    try {
+      await objectStorageService.getObjectEntityFile(parsed.data.url);
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) {
+        res.status(409).json({
+          error: 'photo_bytes_missing',
+          detail: 'Upload the photo bytes to object storage before registering the row.',
+        });
+        return;
+      }
+      throw err;
+    }
   }
 
   const values = {
