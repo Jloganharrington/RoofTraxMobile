@@ -2240,12 +2240,6 @@ router.post('/inspections/:inspectionId/redeliver', async (req: Request, res: Re
     return;
   }
 
-  // Already delivered — no-op; the Brain is idempotent but no need to resend.
-  if (inspection.brainDeliveryStatus === 'delivered') {
-    res.status(204).end();
-    return;
-  }
-
   // Reset to pending so the row is eligible for the worker and the immediate
   // attempt below. Clear the last error so stale messages don't linger.
   await db
