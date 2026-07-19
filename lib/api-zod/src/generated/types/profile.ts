@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Department } from './department';
+import type { InspectorCertification } from './inspectorCertification';
 import type { Role } from './role';
 import type { WorkflowAssignment } from './workflowAssignment';
 
@@ -34,4 +35,7 @@ export interface Profile {
   /** @nullable */
   smtpFromEmail?: string | null;
   betaBugReporting?: boolean;
+  certifications?: InspectorCertification[] | null;
+  /** @nullable */
+  yearsExperience?: number | null;
 }

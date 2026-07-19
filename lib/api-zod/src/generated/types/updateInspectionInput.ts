@@ -6,10 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ArrivalConditions } from './arrivalConditions';
+import type { ExistingCondition } from './existingCondition';
 import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionPhase } from './inspectionPhase';
 import type { InspectionStatus } from './inspectionStatus';
+import type { PropertyProfile } from './propertyProfile';
+import type { PropertyProtectionPlan } from './propertyProtectionPlan';
+import type { RepairabilityAssessmentInput } from './repairabilityAssessmentInput';
 import type { StormConfirmedRef } from './stormConfirmedRef';
+import type { TemporaryRepairs } from './temporaryRepairs';
 
 export interface UpdateInspectionInput {
   status?: InspectionStatus;
@@ -50,8 +55,14 @@ export interface UpdateInspectionInput {
   roofDamageFound?: boolean;
   sidingDamageFound?: boolean;
   collateralDamageFound?: boolean;
+  interiorDamageFound?: boolean;
   /** @nullable */
   sidingWrbPresent?: boolean | null;
   /** @nullable */
   sidingMeasurementReportRef?: string | null;
+  propertyProfile?: PropertyProfile | null;
+  repairabilityAssessment?: RepairabilityAssessmentInput | null;
+  existingOrUnrelatedConditions?: ExistingCondition[] | null;
+  temporaryRepairs?: TemporaryRepairs | null;
+  propertyProtectionPlan?: PropertyProtectionPlan | null;
 }

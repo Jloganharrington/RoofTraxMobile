@@ -9,6 +9,7 @@ import type { ArrivalConditions } from './arrivalConditions';
 import type { Attestation } from './attestation';
 import type { DamageInstance } from './damageInstance';
 import type { DamageSurfaceChange } from './damageSurfaceChange';
+import type { ExistingCondition } from './existingCondition';
 import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
@@ -21,8 +22,12 @@ import type { InspectionSlope } from './inspectionSlope';
 import type { InspectionStatus } from './inspectionStatus';
 import type { InteriorObservation } from './interiorObservation';
 import type { Measurement } from './measurement';
+import type { PropertyProfile } from './propertyProfile';
+import type { PropertyProtectionPlan } from './propertyProtectionPlan';
+import type { RepairabilityAssessment } from './repairabilityAssessment';
 import type { StormConfirmedRef } from './stormConfirmedRef';
 import type { SubmissionManifestV1 } from './submissionManifestV1';
+import type { TemporaryRepairs } from './temporaryRepairs';
 import type { TestSquare } from './testSquare';
 import type { TestSquareHit } from './testSquareHit';
 
@@ -99,6 +104,8 @@ export interface Inspection {
   sidingDamageFound: boolean;
   /** v2.1 Elevation Walk flag — collateral damage observed. */
   collateralDamageFound: boolean;
+  /** REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior/Attic step. */
+  interiorDamageFound: boolean;
   /**
      * v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.
      * @nullable
@@ -109,6 +116,11 @@ export interface Inspection {
      * @nullable
      */
   sidingMeasurementReportRef: string | null;
+  propertyProfile?: PropertyProfile | null;
+  repairabilityAssessment?: RepairabilityAssessment | null;
+  existingOrUnrelatedConditions?: ExistingCondition[] | null;
+  temporaryRepairs?: TemporaryRepairs | null;
+  propertyProtectionPlan?: PropertyProtectionPlan | null;
   /** Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only). */
   damageSurfaceChangeLog?: DamageSurfaceChange[];
   /** v2.1 siding facets, populated by the detail view only. */

@@ -347,6 +347,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /profile/credentials:
+    patch:
+      tags: [Profile]
+      operationId: updateProfileCredentials
+      summary: Update the current user's certifications and years of experience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileCredentialsInput"
+      responses:
+        "200":
+          description: Profile updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /profile/signature:
     patch:
       tags: [Profile]
@@ -2785,6 +2810,38 @@ components:
         # separate settings fetch.
         betaBugReporting:
           type: boolean
+        # REPORT_DATA v2 — individual credential layer (feeds
+        # assessorCredentials and the submission payload).
+        certifications:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/InspectorCertification"
+            - type: "null"
+        yearsExperience:
+          type: [number, "null"]
+    InspectorCertification:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        issuingBody:
+          type: [string, "null"]
+        number:
+          type: [string, "null"]
+        expiry:
+          type: [string, "null"]
+    UpdateProfileCredentialsInput:
+      type: object
+      properties:
+        certifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/InspectorCertification"
+        yearsExperience:
+          type: [number, "null"]
     BugReportSeverity:
       type: string
       enum: [blocks_me, annoying, cosmetic]
@@ -3363,6 +3420,7 @@ components:
           damage_closeup_roof,
           damage_closeup_siding,
           damage_closeup_collateral,
+          damage_closeup_interior,
         ]
     ElevationDirection:
       type: string
@@ -3379,13 +3437,24 @@ components:
       enum: [hail_strike, mechanical, blistering, foot_scuff]
     PhotoTriadRole:
       type: string
-      enum: [wide, mid, close]
+      description: >-
+        Photo capture role. The forensic triad is wide/mid/close;
+        measurement and collateral are standalone roles (REPORT_DATA v2)
+        that map 1:1 onto captureContext.
+      enum: [wide, mid, close, measurement, collateral]
+    PhotoCaptureContext:
+      type: string
+      description: >-
+        REPORT_DATA v2 photos[].captureContext — derived server-side from
+        triadRole/preliminaryRole, never stored.
+      enum: [overview, mid-range, close-up, measurement, collateral]
     CaptureStage:
       type: string
       description: Protocol v2 step key. S-numbers are retired.
       enum:
         [
           arrival,
+          property_profile,
           elevation_access,
           facets,
           test_squares,
@@ -3394,7 +3463,10 @@ components:
           siding,
           collateral,
           interior,
+          repairability,
+          mitigation,
           homeowner,
+          existing_conditions,
           declaration,
           submit,
         ]
@@ -3643,6 +3715,7 @@ components:
           roofDamageFound,
           sidingDamageFound,
           collateralDamageFound,
+          interiorDamageFound,
           sidingMeasurementReportRef,
           createdAt,
           updatedAt,
@@ -3783,6 +3856,12 @@ components:
         collateralDamageFound:
           type: boolean
           description: v2.1 Elevation Walk flag — collateral damage observed.
+        interiorDamageFound:
+          type: boolean
+          description: >-
+            REPORT_DATA v2 — fourth damage-surface flag: interior is part of
+            this claim. An explicit inspector decision, never derived from
+            interior observations. Gates the Interior/Attic step.
         sidingWrbPresent:
           type: [boolean, "null"]
           description: >-
@@ -3795,6 +3874,30 @@ components:
           description: >-
             v2.1 optional siding measurement report reference (client id of
             the uploaded report photo).
+        # REPORT_DATA v2 capture blocks — null means "not captured" and the
+        # corresponding report section omits.
+        propertyProfile:
+          oneOf:
+            - $ref: "#/components/schemas/PropertyProfile"
+            - type: "null"
+        repairabilityAssessment:
+          oneOf:
+            - $ref: "#/components/schemas/RepairabilityAssessment"
+            - type: "null"
+        existingOrUnrelatedConditions:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/ExistingCondition"
+            - type: "null"
+        temporaryRepairs:
+          oneOf:
+            - $ref: "#/components/schemas/TemporaryRepairs"
+            - type: "null"
+        propertyProtectionPlan:
+          oneOf:
+            - $ref: "#/components/schemas/PropertyProtectionPlan"
+            - type: "null"
         damageSurfaceChangeLog:
           type: array
           description: >-
@@ -3865,13 +3968,16 @@ components:
         collateralDamageFound:
           type: boolean
           description: Phase 1 damage surface — collateral.
+        interiorDamageFound:
+          type: boolean
+          description: Phase 1 damage surface — interior (explicit claim-scope decision).
     DamageSurfaceChange:
       type: object
       required: [surface, prior, next, changedByUserId, changedAt]
       properties:
         surface:
           type: string
-          enum: [roof, siding, collateral]
+          enum: [roof, siding, collateral, interior]
         prior:
           type: boolean
         next:
@@ -3934,10 +4040,216 @@ components:
           type: boolean
         collateralDamageFound:
           type: boolean
+        interiorDamageFound:
+          type: boolean
         sidingWrbPresent:
           type: [boolean, "null"]
         sidingMeasurementReportRef:
           type: [string, "null"]
+        propertyProfile:
+          oneOf:
+            - $ref: "#/components/schemas/PropertyProfile"
+            - type: "null"
+        repairabilityAssessment:
+          oneOf:
+            - $ref: "#/components/schemas/RepairabilityAssessmentInput"
+            - type: "null"
+        existingOrUnrelatedConditions:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/ExistingCondition"
+            - type: "null"
+        temporaryRepairs:
+          oneOf:
+            - $ref: "#/components/schemas/TemporaryRepairs"
+            - type: "null"
+        propertyProtectionPlan:
+          oneOf:
+            - $ref: "#/components/schemas/PropertyProtectionPlan"
+            - type: "null"
+    PropertyProfile:
+      type: object
+      description: >-
+        REPORT_DATA v2 — field-captured property/construction description.
+        Only non-derived fields; roofSlopeCount, roofCovering,
+        interiorAreasInspected etc. are derived Brain-side.
+      required: [recordedAtUtc]
+      properties:
+        propertyType:
+          oneOf:
+            - type: string
+              enum: [single_family, townhome, condo, multi_family, commercial]
+            - type: "null"
+        stories:
+          oneOf:
+            - type: string
+              enum: ["1", "1.5", "2", "2.5", "3+"]
+            - type: "null"
+        roofType:
+          type: [string, "null"]
+        roofAgeYears:
+          type: [number, "null"]
+        roofAgeBasis:
+          description: Required whenever roofAgeYears is set — an unsourced age is attackable.
+          oneOf:
+            - type: string
+              enum: [homeowner_reported, permit_record, product_date_code, estimated]
+            - type: "null"
+        accessibilityNotes:
+          type: [string, "null"]
+        buildingType:
+          type: [string, "null"]
+        attachedOrDetached:
+          oneOf:
+            - type: string
+              enum: [attached, detached]
+            - type: "null"
+        roofGeometry:
+          type: array
+          items:
+            type: string
+            enum: [gable, hip, mansard, gambrel, flat, complex]
+        deckType:
+          oneOf:
+            - type: string
+              enum: [plywood, osb, plank, skip_sheathing, unknown]
+            - type: "null"
+        framingConditionNotes:
+          type: [string, "null"]
+        recordedAtUtc:
+          type: string
+    RepairabilityFieldTestFindings:
+      type: object
+      properties:
+        repairAttemptMade:
+          type: [boolean, "null"]
+        adjacentShinglesFractured:
+          type: [boolean, "null"]
+        matchingMaterialSourceable:
+          type: [boolean, "null"]
+        productDiscontinued:
+          type: [boolean, "null"]
+        notes:
+          type: [string, "null"]
+    RepairabilityAssessmentInput:
+      type: object
+      description: >-
+        Client-sent repairability assessment. assessorName/assessorCredentials
+        are IGNORED if sent — the server populates them from the inspector's
+        profile. Must be explicitly performed; never defaulted.
+      required: [questionPresented, fieldTestFindings, determination, recordedAtUtc]
+      properties:
+        questionPresented:
+          type: string
+          minLength: 1
+        methodology:
+          type: [string, "null"]
+        materialsReviewed:
+          type: [string, "null"]
+        fieldTestFindings:
+          $ref: "#/components/schemas/RepairabilityFieldTestFindings"
+        conditionScoring:
+          type: [string, "null"]
+        repairAttemptRisks:
+          type: [string, "null"]
+        determination:
+          type: string
+          enum: [repairable, not_repairable]
+        recommendation:
+          type: [string, "null"]
+        supportingPhotoIds:
+          type: array
+          items:
+            type: string
+        recordedAtUtc:
+          type: string
+    RepairabilityAssessment:
+      allOf:
+        - $ref: "#/components/schemas/RepairabilityAssessmentInput"
+        - type: object
+          properties:
+            assessorName:
+              type: [string, "null"]
+            assessorCredentials:
+              type: [string, "null"]
+    ExistingCondition:
+      type: object
+      description: >-
+        A pre-existing / non-storm condition explicitly excluded from the
+        claim.
+      required: [location, note]
+      properties:
+        location:
+          type: string
+          minLength: 1
+        note:
+          type: string
+          minLength: 1
+    TemporaryRepairs:
+      type: object
+      description: >-
+        Temporary repairs & mitigation. `performed` must be explicitly true —
+        never inferred. Captured in Phase 1 and carried into Phase 2.
+      required: [performed, recordedAtUtc]
+      properties:
+        performed:
+          type: boolean
+        tarpInvoiceRef:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        datePerformed:
+          type: [string, "null"]
+        materialsUsed:
+          type: [string, "null"]
+        crewAndEquipment:
+          type: [string, "null"]
+        beforeAfterPhotoIds:
+          type: array
+          items:
+            type: string
+        recordedAtUtc:
+          type: string
+    PropertyProtectionPlan:
+      type: object
+      description: >-
+        Specialized property-protection plan (scaffold/specialized cases, NOT
+        ordinary tarping). specializedRequired is an explicit flag; labor and
+        rental costs are office-side.
+      required: [specializedRequired, recordedAtUtc]
+      properties:
+        specializedRequired:
+          type: boolean
+        featureProtected:
+          oneOf:
+            - type: string
+              enum:
+                [
+                  pool_spa,
+                  solar_panels,
+                  skylights,
+                  hvac,
+                  satellite,
+                  specimen_landscaping,
+                  detached_structure,
+                  driveway_hardscape,
+                  septic_field,
+                ]
+            - type: "null"
+        whyOrdinaryTarpingInsufficient:
+          description: Required when specializedRequired is true (enforced server-side).
+          type: [string, "null"]
+        proposedEquipment:
+          type: [string, "null"]
+        setupMethod:
+          type: [string, "null"]
+        photoIds:
+          type: array
+          items:
+            type: string
+        recordedAtUtc:
+          type: string
     InspectionEnvelope:
       type: object
       required: [inspection]
@@ -4615,6 +4927,16 @@ components:
         preliminaryRole:
           oneOf:
             - $ref: "#/components/schemas/PreliminaryPhotoRole"
+            - type: "null"
+        captureContext:
+          description: >-
+            REPORT_DATA v2 — derived server-side from triadRole (wide→overview,
+            mid→mid-range, close→close-up, measurement/collateral→themselves)
+            or preliminaryRole (front_of_home/roof_overview→overview,
+            damage close-ups→close-up). Null only when the photo carries no
+            role at all.
+          oneOf:
+            - $ref: "#/components/schemas/PhotoCaptureContext"
             - type: "null"
         url:
           type: string

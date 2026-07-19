@@ -26,6 +26,7 @@ function completeState(): InspectionProtocolState {
       roofDamageFound: true,
       sidingDamageFound: true,
       collateralDamageFound: true,
+      interiorDamageFound: true,
     },
     facets: [
       {
@@ -202,6 +203,7 @@ describe('evaluate (protocol v2.1)', () => {
       roofDamageFound: false,
       sidingDamageFound: false,
       collateralDamageFound: false,
+      interiorDamageFound: false,
     };
     const result = evaluate(state);
     expect(result.deficiencies.map((d) => d.code)).toContain('NO_DAMAGE_SURFACE_SELECTED');
@@ -224,14 +226,19 @@ describe('evaluate (protocol v2.1)', () => {
       roofDamageFound: false,
       sidingDamageFound: true,
       collateralDamageFound: false,
+      interiorDamageFound: true,
     };
     const keys = applicableSteps(flags).map((s) => s.key);
     expect(keys).toEqual([
       'arrival',
+      'property_profile',
       'elevation_access',
       'siding',
       'interior',
+      'repairability',
+      'mitigation',
       'homeowner',
+      'existing_conditions',
       'declaration',
       'submit',
     ]);

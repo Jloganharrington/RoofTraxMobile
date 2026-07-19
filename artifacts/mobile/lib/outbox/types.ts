@@ -52,6 +52,7 @@ export interface InspectionPhotoOutboxPayload {
     | 'damage_closeup_roof'
     | 'damage_closeup_siding'
     | 'damage_closeup_collateral'
+    | 'damage_closeup_interior'
     | null;
   /** Path to a copy of the photo in this app's stable document storage —
    * NOT the original camera-roll/cache URI, which the OS may evict before

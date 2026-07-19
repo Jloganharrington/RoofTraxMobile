@@ -13,4 +13,5 @@ export const DamageSurfaceChangeSurface = {
   roof: 'roof',
   siding: 'siding',
   collateral: 'collateral',
+  interior: 'interior',
 } as const;

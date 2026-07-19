@@ -42,6 +42,10 @@ const EQUIPMENT_ITEMS = [
 
 const STEP_ICONS: Record<StepKey, IconName> = {
   arrival: 'navigation',
+  property_profile: 'home',
+  repairability: 'tool',
+  mitigation: 'shield',
+  existing_conditions: 'alert-circle',
   elevation_access: 'home',
   facets: 'square',
   test_squares: 'square',
@@ -57,6 +61,10 @@ const STEP_ICONS: Record<StepKey, IconName> = {
 
 const STEP_ROUTES: Record<StepKey, string> = {
   arrival: '/inspection-arrival',
+  property_profile: '/inspection-property-profile',
+  repairability: '/inspection-repairability',
+  mitigation: '/inspection-mitigation',
+  existing_conditions: '/inspection-existing-conditions',
   elevation_access: '/inspection-elevations',
   facets: '/inspection-roof',
   test_squares: '/inspection-test-squares',
@@ -234,6 +242,42 @@ export default function InspectionDetailScreen() {
               : state.interiorClaimWaived
                 ? 'No interior claim — waived'
                 : 'Record interior evidence or waive',
+        };
+      case 'property_profile':
+        return {
+          done: inspection!.propertyProfile != null,
+          subtitle:
+            inspection!.propertyProfile != null
+              ? 'Property & construction described'
+              : 'Type, stories, roof age & basis, deck type',
+        };
+      case 'repairability':
+        return {
+          done: inspection!.repairabilityAssessment != null,
+          subtitle:
+            inspection!.repairabilityAssessment != null
+              ? inspection!.repairabilityAssessment.determination === 'repairable'
+                ? 'Determination: repairable'
+                : 'Determination: not repairable'
+              : 'Repair-vs-replace field determination (optional — omits if skipped)',
+        };
+      case 'mitigation':
+        return {
+          done: inspection!.temporaryRepairs != null,
+          subtitle:
+            inspection!.temporaryRepairs != null
+              ? inspection!.temporaryRepairs.performed
+                ? 'Temporary repairs documented'
+                : 'No temporary repairs performed'
+              : 'Emergency tarping / mitigation (optional)',
+        };
+      case 'existing_conditions':
+        return {
+          done: inspection!.existingOrUnrelatedConditions != null,
+          subtitle:
+            inspection!.existingOrUnrelatedConditions != null
+              ? `${inspection!.existingOrUnrelatedConditions.length} condition${inspection!.existingOrUnrelatedConditions.length === 1 ? '' : 's'} excluded from claim`
+              : 'Pre-existing conditions excluded from the claim (optional)',
         };
       case 'homeowner':
         return {

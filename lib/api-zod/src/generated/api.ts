@@ -204,6 +204,9 @@ export const GetStorageObjectResponse = zod.unknown()
  * Creates a default profile (field_rep / insurance) on first access.
  * @summary Get the current user's role and workflow assignment
  */
+
+
+
 export const GetMyProfileResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
@@ -221,7 +224,62 @@ export const GetMyProfileResponse = zod.object({
   "smtpSecure": zod.boolean().nullish(),
   "smtpUsername": zod.string().nullish(),
   "smtpFromEmail": zod.string().nullish(),
-  "betaBugReporting": zod.boolean().optional()
+  "betaBugReporting": zod.boolean().optional(),
+  "certifications": zod.union([zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})),zod.null()]).optional(),
+  "yearsExperience": zod.number().nullish()
+})
+})
+
+
+/**
+ * @summary Update the current user's certifications and years of experience
+ */
+
+
+
+export const UpdateProfileCredentialsBody = zod.object({
+  "certifications": zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})).optional(),
+  "yearsExperience": zod.number().nullish()
+})
+
+
+
+
+export const UpdateProfileCredentialsResponse = zod.object({
+  "profile": zod.object({
+  "userId": zod.string(),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
+  "companyId": zod.string(),
+  "companyName": zod.string(),
+  "signatureUrl": zod.string().nullable(),
+  "signatureSha256": zod.string().nullable(),
+  "signatureSignedAt": zod.coerce.date().nullable(),
+  "smtpConfigured": zod.boolean().optional(),
+  "smtpHost": zod.string().nullish(),
+  "smtpPort": zod.number().nullish(),
+  "smtpSecure": zod.boolean().nullish(),
+  "smtpUsername": zod.string().nullish(),
+  "smtpFromEmail": zod.string().nullish(),
+  "betaBugReporting": zod.boolean().optional(),
+  "certifications": zod.union([zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})),zod.null()]).optional(),
+  "yearsExperience": zod.number().nullish()
 })
 })
 
@@ -237,6 +295,9 @@ export const UpdateProfileSignatureBody = zod.object({
   "signatureUrl": zod.string().min(1),
   "signatureSha256": zod.string().min(1)
 }).describe('Records the inspector\'s signature-on-file (M-F \/ F0). The client uploads the signature image to object storage via the presigned-URL flow, then sends the servable URL plus a SHA-256 of the exact bytes. The server stamps signedAt server-side.')
+
+
+
 
 export const UpdateProfileSignatureResponse = zod.object({
   "profile": zod.object({
@@ -255,7 +316,14 @@ export const UpdateProfileSignatureResponse = zod.object({
   "smtpSecure": zod.boolean().nullish(),
   "smtpUsername": zod.string().nullish(),
   "smtpFromEmail": zod.string().nullish(),
-  "betaBugReporting": zod.boolean().optional()
+  "betaBugReporting": zod.boolean().optional(),
+  "certifications": zod.union([zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})),zod.null()]).optional(),
+  "yearsExperience": zod.number().nullish()
 })
 })
 
@@ -289,6 +357,9 @@ export const UpdateProfileSmtpBody = zod.object({
   "fromEmail": zod.string().min(1).optional()
 }).describe('Sets the user\'s outbound SMTP configuration. Send all fields to configure; the password is stored encrypted and never returned. Setting clear=true removes the configuration entirely.')
 
+
+
+
 export const UpdateProfileSmtpResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
@@ -306,7 +377,14 @@ export const UpdateProfileSmtpResponse = zod.object({
   "smtpSecure": zod.boolean().nullish(),
   "smtpUsername": zod.string().nullish(),
   "smtpFromEmail": zod.string().nullish(),
-  "betaBugReporting": zod.boolean().optional()
+  "betaBugReporting": zod.boolean().optional(),
+  "certifications": zod.union([zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})),zod.null()]).optional(),
+  "yearsExperience": zod.number().nullish()
 })
 })
 
@@ -706,6 +784,11 @@ export const ListTeamLocationsResponse = zod.object({
 /**
  * @summary List inspections in the current user's company
  */
+
+
+
+
+
 export const ListInspectionsResponse = zod.object({
   "inspections": zod.array(zod.object({
   "id": zod.string(),
@@ -833,11 +916,12 @@ export const ListInspectionsResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "captureContext": zod.union([zod.enum(['overview', 'mid-range', 'close-up', 'measurement', 'collateral']).describe('REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole\/preliminaryRole, never stored.'),zod.null()]).optional().describe('REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement\/collateral→themselves) or preliminaryRole (front_of_home\/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all.'),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -912,7 +996,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -921,10 +1005,69 @@ export const ListInspectionsResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "propertyProfile": zod.union([zod.object({
+  "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
+  "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
+  "roofType": zod.string().nullish(),
+  "roofAgeYears": zod.number().nullish(),
+  "roofAgeBasis": zod.union([zod.enum(['homeowner_reported', 'permit_record', 'product_date_code', 'estimated']),zod.null()]).optional().describe('Required whenever roofAgeYears is set — an unsourced age is attackable.'),
+  "accessibilityNotes": zod.string().nullish(),
+  "buildingType": zod.string().nullish(),
+  "attachedOrDetached": zod.union([zod.enum(['attached', 'detached']),zod.null()]).optional(),
+  "roofGeometry": zod.array(zod.enum(['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'])).optional(),
+  "deckType": zod.union([zod.enum(['plywood', 'osb', 'plank', 'skip_sheathing', 'unknown']),zod.null()]).optional(),
+  "framingConditionNotes": zod.string().nullish(),
+  "recordedAtUtc": zod.string()
+}).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
+  "repairabilityAssessment": zod.union([zod.object({
+  "questionPresented": zod.string().min(1),
+  "methodology": zod.string().nullish(),
+  "materialsReviewed": zod.string().nullish(),
+  "fieldTestFindings": zod.object({
+  "repairAttemptMade": zod.boolean().nullish(),
+  "adjacentShinglesFractured": zod.boolean().nullish(),
+  "matchingMaterialSourceable": zod.boolean().nullish(),
+  "productDiscontinued": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
+}),
+  "conditionScoring": zod.string().nullish(),
+  "repairAttemptRisks": zod.string().nullish(),
+  "determination": zod.enum(['repairable', 'not_repairable']),
+  "recommendation": zod.string().nullish(),
+  "supportingPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+})),zod.null()]).optional(),
+  "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
+  "location": zod.string().min(1),
+  "note": zod.string().min(1)
+}).describe('A pre-existing \/ non-storm condition explicitly excluded from the claim.')),zod.null()]).optional(),
+  "temporaryRepairs": zod.union([zod.object({
+  "performed": zod.boolean(),
+  "tarpInvoiceRef": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "datePerformed": zod.string().nullish(),
+  "materialsUsed": zod.string().nullish(),
+  "crewAndEquipment": zod.string().nullish(),
+  "beforeAfterPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.'),zod.null()]).optional(),
+  "propertyProtectionPlan": zod.union([zod.object({
+  "specializedRequired": zod.boolean(),
+  "featureProtected": zod.union([zod.enum(['pool_spa', 'solar_panels', 'skylights', 'hvac', 'satellite', 'specimen_landscaping', 'detached_structure', 'driveway_hardscape', 'septic_field']),zod.null()]).optional(),
+  "whyOrdinaryTarpingInsufficient": zod.string().nullish().describe('Required when specializedRequired is true (enforced server-side).'),
+  "proposedEquipment": zod.string().nullish(),
+  "setupMethod": zod.string().nullish(),
+  "photoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional(),
   "damageSurfaceChangeLog": zod.array(zod.object({
-  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "surface": zod.enum(['roof', 'siding', 'collateral', 'interior']),
   "prior": zod.boolean(),
   "next": zod.boolean(),
   "changedByUserId": zod.string(),
@@ -991,8 +1134,14 @@ export const CreateInspectionBody = zod.object({
   "dateOfLoss": zod.string().nullish(),
   "roofDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — roof.'),
   "sidingDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — siding.'),
-  "collateralDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — collateral.')
+  "collateralDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — collateral.'),
+  "interiorDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — interior (explicit claim-scope decision).')
 })
+
+
+
+
+
 
 export const CreateInspectionResponse = zod.object({
   "inspection": zod.object({
@@ -1121,11 +1270,12 @@ export const CreateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "captureContext": zod.union([zod.enum(['overview', 'mid-range', 'close-up', 'measurement', 'collateral']).describe('REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole\/preliminaryRole, never stored.'),zod.null()]).optional().describe('REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement\/collateral→themselves) or preliminaryRole (front_of_home\/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all.'),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -1200,7 +1350,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1209,10 +1359,69 @@ export const CreateInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "propertyProfile": zod.union([zod.object({
+  "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
+  "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
+  "roofType": zod.string().nullish(),
+  "roofAgeYears": zod.number().nullish(),
+  "roofAgeBasis": zod.union([zod.enum(['homeowner_reported', 'permit_record', 'product_date_code', 'estimated']),zod.null()]).optional().describe('Required whenever roofAgeYears is set — an unsourced age is attackable.'),
+  "accessibilityNotes": zod.string().nullish(),
+  "buildingType": zod.string().nullish(),
+  "attachedOrDetached": zod.union([zod.enum(['attached', 'detached']),zod.null()]).optional(),
+  "roofGeometry": zod.array(zod.enum(['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'])).optional(),
+  "deckType": zod.union([zod.enum(['plywood', 'osb', 'plank', 'skip_sheathing', 'unknown']),zod.null()]).optional(),
+  "framingConditionNotes": zod.string().nullish(),
+  "recordedAtUtc": zod.string()
+}).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
+  "repairabilityAssessment": zod.union([zod.object({
+  "questionPresented": zod.string().min(1),
+  "methodology": zod.string().nullish(),
+  "materialsReviewed": zod.string().nullish(),
+  "fieldTestFindings": zod.object({
+  "repairAttemptMade": zod.boolean().nullish(),
+  "adjacentShinglesFractured": zod.boolean().nullish(),
+  "matchingMaterialSourceable": zod.boolean().nullish(),
+  "productDiscontinued": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
+}),
+  "conditionScoring": zod.string().nullish(),
+  "repairAttemptRisks": zod.string().nullish(),
+  "determination": zod.enum(['repairable', 'not_repairable']),
+  "recommendation": zod.string().nullish(),
+  "supportingPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+})),zod.null()]).optional(),
+  "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
+  "location": zod.string().min(1),
+  "note": zod.string().min(1)
+}).describe('A pre-existing \/ non-storm condition explicitly excluded from the claim.')),zod.null()]).optional(),
+  "temporaryRepairs": zod.union([zod.object({
+  "performed": zod.boolean(),
+  "tarpInvoiceRef": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "datePerformed": zod.string().nullish(),
+  "materialsUsed": zod.string().nullish(),
+  "crewAndEquipment": zod.string().nullish(),
+  "beforeAfterPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.'),zod.null()]).optional(),
+  "propertyProtectionPlan": zod.union([zod.object({
+  "specializedRequired": zod.boolean(),
+  "featureProtected": zod.union([zod.enum(['pool_spa', 'solar_panels', 'skylights', 'hvac', 'satellite', 'specimen_landscaping', 'detached_structure', 'driveway_hardscape', 'septic_field']),zod.null()]).optional(),
+  "whyOrdinaryTarpingInsufficient": zod.string().nullish().describe('Required when specializedRequired is true (enforced server-side).'),
+  "proposedEquipment": zod.string().nullish(),
+  "setupMethod": zod.string().nullish(),
+  "photoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional(),
   "damageSurfaceChangeLog": zod.array(zod.object({
-  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "surface": zod.enum(['roof', 'siding', 'collateral', 'interior']),
   "prior": zod.boolean(),
   "next": zod.boolean(),
   "changedByUserId": zod.string(),
@@ -1264,6 +1473,11 @@ export const CreateInspectionResponse = zod.object({
 export const GetInspectionParams = zod.object({
   "inspectionId": zod.coerce.string()
 })
+
+
+
+
+
 
 export const GetInspectionResponse = zod.object({
   "inspection": zod.object({
@@ -1392,11 +1606,12 @@ export const GetInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "captureContext": zod.union([zod.enum(['overview', 'mid-range', 'close-up', 'measurement', 'collateral']).describe('REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole\/preliminaryRole, never stored.'),zod.null()]).optional().describe('REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement\/collateral→themselves) or preliminaryRole (front_of_home\/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all.'),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -1471,7 +1686,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1480,10 +1695,69 @@ export const GetInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "propertyProfile": zod.union([zod.object({
+  "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
+  "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
+  "roofType": zod.string().nullish(),
+  "roofAgeYears": zod.number().nullish(),
+  "roofAgeBasis": zod.union([zod.enum(['homeowner_reported', 'permit_record', 'product_date_code', 'estimated']),zod.null()]).optional().describe('Required whenever roofAgeYears is set — an unsourced age is attackable.'),
+  "accessibilityNotes": zod.string().nullish(),
+  "buildingType": zod.string().nullish(),
+  "attachedOrDetached": zod.union([zod.enum(['attached', 'detached']),zod.null()]).optional(),
+  "roofGeometry": zod.array(zod.enum(['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'])).optional(),
+  "deckType": zod.union([zod.enum(['plywood', 'osb', 'plank', 'skip_sheathing', 'unknown']),zod.null()]).optional(),
+  "framingConditionNotes": zod.string().nullish(),
+  "recordedAtUtc": zod.string()
+}).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
+  "repairabilityAssessment": zod.union([zod.object({
+  "questionPresented": zod.string().min(1),
+  "methodology": zod.string().nullish(),
+  "materialsReviewed": zod.string().nullish(),
+  "fieldTestFindings": zod.object({
+  "repairAttemptMade": zod.boolean().nullish(),
+  "adjacentShinglesFractured": zod.boolean().nullish(),
+  "matchingMaterialSourceable": zod.boolean().nullish(),
+  "productDiscontinued": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
+}),
+  "conditionScoring": zod.string().nullish(),
+  "repairAttemptRisks": zod.string().nullish(),
+  "determination": zod.enum(['repairable', 'not_repairable']),
+  "recommendation": zod.string().nullish(),
+  "supportingPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+})),zod.null()]).optional(),
+  "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
+  "location": zod.string().min(1),
+  "note": zod.string().min(1)
+}).describe('A pre-existing \/ non-storm condition explicitly excluded from the claim.')),zod.null()]).optional(),
+  "temporaryRepairs": zod.union([zod.object({
+  "performed": zod.boolean(),
+  "tarpInvoiceRef": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "datePerformed": zod.string().nullish(),
+  "materialsUsed": zod.string().nullish(),
+  "crewAndEquipment": zod.string().nullish(),
+  "beforeAfterPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.'),zod.null()]).optional(),
+  "propertyProtectionPlan": zod.union([zod.object({
+  "specializedRequired": zod.boolean(),
+  "featureProtected": zod.union([zod.enum(['pool_spa', 'solar_panels', 'skylights', 'hvac', 'satellite', 'specimen_landscaping', 'detached_structure', 'driveway_hardscape', 'septic_field']),zod.null()]).optional(),
+  "whyOrdinaryTarpingInsufficient": zod.string().nullish().describe('Required when specializedRequired is true (enforced server-side).'),
+  "proposedEquipment": zod.string().nullish(),
+  "setupMethod": zod.string().nullish(),
+  "photoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional(),
   "damageSurfaceChangeLog": zod.array(zod.object({
-  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "surface": zod.enum(['roof', 'siding', 'collateral', 'interior']),
   "prior": zod.boolean(),
   "next": zod.boolean(),
   "changedByUserId": zod.string(),
@@ -1536,6 +1810,11 @@ export const UpdateInspectionParams = zod.object({
   "inspectionId": zod.coerce.string()
 })
 
+
+
+
+
+
 export const UpdateInspectionBody = zod.object({
   "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']).optional(),
   "phase": zod.enum(['preliminary', 'forensic']).optional().describe('Business phase of a single inspection record (P0). Begins as `preliminary` (light top-of-funnel capture) and advances IN PLACE to `forensic` at the P4 checkpoint — one record, never two.'),
@@ -1582,9 +1861,70 @@ export const UpdateInspectionBody = zod.object({
   "roofDamageFound": zod.boolean().optional(),
   "sidingDamageFound": zod.boolean().optional(),
   "collateralDamageFound": zod.boolean().optional(),
+  "interiorDamageFound": zod.boolean().optional(),
   "sidingWrbPresent": zod.boolean().nullish(),
-  "sidingMeasurementReportRef": zod.string().nullish()
+  "sidingMeasurementReportRef": zod.string().nullish(),
+  "propertyProfile": zod.union([zod.object({
+  "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
+  "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
+  "roofType": zod.string().nullish(),
+  "roofAgeYears": zod.number().nullish(),
+  "roofAgeBasis": zod.union([zod.enum(['homeowner_reported', 'permit_record', 'product_date_code', 'estimated']),zod.null()]).optional().describe('Required whenever roofAgeYears is set — an unsourced age is attackable.'),
+  "accessibilityNotes": zod.string().nullish(),
+  "buildingType": zod.string().nullish(),
+  "attachedOrDetached": zod.union([zod.enum(['attached', 'detached']),zod.null()]).optional(),
+  "roofGeometry": zod.array(zod.enum(['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'])).optional(),
+  "deckType": zod.union([zod.enum(['plywood', 'osb', 'plank', 'skip_sheathing', 'unknown']),zod.null()]).optional(),
+  "framingConditionNotes": zod.string().nullish(),
+  "recordedAtUtc": zod.string()
+}).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
+  "repairabilityAssessment": zod.union([zod.object({
+  "questionPresented": zod.string().min(1),
+  "methodology": zod.string().nullish(),
+  "materialsReviewed": zod.string().nullish(),
+  "fieldTestFindings": zod.object({
+  "repairAttemptMade": zod.boolean().nullish(),
+  "adjacentShinglesFractured": zod.boolean().nullish(),
+  "matchingMaterialSourceable": zod.boolean().nullish(),
+  "productDiscontinued": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
+}),
+  "conditionScoring": zod.string().nullish(),
+  "repairAttemptRisks": zod.string().nullish(),
+  "determination": zod.enum(['repairable', 'not_repairable']),
+  "recommendation": zod.string().nullish(),
+  "supportingPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.'),zod.null()]).optional(),
+  "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
+  "location": zod.string().min(1),
+  "note": zod.string().min(1)
+}).describe('A pre-existing \/ non-storm condition explicitly excluded from the claim.')),zod.null()]).optional(),
+  "temporaryRepairs": zod.union([zod.object({
+  "performed": zod.boolean(),
+  "tarpInvoiceRef": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "datePerformed": zod.string().nullish(),
+  "materialsUsed": zod.string().nullish(),
+  "crewAndEquipment": zod.string().nullish(),
+  "beforeAfterPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.'),zod.null()]).optional(),
+  "propertyProtectionPlan": zod.union([zod.object({
+  "specializedRequired": zod.boolean(),
+  "featureProtected": zod.union([zod.enum(['pool_spa', 'solar_panels', 'skylights', 'hvac', 'satellite', 'specimen_landscaping', 'detached_structure', 'driveway_hardscape', 'septic_field']),zod.null()]).optional(),
+  "whyOrdinaryTarpingInsufficient": zod.string().nullish().describe('Required when specializedRequired is true (enforced server-side).'),
+  "proposedEquipment": zod.string().nullish(),
+  "setupMethod": zod.string().nullish(),
+  "photoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional()
 })
+
+
+
+
+
 
 export const UpdateInspectionResponse = zod.object({
   "inspection": zod.object({
@@ -1713,11 +2053,12 @@ export const UpdateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "captureContext": zod.union([zod.enum(['overview', 'mid-range', 'close-up', 'measurement', 'collateral']).describe('REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole\/preliminaryRole, never stored.'),zod.null()]).optional().describe('REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement\/collateral→themselves) or preliminaryRole (front_of_home\/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all.'),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -1792,7 +2133,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1801,10 +2142,69 @@ export const UpdateInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "propertyProfile": zod.union([zod.object({
+  "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
+  "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
+  "roofType": zod.string().nullish(),
+  "roofAgeYears": zod.number().nullish(),
+  "roofAgeBasis": zod.union([zod.enum(['homeowner_reported', 'permit_record', 'product_date_code', 'estimated']),zod.null()]).optional().describe('Required whenever roofAgeYears is set — an unsourced age is attackable.'),
+  "accessibilityNotes": zod.string().nullish(),
+  "buildingType": zod.string().nullish(),
+  "attachedOrDetached": zod.union([zod.enum(['attached', 'detached']),zod.null()]).optional(),
+  "roofGeometry": zod.array(zod.enum(['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'])).optional(),
+  "deckType": zod.union([zod.enum(['plywood', 'osb', 'plank', 'skip_sheathing', 'unknown']),zod.null()]).optional(),
+  "framingConditionNotes": zod.string().nullish(),
+  "recordedAtUtc": zod.string()
+}).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
+  "repairabilityAssessment": zod.union([zod.object({
+  "questionPresented": zod.string().min(1),
+  "methodology": zod.string().nullish(),
+  "materialsReviewed": zod.string().nullish(),
+  "fieldTestFindings": zod.object({
+  "repairAttemptMade": zod.boolean().nullish(),
+  "adjacentShinglesFractured": zod.boolean().nullish(),
+  "matchingMaterialSourceable": zod.boolean().nullish(),
+  "productDiscontinued": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
+}),
+  "conditionScoring": zod.string().nullish(),
+  "repairAttemptRisks": zod.string().nullish(),
+  "determination": zod.enum(['repairable', 'not_repairable']),
+  "recommendation": zod.string().nullish(),
+  "supportingPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+})),zod.null()]).optional(),
+  "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
+  "location": zod.string().min(1),
+  "note": zod.string().min(1)
+}).describe('A pre-existing \/ non-storm condition explicitly excluded from the claim.')),zod.null()]).optional(),
+  "temporaryRepairs": zod.union([zod.object({
+  "performed": zod.boolean(),
+  "tarpInvoiceRef": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "datePerformed": zod.string().nullish(),
+  "materialsUsed": zod.string().nullish(),
+  "crewAndEquipment": zod.string().nullish(),
+  "beforeAfterPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.'),zod.null()]).optional(),
+  "propertyProtectionPlan": zod.union([zod.object({
+  "specializedRequired": zod.boolean(),
+  "featureProtected": zod.union([zod.enum(['pool_spa', 'solar_panels', 'skylights', 'hvac', 'satellite', 'specimen_landscaping', 'detached_structure', 'driveway_hardscape', 'septic_field']),zod.null()]).optional(),
+  "whyOrdinaryTarpingInsufficient": zod.string().nullish().describe('Required when specializedRequired is true (enforced server-side).'),
+  "proposedEquipment": zod.string().nullish(),
+  "setupMethod": zod.string().nullish(),
+  "photoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional(),
   "damageSurfaceChangeLog": zod.array(zod.object({
-  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "surface": zod.enum(['roof', 'siding', 'collateral', 'interior']),
   "prior": zod.boolean(),
   "next": zod.boolean(),
   "changedByUserId": zod.string(),
@@ -2348,11 +2748,11 @@ export const CreateInspectionPhotoParams = zod.object({
 
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullish(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]).optional(),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]).optional(),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]).optional(),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]).optional(),
   "url": zod.string().min(1),
   "sha256": zod.string().min(1),
   "exifJson": zod.object({
@@ -2374,11 +2774,12 @@ export const CreateInspectionPhotoResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "captureContext": zod.union([zod.enum(['overview', 'mid-range', 'close-up', 'measurement', 'collateral']).describe('REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole\/preliminaryRole, never stored.'),zod.null()]).optional().describe('REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement\/collateral→themselves) or preliminaryRole (front_of_home\/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all.'),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -2441,7 +2842,7 @@ export const CreateAttestationParams = zod.object({
 
 export const CreateAttestationBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the attestation write is idempotent, so a queued offline attestation can be retried without duplicating the row.'),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]).optional(),
   "details": zod.record(zod.string(), zod.unknown()).nullish(),
   "signatureData": zod.string().nullish()
@@ -2453,7 +2854,7 @@ export const CreateAttestationResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -2540,6 +2941,11 @@ export const SubmitInspectionBody = zod.object({
 }).optional()
 }).describe('Client-assembled submission contract v1 (E6) — the stable interface the Brain inherits. A manifest of record ids by type, per-photo SHA-256 hashes, the protocol version the gate ran under, and the gate results. Assembled and hashed client-side; the server accepts it thin. M-F adds server-side hash verification, record locking, and a pre-flight endpoint.')
 })
+
+
+
+
+
 
 export const SubmitInspectionResponse = zod.object({
   "inspection": zod.object({
@@ -2668,11 +3074,12 @@ export const SubmitInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
-  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close']),zod.null()]),
-  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
+  "preliminaryRole": zod.union([zod.enum(['front_of_home', 'roof_overview', 'damage_closeup', 'damage_closeup_roof', 'damage_closeup_siding', 'damage_closeup_collateral', 'damage_closeup_interior']).describe('A Phase 1 single-shot evidence slot (P2). Captured through the evidence module without a triad. `damage_closeup` is the legacy generic close-up (counted as a roof close-up); the `damage_closeup_\*` roles are surface-tagged — at least one is required per damage surface selected in Phase 1.'),zod.null()]),
+  "captureContext": zod.union([zod.enum(['overview', 'mid-range', 'close-up', 'measurement', 'collateral']).describe('REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole\/preliminaryRole, never stored.'),zod.null()]).optional().describe('REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement\/collateral→themselves) or preliminaryRole (front_of_home\/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all.'),
   "url": zod.string(),
   "sha256": zod.string(),
   "exifJson": zod.object({
@@ -2747,7 +3154,7 @@ export const SubmitInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'homeowner', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -2756,10 +3163,69 @@ export const SubmitInspectionResponse = zod.object({
   "roofDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — roof damage observed.'),
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
+  "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "propertyProfile": zod.union([zod.object({
+  "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
+  "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
+  "roofType": zod.string().nullish(),
+  "roofAgeYears": zod.number().nullish(),
+  "roofAgeBasis": zod.union([zod.enum(['homeowner_reported', 'permit_record', 'product_date_code', 'estimated']),zod.null()]).optional().describe('Required whenever roofAgeYears is set — an unsourced age is attackable.'),
+  "accessibilityNotes": zod.string().nullish(),
+  "buildingType": zod.string().nullish(),
+  "attachedOrDetached": zod.union([zod.enum(['attached', 'detached']),zod.null()]).optional(),
+  "roofGeometry": zod.array(zod.enum(['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'])).optional(),
+  "deckType": zod.union([zod.enum(['plywood', 'osb', 'plank', 'skip_sheathing', 'unknown']),zod.null()]).optional(),
+  "framingConditionNotes": zod.string().nullish(),
+  "recordedAtUtc": zod.string()
+}).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
+  "repairabilityAssessment": zod.union([zod.object({
+  "questionPresented": zod.string().min(1),
+  "methodology": zod.string().nullish(),
+  "materialsReviewed": zod.string().nullish(),
+  "fieldTestFindings": zod.object({
+  "repairAttemptMade": zod.boolean().nullish(),
+  "adjacentShinglesFractured": zod.boolean().nullish(),
+  "matchingMaterialSourceable": zod.boolean().nullish(),
+  "productDiscontinued": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
+}),
+  "conditionScoring": zod.string().nullish(),
+  "repairAttemptRisks": zod.string().nullish(),
+  "determination": zod.enum(['repairable', 'not_repairable']),
+  "recommendation": zod.string().nullish(),
+  "supportingPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+})),zod.null()]).optional(),
+  "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
+  "location": zod.string().min(1),
+  "note": zod.string().min(1)
+}).describe('A pre-existing \/ non-storm condition explicitly excluded from the claim.')),zod.null()]).optional(),
+  "temporaryRepairs": zod.union([zod.object({
+  "performed": zod.boolean(),
+  "tarpInvoiceRef": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "datePerformed": zod.string().nullish(),
+  "materialsUsed": zod.string().nullish(),
+  "crewAndEquipment": zod.string().nullish(),
+  "beforeAfterPhotoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.'),zod.null()]).optional(),
+  "propertyProtectionPlan": zod.union([zod.object({
+  "specializedRequired": zod.boolean(),
+  "featureProtected": zod.union([zod.enum(['pool_spa', 'solar_panels', 'skylights', 'hvac', 'satellite', 'specimen_landscaping', 'detached_structure', 'driveway_hardscape', 'septic_field']),zod.null()]).optional(),
+  "whyOrdinaryTarpingInsufficient": zod.string().nullish().describe('Required when specializedRequired is true (enforced server-side).'),
+  "proposedEquipment": zod.string().nullish(),
+  "setupMethod": zod.string().nullish(),
+  "photoIds": zod.array(zod.string()).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional(),
   "damageSurfaceChangeLog": zod.array(zod.object({
-  "surface": zod.enum(['roof', 'siding', 'collateral']),
+  "surface": zod.enum(['roof', 'siding', 'collateral', 'interior']),
   "prior": zod.boolean(),
   "next": zod.boolean(),
   "changedByUserId": zod.string(),

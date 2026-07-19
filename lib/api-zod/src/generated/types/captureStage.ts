@@ -14,6 +14,7 @@ export type CaptureStage = typeof CaptureStage[keyof typeof CaptureStage];
 
 export const CaptureStage = {
   arrival: 'arrival',
+  property_profile: 'property_profile',
   elevation_access: 'elevation_access',
   facets: 'facets',
   test_squares: 'test_squares',
@@ -22,7 +23,10 @@ export const CaptureStage = {
   siding: 'siding',
   collateral: 'collateral',
   interior: 'interior',
+  repairability: 'repairability',
+  mitigation: 'mitigation',
   homeowner: 'homeowner',
+  existing_conditions: 'existing_conditions',
   declaration: 'declaration',
   submit: 'submit',
 } as const;

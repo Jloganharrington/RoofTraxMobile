@@ -19,29 +19,33 @@ export const DAMAGE_TYPE_LABEL: Record<string, string> = Object.fromEntries(
 // three existing booleans because they drive which measurement report gets
 // ordered and how the forensic is scoped, both of which happen between
 // Phase 1 and Phase 2.
-export type DamageSurface = 'roof' | 'siding' | 'collateral';
+export type DamageSurface = 'roof' | 'siding' | 'collateral' | 'interior';
 
 export const DAMAGE_SURFACE_OPTIONS: Array<{ value: DamageSurface; label: string }> = [
   { value: 'roof', label: 'Roof' },
   { value: 'siding', label: 'Siding' },
   { value: 'collateral', label: 'Collateral' },
+  { value: 'interior', label: 'Interior' },
 ];
 
 export const SURFACE_CLOSEUP_ROLE: Record<DamageSurface, PreliminaryPhotoRole> = {
   roof: 'damage_closeup_roof',
   siding: 'damage_closeup_siding',
   collateral: 'damage_closeup_collateral',
+  interior: 'damage_closeup_interior',
 };
 
 export function selectedSurfaces(inspection: {
   roofDamageFound?: boolean;
   sidingDamageFound?: boolean;
   collateralDamageFound?: boolean;
+  interiorDamageFound?: boolean;
 }): DamageSurface[] {
   const out: DamageSurface[] = [];
   if (inspection.roofDamageFound) out.push('roof');
   if (inspection.sidingDamageFound) out.push('siding');
   if (inspection.collateralDamageFound) out.push('collateral');
+  if (inspection.interiorDamageFound) out.push('interior');
   return out;
 }
 
@@ -70,6 +74,7 @@ const SURFACE_LABEL: Record<DamageSurface, string> = {
   roof: 'roof',
   siding: 'siding',
   collateral: 'collateral',
+  interior: 'interior',
 };
 
 export function preliminaryPhotoSlots(surfaces: DamageSurface[]): PreliminaryPhotoSlot[] {

@@ -333,13 +333,14 @@ function checkSubmit(
       ),
     );
   }
-  const { roofDamageFound, sidingDamageFound, collateralDamageFound } = state.damageFlags;
-  if (!roofDamageFound && !sidingDamageFound && !collateralDamageFound) {
+  const { roofDamageFound, sidingDamageFound, collateralDamageFound, interiorDamageFound } =
+    state.damageFlags;
+  if (!roofDamageFound && !sidingDamageFound && !collateralDamageFound && !interiorDamageFound) {
     out.push(
       deficiency(
         'submit',
         'NO_DAMAGE_SURFACE_SELECTED',
-        'No damage surface was selected on the Elevation Walk — mark roof, siding, or collateral damage before submitting.',
+        'No damage surface was selected on the Elevation Walk — mark roof, siding, interior, or collateral damage before submitting.',
       ),
     );
   }

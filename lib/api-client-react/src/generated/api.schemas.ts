@@ -147,6 +147,17 @@ export const ContactOutcome = {
   call_to_schedule: 'call_to_schedule',
 } as const;
 
+export interface InspectorCertification {
+  /** @minLength 1 */
+  name: string;
+  /** @nullable */
+  issuingBody?: string | null;
+  /** @nullable */
+  number?: string | null;
+  /** @nullable */
+  expiry?: string | null;
+}
+
 export interface Profile {
   userId: string;
   role: Role;
@@ -172,6 +183,15 @@ export interface Profile {
   /** @nullable */
   smtpFromEmail?: string | null;
   betaBugReporting?: boolean;
+  certifications?: InspectorCertification[] | null;
+  /** @nullable */
+  yearsExperience?: number | null;
+}
+
+export interface UpdateProfileCredentialsInput {
+  certifications?: InspectorCertification[];
+  /** @nullable */
+  yearsExperience?: number | null;
 }
 
 export type BugReportSeverity = typeof BugReportSeverity[keyof typeof BugReportSeverity];
@@ -565,6 +585,7 @@ export const PreliminaryPhotoRole = {
   damage_closeup_roof: 'damage_closeup_roof',
   damage_closeup_siding: 'damage_closeup_siding',
   damage_closeup_collateral: 'damage_closeup_collateral',
+  damage_closeup_interior: 'damage_closeup_interior',
 } as const;
 
 export type ElevationDirection = typeof ElevationDirection[keyof typeof ElevationDirection];
@@ -607,6 +628,9 @@ export const TestSquareHitType = {
   foot_scuff: 'foot_scuff',
 } as const;
 
+/**
+ * Photo capture role. The forensic triad is wide/mid/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.
+ */
 export type PhotoTriadRole = typeof PhotoTriadRole[keyof typeof PhotoTriadRole];
 
 
@@ -614,6 +638,22 @@ export const PhotoTriadRole = {
   wide: 'wide',
   mid: 'mid',
   close: 'close',
+  measurement: 'measurement',
+  collateral: 'collateral',
+} as const;
+
+/**
+ * REPORT_DATA v2 photos[].captureContext — derived server-side from triadRole/preliminaryRole, never stored.
+ */
+export type PhotoCaptureContext = typeof PhotoCaptureContext[keyof typeof PhotoCaptureContext];
+
+
+export const PhotoCaptureContext = {
+  overview: 'overview',
+  'mid-range': 'mid-range',
+  'close-up': 'close-up',
+  measurement: 'measurement',
+  collateral: 'collateral',
 } as const;
 
 /**
@@ -624,6 +664,7 @@ export type CaptureStage = typeof CaptureStage[keyof typeof CaptureStage];
 
 export const CaptureStage = {
   arrival: 'arrival',
+  property_profile: 'property_profile',
   elevation_access: 'elevation_access',
   facets: 'facets',
   test_squares: 'test_squares',
@@ -632,7 +673,10 @@ export const CaptureStage = {
   siding: 'siding',
   collateral: 'collateral',
   interior: 'interior',
+  repairability: 'repairability',
+  mitigation: 'mitigation',
   homeowner: 'homeowner',
+  existing_conditions: 'existing_conditions',
   declaration: 'declaration',
   submit: 'submit',
 } as const;
@@ -898,6 +942,8 @@ export interface InspectionPhoto {
   subjectId: string | null;
   triadRole: PhotoTriadRole | null;
   preliminaryRole: PreliminaryPhotoRole | null;
+  /** REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement/collateral→themselves) or preliminaryRole (front_of_home/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all. */
+  captureContext?: PhotoCaptureContext | null;
   url: string;
   sha256: string;
   /** @nullable */
@@ -1060,6 +1106,209 @@ export interface Attestation {
   attestedAt: string;
 }
 
+export type PropertyProfilePropertyType = typeof PropertyProfilePropertyType[keyof typeof PropertyProfilePropertyType] | null;
+
+
+export const PropertyProfilePropertyType = {
+  single_family: 'single_family',
+  townhome: 'townhome',
+  condo: 'condo',
+  multi_family: 'multi_family',
+  commercial: 'commercial',
+} as const;
+
+export type PropertyProfileStories = typeof PropertyProfileStories[keyof typeof PropertyProfileStories] | null;
+
+
+export const PropertyProfileStories = {
+  NUMBER_1: '1',
+  '15': '1.5',
+  NUMBER_2: '2',
+  '25': '2.5',
+  '3+': '3+',
+} as const;
+
+/**
+ * Required whenever roofAgeYears is set — an unsourced age is attackable.
+ */
+export type PropertyProfileRoofAgeBasis = typeof PropertyProfileRoofAgeBasis[keyof typeof PropertyProfileRoofAgeBasis] | null;
+
+
+export const PropertyProfileRoofAgeBasis = {
+  homeowner_reported: 'homeowner_reported',
+  permit_record: 'permit_record',
+  product_date_code: 'product_date_code',
+  estimated: 'estimated',
+} as const;
+
+export type PropertyProfileAttachedOrDetached = typeof PropertyProfileAttachedOrDetached[keyof typeof PropertyProfileAttachedOrDetached] | null;
+
+
+export const PropertyProfileAttachedOrDetached = {
+  attached: 'attached',
+  detached: 'detached',
+} as const;
+
+export type PropertyProfileRoofGeometryItem = typeof PropertyProfileRoofGeometryItem[keyof typeof PropertyProfileRoofGeometryItem];
+
+
+export const PropertyProfileRoofGeometryItem = {
+  gable: 'gable',
+  hip: 'hip',
+  mansard: 'mansard',
+  gambrel: 'gambrel',
+  flat: 'flat',
+  complex: 'complex',
+} as const;
+
+export type PropertyProfileDeckType = typeof PropertyProfileDeckType[keyof typeof PropertyProfileDeckType] | null;
+
+
+export const PropertyProfileDeckType = {
+  plywood: 'plywood',
+  osb: 'osb',
+  plank: 'plank',
+  skip_sheathing: 'skip_sheathing',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * REPORT_DATA v2 — field-captured property/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.
+ */
+export interface PropertyProfile {
+  propertyType?: PropertyProfilePropertyType;
+  stories?: PropertyProfileStories;
+  /** @nullable */
+  roofType?: string | null;
+  /** @nullable */
+  roofAgeYears?: number | null;
+  /** Required whenever roofAgeYears is set — an unsourced age is attackable. */
+  roofAgeBasis?: PropertyProfileRoofAgeBasis;
+  /** @nullable */
+  accessibilityNotes?: string | null;
+  /** @nullable */
+  buildingType?: string | null;
+  attachedOrDetached?: PropertyProfileAttachedOrDetached;
+  roofGeometry?: PropertyProfileRoofGeometryItem[];
+  deckType?: PropertyProfileDeckType;
+  /** @nullable */
+  framingConditionNotes?: string | null;
+  recordedAtUtc: string;
+}
+
+export interface RepairabilityFieldTestFindings {
+  /** @nullable */
+  repairAttemptMade?: boolean | null;
+  /** @nullable */
+  adjacentShinglesFractured?: boolean | null;
+  /** @nullable */
+  matchingMaterialSourceable?: boolean | null;
+  /** @nullable */
+  productDiscontinued?: boolean | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type RepairabilityAssessmentInputDetermination = typeof RepairabilityAssessmentInputDetermination[keyof typeof RepairabilityAssessmentInputDetermination];
+
+
+export const RepairabilityAssessmentInputDetermination = {
+  repairable: 'repairable',
+  not_repairable: 'not_repairable',
+} as const;
+
+/**
+ * Client-sent repairability assessment. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile. Must be explicitly performed; never defaulted.
+ */
+export interface RepairabilityAssessmentInput {
+  /** @minLength 1 */
+  questionPresented: string;
+  /** @nullable */
+  methodology?: string | null;
+  /** @nullable */
+  materialsReviewed?: string | null;
+  fieldTestFindings: RepairabilityFieldTestFindings;
+  /** @nullable */
+  conditionScoring?: string | null;
+  /** @nullable */
+  repairAttemptRisks?: string | null;
+  determination: RepairabilityAssessmentInputDetermination;
+  /** @nullable */
+  recommendation?: string | null;
+  supportingPhotoIds?: string[];
+  recordedAtUtc: string;
+}
+
+export type RepairabilityAssessment = RepairabilityAssessmentInput & ({
+  /** @nullable */
+  assessorName?: string | null;
+  /** @nullable */
+  assessorCredentials?: string | null;
+});
+
+/**
+ * A pre-existing / non-storm condition explicitly excluded from the claim.
+ */
+export interface ExistingCondition {
+  /** @minLength 1 */
+  location: string;
+  /** @minLength 1 */
+  note: string;
+}
+
+/**
+ * Temporary repairs & mitigation. `performed` must be explicitly true — never inferred. Captured in Phase 1 and carried into Phase 2.
+ */
+export interface TemporaryRepairs {
+  performed: boolean;
+  /** @nullable */
+  tarpInvoiceRef?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  datePerformed?: string | null;
+  /** @nullable */
+  materialsUsed?: string | null;
+  /** @nullable */
+  crewAndEquipment?: string | null;
+  beforeAfterPhotoIds?: string[];
+  recordedAtUtc: string;
+}
+
+export type PropertyProtectionPlanFeatureProtected = typeof PropertyProtectionPlanFeatureProtected[keyof typeof PropertyProtectionPlanFeatureProtected] | null;
+
+
+export const PropertyProtectionPlanFeatureProtected = {
+  pool_spa: 'pool_spa',
+  solar_panels: 'solar_panels',
+  skylights: 'skylights',
+  hvac: 'hvac',
+  satellite: 'satellite',
+  specimen_landscaping: 'specimen_landscaping',
+  detached_structure: 'detached_structure',
+  driveway_hardscape: 'driveway_hardscape',
+  septic_field: 'septic_field',
+} as const;
+
+/**
+ * Specialized property-protection plan (scaffold/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.
+ */
+export interface PropertyProtectionPlan {
+  specializedRequired: boolean;
+  featureProtected?: PropertyProtectionPlanFeatureProtected;
+  /**
+     * Required when specializedRequired is true (enforced server-side).
+     * @nullable
+     */
+  whyOrdinaryTarpingInsufficient?: string | null;
+  /** @nullable */
+  proposedEquipment?: string | null;
+  /** @nullable */
+  setupMethod?: string | null;
+  photoIds?: string[];
+  recordedAtUtc: string;
+}
+
 export type DamageSurfaceChangeSurface = typeof DamageSurfaceChangeSurface[keyof typeof DamageSurfaceChangeSurface];
 
 
@@ -1067,6 +1316,7 @@ export const DamageSurfaceChangeSurface = {
   roof: 'roof',
   siding: 'siding',
   collateral: 'collateral',
+  interior: 'interior',
 } as const;
 
 export interface DamageSurfaceChange {
@@ -1219,6 +1469,8 @@ export interface Inspection {
   sidingDamageFound: boolean;
   /** v2.1 Elevation Walk flag — collateral damage observed. */
   collateralDamageFound: boolean;
+  /** REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior/Attic step. */
+  interiorDamageFound: boolean;
   /**
      * v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.
      * @nullable
@@ -1229,6 +1481,11 @@ export interface Inspection {
      * @nullable
      */
   sidingMeasurementReportRef: string | null;
+  propertyProfile?: PropertyProfile | null;
+  repairabilityAssessment?: RepairabilityAssessment | null;
+  existingOrUnrelatedConditions?: ExistingCondition[] | null;
+  temporaryRepairs?: TemporaryRepairs | null;
+  propertyProtectionPlan?: PropertyProtectionPlan | null;
   /** Append-only audit trail of damage-surface flag removals made during the forensic phase (server-recorded; read-only). */
   damageSurfaceChangeLog?: DamageSurfaceChange[];
   /** v2.1 siding facets, populated by the detail view only. */
@@ -1277,6 +1534,8 @@ export interface CreateInspectionInput {
   sidingDamageFound?: boolean;
   /** Phase 1 damage surface — collateral. */
   collateralDamageFound?: boolean;
+  /** Phase 1 damage surface — interior (explicit claim-scope decision). */
+  interiorDamageFound?: boolean;
 }
 
 export interface UpdateInspectionInput {
@@ -1318,10 +1577,16 @@ export interface UpdateInspectionInput {
   roofDamageFound?: boolean;
   sidingDamageFound?: boolean;
   collateralDamageFound?: boolean;
+  interiorDamageFound?: boolean;
   /** @nullable */
   sidingWrbPresent?: boolean | null;
   /** @nullable */
   sidingMeasurementReportRef?: string | null;
+  propertyProfile?: PropertyProfile | null;
+  repairabilityAssessment?: RepairabilityAssessmentInput | null;
+  existingOrUnrelatedConditions?: ExistingCondition[] | null;
+  temporaryRepairs?: TemporaryRepairs | null;
+  propertyProtectionPlan?: PropertyProtectionPlan | null;
 }
 
 export interface InspectionEnvelope {

@@ -7,6 +7,7 @@
 // "Step N" prefixes — steps are named only.
 export const STAGES = [
   'arrival',
+  'property_profile',
   'elevation_access',
   'facets',
   'test_squares',
@@ -15,7 +16,10 @@ export const STAGES = [
   'siding',
   'collateral',
   'interior',
+  'repairability',
+  'mitigation',
   'homeowner',
+  'existing_conditions',
   'declaration',
   'submit',
 ] as const;
@@ -25,13 +29,15 @@ export type Stage = (typeof STAGES)[number];
 // primary exported name so Deficiency/SoftFlag consumers don't churn.
 export type StepKey = Stage;
 
-// v2.1 — the three "damage found" flags captured on the Elevation Walk.
+// The "damage found" flags captured on the Elevation Walk (v2.1 had three;
+// REPORT_DATA v2 adds interior as an explicit fourth claim-scope decision).
 // They drive which conditional steps apply (are shown + gated) for this
 // inspection. Raw booleans stored on the inspection row.
 export interface DamageFlags {
   roofDamageFound: boolean;
   sidingDamageFound: boolean;
   collateralDamageFound: boolean;
+  interiorDamageFound: boolean;
 }
 
 export interface ProtocolStep {
@@ -47,6 +53,8 @@ export interface ProtocolStep {
 const whenRoof = (flags: DamageFlags) => flags.roofDamageFound;
 const whenSiding = (flags: DamageFlags) => flags.sidingDamageFound;
 const whenCollateral = (flags: DamageFlags) => flags.collateralDamageFound;
+const whenInterior = (flags: DamageFlags) => flags.interiorDamageFound;
+const whenRoofOrSiding = (flags: DamageFlags) => flags.roofDamageFound || flags.sidingDamageFound;
 
 // THE ordered source of truth for the step flow. Imported by the step
 // hub, the gate engine, and the server — no hard-coded step strings
@@ -59,15 +67,22 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
     description: 'On-site conditions (sky, wind, temp), personnel present, GPS + time.',
   },
   {
-    key: 'elevation_access',
+    key: 'property_profile',
     order: 2,
+    name: 'Property Profile',
+    description:
+      'Property & construction description — type, stories, roof age with basis, deck type. Prefilled from the lead where available.',
+  },
+  {
+    key: 'elevation_access',
+    order: 3,
     name: 'Elevation Walk',
     description:
       'A wide photo of each of the four elevations, plus the three damage-found flags.',
   },
   {
     key: 'facets',
-    order: 3,
+    order: 4,
     name: 'Roof Facets & Measurements',
     description:
       'Every roof facet with area, material, pitch and damage documentation, plus whole-roof linears.',
@@ -75,28 +90,28 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
   },
   {
     key: 'test_squares',
-    order: 4,
+    order: 5,
     name: 'Test Squares',
     description: 'A test-square photo on every facet that carries hail damage.',
     appliesWhen: whenRoof,
   },
   {
     key: 'components',
-    order: 5,
+    order: 6,
     name: 'Roof Components & Penetrations',
     description: 'Existing components and roof penetrations, each with a photo.',
     appliesWhen: whenRoof,
   },
   {
     key: 'product',
-    order: 6,
+    order: 7,
     name: 'Roofing Product ID',
     description: 'At least one roofing-product identification record.',
     appliesWhen: whenRoof,
   },
   {
     key: 'siding',
-    order: 7,
+    order: 8,
     name: 'Siding Inspection',
     description:
       'Siding facets S1…S{n}: damage classification, facet photo, and per-component photos.',
@@ -104,32 +119,55 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
   },
   {
     key: 'collateral',
-    order: 8,
+    order: 9,
     name: 'Collateral Sweep',
     description: 'Labeled collateral photos, roof-level then ground-level.',
     appliesWhen: whenCollateral,
   },
   {
     key: 'interior',
-    order: 9,
+    order: 10,
     name: 'Interior / Attic',
     description: 'Interior/attic evidence, or an explicit no-interior-claim waiver.',
+    appliesWhen: whenInterior,
+  },
+  {
+    key: 'repairability',
+    order: 11,
+    name: 'Repairability Assessment',
+    description:
+      'Explicit repair-vs-replace field determination — never defaulted. Skipping leaves the record null and the report section omits.',
+    appliesWhen: whenRoofOrSiding,
+  },
+  {
+    key: 'mitigation',
+    order: 12,
+    name: 'Temporary Repairs & Mitigation',
+    description:
+      'Emergency tarping / mitigation performed, with before & after photos. Carried forward from Phase 1.',
   },
   {
     key: 'homeowner',
-    order: 10,
+    order: 13,
     name: 'Homeowner',
     description: 'Factual homeowner intake (prior repairs, prior claims).',
   },
   {
+    key: 'existing_conditions',
+    order: 14,
+    name: 'Existing / Unrelated Conditions',
+    description:
+      'Pre-existing or non-storm conditions explicitly excluded from the claim — documenting what is NOT storm damage is what makes the rest credible.',
+  },
+  {
     key: 'declaration',
-    order: 11,
+    order: 15,
     name: 'Declaration',
     description: 'The inspector signs off on the completeness of the capture.',
   },
   {
     key: 'submit',
-    order: 12,
+    order: 16,
     name: 'Readiness & Submit',
     description: 'Zero hard deficiencies remain and the package is confirmed ready.',
   },

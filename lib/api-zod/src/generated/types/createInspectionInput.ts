@@ -46,4 +46,6 @@ export interface CreateInspectionInput {
   sidingDamageFound?: boolean;
   /** Phase 1 damage surface — collateral. */
   collateralDamageFound?: boolean;
+  /** Phase 1 damage surface — interior (explicit claim-scope decision). */
+  interiorDamageFound?: boolean;
 }

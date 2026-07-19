@@ -179,6 +179,21 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
         colors={colors}
       />
 
+      <Card
+        icon="shield"
+        title="Temporary repairs"
+        subtitle={
+          inspection.temporaryRepairs != null
+            ? inspection.temporaryRepairs.performed
+              ? 'Temporary repairs documented — carries into Phase 2'
+              : 'No temporary repairs performed'
+            : 'Tarping or mitigation done today? Document it now (optional)'
+        }
+        done={inspection.temporaryRepairs != null}
+        onPress={() => router.push({ pathname: '/inspection-mitigation', params: { id } })}
+        colors={colors}
+      />
+
       <Text style={[styles.section, { color: colors.foreground }]}>Homeowner</Text>
       <Card
         icon="clipboard"

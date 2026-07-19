@@ -89,6 +89,7 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       roofDamageFound: Boolean(inspection.roofDamageFound),
       sidingDamageFound: Boolean(inspection.sidingDamageFound),
       collateralDamageFound: Boolean(inspection.collateralDamageFound),
+      interiorDamageFound: Boolean(inspection.interiorDamageFound),
     },
     facets: slopes.map((slope) => ({
       id: slope.id,

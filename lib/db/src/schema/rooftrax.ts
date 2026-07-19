@@ -46,6 +46,16 @@ export type DamageType = (typeof DAMAGE_TYPES)[number];
 export type DoorKnockResult = (typeof DOOR_KNOCK_RESULTS)[number];
 export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
 
+// REPORT_DATA v2 — an individual inspector certification (name, issuing
+// body, cert number, expiry ISO date). Stored on the profile, surfaced into
+// every submission payload.
+export interface InspectorCertification {
+  name: string;
+  issuingBody?: string | null;
+  number?: string | null;
+  expiry?: string | null;
+}
+
 // Per-user role + workflow assignment + department. Row is created lazily
 // on first profile access (defaults: field_rep / insurance_retail /
 // canvasser), mirroring the source app's behavior.
@@ -83,6 +93,11 @@ export const userProfilesTable = pgTable('user_profiles', {
   smtpUsername: text('smtp_username'),
   smtpPasswordEnc: text('smtp_password_enc'),
   smtpFromEmail: text('smtp_from_email'),
+  // REPORT_DATA v2 — the individual credential layer behind
+  // `assessorCredentials`: a forensic opinion's weight attaches to the
+  // person, not the company (company pack lives Brain-side).
+  certifications: jsonb('certifications').$type<InspectorCertification[] | null>(),
+  yearsExperience: integer('years_experience'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

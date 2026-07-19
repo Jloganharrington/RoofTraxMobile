@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Photo capture role. The forensic triad is wide/mid/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.
+ */
 export type PhotoTriadRole = typeof PhotoTriadRole[keyof typeof PhotoTriadRole];
 
 
@@ -13,4 +16,6 @@ export const PhotoTriadRole = {
   wide: 'wide',
   mid: 'mid',
   close: 'close',
+  measurement: 'measurement',
+  collateral: 'collateral',
 } as const;

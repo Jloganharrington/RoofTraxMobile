@@ -1,5 +1,6 @@
 import {
   GetMyProfileResponse,
+  UpdateProfileCredentialsBody,
   UpdateProfileSignatureBody,
   UpdateProfileSmtpBody,
 } from '@workspace/api-zod';
@@ -66,6 +67,8 @@ function toProfileEnvelope(
       // mobile client can show/hide the bug-report button without another
       // request.
       betaBugReporting: company.betaBugReporting,
+      certifications: profile.certifications ?? null,
+      yearsExperience: profile.yearsExperience ?? null,
     },
   });
 }
@@ -149,6 +152,41 @@ router.patch('/profile/signature', async (req: Request, res: Response) => {
       signatureUrl: parsed.data.signatureUrl,
       signatureSha256: parsed.data.signatureSha256,
       signatureSignedAt: new Date(),
+    })
+    .where(eq(userProfilesTable.userId, userId))
+    .returning();
+
+  const company = await loadCompany(userId);
+  res.json(toProfileEnvelope(updated, company));
+});
+
+// REPORT_DATA v2 — the individual credential layer (certifications + years
+// of experience). Feeds assessorCredentials on repairability assessments and
+// rides along with every submission payload. Per-user write; no module gate.
+router.patch('/profile/credentials', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = UpdateProfileCredentialsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid credentials payload' });
+    return;
+  }
+
+  const userId = req.user.id;
+  await loadOrCreateProfile(userId);
+
+  const [updated] = await db
+    .update(userProfilesTable)
+    .set({
+      ...(parsed.data.certifications !== undefined && {
+        certifications: parsed.data.certifications,
+      }),
+      ...(parsed.data.yearsExperience !== undefined && {
+        yearsExperience: parsed.data.yearsExperience,
+      }),
     })
     .where(eq(userProfilesTable.userId, userId))
     .returning();

@@ -19,4 +19,5 @@ export const PreliminaryPhotoRole = {
   damage_closeup_roof: 'damage_closeup_roof',
   damage_closeup_siding: 'damage_closeup_siding',
   damage_closeup_collateral: 'damage_closeup_collateral',
+  damage_closeup_interior: 'damage_closeup_interior',
 } as const;

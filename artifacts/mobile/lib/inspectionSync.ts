@@ -103,6 +103,7 @@ export async function startInspection({
     roofDamageFound: false,
     sidingDamageFound: false,
     collateralDamageFound: false,
+    interiorDamageFound: false,
     sidingMeasurementReportRef: null,
     createdAt: now,
     updatedAt: now,

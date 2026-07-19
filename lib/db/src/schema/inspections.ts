@@ -49,6 +49,7 @@ export const PRELIMINARY_PHOTO_ROLES = [
   'damage_closeup_roof',
   'damage_closeup_siding',
   'damage_closeup_collateral',
+  'damage_closeup_interior',
 ] as const;
 export type PreliminaryPhotoRole = (typeof PRELIMINARY_PHOTO_ROLES)[number];
 
@@ -58,6 +59,7 @@ export type PreliminaryPhotoRole = (typeof PRELIMINARY_PHOTO_ROLES)[number];
 // mirror (by key only) PROTOCOL_STEPS in @workspace/protocol.
 export const CAPTURE_STAGES = [
   'arrival',
+  'property_profile',
   'elevation_access',
   'facets',
   'test_squares',
@@ -66,7 +68,10 @@ export const CAPTURE_STAGES = [
   'siding',
   'collateral',
   'interior',
+  'repairability',
+  'mitigation',
   'homeowner',
+  'existing_conditions',
   'declaration',
   'submit',
 ] as const;
@@ -170,6 +175,25 @@ export type SidingPhotoRole = (typeof SIDING_PHOTO_ROLES)[number];
 export const PHOTO_TRIAD_ROLES = ['wide', 'mid', 'close'] as const;
 export type PhotoTriadRole = (typeof PHOTO_TRIAD_ROLES)[number];
 
+// REPORT_DATA v2 — the full role vocabulary the photo column accepts. The
+// forensic triad stays wide/mid/close (triad gates key off PHOTO_TRIAD_ROLES
+// only); `measurement` and `collateral` are additional standalone roles that
+// map 1:1 onto the report contract's `captureContext`. Extend this list —
+// never build a parallel tagging system.
+export const PHOTO_CAPTURE_ROLES = ['wide', 'mid', 'close', 'measurement', 'collateral'] as const;
+export type PhotoCaptureRole = (typeof PHOTO_CAPTURE_ROLES)[number];
+
+// The report contract's captureContext vocabulary, derived (never stored)
+// from triadRole/preliminaryRole at serialization time.
+export const PHOTO_CAPTURE_CONTEXTS = [
+  'overview',
+  'mid-range',
+  'close-up',
+  'measurement',
+  'collateral',
+] as const;
+export type PhotoCaptureContext = (typeof PHOTO_CAPTURE_CONTEXTS)[number];
+
 // M-E (E2) — Controlled vocabulary for a single interior/attic observation.
 // Raw facts only: the inspector records what they saw (a stain, a moisture
 // reading, an attic pass) — no derived severity or causation lives here.
@@ -231,6 +255,88 @@ export interface HomeownerFacts {
   recordedAtUtc: string;
 }
 
+// REPORT_DATA v2 — Property Profile (field-captured, non-derived fields
+// only). Derived values (roofSlopeCount, roofCovering, interiorAreasInspected,
+// temporaryRepairsCompleted, flashingsAndPenetrations) are computed by the
+// Brain from data the app already holds — never asked twice.
+export interface PropertyProfile {
+  propertyType?: string | null; // single_family / townhome / condo / multi_family / commercial
+  stories?: string | null; // '1' / '1.5' / '2' / '2.5' / '3+'
+  roofType?: string | null;
+  roofAgeYears?: number | null;
+  // Basis for the roof age — an unsourced number is attackable. Required
+  // whenever roofAgeYears is set.
+  roofAgeBasis?: string | null; // homeowner_reported / permit_record / product_date_code / estimated
+  accessibilityNotes?: string | null;
+  buildingType?: string | null;
+  attachedOrDetached?: string | null; // attached / detached
+  roofGeometry?: string[]; // gable / hip / mansard / gambrel / flat / complex (multi-select)
+  deckType?: string | null; // plywood / osb / plank / skip_sheathing / unknown
+  framingConditionNotes?: string | null;
+  recordedAtUtc: string;
+}
+
+// REPORT_DATA v2 — Repairability Assessment. The crux of replace-vs-repair
+// disputes: MUST be explicitly performed, never defaulted or auto-populated.
+// Null on the inspection row means "not performed" and the report section
+// omits. assessorName/assessorCredentials are injected server-side from the
+// inspector's profile at save time — never typed in the field.
+export interface RepairabilityAssessment {
+  questionPresented: string;
+  methodology?: string | null;
+  materialsReviewed?: string | null;
+  fieldTestFindings: {
+    repairAttemptMade?: boolean | null;
+    adjacentShinglesFractured?: boolean | null; // brittleness result
+    matchingMaterialSourceable?: boolean | null;
+    productDiscontinued?: boolean | null;
+    notes?: string | null;
+  };
+  conditionScoring?: string | null;
+  repairAttemptRisks?: string | null;
+  determination: 'repairable' | 'not_repairable';
+  recommendation?: string | null;
+  assessorName?: string | null; // server-populated
+  assessorCredentials?: string | null; // server-populated
+  supportingPhotoIds?: string[];
+  recordedAtUtc: string;
+}
+
+// REPORT_DATA v2 — pre-existing / non-storm conditions the inspector
+// explicitly EXCLUDES from the claim. A credibility asset, not a concession.
+export interface ExistingCondition {
+  location: string;
+  note: string;
+}
+
+// REPORT_DATA v2 — temporary repairs & mitigation. Captured in Phase 1 (a
+// tarp most often goes on at the first visit) and carried into Phase 2.
+// `performed` must be explicitly true — never inferred.
+export interface TemporaryRepairs {
+  performed: boolean;
+  tarpInvoiceRef?: string | null;
+  description?: string | null;
+  datePerformed?: string | null;
+  materialsUsed?: string | null;
+  crewAndEquipment?: string | null;
+  beforeAfterPhotoIds?: string[];
+  recordedAtUtc: string;
+}
+
+// REPORT_DATA v2 — property-protection plan for scaffold/specialized cases
+// (NOT ordinary tarping). `specializedRequired` is an explicit flag the rep
+// affirmatively sets; laborEstimate/rentalCost are office-side and never
+// captured in the field.
+export interface PropertyProtectionPlan {
+  specializedRequired: boolean;
+  featureProtected?: string | null; // pool_spa / solar_panels / skylights / hvac / satellite / specimen_landscaping / detached_structure / driveway_hardscape / septic_field
+  whyOrdinaryTarpingInsufficient?: string | null; // required when specializedRequired
+  proposedEquipment?: string | null;
+  setupMethod?: string | null;
+  photoIds?: string[];
+  recordedAtUtc: string;
+}
+
 // The client-assembled submission contract (M-E / E6), stored verbatim when
 // the inspection is submitted. The app authors it (manifest of records +
 // photo SHA-256 hashes + protocol version + gate results); the server accepts
@@ -250,7 +356,7 @@ export interface StormConfirmedRef {
   hailSize: number | null;
   windSpeed: number | null;
   distance: number | null;
-  description: string | null;
+  description?: string | null;
   // The dateOfLoss + location the pull was run against, for provenance.
   queriedLocation: string;
   dateOfLoss: string | null;
@@ -324,9 +430,22 @@ export const inspectionsTable = pgTable('inspections', {
   // offline outbox replay compatibility, but the UI no longer asks it).
   sidingWrbPresent: boolean('siding_wrb_present'),
   collateralDamageFound: boolean('collateral_damage_found').notNull().default(false),
+  // REPORT_DATA v2 — fourth damage-surface flag. An explicit claim-scope
+  // decision ("interior is part of this claim"), never derived from the
+  // presence of interior observations. Gates the Interior/Attic step.
+  interiorDamageFound: boolean('interior_damage_found').notNull().default(false),
   // v2.1 — optional siding measurement report reference (the client id of the
   // uploaded report photo). Nullable; absence is a soft flag, never a block.
   sidingMeasurementReportRef: text('siding_measurement_report_ref'),
+  // REPORT_DATA v2 capture blocks — all nullable; null means "not captured"
+  // and the corresponding report section omits.
+  propertyProfile: jsonb('property_profile').$type<PropertyProfile | null>(),
+  repairabilityAssessment: jsonb('repairability_assessment').$type<RepairabilityAssessment | null>(),
+  existingOrUnrelatedConditions: jsonb('existing_or_unrelated_conditions').$type<
+    ExistingCondition[] | null
+  >(),
+  temporaryRepairs: jsonb('temporary_repairs').$type<TemporaryRepairs | null>(),
+  propertyProtectionPlan: jsonb('property_protection_plan').$type<PropertyProtectionPlan | null>(),
   // Audit trail for damage-surface flag REMOVALS during the forensic phase.
   // The flags are first set in Phase 1 and drive measurement-report ordering
   // between phases; if Phase 2 un-sets one, we record who/when/prior value
@@ -334,7 +453,7 @@ export const inspectionsTable = pgTable('inspections', {
   damageSurfaceChangeLog: jsonb('damage_surface_change_log')
     .$type<
       Array<{
-        surface: 'roof' | 'siding' | 'collateral';
+        surface: 'roof' | 'siding' | 'collateral' | 'interior';
         prior: boolean;
         next: boolean;
         changedByUserId: string;
@@ -483,7 +602,7 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   stage: varchar('stage', { enum: CAPTURE_STAGES }),
   subjectType: varchar('subject_type', { enum: INSPECTION_SUBJECT_TYPES }).notNull(),
   subjectId: varchar('subject_id'),
-  triadRole: varchar('triad_role', { enum: PHOTO_TRIAD_ROLES }),
+  triadRole: varchar('triad_role', { enum: PHOTO_CAPTURE_ROLES }),
   // Phase 1 single-shot slot (P2). Mutually exclusive with `triadRole`: a
   // preliminary photo sets this and leaves triadRole null; a forensic triad
   // photo sets triadRole and leaves this null. Nullable for every existing row.

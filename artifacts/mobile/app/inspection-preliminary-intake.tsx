@@ -70,6 +70,7 @@ export default function PreliminaryIntakeScreen() {
         roofDamageFound: surfaces.includes('roof'),
         sidingDamageFound: surfaces.includes('siding'),
         collateralDamageFound: surfaces.includes('collateral'),
+        interiorDamageFound: surfaces.includes('interior'),
       };
       if (editingId) {
         await patchInspection(queryClient, editingId, {

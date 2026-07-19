@@ -68,7 +68,7 @@ import {
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
-import type { Role } from '@workspace/db';
+import type { Role, RepairabilityAssessment } from '@workspace/db';
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -169,6 +169,41 @@ async function loadWritableInspection(
 // Loads every child collection for an inspection, scoped to the company. Shared
 // by the detail GET, the pre-flight gate re-run (F1), the submission hardening
 // (F2), and the status receipt (F3) so they all see an identical hydration.
+// REPORT_DATA v2 — photos[].captureContext, derived (never stored) from the
+// role tags the app already records. Forensic path: triadRole
+// wide→overview, mid→mid-range, close→close-up, measurement/collateral pass
+// through. Phase 1 path: preliminaryRole front_of_home/roof_overview are
+// overviews, every damage close-up variant is close-up.
+function photoCaptureContext(photo: {
+  triadRole: string | null;
+  preliminaryRole: string | null;
+}): 'overview' | 'mid-range' | 'close-up' | 'measurement' | 'collateral' | null {
+  switch (photo.triadRole) {
+    case 'wide':
+      return 'overview';
+    case 'mid':
+      return 'mid-range';
+    case 'close':
+      return 'close-up';
+    case 'measurement':
+      return 'measurement';
+    case 'collateral':
+      return 'collateral';
+  }
+  switch (photo.preliminaryRole) {
+    case 'front_of_home':
+    case 'roof_overview':
+      return 'overview';
+    case 'damage_closeup':
+    case 'damage_closeup_roof':
+    case 'damage_closeup_siding':
+    case 'damage_closeup_collateral':
+    case 'damage_closeup_interior':
+      return 'close-up';
+  }
+  return null;
+}
+
 async function hydrateInspectionChildren(
   inspectionId: string,
   companyId: string,
@@ -336,7 +371,7 @@ async function hydrateInspectionChildren(
     sidingFacets,
     elevations,
     damageInstances,
-    photos,
+    photos: photos.map((photo) => ({ ...photo, captureContext: photoCaptureContext(photo) })),
     components,
     penetrations,
     products,
@@ -510,6 +545,7 @@ router.post('/inspections', async (req: Request, res: Response) => {
     roofDamageFound: parsed.data.roofDamageFound ?? undefined,
     sidingDamageFound: parsed.data.sidingDamageFound ?? undefined,
     collateralDamageFound: parsed.data.collateralDamageFound ?? undefined,
+    interiorDamageFound: parsed.data.interiorDamageFound ?? undefined,
   };
 
   // Offline-first: when the client supplies its own id, creation is
@@ -655,7 +691,8 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     const roof = parsed.data.roofDamageFound ?? inspection.roofDamageFound;
     const siding = parsed.data.sidingDamageFound ?? inspection.sidingDamageFound;
     const collateral = parsed.data.collateralDamageFound ?? inspection.collateralDamageFound;
-    if (!roof && !siding && !collateral) {
+    const interior = parsed.data.interiorDamageFound ?? inspection.interiorDamageFound;
+    if (!roof && !siding && !collateral && !interior) {
       res.status(400).json({
         error: 'Select at least one damage surface before completing the preliminary phase',
       });
@@ -669,7 +706,7 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
   // basis. Same spirit as the storm-confirmation rule, except we record the
   // change (who/when/prior value) instead of rejecting it.
   const surfaceRemovals: Array<{
-    surface: 'roof' | 'siding' | 'collateral';
+    surface: 'roof' | 'siding' | 'collateral' | 'interior';
     prior: boolean;
     next: boolean;
     changedByUserId: string;
@@ -680,6 +717,7 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       ['roof', 'roofDamageFound'],
       ['siding', 'sidingDamageFound'],
       ['collateral', 'collateralDamageFound'],
+      ['interior', 'interiorDamageFound'],
     ] as const;
     for (const [surface, field] of flagPairs) {
       if (parsed.data[field] === false && inspection[field] === true) {
@@ -692,6 +730,64 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
         });
       }
     }
+  }
+
+  // REPORT_DATA v2 — property-protection plan: the reason is REQUIRED when
+  // the specialized flag is affirmatively set (the flag is never inferred).
+  if (
+    parsed.data.propertyProtectionPlan &&
+    parsed.data.propertyProtectionPlan.specializedRequired &&
+    !parsed.data.propertyProtectionPlan.whyOrdinaryTarpingInsufficient?.trim()
+  ) {
+    res.status(400).json({
+      error:
+        'whyOrdinaryTarpingInsufficient is required when specialized protection is flagged',
+    });
+    return;
+  }
+
+  // REPORT_DATA v2 — property profile: a roof age without a basis is
+  // attackable; reject the pair-less value outright.
+  if (
+    parsed.data.propertyProfile &&
+    parsed.data.propertyProfile.roofAgeYears != null &&
+    !parsed.data.propertyProfile.roofAgeBasis
+  ) {
+    res.status(400).json({ error: 'roofAgeBasis is required when roofAgeYears is set' });
+    return;
+  }
+
+  // REPORT_DATA v2 — repairability assessment: assessor identity comes from
+  // the inspector's profile, never from the client payload.
+  let repairabilityToStore: RepairabilityAssessment | null | undefined =
+    parsed.data.repairabilityAssessment;
+  if (parsed.data.repairabilityAssessment) {
+    const [assessor] = await db
+      .select({
+        firstName: usersTable.firstName,
+        lastName: usersTable.lastName,
+        certifications: userProfilesTable.certifications,
+        yearsExperience: userProfilesTable.yearsExperience,
+      })
+      .from(usersTable)
+      .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
+      .where(eq(usersTable.id, inspection.inspectorUserId));
+    const certs = (assessor?.certifications ?? []) as Array<{
+      name: string;
+      issuingBody?: string | null;
+    }>;
+    const credentialParts = certs.map((c) =>
+      c.issuingBody ? `${c.name} (${c.issuingBody})` : c.name,
+    );
+    if (assessor?.yearsExperience != null) {
+      credentialParts.push(`${assessor.yearsExperience} years experience`);
+    }
+    repairabilityToStore = {
+      ...parsed.data.repairabilityAssessment,
+      assessorName:
+        [assessor?.firstName, assessor?.lastName].filter(Boolean).join(' ') || null,
+      assessorCredentials: credentialParts.length > 0 ? credentialParts.join('; ') : null,
+    };
   }
 
   const [updated] = await db
@@ -739,6 +835,9 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       ...(parsed.data.collateralDamageFound !== undefined && {
         collateralDamageFound: parsed.data.collateralDamageFound,
       }),
+      ...(parsed.data.interiorDamageFound !== undefined && {
+        interiorDamageFound: parsed.data.interiorDamageFound,
+      }),
       // v2.2 — inspection-level WRB answer (asked on the Siding Inspection
       // step when at least one facet is damaged).
       ...(parsed.data.sidingWrbPresent !== undefined && {
@@ -746,6 +845,23 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       }),
       ...(parsed.data.sidingMeasurementReportRef !== undefined && {
         sidingMeasurementReportRef: parsed.data.sidingMeasurementReportRef,
+      }),
+      // REPORT_DATA v2 capture blocks. Whole-object replace (no partial
+      // merge) — the client always sends the full block.
+      ...(parsed.data.propertyProfile !== undefined && {
+        propertyProfile: parsed.data.propertyProfile,
+      }),
+      ...(repairabilityToStore !== undefined && {
+        repairabilityAssessment: repairabilityToStore,
+      }),
+      ...(parsed.data.existingOrUnrelatedConditions !== undefined && {
+        existingOrUnrelatedConditions: parsed.data.existingOrUnrelatedConditions,
+      }),
+      ...(parsed.data.temporaryRepairs !== undefined && {
+        temporaryRepairs: parsed.data.temporaryRepairs,
+      }),
+      ...(parsed.data.propertyProtectionPlan !== undefined && {
+        propertyProtectionPlan: parsed.data.propertyProtectionPlan,
       }),
     })
     .where(eq(inspectionsTable.id, inspectionId))
@@ -2006,6 +2122,7 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
       roofDamageFound: inspection.roofDamageFound,
       sidingDamageFound: inspection.sidingDamageFound,
       collateralDamageFound: inspection.collateralDamageFound,
+      interiorDamageFound: inspection.interiorDamageFound,
     },
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
   });
@@ -2021,8 +2138,22 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
   // Record the on-file signature reference into the stored manifest so the
   // package is self-contained (the client also sends it, but the server is the
   // source of truth for what's actually on file).
+  // REPORT_DATA v2 — the individual credential layer rides along with every
+  // submission (the company pack lives Brain-side). Server-sourced, never
+  // client-sent.
+  const [inspectorUser] = await db
+    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(eq(usersTable.id, inspection.inspectorUserId));
+
   const manifestToStore = {
     ...parsed.data.manifest,
+    inspector: {
+      name:
+        [inspectorUser?.firstName, inspectorUser?.lastName].filter(Boolean).join(' ') || null,
+      certifications: inspectorProfile.certifications ?? [],
+      yearsExperience: inspectorProfile.yearsExperience ?? null,
+    },
     signatureOnFile: {
       url: inspectorProfile.signatureUrl,
       sha256: inspectorProfile.signatureSha256,
@@ -2067,6 +2198,7 @@ router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Re
       roofDamageFound: inspection.roofDamageFound,
       sidingDamageFound: inspection.sidingDamageFound,
       collateralDamageFound: inspection.collateralDamageFound,
+      interiorDamageFound: inspection.interiorDamageFound,
     },
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
   });

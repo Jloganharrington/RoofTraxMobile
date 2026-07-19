@@ -20,6 +20,7 @@ import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-c
 import {
   getGetMyProfileQueryKey,
   useListPins,
+  useUpdateProfileCredentials,
   useUpdateProfileSignature,
   useUpdateProfileSmtp,
   useTestProfileSmtp,
@@ -398,6 +399,10 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* REPORT_DATA v2 §6 — inspector credentials. These ride along with
+          every submission and back the repairability assessor line. */}
+      <CredentialsCard colors={colors} profile={profile} />
+
       <Modal
         visible={smtpOpen}
         transparent
@@ -620,6 +625,228 @@ const SIGNATURE_WEB_STYLE = `
   .m-signature-pad--footer { display: none; }
   body, html { height: 100%; margin: 0; }
 `;
+
+// REPORT_DATA v2 §6 — certifications + years of experience editor. Simple
+// whole-list save: the list is small and the profile is edited at a desk,
+// not in the field.
+function CredentialsCard({
+  colors,
+  profile,
+}: {
+  colors: ReturnType<typeof useColors>;
+  profile:
+    | {
+        certifications?: Array<{
+          name: string;
+          issuingBody?: string | null;
+          number?: string | null;
+          expiry?: string | null;
+        }> | null;
+        yearsExperience?: number | null;
+      }
+    | null
+    | undefined;
+}) {
+  const queryClient = useQueryClient();
+  const updateCredentials = useUpdateProfileCredentials();
+  const [editing, setEditing] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [years, setYears] = React.useState('');
+  const [certs, setCerts] = React.useState<
+    Array<{ name: string; issuingBody: string; number: string; expiry: string }>
+  >([]);
+
+  const storedCerts = profile?.certifications ?? [];
+  const storedYears = profile?.yearsExperience ?? null;
+
+  function openEditor() {
+    setYears(storedYears != null ? String(storedYears) : '');
+    setCerts(
+      storedCerts.map((c) => ({
+        name: c.name,
+        issuingBody: c.issuingBody ?? '',
+        number: c.number ?? '',
+        expiry: c.expiry ?? '',
+      })),
+    );
+    setEditing(true);
+  }
+
+  async function save() {
+    if (saving) return;
+    const cleaned = certs
+      .map((c) => ({
+        name: c.name.trim(),
+        issuingBody: c.issuingBody.trim() || null,
+        number: c.number.trim() || null,
+        expiry: c.expiry.trim() || null,
+      }))
+      .filter((c) => c.name !== '');
+    const yearsNum = years.trim() === '' ? null : Number(years.trim());
+    if (yearsNum != null && (!Number.isFinite(yearsNum) || yearsNum < 0)) {
+      Alert.alert('Invalid value', 'Years of experience must be a number.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateCredentials.mutateAsync({
+        data: { certifications: cleaned, yearsExperience: yearsNum },
+      });
+      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      setEditing(false);
+    } catch {
+      Alert.alert('Save failed', 'Could not save credentials. Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.sigHeader}>
+        <Icon name="award" size={18} color={colors.foreground} />
+        <Text style={[styles.sigTitle, { color: colors.foreground }]}>Inspector credentials</Text>
+        {storedCerts.length > 0 || storedYears != null ? (
+          <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+            <Text style={[styles.sigBadgeText, { color: colors.success }]}>On file</Text>
+          </View>
+        ) : (
+          <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
+            <Text style={[styles.sigBadgeText, { color: colors.mutedForeground }]}>Not set</Text>
+          </View>
+        )}
+      </View>
+
+      {!editing ? (
+        <>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {storedCerts.length > 0 || storedYears != null
+              ? [
+                  storedYears != null ? `${storedYears} years experience` : null,
+                  ...storedCerts.map((c) =>
+                    c.issuingBody ? `${c.name} (${c.issuingBody})` : c.name,
+                  ),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : 'Certifications and years of experience are attached to every inspection package and back your repairability determinations.'}
+          </Text>
+          <Pressable onPress={openEditor} style={[styles.sigButton, { backgroundColor: colors.secondary }]}>
+            <Text style={styles.sigButtonText}>
+              {storedCerts.length > 0 || storedYears != null ? 'Edit credentials' : 'Add credentials'}
+            </Text>
+          </Pressable>
+        </>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13, fontWeight: '600' }}>
+            Years of experience
+          </Text>
+          <TextInput
+            value={years}
+            onChangeText={setYears}
+            keyboardType="numeric"
+            placeholder="e.g. 8"
+            placeholderTextColor={colors.mutedForeground}
+            style={{
+              borderWidth: 1,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              color: colors.foreground,
+            }}
+          />
+          {certs.map((cert, index) => (
+            <View
+              key={index}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 10,
+                gap: 8,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: colors.foreground, fontWeight: '700' }}>
+                  Certification {index + 1}
+                </Text>
+                <Pressable onPress={() => setCerts((prev) => prev.filter((_, i) => i !== index))}>
+                  <Icon name="trash-2" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+              {(
+                [
+                  ['name', 'Name (e.g. HAAG Certified Inspector)'],
+                  ['issuingBody', 'Issuing body'],
+                  ['number', 'Certificate number'],
+                  ['expiry', 'Expiry (YYYY-MM-DD)'],
+                ] as const
+              ).map(([field, placeholder]) => (
+                <TextInput
+                  key={field}
+                  value={cert[field]}
+                  onChangeText={(v) =>
+                    setCerts((prev) =>
+                      prev.map((c, i) => (i === index ? { ...c, [field]: v } : c)),
+                    )
+                  }
+                  placeholder={placeholder}
+                  placeholderTextColor={colors.mutedForeground}
+                  style={{
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 9,
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                    color: colors.foreground,
+                  }}
+                />
+              ))}
+            </View>
+          ))}
+          <Pressable
+            onPress={() =>
+              setCerts((prev) => [...prev, { name: '', issuingBody: '', number: '', expiry: '' }])
+            }
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              paddingVertical: 10,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderStyle: 'dashed',
+              borderColor: colors.border,
+            }}
+          >
+            <Icon name="plus" size={16} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: '600' }}>Add certification</Text>
+          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Pressable
+              onPress={save}
+              disabled={saving}
+              style={[styles.sigButton, { backgroundColor: colors.secondary, flex: 1, opacity: saving ? 0.6 : 1 }]}
+            >
+              <Text style={styles.sigButtonText}>{saving ? 'Saving…' : 'Save credentials'}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setEditing(false)}
+              style={[styles.sigButton, { borderColor: colors.border, borderWidth: 1, paddingHorizontal: 16 }]}
+            >
+              <Text style={[styles.sigButtonText, { color: colors.foreground }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

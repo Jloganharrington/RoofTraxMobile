@@ -100,6 +100,7 @@ import type {
   UpdateInspectionSidingFacetInput,
   UpdateInspectionSlopeInput,
   UpdatePinInput,
+  UpdateProfileCredentialsInput,
   UpdateProfileSignatureInput,
   UpdateProfileSmtpInput,
   UpdateTeamUserInput,
@@ -1138,6 +1139,77 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
 
 
 
+
+export const getUpdateProfileCredentialsUrl = () => {
+
+
+
+
+  return `/api/profile/credentials`
+}
+
+/**
+ * @summary Update the current user's certifications and years of experience
+ */
+export const updateProfileCredentials = async (updateProfileCredentialsInput: UpdateProfileCredentialsInput, options?: RequestInit): Promise<ProfileEnvelope> => {
+
+  return customFetch<ProfileEnvelope>(getUpdateProfileCredentialsUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateProfileCredentialsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateProfileCredentialsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileCredentials>>, TError,{data: BodyType<UpdateProfileCredentialsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProfileCredentials>>, TError,{data: BodyType<UpdateProfileCredentialsInput>}, TContext> => {
+
+const mutationKey = ['updateProfileCredentials'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProfileCredentials>>, {data: BodyType<UpdateProfileCredentialsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateProfileCredentials(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProfileCredentialsMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfileCredentials>>>
+    export type UpdateProfileCredentialsMutationBody = BodyType<UpdateProfileCredentialsInput>
+    export type UpdateProfileCredentialsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update the current user's certifications and years of experience
+ */
+export const useUpdateProfileCredentials = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileCredentials>>, TError,{data: BodyType<UpdateProfileCredentialsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProfileCredentials>>,
+        TError,
+        {data: BodyType<UpdateProfileCredentialsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateProfileCredentialsMutationOptions(options));
+    }
 
 export const getUpdateProfileSignatureUrl = () => {
 

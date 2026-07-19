@@ -10,6 +10,7 @@ import type { ComponentZone } from './componentZone';
 import type { InspectionPhotoExifJson } from './inspectionPhotoExifJson';
 import type { InspectionPhotoOverlayJson } from './inspectionPhotoOverlayJson';
 import type { InspectionSubjectType } from './inspectionSubjectType';
+import type { PhotoCaptureContext } from './photoCaptureContext';
 import type { PhotoTriadRole } from './photoTriadRole';
 import type { PreliminaryPhotoRole } from './preliminaryPhotoRole';
 import type { SidingPhotoRole } from './sidingPhotoRole';
@@ -24,6 +25,8 @@ export interface InspectionPhoto {
   subjectId: string | null;
   triadRole: PhotoTriadRole | null;
   preliminaryRole: PreliminaryPhotoRole | null;
+  /** REPORT_DATA v2 — derived server-side from triadRole (wide→overview, mid→mid-range, close→close-up, measurement/collateral→themselves) or preliminaryRole (front_of_home/roof_overview→overview, damage close-ups→close-up). Null only when the photo carries no role at all. */
+  captureContext?: PhotoCaptureContext | null;
   url: string;
   sha256: string;
   /** @nullable */

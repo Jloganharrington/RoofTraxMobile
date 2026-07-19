@@ -35,6 +35,7 @@ const ROLE_LABEL: Record<PreliminaryPhotoRole, string> = {
   damage_closeup_roof: 'Roof damage close-up',
   damage_closeup_siding: 'Siding damage close-up',
   damage_closeup_collateral: 'Collateral damage close-up',
+  damage_closeup_interior: 'Interior damage close-up',
 };
 
 // Fixed, presentation order for the Phase 1 slots.
@@ -45,6 +46,7 @@ const ROLE_ORDER: PreliminaryPhotoRole[] = [
   'damage_closeup_roof',
   'damage_closeup_siding',
   'damage_closeup_collateral',
+  'damage_closeup_interior',
 ];
 
 const NEXT_STEPS: Array<{ title: string; detail: string }> = [
