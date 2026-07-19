@@ -3301,6 +3301,16 @@ export const ListScheduledInspectionsResponse = zod.object({
 
 
 /**
+ * @summary Manually re-trigger Brain delivery for a submitted inspection (super_admin only). Resets a failed or stuck delivery back to pending and fires an immediate attempt — the same idempotent POST the courier worker would send. Safe to call on an already-delivered inspection (returns 204, no-ops the delivery).
+ */
+export const RedeliverInspectionParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const RedeliverInspectionResponse = zod.void()
+
+
+/**
  * @summary Re-run the shared protocol gate server-side (M-F / F1) so the inspector can resolve deficiencies while still on-site. Authoritative — the server hydrates the record and runs the SAME lib/protocol evaluate() the mobile readiness screen runs.
  */
 export const PreflightInspectionParams = zod.object({

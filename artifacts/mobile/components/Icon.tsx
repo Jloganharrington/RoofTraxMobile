@@ -43,7 +43,10 @@ export type IconName =
   | 'mail'
   | 'droplet'
   | 'tool'
-  | 'shield';
+  | 'shield'
+  | 'send'
+  | 'alert-triangle'
+  | 'refresh-cw';
 
 type IconProps = {
   name: IconName;
@@ -292,6 +295,29 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
             d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
             {...strokeProps}
           />
+        </>
+      )}
+
+      {name === 'send' && (
+        <>
+          <Line x1={22} y1={2} x2={11} y2={13} {...strokeProps} />
+          <Path d="M22 2 15 22 11 13 2 9l20-7z" {...strokeProps} />
+        </>
+      )}
+
+      {name === 'alert-triangle' && (
+        <>
+          <Path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z" {...strokeProps} />
+          <Line x1={12} y1={9} x2={12} y2={13} {...strokeProps} />
+          <Line x1={12} y1={17} x2={12.01} y2={17} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'refresh-cw' && (
+        <>
+          <Polyline points="23 4 23 10 17 10" {...strokeProps} />
+          <Polyline points="1 20 1 14 7 14" {...strokeProps} />
+          <Path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" {...strokeProps} />
         </>
       )}
     </Svg>

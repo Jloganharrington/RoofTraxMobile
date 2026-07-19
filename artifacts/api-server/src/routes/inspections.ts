@@ -2215,6 +2215,53 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
   }
 });
 
+// Manual redeliver — lets a super admin immediately re-trigger Brain delivery
+// for a submitted inspection without waiting for the backoff worker. Safe to
+// call on an already-delivered inspection (no-ops). Resets failed/stuck
+// deliveries to 'pending' and fires an async attempt.
+router.post('/inspections/:inspectionId/redeliver', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  if (actor.role !== 'super_admin') {
+    res.status(403).json({ error: 'Only super admins may manually trigger redelivery' });
+    return;
+  }
+
+  if (!getBrainConfig()) {
+    res.status(403).json({ error: 'Brain courier is not configured on this server' });
+    return;
+  }
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection || !inspection.lockedAt) {
+    res.status(404).json({ error: 'Inspection not found or not yet submitted' });
+    return;
+  }
+
+  // Already delivered — no-op; the Brain is idempotent but no need to resend.
+  if (inspection.brainDeliveryStatus === 'delivered') {
+    res.status(204).end();
+    return;
+  }
+
+  // Reset to pending so the row is eligible for the worker and the immediate
+  // attempt below. Clear the last error so stale messages don't linger.
+  await db
+    .update(inspectionsTable)
+    .set({ brainDeliveryStatus: 'pending', brainLastError: null })
+    .where(eq(inspectionsTable.id, inspectionId));
+
+  res.status(204).end();
+
+  // Fire an immediate attempt in the background — same function the worker
+  // calls, so backoff / idempotency guarantees all apply.
+  void deliverInspectionToBrain(inspectionId).catch((err) =>
+    req.log.error({ err, inspectionId }, 'Manual redeliver attempt failed'),
+  );
+});
+
 // M-F (F1) — Pre-flight. Re-runs the shared gate server-side so the inspector
 // can resolve deficiencies while still on-site, before leaving. Authoritative:
 // hydrates stored rows and runs the SAME evaluate() the client runs. Scoped to

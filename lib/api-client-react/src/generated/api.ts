@@ -4388,6 +4388,77 @@ export function useListScheduledInspections<TData = Awaited<ReturnType<typeof li
 
 
 
+export const getRedeliverInspectionUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/redeliver`
+}
+
+/**
+ * @summary Manually re-trigger Brain delivery for a submitted inspection (super_admin only). Resets a failed or stuck delivery back to pending and fires an immediate attempt — the same idempotent POST the courier worker would send. Safe to call on an already-delivered inspection (returns 204, no-ops the delivery).
+ */
+export const redeliverInspection = async (inspectionId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRedeliverInspectionUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRedeliverInspectionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeliverInspection>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeliverInspection>>, TError,{inspectionId: string}, TContext> => {
+
+const mutationKey = ['redeliverInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeliverInspection>>, {inspectionId: string}> = (props) => {
+          const {inspectionId} = props ?? {};
+
+          return  redeliverInspection(inspectionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeliverInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof redeliverInspection>>>
+
+    export type RedeliverInspectionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Manually re-trigger Brain delivery for a submitted inspection (super_admin only). Resets a failed or stuck delivery back to pending and fires an immediate attempt — the same idempotent POST the courier worker would send. Safe to call on an already-delivered inspection (returns 204, no-ops the delivery).
+ */
+export const useRedeliverInspection = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeliverInspection>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof redeliverInspection>>,
+        TError,
+        {inspectionId: string},
+        TContext
+      > => {
+      return useMutation(getRedeliverInspectionMutationOptions(options));
+    }
+
 export const getPreflightInspectionUrl = (inspectionId: string,) => {
 
 

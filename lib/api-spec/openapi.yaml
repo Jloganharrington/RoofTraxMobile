@@ -2160,6 +2160,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/redeliver:
+    post:
+      tags: [Inspections]
+      operationId: redeliverInspection
+      summary: >-
+        Manually re-trigger Brain delivery for a submitted inspection
+        (super_admin only). Resets a failed or stuck delivery back to pending
+        and fires an immediate attempt — the same idempotent POST the courier
+        worker would send. Safe to call on an already-delivered inspection
+        (returns 204, no-ops the delivery).
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Redeliver queued (or inspection already delivered — no-op).
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized (super_admin required or courier not configured).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found or not yet submitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /inspections/{inspectionId}/preflight:
     post:
       tags: [Inspections]
