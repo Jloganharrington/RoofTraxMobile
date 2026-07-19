@@ -50,6 +50,11 @@ export default function InspectionsScreen() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListInspectionsQueryKey() });
       },
+      onError: (error) => {
+        const message =
+          error instanceof Error ? error.message : 'Could not delete inspection. Try again.';
+        Alert.alert('Delete failed', message);
+      },
     },
   });
 
@@ -157,37 +162,56 @@ export default function InspectionsScreen() {
         </View>
       ) : (
         inspections.map((item: Inspection) => (
-          <Pressable
+          <View
             key={item.id}
-            onPress={() => router.push({ pathname: '/inspection/[id]', params: { id: item.id } })}
-            onLongPress={isSuperAdmin ? () => confirmDelete(item) : undefined}
             style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                {item.insuredName ?? item.address ?? 'Inspection'}
-              </Text>
-              <Text style={{ color: colors.mutedForeground }} numberOfLines={1}>
-                {item.claimNumber ? `Claim ${item.claimNumber}` : item.address ?? '—'}
-              </Text>
-            </View>
-            {item.phase === 'preliminary' ? (
-              <View style={[styles.badge, { backgroundColor: colors.insurance }]}>
-                <Text style={[styles.badgeText, { color: '#fff' }]}>Phase 1</Text>
-              </View>
-            ) : (
-              <View style={[styles.badge, { backgroundColor: colors.accent }]}>
-                <Text style={[styles.badgeText, { color: colors.accentForeground }]}>
-                  {STATUS_LABEL[item.status]}
+            {/* Main tap area — navigates to inspection */}
+            <Pressable
+              onPress={() => router.push({ pathname: '/inspection/[id]', params: { id: item.id } })}
+              style={styles.cardBody}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                  {item.insuredName ?? item.address ?? 'Inspection'}
+                </Text>
+                <Text style={{ color: colors.mutedForeground }} numberOfLines={1}>
+                  {item.claimNumber ? `Claim ${item.claimNumber}` : item.address ?? '—'}
                 </Text>
               </View>
-            )}
+              {item.phase === 'preliminary' ? (
+                <View style={[styles.badge, { backgroundColor: colors.insurance }]}>
+                  <Text style={[styles.badgeText, { color: '#fff' }]}>Phase 1</Text>
+                </View>
+              ) : (
+                <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+                  <Text style={[styles.badgeText, { color: colors.accentForeground }]}>
+                    {STATUS_LABEL[item.status]}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+
+            {/* Delete button — only visible to super admins */}
             {isSuperAdmin && (
-              <View style={{ marginLeft: 2 }}>
-                <Icon name="trash-2" size={16} color={colors.mutedForeground} />
-              </View>
+              <Pressable
+                onPress={() => confirmDelete(item)}
+                disabled={deleteInspection.isPending}
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.deleteBtn,
+                  { borderLeftColor: colors.border },
+                  pressed && { opacity: 0.5 },
+                ]}
+              >
+                {deleteInspection.isPending ? (
+                  <ActivityIndicator size="small" color={colors.destructive} />
+                ) : (
+                  <Icon name="trash-2" size={18} color={colors.destructive} />
+                )}
+              </Pressable>
             )}
-          </Pressable>
+          </View>
         ))
       )}
 
@@ -219,13 +243,25 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardBody: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
   },
   cardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
   badgeText: { fontSize: 12, fontWeight: '700' },
+  deleteBtn: {
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderLeftWidth: 1,
+  },
 });
