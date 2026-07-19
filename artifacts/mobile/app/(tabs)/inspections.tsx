@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   RefreshControl,
@@ -13,6 +14,7 @@ import { router } from 'expo-router';
 import {
   getListInspectionsQueryKey,
   getListScheduledInspectionsQueryKey,
+  useDeleteInspection,
   useListInspections,
   useListScheduledInspections,
 } from '@workspace/api-client-react';
@@ -20,6 +22,7 @@ import type { Inspection, InspectionStatus } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
 
 const STATUS_LABEL: Record<InspectionStatus, string> = {
   scheduled: 'Scheduled',
@@ -32,12 +35,22 @@ const STATUS_LABEL: Record<InspectionStatus, string> = {
 export default function InspectionsScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
+  const { role } = useProfile();
+  const isSuperAdmin = role === 'super_admin';
 
   const scheduled = useListScheduledInspections({
     query: { queryKey: getListScheduledInspectionsQueryKey() },
   });
   const mine = useListInspections({
     query: { queryKey: getListInspectionsQueryKey() },
+  });
+
+  const deleteInspection = useDeleteInspection({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListInspectionsQueryKey() });
+      },
+    },
   });
 
   const scheduledItems = scheduled.data?.scheduled ?? [];
@@ -48,6 +61,22 @@ export default function InspectionsScreen() {
       queryClient.invalidateQueries({ queryKey: getListScheduledInspectionsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getListInspectionsQueryKey() }),
     ]);
+  }
+
+  function confirmDelete(item: Inspection) {
+    const label = item.insuredName ?? item.address ?? 'this inspection';
+    Alert.alert(
+      'Delete inspection?',
+      `"${label}" and all its captured data will be permanently removed. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteInspection.mutate({ inspectionId: item.id }),
+        },
+      ],
+    );
   }
 
   return (
@@ -131,6 +160,7 @@ export default function InspectionsScreen() {
           <Pressable
             key={item.id}
             onPress={() => router.push({ pathname: '/inspection/[id]', params: { id: item.id } })}
+            onLongPress={isSuperAdmin ? () => confirmDelete(item) : undefined}
             style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
           >
             <View style={{ flex: 1 }}>
@@ -150,6 +180,11 @@ export default function InspectionsScreen() {
                 <Text style={[styles.badgeText, { color: colors.accentForeground }]}>
                   {STATUS_LABEL[item.status]}
                 </Text>
+              </View>
+            )}
+            {isSuperAdmin && (
+              <View style={{ marginLeft: 2 }}>
+                <Icon name="trash-2" size={16} color={colors.mutedForeground} />
               </View>
             )}
           </Pressable>

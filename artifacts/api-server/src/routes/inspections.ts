@@ -638,6 +638,29 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   );
 });
 
+router.delete('/inspections/:inspectionId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  if (actor.role !== 'super_admin') {
+    res.status(403).json({ error: 'Only super admins may delete inspections' });
+    return;
+  }
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  // Hard delete — all child records (slopes, photos, attestations, etc.) are
+  // removed by the FK cascade defined on each child table.
+  await db.delete(inspectionsTable).where(eq(inspectionsTable.id, inspectionId));
+
+  res.status(204).end();
+});
+
 router.patch('/inspections/:inspectionId', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;

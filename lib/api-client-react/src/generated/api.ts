@@ -2644,6 +2644,77 @@ export function useGetInspection<TData = Awaited<ReturnType<typeof getInspection
 
 
 
+export const getDeleteInspectionUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}`
+}
+
+/**
+ * @summary Permanently delete an inspection and all its child records (super_admin only)
+ */
+export const deleteInspection = async (inspectionId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteInspectionUrl(inspectionId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteInspectionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspection>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInspection>>, TError,{inspectionId: string}, TContext> => {
+
+const mutationKey = ['deleteInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInspection>>, {inspectionId: string}> = (props) => {
+          const {inspectionId} = props ?? {};
+
+          return  deleteInspection(inspectionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInspection>>>
+
+    export type DeleteInspectionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Permanently delete an inspection and all its child records (super_admin only)
+ */
+export const useDeleteInspection = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInspection>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInspection>>,
+        TError,
+        {inspectionId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteInspectionMutationOptions(options));
+    }
+
 export const getUpdateInspectionUrl = (inspectionId: string,) => {
 
 

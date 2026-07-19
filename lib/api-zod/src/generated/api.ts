@@ -1804,6 +1804,16 @@ export const GetInspectionResponse = zod.object({
 
 
 /**
+ * @summary Permanently delete an inspection and all its child records (super_admin only)
+ */
+export const DeleteInspectionParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const DeleteInspectionResponse = zod.void()
+
+
+/**
  * @summary Update an inspection's status or claim details
  */
 export const UpdateInspectionParams = zod.object({
