@@ -26,3 +26,4 @@
 - [Data-driven URL auth gating](data-driven-url-auth-gating.md) — never attach the session Bearer token to a fetch whose URL comes from a record; gate to the trusted API origin with a `/` boundary check or the token can leak.
 - [Append-only jsonb audit logs](outbox-replay-ordering-and-orphan-gates.md) — append via SQL `col || new::jsonb`, never read-modify-write in JS, or concurrent PATCHes drop audit entries.
 - [Per-user SMTP emailing](user-supplied-smtp.md) — user-supplied outbound hosts need DNS-vetted SSRF guard; encrypted write-only creds; route-scoped body limits.
+- [Brain courier photo proxy + machine token](brain-courier-photo-proxy.md) — BRAIN_MACHINE_TOKEN is a comma-list of companyId:token pairs or a bare global token; proxy enforces tenant scope on every photo fetch.

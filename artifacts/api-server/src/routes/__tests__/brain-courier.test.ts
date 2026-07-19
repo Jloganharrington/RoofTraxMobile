@@ -118,7 +118,10 @@ afterEach(() => {
 
 describe('config gating', () => {
   it('reads config when both vars present, null when either is missing', () => {
-    expect(getBrainConfig()).toEqual({ baseUrl: BRAIN_URL, machineToken: TOKEN });
+    expect(getBrainConfig()).toEqual({
+      baseUrl: BRAIN_URL,
+      tokens: [{ companyId: null, token: TOKEN }],
+    });
     delete process.env['BRAIN_BASE_URL'];
     expect(getBrainConfig()).toBeNull();
     process.env['BRAIN_BASE_URL'] = BRAIN_URL;
