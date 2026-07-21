@@ -22,6 +22,7 @@ export type IconName =
   | 'user'
   | 'log-out'
   | 'chevron-down'
+  | 'chevron-up'
   | 'chevron-right'
   | 'chevron-left'
   | 'clipboard'
@@ -38,6 +39,7 @@ export type IconName =
   | 'edit-3'
   | 'server'
   | 'file-text'
+  | 'book-open'
   | 'grid'
   | 'minus'
   | 'mail'
@@ -184,6 +186,13 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
         </>
       )}
 
+      {name === 'book-open' && (
+        <>
+          <Path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" {...strokeProps} />
+          <Path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" {...strokeProps} />
+        </>
+      )}
+
       {name === 'alert-circle' && (
         <>
           <Circle cx={12} cy={12} r={10} {...strokeProps} />
@@ -208,6 +217,10 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
 
       {name === 'chevron-down' && (
         <Polyline points="6 9 12 15 18 9" {...strokeProps} />
+      )}
+
+      {name === 'chevron-up' && (
+        <Polyline points="18 15 12 9 6 15" {...strokeProps} />
       )}
 
       {name === 'chevron-right' && (

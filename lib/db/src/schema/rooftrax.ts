@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   varchar,
@@ -231,3 +232,71 @@ export type Pin = typeof pinsTable.$inferSelect;
 export type InsertPin = typeof pinsTable.$inferInsert;
 export type UserLocation = typeof userLocationsTable.$inferSelect;
 export type ObjectOwnership = typeof objectOwnershipTable.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Price Book
+// ---------------------------------------------------------------------------
+// Inspection conditions that can trigger a package recommendation. `null`
+// means the package is always available for manual selection.
+export const INSPECTION_CONDITIONS = [
+  'roof_damage',
+  'siding_damage',
+  'roof_and_siding_damage',
+] as const;
+export type InspectionCondition = (typeof INSPECTION_CONDITIONS)[number];
+
+// Individual line items — name, optional description, unit price in cents.
+export const priceBookItemsTable = pgTable('price_book_items', {
+  id: varchar('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 200 }).notNull(),
+  description: text('description'),
+  unitPrice: integer('unit_price').notNull().default(0), // cents
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+// Named packages that group line items and can be auto-suggested based on
+// what the inspection found (e.g. roof_damage → "Roofing Package").
+export const priceBookPackagesTable = pgTable('price_book_packages', {
+  id: varchar('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 200 }).notNull(),
+  inspectionCondition: varchar('inspection_condition', {
+    enum: INSPECTION_CONDITIONS,
+  }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+// Junction: which items (and how many) belong to each package.
+export const priceBookPackageItemsTable = pgTable(
+  'price_book_package_items',
+  {
+    packageId: varchar('package_id')
+      .notNull()
+      .references(() => priceBookPackagesTable.id, { onDelete: 'cascade' }),
+    itemId: varchar('item_id')
+      .notNull()
+      .references(() => priceBookItemsTable.id, { onDelete: 'cascade' }),
+    quantity: integer('quantity').notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.packageId, t.itemId] })],
+);
+
+export type PriceBookItem = typeof priceBookItemsTable.$inferSelect;
+export type PriceBookPackage = typeof priceBookPackagesTable.$inferSelect;

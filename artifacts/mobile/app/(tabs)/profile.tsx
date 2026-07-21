@@ -29,6 +29,7 @@ import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/a
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
+import { PriceBookModal } from '@/components/PriceBookModal';
 import { saveSignatureFromDataUrl } from '@/lib/profileSignature';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -165,6 +166,8 @@ export default function ProfileScreen() {
     }
   }
   const [smtpOpen, setSmtpOpen] = React.useState(false);
+  const [priceBookOpen, setPriceBookOpen] = React.useState(false);
+  const canManagePriceBook = role === 'manager' || role === 'admin' || role === 'super_admin';
   const [smtpSaving, setSmtpSaving] = React.useState(false);
   const [smtpHost, setSmtpHost] = React.useState('');
   const [smtpPort, setSmtpPort] = React.useState('587');
@@ -402,6 +405,26 @@ export default function ProfileScreen() {
       {/* REPORT_DATA v2 §6 — inspector credentials. These ride along with
           every submission and back the repairability assessor line. */}
       <CredentialsCard colors={colors} profile={profile} />
+
+      {canManagePriceBook && (
+        <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.sigHeader}>
+            <Icon name="book-open" size={18} color={colors.foreground} />
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Price Book</Text>
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            Manage line items and packages. Group items into packages and set inspection conditions so the right package is suggested at the end of each inspection.
+          </Text>
+          <Pressable
+            onPress={() => setPriceBookOpen(true)}
+            style={[styles.sigButton, { backgroundColor: colors.secondary }]}
+          >
+            <Text style={styles.sigButtonText}>Manage Price Book</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <PriceBookModal visible={priceBookOpen} onClose={() => setPriceBookOpen(false)} />
 
       <Modal
         visible={smtpOpen}
