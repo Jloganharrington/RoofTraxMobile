@@ -9,11 +9,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
 
-import { isManagerOrAdmin } from '../lib/permissions';
-
 const router: IRouter = Router();
 
-async function requireManagerOrAdmin(req: Request, res: Response) {
+async function requireAdminOrAbove(req: Request, res: Response) {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: 'Unauthorized' });
     return null;
@@ -23,8 +21,8 @@ async function requireManagerOrAdmin(req: Request, res: Response) {
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, req.user.id));
   const role = profile?.role ?? 'field_rep';
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager/admin role required' });
+  if (role !== 'admin' && role !== 'super_admin') {
+    res.status(403).json({ error: 'Admin role required' });
     return null;
   }
   return { role, companyId: req.user.companyId };
@@ -47,7 +45,7 @@ const UpdateItemBody = z.object({
 });
 
 router.get('/price-book/items', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const items = await db
@@ -60,7 +58,7 @@ router.get('/price-book/items', async (req: Request, res: Response) => {
 });
 
 router.post('/price-book/items', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const parsed = CreateItemBody.safeParse(req.body);
@@ -83,7 +81,7 @@ router.post('/price-book/items', async (req: Request, res: Response) => {
 });
 
 router.patch('/price-book/items/:itemId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const parsed = UpdateItemBody.safeParse(req.body);
@@ -122,7 +120,7 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
 });
 
 router.delete('/price-book/items/:itemId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const [existing] = await db
@@ -175,7 +173,7 @@ const UpdatePackageBody = z.object({
 });
 
 router.get('/price-book/packages', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const packages = await db
@@ -210,7 +208,7 @@ router.get('/price-book/packages', async (req: Request, res: Response) => {
 });
 
 router.post('/price-book/packages', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const parsed = CreatePackageBody.safeParse(req.body);
@@ -244,7 +242,7 @@ router.post('/price-book/packages', async (req: Request, res: Response) => {
 });
 
 router.patch('/price-book/packages/:packageId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const parsed = UpdatePackageBody.safeParse(req.body);
@@ -311,7 +309,7 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
 });
 
 router.delete('/price-book/packages/:packageId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
   const [existing] = await db

@@ -167,7 +167,7 @@ export default function ProfileScreen() {
   }
   const [smtpOpen, setSmtpOpen] = React.useState(false);
   const [priceBookOpen, setPriceBookOpen] = React.useState(false);
-  const canManagePriceBook = role === 'manager' || role === 'admin' || role === 'super_admin';
+  const canManagePriceBook = role === 'admin' || role === 'super_admin';
   const [smtpSaving, setSmtpSaving] = React.useState(false);
   const [smtpHost, setSmtpHost] = React.useState('');
   const [smtpPort, setSmtpPort] = React.useState('587');
