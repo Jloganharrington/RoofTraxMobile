@@ -2,7 +2,9 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -508,7 +510,10 @@ export function PriceBookModal({
       animationType="slide"
       onRequestClose={currentView === 'list' ? handleClose : () => setCurrentView('list')}
     >
-      <View style={[s.overlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[s.overlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
+      >
         <View style={[s.sheet, { backgroundColor: colors.background }]}>
           {/* Header */}
           <View style={[s.header, { borderBottomColor: colors.border }]}>
@@ -706,7 +711,7 @@ export function PriceBookModal({
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
