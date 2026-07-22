@@ -195,11 +195,11 @@ const FIPSA_TEMPLATE = `<!doctype html>
   .sig-party{ color:var(--navy); font-weight:700; margin-bottom:6px; }
   .sigline{
     display:block; border-bottom:1px solid var(--rule);
-    height:88px; position:relative;
+    height:22px; position:relative;
   }
   .sigline img{
     position:absolute; bottom:1px; left:4px;
-    max-height:84px; max-width:96%; object-fit:contain;
+    max-height:21px; max-width:96%; object-fit:contain;
   }
   .sig-caption{ font-size:9.5pt; color:#555; margin-top:3px; }
   .sig-printrow{ margin-top:7px; font-size:10pt; white-space:nowrap; }
@@ -305,7 +305,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
 
   <div class="field-line">Date: <span class="fill short" data-field="cancellation.buyerDate"></span></div>
 
-  <div class="field-line">Buyer's signature: <span class="sigline" style="display:inline-block; width:60%; vertical-align:middle; height:88px;"><img data-sig="buyer" alt="" style="max-height:84px;" /></span></div>
+  <div class="field-line">Buyer's signature: <span class="sigline" style="display:inline-block; width:60%; vertical-align:middle;"><img data-sig="buyer" alt="" /></span></div>
 </section>
 
 <script>
