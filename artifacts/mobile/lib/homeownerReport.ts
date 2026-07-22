@@ -223,10 +223,18 @@ async function resolvePreliminaryPhotos(inspection: Inspection): Promise<Resolve
     let dataUri: string | null = null;
     if (localPath) dataUri = await imageToDataUri(localPath);
     if (!dataUri && photo.url) {
+      // Photos stored via the object-storage pipeline have relative paths like
+      // /objects/uploads/{uuid}. The storage proxy lives at
+      // {apiBase}/storage/objects/... so we must expand the path to an
+      // absolute URL before fetching. This also makes isTrustedApiUrl return
+      // true, so the Bearer token is correctly attached.
+      const resolvedUrl = photo.url.startsWith('/objects/')
+        ? `${apiBase}/storage${photo.url}`
+        : photo.url;
       // Attach the Bearer token only for our own API origin; never for an
       // untrusted host that a poisoned record URL might point at.
-      const useAuth = isTrustedApiUrl(photo.url, apiBase);
-      dataUri = await imageToDataUri(photo.url, useAuth ? headers : undefined);
+      const useAuth = isTrustedApiUrl(resolvedUrl, apiBase);
+      dataUri = await imageToDataUri(resolvedUrl, useAuth ? headers : undefined);
     }
     if (dataUri) resolved.push({ role: photo.preliminaryRole, dataUri });
   }
