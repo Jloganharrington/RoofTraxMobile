@@ -34,11 +34,12 @@ import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-c
 import {
   getGetInspectionQueryKey,
   useGetInspection,
+  customFetch,
 } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
-import { useSignAgreement } from '@/lib/agreementApi';
+import { useSignAgreement, useEmailAgreement } from '@/lib/agreementApi';
 import {
   addBusinessDays,
   buildFipsaHtml,
@@ -62,6 +63,111 @@ const SCROLL_DETECT_JS = `
 })();
 true;
 `;
+
+// ── Calendar helper ────────────────────────────────────────────────────────────
+function CalendarPicker({
+  selected,
+  minDate,
+  onSelect,
+  colors,
+}: {
+  selected: Date;
+  minDate: Date;
+  onSelect: (d: Date) => void;
+  colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+}) {
+  const [viewYear, setViewYear] = useState(selected.getFullYear());
+  const [viewMonth, setViewMonth] = useState(selected.getMonth());
+
+  const today = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  }
+
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const MONTH_NAMES = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  return (
+    <View style={{ gap: 8 }}>
+      {/* Month nav */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Pressable onPress={prevMonth} hitSlop={12} style={calStyles.navBtn}>
+          <Icon name="chevron-left" size={20} color={colors.foreground} />
+        </Pressable>
+        <Text style={[calStyles.monthLabel, { color: colors.foreground }]}>
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </Text>
+        <Pressable onPress={nextMonth} hitSlop={12} style={calStyles.navBtn}>
+          <Icon name="chevron-right" size={20} color={colors.foreground} />
+        </Pressable>
+      </View>
+
+      {/* Day-of-week headers */}
+      <View style={calStyles.row}>
+        {DOW.map(d => (
+          <Text key={d} style={[calStyles.dowCell, { color: colors.mutedForeground }]}>{d}</Text>
+        ))}
+      </View>
+
+      {/* Day cells */}
+      {Array.from({ length: cells.length / 7 }, (_, row) => (
+        <View key={row} style={calStyles.row}>
+          {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
+            if (!day) return <View key={col} style={calStyles.dayCell} />;
+            const cellDate = new Date(viewYear, viewMonth, day);
+            const isPast = cellDate < today;
+            const isSel =
+              selected.getFullYear() === viewYear &&
+              selected.getMonth() === viewMonth &&
+              selected.getDate() === day;
+            return (
+              <Pressable
+                key={col}
+                onPress={() => !isPast && onSelect(cellDate)}
+                style={[
+                  calStyles.dayCell,
+                  isSel && { backgroundColor: colors.primary, borderRadius: 8 },
+                  isPast && { opacity: 0.3 },
+                ]}
+              >
+                <Text style={{
+                  fontSize: 14, fontWeight: isSel ? '700' : '400',
+                  color: isSel ? colors.primaryForeground : colors.foreground,
+                  textAlign: 'center',
+                }}>
+                  {day}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const calStyles = StyleSheet.create({
+  navBtn: { padding: 6 },
+  monthLabel: { fontSize: 16, fontWeight: '700' },
+  row: { flexDirection: 'row' },
+  dowCell: { flex: 1, textAlign: 'center', fontSize: 12, paddingVertical: 4 },
+  dayCell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+});
 
 type ActiveModal = 'owner' | 'rep' | 'ownerName' | null;
 
@@ -97,6 +203,19 @@ export default function InspectionAgreementScreen() {
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
 
   const signAgreement = useSignAgreement();
+  const emailAgreement = useEmailAgreement();
+  const [scheduling, setScheduling] = useState(false);
+
+  // ── Post-signing flow state ──────────────────────────────────────────────────
+  const [signedDocHtml, setSignedDocHtml] = useState<string | null>(null);
+  const [showDocPreview, setShowDocPreview] = useState(false);
+  const [showNextSteps, setShowNextSteps] = useState(false);
+  const [showFtcWarning, setShowFtcWarning] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [emailSentAt, setEmailSentAt] = useState<string | null>(null);
+  const tomorrow = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d; }, []);
+  const [scheduledDate, setScheduledDate] = useState<Date>(tomorrow);
 
   const today = new Date();
   const todayMDY = formatMDY(today);
@@ -231,11 +350,9 @@ export default function InspectionAgreementScreen() {
                 pdfBase64,
               });
 
-              Alert.alert(
-                'Agreement Signed',
-                'The signed agreement has been saved.',
-                [{ text: 'Done', onPress: () => router.back() }],
-              );
+              // Store the signed HTML so the doc-preview modal can render it
+              setSignedDocHtml(signedHtml);
+              setShowDocPreview(true);
             } catch (err) {
               const message =
                 err instanceof Error ? err.message : 'Something went wrong. Please try again.';
@@ -273,7 +390,7 @@ export default function InspectionAgreementScreen() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.sheetCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.ownerNameCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               Owner's Name
             </Text>
@@ -570,6 +687,247 @@ export default function InspectionAgreementScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          POST-SIGNING FLOW — four modals in sequence
+          ══════════════════════════════════════════════════════════════════════ */}
+
+      {/* 1. Document preview + email */}
+      <Modal visible={showDocPreview} animationType="slide" onRequestClose={() => setShowDocPreview(false)}>
+        <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.background }]}>
+          {/* Header */}
+          <View style={[styles.flowModalHeader, { borderBottomColor: colors.border }]}>
+            <Icon name="file-text" size={20} color={colors.foreground} />
+            <Text style={[styles.flowModalTitle, { color: colors.foreground }]}>Signed Agreement</Text>
+            <Pressable onPress={() => setShowDocPreview(false)} hitSlop={12}>
+              <Icon name="x" size={22} color={colors.foreground} />
+            </Pressable>
+          </View>
+
+          {/* Signed document preview */}
+          <WebView
+            source={{ html: signedDocHtml ?? '' }}
+            scrollEnabled
+            showsVerticalScrollIndicator
+            originWhitelist={['*']}
+            style={{ flex: 1 }}
+          />
+
+          {/* Email + continue panel */}
+          <View style={[styles.flowPanel, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+            <Text style={[styles.panelLabel, { color: colors.foreground }]}>Email to homeowner</Text>
+            <View style={styles.emailRow}>
+              <TextInput
+                value={recipientEmail}
+                onChangeText={setRecipientEmail}
+                placeholder="homeowner@email.com"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[
+                  styles.emailInput,
+                  { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card },
+                ]}
+              />
+              <Pressable
+                onPress={async () => {
+                  if (!recipientEmail.trim()) return;
+                  try {
+                    const result = await emailAgreement.mutateAsync({ inspectionId: id, recipient: recipientEmail.trim() });
+                    if (result.noSmtp) {
+                      Alert.alert('No Email Configured', 'Configure SMTP in your profile settings to send emails directly from the app.');
+                    } else {
+                      setEmailSentAt(result.emailedAt ?? new Date().toISOString());
+                    }
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : 'Could not send email.';
+                    Alert.alert('Send Failed', msg);
+                  }
+                }}
+                disabled={emailAgreement.isPending || !recipientEmail.trim()}
+                style={[
+                  styles.sendBtn,
+                  { backgroundColor: colors.primary, opacity: emailAgreement.isPending || !recipientEmail.trim() ? 0.45 : 1 },
+                ]}
+              >
+                {emailAgreement.isPending
+                  ? <ActivityIndicator color={colors.primaryForeground} size="small" />
+                  : <Icon name="send" size={16} color={colors.primaryForeground} />}
+              </Pressable>
+            </View>
+            {emailSentAt && (
+              <View style={[styles.sentBadge, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
+                <Icon name="check" size={13} color={colors.success} />
+                <Text style={{ color: colors.success, fontSize: 12 }}>
+                  Sent {new Date(emailSentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
+
+            {/* Continue */}
+            <Pressable
+              onPress={() => { setShowDocPreview(false); setShowNextSteps(true); }}
+              style={[styles.flowPrimaryBtn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={[styles.flowPrimaryBtnText, { color: colors.primaryForeground }]}>Continue</Text>
+              <Icon name="chevron-right" size={18} color={colors.primaryForeground} />
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* 2. Next steps — schedule or proceed */}
+      <Modal visible={showNextSteps} animationType="slide" transparent onRequestClose={() => setShowNextSteps(false)}>
+        <View style={[styles.sheetOverlay]}>
+          <View style={[styles.sheetCard, { backgroundColor: colors.card }]}>
+            <View style={{ alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="check" size={28} color={colors.success} />
+              </View>
+              <Text style={[styles.flowModalTitle, { color: colors.foreground, textAlign: 'center' }]}>
+                Agreement Complete
+              </Text>
+              <Text style={[{ color: colors.mutedForeground, fontSize: 14, textAlign: 'center' }]}>
+                What would you like to do next?
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => { setShowNextSteps(false); setShowSchedule(true); }}
+              style={[styles.nextStepBtn, { backgroundColor: colors.card, borderColor: colors.primary }]}
+            >
+              <Icon name="calendar" size={22} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.nextStepBtnTitle, { color: colors.primary }]}>Schedule Phase 2 Inspection</Text>
+                <Text style={[styles.nextStepBtnSub, { color: colors.mutedForeground }]}>Pick a date for the forensic visit</Text>
+              </View>
+              <Icon name="chevron-right" size={18} color={colors.primary} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => { setShowNextSteps(false); setShowFtcWarning(true); }}
+              style={[styles.nextStepBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Icon name="play" size={22} color={colors.foreground} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.nextStepBtnTitle, { color: colors.foreground }]}>Proceed to Phase 2 Now</Text>
+                <Text style={[styles.nextStepBtnSub, { color: colors.mutedForeground }]}>Begin the forensic inspection today</Text>
+              </View>
+              <Icon name="chevron-right" size={18} color={colors.foreground} />
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 3. FTC cooling-off warning */}
+      <Modal visible={showFtcWarning} animationType="fade" transparent onRequestClose={() => setShowFtcWarning(false)}>
+        <View style={styles.sheetOverlay}>
+          <View style={[styles.sheetCard, { backgroundColor: colors.card }]}>
+            <View style={{ alignItems: 'center', gap: 8 }}>
+              <View style={styles.ftcIconWrap}>
+                <Icon name="alert-triangle" size={28} color="#b45309" />
+              </View>
+              <Text style={[styles.flowModalTitle, { color: colors.foreground, textAlign: 'center' }]}>
+                FTC Cooling-Off Period
+              </Text>
+            </View>
+
+            <Text style={[styles.ftcBody, { color: colors.foreground }]}>
+              The FTC Cooling-Off Period of this document is <Text style={{ fontWeight: '700' }}>3 days from signing</Text>. You are attempting to complete the Forensic Inspection prior to the end of the Federal Trade Commission's Cooling-Off Period.
+            </Text>
+            <Text style={[styles.ftcBody, { color: colors.foreground }]}>
+              The homeowner is still entitled to a refund if requested, even if the inspection is completed. Do you still wish to proceed?
+            </Text>
+
+            <View style={styles.ftcBtnRow}>
+              <Pressable
+                onPress={() => { setShowFtcWarning(false); setShowSchedule(true); }}
+                style={[styles.ftcBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+              >
+                <Icon name="calendar" size={16} color={colors.foreground} />
+                <Text style={[styles.ftcBtnText, { color: colors.foreground }]}>Schedule</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setShowFtcWarning(false);
+                  setShowNextSteps(false);
+                  router.replace(`/inspection/${id}` as never);
+                }}
+                style={[styles.ftcBtn, { borderColor: '#ef4444', backgroundColor: '#fef2f2' }]}
+              >
+                <Icon name="play" size={16} color="#dc2626" />
+                <Text style={[styles.ftcBtnText, { color: '#dc2626' }]}>Proceed</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 4. Schedule calendar */}
+      <Modal visible={showSchedule} animationType="slide" transparent onRequestClose={() => setShowSchedule(false)}>
+        <View style={styles.sheetOverlay}>
+          <View style={[styles.sheetCard, { backgroundColor: colors.card }]}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[styles.flowModalTitle, { color: colors.foreground }]}>Schedule Inspection</Text>
+              <Pressable onPress={() => setShowSchedule(false)} hitSlop={12}>
+                <Icon name="x" size={20} color={colors.foreground} />
+              </Pressable>
+            </View>
+
+            <CalendarPicker
+              selected={scheduledDate}
+              minDate={tomorrow}
+              onSelect={setScheduledDate}
+              colors={colors}
+            />
+
+            {/* Selected date display */}
+            <View style={[styles.selectedDateBadge, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <Icon name="calendar" size={15} color={colors.primary} />
+              <Text style={[{ color: colors.foreground, fontSize: 14, fontWeight: '600' }]}>
+                {scheduledDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </Text>
+            </View>
+
+            {/* Confirm */}
+            <Pressable
+              onPress={async () => {
+                try {
+                  setScheduling(true);
+                  await customFetch(`/api/inspections/${id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ scheduledFor: scheduledDate.toISOString() }),
+                  });
+                  setShowSchedule(false);
+                  setShowNextSteps(false);
+                  Alert.alert(
+                    'Inspection Scheduled',
+                    `Phase 2 inspection scheduled for ${scheduledDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}.`,
+                    [{ text: 'OK', onPress: () => router.back() }],
+                  );
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : 'Could not save the schedule.';
+                  Alert.alert('Scheduling Failed', msg);
+                } finally {
+                  setScheduling(false);
+                }
+              }}
+              disabled={scheduling}
+              style={[styles.flowPrimaryBtn, { backgroundColor: colors.primary, opacity: scheduling ? 0.5 : 1 }]}
+            >
+              {scheduling
+                ? <ActivityIndicator color={colors.primaryForeground} />
+                : <>
+                    <Icon name="check" size={18} color={colors.primaryForeground} />
+                    <Text style={[styles.flowPrimaryBtnText, { color: colors.primaryForeground }]}>Confirm Schedule</Text>
+                  </>}
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -690,7 +1048,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center', alignItems: 'center', padding: 24,
   },
-  sheetCard: {
+  ownerNameCard: {
     width: '100%', maxWidth: 420, borderRadius: 18,
     padding: 24, gap: 14,
   },
@@ -733,4 +1091,76 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   doneBtnText: { fontSize: 16, fontWeight: '700' },
+
+  // ── Post-signing flow ────────────────────────────────────────────────────────
+  flowModalHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  flowModalTitle: { fontSize: 18, fontWeight: '700', flex: 1 },
+
+  // Doc preview email panel
+  flowPanel: {
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16,
+    gap: 10, borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  panelLabel: { fontSize: 13, fontWeight: '600' },
+  emailRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  emailInput: {
+    flex: 1, borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 9, fontSize: 14,
+  },
+  sendBtn: {
+    width: 44, height: 44, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sentBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  flowPrimaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 14,
+  },
+  flowPrimaryBtnText: { fontSize: 16, fontWeight: '700' },
+
+  // Sheet overlay (next steps, FTC, schedule)
+  sheetOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, gap: 16,
+  },
+
+  // Next steps
+  nextStepBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 16, borderRadius: 14, borderWidth: 1.5,
+  },
+  nextStepBtnTitle: { fontSize: 15, fontWeight: '700' },
+  nextStepBtnSub: { fontSize: 12, marginTop: 2 },
+
+  // FTC warning
+  ftcIconWrap: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#fffbeb', alignItems: 'center', justifyContent: 'center',
+  },
+  ftcBody: { fontSize: 14, lineHeight: 21 },
+  ftcBtnRow: { flexDirection: 'row', gap: 10 },
+  ftcBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 12, borderWidth: 1.5,
+  },
+  ftcBtnText: { fontSize: 15, fontWeight: '700' },
+
+  // Schedule
+  selectedDateBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 12, borderRadius: 10, borderWidth: 1,
+  },
 });
