@@ -239,7 +239,9 @@ export default function InspectionAgreementScreen() {
 
   useEffect(() => {
     // Pre-fill rep's printed name from their profile.
-    const name = (profile as { name?: string } | undefined)?.name?.trim() ?? '';
+    const first = (profile as { firstName?: string | null } | undefined)?.firstName?.trim() ?? '';
+    const last = (profile as { lastName?: string | null } | undefined)?.lastName?.trim() ?? '';
+    const name = [first, last].filter(Boolean).join(' ');
     if (name.length >= 2) setRepPrintName(name);
   }, [profile]);
 
