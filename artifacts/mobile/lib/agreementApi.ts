@@ -136,6 +136,47 @@ export function useEmailAgreement() {
   });
 }
 
+// ── Agreements list ───────────────────────────────────────────────────────────
+
+export interface AgreementListItem {
+  id: string;
+  inspectionId: string;
+  signerName: string;
+  signedAt: string;
+  emailedAt?: string | null;
+  voidedAt?: string | null;
+  propertyAddress?: string | null;
+  homeownerName?: string | null;
+  /** ISO timestamp of the scheduled Phase 2 visit, or null. */
+  scheduledFor?: string | null;
+  /** Full name of the rep who created the inspection, or null. */
+  repName?: string | null;
+  /** Short-lived presigned GCS URL. Null when voided or unavailable. */
+  downloadUrl?: string | null;
+}
+
+export interface ListAgreementsResult {
+  agreements: AgreementListItem[];
+}
+
+export function getAgreementsListQueryKey(q?: string) {
+  return ['agreements-list', q ?? ''] as const;
+}
+
+export function useListAgreements(q?: string) {
+  return useQuery<ListAgreementsResult, Error>({
+    queryKey: getAgreementsListQueryKey(q),
+    queryFn: async () => {
+      const url = q
+        ? `/api/agreements?q=${encodeURIComponent(q)}`
+        : '/api/agreements';
+      return customFetch<ListAgreementsResult>(url);
+    },
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
 export function useVoidAgreement() {
   const queryClient = useQueryClient();
   return useMutation<

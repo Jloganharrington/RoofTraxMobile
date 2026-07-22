@@ -82,6 +82,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="agreements"
+        options={{
+          title: 'Agreements',
+          href: canSeeInspections ? undefined : null,
+          tabBarIcon: ({ color }) => (
+            <Icon name="file-text" size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',

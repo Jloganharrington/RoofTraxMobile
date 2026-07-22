@@ -24,8 +24,9 @@ import {
   signedAgreementsTable,
   userProfilesTable,
   inspectionsTable,
+  usersTable,
 } from '@workspace/db';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
@@ -715,5 +716,95 @@ router.post(
     res.json({ sent: true, emailedAt: emailedAt.toISOString(), repEmailed });
   },
 );
+
+// ── GET /agreements ───────────────────────────────────────────────────────────
+// Company-scoped list of signed agreements. Managers and above see all reps'
+// agreements; field reps see only their own. Optional ?q= search on address
+// and homeowner name. Returns up to 100 rows, newest-first.
+
+router.get('/agreements', async (req: Request, res: Response) => {
+  const actor = await requireAgreementActor(req, res);
+  if (!actor) return;
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const isManager = ['manager', 'admin', 'super_admin'].includes(actor.role);
+
+  // Build WHERE conditions — always company-scoped.
+  const conditions: Parameters<typeof and>[0][] = [
+    eq(signedAgreementsTable.companyId, actor.companyId),
+  ];
+
+  // Field reps see only their own inspection agreements.
+  if (!isManager) {
+    conditions.push(eq(inspectionsTable.inspectorUserId, actor.userId));
+  }
+
+  // Optional free-text search on property address or homeowner name.
+  if (q) {
+    const searchPattern = `%${q}%`;
+    conditions.push(
+      or(
+        ilike(inspectionsTable.address, searchPattern),
+        ilike(inspectionsTable.insuredName, searchPattern),
+      ),
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: signedAgreementsTable.id,
+      inspectionId: signedAgreementsTable.inspectionId,
+      signerName: signedAgreementsTable.signerName,
+      signedAt: signedAgreementsTable.signedAt,
+      emailedAt: signedAgreementsTable.emailedAt,
+      voidedAt: signedAgreementsTable.voidedAt,
+      documentObjectPath: signedAgreementsTable.documentObjectPath,
+      propertyAddress: inspectionsTable.address,
+      homeownerName: inspectionsTable.insuredName,
+      scheduledFor: inspectionsTable.scheduledFor,
+      repFirstName: usersTable.firstName,
+      repLastName: usersTable.lastName,
+    })
+    .from(signedAgreementsTable)
+    .innerJoin(inspectionsTable, eq(signedAgreementsTable.inspectionId, inspectionsTable.id))
+    .leftJoin(usersTable, eq(inspectionsTable.inspectorUserId, usersTable.id))
+    .where(and(...conditions))
+    .orderBy(desc(signedAgreementsTable.signedAt))
+    .limit(100);
+
+  // Generate short-lived presigned download URLs for active (non-voided) agreements.
+  // Failures are suppressed per-row — the PDF is still accessible via the
+  // storage proxy route if the presigned URL cannot be generated.
+  const agreements = await Promise.all(
+    rows.map(async (row) => {
+      let downloadUrl: string | null = null;
+      if (!row.voidedAt) {
+        try {
+          downloadUrl = await objectStorageService.getSignedDownloadUrl(
+            row.documentObjectPath,
+            15 * 60, // 15 minutes
+          );
+        } catch {
+          // Non-fatal
+        }
+      }
+      return {
+        id: row.id,
+        inspectionId: row.inspectionId,
+        signerName: row.signerName,
+        signedAt: row.signedAt,
+        emailedAt: row.emailedAt ?? null,
+        voidedAt: row.voidedAt ?? null,
+        propertyAddress: row.propertyAddress ?? null,
+        homeownerName: row.homeownerName ?? null,
+        scheduledFor: row.scheduledFor ?? null,
+        repName: [row.repFirstName, row.repLastName].filter(Boolean).join(' ') || null,
+        downloadUrl,
+      };
+    }),
+  );
+
+  res.json({ agreements });
+});
 
 export default router;
