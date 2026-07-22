@@ -352,7 +352,6 @@ export default function InspectionAgreementScreen() {
                 setActiveModal(null);
               }}
               onEmpty={() => setOwnerSigData(null)}
-              onEnd={() => ownerSigRef.current?.readSignature()}
               minWidth={1.5}
               maxWidth={4}
               penColor="#0f2942"
@@ -375,7 +374,7 @@ export default function InspectionAgreementScreen() {
             >
               <Icon name="check" size={18} color={colors.primaryForeground} />
               <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>
-                Done
+                Accept
               </Text>
             </Pressable>
           </View>
@@ -440,7 +439,6 @@ export default function InspectionAgreementScreen() {
                 setActiveModal(null);
               }}
               onEmpty={() => setRepSigData(null)}
-              onEnd={() => repSigRef.current?.readSignature()}
               minWidth={1.5}
               maxWidth={4}
               penColor="#0f2942"
@@ -470,7 +468,7 @@ export default function InspectionAgreementScreen() {
             >
               <Icon name="check" size={18} color={colors.primaryForeground} />
               <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>
-                Done
+                Accept
               </Text>
             </Pressable>
           </View>
