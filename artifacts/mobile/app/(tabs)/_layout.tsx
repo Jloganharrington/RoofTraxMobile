@@ -100,6 +100,12 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* agreements.tsx is kept for deep-link compatibility but must not
+          appear as a tab — it redirects to /documents. */}
+      <Tabs.Screen
+        name="agreements"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }
