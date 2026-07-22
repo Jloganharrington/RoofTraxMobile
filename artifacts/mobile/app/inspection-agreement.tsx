@@ -86,6 +86,10 @@ export default function InspectionAgreementScreen() {
   const inspection = inspectionQuery.data?.inspection;
 
   // ── Company logo — resolved to a data URI so it embeds cleanly in WebView HTML.
+  // Uses fetch() with a Bearer header (same pattern as all other authenticated
+  // API calls) rather than FileSystem.downloadAsync, which is unreliable for
+  // authenticated requests in Expo SDK 54. Content-type is read from the
+  // response header so PNG and JPEG both encode correctly.
   const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
   useEffect(() => {
     if (!companyLogoUrl) { setLogoDataUri(null); return; }
@@ -93,16 +97,20 @@ export default function InspectionAgreementScreen() {
     (async () => {
       try {
         const token = await getToken('auth_session_token');
-        const dest = (FileSystem.cacheDirectory ?? '') + 'company-logo-fipsa.jpg';
-        const dl = await (FileSystem as any).downloadAsync(companyLogoUrl, dest, {
+        const resp = await fetch(companyLogoUrl, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        if (!active || dl.status !== 200) return;
-        const b64 = await (FileSystem as any).readAsStringAsync(dl.uri, {
-          encoding: 'base64',
-        });
-        if (active) setLogoDataUri(`data:image/jpeg;base64,${b64}`);
-      } catch { /* logo preview is non-critical */ }
+        if (!active || !resp.ok) return;
+        const contentType = resp.headers.get('content-type') ?? 'image/jpeg';
+        const buffer = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64 = btoa(binary);
+        if (active) setLogoDataUri(`data:${contentType};base64,${b64}`);
+      } catch { /* logo is non-critical — template renders without it */ }
     })();
     return () => { active = false; };
   }, [companyLogoUrl]);

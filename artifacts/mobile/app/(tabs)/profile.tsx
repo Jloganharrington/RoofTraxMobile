@@ -35,7 +35,6 @@ import { uploadFile } from '@/lib/upload';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 
 const ROLE_LABELS: Record<string, string> = {
   field_rep: 'Field Rep',
@@ -111,15 +110,19 @@ export default function ProfileScreen() {
     (async () => {
       try {
         const token = await getToken('auth_session_token');
-        const dest = (FileSystem.cacheDirectory ?? '') + 'company-logo-profile.jpg';
-        const dl = await FileSystem.downloadAsync(companyLogoUrl, dest, {
+        const resp = await fetch(companyLogoUrl, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
-        if (!active || dl.status !== 200) return;
-        const b64 = await FileSystem.readAsStringAsync(dl.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        if (active) setLogoDataUri(`data:image/jpeg;base64,${b64}`);
+        if (!active || !resp.ok) return;
+        const contentType = resp.headers.get('content-type') ?? 'image/jpeg';
+        const buffer = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const b64 = btoa(binary);
+        if (active) setLogoDataUri(`data:${contentType};base64,${b64}`);
       } catch { /* ignore — logo preview is non-critical */ }
     })();
     return () => { active = false; };
