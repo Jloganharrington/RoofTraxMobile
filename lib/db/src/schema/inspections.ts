@@ -862,6 +862,42 @@ export const companyCrmConfigTable = pgTable('company_crm_config', {
     .$onUpdate(() => new Date()),
 });
 
+// Signed agreement metadata. One row per inspection — immutable after insert.
+// The PDF is stored in object storage; `documentObjectPath` is the
+// `/objects/...` path served by GET /storage/objects/*path.
+export interface AgreementAuditMetadata {
+  /** userId of the rep who performed the signing. */
+  inspectorUserId: string;
+  /** App version string from the request (if provided). */
+  appVersion?: string | null;
+  /** User-agent of the signing device. */
+  userAgent?: string | null;
+}
+
+export const signedAgreementsTable = pgTable('signed_agreements', {
+  id: varchar('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .unique() // One agreement per inspection — enforced at DB level.
+    .references(() => inspectionsTable.id, { onDelete: 'restrict' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  signerName: text('signer_name').notNull(),
+  /** Semver string identifying the agreement template version used. */
+  documentVersion: varchar('document_version', { length: 20 }).notNull(),
+  signedAt: timestamp('signed_at', { withTimezone: true }).notNull().defaultNow(),
+  auditMetadata: jsonb('audit_metadata')
+    .notNull()
+    .$type<AgreementAuditMetadata>(),
+  /** `/objects/uploads/{uuid}` — the signed PDF in private object storage. */
+  documentObjectPath: text('document_object_path').notNull(),
+});
+
+export type SignedAgreement = typeof signedAgreementsTable.$inferSelect;
+
 export type Inspection = typeof inspectionsTable.$inferSelect;
 export type InspectionAddendum = typeof inspectionAddendaTable.$inferSelect;
 export type CompanyCrmConfig = typeof companyCrmConfigTable.$inferSelect;

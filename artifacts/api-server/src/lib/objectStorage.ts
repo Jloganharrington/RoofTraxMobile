@@ -209,6 +209,52 @@ export class ObjectStorageService {
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
   }
+
+  /**
+   * Generate a short-lived presigned GET URL for a stored object.
+   * `objectPath` must be in `/objects/...` form (as returned by uploadObjectBuffer).
+   */
+  async getSignedDownloadUrl(objectPath: string, ttlSec: number = 900): Promise<string> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    const [signedUrl] = await objectFile.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + ttlSec * 1000,
+    });
+    return signedUrl;
+  }
+
+  /**
+   * Upload a Buffer directly from the server (no client presigned URL needed).
+   * Uses the same signed-PUT-URL path that the client upload flow uses, so
+   * it works in the Replit sidecar environment without direct GCS credentials.
+   * Returns the normalized `/objects/uploads/{uuid}` path.
+   */
+  async uploadObjectBuffer(buffer: Buffer, contentType: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+
+    const signedUrl = await signObjectURL({
+      bucketName,
+      objectName,
+      method: 'PUT',
+      ttlSec: 300,
+    });
+
+    const res = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: buffer,
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to upload object buffer: ${res.status} ${res.statusText}`);
+    }
+
+    return `/objects/uploads/${objectId}`;
+  }
 }
 
 function parseObjectPath(path: string): {

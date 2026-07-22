@@ -93,6 +93,7 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection-readiness" options={{ title: 'Readiness' }} />
       <Stack.Screen name="inspection-declaration" options={{ title: 'Declaration' }} />
       <Stack.Screen name="bug-reports" options={{ title: 'Bug Reports' }} />
+      <Stack.Screen name="inspection-agreement" options={{ title: 'Get Homeowner Signature' }} />
     </Stack>
     {/* Beta bug-report pill: mounted ONCE here (never per-screen), renders
         above every authenticated screen, hidden on login by construction

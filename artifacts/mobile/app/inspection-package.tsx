@@ -1,15 +1,18 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import {
+  getGetInspectionQueryKey,
   getGetInspectionStatusQueryKey,
+  useGetInspection,
   useGetInspectionStatus,
   useRedeliverInspection,
 } from '@workspace/api-client-react';
@@ -17,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
+import { useGetAgreement } from '@/lib/agreementApi';
 
 // M-F (F3) — Status & package receipt. Polls the server for this inspection's
 // submission status and a clearly-labeled STUB receipt. The full package (the
@@ -60,6 +64,16 @@ export default function InspectionPackageScreen() {
       refetchInterval: 5000,
     },
   });
+
+  // Fetch the inspection itself so we know the phase (forensic vs preliminary).
+  const inspectionQuery = useGetInspection(id, {
+    query: { queryKey: getGetInspectionQueryKey(id) },
+  });
+  const inspection = inspectionQuery.data?.inspection;
+
+  // Agreement status — forensic inspections only.
+  const isForensic = inspection?.phase === 'forensic';
+  const agreementQuery = useGetAgreement(id);
 
   const redeliver = useRedeliverInspection({
     mutation: {
@@ -249,6 +263,70 @@ export default function InspectionPackageScreen() {
         </View>
       )}
 
+      {/* Forensic agreement card */}
+      {isForensic && (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.headerRow}>
+            <Icon name="edit-3" size={20} color={colors.foreground} />
+            <Text style={[styles.title, { color: colors.foreground }]}>
+              Homeowner agreement
+            </Text>
+          </View>
+
+          {agreementQuery.isLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : agreementQuery.data?.agreement ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="check" size={16} color={colors.success} />
+                <Text style={{ color: colors.success, fontWeight: '700', fontSize: 14 }}>
+                  Agreement signed
+                </Text>
+              </View>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Signed by {agreementQuery.data.agreement.signerName} on{' '}
+                {new Date(agreementQuery.data.agreement.signedAt).toLocaleString()}.
+              </Text>
+              {agreementQuery.data.agreement.downloadUrl ? (
+                <Pressable
+                  onPress={() => {
+                    const url = agreementQuery.data?.agreement?.downloadUrl;
+                    if (url) Linking.openURL(url);
+                  }}
+                  style={[
+                    styles.viewPdfBtn,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <Icon name="file-text" size={16} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
+                    View PDF
+                  </Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Have the homeowner sign the Forensic Inspection Purchase &amp; Sale Agreement
+                on-site.
+              </Text>
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: '/inspection-agreement', params: { id } } as never)
+                }
+                style={[styles.signBtn, { backgroundColor: colors.primary }]}
+              >
+                <Icon name="edit-3" size={16} color={colors.primaryForeground} />
+                <Text style={[styles.signBtnText, { color: colors.primaryForeground }]}>
+                  Get Homeowner Signature
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      )}
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -279,4 +357,22 @@ const styles = StyleSheet.create({
   statCell: { flex: 1, borderWidth: 1, borderRadius: 12, padding: 12, gap: 2 },
   statValue: { fontSize: 24, fontWeight: '800' },
   statLabel: { fontSize: 12 },
+  signBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 10,
+  },
+  signBtnText: { fontSize: 15, fontWeight: '700' },
+  viewPdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
 });

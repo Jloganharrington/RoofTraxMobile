@@ -29,12 +29,13 @@ app.use(
 );
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
-// The email-report route receives a generated PDF (photos included) as
-// base64, so it alone gets a large body limit; every other JSON endpoint
-// keeps the express default (100kb) to avoid widening the DoS surface.
+// Routes that receive large base64 payloads get specific size limits.
+// All others keep the Express default (100kb) to limit the DoS surface.
 // Registered first: express.json marks the body as parsed, so the general
-// parser below skips requests this one already handled.
+// parser below skips requests these already handled.
 app.use('/api/inspections/:inspectionId/email-report', express.json({ limit: '15mb' }));
+// Sign endpoint: receives a base64 PNG signature image (~50–500KB).
+app.use('/api/inspections/:inspectionId/agreement/sign', express.json({ limit: '2mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(authMiddleware);

@@ -16,6 +16,7 @@ import crmRouter from "./crm";
 import bugReportsRouter from "./bugReports";
 import internalRouter from "./internal";
 import priceBookRouter from "./priceBook";
+import agreementRouter from "./agreement";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(crmRouter);
 router.use(bugReportsRouter);
 router.use(internalRouter);
 router.use(priceBookRouter);
+router.use(agreementRouter);
 
 export default router;
