@@ -438,6 +438,17 @@ export default function InspectionDetailScreen() {
             <Text style={styles.headerMeta}>DOL {inspection.dateOfLoss}</Text>
           ) : null}
         </View>
+        {(inspection as unknown as { scheduledFor?: string | null }).scheduledFor ? (
+          <View style={[styles.headerMetaRow, { marginTop: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' }]}>
+            <Icon name="calendar" size={13} color="#ffffff" />
+            <Text style={[styles.headerMeta, { fontWeight: '700' }]}>
+              {'  Phase 2: '}
+              {new Date((inspection as unknown as { scheduledFor: string }).scheduledFor).toLocaleDateString('en-US', {
+                weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+              })}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Pre-inspection equipment attestation (not a protocol step). */}

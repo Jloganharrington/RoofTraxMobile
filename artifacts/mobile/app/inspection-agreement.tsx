@@ -33,9 +33,12 @@ import * as FileSystem from 'expo-file-system';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import {
   getGetInspectionQueryKey,
+  getListInspectionsQueryKey,
+  getListScheduledInspectionsQueryKey,
   useGetInspection,
   customFetch,
 } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
@@ -204,6 +207,7 @@ export default function InspectionAgreementScreen() {
   // ── Scroll gate ─────────────────────────────────────────────────────────────
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
 
+  const queryClient = useQueryClient();
   const signAgreement = useSignAgreement();
   const emailAgreement = useEmailAgreement();
   const [scheduling, setScheduling] = useState(false);
@@ -943,6 +947,10 @@ export default function InspectionAgreementScreen() {
                     });
                   setShowSchedule(false);
                   setShowNextSteps(false);
+                  // Refresh the Inspections tab so the Scheduled section shows
+                  // this appointment without requiring a manual pull-to-refresh.
+                  queryClient.invalidateQueries({ queryKey: getListScheduledInspectionsQueryKey() });
+                  queryClient.invalidateQueries({ queryKey: getListInspectionsQueryKey() });
                   const dateLabel = scheduledDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
                   const emailNote = result.emailSent
                     ? `\n\nA confirmation was sent to ${emailTrimmed}.`

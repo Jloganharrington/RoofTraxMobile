@@ -71,7 +71,7 @@ import {
   usersTable,
 } from '@workspace/db';
 import type { Role, RepairabilityAssessment } from '@workspace/db';
-import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
@@ -591,28 +591,50 @@ router.post('/inspections', async (req: Request, res: Response) => {
   res.status(201).json(CreateInspectionResponse.parse({ inspection: finished }));
 });
 
-// CRM seam (B3 / M-F F4): scheduled inspections come from the external CRM,
-// keyed by the tenant's CRM field key. Until a real key is provisioned the seam
-// is "pending" (see lib/crm), so this returns an empty list rather than
-// fabricating scheduled work — the shape is fixed so the mobile prefill path can
-// be built ahead of the data. When the seam goes active, the upstream fetch
-// drops in here behind the same config gate. Declared before the
-// "/inspections/:inspectionId" route so "scheduled" isn't captured as an id.
+// Scheduled inspections feed (B3 / M-F F4). Returns inspections the rep has
+// booked a Phase 2 date for via notify-schedule (status='scheduled'). These are
+// local-DB appointments. The CRM seam below is the future pathway for externally
+// assigned jobs; once that seam is wired both feeds will be merged.
+// Declared before "/inspections/:inspectionId" so "scheduled" isn't captured as an id.
 router.get('/inspections/scheduled', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
-  const crmConfig = await getCompanyCrmConfig(actor.companyId);
-  if (!crmConfig.enabled || !crmConfig.fieldKey) {
-    // Pending seam — no upstream to read, so no data. Never fabricate.
-    res.json(ListScheduledInspectionsResponse.parse({ scheduled: [] }));
-    return;
-  }
+  // Local Phase 2 appointments — inspections whose status was set to 'scheduled'
+  // by notify-schedule. Field reps see their own; managers and above see all in
+  // the company (matching the agreement tracker's visibility model).
+  const isManager = (['manager', 'admin', 'super_admin'] as string[]).includes(actor.role);
+  const rows = await db
+    .select()
+    .from(inspectionsTable)
+    .where(
+      and(
+        eq(inspectionsTable.companyId, actor.companyId),
+        isManager ? undefined : eq(inspectionsTable.inspectorUserId, actor.userId),
+        eq(inspectionsTable.status, 'scheduled'),
+        isNotNull(inspectionsTable.scheduledFor),
+      ),
+    )
+    .orderBy(inspectionsTable.scheduledFor);
 
-  // Seam active: a real CRM integration would fetch the tenant's scheduled
-  // queue here. No external CRM is connected yet, so this still yields an empty
-  // list rather than inventing appointments.
-  res.json(ListScheduledInspectionsResponse.parse({ scheduled: [] }));
+  const localScheduled = rows.map((row) => ({
+    id: row.id,
+    scheduledFor: row.scheduledFor ? row.scheduledFor.toISOString() : null,
+    insuredName: row.insuredName ?? null,
+    propertyAddress: row.address ?? null,
+    carrier: row.carrierName ?? null,
+    policyNumber: row.policyNumber ?? null,
+    claimNumber: row.claimNumber ?? null,
+    dateOfLoss: row.dateOfLoss ?? null,
+    latitude: row.latitude ?? null,
+    longitude: row.longitude ?? null,
+  }));
+
+  // TODO: push to CRM — merge upstream CRM scheduled queue here when the seam
+  // is active (crmConfig.enabled && crmConfig.fieldKey). CRM-sourced items use
+  // the same ScheduledInspection shape so the mobile prefill path is unchanged.
+
+  res.json(ListScheduledInspectionsResponse.parse({ scheduled: localScheduled }));
 });
 
 router.get('/inspections/:inspectionId', async (req: Request, res: Response) => {
@@ -2652,10 +2674,12 @@ router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, r
 
   const { scheduledFor, ownerEmail } = parsed.data;
 
-  // Persist both fields unconditionally.
+  // Persist the appointment and advance the status to 'scheduled' so the
+  // inspection surfaces in the Scheduled section of the Inspections tab.
+  // TODO: push to CRM — trigger a CRM appointment write here once the seam is active.
   await db
     .update(inspectionsTable)
-    .set({ scheduledFor, ownerEmail })
+    .set({ scheduledFor, ownerEmail, status: 'scheduled' })
     .where(
       and(
         eq(inspectionsTable.id, inspection.id),

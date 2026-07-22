@@ -113,7 +113,7 @@ export default function InspectionsScreen() {
         <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Icon name="calendar" size={20} color={colors.mutedForeground} />
           <Text style={{ color: colors.mutedForeground, flex: 1 }}>
-            No scheduled inspections. Assignments from your CRM will appear here.
+            No scheduled appointments. Phase 2 inspections you book will appear here.
           </Text>
         </View>
       ) : (
@@ -144,6 +144,13 @@ export default function InspectionsScreen() {
               <Text style={{ color: colors.mutedForeground }} numberOfLines={1}>
                 {item.propertyAddress ?? '—'}
               </Text>
+              {item.scheduledFor ? (
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600', marginTop: 2 }}>
+                  {new Date(item.scheduledFor).toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                  })}
+                </Text>
+              ) : null}
             </View>
             <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
           </Pressable>
