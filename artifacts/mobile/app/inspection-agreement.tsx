@@ -211,10 +211,19 @@ export default function InspectionAgreementScreen() {
               });
 
               const { uri } = await Print.printToFileAsync({ html: signedHtml });
-              const pdfBase64 = await FileSystem.readAsStringAsync(uri, {
-                encoding: 'base64' as const,
-              });
-              await FileSystem.deleteAsync(uri, { idempotent: true });
+
+              // expo-file-system v19: readAsStringAsync is gone; use File.bytes()
+              interface UsableFile { bytes(): Promise<Uint8Array>; delete(): Promise<void>; }
+              const pdfFile = new (FileSystem as unknown as { File: new (u: string) => UsableFile }).File(uri);
+              const bytes = await pdfFile.bytes();
+              // safe chunked base64 — avoid call-stack limit on large PDFs
+              let binary = '';
+              const CHUNK = 8192;
+              for (let i = 0; i < bytes.length; i += CHUNK) {
+                binary += String.fromCharCode(...bytes.slice(i, i + CHUNK));
+              }
+              const pdfBase64 = btoa(binary);
+              await pdfFile.delete();
 
               await signAgreement.mutateAsync({
                 inspectionId: id,
