@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
@@ -20,7 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
-import { useGetAgreement } from '@/lib/agreementApi';
+import { useGetAgreement, useVoidAgreement } from '@/lib/agreementApi';
 
 // M-F (F3) — Status & package receipt. Polls the server for this inspection's
 // submission status and a clearly-labeled STUB receipt. The full package (the
@@ -74,6 +76,42 @@ export default function InspectionPackageScreen() {
   // Agreement status — forensic inspections only.
   const isForensic = inspection?.phase === 'forensic';
   const agreementQuery = useGetAgreement(id);
+
+  const voidAgreement = useVoidAgreement();
+  const [showVoidInput, setShowVoidInput] = useState(false);
+  const [voidReasonText, setVoidReasonText] = useState('');
+
+  const handleVoidAgreement = () => {
+    if (voidReasonText.trim().length < 5) {
+      Alert.alert('Reason required', 'Please enter a reason of at least 5 characters.');
+      return;
+    }
+    Alert.alert(
+      'Void signed agreement?',
+      'This will mark the agreement as voided and allow a replacement to be collected. This action is permanent and audit-logged.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Void agreement',
+          style: 'destructive',
+          onPress: () => {
+            voidAgreement.mutate(
+              { inspectionId: id, voidReason: voidReasonText.trim() },
+              {
+                onSuccess: () => {
+                  setShowVoidInput(false);
+                  setVoidReasonText('');
+                },
+                onError: (err) => {
+                  Alert.alert('Error', err.message ?? 'Failed to void agreement');
+                },
+              },
+            );
+          },
+        },
+      ],
+    );
+  };
 
   const redeliver = useRedeliverInspection({
     mutation: {
@@ -275,7 +313,45 @@ export default function InspectionPackageScreen() {
 
           {agreementQuery.isLoading ? (
             <ActivityIndicator size="small" color={colors.primary} />
+          ) : agreementQuery.data?.agreement?.voidedAt ? (
+            // ── Voided state ─────────────────────────────────────────────────
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="slash" size={16} color={colors.destructive} />
+                <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 14 }}>
+                  Voided — re-sign required
+                </Text>
+              </View>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Previously signed by {agreementQuery.data.agreement.signerName} on{' '}
+                {new Date(agreementQuery.data.agreement.signedAt).toLocaleString()}.
+              </Text>
+              {agreementQuery.data.agreement.voidReason ? (
+                <View
+                  style={[
+                    styles.errorBox,
+                    { backgroundColor: colors.destructive + '18', borderColor: colors.destructive + '40' },
+                  ]}
+                >
+                  <Text style={{ color: colors.destructive, fontSize: 12, lineHeight: 17 }}>
+                    Void reason: {agreementQuery.data.agreement.voidReason}
+                  </Text>
+                </View>
+              ) : null}
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: '/inspection-agreement', params: { id } } as never)
+                }
+                style={[styles.signBtn, { backgroundColor: colors.primary }]}
+              >
+                <Icon name="edit-3" size={16} color={colors.primaryForeground} />
+                <Text style={[styles.signBtnText, { color: colors.primaryForeground }]}>
+                  Collect Replacement Signature
+                </Text>
+              </Pressable>
+            </>
           ) : agreementQuery.data?.agreement ? (
+            // ── Signed (active) state ─────────────────────────────────────────
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Icon name="check" size={16} color={colors.success} />
@@ -293,10 +369,7 @@ export default function InspectionPackageScreen() {
                     const url = agreementQuery.data?.agreement?.downloadUrl;
                     if (url) Linking.openURL(url);
                   }}
-                  style={[
-                    styles.viewPdfBtn,
-                    { borderColor: colors.border },
-                  ]}
+                  style={[styles.viewPdfBtn, { borderColor: colors.border }]}
                 >
                   <Icon name="file-text" size={16} color={colors.foreground} />
                   <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
@@ -304,8 +377,76 @@ export default function InspectionPackageScreen() {
                   </Text>
                 </Pressable>
               ) : null}
+
+              {/* Super-admin void control */}
+              {isSuperAdmin && !showVoidInput && (
+                <Pressable
+                  onPress={() => setShowVoidInput(true)}
+                  style={[
+                    styles.voidBtn,
+                    { borderColor: colors.destructive + '60' },
+                  ]}
+                >
+                  <Icon name="slash" size={14} color={colors.destructive} />
+                  <Text style={{ color: colors.destructive, fontWeight: '600', fontSize: 13 }}>
+                    Void agreement
+                  </Text>
+                </Pressable>
+              )}
+              {isSuperAdmin && showVoidInput && (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    Reason for voiding (required, audit-logged):
+                  </Text>
+                  <TextInput
+                    value={voidReasonText}
+                    onChangeText={setVoidReasonText}
+                    placeholder="e.g. Rep signed instead of homeowner"
+                    placeholderTextColor={colors.mutedForeground}
+                    multiline
+                    style={[
+                      styles.voidInput,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Pressable
+                      onPress={() => { setShowVoidInput(false); setVoidReasonText(''); }}
+                      style={[styles.voidCancelBtn, { borderColor: colors.border }]}
+                    >
+                      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                        Cancel
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleVoidAgreement}
+                      disabled={voidAgreement.isPending}
+                      style={[
+                        styles.voidConfirmBtn,
+                        {
+                          backgroundColor: colors.destructive,
+                          opacity: voidAgreement.isPending ? 0.6 : 1,
+                        },
+                      ]}
+                    >
+                      {voidAgreement.isPending ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+                          Confirm void
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              )}
             </>
           ) : (
+            // ── Unsigned state ────────────────────────────────────────────────
             <>
               <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
                 Have the homeowner sign the Forensic Inspection Purchase &amp; Sale Agreement
@@ -374,5 +515,38 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 10,
     borderWidth: 1,
+  },
+  voidBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 2,
+  },
+  voidInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 13,
+    minHeight: 70,
+    textAlignVertical: 'top',
+  },
+  voidCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  voidConfirmBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
   },
 });

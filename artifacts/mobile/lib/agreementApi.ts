@@ -18,6 +18,10 @@ export interface SignedAgreementRecord {
   documentObjectPath: string;
   /** Short-lived presigned GCS URL for direct PDF download. May be null. */
   downloadUrl?: string | null;
+  /** Set when a super_admin has voided this agreement. */
+  voidedAt?: string | null;
+  /** Human-readable reason provided by the super_admin when voiding. */
+  voidReason?: string | null;
 }
 
 export interface AgreementStatusResponse {
@@ -33,6 +37,11 @@ export interface SignAgreementVariables {
    * FIPSA HTML template. The server stores this verbatim.
    */
   pdfBase64: string;
+}
+
+export interface VoidAgreementVariables {
+  inspectionId: string;
+  voidReason: string;
 }
 
 // ── Query key ─────────────────────────────────────────────────────────────────
@@ -82,6 +91,28 @@ export function useSignAgreement() {
         },
       );
       return data.agreement;
+    },
+    onSuccess: (_, { inspectionId }) => {
+      queryClient.invalidateQueries({ queryKey: getAgreementQueryKey(inspectionId) });
+    },
+  });
+}
+
+export function useVoidAgreement() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { voided: boolean; agreementId: string; voidedAt: string },
+    Error,
+    VoidAgreementVariables
+  >({
+    mutationFn: async ({ inspectionId, voidReason }) => {
+      return customFetch<{ voided: boolean; agreementId: string; voidedAt: string }>(
+        `/api/inspections/${inspectionId}/agreement`,
+        {
+          method: 'DELETE',
+          body: JSON.stringify({ voidReason }),
+        },
+      );
     },
     onSuccess: (_, { inspectionId }) => {
       queryClient.invalidateQueries({ queryKey: getAgreementQueryKey(inspectionId) });

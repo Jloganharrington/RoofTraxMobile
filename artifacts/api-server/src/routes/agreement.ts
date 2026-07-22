@@ -2,15 +2,19 @@
  * Agreement routes — forensic inspection homeowner signing.
  *
  * POST /inspections/:id/agreement/sign
- *   Creates a signed agreement for the inspection. One per inspection —
- *   subsequent calls return 409. Requires rep+ access (same company + own
- *   inspection or manager+), inspection module access, and the inspection to
- *   be in the forensic phase. Locked inspections are allowed (signing happens
- *   after submission).
+ *   Creates a signed agreement for the inspection. One active agreement per
+ *   inspection — subsequent calls return 409 unless the prior agreement was
+ *   voided. Requires rep+ access (same company + own inspection or manager+),
+ *   inspection module access, and the inspection to be in the forensic phase.
+ *   Locked inspections are allowed (signing happens after submission).
  *
  * GET /inspections/:id/agreement
  *   Returns the signed agreement record (if any) plus a short-lived presigned
- *   download URL for the PDF.
+ *   download URL for the PDF. Voided agreements are returned with voidedAt set.
+ *
+ * DELETE /inspections/:id/agreement
+ *   Super-admin only. Soft-voids the active signed agreement so a replacement
+ *   can be collected. Records voidedAt, voidedByUserId, and voidReason.
  */
 
 import { randomUUID } from 'crypto';
@@ -21,7 +25,7 @@ import {
   userProfilesTable,
   inspectionsTable,
 } from '@workspace/db';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
 
@@ -108,11 +112,17 @@ router.post(
       return;
     }
 
-    // Idempotency — one agreement per inspection
+    // Idempotency — one *active* (non-voided) agreement per inspection.
+    // Voided agreements are skipped so a replacement signing is allowed.
     const [existing] = await db
       .select({ id: signedAgreementsTable.id })
       .from(signedAgreementsTable)
-      .where(eq(signedAgreementsTable.inspectionId, inspectionId));
+      .where(
+        and(
+          eq(signedAgreementsTable.inspectionId, inspectionId),
+          isNull(signedAgreementsTable.voidedAt),
+        ),
+      );
 
     if (existing) {
       res.status(409).json({ error: 'This inspection already has a signed agreement' });
@@ -153,9 +163,10 @@ router.post(
     }
 
     // Persist ownership + agreement record atomically.
-    // The UNIQUE constraint on signed_agreements(inspection_id) is the hard
-    // guard against duplicates. We catch that violation here and convert it to
-    // a 409 so concurrent double-submits never return 500.
+    // The partial UNIQUE index on signed_agreements(inspection_id) WHERE
+    // voided_at IS NULL is the hard guard against duplicates. We catch that
+    // violation here and convert it to a 409 so concurrent double-submits
+    // never return 500.
     let agreementRow: typeof signedAgreementsTable.$inferSelect;
     try {
       const rows = await db.transaction(async (tx) => {
@@ -245,10 +256,14 @@ router.get(
       return;
     }
 
+    // Return the most recent agreement for this inspection (voided or active).
+    // The mobile client uses voidedAt to determine whether re-signing is needed.
     const [agreement] = await db
       .select()
       .from(signedAgreementsTable)
-      .where(eq(signedAgreementsTable.inspectionId, inspectionId));
+      .where(eq(signedAgreementsTable.inspectionId, inspectionId))
+      .orderBy(desc(signedAgreementsTable.signedAt))
+      .limit(1);
 
     if (!agreement) {
       res.json({ agreement: null, phase: inspection.phase });
@@ -257,15 +272,18 @@ router.get(
 
     // Generate a short-lived presigned GET URL for the PDF so the mobile app
     // can open it directly in the browser without streaming through our server.
+    // Skip for voided agreements — there's no point in opening a voided PDF.
     let downloadUrl: string | null = null;
-    try {
-      downloadUrl = await objectStorageService.getSignedDownloadUrl(
-        agreement.documentObjectPath,
-        15 * 60, // 15 minutes
-      );
-    } catch (err) {
-      req.log.warn({ err }, 'Could not generate signed download URL for agreement');
-      // Non-fatal — client can still use the /storage/objects/* route
+    if (!agreement.voidedAt) {
+      try {
+        downloadUrl = await objectStorageService.getSignedDownloadUrl(
+          agreement.documentObjectPath,
+          15 * 60, // 15 minutes
+        );
+      } catch (err) {
+        req.log.warn({ err }, 'Could not generate signed download URL for agreement');
+        // Non-fatal — client can still use the /storage/objects/* route
+      }
     }
 
     res.json({
@@ -277,8 +295,119 @@ router.get(
         signedAt: agreement.signedAt,
         documentObjectPath: agreement.documentObjectPath,
         downloadUrl,
+        voidedAt: agreement.voidedAt ?? null,
+        voidReason: agreement.voidReason ?? null,
       },
       phase: inspection.phase,
+    });
+  },
+);
+
+// ── DELETE /inspections/:id/agreement ─────────────────────────────────────────
+// Super-admin only emergency escape hatch. Soft-voids the active signed
+// agreement so the rep can collect a replacement signature. A full audit trail
+// (who voided, when, why) is stored on the agreement row itself.
+
+const VoidAgreementBody = z.object({
+  /** Human-readable reason for voiding, required so the audit log is legible. */
+  voidReason: z.string().min(5).max(1000),
+});
+
+router.delete(
+  '/inspections/:id/agreement',
+  async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    // Super-admin gate — no other role may void an agreement.
+    const [profile] = await db
+      .select({ role: userProfilesTable.role })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, req.user.id));
+
+    if (profile?.role !== 'super_admin') {
+      res.status(403).json({ error: 'Only super_admin may void a signed agreement' });
+      return;
+    }
+
+    const inspectionId = String(req.params.id);
+
+    // Validate body
+    const parsed = VoidAgreementBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'Invalid request body',
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+    const { voidReason } = parsed.data;
+
+    // Verify the inspection exists and belongs to the super_admin's company.
+    // This prevents a super_admin from one tenant voiding another tenant's
+    // agreement even if they obtain or guess the inspection ID.
+    const [inspection] = await db
+      .select({ id: inspectionsTable.id })
+      .from(inspectionsTable)
+      .where(
+        and(
+          eq(inspectionsTable.id, inspectionId),
+          eq(inspectionsTable.companyId, req.user.companyId),
+        ),
+      );
+
+    if (!inspection) {
+      res.status(404).json({ error: 'Inspection not found' });
+      return;
+    }
+
+    // Find the active (non-voided) agreement for this inspection, scoped to
+    // the caller's company so the update predicate cannot touch another tenant.
+    const [activeAgreement] = await db
+      .select({ id: signedAgreementsTable.id, companyId: signedAgreementsTable.companyId })
+      .from(signedAgreementsTable)
+      .where(
+        and(
+          eq(signedAgreementsTable.inspectionId, inspectionId),
+          eq(signedAgreementsTable.companyId, req.user.companyId),
+          isNull(signedAgreementsTable.voidedAt),
+        ),
+      );
+
+    if (!activeAgreement) {
+      res.status(404).json({ error: 'No active signed agreement found for this inspection' });
+      return;
+    }
+
+    // Void it — stamp voidedAt, voidedByUserId, voidReason atomically.
+    // The WHERE clause pins both id and companyId so a race condition between
+    // two concurrent void requests cannot cross tenant boundaries.
+    const voidedAt = new Date();
+    await db
+      .update(signedAgreementsTable)
+      .set({
+        voidedAt,
+        voidedByUserId: req.user.id,
+        voidReason,
+      })
+      .where(
+        and(
+          eq(signedAgreementsTable.id, activeAgreement.id),
+          eq(signedAgreementsTable.companyId, req.user.companyId),
+        ),
+      );
+
+    req.log.info(
+      { inspectionId, agreementId: activeAgreement.id, voidedByUserId: req.user.id },
+      'Agreement voided by super_admin',
+    );
+
+    res.json({
+      voided: true,
+      agreementId: activeAgreement.id,
+      voidedAt: voidedAt.toISOString(),
     });
   },
 );

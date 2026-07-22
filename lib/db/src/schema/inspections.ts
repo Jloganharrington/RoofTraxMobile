@@ -880,7 +880,10 @@ export const signedAgreementsTable = pgTable('signed_agreements', {
     .$defaultFn(() => crypto.randomUUID()),
   inspectionId: varchar('inspection_id')
     .notNull()
-    .unique() // One agreement per inspection — enforced at DB level.
+    // NOTE: uniqueness is enforced via a partial index on the DB (see
+    // data-migrations/004_signed_agreements_partial_unique.sql) so that voided
+    // rows do not block a replacement signing. The full unique constraint was
+    // dropped when void support was added.
     .references(() => inspectionsTable.id, { onDelete: 'restrict' }),
   companyId: varchar('company_id')
     .notNull()
@@ -894,6 +897,14 @@ export const signedAgreementsTable = pgTable('signed_agreements', {
     .$type<AgreementAuditMetadata>(),
   /** `/objects/uploads/{uuid}` — the signed PDF in private object storage. */
   documentObjectPath: text('document_object_path').notNull(),
+  // ── Void support (super_admin only) ────────────────────────────────────────
+  // A voided agreement is soft-deleted in place. A new signing is allowed on
+  // the same inspection once the prior agreement is voided (the partial unique
+  // index excludes voided rows, so only one *active* agreement can exist per
+  // inspection). All three columns are set atomically when voiding.
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  voidedByUserId: varchar('voided_by_user_id').references(() => usersTable.id),
+  voidReason: text('void_reason'),
 });
 
 export type SignedAgreement = typeof signedAgreementsTable.$inferSelect;
