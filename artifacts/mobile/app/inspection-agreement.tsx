@@ -747,6 +747,9 @@ export default function InspectionAgreementScreen() {
                       Alert.alert('No Email Configured', 'Configure SMTP in your profile settings to send emails directly from the app.');
                     } else {
                       setEmailSentAt(result.emailedAt ?? new Date().toISOString());
+                      if (result.repEmailed) {
+                        Alert.alert('Agreement Sent', `A copy was sent to ${recipientEmail.trim()} and to you.`);
+                      }
                     }
                   } catch (err) {
                     const msg = err instanceof Error ? err.message : 'Could not send email.';

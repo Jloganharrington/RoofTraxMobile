@@ -111,6 +111,8 @@ export interface EmailAgreementResult {
   /** True when no SMTP is configured — mobile should fall back to MailComposer. */
   noSmtp?: boolean;
   emailedAt?: string;
+  /** True when the server also sent a copy to the rep's own email address. */
+  repEmailed?: boolean;
 }
 
 export function useEmailAgreement() {

@@ -220,6 +220,85 @@ router.post(
       'Agreement signed and PDF stored',
     );
 
+    // ── Best-effort auto-email to rep + homeowner on sign ─────────────────────
+    // Sends are non-blocking to the 201 response: failures are logged but do
+    // not roll back the signing or prevent the response from going out.
+    let repEmailed = false;
+    let homeownerAutoEmailed = false;
+    const repEmail = req.user?.email;
+    const { smtpHost, smtpPort, smtpUsername, smtpPasswordEnc, smtpSecure, smtpFromEmail } =
+      actor.profile ?? {};
+
+    if (smtpHost && smtpPort && smtpUsername && smtpPasswordEnc) {
+      try {
+        const password = decryptSmtpPassword(smtpPasswordEnc);
+        const smtpAddress = await resolvePublicSmtpAddress(smtpHost);
+        const transport = nodemailer.createTransport({
+          host: smtpAddress,
+          port: smtpPort,
+          secure: smtpSecure ?? smtpPort === 465,
+          name: undefined,
+          auth: { user: smtpUsername, pass: password },
+          tls: { servername: smtpHost },
+          connectionTimeout: 15_000,
+          socketTimeout: 30_000,
+        });
+
+        const propertyLabel = inspection.address ?? 'your property';
+        const mailText = [
+          'A Forensic Inspection Purchase & Sale Agreement has been signed.',
+          '',
+          `Property: ${propertyLabel}`,
+          `Signed by: ${signerName}`,
+          `Date signed: ${signedAt.toLocaleString()}`,
+          '',
+          'A copy of the signed agreement is attached for your records.',
+        ].join('\n');
+        const attachment = {
+          filename: 'Signed-Agreement.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf' as const,
+        };
+        const from = smtpFromEmail || smtpUsername;
+
+        const sends: Promise<unknown>[] = [];
+        if (repEmail) {
+          sends.push(
+            transport
+              .sendMail({
+                from,
+                to: repEmail,
+                subject: `Signed Agreement — ${propertyLabel}`,
+                text: mailText,
+                attachments: [attachment],
+              })
+              .then(() => {
+                repEmailed = true;
+              }),
+          );
+        }
+        const ownerEmailAddr = (inspection as { ownerEmail?: string | null }).ownerEmail;
+        if (ownerEmailAddr && ownerEmailAddr !== repEmail) {
+          sends.push(
+            transport
+              .sendMail({
+                from,
+                to: ownerEmailAddr,
+                subject: `Forensic Inspection Purchase & Sale Agreement — ${propertyLabel}`,
+                text: mailText,
+                attachments: [attachment],
+              })
+              .then(() => {
+                homeownerAutoEmailed = true;
+              }),
+          );
+        }
+        await Promise.allSettled(sends);
+      } catch (err) {
+        req.log.warn({ err }, 'Auto-email on sign — SMTP setup failed, skipping');
+      }
+    }
+
     res.status(201).json({
       agreement: {
         id: agreementRow.id,
@@ -229,6 +308,8 @@ router.post(
         signedAt: agreementRow.signedAt,
         documentObjectPath: agreementRow.documentObjectPath,
       },
+      repEmailed,
+      homeownerAutoEmailed,
     });
   },
 );
@@ -582,6 +663,38 @@ router.post(
       return;
     }
 
+    // Also send a copy to the rep's own email address as a record copy.
+    let repEmailed = false;
+    const repEmail = req.user?.email;
+    if (repEmail && repEmail !== recipient) {
+      try {
+        await transport.sendMail({
+          from: profile.smtpFromEmail || profile.smtpUsername,
+          to: repEmail,
+          subject: `Your copy: Signed Agreement — ${propertyLabel}`,
+          text: [
+            'This is your copy of the signed agreement emailed to the homeowner.',
+            '',
+            `Property: ${propertyLabel}`,
+            `Signed by: ${agreement.signerName}`,
+            `Date signed: ${agreement.signedAt.toLocaleString()}`,
+            '',
+            'The signed agreement is attached for your records.',
+          ].join('\n'),
+          attachments: [
+            {
+              filename: 'Signed-Agreement.pdf',
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+            },
+          ],
+        });
+        repEmailed = true;
+      } catch (err) {
+        req.log.warn({ err }, 'Failed to send rep copy of signed agreement');
+      }
+    }
+
     // Stamp emailedAt on the agreement row
     const emailedAt = new Date();
     await db
@@ -595,11 +708,11 @@ router.post(
       );
 
     req.log.info(
-      { inspectionId, agreementId: agreement.id, recipient },
+      { inspectionId, agreementId: agreement.id, recipient, repEmailed },
       'Agreement PDF emailed to homeowner',
     );
 
-    res.json({ sent: true, emailedAt: emailedAt.toISOString() });
+    res.json({ sent: true, emailedAt: emailedAt.toISOString(), repEmailed });
   },
 );
 

@@ -2733,6 +2733,28 @@ router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, r
     { inspectionId: inspection.id, ownerEmail, scheduledFor },
     'Appointment notification sent to homeowner',
   );
+
+  // Best-effort copy to the rep's own account email.
+  const repEmail = req.user?.email;
+  if (repEmail && repEmail !== ownerEmail) {
+    const dateLabel = scheduledFor.toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const propertyLabel = inspection.address ?? 'your property';
+    transport.sendMail({
+      from: profile.smtpFromEmail || profile.smtpUsername,
+      to: repEmail,
+      subject: `Phase 2 Scheduled — ${propertyLabel}`,
+      text: [
+        `Phase 2 forensic inspection scheduled.`,
+        '',
+        `Property: ${propertyLabel}`,
+        `Date:     ${dateLabel}`,
+        `Owner:    ${ownerEmail}`,
+      ].join('\n'),
+    }).catch((err) => req.log.warn({ err }, 'Failed to send rep copy of schedule notification'));
+  }
+
   res.json({ scheduled: true, emailSent: true });
 });
 
