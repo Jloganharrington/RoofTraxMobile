@@ -51,6 +51,7 @@ import {
   buildPreviewHtml,
   formatMDY,
 } from '@/lib/fipsaTemplate';
+import { CalendarPicker } from '@/components/CalendarPicker';
 
 // Injected into the preview WebView to fire a message when scrolled to end.
 const SCROLL_DETECT_JS = `
@@ -69,110 +70,7 @@ const SCROLL_DETECT_JS = `
 true;
 `;
 
-// ── Calendar helper ────────────────────────────────────────────────────────────
-function CalendarPicker({
-  selected,
-  minDate,
-  onSelect,
-  colors,
-}: {
-  selected: Date;
-  minDate: Date;
-  onSelect: (d: Date) => void;
-  colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
-}) {
-  const [viewYear, setViewYear] = useState(selected.getFullYear());
-  const [viewMonth, setViewMonth] = useState(selected.getMonth());
-
-  const today = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
-
-  function prevMonth() {
-    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
-    else setViewMonth(m => m - 1);
-  }
-  function nextMonth() {
-    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
-    else setViewMonth(m => m + 1);
-  }
-
-  const firstDow = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array(firstDow).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const MONTH_NAMES = ['January','February','March','April','May','June',
-    'July','August','September','October','November','December'];
-  const DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-
-  return (
-    <View style={{ gap: 8 }}>
-      {/* Month nav */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Pressable onPress={prevMonth} hitSlop={12} style={calStyles.navBtn}>
-          <Icon name="chevron-left" size={20} color={colors.foreground} />
-        </Pressable>
-        <Text style={[calStyles.monthLabel, { color: colors.foreground }]}>
-          {MONTH_NAMES[viewMonth]} {viewYear}
-        </Text>
-        <Pressable onPress={nextMonth} hitSlop={12} style={calStyles.navBtn}>
-          <Icon name="chevron-right" size={20} color={colors.foreground} />
-        </Pressable>
-      </View>
-
-      {/* Day-of-week headers */}
-      <View style={calStyles.row}>
-        {DOW.map(d => (
-          <Text key={d} style={[calStyles.dowCell, { color: colors.mutedForeground }]}>{d}</Text>
-        ))}
-      </View>
-
-      {/* Day cells */}
-      {Array.from({ length: cells.length / 7 }, (_, row) => (
-        <View key={row} style={calStyles.row}>
-          {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
-            if (!day) return <View key={col} style={calStyles.dayCell} />;
-            const cellDate = new Date(viewYear, viewMonth, day);
-            const isPast = cellDate < today;
-            const isSel =
-              selected.getFullYear() === viewYear &&
-              selected.getMonth() === viewMonth &&
-              selected.getDate() === day;
-            return (
-              <Pressable
-                key={col}
-                onPress={() => !isPast && onSelect(cellDate)}
-                style={[
-                  calStyles.dayCell,
-                  isSel && { backgroundColor: colors.primary, borderRadius: 8 },
-                  isPast && { opacity: 0.3 },
-                ]}
-              >
-                <Text style={{
-                  fontSize: 14, fontWeight: isSel ? '700' : '400',
-                  color: isSel ? colors.primaryForeground : colors.foreground,
-                  textAlign: 'center',
-                }}>
-                  {day}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-const calStyles = StyleSheet.create({
-  navBtn: { padding: 6 },
-  monthLabel: { fontSize: 16, fontWeight: '700' },
-  row: { flexDirection: 'row' },
-  dowCell: { flex: 1, textAlign: 'center', fontSize: 12, paddingVertical: 4 },
-  dayCell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-});
+// CalendarPicker lives in components/CalendarPicker.tsx (shared with inspections screen).
 
 type ActiveModal = 'owner' | 'rep' | 'ownerName' | null;
 
@@ -941,7 +839,6 @@ export default function InspectionAgreementScreen() {
               selected={scheduledDate}
               minDate={tomorrow}
               onSelect={setScheduledDate}
-              colors={colors}
             />
 
             {/* Selected date display */}

@@ -2646,6 +2646,156 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
   res.json({ sent: true });
 });
 
+// Reschedules a Phase 2 inspection: updates scheduledFor and re-sends the
+// appointment notification to the homeowner using the previously-saved ownerEmail.
+// Returns { scheduled: true, emailSent: boolean }. Status stays 'scheduled'.
+router.patch('/inspections/:inspectionId/schedule', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const parsed = z.object({ scheduledFor: z.coerce.date() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'scheduledFor (ISO date) is required' });
+    return;
+  }
+
+  const inspection = await loadInspectionInCompany(
+    String(req.params.inspectionId),
+    actor.companyId,
+  );
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
+    res.status(403).json({ error: 'Not authorized to modify this inspection' });
+    return;
+  }
+
+  const { scheduledFor } = parsed.data;
+  const ownerEmail = inspection.ownerEmail;
+
+  await db
+    .update(inspectionsTable)
+    .set({ scheduledFor, status: 'scheduled' })
+    .where(
+      and(
+        eq(inspectionsTable.id, inspection.id),
+        eq(inspectionsTable.companyId, actor.companyId),
+      ),
+    );
+
+  // If there's no stored ownerEmail we can still return success — the date is saved.
+  if (!ownerEmail) {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, actor.userId));
+
+  if (!profile?.smtpHost || !profile.smtpPort || !profile.smtpUsername || !profile.smtpPasswordEnc) {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  let password: string;
+  try {
+    password = decryptSmtpPassword(profile.smtpPasswordEnc);
+  } catch {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  let smtpAddress: string;
+  try {
+    smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+  } catch {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  const transport = nodemailer.createTransport({
+    host: smtpAddress,
+    port: profile.smtpPort,
+    secure: profile.smtpSecure ?? profile.smtpPort === 465,
+    name: undefined,
+    auth: { user: profile.smtpUsername, pass: password },
+    tls: { servername: profile.smtpHost },
+    connectionTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+
+  const dateLabel = scheduledFor.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  });
+  const propertyLabel = inspection.address ?? 'your property';
+
+  try {
+    await transport.sendMail({
+      from: profile.smtpFromEmail || profile.smtpUsername,
+      to: ownerEmail,
+      subject: `Phase 2 Forensic Inspection Rescheduled — ${propertyLabel}`,
+      text: [
+        `Your Phase 2 forensic roof inspection has been rescheduled.`,
+        '',
+        `Property: ${propertyLabel}`,
+        `New Date: ${dateLabel}`,
+        '',
+        'Your inspector will contact you with arrival details closer to the date.',
+        'If you need to reschedule again, please reach out to your representative directly.',
+      ].join('\n'),
+    });
+  } catch (err) {
+    req.log.warn({ err }, 'SMTP reschedule notification failed');
+    res.json({ scheduled: true, emailSent: false });
+    return;
+  }
+
+  req.log.info(
+    { inspectionId: inspection.id, ownerEmail, scheduledFor },
+    'Reschedule notification sent to homeowner',
+  );
+
+  res.json({ scheduled: true, emailSent: true });
+});
+
+// Cancels a Phase 2 scheduled appointment: clears scheduledFor and resets
+// status back to 'capturing' so the inspection drops off the Scheduled list
+// and returns to the rep's active work queue.
+router.delete('/inspections/:inspectionId/schedule', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspection = await loadInspectionInCompany(
+    String(req.params.inspectionId),
+    actor.companyId,
+  );
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
+    res.status(403).json({ error: 'Not authorized to modify this inspection' });
+    return;
+  }
+
+  await db
+    .update(inspectionsTable)
+    .set({ scheduledFor: null, status: 'capturing' })
+    .where(
+      and(
+        eq(inspectionsTable.id, inspection.id),
+        eq(inspectionsTable.companyId, actor.companyId),
+      ),
+    );
+
+  req.log.info({ inspectionId: inspection.id }, 'Phase 2 appointment cancelled');
+  res.json({ cancelled: true });
+});
+
 // Schedules a Phase 2 inspection and sends an appointment notification to
 // the homeowner via the rep's SMTP. Saves scheduledFor + ownerEmail to the
 // inspection row atomically. Returns { scheduled: true, emailSent: boolean }.
