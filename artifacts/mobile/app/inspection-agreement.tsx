@@ -49,6 +49,7 @@ import {
   addBusinessDays,
   buildFipsaHtml,
   buildPreviewHtml,
+  buildReadableHtml,
   formatMDY,
 } from '@/lib/fipsaTemplate';
 import { CalendarPicker } from '@/components/CalendarPicker';
@@ -141,6 +142,9 @@ export default function InspectionAgreementScreen() {
   const emailAgreement = useEmailAgreement();
   const [scheduling, setScheduling] = useState(false);
   const [ownerEmail, setOwnerEmail] = useState('');
+
+  // ── Readable review modal ────────────────────────────────────────────────────
+  const [showReadModal, setShowReadModal] = useState(false);
 
   // ── Post-signing flow state ──────────────────────────────────────────────────
   const [signedDocHtml, setSignedDocHtml] = useState<string | null>(null);
@@ -577,22 +581,32 @@ export default function InspectionAgreementScreen() {
           />
         </View>
 
-        {/* Scroll gate status */}
-        {!hasScrolledToBottom ? (
-          <View style={[styles.banner, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
-            <Icon name="chevron-down" size={14} color="#b45309" />
-            <Text style={{ color: '#92400e', fontSize: 12, flex: 1 }}>
-              Scroll through both pages to enable signing.
-            </Text>
-          </View>
-        ) : (
-          <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
-            <Icon name="check" size={14} color={colors.success} />
-            <Text style={{ color: colors.success, fontSize: 12, flex: 1 }}>
-              Agreement reviewed — collect both signatures.
-            </Text>
-          </View>
-        )}
+        {/* Scroll gate status + Review button */}
+        <View style={styles.bannerRow}>
+          {!hasScrolledToBottom ? (
+            <View style={[styles.banner, { backgroundColor: '#fffbeb', borderColor: '#f59e0b', flex: 1 }]}>
+              <Icon name="chevron-down" size={14} color="#b45309" />
+              <Text style={{ color: '#92400e', fontSize: 12, flex: 1 }}>
+                Scroll through both pages to enable signing.
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success, flex: 1 }]}>
+              <Icon name="check" size={14} color={colors.success} />
+              <Text style={{ color: colors.success, fontSize: 12, flex: 1 }}>
+                Agreement reviewed — collect both signatures.
+              </Text>
+            </View>
+          )}
+          <Pressable
+            onPress={() => setShowReadModal(true)}
+            style={[styles.reviewBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+            hitSlop={8}
+          >
+            <Icon name="zoom-in" size={14} color={colors.foreground} />
+            <Text style={[styles.reviewBtnText, { color: colors.foreground }]}>Review</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* ── Document viewer — fills remaining space ──────────────────────────── */}
@@ -630,6 +644,51 @@ export default function InspectionAgreementScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* ── Readable review modal ────────────────────────────────────────────── */}
+      <Modal
+        visible={showReadModal}
+        animationType="slide"
+        onRequestClose={() => setShowReadModal(false)}
+      >
+        <SafeAreaView style={[styles.sigModal, { backgroundColor: colors.background }]}>
+          <View style={[styles.sigModalHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={() => setShowReadModal(false)} hitSlop={12}>
+              <Icon name="x" size={22} color={colors.foreground} />
+            </Pressable>
+            <Text style={[styles.sigModalTitle, { color: colors.foreground }]}>
+              Review Agreement
+            </Text>
+            <Icon name="zoom-in" size={20} color={colors.mutedForeground} />
+          </View>
+          <WebView
+            source={{
+              html: buildReadableHtml({
+                ownerNames: signerName || '___________________________',
+                agreementDate: todayMDY,
+                propertyAddress: inspection?.address ?? '',
+                logoUrl: logoDataUri ?? undefined,
+                owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
+                contractorRep: {
+                  signatureImage: '',
+                  printName: repPrintName || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || companyName || '',
+                  signDate: todayMDY,
+                },
+                cancellation: {
+                  transactionDate: todayMDY,
+                  cancelDeadline: cancelDeadlineMDY,
+                  buyerDate: '',
+                  buyerSignatureImage: '',
+                },
+              }),
+            }}
+            scrollEnabled
+            showsVerticalScrollIndicator
+            originWhitelist={['*']}
+            style={{ flex: 1 }}
+          />
+        </SafeAreaView>
+      </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════════
           POST-SIGNING FLOW — four modals in sequence
@@ -1011,11 +1070,19 @@ const styles = StyleSheet.create({
   // Document WebView — fills remaining flex space
   webview: { flex: 1 },
 
-  // Banner
+  // Banner row (status + review button side by side)
+  bannerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1,
   },
+  reviewBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1,
+  },
+  reviewBtnText: { fontSize: 12, fontWeight: '600' },
 
   // Bottom confirm bar
   bottomBar: {

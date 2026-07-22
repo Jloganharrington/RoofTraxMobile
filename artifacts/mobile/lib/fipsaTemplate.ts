@@ -78,6 +78,25 @@ export function buildFipsaHtml(data: FipsaData): string {
 }
 
 /**
+ * Same as buildPreviewHtml but uses a larger font so customers can read the
+ * document comfortably on-screen before signing. No scroll-detection is
+ * injected — this is review-only and has zero effect on the final PDF.
+ */
+export function buildReadableHtml(data: FipsaData): string {
+  const base = buildFipsaHtml(data);
+  const mobileCss = `
+<style>
+  .page { width: 100% !important; max-width: 100% !important;
+          padding: 20px 22px !important; }
+  body  { font-size: 13pt; line-height: 1.55; }
+  h1.doc-title { font-size: 18pt; }
+  h2, .section-title { font-size: 14pt; }
+  .sig-line, .sig-name, .sig-date { font-size: 12pt; }
+</style>`;
+  return base.replace('</style>', `</style>${mobileCss}`);
+}
+
+/**
  * Same as buildFipsaHtml but injects a CSS override that removes the fixed
  * letter-width so the agreement fits on a mobile screen inside a WebView.
  * Also injects scroll-to-bottom detection that posts 'bottom' via
