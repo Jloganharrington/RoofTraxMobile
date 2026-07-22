@@ -4,9 +4,11 @@
  * Flow:
  *   1. Owner name pre-filled from insuredName (Phase 1). If missing → modal.
  *   2. WebView shows the real FIPSA HTML pre-filled with property + date.
- *   3. Rep scrolls homeowner through both pages; scroll-to-bottom gate unlocks signing.
- *   4. Homeowner draws signature on canvas below.
- *   5. Confirm → expo-print generates signed PDF on-device → uploaded to server.
+ *   3. Rep scrolls homeowner through both pages; scroll-to-bottom gate appears.
+ *   4. Two buttons — "Owner's Signature" and "Rep Signature" — each open a
+ *      full-screen signature modal so the screen stays locked while signing.
+ *   5. Rep modal includes a printed-name field (rep's own name, not company).
+ *   6. Confirm → expo-print generates signed PDF on-device → uploaded to server.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,6 +19,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -60,26 +63,38 @@ const SCROLL_DETECT_JS = `
 true;
 `;
 
+type ActiveModal = 'owner' | 'rep' | 'ownerName' | null;
+
 export default function InspectionAgreementScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { companyName } = useProfile();
+  const { companyName, profile } = useProfile();
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  const signatureRef = useRef<SignatureViewRef>(null);
+  // ── Owner signature ─────────────────────────────────────────────────────────
+  const ownerSigRef = useRef<SignatureViewRef>(null);
+  const [ownerSigData, setOwnerSigData] = useState<string | null>(null);
+  const [ownerSigKey, setOwnerSigKey] = useState(0);
 
+  // ── Rep signature ───────────────────────────────────────────────────────────
+  const repSigRef = useRef<SignatureViewRef>(null);
+  const [repSigData, setRepSigData] = useState<string | null>(null);
+  const [repSigKey, setRepSigKey] = useState(0);
+  const [repPrintName, setRepPrintName] = useState('');
+
+  // ── Shared modal state ──────────────────────────────────────────────────────
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+
+  // ── Owner name (pre-filled from Phase 1) ───────────────────────────────────
   const [signerName, setSignerName] = useState('');
-  const [signatureData, setSignatureData] = useState<string | null>(null);
-  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
-  const [sigCleared, setSigCleared] = useState(false);
+  const [ownerNameDraft, setOwnerNameDraft] = useState('');
 
-  // Owner-name modal — shown when Phase 1 didn't capture insuredName
-  const [nameModalVisible, setNameModalVisible] = useState(false);
-  const [nameModalDraft, setNameModalDraft] = useState('');
+  // ── Scroll gate ─────────────────────────────────────────────────────────────
+  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
 
   const signAgreement = useSignAgreement();
 
@@ -87,19 +102,25 @@ export default function InspectionAgreementScreen() {
   const todayMDY = formatMDY(today);
   const cancelDeadlineMDY = formatMDY(addBusinessDays(today, 3));
 
-  // Pre-fill from Phase 1 data once loaded; open modal if missing.
+  // Pre-fill from Phase 1 and profile once loaded.
   useEffect(() => {
     if (!inspection) return;
     const name = inspection.insuredName?.trim() ?? '';
     if (name.length >= 2) {
       setSignerName(name);
     } else {
-      setNameModalVisible(true);
+      setActiveModal('ownerName');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspection?.id]);
 
-  // Pre-filled FIPSA HTML for the reading WebView (no signature image yet).
+  useEffect(() => {
+    // Pre-fill rep's printed name from their profile.
+    const name = (profile as { name?: string } | undefined)?.name?.trim() ?? '';
+    if (name.length >= 2) setRepPrintName(name);
+  }, [profile]);
+
+  // Preview HTML — no signature images yet, just the filled-in text.
   const previewHtml = useMemo(() => {
     return buildPreviewHtml({
       ownerNames: signerName || '___________________________',
@@ -108,7 +129,7 @@ export default function InspectionAgreementScreen() {
       owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
       contractorRep: {
         signatureImage: '',
-        printName: companyName ?? 'NuHome Exteriors',
+        printName: repPrintName || companyName || 'NuHome Exteriors',
         signDate: todayMDY,
       },
       cancellation: {
@@ -118,37 +139,48 @@ export default function InspectionAgreementScreen() {
         buyerSignatureImage: '',
       },
     });
-  }, [signerName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName]);
+  }, [signerName, repPrintName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName]);
 
   const canSign =
     hasScrolledToBottom &&
-    !!signatureData &&
+    !!ownerSigData &&
+    !!repSigData &&
     signerName.trim().length >= 2 &&
+    repPrintName.trim().length >= 2 &&
     !signAgreement.isPending;
 
-  function handleStrokeEnd() {
-    signatureRef.current?.readSignature();
+  // ── Owner signature modal handlers ──────────────────────────────────────────
+  function clearOwnerSig() {
+    ownerSigRef.current?.clearSignature();
+    setOwnerSigData(null);
+    setOwnerSigKey((k) => k + 1);
   }
 
-  function handleSignatureOK(sig: string) {
-    const base64 = sig.replace(/^data:image\/png;base64,/, '');
-    setSignatureData(base64);
+  function confirmOwnerSig() {
+    ownerSigRef.current?.readSignature();
   }
 
-  function handleClear() {
-    signatureRef.current?.clearSignature();
-    setSignatureData(null);
-    setSigCleared((prev) => !prev);
+  // ── Rep signature modal handlers ────────────────────────────────────────────
+  function clearRepSig() {
+    repSigRef.current?.clearSignature();
+    setRepSigData(null);
+    setRepSigKey((k) => k + 1);
   }
 
+  function confirmRepSig() {
+    repSigRef.current?.readSignature();
+  }
+
+  // ── Final confirm ────────────────────────────────────────────────────────────
   async function handleConfirm() {
-    if (!canSign || !signatureData || !inspection) return;
+    if (!canSign || !ownerSigData || !repSigData || !inspection) return;
 
-    const name = signerName.trim();
+    const ownerName = signerName.trim();
+    const repName = repPrintName.trim();
 
     Alert.alert(
       'Confirm & Sign',
-      `By tapping "Sign Now", ${name} agrees to the Forensic Inspection & Preconstruction Services Agreement. This action cannot be undone.`,
+      `By tapping "Sign Now", ${ownerName} and ${repName} agree to the Forensic Inspection & Preconstruction Services Agreement. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -156,19 +188,18 @@ export default function InspectionAgreementScreen() {
           style: 'default',
           onPress: async () => {
             try {
-              // 1. Build fully filled FIPSA HTML with embedded signature.
               const signedHtml = buildFipsaHtml({
-                ownerNames: name,
+                ownerNames: ownerName,
                 agreementDate: todayMDY,
                 propertyAddress: inspection.address ?? '',
                 owner: {
-                  signatureImage: `data:image/png;base64,${signatureData}`,
-                  printName: name,
+                  signatureImage: `data:image/png;base64,${ownerSigData}`,
+                  printName: ownerName,
                   signDate: todayMDY,
                 },
                 contractorRep: {
-                  signatureImage: '',
-                  printName: companyName ?? 'NuHome Exteriors',
+                  signatureImage: `data:image/png;base64,${repSigData}`,
+                  printName: repName,
                   signDate: todayMDY,
                 },
                 cancellation: {
@@ -179,22 +210,15 @@ export default function InspectionAgreementScreen() {
                 },
               });
 
-              // 2. Render to PDF on-device via expo-print.
               const { uri } = await Print.printToFileAsync({ html: signedHtml });
-
-              // 3. Read as base64 for upload.
-              // EncodingType enum was removed in expo-file-system v19; use the string literal.
               const pdfBase64 = await FileSystem.readAsStringAsync(uri, {
                 encoding: 'base64' as const,
               });
-
-              // 4. Clean up temp file.
               await FileSystem.deleteAsync(uri, { idempotent: true });
 
-              // 5. Upload to server — stores in object storage + writes audit record.
               await signAgreement.mutateAsync({
                 inspectionId: id,
-                signerName: name,
+                signerName: ownerName,
                 pdfBase64,
               });
 
@@ -224,35 +248,32 @@ export default function InspectionAgreementScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <Stack.Screen options={{ title: 'Get Homeowner Signature' }} />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Stack.Screen options={{ title: 'Agreement Signing' }} />
 
-      {/* ── Owner-name modal ─────────────────────────────────────────────── */}
+      {/* ── Owner name modal ────────────────────────────────────────────────── */}
       <Modal
-        visible={nameModalVisible}
+        visible={activeModal === 'ownerName'}
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (nameModalDraft.trim().length >= 2) {
-            setSignerName(nameModalDraft.trim());
-            setNameModalVisible(false);
+          if (ownerNameDraft.trim().length >= 2) {
+            setSignerName(ownerNameDraft.trim());
+            setActiveModal(null);
           }
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.sheetCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               Owner's Name
             </Text>
             <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
-              The owner's name was not captured in Phase 1. Please enter it now to continue.
+              The owner's name was not captured in Phase 1. Enter it to continue.
             </Text>
             <TextInput
-              value={nameModalDraft}
-              onChangeText={setNameModalDraft}
+              value={ownerNameDraft}
+              onChangeText={setOwnerNameDraft}
               placeholder="Full legal name"
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="words"
@@ -269,17 +290,17 @@ export default function InspectionAgreementScreen() {
             />
             <Pressable
               onPress={() => {
-                const name = nameModalDraft.trim();
+                const name = ownerNameDraft.trim();
                 if (name.length < 2) return;
                 setSignerName(name);
-                setNameModalVisible(false);
+                setActiveModal(null);
               }}
-              disabled={nameModalDraft.trim().length < 2}
+              disabled={ownerNameDraft.trim().length < 2}
               style={[
                 styles.modalBtn,
                 {
                   backgroundColor: colors.primary,
-                  opacity: nameModalDraft.trim().length >= 2 ? 1 : 0.45,
+                  opacity: ownerNameDraft.trim().length >= 2 ? 1 : 0.45,
                 },
               ]}
             >
@@ -291,51 +312,199 @@ export default function InspectionAgreementScreen() {
         </View>
       </Modal>
 
-      <ScrollView contentContainerStyle={styles.content}>
-
-        {/* ── Agreement viewer ─────────────────────────────────────────────── */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.headerRow}>
-            <Icon name="file-text" size={18} color={colors.foreground} />
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-              Agreement — scroll to read both pages
+      {/* ── Owner signature modal ────────────────────────────────────────────── */}
+      <Modal
+        visible={activeModal === 'owner'}
+        animationType="slide"
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <SafeAreaView style={[styles.sigModal, { backgroundColor: colors.background }]}>
+          {/* Header */}
+          <View style={[styles.sigModalHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={() => setActiveModal(null)} hitSlop={12}>
+              <Icon name="x" size={22} color={colors.foreground} />
+            </Pressable>
+            <Text style={[styles.sigModalTitle, { color: colors.foreground }]}>
+              Owner's Signature
+            </Text>
+            <Text style={[styles.sigModalSubtitle, { color: colors.mutedForeground }]}>
+              {signerName}
             </Text>
           </View>
 
-          <View style={[styles.webviewWrap, { borderColor: colors.border }]}>
-            <WebView
-              source={{ html: previewHtml }}
-              injectedJavaScript={SCROLL_DETECT_JS}
-              onMessage={(e) => {
-                if (e.nativeEvent.data === 'bottom') setHasScrolledToBottom(true);
+          {/* Canvas */}
+          <View style={[styles.sigCanvasWrap, { backgroundColor: '#ffffff' }]}>
+            <SignatureScreen
+              key={`owner-${ownerSigKey}`}
+              ref={ownerSigRef}
+              onOK={(sig) => {
+                const base64 = sig.replace(/^data:image\/png;base64,/, '');
+                setOwnerSigData(base64);
+                setActiveModal(null);
               }}
-              scrollEnabled
-              nestedScrollEnabled
-              showsVerticalScrollIndicator
-              originWhitelist={['*']}
-              style={styles.webview}
+              onEmpty={() => setOwnerSigData(null)}
+              onEnd={() => ownerSigRef.current?.readSignature()}
+              minWidth={1.5}
+              maxWidth={4}
+              penColor="#0f2942"
+              webStyle={SIG_WEB_STYLE}
+              style={{ flex: 1 }}
+              autoClear={false}
+              dataURL=""
             />
           </View>
+
+          {/* Footer */}
+          <View style={[styles.sigModalFooter, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+            <Pressable onPress={clearOwnerSig} style={styles.clearBtn}>
+              <Icon name="refresh-cw" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>Clear</Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmOwnerSig}
+              style={[styles.doneBtn, { backgroundColor: colors.primary }]}
+            >
+              <Icon name="check" size={18} color={colors.primaryForeground} />
+              <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>
+                Done
+              </Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Rep signature modal ──────────────────────────────────────────────── */}
+      <Modal
+        visible={activeModal === 'rep'}
+        animationType="slide"
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <SafeAreaView style={[styles.sigModal, { backgroundColor: colors.background }]}>
+          {/* Header */}
+          <View style={[styles.sigModalHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={() => setActiveModal(null)} hitSlop={12}>
+              <Icon name="x" size={22} color={colors.foreground} />
+            </Pressable>
+            <Text style={[styles.sigModalTitle, { color: colors.foreground }]}>
+              Rep's Signature
+            </Text>
+            <Text style={[styles.sigModalSubtitle, { color: colors.mutedForeground }]}>
+              {companyName}
+            </Text>
+          </View>
+
+          {/* Printed name input */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 6 }}
+          >
+            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+              Printed name
+            </Text>
+            <TextInput
+              value={repPrintName}
+              onChangeText={setRepPrintName}
+              placeholder="Rep's full name"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="words"
+              autoCorrect={false}
+              returnKeyType="done"
+              style={[
+                styles.textInput,
+                {
+                  color: colors.foreground,
+                  borderColor: repPrintName.trim().length >= 2 ? colors.primary : colors.border,
+                  backgroundColor: colors.background,
+                },
+              ]}
+            />
+          </KeyboardAvoidingView>
+
+          {/* Canvas */}
+          <View style={[styles.sigCanvasWrap, { backgroundColor: '#ffffff' }]}>
+            <SignatureScreen
+              key={`rep-${repSigKey}`}
+              ref={repSigRef}
+              onOK={(sig) => {
+                const base64 = sig.replace(/^data:image\/png;base64,/, '');
+                setRepSigData(base64);
+                setActiveModal(null);
+              }}
+              onEmpty={() => setRepSigData(null)}
+              onEnd={() => repSigRef.current?.readSignature()}
+              minWidth={1.5}
+              maxWidth={4}
+              penColor="#0f2942"
+              webStyle={SIG_WEB_STYLE}
+              style={{ flex: 1 }}
+              autoClear={false}
+              dataURL=""
+            />
+          </View>
+
+          {/* Footer */}
+          <View style={[styles.sigModalFooter, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
+            <Pressable onPress={clearRepSig} style={styles.clearBtn}>
+              <Icon name="refresh-cw" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>Clear</Text>
+            </Pressable>
+            <Pressable
+              disabled={repPrintName.trim().length < 2}
+              onPress={confirmRepSig}
+              style={[
+                styles.doneBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: repPrintName.trim().length >= 2 ? 1 : 0.45,
+                },
+              ]}
+            >
+              <Icon name="check" size={18} color={colors.primaryForeground} />
+              <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>
+                Done
+              </Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Main scroll ─────────────────────────────────────────────────────── */}
+      <ScrollView contentContainerStyle={styles.content}>
+
+        {/* Signature buttons row */}
+        <View style={styles.sigButtonRow}>
+          <SigButton
+            label="Owner's Signature"
+            signed={!!ownerSigData}
+            onPress={() => setActiveModal('owner')}
+            colors={colors}
+          />
+          <SigButton
+            label="Rep Signature"
+            signed={!!repSigData}
+            onPress={() => setActiveModal('rep')}
+            colors={colors}
+          />
         </View>
 
-        {/* ── Scroll status ─────────────────────────────────────────────────── */}
+        {/* Scroll gate status */}
         {!hasScrolledToBottom ? (
           <View style={[styles.banner, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
             <Icon name="chevron-down" size={16} color="#b45309" />
             <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
-              Scroll through both pages to enable signing.
+              Scroll through both pages below to enable signing.
             </Text>
           </View>
         ) : (
           <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
             <Icon name="check" size={16} color={colors.success} />
             <Text style={{ color: colors.success, fontSize: 13, flex: 1 }}>
-              Agreement reviewed — have the homeowner sign below.
+              Agreement reviewed — collect both signatures above.
             </Text>
           </View>
         )}
 
-        {/* ── Signer name (editable for corrections) ────────────────────────── */}
+        {/* Homeowner name (editable) */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
             Homeowner's full name
@@ -358,63 +527,31 @@ export default function InspectionAgreementScreen() {
           />
         </View>
 
-        {/* ── Signature canvas ─────────────────────────────────────────────── */}
+        {/* Agreement viewer */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.headerRow}>
-            <Icon name="edit-3" size={18} color={colors.foreground} />
-            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-              Homeowner signature
+            <Icon name="file-text" size={18} color={colors.foreground} />
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Agreement — scroll to read both pages
             </Text>
-            <Pressable onPress={handleClear} hitSlop={8}>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Clear</Text>
-            </Pressable>
           </View>
-
-          <View
-            style={[
-              styles.signatureBorder,
-              {
-                borderColor: signatureData ? colors.success : colors.border,
-                backgroundColor: '#ffffff',
-              },
-            ]}
-          >
-            <SignatureScreen
-              key={String(sigCleared)}
-              ref={signatureRef}
-              onOK={handleSignatureOK}
-              onEmpty={() => setSignatureData(null)}
-              minWidth={1.5}
-              maxWidth={4}
-              penColor="#0f2942"
-              webStyle={`
-                .m-signature-pad { box-shadow: none; border: none; }
-                .m-signature-pad--body { border: none; }
-                .m-signature-pad--footer { display: none; }
-                body { background-color: #ffffff; }
-              `}
-              style={styles.signatureCanvas}
-              onEnd={handleStrokeEnd}
-              autoClear={false}
-              dataURL=""
+          <View style={[styles.webviewWrap, { borderColor: colors.border }]}>
+            <WebView
+              source={{ html: previewHtml }}
+              injectedJavaScript={SCROLL_DETECT_JS}
+              onMessage={(e) => {
+                if (e.nativeEvent.data === 'bottom') setHasScrolledToBottom(true);
+              }}
+              scrollEnabled
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              originWhitelist={['*']}
+              style={styles.webview}
             />
           </View>
-
-          {signatureData ? (
-            <View style={[styles.sigStatus, { backgroundColor: '#ecfdf5' }]}>
-              <Icon name="check" size={14} color={colors.success} />
-              <Text style={{ color: colors.success, fontSize: 12 }}>Signature captured</Text>
-            </View>
-          ) : (
-            <View style={[styles.sigStatus, { backgroundColor: colors.muted }]}>
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                Have the homeowner draw their signature above
-              </Text>
-            </View>
-          )}
         </View>
 
-        {/* ── Confirm button ───────────────────────────────────────────────── */}
+        {/* Confirm button */}
         <Pressable
           onPress={handleConfirm}
           disabled={!canSign}
@@ -437,55 +574,121 @@ export default function InspectionAgreementScreen() {
 
         {!hasScrolledToBottom && (
           <Text style={{ color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }}>
-            Scroll through the agreement to enable signing.
+            Scroll through the agreement above to enable signing.
           </Text>
         )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
+// ── Sig button chip ────────────────────────────────────────────────────────────
+function SigButton({
+  label,
+  signed,
+  onPress,
+  colors,
+}: {
+  label: string;
+  signed: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.sigBtn,
+        {
+          backgroundColor: signed ? '#ecfdf5' : colors.card,
+          borderColor: signed ? colors.success : colors.border,
+        },
+      ]}
+    >
+      <Icon
+        name={signed ? 'check' : 'clipboard'}
+        size={20}
+        color={signed ? colors.success : colors.mutedForeground}
+      />
+      <Text
+        style={[
+          styles.sigBtnLabel,
+          { color: signed ? colors.success : colors.foreground },
+        ]}
+      >
+        {label}
+      </Text>
+      {signed && (
+        <Text style={{ fontSize: 11, color: colors.success, fontWeight: '600' }}>
+          ✓ Signed
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+// ── Shared signature pad CSS ───────────────────────────────────────────────────
+const SIG_WEB_STYLE = `
+  .m-signature-pad { box-shadow: none; border: none; }
+  .m-signature-pad--body { border: none; }
+  .m-signature-pad--footer { display: none; }
+  body { background-color: #ffffff; margin: 0; }
+`;
+
+// ── Styles ─────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, gap: 12 },
 
+  // Signature button row
+  sigButtonRow: { flexDirection: 'row', gap: 10 },
+  sigBtn: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  sigBtnLabel: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+
+  // Cards + inputs
   card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 14, fontWeight: '700', flex: 1 },
   fieldLabel: { fontSize: 14, fontWeight: '600' },
-
-  webviewWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', height: 520 },
-  webview: { flex: 1 },
-
-  banner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    padding: 12, borderRadius: 10, borderWidth: 1,
-  },
   textInput: {
     borderWidth: 1, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
   },
-  signatureBorder: { borderWidth: 1.5, borderRadius: 10, overflow: 'hidden', height: 200 },
-  signatureCanvas: { flex: 1, height: 200 },
-  sigStatus: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+
+  // WebView
+  webviewWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', height: 520 },
+  webview: { flex: 1 },
+
+  // Banner
+  banner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 12, borderRadius: 10, borderWidth: 1,
   },
 
+  // Confirm
   confirmBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 16, borderRadius: 14, marginTop: 4,
   },
   confirmText: { fontSize: 16, fontWeight: '800' },
 
-  // Modal
+  // Owner-name modal
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center', alignItems: 'center', padding: 24,
   },
-  modalCard: {
+  sheetCard: {
     width: '100%', maxWidth: 420, borderRadius: 18,
     padding: 24, gap: 14,
   },
@@ -493,4 +696,39 @@ const styles = StyleSheet.create({
   modalBody: { fontSize: 14, lineHeight: 20 },
   modalBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   modalBtnText: { fontSize: 16, fontWeight: '700' },
+
+  // Full-screen signature modal
+  sigModal: { flex: 1 },
+  sigModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  sigModalTitle: { fontSize: 17, fontWeight: '700', flex: 1 },
+  sigModalSubtitle: { fontSize: 13 },
+  sigCanvasWrap: { flex: 1 },
+  sigModalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10 },
+  clearBtnText: { fontSize: 15 },
+  doneBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  doneBtnText: { fontSize: 16, fontWeight: '700' },
 });
