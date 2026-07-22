@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,7 @@ import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { PreliminaryHub } from '@/components/PreliminaryHub';
 import { attestInspection } from '@/lib/inspectionSync';
+import { addBusinessDays } from '@/lib/fipsaTemplate';
 import {
   buildProtocolState,
   evaluateInspection,
@@ -91,6 +93,17 @@ export default function InspectionDetailScreen() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [equipmentDone, setEquipmentDone] = useState(false);
   const [savingEquipment, setSavingEquipment] = useState(false);
+
+  // FTC cooling-off gate — shown once per hub visit when the FIPSA was signed
+  // fewer than 3 business days ago. The rep can still proceed, but must
+  // acknowledge the warning.
+  const coolingOffActive = useMemo(() => {
+    const signedAt = inspection?.latestAgreement?.signedAt;
+    if (!signedAt) return false;
+    const deadline = addBusinessDays(new Date(signedAt), 3);
+    return new Date() < deadline;
+  }, [inspection?.latestAgreement?.signedAt]);
+  const [coolingOffDismissed, setCoolingOffDismissed] = useState(false);
 
   const allChecked = EQUIPMENT_ITEMS.every((item) => checked[item]);
 
@@ -357,6 +370,59 @@ export default function InspectionDetailScreen() {
   }
 
   return (
+    <>
+      {/* FTC cooling-off gate — shown whenever the rep opens the hub within
+          3 business days of the FIPSA being signed. They can still proceed,
+          but must explicitly acknowledge the warning. */}
+      <Modal
+        visible={coolingOffActive && !coolingOffDismissed}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setCoolingOffDismissed(true)}
+      >
+        <View style={styles.coolingOverlay}>
+          <View style={[styles.coolingCard, { backgroundColor: colors.card }]}>
+            <View style={styles.coolingIconWrap}>
+              <Icon name="alert-triangle" size={28} color="#b45309" />
+            </View>
+            <Text style={[styles.coolingTitle, { color: colors.foreground }]}>
+              FTC Cooling-Off Period
+            </Text>
+            <Text style={[styles.coolingBody, { color: colors.foreground }]}>
+              The FTC Cooling-Off Period of this document is{' '}
+              <Text style={{ fontWeight: '700' }}>3 days from signing</Text>. You are
+              attempting to complete the Forensic Inspection prior to the end of the
+              Federal Trade Commission's Cooling-Off Period.
+            </Text>
+            <Text style={[styles.coolingBody, { color: colors.foreground }]}>
+              The homeowner has the right to cancel this agreement within 3 business days
+              of signing without penalty.
+            </Text>
+            <View style={styles.coolingBtnRow}>
+              <Pressable
+                onPress={() =>
+                  router.replace({
+                    pathname: '/inspection-agreement',
+                    params: { id },
+                  } as never)
+                }
+                style={[styles.coolingBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+              >
+                <Icon name="calendar" size={15} color={colors.foreground} />
+                <Text style={[styles.coolingBtnText, { color: colors.foreground }]}>Schedule</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setCoolingOffDismissed(true)}
+                style={[styles.coolingBtn, { borderColor: '#ef4444', backgroundColor: '#fef2f2' }]}
+              >
+                <Icon name="play" size={15} color="#dc2626" />
+                <Text style={[styles.coolingBtnText, { color: '#dc2626' }]}>Proceed</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
@@ -470,6 +536,7 @@ export default function InspectionDetailScreen() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    </>
   );
 }
 
@@ -559,4 +626,47 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  coolingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  coolingCard: {
+    borderRadius: 18,
+    padding: 24,
+    gap: 12,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  coolingIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#fffbeb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  coolingTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
+  coolingBody: { fontSize: 14, lineHeight: 21 },
+  coolingBtnRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  coolingBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  coolingBtnText: { fontSize: 14, fontWeight: '700' },
 });
