@@ -355,21 +355,11 @@ router.get(
       return;
     }
 
-    // Generate a short-lived presigned GET URL for the PDF so the mobile app
-    // can open it directly in the browser without streaming through our server.
-    // Skip for voided agreements — there's no point in opening a voided PDF.
-    let downloadUrl: string | null = null;
-    if (!agreement.voidedAt) {
-      try {
-        downloadUrl = await objectStorageService.getSignedDownloadUrl(
-          agreement.documentObjectPath,
-          15 * 60, // 15 minutes
-        );
-      } catch (err) {
-        req.log.warn({ err }, 'Could not generate signed download URL for agreement');
-        // Non-fatal — client can still use the /storage/objects/* route
-      }
-    }
+    // The mobile app serves PDFs through the authenticated storage proxy
+    // (GET /storage/objects/*path) rather than presigned URLs, because GCS
+    // signed URLs require a service-account client_email that is not available
+    // in this environment. downloadUrl is kept in the response shape for
+    // compatibility but is always null here.
 
     res.json({
       agreement: {
@@ -379,7 +369,7 @@ router.get(
         documentVersion: agreement.documentVersion,
         signedAt: agreement.signedAt,
         documentObjectPath: agreement.documentObjectPath,
-        downloadUrl,
+        downloadUrl: null,
         voidedAt: agreement.voidedAt ?? null,
         voidReason: agreement.voidReason ?? null,
         emailedAt: agreement.emailedAt ?? null,
@@ -786,15 +776,6 @@ router.get('/documents', async (req: Request, res: Response) => {
       .limit(50);
 
     for (const row of rows) {
-      let downloadUrl: string | null = null;
-      if (!row.voidedAt) {
-        try {
-          downloadUrl = await objectStorageService.getSignedDownloadUrl(
-            row.documentObjectPath,
-            15 * 60,
-          );
-        } catch { /* non-fatal */ }
-      }
       docs.push({
         id: row.id,
         type: 'fipsa',
@@ -803,7 +784,7 @@ router.get('/documents', async (req: Request, res: Response) => {
         homeownerName: row.homeownerName ?? null,
         repName: [row.repFirstName, row.repLastName].filter(Boolean).join(' ') || null,
         date: (row.signedAt as Date).toISOString(),
-        downloadUrl,
+        downloadUrl: null,
         emailedAt: row.emailedAt ? (row.emailedAt as Date).toISOString() : null,
         voidedAt: row.voidedAt ? (row.voidedAt as Date).toISOString() : null,
         scheduledFor: row.scheduledFor ? (row.scheduledFor as Date).toISOString() : null,
@@ -926,37 +907,21 @@ router.get('/agreements', async (req: Request, res: Response) => {
     .orderBy(desc(signedAgreementsTable.signedAt))
     .limit(100);
 
-  // Generate short-lived presigned download URLs for active (non-voided) agreements.
-  // Failures are suppressed per-row — the PDF is still accessible via the
-  // storage proxy route if the presigned URL cannot be generated.
-  const agreements = await Promise.all(
-    rows.map(async (row) => {
-      let downloadUrl: string | null = null;
-      if (!row.voidedAt) {
-        try {
-          downloadUrl = await objectStorageService.getSignedDownloadUrl(
-            row.documentObjectPath,
-            15 * 60, // 15 minutes
-          );
-        } catch {
-          // Non-fatal
-        }
-      }
-      return {
-        id: row.id,
-        inspectionId: row.inspectionId,
-        signerName: row.signerName,
-        signedAt: row.signedAt,
-        emailedAt: row.emailedAt ?? null,
-        voidedAt: row.voidedAt ?? null,
-        propertyAddress: row.propertyAddress ?? null,
-        homeownerName: row.homeownerName ?? null,
-        scheduledFor: row.scheduledFor ?? null,
-        repName: [row.repFirstName, row.repLastName].filter(Boolean).join(' ') || null,
-        downloadUrl,
-      };
-    }),
-  );
+  // PDFs are served through the authenticated storage proxy
+  // (GET /storage/objects/*path). downloadUrl is always null here.
+  const agreements = rows.map((row) => ({
+    id: row.id,
+    inspectionId: row.inspectionId,
+    signerName: row.signerName,
+    signedAt: row.signedAt,
+    emailedAt: row.emailedAt ?? null,
+    voidedAt: row.voidedAt ?? null,
+    propertyAddress: row.propertyAddress ?? null,
+    homeownerName: row.homeownerName ?? null,
+    scheduledFor: row.scheduledFor ?? null,
+    repName: [row.repFirstName, row.repLastName].filter(Boolean).join(' ') || null,
+    downloadUrl: null,
+  }));
 
   res.json({ agreements });
 });

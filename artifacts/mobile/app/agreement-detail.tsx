@@ -1,18 +1,18 @@
 /**
  * Full-screen PDF viewer for a signed FIPSA agreement.
  *
- * Accepts an `inspectionId` param and fetches a fresh presigned download URL
- * from GET /inspections/:id/agreement on mount — this avoids stale-URL errors
- * that occur when the Documents list has been cached for longer than the
- * presigned URL TTL (15 min).
+ * Fetches a fresh agreement record on mount via GET /inspections/:id/agreement,
+ * then serves the PDF through the authenticated storage proxy
+ * (GET /storage/objects/*path) with a Bearer token header — avoids GCS
+ * presigned URLs entirely, which require a service-account client_email that
+ * isn't available in this environment.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   SafeAreaView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -22,6 +22,8 @@ import { WebView } from 'react-native-webview';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useGetAgreement } from '@/lib/agreementApi';
+import { getApiBaseUrl } from '@/lib/api';
+import { getToken } from '@/lib/tokenStorage';
 
 export default function AgreementDetailScreen() {
   const colors = useColors();
@@ -32,31 +34,43 @@ export default function AgreementDetailScreen() {
       signerName?: string;
     }>();
 
-  // Always fetch a fresh presigned URL — never rely on the cached list URL.
-  const { data, isLoading: urlLoading, isError: urlError } = useGetAgreement(inspectionId ?? '');
-  const downloadUrl = data?.agreement?.downloadUrl ?? null;
+  // Always fetch a fresh agreement record — never rely on a cached list URL.
+  const { data, isLoading: agreementLoading, isError: agreementError } =
+    useGetAgreement(inspectionId ?? '');
+
+  const documentObjectPath = data?.agreement?.documentObjectPath ?? null;
+
+  // Build a WebView source with Bearer auth once we have the object path.
+  const [webviewSource, setWebviewSource] = useState<{
+    uri: string;
+    headers: Record<string, string>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!documentObjectPath) return;
+    void getToken('auth_session_token').then((token) => {
+      setWebviewSource({
+        uri: `${getApiBaseUrl()}/storage${documentObjectPath}`,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    });
+  }, [documentObjectPath]);
 
   const [webLoading, setWebLoading] = useState(true);
   const [webError, setWebError] = useState(false);
 
   const title = propertyAddress || 'Signed Agreement';
 
-  async function handleShare() {
-    if (!downloadUrl) return;
-    try {
-      await Share.share({
-        message: `Signed agreement for ${title}${signerName ? ` — signed by ${signerName}` : ''}\n\n${downloadUrl}`,
-        url: downloadUrl,
-        title: `Signed Agreement — ${title}`,
-      });
-    } catch {
-      // User cancelled or platform doesn't support URL share — ignore
-    }
-  }
+  // ── Derived display state ────────────────────────────────────────────────
 
-  // ── Derived state ─────────────────────────────────────────────────────────
+  // Still waiting on the agreement fetch or token load.
+  const isLoading = agreementLoading || (!webviewSource && !!documentObjectPath);
 
-  const noUrl = !urlLoading && !urlError && !downloadUrl;
+  // Agreement fetched, not voided, but something still went wrong.
+  const noPdf =
+    !agreementLoading &&
+    !agreementError &&
+    !documentObjectPath;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -70,11 +84,6 @@ export default function AgreementDetailScreen() {
               <Icon name="chevron-left" size={22} color="#ffffff" />
             </Pressable>
           ),
-          headerRight: () => (
-            <Pressable onPress={handleShare} hitSlop={12} style={{ marginRight: 4 }}>
-              <Icon name="send" size={20} color="#ffffff" />
-            </Pressable>
-          ),
         }}
       />
 
@@ -86,15 +95,14 @@ export default function AgreementDetailScreen() {
         </Text>
       </View>
 
-      {/* Fetching fresh URL */}
-      {urlLoading ? (
+      {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
             Loading agreement…
           </Text>
         </View>
-      ) : urlError ? (
+      ) : agreementError ? (
         <View style={styles.centered}>
           <Icon name="alert-circle" size={36} color={colors.destructive} />
           <Text style={[styles.errorText, { color: colors.destructive }]}>
@@ -107,11 +115,11 @@ export default function AgreementDetailScreen() {
             <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Go back</Text>
           </Pressable>
         </View>
-      ) : noUrl ? (
+      ) : noPdf ? (
         <View style={styles.centered}>
           <Icon name="alert-circle" size={36} color={colors.destructive} />
           <Text style={[styles.errorText, { color: colors.destructive }]}>
-            PDF link unavailable — the agreement may have been voided.
+            No signed agreement found for this inspection.
           </Text>
           <Pressable
             onPress={() => router.back()}
@@ -133,7 +141,7 @@ export default function AgreementDetailScreen() {
             <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Go back</Text>
           </Pressable>
         </View>
-      ) : (
+      ) : webviewSource ? (
         <>
           {webLoading && (
             <View style={[styles.loadingOverlay, { backgroundColor: colors.background }]}>
@@ -144,7 +152,7 @@ export default function AgreementDetailScreen() {
             </View>
           )}
           <WebView
-            source={{ uri: downloadUrl! }}
+            source={webviewSource}
             style={{ flex: 1 }}
             onLoadEnd={() => setWebLoading(false)}
             onError={() => { setWebLoading(false); setWebError(true); }}
@@ -154,7 +162,7 @@ export default function AgreementDetailScreen() {
             scalesPageToFit
           />
         </>
-      )}
+      ) : null}
     </SafeAreaView>
   );
 }
