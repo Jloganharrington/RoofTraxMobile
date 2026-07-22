@@ -177,6 +177,50 @@ export function useListAgreements(q?: string) {
   });
 }
 
+// ── Documents list (unified: FIPSA + Phase 1 + Phase 2) ──────────────────────
+
+export interface DocumentListItem {
+  id: string;
+  type: 'fipsa' | 'phase1' | 'phase2';
+  inspectionId: string;
+  propertyAddress: string | null;
+  homeownerName: string | null;
+  repName: string | null;
+  /** ISO string — signedAt for FIPSA, createdAt for Phase 1/2. */
+  date: string;
+  /** Short-lived presigned GCS URL — FIPSA only. */
+  downloadUrl: string | null;
+  emailedAt: string | null;
+  voidedAt: string | null;
+  scheduledFor: string | null;
+  /** Inspection status, populated for Phase 2 items. */
+  status: string | null;
+  /** FIPSA signer name for passing to the agreement-detail screen. */
+  signerName: string | null;
+}
+
+export interface ListDocumentsResult {
+  documents: DocumentListItem[];
+}
+
+export function getDocumentsListQueryKey(q?: string) {
+  return ['documents-list', q ?? ''] as const;
+}
+
+export function useListDocuments(q?: string) {
+  return useQuery<ListDocumentsResult, Error>({
+    queryKey: getDocumentsListQueryKey(q),
+    queryFn: async () => {
+      const url = q
+        ? `/api/documents?q=${encodeURIComponent(q)}`
+        : '/api/documents';
+      return customFetch<ListDocumentsResult>(url);
+    },
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
 export function useVoidAgreement() {
   const queryClient = useQueryClient();
   return useMutation<

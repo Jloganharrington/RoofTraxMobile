@@ -717,6 +717,160 @@ router.post(
   },
 );
 
+// ── GET /documents ────────────────────────────────────────────────────────────
+// Unified company-scoped document list: FIPSA agreements + Phase 1 preliminary
+// reports + Phase 2 forensic reports. Field reps see only their own;
+// managers/admins see the full company list. Optional ?q= searches address
+// and homeowner name across all types. Returns up to 50 items per type sorted
+// newest-first, then merged by date.
+
+interface DocumentListItem {
+  id: string;
+  type: 'fipsa' | 'phase1' | 'phase2';
+  inspectionId: string;
+  propertyAddress: string | null;
+  homeownerName: string | null;
+  repName: string | null;
+  /** ISO date string used for sorting (signedAt for FIPSA, createdAt for others). */
+  date: string;
+  /** Short-lived presigned URL — FIPSA only; null for report types. */
+  downloadUrl: string | null;
+  emailedAt: string | null;
+  voidedAt: string | null;
+  scheduledFor: string | null;
+  /** Inspection status — useful for Phase 2 (submitted, package_ready, etc.). */
+  status: string | null;
+  /** FIPSA signer name, for passing to agreement-detail. */
+  signerName: string | null;
+}
+
+router.get('/documents', async (req: Request, res: Response) => {
+  const actor = await requireAgreementActor(req, res);
+  if (!actor) return;
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const isManager = ['manager', 'admin', 'super_admin'].includes(actor.role);
+
+  const docs: DocumentListItem[] = [];
+
+  // ── FIPSA agreements ────────────────────────────────────────────────────────
+  {
+    const conds: Parameters<typeof and>[0][] = [
+      eq(signedAgreementsTable.companyId, actor.companyId),
+    ];
+    if (!isManager) conds.push(eq(inspectionsTable.inspectorUserId, actor.userId));
+    if (q) {
+      const p = `%${q}%`;
+      conds.push(or(ilike(inspectionsTable.address, p), ilike(inspectionsTable.insuredName, p)));
+    }
+    const rows = await db
+      .select({
+        id: signedAgreementsTable.id,
+        inspectionId: signedAgreementsTable.inspectionId,
+        signerName: signedAgreementsTable.signerName,
+        signedAt: signedAgreementsTable.signedAt,
+        emailedAt: signedAgreementsTable.emailedAt,
+        voidedAt: signedAgreementsTable.voidedAt,
+        documentObjectPath: signedAgreementsTable.documentObjectPath,
+        propertyAddress: inspectionsTable.address,
+        homeownerName: inspectionsTable.insuredName,
+        scheduledFor: inspectionsTable.scheduledFor,
+        repFirstName: usersTable.firstName,
+        repLastName: usersTable.lastName,
+      })
+      .from(signedAgreementsTable)
+      .innerJoin(inspectionsTable, eq(signedAgreementsTable.inspectionId, inspectionsTable.id))
+      .leftJoin(usersTable, eq(inspectionsTable.inspectorUserId, usersTable.id))
+      .where(and(...conds))
+      .orderBy(desc(signedAgreementsTable.signedAt))
+      .limit(50);
+
+    for (const row of rows) {
+      let downloadUrl: string | null = null;
+      if (!row.voidedAt) {
+        try {
+          downloadUrl = await objectStorageService.getSignedDownloadUrl(
+            row.documentObjectPath,
+            15 * 60,
+          );
+        } catch { /* non-fatal */ }
+      }
+      docs.push({
+        id: row.id,
+        type: 'fipsa',
+        inspectionId: row.inspectionId,
+        propertyAddress: row.propertyAddress ?? null,
+        homeownerName: row.homeownerName ?? null,
+        repName: [row.repFirstName, row.repLastName].filter(Boolean).join(' ') || null,
+        date: (row.signedAt as Date).toISOString(),
+        downloadUrl,
+        emailedAt: row.emailedAt ? (row.emailedAt as Date).toISOString() : null,
+        voidedAt: row.voidedAt ? (row.voidedAt as Date).toISOString() : null,
+        scheduledFor: row.scheduledFor ? (row.scheduledFor as Date).toISOString() : null,
+        status: null,
+        signerName: row.signerName,
+      });
+    }
+  }
+
+  // ── Helper: inspection rows by phase ────────────────────────────────────────
+  async function queryInspectionPhase(phase: string): Promise<DocumentListItem[]> {
+    const conds: Parameters<typeof and>[0][] = [
+      eq(inspectionsTable.companyId, actor.companyId),
+      eq(inspectionsTable.phase, phase),
+    ];
+    if (!isManager) conds.push(eq(inspectionsTable.inspectorUserId, actor.userId));
+    if (q) {
+      const p = `%${q}%`;
+      conds.push(or(ilike(inspectionsTable.address, p), ilike(inspectionsTable.insuredName, p)));
+    }
+    const rows = await db
+      .select({
+        id: inspectionsTable.id,
+        address: inspectionsTable.address,
+        insuredName: inspectionsTable.insuredName,
+        status: inspectionsTable.status,
+        createdAt: inspectionsTable.createdAt,
+        scheduledFor: inspectionsTable.scheduledFor,
+        repFirstName: usersTable.firstName,
+        repLastName: usersTable.lastName,
+      })
+      .from(inspectionsTable)
+      .leftJoin(usersTable, eq(inspectionsTable.inspectorUserId, usersTable.id))
+      .where(and(...conds))
+      .orderBy(desc(inspectionsTable.createdAt))
+      .limit(50);
+
+    return rows.map((row) => ({
+      id: row.id,
+      type: phase === 'preliminary' ? ('phase1' as const) : ('phase2' as const),
+      inspectionId: row.id,
+      propertyAddress: row.address ?? null,
+      homeownerName: row.insuredName ?? null,
+      repName: [row.repFirstName, row.repLastName].filter(Boolean).join(' ') || null,
+      date: row.createdAt ? (row.createdAt as Date).toISOString() : new Date(0).toISOString(),
+      downloadUrl: null,
+      emailedAt: null,
+      voidedAt: null,
+      scheduledFor: row.scheduledFor ? (row.scheduledFor as Date).toISOString() : null,
+      status: row.status ?? null,
+      signerName: null,
+    }));
+  }
+
+  const [phase1, phase2] = await Promise.all([
+    queryInspectionPhase('preliminary'),
+    queryInspectionPhase('forensic'),
+  ]);
+
+  docs.push(...phase1, ...phase2);
+
+  // Sort all types newest-first.
+  docs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  res.json({ documents: docs });
+});
+
 // ── GET /agreements ───────────────────────────────────────────────────────────
 // Company-scoped list of signed agreements. Managers and above see all reps'
 // agreements; field reps see only their own. Optional ?q= search on address
