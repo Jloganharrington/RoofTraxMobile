@@ -26,6 +26,10 @@ export const companiesTable = pgTable('companies', {
   // ON for the beta cohort; end of beta = flip the flag (no code change, no
   // revert). Reports already stored stay readable when this is off.
   betaBugReporting: boolean('beta_bug_reporting').notNull().default(true),
+  // Company logo uploaded by a manager/admin. Stored as a full
+  // authenticated URL (/api/storage/objects/...) — displayed in the FIPSA
+  // letterhead instead of the hardcoded NuHome logo.
+  logoUrl: varchar('logo_url'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

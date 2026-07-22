@@ -215,6 +215,7 @@ export const GetMyProfileResponse = zod.object({
   "department": zod.enum(['canvasser', 'inspector_canvasser']),
   "companyId": zod.string(),
   "companyName": zod.string(),
+  "companyLogoUrl": zod.string().nullish(),
   "signatureUrl": zod.string().nullable(),
   "signatureSha256": zod.string().nullable(),
   "signatureSignedAt": zod.coerce.date().nullable(),

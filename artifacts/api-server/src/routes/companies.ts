@@ -1,5 +1,5 @@
 import { CreateCompanyBody, CreateCompanyResponse, GetCompanyResponse } from '@workspace/api-zod';
-import { companiesTable, db } from '@workspace/db';
+import { companiesTable, db, userProfilesTable, usersTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -61,6 +61,49 @@ router.get('/companies/:companyId', async (req: Request, res: Response) => {
   }
 
   res.json(GetCompanyResponse.parse({ company: { id: company.id, name: company.name } }));
+});
+
+// PATCH /companies/:companyId/logo — store a company logo URL.
+// Restricted to managers and admins of the target company so field reps cannot
+// swap their own company's branding.
+router.patch('/companies/:companyId/logo', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+
+  // Actors may only manage their own company.
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  // Look up the actor's role — only manager / admin / super_admin may set logos.
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+
+  const role = actorProfile?.role ?? 'field_rep';
+  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
+    res.status(403).json({ error: 'Only managers and admins can update the company logo' });
+    return;
+  }
+
+  const { logoUrl } = req.body as { logoUrl?: unknown };
+  if (typeof logoUrl !== 'string' || !logoUrl.trim()) {
+    res.status(400).json({ error: 'logoUrl is required' });
+    return;
+  }
+
+  await db
+    .update(companiesTable)
+    .set({ logoUrl: logoUrl.trim() })
+    .where(eq(companiesTable.id, companyId));
+
+  res.json({ ok: true });
 });
 
 export default router;

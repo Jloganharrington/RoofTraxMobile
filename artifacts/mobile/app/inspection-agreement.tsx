@@ -44,6 +44,7 @@ import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useSignAgreement, useEmailAgreement } from '@/lib/agreementApi';
 import { useAuth } from '@/lib/auth';
+import { getToken } from '@/lib/tokenStorage';
 import {
   addBusinessDays,
   buildFipsaHtml,
@@ -178,13 +179,35 @@ type ActiveModal = 'owner' | 'rep' | 'ownerName' | null;
 export default function InspectionAgreementScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { companyName } = useProfile();
+  const { companyName, companyLogoUrl } = useProfile();
   const { user } = useAuth();
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
+
+  // ── Company logo — resolved to a data URI so it embeds cleanly in WebView HTML.
+  const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
+  useEffect(() => {
+    if (!companyLogoUrl) { setLogoDataUri(null); return; }
+    let active = true;
+    (async () => {
+      try {
+        const token = await getToken('auth_session_token');
+        const dest = (FileSystem.cacheDirectory ?? '') + 'company-logo-fipsa.jpg';
+        const dl = await (FileSystem as any).downloadAsync(companyLogoUrl, dest, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!active || dl.status !== 200) return;
+        const b64 = await (FileSystem as any).readAsStringAsync(dl.uri, {
+          encoding: 'base64',
+        });
+        if (active) setLogoDataUri(`data:image/jpeg;base64,${b64}`);
+      } catch { /* logo preview is non-critical */ }
+    })();
+    return () => { active = false; };
+  }, [companyLogoUrl]);
 
   // ── Owner signature ─────────────────────────────────────────────────────────
   const ownerSigRef = useRef<SignatureViewRef>(null);
@@ -257,6 +280,7 @@ export default function InspectionAgreementScreen() {
       ownerNames: signerName || '___________________________',
       agreementDate: todayMDY,
       propertyAddress: inspection?.address ?? '',
+      logoUrl: logoDataUri ?? undefined,
       owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
       contractorRep: {
         signatureImage: '',
@@ -270,7 +294,7 @@ export default function InspectionAgreementScreen() {
         buyerSignatureImage: '',
       },
     });
-  }, [signerName, repPrintName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName]);
+  }, [signerName, repPrintName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName, logoDataUri]);
 
   const canSign =
     hasScrolledToBottom &&
@@ -323,6 +347,7 @@ export default function InspectionAgreementScreen() {
                 ownerNames: ownerName,
                 agreementDate: todayMDY,
                 propertyAddress: inspection.address ?? '',
+                logoUrl: logoDataUri ?? undefined,
                 owner: {
                   signatureImage: `data:image/png;base64,${ownerSigData}`,
                   printName: ownerName,

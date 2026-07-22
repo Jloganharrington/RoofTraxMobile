@@ -89,7 +89,7 @@ export function buildPreviewHtml(data: FipsaData): string {
 <style>
   .page { width: 100% !important; max-width: 100% !important;
           padding: 16px 18px !important; }
-  body  { font-size: 10pt; }
+  body  { font-size: 8pt; }
 </style>`;
   const scrollScript = `
 <script>
@@ -133,7 +133,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
   body{
     font-family: "Calibri", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     color:var(--ink);
-    font-size:10pt;
+    font-size:8pt;
     line-height:1.33;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
@@ -149,12 +149,6 @@ const FIPSA_TEMPLATE = `<!doctype html>
   /* ---------- Letterhead ---------- */
   .letterhead{ text-align:center; }
   .letterhead .logo{ height:54px; margin:0 auto 4px; display:block; }
-  .letterhead .logo-fallback{
-    font-size:30pt; font-weight:700; color:#6aa84f; letter-spacing:.5px;
-  }
-  .letterhead .contactline{
-    font-size:10pt; color:var(--navy); font-weight:600; margin-top:2px;
-  }
   .rule{ height:2px; background:var(--orange); margin:7px 0 12px; border:0; }
 
   h1.doc-title{
@@ -224,9 +218,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
 <!-- ================= PAGE 1 — AGREEMENT ================= -->
 <section class="page">
   <div class="letterhead">
-    <img class="logo" data-logo src="data:image/jpeg;base64,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" alt="NuHome Exteriors" />
-    <div class="logo-fallback" data-logo-fallback style="display:none;">NuHome</div>
-    <div class="contactline">3615-A Chain Bridge Rd, Fairfax, VA 22030 &nbsp;&bull;&nbsp; VA Class A Contractor #2705-064938A</div>
+    <img class="logo" data-logo src="" style="display:none;" alt="Company logo" />
   </div>
   <hr class="rule" />
 
@@ -331,12 +323,11 @@ const FIPSA_DATA = {
   });
 
   const logo = document.querySelector('[data-logo]');
-  const logoFallback = document.querySelector('[data-logo-fallback]');
-  if (D.logoUrl && logo){ logo.src = D.logoUrl; }
-  if (logo){ logo.addEventListener('error', function(){
-    logo.style.display = 'none';
-    if (logoFallback) logoFallback.style.display = 'block';
-  }); }
+  if (D.logoUrl && logo){
+    logo.src = D.logoUrl;
+    logo.style.display = 'block';
+    logo.addEventListener('error', function(){ logo.style.display = 'none'; });
+  }
 
   const sigSrc = {
     owner: D.owner && D.owner.signatureImage,

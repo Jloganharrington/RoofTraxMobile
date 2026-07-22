@@ -31,6 +31,11 @@ import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { PriceBookModal } from '@/components/PriceBookModal';
 import { saveSignatureFromDataUrl } from '@/lib/profileSignature';
+import { uploadFile } from '@/lib/upload';
+import { getApiBaseUrl } from '@/lib/api';
+import { getToken } from '@/lib/tokenStorage';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 
 const ROLE_LABELS: Record<string, string> = {
   field_rep: 'Field Rep',
@@ -89,10 +94,72 @@ export default function ProfileScreen() {
     department,
     companyId,
     companyName,
+    companyLogoUrl,
     signatureUrl,
     signatureSignedAt,
     isLoading: profileLoading,
   } = useProfile();
+
+  // ── Company logo ────────────────────────────────────────────────────────────
+  const canManageLogo = role === 'manager' || role === 'admin' || role === 'super_admin';
+  const [logoUploading, setLogoUploading] = React.useState(false);
+  const [logoDataUri, setLogoDataUri] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!companyLogoUrl) { setLogoDataUri(null); return; }
+    let active = true;
+    (async () => {
+      try {
+        const token = await getToken('auth_session_token');
+        const dest = (FileSystem.cacheDirectory ?? '') + 'company-logo-profile.jpg';
+        const dl = await FileSystem.downloadAsync(companyLogoUrl, dest, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!active || dl.status !== 200) return;
+        const b64 = await FileSystem.readAsStringAsync(dl.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        if (active) setLogoDataUri(`data:image/jpeg;base64,${b64}`);
+      } catch { /* ignore — logo preview is non-critical */ }
+    })();
+    return () => { active = false; };
+  }, [companyLogoUrl]);
+
+  async function handleUploadLogo() {
+    if (logoUploading) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to upload a logo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return;
+    setLogoUploading(true);
+    try {
+      const objectPath = await uploadFile(result.assets[0].uri, 'image/jpeg');
+      const fullUrl = `${getApiBaseUrl()}/storage${objectPath}`;
+      const token = await getToken('auth_session_token');
+      const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/logo`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ logoUrl: fullUrl }),
+      });
+      if (!resp.ok) throw new Error('Server error');
+      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      Alert.alert('Logo updated', 'The new logo will appear on FIPSA agreements.');
+    } catch {
+      Alert.alert('Upload failed', 'Check your connection and try again.');
+    } finally {
+      setLogoUploading(false);
+    }
+  }
   const pinsQuery = useListPins();
   const pins = pinsQuery.data?.pins ?? [];
 
@@ -294,6 +361,45 @@ export default function ProfileScreen() {
           )}
         </View>
       </View>
+
+      {canManageLogo && (
+        <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.sigHeader}>
+            <Icon name="image" size={18} color={colors.foreground} />
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Company logo</Text>
+            {companyLogoUrl ? (
+              <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+                <Text style={[styles.sigBadgeText, { color: colors.success }]}>Uploaded</Text>
+              </View>
+            ) : (
+              <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
+                <Text style={[styles.sigBadgeText, { color: colors.mutedForeground }]}>Optional</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {companyLogoUrl
+              ? 'Your logo appears at the top of FIPSA agreements. Tap below to replace it.'
+              : 'Upload your company logo to appear at the top of FIPSA agreements instead of a blank header.'}
+          </Text>
+          {logoDataUri ? (
+            <Image
+              source={{ uri: logoDataUri }}
+              style={{ height: 60, width: '100%', marginTop: 12 }}
+              resizeMode="contain"
+            />
+          ) : null}
+          <Pressable
+            onPress={handleUploadLogo}
+            disabled={logoUploading}
+            style={[styles.sigButton, { backgroundColor: colors.secondary, opacity: logoUploading ? 0.6 : 1 }]}
+          >
+            <Text style={styles.sigButtonText}>
+              {logoUploading ? 'Uploading…' : companyLogoUrl ? 'Replace logo' : 'Upload logo'}
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sigHeader}>

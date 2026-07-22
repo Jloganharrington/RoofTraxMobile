@@ -39,7 +39,7 @@ function checkSmtpTestRateLimit(userId: string): boolean {
 // envelope (both must include the signature-on-file fields — M-F / F0).
 function toProfileEnvelope(
   profile: typeof userProfilesTable.$inferSelect,
-  company: { companyId: string; companyName: string; betaBugReporting: boolean },
+  company: { companyId: string; companyName: string; companyLogoUrl?: string | null; betaBugReporting: boolean },
 ) {
   return GetMyProfileResponse.parse({
     profile: {
@@ -49,6 +49,7 @@ function toProfileEnvelope(
       department: profile.department,
       companyId: company.companyId,
       companyName: company.companyName,
+      companyLogoUrl: company.companyLogoUrl ?? null,
       signatureUrl: profile.signatureUrl ?? null,
       signatureSha256: profile.signatureSha256 ?? null,
       signatureSignedAt: profile.signatureSignedAt
@@ -78,6 +79,7 @@ async function loadCompany(userId: string) {
     .select({
       companyId: usersTable.companyId,
       companyName: companiesTable.name,
+      companyLogoUrl: companiesTable.logoUrl,
       betaBugReporting: companiesTable.betaBugReporting,
     })
     .from(usersTable)
