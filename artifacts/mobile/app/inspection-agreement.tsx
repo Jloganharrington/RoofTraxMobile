@@ -468,10 +468,33 @@ export default function InspectionAgreementScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* ── Main scroll ─────────────────────────────────────────────────────── */}
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* ── Top controls (compact, no scroll) ──────────────────────────────── */}
+      <View style={[styles.topControls, { borderBottomColor: colors.border }]}>
 
-        {/* Signature buttons row */}
+        {/* Homeowner name — single inline row */}
+        <View style={styles.nameRow}>
+          <Text style={[styles.nameLabel, { color: colors.mutedForeground }]}>
+            Homeowner
+          </Text>
+          <TextInput
+            value={signerName}
+            onChangeText={setSignerName}
+            placeholder="Full legal name"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="words"
+            autoCorrect={false}
+            style={[
+              styles.nameInput,
+              {
+                color: colors.foreground,
+                borderColor: colors.border,
+                backgroundColor: colors.background,
+              },
+            ]}
+          />
+        </View>
+
+        {/* Signature buttons */}
         <View style={styles.sigButtonRow}>
           <SigButton
             label="Owner's Signature"
@@ -490,68 +513,36 @@ export default function InspectionAgreementScreen() {
         {/* Scroll gate status */}
         {!hasScrolledToBottom ? (
           <View style={[styles.banner, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
-            <Icon name="chevron-down" size={16} color="#b45309" />
-            <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
-              Scroll through both pages below to enable signing.
+            <Icon name="chevron-down" size={14} color="#b45309" />
+            <Text style={{ color: '#92400e', fontSize: 12, flex: 1 }}>
+              Scroll through both pages to enable signing.
             </Text>
           </View>
         ) : (
           <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
-            <Icon name="check" size={16} color={colors.success} />
-            <Text style={{ color: colors.success, fontSize: 13, flex: 1 }}>
-              Agreement reviewed — collect both signatures above.
+            <Icon name="check" size={14} color={colors.success} />
+            <Text style={{ color: colors.success, fontSize: 12, flex: 1 }}>
+              Agreement reviewed — collect both signatures.
             </Text>
           </View>
         )}
+      </View>
 
-        {/* Homeowner name (editable) */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-            Homeowner's full name
-          </Text>
-          <TextInput
-            value={signerName}
-            onChangeText={setSignerName}
-            placeholder="Full legal name"
-            placeholderTextColor={colors.mutedForeground}
-            autoCapitalize="words"
-            autoCorrect={false}
-            style={[
-              styles.textInput,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.background,
-              },
-            ]}
-          />
-        </View>
+      {/* ── Document viewer — fills remaining space ──────────────────────────── */}
+      <WebView
+        source={{ html: previewHtml }}
+        injectedJavaScript={SCROLL_DETECT_JS}
+        onMessage={(e) => {
+          if (e.nativeEvent.data === 'bottom') setHasScrolledToBottom(true);
+        }}
+        scrollEnabled
+        showsVerticalScrollIndicator
+        originWhitelist={['*']}
+        style={styles.webview}
+      />
 
-        {/* Agreement viewer */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.headerRow}>
-            <Icon name="file-text" size={18} color={colors.foreground} />
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-              Agreement — scroll to read both pages
-            </Text>
-          </View>
-          <View style={[styles.webviewWrap, { borderColor: colors.border }]}>
-            <WebView
-              source={{ html: previewHtml }}
-              injectedJavaScript={SCROLL_DETECT_JS}
-              onMessage={(e) => {
-                if (e.nativeEvent.data === 'bottom') setHasScrolledToBottom(true);
-              }}
-              scrollEnabled
-              nestedScrollEnabled
-              showsVerticalScrollIndicator
-              originWhitelist={['*']}
-              style={styles.webview}
-            />
-          </View>
-        </View>
-
-        {/* Confirm button */}
+      {/* ── Bottom confirm bar ───────────────────────────────────────────────── */}
+      <View style={[styles.bottomBar, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
         <Pressable
           onPress={handleConfirm}
           disabled={!canSign}
@@ -571,15 +562,7 @@ export default function InspectionAgreementScreen() {
             </>
           )}
         </Pressable>
-
-        {!hasScrolledToBottom && (
-          <Text style={{ color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }}>
-            Scroll through the agreement above to enable signing.
-          </Text>
-        )}
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -656,30 +639,42 @@ const styles = StyleSheet.create({
   },
   sigBtnLabel: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
 
-  // Cards + inputs
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 14, fontWeight: '700', flex: 1 },
+  // Top controls panel
+  topControls: {
+    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
+    gap: 8, borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nameLabel: { fontSize: 13, fontWeight: '600', width: 80 },
+  nameInput: {
+    flex: 1, borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 7, fontSize: 14,
+  },
+
+  // Shared inputs / labels (used inside modals)
   fieldLabel: { fontSize: 14, fontWeight: '600' },
   textInput: {
     borderWidth: 1, borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
   },
 
-  // WebView
-  webviewWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', height: 520 },
+  // Document WebView — fills remaining flex space
   webview: { flex: 1 },
 
   // Banner
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    padding: 12, borderRadius: 10, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1,
   },
 
-  // Confirm
+  // Bottom confirm bar
+  bottomBar: {
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   confirmBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 16, borderRadius: 14, marginTop: 4,
+    gap: 8, paddingVertical: 14, borderRadius: 14,
   },
   confirmText: { fontSize: 16, fontWeight: '800' },
 
