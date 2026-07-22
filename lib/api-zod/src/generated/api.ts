@@ -1798,7 +1798,12 @@ export const GetInspectionResponse = zod.object({
   "value": zod.number(),
   "unit": zod.string().nullable(),
   "createdAt": zod.coerce.date()
-})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.')
+})).optional().describe('E1 (S7) raw measurements, populated by the detail view only.'),
+  "latestAgreement": zod.object({
+  "id": zod.string(),
+  "signedAt": zod.coerce.date(),
+  "signerName": zod.string()
+}).nullable().optional().describe('The most recent active (non-voided) signed FIPSA agreement. Null when unsigned. Populated by the detail view only.')
 })
 })
 

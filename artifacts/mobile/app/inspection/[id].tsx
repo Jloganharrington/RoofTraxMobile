@@ -132,6 +132,54 @@ export default function InspectionDetailScreen() {
     return <PreliminaryHub inspection={inspection} id={id} />;
   }
 
+  // FIPSA gate — the agreement must be signed before any forensic work begins.
+  // This can't be bypassed: latestAgreement is server-derived from the
+  // signed_agreements table, not a client flag.
+  if (!inspection.latestAgreement) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background, padding: 32 }]}>
+        <View
+          style={[
+            styles.gateCard,
+            {
+              backgroundColor: '#fffbeb',
+              borderColor: '#f59e0b',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 14,
+              padding: 24,
+            },
+          ]}
+        >
+          <Icon name="file-text" size={36} color="#b45309" />
+          <Text
+            style={{ color: '#92400e', fontSize: 17, fontWeight: '800', textAlign: 'center' }}
+          >
+            Agreement Required
+          </Text>
+          <Text
+            style={{ color: '#92400e', fontSize: 14, textAlign: 'center', lineHeight: 20 }}
+          >
+            The FIPSA agreement must be signed by the homeowner and rep before
+            the forensic inspection can begin.
+          </Text>
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/inspection-agreement', params: { id } })
+            }
+            style={[
+              styles.confirmBtn,
+              { backgroundColor: '#b45309', alignSelf: 'stretch', marginTop: 4 },
+            ]}
+          >
+            <Icon name="file-text" size={18} color="#fff" />
+            <Text style={[styles.confirmText, { color: '#fff' }]}>Sign Agreement</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   const state = buildProtocolState(inspection);
   const gate = evaluateInspection(inspection);
   const submitted = inspection.status === 'submitted' || inspection.status === 'package_ready';

@@ -1494,6 +1494,11 @@ export interface Inspection {
   interiorObservations?: InteriorObservation[];
   /** E1 (S7) raw measurements, populated by the detail view only. */
   measurements?: Measurement[];
+  /**
+   * The most recent active (non-voided) signed FIPSA agreement.
+   * Null when no agreement has been signed yet. Populated by the detail view only.
+   */
+  latestAgreement?: { id: string; signedAt: string; signerName: string } | null;
 }
 
 export interface CreateInspectionInput {

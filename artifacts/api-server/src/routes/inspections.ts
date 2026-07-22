@@ -62,6 +62,7 @@ import {
   inspectionSlopesTable,
   inspectionsTable,
   pinsTable,
+  signedAgreementsTable,
   testSquareHitsTable,
   testSquaresTable,
   measurementsTable,
@@ -69,7 +70,7 @@ import {
   usersTable,
 } from '@workspace/db';
 import type { Role, RepairabilityAssessment } from '@workspace/db';
-import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
@@ -629,13 +630,33 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   // progress and drive the lib/protocol gate. The list feed omits these;
   // only this by-id read pays for the extra queries. Ordered by createdAt
   // so the client can rely on capture order (e.g. the elevation walk).
-  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
+  const [children, latestAgreementRow] = await Promise.all([
+    hydrateInspectionChildren(inspectionId, actor.companyId),
+    db
+      .select({
+        id: signedAgreementsTable.id,
+        signedAt: signedAgreementsTable.signedAt,
+        signerName: signedAgreementsTable.signerName,
+      })
+      .from(signedAgreementsTable)
+      .where(
+        and(
+          eq(signedAgreementsTable.inspectionId, inspectionId),
+          eq(signedAgreementsTable.companyId, actor.companyId),
+          sql`${signedAgreementsTable.voidedAt} IS NULL`,
+        ),
+      )
+      .orderBy(desc(signedAgreementsTable.signedAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
 
   res.json(
     GetInspectionResponse.parse({
       inspection: {
         ...inspection,
         ...children,
+        latestAgreement: latestAgreementRow,
       },
     }),
   );

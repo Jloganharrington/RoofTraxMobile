@@ -3991,6 +3991,23 @@ components:
           description: E1 (S7) raw measurements, populated by the detail view only.
           items:
             $ref: "#/components/schemas/Measurement"
+        latestAgreement:
+          description: >-
+            The most recent active (non-voided) signed FIPSA agreement for this
+            inspection. Null when no agreement has been signed yet. Populated
+            by the detail view only.
+          oneOf:
+            - type: object
+              required: [id, signedAt, signerName]
+              properties:
+                id:
+                  type: string
+                signedAt:
+                  type: string
+                  format: date-time
+                signerName:
+                  type: string
+            - type: "null"
     CreateInspectionInput:
       type: object
       properties:
