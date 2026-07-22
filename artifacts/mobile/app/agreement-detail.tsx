@@ -1,7 +1,10 @@
 /**
  * Full-screen PDF viewer for a signed FIPSA agreement.
- * Receives a short-lived presigned download URL from the agreements list
- * and renders it in a WebView.
+ *
+ * Accepts an `inspectionId` param and fetches a fresh presigned download URL
+ * from GET /inspections/:id/agreement on mount — this avoids stale-URL errors
+ * that occur when the Documents list has been cached for longer than the
+ * presigned URL TTL (15 min).
  */
 
 import React, { useState } from 'react';
@@ -18,18 +21,23 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { useGetAgreement } from '@/lib/agreementApi';
 
 export default function AgreementDetailScreen() {
   const colors = useColors();
-  const { downloadUrl, propertyAddress, signerName } =
+  const { inspectionId, propertyAddress, signerName } =
     useLocalSearchParams<{
-      downloadUrl: string;
+      inspectionId: string;
       propertyAddress?: string;
       signerName?: string;
     }>();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  // Always fetch a fresh presigned URL — never rely on the cached list URL.
+  const { data, isLoading: urlLoading, isError: urlError } = useGetAgreement(inspectionId ?? '');
+  const downloadUrl = data?.agreement?.downloadUrl ?? null;
+
+  const [webLoading, setWebLoading] = useState(true);
+  const [webError, setWebError] = useState(false);
 
   const title = propertyAddress || 'Signed Agreement';
 
@@ -45,6 +53,10 @@ export default function AgreementDetailScreen() {
       // User cancelled or platform doesn't support URL share — ignore
     }
   }
+
+  // ── Derived state ─────────────────────────────────────────────────────────
+
+  const noUrl = !urlLoading && !urlError && !downloadUrl;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -74,18 +86,45 @@ export default function AgreementDetailScreen() {
         </Text>
       </View>
 
-      {!downloadUrl ? (
+      {/* Fetching fresh URL */}
+      {urlLoading ? (
         <View style={styles.centered}>
-          <Icon name="alert-circle" size={36} color={colors.destructive} />
-          <Text style={[styles.errorText, { color: colors.destructive }]}>
-            PDF link unavailable
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+            Loading agreement…
           </Text>
         </View>
-      ) : error ? (
+      ) : urlError ? (
         <View style={styles.centered}>
           <Icon name="alert-circle" size={36} color={colors.destructive} />
           <Text style={[styles.errorText, { color: colors.destructive }]}>
-            Could not load the PDF. The link may have expired.
+            Could not reach the server. Check your connection and try again.
+          </Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Go back</Text>
+          </Pressable>
+        </View>
+      ) : noUrl ? (
+        <View style={styles.centered}>
+          <Icon name="alert-circle" size={36} color={colors.destructive} />
+          <Text style={[styles.errorText, { color: colors.destructive }]}>
+            PDF link unavailable — the agreement may have been voided.
+          </Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Go back</Text>
+          </Pressable>
+        </View>
+      ) : webError ? (
+        <View style={styles.centered}>
+          <Icon name="alert-circle" size={36} color={colors.destructive} />
+          <Text style={[styles.errorText, { color: colors.destructive }]}>
+            Could not load the PDF. Try going back and opening it again.
           </Text>
           <Pressable
             onPress={() => router.back()}
@@ -96,20 +135,20 @@ export default function AgreementDetailScreen() {
         </View>
       ) : (
         <>
-          {loading && (
+          {webLoading && (
             <View style={[styles.loadingOverlay, { backgroundColor: colors.background }]}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
-                Loading agreement…
+                Loading PDF…
               </Text>
             </View>
           )}
           <WebView
-            source={{ uri: downloadUrl }}
+            source={{ uri: downloadUrl! }}
             style={{ flex: 1 }}
-            onLoadEnd={() => setLoading(false)}
-            onError={() => { setLoading(false); setError(true); }}
-            onHttpError={() => { setLoading(false); setError(true); }}
+            onLoadEnd={() => setWebLoading(false)}
+            onError={() => { setWebLoading(false); setWebError(true); }}
+            onHttpError={() => { setWebLoading(false); setWebError(true); }}
             startInLoadingState={false}
             allowsInlineMediaPlayback
             scalesPageToFit

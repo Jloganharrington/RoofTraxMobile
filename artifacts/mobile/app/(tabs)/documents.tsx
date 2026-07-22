@@ -207,17 +207,10 @@ export default function DocumentsScreen() {
           {
             text: 'View PDF',
             onPress: () => {
-              if (!item.downloadUrl) {
-                Alert.alert(
-                  'PDF unavailable',
-                  'The download link has expired — pull to refresh, then try again.',
-                );
-                return;
-              }
               router.push({
                 pathname: '/agreement-detail',
                 params: {
-                  downloadUrl: item.downloadUrl,
+                  inspectionId: item.inspectionId,
                   propertyAddress: item.propertyAddress ?? '',
                   signerName: item.signerName ?? '',
                 },
