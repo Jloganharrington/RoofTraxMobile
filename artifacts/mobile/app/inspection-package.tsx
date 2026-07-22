@@ -19,10 +19,12 @@ import {
   useRedeliverInspection,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { File as FSFile, Paths, Directory } from 'expo-file-system';
+import * as MailComposer from 'expo-mail-composer';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
-import { useGetAgreement, useVoidAgreement } from '@/lib/agreementApi';
+import { useGetAgreement, useEmailAgreement, useVoidAgreement } from '@/lib/agreementApi';
 
 // M-F (F3) — Status & package receipt. Polls the server for this inspection's
 // submission status and a clearly-labeled STUB receipt. The full package (the
@@ -77,9 +79,71 @@ export default function InspectionPackageScreen() {
   const isForensic = inspection?.phase === 'forensic';
   const agreementQuery = useGetAgreement(id);
 
+  const emailAgreement = useEmailAgreement();
+  const [showEmailInput, setShowEmailInput] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState('');
+
   const voidAgreement = useVoidAgreement();
   const [showVoidInput, setShowVoidInput] = useState(false);
   const [voidReasonText, setVoidReasonText] = useState('');
+
+  const handleEmailAgreement = async () => {
+    const trimmed = emailRecipient.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    emailAgreement.mutate(
+      { inspectionId: id, recipient: trimmed },
+      {
+        onSuccess: async (result) => {
+          if (result.sent) {
+            setShowEmailInput(false);
+            setEmailRecipient('');
+            Alert.alert('Sent', `Agreement emailed to ${trimmed}.`);
+          } else if (result.noSmtp) {
+            // No SMTP configured — fall back to device mail composer
+            const downloadUrl = agreementQuery.data?.agreement?.downloadUrl;
+            if (!downloadUrl) {
+              Alert.alert(
+                'No email configured',
+                'SMTP is not set up on your profile and no download URL is available. Configure SMTP in your profile settings to email the agreement.',
+              );
+              return;
+            }
+            try {
+              // Download to cache using the new expo-file-system API
+              const destDir = new Directory(Paths.cache) as unknown as { uri: string };
+              const downloaded = await (FSFile as unknown as {
+                downloadFileAsync(url: string, dest: unknown, opts?: unknown): Promise<{ uri: string }>;
+              }).downloadFileAsync(downloadUrl, destDir, { idempotent: true });
+              const available = await MailComposer.isAvailableAsync();
+              if (!available) {
+                Alert.alert(
+                  'Mail unavailable',
+                  'No mail account is configured on this device. Set up SMTP in your profile or add a mail account.',
+                );
+                return;
+              }
+              await MailComposer.composeAsync({
+                recipients: [trimmed],
+                subject: `Forensic Inspection Purchase & Sale Agreement — ${inspection?.address ?? 'your property'}`,
+                body: 'Thank you for signing the Forensic Inspection Purchase & Sale Agreement. A copy is attached for your records.',
+                attachments: [downloaded.uri],
+              });
+              setShowEmailInput(false);
+              setEmailRecipient('');
+            } catch {
+              Alert.alert('Error', 'Could not open mail composer. Please try again.');
+            }
+          }
+        },
+        onError: (err) => {
+          Alert.alert('Error', err.message ?? 'Failed to send the agreement email.');
+        },
+      },
+    );
+  };
 
   const handleVoidAgreement = () => {
     if (voidReasonText.trim().length < 5) {
@@ -378,6 +442,77 @@ export default function InspectionPackageScreen() {
                 </Pressable>
               ) : null}
 
+              {/* Email to homeowner */}
+              {!showEmailInput ? (
+                <Pressable
+                  onPress={() => setShowEmailInput(true)}
+                  style={[styles.emailBtn, { borderColor: colors.border }]}
+                >
+                  <Icon name="mail" size={15} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground, fontWeight: '600', fontSize: 13 }}>
+                    Email agreement to homeowner
+                  </Text>
+                  {agreementQuery.data?.agreement?.emailedAt ? (
+                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                      (sent {new Date(agreementQuery.data.agreement.emailedAt).toLocaleDateString()})
+                    </Text>
+                  ) : null}
+                </Pressable>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    Homeowner email address:
+                  </Text>
+                  <TextInput
+                    value={emailRecipient}
+                    onChangeText={setEmailRecipient}
+                    placeholder="homeowner@example.com"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    style={[
+                      styles.voidInput,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                        minHeight: 44,
+                      },
+                    ]}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Pressable
+                      onPress={() => { setShowEmailInput(false); setEmailRecipient(''); }}
+                      style={[styles.voidCancelBtn, { borderColor: colors.border }]}
+                    >
+                      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                        Cancel
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleEmailAgreement}
+                      disabled={emailAgreement.isPending}
+                      style={[
+                        styles.voidConfirmBtn,
+                        {
+                          backgroundColor: colors.primary,
+                          opacity: emailAgreement.isPending ? 0.6 : 1,
+                        },
+                      ]}
+                    >
+                      {emailAgreement.isPending ? (
+                        <ActivityIndicator size="small" color={colors.primaryForeground} />
+                      ) : (
+                        <Text style={{ color: colors.primaryForeground, fontSize: 13, fontWeight: '700' }}>
+                          Send
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
               {/* Super-admin void control */}
               {isSuperAdmin && !showVoidInput && (
                 <Pressable
@@ -513,6 +648,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  emailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
   },

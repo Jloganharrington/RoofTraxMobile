@@ -905,6 +905,8 @@ export const signedAgreementsTable = pgTable('signed_agreements', {
   voidedAt: timestamp('voided_at', { withTimezone: true }),
   voidedByUserId: varchar('voided_by_user_id').references(() => usersTable.id),
   voidReason: text('void_reason'),
+  /** Set when the server successfully emailed the signed PDF to the homeowner. */
+  emailedAt: timestamp('emailed_at', { withTimezone: true }),
 });
 
 export type SignedAgreement = typeof signedAgreementsTable.$inferSelect;

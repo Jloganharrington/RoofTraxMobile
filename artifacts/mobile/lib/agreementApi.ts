@@ -22,6 +22,8 @@ export interface SignedAgreementRecord {
   voidedAt?: string | null;
   /** Human-readable reason provided by the super_admin when voiding. */
   voidReason?: string | null;
+  /** Set when the server successfully emailed the PDF to the homeowner. */
+  emailedAt?: string | null;
 }
 
 export interface AgreementStatusResponse {
@@ -94,6 +96,40 @@ export function useSignAgreement() {
     },
     onSuccess: (_, { inspectionId }) => {
       queryClient.invalidateQueries({ queryKey: getAgreementQueryKey(inspectionId) });
+    },
+  });
+}
+
+export interface EmailAgreementVariables {
+  inspectionId: string;
+  recipient: string;
+}
+
+export interface EmailAgreementResult {
+  /** True when the server sent the email via SMTP. */
+  sent?: boolean;
+  /** True when no SMTP is configured — mobile should fall back to MailComposer. */
+  noSmtp?: boolean;
+  emailedAt?: string;
+}
+
+export function useEmailAgreement() {
+  const queryClient = useQueryClient();
+  return useMutation<EmailAgreementResult, Error, EmailAgreementVariables>({
+    mutationFn: async ({ inspectionId, recipient }) => {
+      return customFetch<EmailAgreementResult>(
+        `/api/inspections/${inspectionId}/agreement/email`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ recipient }),
+        },
+      );
+    },
+    onSuccess: (data, { inspectionId }) => {
+      if (data.sent) {
+        // Refresh so the card shows the updated emailedAt timestamp
+        queryClient.invalidateQueries({ queryKey: getAgreementQueryKey(inspectionId) });
+      }
     },
   });
 }

@@ -27,11 +27,14 @@ import {
 } from '@workspace/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
+import nodemailer from 'nodemailer';
 import { z } from 'zod';
 
 import { canAccessInspectionModule, canWriteInspection } from '../lib/permissions';
-import { ObjectStorageService } from '../lib/objectStorage';
+import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage';
 import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
+import { decryptSmtpPassword } from '../lib/smtpCrypto';
+import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -297,6 +300,7 @@ router.get(
         downloadUrl,
         voidedAt: agreement.voidedAt ?? null,
         voidReason: agreement.voidReason ?? null,
+        emailedAt: agreement.emailedAt ?? null,
       },
       phase: inspection.phase,
     });
@@ -409,6 +413,193 @@ router.delete(
       agreementId: activeAgreement.id,
       voidedAt: voidedAt.toISOString(),
     });
+  },
+);
+
+// ── POST /inspections/:id/agreement/email ─────────────────────────────────────
+// Emails the stored signed agreement PDF to a homeowner using the rep's
+// configured SMTP settings. If no SMTP is configured, returns { noSmtp: true }
+// so the mobile client can fall back to the device mail composer.
+// Stamps emailedAt on the agreement row when the server successfully delivers.
+
+const EmailAgreementBody = z.object({
+  recipient: z.string().min(1).max(320),
+});
+
+router.post(
+  '/inspections/:id/agreement/email',
+  async (req: Request, res: Response) => {
+    const actor = await requireAgreementActor(req, res);
+    if (!actor) return;
+
+    const inspectionId = String(req.params.id);
+
+    // Must be same company
+    const [inspection] = await db
+      .select()
+      .from(inspectionsTable)
+      .where(
+        and(
+          eq(inspectionsTable.id, inspectionId),
+          eq(inspectionsTable.companyId, actor.companyId),
+        ),
+      );
+
+    if (!inspection) {
+      res.status(404).json({ error: 'Inspection not found' });
+      return;
+    }
+
+    // Write gate — only the assigned inspector or manager+ may trigger email
+    if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
+      res.status(403).json({ error: 'Not authorized to email the agreement for this inspection' });
+      return;
+    }
+
+    // Validate body
+    const parsed = EmailAgreementBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'Invalid request body',
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+    const { recipient } = parsed.data;
+
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      res.status(400).json({ error: 'Invalid recipient email address' });
+      return;
+    }
+
+    // Load the active (non-voided) agreement
+    const [agreement] = await db
+      .select()
+      .from(signedAgreementsTable)
+      .where(
+        and(
+          eq(signedAgreementsTable.inspectionId, inspectionId),
+          eq(signedAgreementsTable.companyId, actor.companyId),
+          isNull(signedAgreementsTable.voidedAt),
+        ),
+      );
+
+    if (!agreement) {
+      res.status(404).json({ error: 'No active signed agreement found for this inspection' });
+      return;
+    }
+
+    // Load the rep's SMTP settings
+    const [profile] = await db
+      .select()
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, actor.userId));
+
+    if (!profile?.smtpHost || !profile.smtpPort || !profile.smtpUsername || !profile.smtpPasswordEnc) {
+      // No SMTP configured — signal to mobile so it can fall back to device
+      // mail composer with the PDF attached locally.
+      res.json({ noSmtp: true });
+      return;
+    }
+
+    // Decrypt SMTP password
+    let password: string;
+    try {
+      password = decryptSmtpPassword(profile.smtpPasswordEnc);
+    } catch {
+      res.status(400).json({ error: 'Stored SMTP password could not be read; please re-enter it' });
+      return;
+    }
+
+    // SSRF guard: resolve and validate the SMTP host
+    let smtpAddress: string;
+    try {
+      smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+    } catch {
+      res.status(400).json({ error: 'SMTP host is not a valid public mail server' });
+      return;
+    }
+
+    // Download the PDF from object storage into a Buffer for the attachment
+    let pdfBuffer: Buffer;
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        agreement.documentObjectPath,
+      );
+      const downloadResponse = await objectStorageService.downloadObject(objectFile);
+      pdfBuffer = Buffer.from(await downloadResponse.arrayBuffer());
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) {
+        res.status(404).json({ error: 'Agreement PDF not found in storage' });
+        return;
+      }
+      req.log.error({ err }, 'Failed to download agreement PDF from object storage');
+      res.status(500).json({ error: 'Could not retrieve the agreement PDF' });
+      return;
+    }
+
+    const transport = nodemailer.createTransport({
+      host: smtpAddress,
+      port: profile.smtpPort,
+      secure: profile.smtpSecure ?? profile.smtpPort === 465,
+      name: undefined,
+      auth: { user: profile.smtpUsername, pass: password },
+      tls: { servername: profile.smtpHost },
+      connectionTimeout: 15_000,
+      socketTimeout: 30_000,
+    });
+
+    const propertyLabel = inspection.address ?? 'your property';
+    try {
+      await transport.sendMail({
+        from: profile.smtpFromEmail || profile.smtpUsername,
+        to: recipient,
+        subject: `Forensic Inspection Purchase & Sale Agreement — ${propertyLabel}`,
+        text: [
+          'Thank you for signing the Forensic Inspection Purchase & Sale Agreement.',
+          '',
+          `Property: ${propertyLabel}`,
+          `Signed by: ${agreement.signerName}`,
+          `Date signed: ${agreement.signedAt.toLocaleString()}`,
+          '',
+          'A copy of the signed agreement is attached for your records.',
+        ].join('\n'),
+        attachments: [
+          {
+            filename: 'Signed-Agreement.pdf',
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      });
+    } catch (err) {
+      req.log.warn({ err }, 'SMTP agreement delivery failed');
+      res.status(502).json({
+        error:
+          'Email could not be sent. Check your SMTP settings (host, port, username, password) and try again.',
+      });
+      return;
+    }
+
+    // Stamp emailedAt on the agreement row
+    const emailedAt = new Date();
+    await db
+      .update(signedAgreementsTable)
+      .set({ emailedAt })
+      .where(
+        and(
+          eq(signedAgreementsTable.id, agreement.id),
+          eq(signedAgreementsTable.companyId, actor.companyId),
+        ),
+      );
+
+    req.log.info(
+      { inspectionId, agreementId: agreement.id, recipient },
+      'Agreement PDF emailed to homeowner',
+    );
+
+    res.json({ sent: true, emailedAt: emailedAt.toISOString() });
   },
 );
 
