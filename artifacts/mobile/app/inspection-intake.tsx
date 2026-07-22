@@ -83,11 +83,7 @@ export default function InspectionIntakeScreen() {
           notes: notes.trim() || null,
         });
         await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
-        // Replace intake with the forensic hub, then immediately push the
-        // agreement screen on top — signing is the first step of Phase 2.
-        // Back from the agreement returns the rep to the forensic hub.
         router.replace({ pathname: '/inspection/[id]', params: { id: advancingId } });
-        router.push({ pathname: '/inspection-agreement', params: { id: advancingId } });
         return;
       }
 

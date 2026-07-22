@@ -18,6 +18,7 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
   const colors = useColors();
   const queryClient = useQueryClient();
   const [markingDone, setMarkingDone] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
 
   const photos = inspection.photos ?? [];
   const surfaces = selectedSurfaces(inspection);
@@ -86,21 +87,30 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
     }
   }
 
-  function proceedToPhase2() {
+  async function proceedToFipsa() {
     if (!requireSurfaces()) return;
-    // Advance the SAME record: hand the forensic claim-intake screen this
-    // inspection's id so it patches phase -> forensic in place (P0/P4),
-    // carrying the Phase 1 property/damage/storm/photos already on the row.
-    router.push({
-      pathname: '/inspection-intake',
-      params: {
-        id,
-        address: inspection.address ?? '',
-        // Prefer the confirmed storm's date as the date of loss: if Phase 1
-        // matched a storm, that storm IS the loss event.
-        dateOfLoss: inspection.stormConfirmedRef?.date ?? inspection.dateOfLoss ?? '',
-      },
-    });
+    setAdvancing(true);
+    try {
+      // Advance the SAME record to forensic in-place, carrying all Phase 1
+      // data. Then go straight to the FIPSA agreement signing screen —
+      // the homeowner signs before any other forensic work begins.
+      await patchInspection(queryClient, id, {
+        phase: 'forensic',
+        preliminaryCompletedAt: new Date().toISOString(),
+        roofDamageFound: !!inspection.roofDamageFound,
+        sidingDamageFound: !!inspection.sidingDamageFound,
+        collateralDamageFound: !!inspection.collateralDamageFound,
+      });
+      await queryClient.invalidateQueries({ queryKey: inspectionsListKey() });
+      // Replace with the forensic hub (so back doesn't return here), then
+      // open the agreement screen on top.
+      router.replace({ pathname: '/inspection/[id]', params: { id } });
+      router.push({ pathname: '/inspection-agreement', params: { id } });
+    } catch {
+      Alert.alert('Could not advance', 'Something went wrong. Please try again.');
+    } finally {
+      setAdvancing(false);
+    }
   }
 
   return (
@@ -221,12 +231,17 @@ export function PreliminaryHub({ inspection, id }: { inspection: Inspection; id:
         )}
 
         <Pressable
-          onPress={proceedToPhase2}
-          style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+          onPress={proceedToFipsa}
+          disabled={advancing}
+          style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: advancing ? 0.6 : 1 }]}
         >
-          <Text style={[styles.primaryText, { color: colors.primaryForeground }]}>
-            Proceed to Phase 2 (forensic)
-          </Text>
+          {advancing ? (
+            <ActivityIndicator color={colors.primaryForeground} />
+          ) : (
+            <Text style={[styles.primaryText, { color: colors.primaryForeground }]}>
+              Proceed to FIPSA
+            </Text>
+          )}
         </Pressable>
 
         {!completed ? (
