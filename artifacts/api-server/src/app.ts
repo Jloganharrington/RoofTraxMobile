@@ -35,7 +35,8 @@ app.use(cookieParser());
 // parser below skips requests these already handled.
 app.use('/api/inspections/:inspectionId/email-report', express.json({ limit: '15mb' }));
 // Sign endpoint: receives a base64 PNG signature image (~50–500KB).
-app.use('/api/inspections/:inspectionId/agreement/sign', express.json({ limit: '2mb' }));
+// PDF base64 from expo-print can be ~2 MB binary → ~2.7 MB base64; allow 5 MB.
+app.use('/api/inspections/:inspectionId/agreement/sign', express.json({ limit: '5mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(authMiddleware);

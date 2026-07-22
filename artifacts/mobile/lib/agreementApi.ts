@@ -1,7 +1,7 @@
 /**
  * Local hooks for the forensic agreement signing API.
- * Pattern matches priceBookApi.ts — uses customFetch<T> which returns the
- * parsed response body directly and throws ApiError on non-2xx responses.
+ * customFetch<T> returns the parsed response body directly and throws ApiError
+ * on non-2xx responses. Pattern matches priceBookApi.ts.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,15 +22,17 @@ export interface SignedAgreementRecord {
 
 export interface AgreementStatusResponse {
   agreement: SignedAgreementRecord | null;
-  /** 'forensic' | 'preliminary' */
   phase: string;
 }
 
 export interface SignAgreementVariables {
   inspectionId: string;
   signerName: string;
-  /** Raw base64 PNG (no data: prefix). */
-  signatureImageBase64: string;
+  /**
+   * Base64-encoded PDF generated on-device via expo-print from the filled
+   * FIPSA HTML template. The server stores this verbatim.
+   */
+  pdfBase64: string;
 }
 
 // ── Query key ─────────────────────────────────────────────────────────────────
@@ -50,8 +52,7 @@ export function useGetAgreement(inspectionId: string) {
           `/api/inspections/${inspectionId}/agreement`,
         );
       } catch (err) {
-        // A 404 means the inspection doesn't have a signed agreement yet —
-        // treat it as "not signed" rather than a hard query failure.
+        // 404 = no agreement yet — treat as unsigned rather than hard failure.
         if (
           err != null &&
           typeof err === 'object' &&
@@ -71,17 +72,13 @@ export function useGetAgreement(inspectionId: string) {
 
 export function useSignAgreement() {
   const queryClient = useQueryClient();
-  return useMutation<
-    SignedAgreementRecord,
-    Error,
-    SignAgreementVariables
-  >({
-    mutationFn: async ({ inspectionId, signerName, signatureImageBase64 }) => {
+  return useMutation<SignedAgreementRecord, Error, SignAgreementVariables>({
+    mutationFn: async ({ inspectionId, signerName, pdfBase64 }) => {
       const data = await customFetch<{ agreement: SignedAgreementRecord }>(
         `/api/inspections/${inspectionId}/agreement/sign`,
         {
           method: 'POST',
-          body: JSON.stringify({ signerName, signatureImageBase64 }),
+          body: JSON.stringify({ signerName, pdfBase64 }),
         },
       );
       return data.agreement;

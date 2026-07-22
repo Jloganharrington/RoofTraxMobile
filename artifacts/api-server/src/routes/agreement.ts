@@ -15,12 +15,10 @@
 
 import { randomUUID } from 'crypto';
 import {
-  companiesTable,
   db,
   objectOwnershipTable,
   signedAgreementsTable,
   userProfilesTable,
-  usersTable,
   inspectionsTable,
 } from '@workspace/db';
 import { and, eq } from 'drizzle-orm';
@@ -29,10 +27,7 @@ import { z } from 'zod';
 
 import { canAccessInspectionModule, canWriteInspection } from '../lib/permissions';
 import { ObjectStorageService } from '../lib/objectStorage';
-import {
-  AGREEMENT_DOCUMENT_VERSION,
-  generateAgreementPdf,
-} from '../lib/agreementPdf';
+import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -70,8 +65,8 @@ async function requireAgreementActor(req: Request, res: Response) {
 
 const SignAgreementBody = z.object({
   signerName: z.string().min(1).max(200),
-  /** Base64-encoded PNG of the drawn signature (no data: prefix). */
-  signatureImageBase64: z.string().min(100),
+  /** Base64-encoded PDF generated on-device via expo-print from the FIPSA HTML template. */
+  pdfBase64: z.string().min(100),
 });
 
 router.post(
@@ -133,53 +128,18 @@ router.post(
       });
       return;
     }
-    const { signerName, signatureImageBase64 } = parsed.data;
+    const { signerName, pdfBase64 } = parsed.data;
 
-    // Look up inspector's name
-    const [inspectorUser] = await db
-      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
-      .from(usersTable)
-      .where(eq(usersTable.id, inspection.inspectorUserId));
-
-    const inspectorName =
-      [inspectorUser?.firstName, inspectorUser?.lastName].filter(Boolean).join(' ')
-      || inspection.inspectorUserId;
-
-    // Company name for the agreement text
-    let companyName = 'the inspection company';
-    try {
-      const [company] = await db
-        .select({ name: companiesTable.name })
-        .from(companiesTable)
-        .where(eq(companiesTable.id, actor.companyId));
-      if (company?.name) companyName = company.name;
-    } catch {
-      // Non-fatal — fallback stays
+    // Validate the payload is actually a PDF (magic bytes %PDF).
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+    if (!pdfBuffer.slice(0, 4).toString('ascii').startsWith('%PDF')) {
+      res.status(400).json({ error: 'pdfBase64 does not appear to be a valid PDF' });
+      return;
     }
 
     const signedAt = new Date();
 
-    // Generate the PDF server-side
-    let pdfBuffer: Buffer;
-    try {
-      pdfBuffer = await generateAgreementPdf({
-        inspectionId,
-        propertyAddress: inspection.address ?? 'Address not provided',
-        homeownerName: signerName,
-        inspectorName,
-        companyName,
-        signedAt,
-        signatureImageBase64,
-        inspectorUserId: actor.userId,
-        userAgent: req.headers['user-agent'] ?? null,
-      });
-    } catch (err) {
-      req.log.error({ err }, 'Failed to generate agreement PDF');
-      res.status(500).json({ error: 'Failed to generate agreement PDF' });
-      return;
-    }
-
-    // Upload PDF to object storage
+    // Upload the device-generated PDF to object storage.
     let documentObjectPath: string;
     try {
       documentObjectPath = await objectStorageService.uploadObjectBuffer(

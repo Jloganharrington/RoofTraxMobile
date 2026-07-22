@@ -1,0 +1,280 @@
+<!doctype html>
+<!--
+  FIPSA — Forensic Inspection & Preconstruction Services Agreement (NuHome Exteriors)
+  + FTC Notice of Cancellation.
+
+  On-device render template for RoofTraxMobile (expo-print). Self-contained: no
+  external CSS/JS/fonts/images, so it renders identically in a WebView and in a
+  print-to-PDF pass. Mirrors the proof-package template pattern:
+
+    - The app replaces the FIPSA_DATA object between the FIPSA_DATA_START /
+      FIPSA_DATA_END markers with the real values, then renders.
+    - Text fields bind via [data-field="dotted.path"].
+    - Signature slots bind via [data-sig="owner|contractorRep|buyer"] — set a
+      data: URI (PNG) from the e-signature component; empty = blank ruled line.
+
+  LEGAL TEXT IS VERBATIM from FIPSA.pdf. Do not paraphrase, reorder, or "clean up"
+  any clause wording — reproduce exactly. Only the fill-in VALUES are dynamic.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forensic Inspection &amp; Preconstruction Services Agreement</title>
+<style>
+  :root{
+    --navy:#14263B;
+    --orange:#E8792B;
+    --ink:#1a1a1a;
+    --rule:#333;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family: "Calibri", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color:var(--ink);
+    font-size:11.5pt;
+    line-height:1.5;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  .page{
+    width:8.5in;
+    min-height:11in;
+    margin:0 auto;
+    padding:0.7in 0.85in;
+    background:#fff;
+  }
+  .page + .page{ page-break-before:always; }
+
+  /* ---------- Letterhead ---------- */
+  .letterhead{ text-align:center; }
+  .letterhead .logo{ height:64px; margin:0 auto 4px; display:block; }
+  .letterhead .logo-fallback{
+    font-size:30pt; font-weight:700; color:#6aa84f; letter-spacing:.5px;
+  }
+  .letterhead .contactline{
+    font-size:10pt; color:var(--navy); font-weight:600; margin-top:2px;
+  }
+  .rule{ height:2px; background:var(--orange); margin:8px 0 14px; border:0; }
+
+  h1.doc-title{
+    color:var(--navy);
+    font-size:15pt;
+    text-align:center;
+    text-transform:uppercase;
+    letter-spacing:.3px;
+    margin:0 0 16px;
+  }
+
+  /* ---------- Party / property header fields ---------- */
+  .hdr-fields{ margin-bottom:14px; }
+  .hdr-row{ display:flex; align-items:flex-end; gap:16px; margin-bottom:8px; }
+  .hdr-label{ color:var(--navy); font-weight:700; white-space:nowrap; }
+  .fill{
+    display:inline-block;
+    border-bottom:1px solid var(--rule);
+    min-width:180px;
+    padding:0 5px 1px;
+    line-height:1.35;
+  }
+  .fill.grow{ flex:1 1 auto; min-width:220px; }
+  .fill.short{ min-width:130px; }
+  .fill.mid{ min-width:170px; }
+
+  /* ---------- Clauses ---------- */
+  ol.clauses{ margin:0; padding-left:22px; }
+  ol.clauses > li{ margin-bottom:9px; text-align:justify; }
+  ol.clauses > li .lead{ color:var(--navy); font-weight:700; }
+
+  /* ---------- Signature blocks ---------- */
+  .sig-grid{
+    display:flex; gap:40px; margin-top:34px;
+  }
+  .sig-col{ flex:1 1 0; }
+  .sig-party{ color:var(--navy); font-weight:700; margin-bottom:26px; }
+  .sigline{
+    display:block; border-bottom:1px solid var(--rule);
+    height:40px; position:relative;
+  }
+  .sigline img{
+    position:absolute; bottom:2px; left:4px;
+    max-height:38px; max-width:96%;
+  }
+  .sig-caption{ font-size:9.5pt; color:#555; margin-top:3px; }
+  .sig-printrow{ margin-top:12px; font-size:10.5pt; }
+  .sig-printrow .fill{ min-width:150px; }
+  .sig-printrow .fill.short{ min-width:90px; }
+
+  /* ---------- Notice of Cancellation ---------- */
+  h1.notice-title{ font-size:22pt; font-weight:700; margin:0 0 20px; color:#111; }
+  .notice p{ text-align:justify; margin:0 0 14px; }
+  .notice .field-line{ margin:0 0 14px; }
+  .notice .fill{ min-width:200px; }
+  .notice .fill.short{ min-width:150px; }
+  .notice .hereby{ font-weight:700; margin:18px 0 20px; }
+
+  @media print{
+    .page{ margin:0; padding:0.7in 0.85in; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= PAGE 1 — AGREEMENT ================= -->
+<section class="page">
+  <div class="letterhead">
+    <img class="logo" data-logo alt="NuHome Exteriors" style="display:none;" />
+    <div class="logo-fallback" data-logo-fallback>NuHome</div>
+    <div class="contactline">3615-A Chain Bridge Rd, Fairfax, VA 22030 &nbsp;&bull;&nbsp; VA Class A Contractor #2705-064938A</div>
+  </div>
+  <hr class="rule" />
+
+  <h1 class="doc-title">Forensic Inspection &amp; Preconstruction Services Agreement</h1>
+
+  <div class="hdr-fields">
+    <div class="hdr-row">
+      <span class="hdr-label">Owner(s):</span>
+      <span class="fill grow" data-field="ownerNames"></span>
+      <span class="hdr-label">Date:</span>
+      <span class="fill short" data-field="agreementDate"></span>
+    </div>
+    <div class="hdr-row">
+      <span class="hdr-label">Property Address:</span>
+      <span class="fill grow" data-field="propertyAddress"></span>
+    </div>
+  </div>
+
+  <ol class="clauses">
+    <li><span class="lead">Engagement &amp; Authorization.</span> The owner retains NuHome Exteriors, Inc. (&ldquo;Contractor&rdquo;) to perform a comprehensive Forensic Inspection of all home structural systems at the Property to document the extent of storm related damages that have occurred. Owner authorizes Contractor and its personnel to access the Property, both exterior and interior areas as reasonably required, and to take physical measurements; capture photographs and video; install test squares and perform surface-level examination where appropriate; research weather and storm event data for the Property; identify installed materials, including verification of discontinued or unavailable products; obtain supplier and manufacturer quotes; and develop a repair scope with a fixed-price estimate.</li>
+
+    <li><span class="lead">Deliverable &mdash; Forensic Proof Package.</span> Contractor shall prepare and deliver to Owner a Forensic Proof Package consisting of: (a) a written forensic inspection report; (b) organized photographic documentation; (c) measurements and diagrams; (d) weather event research findings; (e) material identification and availability findings, with supplier quotes where applicable; and (f) a documented repair scope and fixed-price estimate for the restoration work.</li>
+
+    <li><span class="lead">Fee.</span> The fee for the services and deliverables described above is $1,250.00 (the &ldquo;Documentation Fee&rdquo;), due upon delivery of the Forensic Proof Package.</li>
+
+    <li><span class="lead">Credit Toward Construction.</span> If the Owner executes a written Restoration Agreement with Contractor for the restoration work documented in the Forensic Proof Package, the entire Documentation Fee will be credited in full against the construction contract price.</li>
+
+    <li><span class="lead">Cancellation; When the Fee Is Earned.</span> The Owner may cancel this Agreement in writing at any time before the inspection is performed at no cost. Once the inspection has been performed, the Documentation Fee is fully earned upon Contractor&rsquo;s delivery of the Forensic Proof Package which shall occur within 24 hours of the termination of the FTC Cooling-Off Period, regardless of the outcome of any insurance claim or whether the Owner proceeds with construction.</li>
+
+    <li><span class="lead">Role of Contractor; Not a Public Adjuster.</span> Contractor is a licensed construction contractor engaged to document construction conditions, repair scope, and repair cost. Contractor is not a public adjuster and will not adjust, negotiate, or settle any insurance claim on Owner&rsquo;s behalf, advise Owner on insurance coverage, or act as Owner&rsquo;s representative with any insurer (Va. Code &sect; 38.2-1845.12). Any information Contractor provides to an insurer is limited to construction scope, conditions, and pricing, at Owner&rsquo;s direction.</li>
+
+    <li><span class="lead">No Construction Work Awarded.</span> This Agreement authorizes inspection and preconstruction services only. No construction or restoration work is awarded, promised, or authorized under this Agreement unless expressly stated in a written addendum to this agreement, signed by both parties.</li>
+
+    <li><span class="lead">General.</span> This Agreement is governed by Virginia law and is the entire agreement between the parties regarding its subject matter. Any dispute arising under this Agreement shall be resolved by binding arbitration before a single arbitrator under the Commercial Rules of the American Arbitration Association.</li>
+  </ol>
+
+  <div class="sig-grid">
+    <div class="sig-col">
+      <div class="sig-party">OWNER</div>
+      <span class="sigline"><img data-sig="owner" alt="" /></span>
+      <div class="sig-caption">Signature</div>
+      <div class="sig-printrow">
+        Print: <span class="fill" data-field="owner.printName"></span>
+        &nbsp;Date: <span class="fill short" data-field="owner.signDate"></span>
+      </div>
+    </div>
+    <div class="sig-col">
+      <div class="sig-party">NUHOME EXTERIORS, INC.</div>
+      <span class="sigline"><img data-sig="contractorRep" alt="" /></span>
+      <div class="sig-caption">Authorized Representative</div>
+      <div class="sig-printrow">
+        Print: <span class="fill" data-field="contractorRep.printName"></span>
+        &nbsp;Date: <span class="fill short" data-field="contractorRep.signDate"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PAGE 2 — NOTICE OF CANCELLATION ================= -->
+<section class="page notice">
+  <h1 class="notice-title">Notice of Cancellation</h1>
+
+  <div class="field-line">Transaction Date: <span class="fill" data-field="cancellation.transactionDate"></span></div>
+
+  <p>You may CANCEL this transaction, without any Penalty or Obligation, within THREE BUSINESS DAYS from the above date.</p>
+
+  <p>If you cancel, any property traded in, any payments made by you under the contract or sale, and any negotiable instrument executed by you will be returned within TEN BUSINESS DAYS following receipt by the seller of your cancellation notice, and any security interest arising out of the transaction will be cancelled.</p>
+
+  <p>If you cancel, you must make available to the seller at your residence, in substantially as good condition as when received, any goods delivered to you under this contract or sale, or you may, if you wish, comply with the instructions of the seller regarding the return shipment of the goods at the seller's expense and risk.</p>
+
+  <p>If you do make the goods available to the seller and the seller does not pick them up within 20 days of the date of your Notice of Cancellation, you may retain or dispose of the goods without any further obligation. If you fail to make the goods available to the seller, or if you agree to return the goods to the seller and fail to do so, then you remain liable for performance of all obligations under the contract.</p>
+
+  <p>To cancel this transaction, mail or deliver a signed and dated copy of this Cancellation Notice or any other written notice, or send a telegram, to NUHOME EXTERIORS, INC, at 3615-A CHAIN BRIDGE RD, FAIRFAX, VA 20131, NOT LATER THAN MIDNIGHT OF <span class="fill short" data-field="cancellation.cancelDeadline"></span>.</p>
+
+  <p class="hereby">I HEREBY CANCEL THIS TRANSACTION.</p>
+
+  <div class="field-line">Date: <span class="fill short" data-field="cancellation.buyerDate"></span></div>
+
+  <div class="field-line">Buyer's signature: <span class="sigline" style="display:inline-block; width:60%; vertical-align:middle;"><img data-sig="buyer" alt="" /></span></div>
+</section>
+
+<script>
+/* FIPSA_DATA_START — the app replaces this whole object, then renders. */
+const FIPSA_DATA = {
+  // Letterhead logo: app supplies a data: URI (PNG/JPG) or URL. Empty => text fallback.
+  logoUrl: "",
+
+  // Agreement header
+  ownerNames: "",        // e.g. "John A. Homeowner & Jane B. Homeowner"
+  agreementDate: "",     // e.g. "07/21/2026"
+  propertyAddress: "",   // e.g. "123 Example Lane, Fairfax, VA 22030"
+
+  // Owner execution
+  owner: {
+    signatureImage: "",  // data: URI PNG from the e-signature component
+    printName: "",
+    signDate: ""
+  },
+
+  // Contractor (NuHome) execution — may be pre-filled or countersigned later
+  contractorRep: {
+    signatureImage: "",
+    printName: "",
+    signDate: ""
+  },
+
+  // FTC Notice of Cancellation. Seller fills transactionDate + cancelDeadline
+  // (= transactionDate + 3 business days) at signing per the FTC Cooling-Off Rule.
+  // buyerDate + buyerSignatureImage stay blank unless the buyer actually cancels.
+  cancellation: {
+    transactionDate: "",
+    cancelDeadline: "",
+    buyerDate: "",
+    buyerSignatureImage: ""
+  }
+};
+/* FIPSA_DATA_END */
+
+(function renderFipsa(){
+  const D = FIPSA_DATA || {};
+  const get = (path) => path.split('.').reduce((o,k)=> (o==null?undefined:o[k]), D);
+
+  // Text fields
+  document.querySelectorAll('[data-field]').forEach(el => {
+    const v = get(el.getAttribute('data-field'));
+    if (v != null && String(v).length) el.textContent = String(v);
+  });
+
+  // Logo
+  const logo = document.querySelector('[data-logo]');
+  const logoFallback = document.querySelector('[data-logo-fallback]');
+  if (D.logoUrl){
+    if (logo){ logo.src = D.logoUrl; logo.style.display = 'block'; }
+    if (logoFallback) logoFallback.style.display = 'none';
+  }
+
+  // Signatures: map slot name -> data path
+  const sigSrc = {
+    owner: D.owner && D.owner.signatureImage,
+    contractorRep: D.contractorRep && D.contractorRep.signatureImage,
+    buyer: D.cancellation && D.cancellation.buyerSignatureImage
+  };
+  document.querySelectorAll('[data-sig]').forEach(img => {
+    const src = sigSrc[img.getAttribute('data-sig')];
+    if (src) img.src = src; else img.remove(); // leave a clean blank ruled line
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,21 +1,20 @@
 /**
- * Forensic agreement signing screen.
+ * Forensic agreement signing screen — immediately follows Phase 1 completion.
  *
- * Shows the full Forensic Inspection Purchase & Sale Agreement text,
- * pre-filled with property and inspector details. A signature canvas
- * is presented at the bottom. The "Confirm & Sign" button stays disabled
- * until the homeowner has scrolled to the bottom AND drawn a signature.
- *
- * On confirm, the signature image and signer name are sent to
- * POST /inspections/:id/agreement/sign. The server generates the PDF,
- * stores it in object storage, and returns the signed agreement record.
+ * Flow:
+ *   1. Owner name pre-filled from insuredName (Phase 1). If missing → modal.
+ *   2. WebView shows the real FIPSA HTML pre-filled with property + date.
+ *   3. Rep scrolls homeowner through both pages; scroll-to-bottom gate unlocks signing.
+ *   4. Homeowner draws signature on canvas below.
+ *   5. Confirm → expo-print generates signed PDF on-device → uploaded to server.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -25,6 +24,9 @@ import {
   View,
 } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { WebView } from 'react-native-webview';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import {
   getGetInspectionQueryKey,
@@ -34,56 +36,34 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useSignAgreement } from '@/lib/agreementApi';
+import {
+  addBusinessDays,
+  buildFipsaHtml,
+  buildPreviewHtml,
+  formatMDY,
+} from '@/lib/fipsaTemplate';
 
-const AGREEMENT_VERSION = '1.0';
-
-function buildAgreementText(params: {
-  address: string;
-  companyName: string;
-  inspectorName: string;
-  today: string;
-  inspectionId: string;
-}): string {
-  const { address, companyName, inspectorName, today, inspectionId } = params;
-  return `FORENSIC INSPECTION PURCHASE & SALE AGREEMENT
-Document version ${AGREEMENT_VERSION} · Inspection ID: ${inspectionId}
-
-This Forensic Inspection Purchase & Sale Agreement ("Agreement") is entered into on ${today} by and between the Property Owner / Authorized Representative identified below ("Homeowner") and ${companyName} ("Company"), represented on-site by Inspector: ${inspectorName}.
-
-Property Address: ${address}
-
-─────────────────────────────────────────
-
-1. SCOPE OF SERVICES
-The Homeowner hereby authorizes ${companyName} to conduct a full forensic roof and exterior inspection of the above-referenced property. The inspection shall document all observable storm-related or weather-related damage to the roof system, siding, gutters, windows, collateral structures, and any affected interior areas. The inspection findings will be compiled into a documented, photo-backed proof package.
-
-2. AUTHORIZATION
-The Homeowner confirms they are the owner of the property or have lawful authority to authorize this inspection on behalf of the owner. By signing below, the Homeowner grants ${companyName} personnel permission to access the property, including the roof, exterior, and interior spaces (where applicable), for the purpose of conducting the forensic inspection.
-
-3. PURPOSE OF INSPECTION
-The forensic inspection is conducted to document existing conditions and storm-related damage. The findings are compiled to support an insurance claim process. This Agreement and the resulting inspection report do not constitute a guarantee of insurance coverage, a repair estimate, or a warranty of any kind.
-
-4. PHOTO DOCUMENTATION
-The Homeowner consents to photo and video documentation of the property during the inspection. All documentation is used solely for the purpose of compiling the forensic proof package and supporting any related insurance claim or legal proceeding.
-
-5. ACCURACY OF INFORMATION
-The Homeowner acknowledges that all information provided to ${companyName} regarding the property, prior claims, prior repairs, and date of loss is accurate and complete to the best of their knowledge.
-
-6. NO LEGAL OR FINANCIAL ADVICE
-Nothing in this Agreement or the resulting inspection report constitutes legal advice, financial advice, or a determination of insurance coverage. The Homeowner is advised to consult with their insurance carrier and independent legal counsel as needed.
-
-7. ELECTRONIC SIGNATURE
-The parties agree that an electronic or digital signature applied to this document is legally binding and has the same force and effect as a handwritten signature under the Electronic Signatures in Global and National Commerce Act (E-SIGN Act, 15 U.S.C. § 7001 et seq.) and the Uniform Electronic Transactions Act (UETA), as applicable.
-
-─────────────────────────────────────────
-
-By signing below, the Homeowner agrees to all terms above and authorizes the forensic inspection described herein.`;
-}
+// Injected into the preview WebView to fire a message when scrolled to end.
+const SCROLL_DETECT_JS = `
+(function(){
+  var done=false;
+  function chk(){
+    if(done)return;
+    if(window.scrollY+window.innerHeight>=document.documentElement.scrollHeight-60){
+      done=true;
+      if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage('bottom');
+    }
+  }
+  window.addEventListener('scroll',chk,{passive:true});
+  setTimeout(chk,700);
+})();
+true;
+`;
 
 export default function InspectionAgreementScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { profile, companyName } = useProfile();
+  const { companyName } = useProfile();
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -97,27 +77,48 @@ export default function InspectionAgreementScreen() {
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [sigCleared, setSigCleared] = useState(false);
 
+  // Owner-name modal — shown when Phase 1 didn't capture insuredName
+  const [nameModalVisible, setNameModalVisible] = useState(false);
+  const [nameModalDraft, setNameModalDraft] = useState('');
+
   const signAgreement = useSignAgreement();
 
-  const today = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const today = new Date();
+  const todayMDY = formatMDY(today);
+  const cancelDeadlineMDY = formatMDY(addBusinessDays(today, 3));
 
-  // Profile doesn't expose first/last name; the server stamps the real
-  // inspector name on the PDF via the users table. Use company name here.
-  const inspectorDisplayName = companyName ? `${companyName} inspector` : 'Inspector';
+  // Pre-fill from Phase 1 data once loaded; open modal if missing.
+  useEffect(() => {
+    if (!inspection) return;
+    const name = inspection.insuredName?.trim() ?? '';
+    if (name.length >= 2) {
+      setSignerName(name);
+    } else {
+      setNameModalVisible(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspection?.id]);
 
-  const agreementText = inspection
-    ? buildAgreementText({
-        address: inspection.address ?? 'Address not provided',
-        companyName: companyName ?? 'the inspection company',
-        inspectorName: inspectorDisplayName,
-        today,
-        inspectionId: id,
-      })
-    : '';
+  // Pre-filled FIPSA HTML for the reading WebView (no signature image yet).
+  const previewHtml = useMemo(() => {
+    return buildPreviewHtml({
+      ownerNames: signerName || '___________________________',
+      agreementDate: todayMDY,
+      propertyAddress: inspection?.address ?? '',
+      owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
+      contractorRep: {
+        signatureImage: '',
+        printName: companyName ?? 'NuHome Exteriors',
+        signDate: todayMDY,
+      },
+      cancellation: {
+        transactionDate: todayMDY,
+        cancelDeadline: cancelDeadlineMDY,
+        buyerDate: '',
+        buyerSignatureImage: '',
+      },
+    });
+  }, [signerName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName]);
 
   const canSign =
     hasScrolledToBottom &&
@@ -125,28 +126,11 @@ export default function InspectionAgreementScreen() {
     signerName.trim().length >= 2 &&
     !signAgreement.isPending;
 
-  function handleScrollEnd(event: {
-    nativeEvent: {
-      layoutMeasurement: { height: number };
-      contentOffset: { y: number };
-      contentSize: { height: number };
-    };
-  }) {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 40;
-    if (isNearBottom) setHasScrolledToBottom(true);
-  }
-
-  // SignatureScreen only calls onOK when readSignature() is explicitly invoked.
-  // Trigger it after every stroke so signatureData stays in sync without
-  // requiring the user or code to tap a separate "capture" button.
   function handleStrokeEnd() {
     signatureRef.current?.readSignature();
   }
 
   function handleSignatureOK(sig: string) {
-    // sig is a data URI: "data:image/png;base64,..."
-    // Strip the prefix to get the raw base64.
     const base64 = sig.replace(/^data:image\/png;base64,/, '');
     setSignatureData(base64);
   }
@@ -154,17 +138,17 @@ export default function InspectionAgreementScreen() {
   function handleClear() {
     signatureRef.current?.clearSignature();
     setSignatureData(null);
-    setSigCleared((prev) => !prev); // force re-render of canvas
+    setSigCleared((prev) => !prev);
   }
 
   async function handleConfirm() {
-    if (!canSign || !signatureData) return;
+    if (!canSign || !signatureData || !inspection) return;
 
     const name = signerName.trim();
 
     Alert.alert(
       'Confirm & Sign',
-      `By tapping "Sign Now", ${name} agrees to the Forensic Inspection Purchase & Sale Agreement. This action cannot be undone.`,
+      `By tapping "Sign Now", ${name} agrees to the Forensic Inspection & Preconstruction Services Agreement. This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -172,15 +156,52 @@ export default function InspectionAgreementScreen() {
           style: 'default',
           onPress: async () => {
             try {
+              // 1. Build fully filled FIPSA HTML with embedded signature.
+              const signedHtml = buildFipsaHtml({
+                ownerNames: name,
+                agreementDate: todayMDY,
+                propertyAddress: inspection.address ?? '',
+                owner: {
+                  signatureImage: `data:image/png;base64,${signatureData}`,
+                  printName: name,
+                  signDate: todayMDY,
+                },
+                contractorRep: {
+                  signatureImage: '',
+                  printName: companyName ?? 'NuHome Exteriors',
+                  signDate: todayMDY,
+                },
+                cancellation: {
+                  transactionDate: todayMDY,
+                  cancelDeadline: cancelDeadlineMDY,
+                  buyerDate: '',
+                  buyerSignatureImage: '',
+                },
+              });
+
+              // 2. Render to PDF on-device via expo-print.
+              const { uri } = await Print.printToFileAsync({ html: signedHtml });
+
+              // 3. Read as base64 for upload.
+              // EncodingType enum was removed in expo-file-system v19; use the string literal.
+              const pdfBase64 = await FileSystem.readAsStringAsync(uri, {
+                encoding: 'base64' as const,
+              });
+
+              // 4. Clean up temp file.
+              await FileSystem.deleteAsync(uri, { idempotent: true });
+
+              // 5. Upload to server — stores in object storage + writes audit record.
               await signAgreement.mutateAsync({
                 inspectionId: id,
                 signerName: name,
-                signatureImageBase64: signatureData,
+                pdfBase64,
               });
+
               Alert.alert(
                 'Agreement Signed',
-                'The agreement has been signed and saved. A PDF has been generated and stored.',
-                [{ text: 'OK', onPress: () => router.back() }],
+                'The signed agreement has been saved.',
+                [{ text: 'Done', onPress: () => router.back() }],
               );
             } catch (err) {
               const message =
@@ -209,52 +230,112 @@ export default function InspectionAgreementScreen() {
     >
       <Stack.Screen options={{ title: 'Get Homeowner Signature' }} />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        onScroll={handleScrollEnd}
-        scrollEventThrottle={200}
+      {/* ── Owner-name modal ─────────────────────────────────────────────── */}
+      <Modal
+        visible={nameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (nameModalDraft.trim().length >= 2) {
+            setSignerName(nameModalDraft.trim());
+            setNameModalVisible(false);
+          }
+        }}
       >
-        {/* Agreement text */}
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              Owner's Name
+            </Text>
+            <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
+              The owner's name was not captured in Phase 1. Please enter it now to continue.
+            </Text>
+            <TextInput
+              value={nameModalDraft}
+              onChangeText={setNameModalDraft}
+              placeholder="Full legal name"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoFocus
+              style={[
+                styles.textInput,
+                {
+                  color: colors.foreground,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                },
+              ]}
+            />
+            <Pressable
+              onPress={() => {
+                const name = nameModalDraft.trim();
+                if (name.length < 2) return;
+                setSignerName(name);
+                setNameModalVisible(false);
+              }}
+              disabled={nameModalDraft.trim().length < 2}
+              style={[
+                styles.modalBtn,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: nameModalDraft.trim().length >= 2 ? 1 : 0.45,
+                },
+              ]}
+            >
+              <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
+                Continue
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <ScrollView contentContainerStyle={styles.content}>
+
+        {/* ── Agreement viewer ─────────────────────────────────────────────── */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.headerRow}>
-            <Icon name="file-text" size={20} color={colors.foreground} />
+            <Icon name="file-text" size={18} color={colors.foreground} />
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-              Forensic Inspection Purchase &amp; Sale Agreement
+              Agreement — scroll to read both pages
             </Text>
           </View>
-          <Text style={[styles.agreementText, { color: colors.foreground }]}>
-            {agreementText}
-          </Text>
+
+          <View style={[styles.webviewWrap, { borderColor: colors.border }]}>
+            <WebView
+              source={{ html: previewHtml }}
+              injectedJavaScript={SCROLL_DETECT_JS}
+              onMessage={(e) => {
+                if (e.nativeEvent.data === 'bottom') setHasScrolledToBottom(true);
+              }}
+              scrollEnabled
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              originWhitelist={['*']}
+              style={styles.webview}
+            />
+          </View>
         </View>
 
-        {/* Scroll prompt */}
+        {/* ── Scroll status ─────────────────────────────────────────────────── */}
         {!hasScrolledToBottom ? (
-          <View
-            style={[
-              styles.scrollPrompt,
-              { backgroundColor: '#fffbeb', borderColor: '#f59e0b' },
-            ]}
-          >
+          <View style={[styles.banner, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}>
             <Icon name="chevron-down" size={16} color="#b45309" />
             <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
-              Scroll to the bottom to review the full agreement before signing.
+              Scroll through both pages to enable signing.
             </Text>
           </View>
         ) : (
-          <View
-            style={[
-              styles.scrollPrompt,
-              { backgroundColor: '#ecfdf5', borderColor: colors.success },
-            ]}
-          >
+          <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
             <Icon name="check" size={16} color={colors.success} />
             <Text style={{ color: colors.success, fontSize: 13, flex: 1 }}>
-              Agreement reviewed — please have the homeowner sign below.
+              Agreement reviewed — have the homeowner sign below.
             </Text>
           </View>
         )}
 
-        {/* Signer name */}
+        {/* ── Signer name (editable for corrections) ────────────────────────── */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
             Homeowner's full name
@@ -277,7 +358,7 @@ export default function InspectionAgreementScreen() {
           />
         </View>
 
-        {/* Signature canvas */}
+        {/* ── Signature canvas ─────────────────────────────────────────────── */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.headerRow}>
             <Icon name="edit-3" size={18} color={colors.foreground} />
@@ -313,8 +394,6 @@ export default function InspectionAgreementScreen() {
                 body { background-color: #ffffff; }
               `}
               style={styles.signatureCanvas}
-              // onEnd fires after each stroke; readSignature() triggers onOK with
-              // the current canvas data URI so signatureData stays in sync.
               onEnd={handleStrokeEnd}
               autoClear={false}
               dataURL=""
@@ -335,16 +414,13 @@ export default function InspectionAgreementScreen() {
           )}
         </View>
 
-        {/* Confirm button */}
+        {/* ── Confirm button ───────────────────────────────────────────────── */}
         <Pressable
           onPress={handleConfirm}
           disabled={!canSign}
           style={[
             styles.confirmBtn,
-            {
-              backgroundColor: colors.primary,
-              opacity: canSign ? 1 : 0.45,
-            },
+            { backgroundColor: colors.primary, opacity: canSign ? 1 : 0.45 },
           ]}
         >
           {signAgreement.isPending ? (
@@ -374,49 +450,47 @@ export default function InspectionAgreementScreen() {
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, gap: 12 },
+
   card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  cardTitle: { fontSize: 14, fontWeight: '700', flex: 1 },
   fieldLabel: { fontSize: 14, fontWeight: '600' },
-  agreementText: { fontSize: 12, lineHeight: 20, fontFamily: 'monospace' },
-  scrollPrompt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
+
+  webviewWrap: { borderWidth: 1, borderRadius: 10, overflow: 'hidden', height: 520 },
+  webview: { flex: 1 },
+
+  banner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 12, borderRadius: 10, borderWidth: 1,
   },
   textInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+    borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 15,
   },
-  signatureBorder: {
-    borderWidth: 1.5,
-    borderRadius: 10,
-    overflow: 'hidden',
-    height: 200,
-  },
+  signatureBorder: { borderWidth: 1.5, borderRadius: 10, overflow: 'hidden', height: 200 },
   signatureCanvas: { flex: 1, height: 200 },
   sigStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
   },
+
   confirmBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 14,
-    marginTop: 4,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 16, borderRadius: 14, marginTop: 4,
   },
   confirmText: { fontSize: 16, fontWeight: '800' },
+
+  // Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center', padding: 24,
+  },
+  modalCard: {
+    width: '100%', maxWidth: 420, borderRadius: 18,
+    padding: 24, gap: 14,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700' },
+  modalBody: { fontSize: 14, lineHeight: 20 },
+  modalBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  modalBtnText: { fontSize: 16, fontWeight: '700' },
 });

@@ -1,0 +1,354 @@
+/**
+ * FIPSA HTML template utilities.
+ *
+ * The HTML below is the verbatim self-contained FIPSA agreement template.
+ * Legal text must NOT be paraphrased or reordered.
+ *
+ * Usage:
+ *   buildPreviewHtml(data)  → mobile-scaled HTML for WebView reading
+ *   buildFipsaHtml(data)    → print-ready HTML for expo-print PDF generation
+ */
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface FipsaParty {
+  signatureImage: string; // data: URI PNG, or "" for blank ruled line
+  printName: string;
+  signDate: string; // MM/DD/YYYY
+}
+
+export interface FipsaData {
+  logoUrl?: string;
+  ownerNames: string;
+  agreementDate: string; // MM/DD/YYYY
+  propertyAddress: string;
+  owner: FipsaParty;
+  contractorRep: FipsaParty;
+  cancellation: {
+    transactionDate: string;
+    cancelDeadline: string;
+    buyerDate: string;
+    buyerSignatureImage: string;
+  };
+}
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+/** Format a Date as MM/DD/YYYY. */
+export function formatMDY(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const y = date.getFullYear();
+  return `${m}/${d}/${y}`;
+}
+
+/** Add N business days (Mon–Fri) to a date. */
+export function addBusinessDays(start: Date, days: number): Date {
+  const d = new Date(start);
+  let added = 0;
+  while (added < days) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return d;
+}
+
+// ── Template ──────────────────────────────────────────────────────────────────
+
+/** Fill the FIPSA_DATA block and return the completed HTML. */
+export function buildFipsaHtml(data: FipsaData): string {
+  const block = JSON.stringify(
+    {
+      logoUrl: data.logoUrl ?? '',
+      ownerNames: data.ownerNames,
+      agreementDate: data.agreementDate,
+      propertyAddress: data.propertyAddress,
+      owner: data.owner,
+      contractorRep: data.contractorRep,
+      cancellation: data.cancellation,
+    },
+    null,
+    2,
+  );
+  return FIPSA_TEMPLATE.replace(
+    /\/\* FIPSA_DATA_START \*\/[\s\S]*?\/\* FIPSA_DATA_END \*\//,
+    `/* FIPSA_DATA_START */\nconst FIPSA_DATA = ${block};\n/* FIPSA_DATA_END */`,
+  );
+}
+
+/**
+ * Same as buildFipsaHtml but injects a CSS override that removes the fixed
+ * letter-width so the agreement fits on a mobile screen inside a WebView.
+ * Also injects scroll-to-bottom detection that posts 'bottom' via
+ * ReactNativeWebView.postMessage when the user reaches the end.
+ */
+export function buildPreviewHtml(data: FipsaData): string {
+  const base = buildFipsaHtml(data);
+  const mobileCss = `
+<style>
+  .page { width: 100% !important; max-width: 100% !important;
+          padding: 16px 18px !important; }
+  body  { font-size: 10pt; }
+</style>`;
+  const scrollScript = `
+<script>
+(function(){
+  var done=false;
+  function chk(){
+    if(done)return;
+    if(window.scrollY+window.innerHeight>=document.documentElement.scrollHeight-60){
+      done=true;
+      if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage('bottom');
+    }
+  }
+  window.addEventListener('scroll',chk,{passive:true});
+  setTimeout(chk,600);
+})();
+</script>`;
+  return base
+    .replace('</style>', `</style>${mobileCss}`)
+    .replace('</body>', `${scrollScript}</body>`);
+}
+
+// ── Verbatim FIPSA HTML ───────────────────────────────────────────────────────
+// Legal text is verbatim from FIPSA.pdf. Do NOT paraphrase, reorder, or edit.
+
+const FIPSA_TEMPLATE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Forensic Inspection &amp; Preconstruction Services Agreement</title>
+<style>
+  :root{
+    --navy:#14263B;
+    --orange:#E8792B;
+    --ink:#1a1a1a;
+    --rule:#333;
+  }
+  *{ box-sizing:border-box; }
+  @page{ size: Letter; margin:0; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family: "Calibri", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color:var(--ink);
+    font-size:10pt;
+    line-height:1.33;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  .page{
+    width:8.5in;
+    margin:0 auto;
+    padding:0.55in 0.8in;
+    background:#fff;
+  }
+  .page + .page{ page-break-before:always; }
+
+  /* ---------- Letterhead ---------- */
+  .letterhead{ text-align:center; }
+  .letterhead .logo{ height:54px; margin:0 auto 4px; display:block; }
+  .letterhead .logo-fallback{
+    font-size:30pt; font-weight:700; color:#6aa84f; letter-spacing:.5px;
+  }
+  .letterhead .contactline{
+    font-size:10pt; color:var(--navy); font-weight:600; margin-top:2px;
+  }
+  .rule{ height:2px; background:var(--orange); margin:7px 0 12px; border:0; }
+
+  h1.doc-title{
+    color:var(--navy);
+    font-size:14pt;
+    text-align:center;
+    text-transform:uppercase;
+    letter-spacing:.3px;
+    margin:0 0 10px;
+  }
+
+  /* ---------- Party / property header fields ---------- */
+  .hdr-fields{ margin-bottom:10px; }
+  .hdr-row{ display:flex; align-items:flex-end; gap:16px; margin-bottom:6px; }
+  .hdr-label{ color:var(--navy); font-weight:700; white-space:nowrap; }
+  .fill{
+    display:inline-block;
+    border-bottom:1px solid var(--rule);
+    min-width:180px;
+    padding:0 5px 1px;
+    line-height:1.35;
+  }
+  .fill.grow{ flex:1 1 auto; min-width:220px; }
+  .fill.short{ min-width:130px; }
+  .fill.mid{ min-width:170px; }
+
+  /* ---------- Clauses ---------- */
+  ol.clauses{ margin:0; padding-left:22px; }
+  ol.clauses > li{ margin-bottom:3px; text-align:justify; }
+  ol.clauses > li .lead{ color:var(--navy); font-weight:700; }
+
+  /* ---------- Signature blocks ---------- */
+  .sig-grid{
+    display:flex; gap:40px; margin-top:6px;
+    break-inside:avoid; page-break-inside:avoid;
+  }
+  .sig-col{ flex:1 1 0; }
+  .sig-party{ color:var(--navy); font-weight:700; margin-bottom:6px; }
+  .sigline{
+    display:block; border-bottom:1px solid var(--rule);
+    height:22px; position:relative;
+  }
+  .sigline img{
+    position:absolute; bottom:1px; left:4px;
+    max-height:21px; max-width:96%; object-fit:contain;
+  }
+  .sig-caption{ font-size:9.5pt; color:#555; margin-top:3px; }
+  .sig-printrow{ margin-top:7px; font-size:10pt; white-space:nowrap; }
+  .sig-printrow .fill{ min-width:150px; }
+  .sig-printrow .fill.short{ min-width:90px; }
+
+  /* ---------- Notice of Cancellation ---------- */
+  h1.notice-title{ font-size:22pt; font-weight:700; margin:0 0 20px; color:#111; }
+  .notice p{ text-align:justify; margin:0 0 14px; }
+  .notice .field-line{ margin:0 0 14px; }
+  .notice .fill{ min-width:200px; }
+  .notice .fill.short{ min-width:150px; }
+  .notice .hereby{ font-weight:700; margin:18px 0 20px; }
+
+  @media print{
+    .page{ margin:0; padding:0.55in 0.8in; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= PAGE 1 — AGREEMENT ================= -->
+<section class="page">
+  <div class="letterhead">
+    <img class="logo" data-logo src="data:image/jpeg;base64,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" alt="NuHome Exteriors" />
+    <div class="logo-fallback" data-logo-fallback style="display:none;">NuHome</div>
+    <div class="contactline">3615-A Chain Bridge Rd, Fairfax, VA 22030 &nbsp;&bull;&nbsp; VA Class A Contractor #2705-064938A</div>
+  </div>
+  <hr class="rule" />
+
+  <h1 class="doc-title">Forensic Inspection &amp; Preconstruction Services Agreement</h1>
+
+  <div class="hdr-fields">
+    <div class="hdr-row">
+      <span class="hdr-label">Owner(s):</span>
+      <span class="fill grow" data-field="ownerNames"></span>
+      <span class="hdr-label">Date:</span>
+      <span class="fill short" data-field="agreementDate"></span>
+    </div>
+    <div class="hdr-row">
+      <span class="hdr-label">Property Address:</span>
+      <span class="fill grow" data-field="propertyAddress"></span>
+    </div>
+  </div>
+
+  <ol class="clauses">
+    <li><span class="lead">Engagement &amp; Authorization.</span> The owner retains NuHome Exteriors, Inc. (&ldquo;Contractor&rdquo;) to perform a comprehensive Forensic Inspection of all home structural systems at the Property to document the extent of storm related damages that have occurred. Owner authorizes Contractor and its personnel to access the Property, both exterior and interior areas as reasonably required, and to take physical measurements; capture photographs and video; install test squares and perform surface-level examination where appropriate; research weather and storm event data for the Property; identify installed materials, including verification of discontinued or unavailable products; obtain supplier and manufacturer quotes; and develop a repair scope with a fixed-price estimate.</li>
+
+    <li><span class="lead">Deliverable &mdash; Forensic Proof Package.</span> Contractor shall prepare and deliver to Owner a Forensic Proof Package consisting of: (a) a written forensic inspection report; (b) organized photographic documentation; (c) measurements and diagrams; (d) weather event research findings; (e) material identification and availability findings, with supplier quotes where applicable; and (f) a documented repair scope and fixed-price estimate for the restoration work.</li>
+
+    <li><span class="lead">Fee.</span> The fee for the services and deliverables described above is $1,250.00 (the &ldquo;Documentation Fee&rdquo;), due upon delivery of the Forensic Proof Package.</li>
+
+    <li><span class="lead">Credit Toward Construction.</span> If the Owner executes a written Restoration Agreement with Contractor for the restoration work documented in the Forensic Proof Package, the entire Documentation Fee will be credited in full against the construction contract price.</li>
+
+    <li><span class="lead">Cancellation; When the Fee Is Earned.</span> The Owner may cancel this Agreement in writing at any time before the inspection is performed at no cost. Once the inspection has been performed, the Documentation Fee is fully earned upon Contractor&rsquo;s delivery of the Forensic Proof Package which shall occur within 24 hours of the termination of the FTC Cooling-Off Period, regardless of the outcome of any insurance claim or whether the Owner proceeds with construction.</li>
+
+    <li><span class="lead">Role of Contractor; Not a Public Adjuster.</span> Contractor is a licensed construction contractor engaged to document construction conditions, repair scope, and repair cost. Contractor is not a public adjuster and will not adjust, negotiate, or settle any insurance claim on Owner&rsquo;s behalf, advise Owner on insurance coverage, or act as Owner&rsquo;s representative with any insurer (Va. Code &sect; 38.2-1845.12). Any information Contractor provides to an insurer is limited to construction scope, conditions, and pricing, at Owner&rsquo;s direction.</li>
+
+    <li><span class="lead">No Construction Work Awarded.</span> This Agreement authorizes inspection and preconstruction services only. No construction or restoration work is awarded, promised, or authorized under this Agreement unless expressly stated in a written addendum to this agreement, signed by both parties.</li>
+
+    <li><span class="lead">General.</span> This Agreement is governed by Virginia law and is the entire agreement between the parties regarding its subject matter. Any dispute arising under this Agreement shall be resolved by binding arbitration before a single arbitrator under the Commercial Rules of the American Arbitration Association.</li>
+  </ol>
+
+  <div class="sig-grid">
+    <div class="sig-col">
+      <div class="sig-party">OWNER</div>
+      <span class="sigline"><img data-sig="owner" alt="" /></span>
+      <div class="sig-caption">Signature</div>
+      <div class="sig-printrow">
+        Print: <span class="fill" data-field="owner.printName"></span>
+        &nbsp;Date: <span class="fill short" data-field="owner.signDate"></span>
+      </div>
+    </div>
+    <div class="sig-col">
+      <div class="sig-party">NUHOME EXTERIORS, INC.</div>
+      <span class="sigline"><img data-sig="contractorRep" alt="" /></span>
+      <div class="sig-caption">Authorized Representative</div>
+      <div class="sig-printrow">
+        Print: <span class="fill" data-field="contractorRep.printName"></span>
+        &nbsp;Date: <span class="fill short" data-field="contractorRep.signDate"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PAGE 2 — NOTICE OF CANCELLATION ================= -->
+<section class="page notice">
+  <h1 class="notice-title">Notice of Cancellation</h1>
+
+  <div class="field-line">Transaction Date: <span class="fill" data-field="cancellation.transactionDate"></span></div>
+
+  <p>You may CANCEL this transaction, without any Penalty or Obligation, within THREE BUSINESS DAYS from the above date.</p>
+
+  <p>If you cancel, any property traded in, any payments made by you under the contract or sale, and any negotiable instrument executed by you will be returned within TEN BUSINESS DAYS following receipt by the seller of your cancellation notice, and any security interest arising out of the transaction will be cancelled.</p>
+
+  <p>If you cancel, you must make available to the seller at your residence, in substantially as good condition as when received, any goods delivered to you under this contract or sale, or you may, if you wish, comply with the instructions of the seller regarding the return shipment of the goods at the seller's expense and risk.</p>
+
+  <p>If you do make the goods available to the seller and the seller does not pick them up within 20 days of the date of your Notice of Cancellation, you may retain or dispose of the goods without any further obligation. If you fail to make the goods available to the seller, or if you agree to return the goods to the seller and fail to do so, then you remain liable for performance of all obligations under the contract.</p>
+
+  <p>To cancel this transaction, mail or deliver a signed and dated copy of this Cancellation Notice or any other written notice, or send a telegram, to NUHOME EXTERIORS, INC, at 3615-A CHAIN BRIDGE RD, FAIRFAX, VA 20131, NOT LATER THAN MIDNIGHT OF <span class="fill short" data-field="cancellation.cancelDeadline"></span>.</p>
+
+  <p class="hereby">I HEREBY CANCEL THIS TRANSACTION.</p>
+
+  <div class="field-line">Date: <span class="fill short" data-field="cancellation.buyerDate"></span></div>
+
+  <div class="field-line">Buyer's signature: <span class="sigline" style="display:inline-block; width:60%; vertical-align:middle;"><img data-sig="buyer" alt="" /></span></div>
+</section>
+
+<script>
+/* FIPSA_DATA_START */
+const FIPSA_DATA = {
+  logoUrl: "",
+  ownerNames: "",
+  agreementDate: "",
+  propertyAddress: "",
+  owner: { signatureImage: "", printName: "", signDate: "" },
+  contractorRep: { signatureImage: "", printName: "", signDate: "" },
+  cancellation: { transactionDate: "", cancelDeadline: "", buyerDate: "", buyerSignatureImage: "" }
+};
+/* FIPSA_DATA_END */
+
+(function renderFipsa(){
+  const D = FIPSA_DATA || {};
+  const get = (path) => path.split('.').reduce((o,k)=> (o==null?undefined:o[k]), D);
+
+  document.querySelectorAll('[data-field]').forEach(el => {
+    const v = get(el.getAttribute('data-field'));
+    if (v != null && String(v).length) el.textContent = String(v);
+  });
+
+  const logo = document.querySelector('[data-logo]');
+  const logoFallback = document.querySelector('[data-logo-fallback]');
+  if (D.logoUrl && logo){ logo.src = D.logoUrl; }
+  if (logo){ logo.addEventListener('error', function(){
+    logo.style.display = 'none';
+    if (logoFallback) logoFallback.style.display = 'block';
+  }); }
+
+  const sigSrc = {
+    owner: D.owner && D.owner.signatureImage,
+    contractorRep: D.contractorRep && D.contractorRep.signatureImage,
+    buyer: D.cancellation && D.cancellation.buyerSignatureImage
+  };
+  document.querySelectorAll('[data-sig]').forEach(img => {
+    const src = sigSrc[img.getAttribute('data-sig')];
+    if (src) img.src = src; else img.remove();
+  });
+})();
+</script>
+
+</body>
+</html>`;
