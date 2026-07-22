@@ -205,6 +205,7 @@ export default function InspectionAgreementScreen() {
   const signAgreement = useSignAgreement();
   const emailAgreement = useEmailAgreement();
   const [scheduling, setScheduling] = useState(false);
+  const [ownerEmail, setOwnerEmail] = useState('');
 
   // ── Post-signing flow state ──────────────────────────────────────────────────
   const [signedDocHtml, setSignedDocHtml] = useState<string | null>(null);
@@ -230,6 +231,9 @@ export default function InspectionAgreementScreen() {
     } else {
       setActiveModal('ownerName');
     }
+    // Pre-fill owner email if already saved on this inspection.
+    const email = (inspection as { ownerEmail?: string | null }).ownerEmail?.trim() ?? '';
+    if (email) setOwnerEmail(email);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspection?.id]);
 
@@ -876,6 +880,27 @@ export default function InspectionAgreementScreen() {
               </Pressable>
             </View>
 
+            {/* Homeowner email — required for the appointment notification */}
+            <View style={[styles.emailRow, { marginBottom: 2 }]}>
+              <Icon name="mail" size={16} color={colors.mutedForeground} />
+              <TextInput
+                value={ownerEmail}
+                onChangeText={setOwnerEmail}
+                placeholder="Homeowner email"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[
+                  styles.emailInput,
+                  { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, flex: 1 },
+                ]}
+              />
+            </View>
+            <Text style={{ fontSize: 11, color: colors.mutedForeground, marginBottom: 8 }}>
+              An appointment confirmation will be sent to this address. It's also saved to the owner record for Phase 2.
+            </Text>
+
             <CalendarPicker
               selected={scheduledDate}
               minDate={tomorrow}
@@ -894,17 +919,32 @@ export default function InspectionAgreementScreen() {
             {/* Confirm */}
             <Pressable
               onPress={async () => {
+                const emailTrimmed = ownerEmail.trim();
+                if (!emailTrimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+                  Alert.alert('Email Required', 'Please enter a valid homeowner email address to send the appointment notification.');
+                  return;
+                }
                 try {
                   setScheduling(true);
-                  await customFetch(`/api/inspections/${id}`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({ scheduledFor: scheduledDate.toISOString() }),
-                  });
+                  const result: { scheduled: boolean; emailSent: boolean; noSmtp?: boolean } =
+                    await customFetch(`/api/inspections/${id}/notify-schedule`, {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        scheduledFor: scheduledDate.toISOString(),
+                        ownerEmail: emailTrimmed,
+                      }),
+                    });
                   setShowSchedule(false);
                   setShowNextSteps(false);
+                  const dateLabel = scheduledDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                  const emailNote = result.emailSent
+                    ? `\n\nA confirmation was sent to ${emailTrimmed}.`
+                    : result.noSmtp
+                    ? '\n\nConfigure SMTP in your profile to send automatic notifications.'
+                    : `\n\nThe notification email could not be delivered — please follow up with ${emailTrimmed} directly.`;
                   Alert.alert(
                     'Inspection Scheduled',
-                    `Phase 2 inspection scheduled for ${scheduledDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}.`,
+                    `Phase 2 inspection scheduled for ${dateLabel}.${emailNote}`,
                     [{ text: 'OK', onPress: () => router.back() }],
                   );
                 } catch (err) {
@@ -921,7 +961,7 @@ export default function InspectionAgreementScreen() {
                 ? <ActivityIndicator color={colors.primaryForeground} />
                 : <>
                     <Icon name="check" size={18} color={colors.primaryForeground} />
-                    <Text style={[styles.flowPrimaryBtnText, { color: colors.primaryForeground }]}>Confirm Schedule</Text>
+                    <Text style={[styles.flowPrimaryBtnText, { color: colors.primaryForeground }]}>Confirm & Notify</Text>
                   </>}
             </Pressable>
           </View>

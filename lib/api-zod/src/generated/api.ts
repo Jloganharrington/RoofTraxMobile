@@ -1840,11 +1840,13 @@ export const UpdateInspectionBody = zod.object({
   "policyNumber": zod.string().nullish(),
   "carrierName": zod.string().nullish(),
   "insuredName": zod.string().nullish(),
+  "ownerEmail": zod.string().email().nullish(),
   "address": zod.string().nullish(),
   "latitude": zod.number().nullish(),
   "longitude": zod.number().nullish(),
   "notes": zod.string().nullish(),
   "dateOfLoss": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
   "stormConfirmedRef": zod.union([zod.object({
   "date": zod.string(),
   "type": zod.enum(['hail', 'wind', 'tornado']),

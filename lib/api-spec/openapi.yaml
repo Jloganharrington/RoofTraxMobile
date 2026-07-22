@@ -3821,6 +3821,11 @@ components:
           type: [string, "null"]
         insuredName:
           type: [string, "null"]
+        ownerEmail:
+          type: [string, "null"]
+          description: >-
+            Homeowner contact email captured at scheduling time. Used for
+            appointment notifications and Phase 2 comms.
         address:
           type: [string, "null"]
         latitude:
@@ -3831,6 +3836,10 @@ components:
           type: [string, "null"]
         dateOfLoss:
           type: [string, "null"]
+        scheduledFor:
+          type: [string, "null"]
+          format: date-time
+          description: Rep-chosen date for the Phase 2 forensic inspection. Null until booked.
         stormConfirmedRef:
           oneOf:
             - $ref: "#/components/schemas/StormConfirmedRef"
@@ -4100,6 +4109,11 @@ components:
           type: [string, "null"]
         insuredName:
           type: [string, "null"]
+        ownerEmail:
+          type: [string, "null"]
+          description: >-
+            Homeowner contact email. Captured at scheduling time; used for
+            appointment notifications and Phase 2 comms.
         address:
           type: [string, "null"]
         latitude:
@@ -4110,6 +4124,10 @@ components:
           type: [string, "null"]
         dateOfLoss:
           type: [string, "null"]
+        scheduledFor:
+          type: [string, "null"]
+          format: date-time
+          description: Rep-chosen date for the Phase 2 forensic inspection. Null until booked.
         stormConfirmedRef:
           oneOf:
             - $ref: "#/components/schemas/StormConfirmedRef"

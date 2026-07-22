@@ -474,6 +474,13 @@ export const inspectionsTable = pgTable('inspections', {
   brainDeliveryAttempts: integer('brain_delivery_attempts').notNull().default(0),
   brainLastAttemptAt: timestamp('brain_last_attempt_at', { withTimezone: true }),
   brainDeliveredAt: timestamp('brain_delivered_at', { withTimezone: true }),
+  // Homeowner contact email captured at scheduling time. Used for appointment
+  // notifications and Phase 2 comms; carried forward to the owner record when
+  // Phase 2 is completed so reps never have to re-enter it.
+  ownerEmail: text('owner_email'),
+  // Rep-chosen date for the Phase 2 (forensic) inspection, set in the
+  // post-agreement scheduling flow. Null until the rep books a date.
+  scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   CreateAttestationBody,
   CreateAttestationResponse,
@@ -862,6 +863,8 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       ...(parsed.data.policyNumber !== undefined && { policyNumber: parsed.data.policyNumber }),
       ...(parsed.data.carrierName !== undefined && { carrierName: parsed.data.carrierName }),
       ...(parsed.data.insuredName !== undefined && { insuredName: parsed.data.insuredName }),
+      ...(parsed.data.ownerEmail !== undefined && { ownerEmail: parsed.data.ownerEmail }),
+      ...(parsed.data.scheduledFor !== undefined && { scheduledFor: parsed.data.scheduledFor }),
       ...(parsed.data.address !== undefined && { address: parsed.data.address }),
       ...(parsed.data.latitude !== undefined && { latitude: parsed.data.latitude }),
       ...(parsed.data.longitude !== undefined && { longitude: parsed.data.longitude }),
@@ -2619,6 +2622,118 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
   }
 
   res.json({ sent: true });
+});
+
+// Schedules a Phase 2 inspection and sends an appointment notification to
+// the homeowner via the rep's SMTP. Saves scheduledFor + ownerEmail to the
+// inspection row atomically. Returns { scheduled: true, emailSent: boolean }.
+// When SMTP is not configured the schedule still saves; emailSent is false.
+router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const parsed = z.object({
+    scheduledFor: z.coerce.date(),
+    ownerEmail: z.string().email(),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'scheduledFor (ISO date) and a valid ownerEmail are required' });
+    return;
+  }
+
+  const inspection = await loadInspectionInCompany(
+    String(req.params.inspectionId),
+    actor.companyId,
+  );
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  const { scheduledFor, ownerEmail } = parsed.data;
+
+  // Persist both fields unconditionally.
+  await db
+    .update(inspectionsTable)
+    .set({ scheduledFor, ownerEmail })
+    .where(
+      and(
+        eq(inspectionsTable.id, inspection.id),
+        eq(inspectionsTable.companyId, actor.companyId),
+      ),
+    );
+
+  // Send the appointment email only when the rep has SMTP configured.
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, actor.userId));
+
+  if (!profile?.smtpHost || !profile.smtpPort || !profile.smtpUsername || !profile.smtpPasswordEnc) {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  let password: string;
+  try {
+    password = decryptSmtpPassword(profile.smtpPasswordEnc);
+  } catch {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  let smtpAddress: string;
+  try {
+    smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+  } catch {
+    res.json({ scheduled: true, emailSent: false, noSmtp: true });
+    return;
+  }
+
+  const transport = nodemailer.createTransport({
+    host: smtpAddress,
+    port: profile.smtpPort,
+    secure: profile.smtpSecure ?? profile.smtpPort === 465,
+    name: undefined,
+    auth: { user: profile.smtpUsername, pass: password },
+    tls: { servername: profile.smtpHost },
+    connectionTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+
+  const dateLabel = scheduledFor.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  });
+  const propertyLabel = inspection.address ?? 'your property';
+
+  try {
+    await transport.sendMail({
+      from: profile.smtpFromEmail || profile.smtpUsername,
+      to: ownerEmail,
+      subject: `Phase 2 Forensic Inspection Scheduled — ${propertyLabel}`,
+      text: [
+        `Your Phase 2 forensic roof inspection has been scheduled.`,
+        '',
+        `Property: ${propertyLabel}`,
+        `Date:     ${dateLabel}`,
+        '',
+        'Your inspector will contact you with arrival details closer to the date.',
+        'If you need to reschedule, please reach out to your representative directly.',
+      ].join('\n'),
+    });
+  } catch (err) {
+    req.log.warn({ err }, 'SMTP appointment notification failed');
+    // The schedule was already saved — return success with emailSent: false
+    // so the client can surface an appropriate message without retrying the DB write.
+    res.json({ scheduled: true, emailSent: false });
+    return;
+  }
+
+  req.log.info(
+    { inspectionId: inspection.id, ownerEmail, scheduledFor },
+    'Appointment notification sent to homeowner',
+  );
+  res.json({ scheduled: true, emailSent: true });
 });
 
 export default router;

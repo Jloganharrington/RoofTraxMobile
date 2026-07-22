@@ -1499,6 +1499,10 @@ export interface Inspection {
    * Null when no agreement has been signed yet. Populated by the detail view only.
    */
   latestAgreement?: { id: string; signedAt: string; signerName: string } | null;
+  /** Homeowner contact email captured at scheduling time. */
+  ownerEmail?: string | null;
+  /** Rep-chosen date for the Phase 2 forensic inspection. Null until booked. */
+  scheduledFor?: string | null;
 }
 
 export interface CreateInspectionInput {
