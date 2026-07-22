@@ -40,6 +40,7 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useSignAgreement, useEmailAgreement } from '@/lib/agreementApi';
+import { useAuth } from '@/lib/auth';
 import {
   addBusinessDays,
   buildFipsaHtml,
@@ -174,7 +175,8 @@ type ActiveModal = 'owner' | 'rep' | 'ownerName' | null;
 export default function InspectionAgreementScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { companyName, profile } = useProfile();
+  const { companyName } = useProfile();
+  const { user } = useAuth();
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -238,12 +240,12 @@ export default function InspectionAgreementScreen() {
   }, [inspection?.id]);
 
   useEffect(() => {
-    // Pre-fill rep's printed name from their profile.
-    const first = (profile as { firstName?: string | null } | undefined)?.firstName?.trim() ?? '';
-    const last = (profile as { lastName?: string | null } | undefined)?.lastName?.trim() ?? '';
+    // Pre-fill rep's printed name from the authenticated user record.
+    const first = user?.firstName?.trim() ?? '';
+    const last = user?.lastName?.trim() ?? '';
     const name = [first, last].filter(Boolean).join(' ');
     if (name.length >= 2) setRepPrintName(name);
-  }, [profile]);
+  }, [user]);
 
   // Preview HTML — no signature images yet, just the filled-in text.
   const previewHtml = useMemo(() => {
@@ -254,7 +256,7 @@ export default function InspectionAgreementScreen() {
       owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
       contractorRep: {
         signatureImage: '',
-        printName: repPrintName || companyName || 'NuHome Exteriors',
+        printName: repPrintName || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || companyName || '',
         signDate: todayMDY,
       },
       cancellation: {
