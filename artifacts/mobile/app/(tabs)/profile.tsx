@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
@@ -315,6 +316,20 @@ export default function ProfileScreen() {
   const retailPins = pins.filter((p: Pin) => p.workflow === ('retail' as PinWorkflow)).length;
   const activePins = pins.filter((p: Pin) => p.status === 'active').length;
 
+  // ── Accordion state — "activity" open by default ────────────────────────────
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
+    activity: true,
+    myProfile: false,
+    company: false,
+    email: false,
+    account: false,
+  });
+
+  function toggleSection(key: string) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   function handleLogout() {
     Alert.alert('Log out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -322,11 +337,14 @@ export default function ProfileScreen() {
     ]);
   }
 
+  const showCompanySection = canManageLogo || canManagePriceBook;
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
     >
+      {/* ── Identity card — always visible ───────────────────────────────────── */}
       <View style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {user?.profileImageUrl ? (
           <Image source={{ uri: user.profileImageUrl }} style={styles.avatar} />
@@ -365,14 +383,180 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {canManageLogo && (
-        <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* ── 1. Activity (default open) ───────────────────────────────────────── */}
+      <AccordionSection
+        title="My Pins & Activity"
+        iconName="map-pin"
+        open={openSections.activity}
+        onToggle={() => toggleSection('activity')}
+        colors={colors}
+      >
+        {pinsQuery.isLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} />
+        ) : (
+          <>
+            <View style={styles.statsGrid}>
+              <StatCard label="Total pins" value={totalPins} color={colors.foreground} />
+              <StatCard label="Active" value={activePins} color={colors.success} />
+              <StatCard label="Insurance" value={insurancePins} color={colors.insurance} />
+              <StatCard label="Retail" value={retailPins} color={colors.retail} />
+            </View>
+
+            <Text style={[styles.subsectionTitle, { color: colors.mutedForeground }]}>
+              Recent activity
+            </Text>
+
+            {pins.length === 0 ? (
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                You haven't dropped any pins yet.
+              </Text>
+            ) : (
+              pins.map((pin: Pin) => (
+                <Pressable
+                  key={pin.id}
+                  onPress={() => router.push({ pathname: '/pin-edit', params: { pin: JSON.stringify(pin) } })}
+                  style={[styles.pinCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pinAddress, { color: colors.foreground }]} numberOfLines={1}>
+                      {pin.address ?? `${pin.latitude.toFixed(5)}, ${pin.longitude.toFixed(5)}`}
+                    </Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                      {pinSubtitle(pin)} · {new Date(pin.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.workflowDot,
+                      { backgroundColor: pin.workflow === 'retail' ? colors.retail : colors.insurance },
+                    ]}
+                  />
+                  <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+                </Pressable>
+              ))
+            )}
+          </>
+        )}
+      </AccordionSection>
+
+      {/* ── 2. My Profile ───────────────────────────────────────────────────── */}
+      <AccordionSection
+        title="My Profile"
+        iconName="edit-3"
+        open={openSections.myProfile}
+        onToggle={() => toggleSection('myProfile')}
+        colors={colors}
+        badge={!signatureUrl ? { label: 'Action needed', variant: 'warn' } : undefined}
+      >
+        {/* Signature */}
+        <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <View style={styles.sigHeader}>
-            <Icon name="image" size={18} color={colors.foreground} />
-            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Company logo</Text>
-            {companyLogoUrl ? (
+            <Icon name="edit-3" size={16} color={colors.foreground} />
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Signature on file</Text>
+            {signatureUrl ? (
               <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
-                <Text style={[styles.sigBadgeText, { color: colors.success }]}>Uploaded</Text>
+                <Text style={[styles.sigBadgeText, { color: colors.success }]}>On file</Text>
+              </View>
+            ) : (
+              <View style={[styles.sigBadge, { backgroundColor: '#fffbeb' }]}>
+                <Text style={[styles.sigBadgeText, { color: '#b45309' }]}>Required</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {signatureUrl
+              ? `Applied to inspection declarations.${signatureSignedAt ? ` Captured ${new Date(signatureSignedAt).toLocaleDateString()}.` : ''}`
+              : 'Required before you can submit an inspection.'}
+          </Text>
+          {signatureUrl && !capturing && (
+            <Image source={{ uri: signatureUrl }} style={styles.sigPreview} resizeMode="contain" />
+          )}
+          <Pressable onPress={() => setCapturing(true)} style={[styles.sigButton, { backgroundColor: colors.secondary }]}>
+            <Text style={styles.sigButtonText}>{signatureUrl ? 'Replace signature' : 'Capture signature'}</Text>
+          </Pressable>
+        </View>
+
+        {/* Credentials */}
+        <CredentialsCard colors={colors} profile={profile} />
+      </AccordionSection>
+
+      {/* ── 3. Company (role-gated) ──────────────────────────────────────────── */}
+      {showCompanySection && (
+        <AccordionSection
+          title="Company"
+          iconName="briefcase"
+          open={openSections.company}
+          onToggle={() => toggleSection('company')}
+          colors={colors}
+        >
+          {canManageLogo && (
+            <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={styles.sigHeader}>
+                <Icon name="image" size={16} color={colors.foreground} />
+                <Text style={[styles.sigTitle, { color: colors.foreground }]}>Company logo</Text>
+                {companyLogoUrl ? (
+                  <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+                    <Text style={[styles.sigBadgeText, { color: colors.success }]}>Uploaded</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
+                    <Text style={[styles.sigBadgeText, { color: colors.mutedForeground }]}>Optional</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                {companyLogoUrl
+                  ? 'Appears at the top of FIPSA agreements. Tap below to replace it.'
+                  : 'Appears at the top of FIPSA agreements instead of a blank header.'}
+              </Text>
+              {logoDataUri && (
+                <Image source={{ uri: logoDataUri }} style={{ height: 54, width: '100%' }} resizeMode="contain" />
+              )}
+              <Pressable
+                onPress={handleUploadLogo}
+                disabled={logoUploading}
+                style={[styles.sigButton, { backgroundColor: colors.secondary, opacity: logoUploading ? 0.6 : 1 }]}
+              >
+                <Text style={styles.sigButtonText}>
+                  {logoUploading ? 'Uploading…' : companyLogoUrl ? 'Replace logo' : 'Upload logo'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {canManagePriceBook && (
+            <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={styles.sigHeader}>
+                <Icon name="book-open" size={16} color={colors.foreground} />
+                <Text style={[styles.sigTitle, { color: colors.foreground }]}>Price Book</Text>
+              </View>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Manage line items and packages. Set inspection conditions so the right package is suggested automatically.
+              </Text>
+              <Pressable onPress={() => setPriceBookOpen(true)} style={[styles.sigButton, { backgroundColor: colors.secondary }]}>
+                <Text style={styles.sigButtonText}>Manage Price Book</Text>
+              </Pressable>
+            </View>
+          )}
+        </AccordionSection>
+      )}
+
+      {/* ── 4. Email Sending ─────────────────────────────────────────────────── */}
+      <AccordionSection
+        title="Email Sending"
+        iconName="mail"
+        open={openSections.email}
+        onToggle={() => toggleSection('email')}
+        colors={colors}
+        badge={smtpConfigured ? { label: 'Configured', variant: 'success' } : undefined}
+      >
+        <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <View style={styles.sigHeader}>
+            <Icon name="mail" size={16} color={colors.foreground} />
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>SMTP settings</Text>
+            {smtpConfigured ? (
+              <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+                <Text style={[styles.sigBadgeText, { color: colors.success }]}>Configured</Text>
               </View>
             ) : (
               <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
@@ -381,254 +565,85 @@ export default function ProfileScreen() {
             )}
           </View>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            {companyLogoUrl
-              ? 'Your logo appears at the top of FIPSA agreements. Tap below to replace it.'
-              : 'Upload your company logo to appear at the top of FIPSA agreements instead of a blank header.'}
+            {smtpConfigured
+              ? `Reports sent through ${profile?.smtpHost ?? 'your mail server'} as ${profile?.smtpFromEmail || profile?.smtpUsername || 'you'}.`
+              : 'Send homeowner reports straight from the app — no mail app needed.'}
           </Text>
-          {logoDataUri ? (
-            <Image
-              source={{ uri: logoDataUri }}
-              style={{ height: 60, width: '100%', marginTop: 12 }}
-              resizeMode="contain"
-            />
-          ) : null}
-          <Pressable
-            onPress={handleUploadLogo}
-            disabled={logoUploading}
-            style={[styles.sigButton, { backgroundColor: colors.secondary, opacity: logoUploading ? 0.6 : 1 }]}
-          >
-            <Text style={styles.sigButtonText}>
-              {logoUploading ? 'Uploading…' : companyLogoUrl ? 'Replace logo' : 'Upload logo'}
-            </Text>
-          </Pressable>
-        </View>
-      )}
-
-      <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.sigHeader}>
-          <Icon name="edit-3" size={18} color={colors.foreground} />
-          <Text style={[styles.sigTitle, { color: colors.foreground }]}>Signature on file</Text>
-          {signatureUrl ? (
-            <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
-              <Text style={[styles.sigBadgeText, { color: colors.success }]}>On file</Text>
-            </View>
-          ) : (
-            <View style={[styles.sigBadge, { backgroundColor: '#fffbeb' }]}>
-              <Text style={[styles.sigBadgeText, { color: '#b45309' }]}>Required</Text>
-            </View>
-          )}
-        </View>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          {signatureUrl
-            ? `Your signature is applied to inspection declarations.${
-                signatureSignedAt
-                  ? ` Captured ${new Date(signatureSignedAt).toLocaleDateString()}.`
-                  : ''
-              }`
-            : 'Capture your signature once here. It is applied to every inspection declaration you sign — you cannot submit an inspection without it.'}
-        </Text>
-
-        {signatureUrl && !capturing ? (
-          <Image
-            source={{ uri: signatureUrl }}
-            style={styles.sigPreview}
-            resizeMode="contain"
-          />
-        ) : null}
-
-        <Pressable
-          onPress={() => setCapturing(true)}
-          style={[styles.sigButton, { backgroundColor: colors.secondary }]}
-        >
-          <Text style={styles.sigButtonText}>
-            {signatureUrl ? 'Replace signature' : 'Capture signature'}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.sigHeader}>
-          <Icon name="mail" size={18} color={colors.foreground} />
-          <Text style={[styles.sigTitle, { color: colors.foreground }]}>Report email (SMTP)</Text>
-          {smtpConfigured ? (
-            <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
-              <Text style={[styles.sigBadgeText, { color: colors.success }]}>Configured</Text>
-            </View>
-          ) : (
-            <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
-              <Text style={[styles.sigBadgeText, { color: colors.mutedForeground }]}>Optional</Text>
-            </View>
-          )}
-        </View>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          {smtpConfigured
-            ? `Reports are emailed directly through ${profile?.smtpHost ?? 'your mail server'} as ${
-                profile?.smtpFromEmail || profile?.smtpUsername || 'you'
-              }.`
-            : 'Add your email provider\u2019s SMTP settings to send homeowner reports straight from the app \u2014 no mail app needed. For Gmail, use smtp.gmail.com with an app password.'}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable
-            onPress={openSmtpForm}
-            style={[styles.sigButton, { backgroundColor: colors.secondary, flex: 1 }]}
-          >
-            <Text style={styles.sigButtonText}>
-              {smtpConfigured ? 'Edit settings' : 'Set up email sending'}
-            </Text>
-          </Pressable>
-          {smtpConfigured && (
-            <Pressable
-              onPress={handleTestSmtp}
-              disabled={smtpTesting}
-              style={[
-                styles.sigButton,
-                {
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  paddingHorizontal: 16,
-                  opacity: smtpTesting ? 0.6 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.sigButtonText, { color: colors.foreground }]}>
-                {smtpTesting ? 'Sending…' : 'Send test'}
-              </Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Pressable onPress={openSmtpForm} style={[styles.sigButton, { backgroundColor: colors.secondary, flex: 1 }]}>
+              <Text style={styles.sigButtonText}>{smtpConfigured ? 'Edit settings' : 'Set up email'}</Text>
             </Pressable>
-          )}
-          {smtpConfigured && (
-            <Pressable
-              onPress={handleClearSmtp}
-              style={[
-                styles.sigButton,
-                { borderColor: colors.destructive, borderWidth: 1, paddingHorizontal: 16 },
-              ]}
-            >
-              <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 14 }}>
-                Remove
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      </View>
-
-      {/* REPORT_DATA v2 §6 — inspector credentials. These ride along with
-          every submission and back the repairability assessor line. */}
-      <CredentialsCard colors={colors} profile={profile} />
-
-      {canManagePriceBook && (
-        <View style={[styles.sigCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sigHeader}>
-            <Icon name="book-open" size={18} color={colors.foreground} />
-            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Price Book</Text>
+            {smtpConfigured && (
+              <Pressable
+                onPress={handleTestSmtp}
+                disabled={smtpTesting}
+                style={[styles.sigButton, { borderColor: colors.border, borderWidth: 1, paddingHorizontal: 16, opacity: smtpTesting ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.sigButtonText, { color: colors.foreground }]}>
+                  {smtpTesting ? 'Sending…' : 'Test'}
+                </Text>
+              </Pressable>
+            )}
+            {smtpConfigured && (
+              <Pressable
+                onPress={handleClearSmtp}
+                style={[styles.sigButton, { borderColor: colors.destructive, borderWidth: 1, paddingHorizontal: 16 }]}
+              >
+                <Text style={{ color: colors.destructive, fontWeight: '700', fontSize: 14 }}>Remove</Text>
+              </Pressable>
+            )}
           </View>
-          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            Manage line items and packages. Group items into packages and set inspection conditions so the right package is suggested at the end of each inspection.
-          </Text>
-          <Pressable
-            onPress={() => setPriceBookOpen(true)}
-            style={[styles.sigButton, { backgroundColor: colors.secondary }]}
-          >
-            <Text style={styles.sigButtonText}>Manage Price Book</Text>
-          </Pressable>
         </View>
-      )}
+      </AccordionSection>
 
+      {/* ── 5. Account ───────────────────────────────────────────────────────── */}
+      <AccordionSection
+        title="Account"
+        iconName="settings"
+        open={openSections.account}
+        onToggle={() => toggleSection('account')}
+        colors={colors}
+      >
+        <Pressable
+          onPress={handleLogout}
+          style={[styles.logoutButton, { borderColor: colors.destructive }]}
+        >
+          <Icon name="log-out" size={18} color={colors.destructive} />
+          <Text style={{ color: colors.destructive, fontWeight: '600' }}>Log out</Text>
+        </Pressable>
+      </AccordionSection>
+
+      {/* ── Modals (unchanged) ───────────────────────────────────────────────── */}
       <PriceBookModal visible={priceBookOpen} onClose={() => setPriceBookOpen(false)} />
 
       <Modal
         visible={smtpOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          if (!smtpSaving) setSmtpOpen(false);
-        }}
+        onRequestClose={() => { if (!smtpSaving) setSmtpOpen(false); }}
       >
         <View style={styles.sigModalOverlay}>
-          <ScrollView
-            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-            keyboardShouldPersistTaps="handled"
-          >
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
             <View style={[styles.sigModalCard, { backgroundColor: colors.background }]}>
               <Text style={[styles.sigTitle, { color: colors.foreground }]}>Email sending setup</Text>
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                Your password is stored encrypted and only used to send reports. It is never shown
-                again.
+                Your password is stored encrypted and only used to send reports. It is never shown again.
               </Text>
-              <TextInput
-                value={smtpHost}
-                onChangeText={setSmtpHost}
-                placeholder="SMTP server (e.g. smtp.gmail.com)"
-                placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
-              />
+              <TextInput value={smtpHost} onChangeText={setSmtpHost} placeholder="SMTP server (e.g. smtp.gmail.com)" placeholderTextColor={colors.mutedForeground} autoCapitalize="none" autoCorrect={false} style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]} />
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                <TextInput
-                  value={smtpPort}
-                  onChangeText={setSmtpPort}
-                  placeholder="Port"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="number-pad"
-                  style={[
-                    styles.smtpInput,
-                    { color: colors.foreground, borderColor: colors.border, flex: 1 },
-                  ]}
-                />
+                <TextInput value={smtpPort} onChangeText={setSmtpPort} placeholder="Port" placeholderTextColor={colors.mutedForeground} keyboardType="number-pad" style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border, flex: 1 }]} />
                 <Text style={{ color: colors.foreground, fontSize: 13 }}>SSL</Text>
                 <Switch value={smtpSecure} onValueChange={setSmtpSecure} />
               </View>
-              <TextInput
-                value={smtpUsername}
-                onChangeText={setSmtpUsername}
-                placeholder="Username (usually your email)"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
-              />
-              <TextInput
-                value={smtpPassword}
-                onChangeText={setSmtpPassword}
-                placeholder={smtpConfigured ? 'Password (re-enter to save)' : 'Password'}
-                placeholderTextColor={colors.mutedForeground}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
-              />
-              <TextInput
-                value={smtpFromEmail}
-                onChangeText={setSmtpFromEmail}
-                placeholder="From address (optional)"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]}
-              />
+              <TextInput value={smtpUsername} onChangeText={setSmtpUsername} placeholder="Username (usually your email)" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]} />
+              <TextInput value={smtpPassword} onChangeText={setSmtpPassword} placeholder={smtpConfigured ? 'Password (re-enter to save)' : 'Password'} placeholderTextColor={colors.mutedForeground} secureTextEntry autoCapitalize="none" autoCorrect={false} style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]} />
+              <TextInput value={smtpFromEmail} onChangeText={setSmtpFromEmail} placeholder="From address (optional)" placeholderTextColor={colors.mutedForeground} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} style={[styles.smtpInput, { color: colors.foreground, borderColor: colors.border }]} />
               <View style={styles.sigModalActions}>
-                <Pressable
-                  onPress={() => setSmtpOpen(false)}
-                  disabled={smtpSaving}
-                  style={[styles.sigModalBtn, { borderColor: colors.border, borderWidth: 1 }]}
-                >
+                <Pressable onPress={() => setSmtpOpen(false)} disabled={smtpSaving} style={[styles.sigModalBtn, { borderColor: colors.border, borderWidth: 1 }]}>
                   <Text style={{ color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
                 </Pressable>
-                <Pressable
-                  onPress={handleSaveSmtp}
-                  disabled={smtpSaving}
-                  style={[
-                    styles.sigModalBtn,
-                    { backgroundColor: colors.primary, opacity: smtpSaving ? 0.6 : 1 },
-                  ]}
-                >
-                  {smtpSaving ? (
-                    <ActivityIndicator color={colors.primaryForeground} />
-                  ) : (
-                    <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save</Text>
-                  )}
+                <Pressable onPress={handleSaveSmtp} disabled={smtpSaving} style={[styles.sigModalBtn, { backgroundColor: colors.primary, opacity: smtpSaving ? 0.6 : 1 }]}>
+                  {smtpSaving ? <ActivityIndicator color={colors.primaryForeground} /> : <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save</Text>}
                 </Pressable>
               </View>
             </View>
@@ -636,31 +651,12 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* Signature capture lives in a fixed modal (not inline in the
-          ScrollView) so drawing strokes never fight the scroll gesture and
-          the pad stays put on screen. */}
-      <Modal
-        visible={capturing}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!savingSignature) setCapturing(false);
-        }}
-      >
+      <Modal visible={capturing} transparent animationType="fade" onRequestClose={() => { if (!savingSignature) setCapturing(false); }}>
         <View style={styles.sigModalOverlay}>
           <View style={[styles.sigModalCard, { backgroundColor: colors.background }]}>
-            <Text style={[styles.sigTitle, { color: colors.foreground }]}>
-              Draw your signature
-            </Text>
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Draw your signature</Text>
             <View style={[styles.sigPadWrap, { borderColor: colors.border }]}>
-              <SignatureScreen
-                ref={signatureRef}
-                onOK={handleSignature}
-                descriptionText=""
-                clearText="Clear"
-                confirmText="Save signature"
-                webStyle={SIGNATURE_WEB_STYLE}
-              />
+              <SignatureScreen ref={signatureRef} onOK={handleSignature} descriptionText="" clearText="Clear" confirmText="Save signature" webStyle={SIGNATURE_WEB_STYLE} />
             </View>
             {savingSignature ? (
               <View style={styles.sigSavingRow}>
@@ -670,19 +666,11 @@ export default function ProfileScreen() {
             ) : (
               <>
                 <View style={styles.sigModalActions}>
-                  <Pressable
-                    onPress={() => signatureRef.current?.clearSignature()}
-                    style={[styles.sigModalBtn, { borderColor: colors.border, borderWidth: 1 }]}
-                  >
+                  <Pressable onPress={() => signatureRef.current?.clearSignature()} style={[styles.sigModalBtn, { borderColor: colors.border, borderWidth: 1 }]}>
                     <Text style={{ color: colors.foreground, fontWeight: '600' }}>Clear</Text>
                   </Pressable>
-                  <Pressable
-                    onPress={() => signatureRef.current?.readSignature()}
-                    style={[styles.sigModalBtn, { backgroundColor: colors.primary }]}
-                  >
-                    <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>
-                      Save signature
-                    </Text>
+                  <Pressable onPress={() => signatureRef.current?.readSignature()} style={[styles.sigModalBtn, { backgroundColor: colors.primary }]}>
+                    <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save signature</Text>
                   </Pressable>
                 </View>
                 <Pressable onPress={() => setCapturing(false)} style={styles.sigCancel}>
@@ -693,60 +681,69 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-
-      <Pressable
-        onPress={handleLogout}
-        style={[styles.logoutButton, { borderColor: colors.destructive }]}
-      >
-        <Icon name="log-out" size={18} color={colors.destructive} />
-        <Text style={{ color: colors.destructive, fontWeight: '600' }}>Log out</Text>
-      </Pressable>
-
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>My pins</Text>
-      {pinsQuery.isLoading ? (
-        <ActivityIndicator />
-      ) : (
-        <View style={styles.statsGrid}>
-          <StatCard label="Total pins" value={totalPins} color={colors.foreground} />
-          <StatCard label="Active" value={activePins} color={colors.success} />
-          <StatCard label="Insurance" value={insurancePins} color={colors.insurance} />
-          <StatCard label="Retail" value={retailPins} color={colors.retail} />
-        </View>
-      )}
-
-      <Text style={[styles.sectionTitle, { color: colors.foreground, marginTop: 20 }]}>
-        Recent activity
-      </Text>
-      {pinsQuery.isLoading ? (
-        <ActivityIndicator />
-      ) : pins.length === 0 ? (
-        <Text style={{ color: colors.mutedForeground }}>You haven't dropped any pins yet.</Text>
-      ) : (
-        pins.map((pin: Pin) => (
-          <Pressable
-            key={pin.id}
-            onPress={() => router.push({ pathname: '/pin-edit', params: { pin: JSON.stringify(pin) } })}
-            style={[styles.pinCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.pinAddress, { color: colors.foreground }]} numberOfLines={1}>
-                {pin.address ?? `${pin.latitude.toFixed(5)}, ${pin.longitude.toFixed(5)}`}
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                {pinSubtitle(pin)} · {new Date(pin.createdAt).toLocaleDateString()}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.workflowDot,
-                { backgroundColor: pin.workflow === 'retail' ? colors.retail : colors.insurance },
-              ]}
-            />
-            <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
-          </Pressable>
-        ))
-      )}
     </ScrollView>
+  );
+}
+
+// ── Accordion section ─────────────────────────────────────────────────────────
+
+type BadgeVariant = 'success' | 'warn' | 'muted';
+
+function AccordionSection({
+  title,
+  iconName,
+  open,
+  onToggle,
+  children,
+  badge,
+  colors,
+}: {
+  title: string;
+  iconName: Parameters<typeof Icon>[0]['name'];
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  badge?: { label: string; variant: BadgeVariant };
+  colors: ReturnType<typeof useColors>;
+}) {
+  const badgeBg: Record<BadgeVariant, string> = {
+    success: '#ecfdf5',
+    warn: '#fffbeb',
+    muted: colors.muted,
+  };
+  const badgeColor: Record<BadgeVariant, string> = {
+    success: colors.success,
+    warn: '#b45309',
+    muted: colors.mutedForeground,
+  };
+
+  return (
+    <View style={[styles.accordion, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Pressable
+        onPress={onToggle}
+        style={styles.accordionHeader}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+      >
+        <View style={[styles.accordionIconWrap, { backgroundColor: colors.muted }]}>
+          <Icon name={iconName} size={16} color={colors.foreground} />
+        </View>
+        <Text style={[styles.accordionTitle, { color: colors.foreground }]}>{title}</Text>
+        {badge && (
+          <View style={[styles.sigBadge, { backgroundColor: badgeBg[badge.variant] }]}>
+            <Text style={[styles.sigBadgeText, { color: badgeColor[badge.variant] }]}>
+              {badge.label}
+            </Text>
+          </View>
+        )}
+        <Icon
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color={colors.mutedForeground}
+        />
+      </Pressable>
+      {open && <View style={styles.accordionBody}>{children}</View>}
+    </View>
   );
 }
 
@@ -1058,6 +1055,44 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 20,
   },
+  // ── Accordion ──────────────────────────────────────────────────────────────
+  accordion: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  accordionIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accordionTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  accordionBody: { paddingHorizontal: 14, paddingBottom: 14, gap: 10 },
+  innerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  subsectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  // ── Stats ──────────────────────────────────────────────────────────────────
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statCard: {
