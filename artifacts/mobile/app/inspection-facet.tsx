@@ -240,6 +240,25 @@ export default function InspectionFacetScreen() {
     router.back();
   }
 
+  // Next-facet navigation: save pending edits, then replace the current screen
+  // with the next facet so the back button always returns to the list rather
+  // than cycling through individual facets.
+  const currentIndex = slopes.findIndex((s) => s.id === slopeId);
+  const nextFacet = currentIndex >= 0 && currentIndex < slopes.length - 1
+    ? slopes[currentIndex + 1]
+    : null;
+
+  async function saveAndGoNext() {
+    if (savingDetails || !nextFacet) return;
+    if (detailsDirty && detailsValid) {
+      await saveDetails();
+    }
+    router.replace({
+      pathname: '/inspection-facet',
+      params: { id, slopeId: nextFacet.id },
+    });
+  }
+
   function openAreaCalc() {
     setCalcL('');
     setCalcH('');
@@ -474,18 +493,52 @@ export default function InspectionFacetScreen() {
           </>
         ) : null}
 
-        {/* Save facet — persists pending edits and returns to the facet list */}
-        <Pressable
-          onPress={saveFacetAndReturn}
-          disabled={savingDetails}
-          style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 16, opacity: savingDetails ? 0.5 : 1 }]}
-        >
-          {savingDetails ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Save Facet</Text>
+        {/* Save / Next Facet actions */}
+        <View style={[styles.actionRow, { marginTop: 16 }]}>
+          <Pressable
+            onPress={saveFacetAndReturn}
+            disabled={savingDetails}
+            style={[
+              styles.saveBtn,
+              nextFacet ? styles.actionSecondary : null,
+              {
+                flex: 1,
+                backgroundColor: nextFacet ? 'transparent' : colors.primary,
+                borderColor: nextFacet ? colors.border : undefined,
+                borderWidth: nextFacet ? 1 : 0,
+                opacity: savingDetails ? 0.5 : 1,
+              },
+            ]}
+          >
+            {savingDetails && !nextFacet ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <Text style={{ color: nextFacet ? colors.foreground : colors.primaryForeground, fontWeight: '700' }}>
+                Save Facet
+              </Text>
+            )}
+          </Pressable>
+
+          {nextFacet && (
+            <Pressable
+              onPress={saveAndGoNext}
+              disabled={savingDetails}
+              style={[styles.saveBtn, { flex: 2, backgroundColor: colors.primary, opacity: savingDetails ? 0.5 : 1, flexDirection: 'row', gap: 8 }]}
+            >
+              {savingDetails ? (
+                <ActivityIndicator color={colors.primaryForeground} />
+              ) : (
+                <>
+                  <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>
+                    Next Facet
+                    {nextFacet.label ? ` · ${nextFacet.label}` : ''}
+                  </Text>
+                  <Icon name="chevron-right" size={18} color={colors.primaryForeground} />
+                </>
+              )}
+            </Pressable>
           )}
-        </Pressable>
+        </View>
 
         {/* Remove facet */}
         <Pressable
@@ -686,7 +739,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  saveBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  saveBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  actionRow: { flexDirection: 'row', gap: 10 },
+  actionSecondary: { borderRadius: 12 },
   dropdown: { paddingVertical: 12, gap: 6 },
   modalBackdrop: {
     flex: 1,
