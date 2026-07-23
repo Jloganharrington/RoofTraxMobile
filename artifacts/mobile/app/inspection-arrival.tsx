@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
+import { useNavigation } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -62,6 +63,8 @@ export default function InspectionArrivalScreen() {
   const [overrideReason, setOverrideReason] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const navigation = useNavigation();
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -101,6 +104,45 @@ export default function InspectionArrivalScreen() {
     wind.trim().length > 0 &&
     temp.trim().length > 0 &&
     personnelSelected.length > 0;
+
+  // Auto-save on back — only fires when all required fields are present.
+  // Does NOT call handleConfirm (which also calls router.back()) to avoid
+  // double navigation; patches the inspection directly.
+  const autoSaveRef = useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (!canSave || saving) return;
+    const now = new Date();
+    void (async () => {
+      try {
+        if (outOfTolerance) {
+          await attestInspection(id, {
+            stage: 'arrival',
+            attestationType: 'gps_override',
+            details: {
+              distanceMeters: tolerance?.distanceMeters ?? null,
+              toleranceMeters: tolerance?.toleranceMeters ?? DEFAULT_GPS_TOLERANCE_METERS,
+              reason: overrideReason.trim(),
+            },
+          });
+        }
+        await patchInspection(queryClient, id, {
+          arrivalConditions: {
+            sky,
+            windCondition: wind.trim(),
+            temp: temp.trim(),
+            personnelPresent: personnelSelected,
+            timeLocal: now.toLocaleString(),
+            gpsLatitude: gps?.latitude ?? null,
+            gpsLongitude: gps?.longitude ?? null,
+            recordedAtUtc: now.toISOString(),
+          },
+        });
+      } catch { /* outbox will retry */ }
+    })();
+  };
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', () => { autoSaveRef.current(); });
+  }, [navigation]);
 
   async function handleConfirm() {
     setSaving(true);

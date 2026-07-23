@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
@@ -35,6 +36,8 @@ export default function InspectionExistingConditionsScreen() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
+
+  const navigation = useNavigation();
 
   React.useEffect(() => {
     if (existing && !hydrated) {
@@ -64,6 +67,19 @@ export default function InspectionExistingConditionsScreen() {
   function setRow(index: number, patch: Partial<{ location: string; note: string }>) {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
+
+  // Auto-save on back — filter out any incomplete rows rather than erroring.
+  const autoSaveRef = React.useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (saving) return;
+    const cleaned = rows
+      .map((r) => ({ location: r.location.trim(), note: r.note.trim() }))
+      .filter((r) => r.location !== '' && r.note !== '');
+    void patchInspection(queryClient, id, { existingOrUnrelatedConditions: cleaned }).catch(() => {});
+  };
+  React.useEffect(() => {
+    return navigation.addListener('beforeRemove', () => { autoSaveRef.current(); });
+  }, [navigation]);
 
   async function save() {
     if (saving) return;

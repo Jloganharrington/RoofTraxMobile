@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
@@ -41,6 +42,8 @@ export default function InspectionMitigationScreen() {
   const [error, setError] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
 
+  const navigation = useNavigation();
+
   React.useEffect(() => {
     if (existing && !hydrated) {
       setPerformed(existing.performed);
@@ -70,6 +73,27 @@ export default function InspectionMitigationScreen() {
       </View>
     );
   }
+
+  // Auto-save on back — only fires if the required "performed" toggle is set.
+  const autoSaveRef = React.useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (saving || performed == null) return;
+    void patchInspection(queryClient, id, {
+      temporaryRepairs: {
+        performed,
+        tarpInvoiceRef: tarpInvoiceRef.trim() || null,
+        description: description.trim() || null,
+        datePerformed: datePerformed.trim() || null,
+        materialsUsed: materialsUsed.trim() || null,
+        crewAndEquipment: crewAndEquipment.trim() || null,
+        beforeAfterPhotoIds: [],
+        recordedAtUtc: new Date().toISOString(),
+      },
+    }).catch(() => {});
+  };
+  React.useEffect(() => {
+    return navigation.addListener('beforeRemove', () => { autoSaveRef.current(); });
+  }, [navigation]);
 
   async function save() {
     if (saving) return;

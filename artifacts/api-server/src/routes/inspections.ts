@@ -701,8 +701,15 @@ router.delete('/inspections/:inspectionId', async (req: Request, res: Response) 
     return;
   }
 
-  // Hard delete — all child records (slopes, photos, attestations, etc.) are
-  // removed by the FK cascade defined on each child table.
+  // signed_agreements uses onDelete:'restrict' (intentional — voiding an
+  // agreement is a business action, not a cascade). Delete it explicitly first
+  // so the subsequent inspection delete doesn't hit the FK constraint.
+  await db
+    .delete(signedAgreementsTable)
+    .where(eq(signedAgreementsTable.inspectionId, inspectionId));
+
+  // Hard delete — all other child records (slopes, photos, attestations, etc.)
+  // are removed by the FK cascade defined on each child table.
   await db.delete(inspectionsTable).where(eq(inspectionsTable.id, inspectionId));
 
   res.status(204).end();

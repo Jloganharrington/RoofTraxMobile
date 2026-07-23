@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
@@ -36,6 +37,8 @@ export default function InspectionHomeownerScreen() {
   const [saving, setSaving] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
 
+  const navigation = useNavigation();
+
   // Hydrate the form once from the stored facts (if any).
   React.useEffect(() => {
     if (existing && !hydrated) {
@@ -63,6 +66,22 @@ export default function InspectionHomeownerScreen() {
       </View>
     );
   }
+
+  // Auto-save on back navigation — uses a ref so the listener always reads
+  // current state without needing to re-register on every state change.
+  const autoSaveRef = React.useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (saving || !hydrated) return;
+    void updateHomeownerFacts(queryClient, id, {
+      awareOfDateOfLoss,
+      priorRepairs: priorRepairs.trim() || null,
+      priorClaims: priorClaims.trim() || null,
+      recordedAtUtc: new Date().toISOString(),
+    }).catch(() => {});
+  };
+  React.useEffect(() => {
+    return navigation.addListener('beforeRemove', () => { autoSaveRef.current(); });
+  }, [navigation]);
 
   async function save() {
     if (saving) return;

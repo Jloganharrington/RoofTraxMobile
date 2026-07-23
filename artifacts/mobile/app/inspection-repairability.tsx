@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
@@ -52,6 +53,8 @@ export default function InspectionRepairabilityScreen() {
   const [error, setError] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
 
+  const navigation = useNavigation();
+
   React.useEffect(() => {
     if (existing && !hydrated) {
       setQuestionPresented(existing.questionPresented);
@@ -87,6 +90,35 @@ export default function InspectionRepairabilityScreen() {
       </View>
     );
   }
+
+  // Auto-save on back — only fires when the required determination is set.
+  const autoSaveRef = React.useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (saving || !determination || !questionPresented.trim()) return;
+    void patchInspection(queryClient, id, {
+      repairabilityAssessment: {
+        questionPresented: questionPresented.trim(),
+        methodology: methodology.trim() || null,
+        materialsReviewed: materialsReviewed.trim() || null,
+        fieldTestFindings: {
+          repairAttemptMade,
+          adjacentShinglesFractured: adjacentFractured,
+          matchingMaterialSourceable: matchingSourceable,
+          productDiscontinued,
+          notes: findingNotes.trim() || null,
+        },
+        conditionScoring: conditionScoring.trim() || null,
+        repairAttemptRisks: repairAttemptRisks.trim() || null,
+        determination,
+        recommendation: recommendation.trim() || null,
+        supportingPhotoIds: [],
+        recordedAtUtc: new Date().toISOString(),
+      },
+    }).catch(() => {});
+  };
+  React.useEffect(() => {
+    return navigation.addListener('beforeRemove', () => { autoSaveRef.current(); });
+  }, [navigation]);
 
   async function save() {
     if (saving) return;

@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
@@ -81,6 +82,8 @@ export default function InspectionPropertyProfileScreen() {
   const [error, setError] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
 
+  const navigation = useNavigation();
+
   React.useEffect(() => {
     if (existing && !hydrated) {
       setPropertyType(existing.propertyType ?? null);
@@ -118,6 +121,34 @@ export default function InspectionPropertyProfileScreen() {
       </View>
     );
   }
+
+  // Auto-save on back — skips if roof age validation would fail.
+  const autoSaveRef = React.useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (saving) return;
+    const roofAgeYears = roofAge.trim() === '' ? null : Number(roofAge.trim());
+    if (roofAgeYears != null && (!Number.isFinite(roofAgeYears) || roofAgeYears < 0)) return;
+    if (roofAgeYears != null && !roofAgeBasis) return;
+    void patchInspection(queryClient, id, {
+      propertyProfile: {
+        propertyType: (propertyType as never) ?? null,
+        stories: (stories as never) ?? null,
+        roofType: roofType ?? null,
+        roofAgeYears,
+        roofAgeBasis: (roofAgeBasis as never) ?? null,
+        accessibilityNotes: accessibilityNotes.trim() || null,
+        buildingType: buildingType.trim() || null,
+        attachedOrDetached: (attachedOrDetached as never) ?? null,
+        roofGeometry: roofGeometry as never,
+        deckType: (deckType as never) ?? null,
+        framingConditionNotes: framingNotes.trim() || null,
+        recordedAtUtc: new Date().toISOString(),
+      },
+    }).catch(() => {});
+  };
+  React.useEffect(() => {
+    return navigation.addListener('beforeRemove', () => { autoSaveRef.current(); });
+  }, [navigation]);
 
   async function save() {
     if (saving) return;
