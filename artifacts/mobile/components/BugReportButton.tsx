@@ -369,7 +369,7 @@ export function BugReportButton() {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    right: 14,
+    left: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
