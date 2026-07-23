@@ -1,6 +1,8 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -160,6 +162,10 @@ export default function InspectionRepairabilityScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Repairability' }} />
 
@@ -283,6 +289,7 @@ export default function InspectionRepairabilityScreen() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
