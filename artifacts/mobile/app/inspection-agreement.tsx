@@ -696,6 +696,10 @@ export default function InspectionAgreementScreen() {
 
       {/* 1. Document preview + email */}
       <Modal visible={showDocPreview} animationType="slide" onRequestClose={() => setShowDocPreview(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
         <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.background }]}>
           {/* Header */}
           <View style={[styles.flowModalHeader, { borderBottomColor: colors.border }]}>
@@ -780,6 +784,7 @@ export default function InspectionAgreementScreen() {
             </Pressable>
           </View>
         </SafeAreaView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 2. Next steps — schedule or proceed */}
