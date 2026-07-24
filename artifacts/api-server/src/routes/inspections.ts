@@ -49,6 +49,8 @@ import {
 } from '@workspace/api-zod';
 import nodemailer from 'nodemailer';
 import { anthropic } from '@workspace/integrations-anthropic-ai';
+import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
+import sanitizeHtml from 'sanitize-html';
 import {
   attestationsTable,
   companiesTable,
@@ -3256,6 +3258,553 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
     .where(eq(inspectionsTable.id, inspectionId));
 
   res.json({ summary });
+});
+
+// ── Report Compilation (Gemini 2.5-flash) ─────────────────────────────────
+
+/**
+ * Strict allowlist sanitizer for LLM-generated HTML fragments.
+ * Strips all scripts, event handlers, external embeds, and javascript: URLs.
+ * Only structural/formatting tags with safe attributes are permitted.
+ */
+function sanitizeReportFragment(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'p', 'br', 'strong', 'em', 'b', 'i',
+      'ul', 'ol', 'li',
+      'h2', 'h3', 'h4',
+      'span', 'div',
+    ],
+    allowedAttributes: {
+      // class is safe; style is allowed but expressions are stripped below.
+      '*': ['class', 'style'],
+      'td': ['colspan', 'rowspan'],
+      'th': ['colspan', 'rowspan', 'scope'],
+    },
+    allowedStyles: {
+      '*': {
+        color: [/^[a-zA-Z0-9#(), .%]+$/],
+        'background-color': [/^[a-zA-Z0-9#(), .%]+$/],
+        'font-size': [/^[\d.]+(%|px|em|rem|pt)$/],
+        'font-weight': [/^(bold|normal|\d+)$/],
+        'text-align': [/^(left|right|center|justify)$/],
+        padding: [/^[\d. px%]+$/],
+        margin: [/^[\d. px%]+$/],
+        border: [/^[\d. pxsolid#a-zA-Z]+$/],
+        'border-radius': [/^[\d.]+(%|px|em|rem)$/],
+        opacity: [/^[\d.]+$/],
+        display: [/^(block|inline|flex|grid|table|table-row|table-cell|none)$/],
+        'vertical-align': [/^(top|middle|bottom|baseline)$/],
+      },
+    },
+    // Strip unknown tags entirely (don't preserve their content).
+    disallowedTagsMode: 'discard',
+  });
+}
+
+/** Escape a value for safe embedding in HTML without a dependency. */
+function escHtml(s: unknown): string {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Assemble the final report HTML from structured parts.
+ * Called at PREVIEW TIME (not compile time) so every invocation gets fresh
+ * signed photo URLs — the persisted artifact never embeds expiring URLs.
+ */
+function buildReportHtml(params: {
+  inspection: typeof inspectionsTable.$inferSelect;
+  inspector: { name: string; email: string | null };
+  aiSummary: { forensicSummary: string; repairabilityText: string };
+  propertyDetailsHtml: string;
+  photoSectionsHtml: string;
+  attestationHtml: string;
+  generatedAt: string;
+}): string {
+  const { inspection, inspector, aiSummary } = params;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forensic Inspection &amp; Repairability Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; font-size: 14px;
+         line-height: 1.6; color: #1a1a1a; background: #fff; }
+  .cover { background: #1a2744; color: #fff; padding: 40px 32px 32px; }
+  .cover h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 6px; }
+  .cover h2 { font-size: 15px; font-weight: 400; opacity: 0.8; margin-bottom: 24px; }
+  .cover-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 13px; }
+  .cover-meta dt { opacity: 0.65; font-weight: 600; text-transform: uppercase; font-size: 10px;
+                    letter-spacing: 0.6px; }
+  .cover-meta dd { font-weight: 600; margin-bottom: 8px; }
+  .section { padding: 28px 32px; border-bottom: 1px solid #eee; }
+  .section:last-child { border-bottom: none; }
+  .section-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.7px;
+                    color: #1a2744; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 16px; }
+  .narrative { color: #333; line-height: 1.75; }
+  .narrative p { margin-bottom: 12px; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .detail-table th { text-align: left; background: #f5f7fa; padding: 8px 12px; font-weight: 700;
+                      color: #555; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+  .detail-table td { padding: 8px 12px; border-top: 1px solid #eee; vertical-align: top; }
+  .detail-table tr:hover td { background: #fafbfc; }
+  .photo-group { margin-bottom: 28px; }
+  .photo-group-title { font-size: 13px; font-weight: 700; color: #1a2744; margin-bottom: 12px;
+                        padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .photo-card { border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+  .photo-card img { width: 100%; height: 160px; object-fit: cover; display: block; background: #f0f0f0; }
+  .photo-caption { padding: 8px 10px; font-size: 12px; color: #555; line-height: 1.4; }
+  .attestation { font-size: 13px; color: #444; line-height: 1.7; }
+  .footer { background: #f5f7fa; padding: 16px 32px; font-size: 11px; color: #888; text-align: center; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;
+          background: #dbeafe; color: #1e40af; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Forensic Inspection &amp; Repairability Report</h1>
+  <h2>${escHtml(inspection.address ?? 'Address not recorded')}</h2>
+  <dl class="cover-meta">
+    <dt>Claim #</dt><dd>${escHtml(inspection.claimNumber ?? '—')}</dd>
+    <dt>Policy #</dt><dd>${escHtml(inspection.policyNumber ?? '—')}</dd>
+    <dt>Insured</dt><dd>${escHtml(inspection.insuredName ?? '—')}</dd>
+    <dt>Carrier</dt><dd>${escHtml(inspection.carrierName ?? '—')}</dd>
+    <dt>Date of Loss</dt><dd>${escHtml(inspection.dateOfLoss ?? '—')}</dd>
+    <dt>Inspector</dt><dd>${escHtml(inspector.name)}</dd>
+    <dt>Inspection ID</dt><dd style="font-size:11px;opacity:0.7">${escHtml(inspection.id)}</dd>
+    <dt>Report Generated</dt><dd>${escHtml(new Date(params.generatedAt).toLocaleString())}</dd>
+  </dl>
+</div>
+
+<!-- Section 1: Forensic Inspection Summary (from Claude AI Summary) -->
+<div class="section">
+  <div class="section-title">1 — Forensic Inspection Summary</div>
+  <div class="narrative">
+    ${aiSummary.forensicSummary.split('\n').map(p => p.trim() ? `<p>${escHtml(p)}</p>` : '').join('')}
+  </div>
+</div>
+
+<!-- Section 2: Property Construction Details (Gemini-narrated) -->
+<div class="section">
+  <div class="section-title">2 — Property Construction Details</div>
+  ${params.propertyDetailsHtml}
+</div>
+
+<!-- Section 3: Photo Evidence (Gemini-grouped) -->
+<div class="section">
+  <div class="section-title">3 — Photo Evidence</div>
+  ${params.photoSectionsHtml}
+</div>
+
+<!-- Section 4: Repairability Summary (from Claude AI Summary) -->
+${aiSummary.repairabilityText ? `
+<div class="section">
+  <div class="section-title">4 — Repairability Summary</div>
+  <div class="narrative">
+    ${aiSummary.repairabilityText.split('\n').map(p => p.trim() ? `<p>${escHtml(p)}</p>` : '').join('')}
+  </div>
+</div>` : ''}
+
+<!-- Section 5: Inspector Attestation -->
+<div class="section">
+  <div class="section-title">${aiSummary.repairabilityText ? '5' : '4'} — Inspector Attestation</div>
+  <div class="attestation">${params.attestationHtml}</div>
+</div>
+
+<div class="footer">
+  Generated ${escHtml(new Date(params.generatedAt).toLocaleString())} · Inspection ${escHtml(inspection.id)} ·
+  This report is produced by RoofTrax and is intended for insurance claim documentation purposes only.
+</div>
+
+</body>
+</html>`;
+}
+
+/** Try to get a signed download URL; returns null if the path is not usable. */
+async function tryGetPhotoSignedUrl(
+  objSvc: ObjectStorageService,
+  photoUrl: string,
+): Promise<string | null> {
+  try {
+    // Normalize legacy full-URL rows to /objects/... format.
+    let objectPath = photoUrl;
+    if (objectPath.startsWith('http')) {
+      try {
+        const u = new URL(objectPath);
+        const m = u.pathname.match(/\/storage\/objects\/(.+)$/);
+        if (m) objectPath = `/objects/${m[1]}`;
+        else return objectPath; // external URL — use as-is
+      } catch { return null; }
+    }
+    return await objSvc.getSignedDownloadUrl(objectPath, 900); // 15-min TTL
+  } catch {
+    return null;
+  }
+}
+
+// POST /inspections/:inspectionId/report/compile
+// Calls Gemini 2.5-flash to arrange inspection data into the HTML report
+// template, uploads the result to object storage, and writes the path back.
+// Write-gated via loadWritableInspection (allowLocked: true) — the inspector
+// or any manager can trigger or re-trigger after submission.
+router.post('/inspections/:inspectionId/report/compile', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  // AI summary must exist — the Summary step must be completed first.
+  const aiSummary = inspection.aiSummary as {
+    forensicSummary: string;
+    repairabilityText: string;
+    generatedAt: string;
+  } | null;
+  if (!aiSummary) {
+    res.status(400).json({ error: 'AI summary not yet generated — complete the Summary step first.' });
+    return;
+  }
+
+  // Load children and inspector info in parallel.
+  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
+  const [[inspectorUser], [inspectorProfile]] = await Promise.all([
+    db.select().from(usersTable).where(eq(usersTable.id, inspection.inspectorUserId)),
+    db.select().from(userProfilesTable).where(eq(userProfilesTable.userId, inspection.inspectorUserId)),
+  ]);
+
+  const inspectorName =
+    [inspectorUser?.firstName, inspectorUser?.lastName].filter(Boolean).join(' ') ||
+    inspectorUser?.email ||
+    'Inspector';
+  const inspector = { name: inspectorName, email: inspectorUser?.email ?? null };
+
+  // Build a stable photo index keyed by id — uses internal object storage paths
+  // (NOT signed URLs). Signed URLs are generated at preview time so the stored
+  // artifact never embeds expiring credentials.
+  type PhotoIndexEntry = {
+    objectPath: string;
+    stage: string | null;
+    triadRole: string | null;
+    zone: string | null;
+    subjectType: string | null;
+  };
+  const photoIndex: Record<string, PhotoIndexEntry> = {};
+  for (const p of children.photos) {
+    photoIndex[p.id] = {
+      objectPath: p.url,   // stable /objects/... path or legacy https URL
+      stage: p.stage ?? null,
+      triadRole: p.triadRole ?? null,
+      zone: p.zone ?? null,
+      subjectType: p.subjectType ?? null,
+    };
+  }
+
+  // Build a concise structured brief for Gemini (not the full raw DB blob).
+  const pp = inspection.propertyProfile as {
+    propertyType?: string; stories?: number; roofAge?: number;
+    roofAgeBasis?: string; deckType?: string;
+  } | null;
+  const arr = inspection.arrivalConditions as {
+    sky?: string; windCondition?: string; tempF?: number; personnel?: string[];
+  } | null;
+  const ra = inspection.repairabilityAssessment as {
+    overallDetermination?: string; rationale?: string;
+  } | null;
+  const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
+
+  const photoBrief = children.photos.slice(0, 80).map((p) => ({
+    id: p.id,
+    stage: p.stage ?? null,
+    subjectType: p.subjectType ?? null,
+    subjectId: p.subjectId ?? null,
+    triadRole: p.triadRole ?? null,
+    zone: p.zone ?? null,
+  }));
+
+  const slopes = children.slopes.map((s) => ({
+    label: s.label,
+    areaSqft: s.areaSqft ?? null,
+    damagePresent: s.damagePresent,
+    damageType: s.damageType ?? null,
+    materialType: s.materialType ?? null,
+  }));
+
+  const products = children.products.slice(0, 10).map((p) => ({
+    manufacturer: (p as Record<string, unknown>)['manufacturer'] ?? null,
+    productLine: (p as Record<string, unknown>)['productLine'] ?? null,
+    colorMatch: (p as Record<string, unknown>)['colorMatch'] ?? null,
+  }));
+
+  const geminiPrompt = `You are a technical report writer for a forensic roofing inspection company.
+Given the structured inspection data below, return a JSON object with EXACTLY these keys:
+{
+  "propertyConstructionDetailsHtml": "<complete HTML for a property details table>",
+  "photoGroupings": [{ "title": "<section title>", "photoIds": ["<id>", ...], "narrative": "<1-2 sentence description>" }],
+  "inspectorAttestationHtml": "<HTML paragraph stating that the named inspector personally conducted this inspection>"
+}
+
+Rules:
+- propertyConstructionDetailsHtml: a clean <table class="detail-table"> with rows for every non-null property attribute (type, age, stories, deck, materials, damage flags, arrival conditions, repairability determination, homeowner facts). Use <th> for labels and <td> for values. If a value is unknown write "Not recorded".
+- photoGroupings: group the provided photos by logical area (e.g. "Roof — Front Slope", "Siding — East Elevation", "Collateral Damage", "Interior/Attic", "Test Squares", "General Overview"). Only include groups that have at least one photo. Keep the total number of groups ≤ 10.
+- inspectorAttestationHtml: a single <p> stating the inspector's name, their affirmation that they personally conducted this inspection, and the inspection date. Sign it with their name and email.
+- Use only HTML safe for direct embedding (no <script>, no external references).
+- Return ONLY the JSON object — no markdown fences, no preamble.
+
+INSPECTION DATA:
+Property: ${JSON.stringify({
+    address: inspection.address,
+    claimNumber: inspection.claimNumber,
+    policyNumber: inspection.policyNumber,
+    insuredName: inspection.insuredName,
+    carrierName: inspection.carrierName,
+    dateOfLoss: inspection.dateOfLoss,
+    damageFlags: {
+      roof: inspection.roofDamageFound,
+      siding: inspection.sidingDamageFound,
+      collateral: inspection.collateralDamageFound,
+      interior: inspection.interiorDamageFound,
+    },
+  })}
+
+Property Profile: ${JSON.stringify(pp)}
+Arrival Conditions: ${JSON.stringify(arr)}
+Repairability Assessment: ${JSON.stringify(ra)}
+Homeowner Facts: ${JSON.stringify(hf)}
+Roof Facets (${slopes.length} total): ${JSON.stringify(slopes.slice(0, 20))}
+Installed Products: ${JSON.stringify(products)}
+
+Inspector: ${JSON.stringify({ name: inspectorName, email: inspector.email })}
+Inspection date: ${inspection.lockedAt ? new Date(inspection.lockedAt).toLocaleDateString() : (inspection.updatedAt ? new Date(inspection.updatedAt).toLocaleDateString() : 'On-site')}
+
+AI Summary (already written — DO NOT reproduce it):
+Forensic Summary: [provided separately in report]
+Repairability: [provided separately in report]
+
+Photos available for grouping (${photoBrief.length} total):
+${JSON.stringify(photoBrief)}
+`;
+
+  let propertyDetailsHtml: string;
+  let photoGroupings: Array<{ title: string; photoIds: string[]; narrative: string }>;
+  let attestationHtml: string;
+
+  try {
+    const response = await geminiAi.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }],
+      config: { responseMimeType: 'application/json', maxOutputTokens: 8192 },
+    });
+    const raw = response.text ?? '';
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+    const parsed = JSON.parse(cleaned) as {
+      propertyConstructionDetailsHtml?: string;
+      photoGroupings?: Array<{ title: string; photoIds: string[]; narrative: string }>;
+      inspectorAttestationHtml?: string;
+    };
+    // Sanitize LLM-generated HTML with a strict allowlist before storing.
+    // Inspection fields are user-supplied and flow into the Gemini prompt, so
+    // we must treat LLM output as untrusted to prevent prompt-injection XSS.
+    const rawPropertyHtml = parsed.propertyConstructionDetailsHtml ?? '';
+    propertyDetailsHtml = sanitizeReportFragment(rawPropertyHtml);
+    // Defensive fallback: if sanitization zeroed out the content, build a safe
+    // server-side table from the structured data directly.
+    if (!propertyDetailsHtml.trim()) {
+      propertyDetailsHtml = `<table class="detail-table">
+        <tr><th>Property type</th><td>${escHtml(pp?.propertyType ?? 'Not recorded')}</td></tr>
+        <tr><th>Stories</th><td>${escHtml(pp?.stories ?? 'Not recorded')}</td></tr>
+        <tr><th>Roof age (years)</th><td>${escHtml(pp?.roofAge ?? 'Not recorded')}</td></tr>
+        <tr><th>Deck type</th><td>${escHtml(pp?.deckType ?? 'Not recorded')}</td></tr>
+        <tr><th>Roof damage found</th><td>${inspection.roofDamageFound ? 'Yes' : 'No'}</td></tr>
+        <tr><th>Siding damage found</th><td>${inspection.sidingDamageFound ? 'Yes' : 'No'}</td></tr>
+        <tr><th>Collateral damage</th><td>${inspection.collateralDamageFound ? 'Yes' : 'No'}</td></tr>
+        <tr><th>Repairability</th><td>${escHtml(ra?.overallDetermination ?? 'Not recorded')}</td></tr>
+        <tr><th>Arrival conditions</th><td>${escHtml([arr?.sky, arr?.windCondition].filter(Boolean).join(', ') || 'Not recorded')}</td></tr>
+      </table>`;
+    }
+
+    photoGroupings = Array.isArray(parsed.photoGroupings) ? parsed.photoGroupings : [];
+
+    const rawAttestationHtml = parsed.inspectorAttestationHtml ?? '';
+    attestationHtml = sanitizeReportFragment(rawAttestationHtml);
+    // Defensive fallback: if sanitization zeroed out content, use a safe template.
+    if (!attestationHtml.trim()) {
+      attestationHtml = `<p>This forensic inspection was personally conducted by
+        <strong>${escHtml(inspectorName)}</strong>${inspector.email ? ` (${escHtml(inspector.email)})` : ''}.
+        The inspector affirms that all observations, measurements, and photographs
+        documented herein were captured directly by them during the on-site inspection.</p>`;
+    }
+  } catch (err) {
+    req.log.error({ err }, 'Gemini report compilation failed');
+    res.status(502).json({ error: 'Report compilation failed. Please try again.' });
+    return;
+  }
+
+  // Normalise Gemini's groupings — fallback to one group if it returned none.
+  if (photoGroupings.length === 0) {
+    photoGroupings = [{ title: 'Evidence Photos', photoIds: children.photos.map((p) => p.id), narrative: '' }];
+  }
+
+  // Store a JSON data blob — NOT rendered HTML. Photo URLs are intentionally
+  // omitted from this artifact; they are signed fresh on every preview request
+  // so the stored data never embeds expiring credentials.
+  const generatedAt = new Date().toISOString();
+  const compiledData = {
+    schemaVersion: 1,
+    generatedAt,
+    inspector,
+    inspectionSnapshot: {
+      id: inspection.id,
+      address: inspection.address,
+      claimNumber: inspection.claimNumber,
+      policyNumber: inspection.policyNumber,
+      insuredName: inspection.insuredName,
+      carrierName: inspection.carrierName,
+      dateOfLoss: inspection.dateOfLoss,
+      roofDamageFound: inspection.roofDamageFound,
+      sidingDamageFound: inspection.sidingDamageFound,
+      collateralDamageFound: inspection.collateralDamageFound,
+      interiorDamageFound: inspection.interiorDamageFound,
+      lockedAt: inspection.lockedAt,
+    },
+    aiSummary,
+    propertyDetailsHtml,
+    photoGroupings,
+    attestationHtml,
+    // Stable per-photo metadata (object paths, NOT signed URLs).
+    photoIndex,
+  };
+
+  const compiledReportPath = await objectStorageService.uploadObjectBuffer(
+    Buffer.from(JSON.stringify(compiledData), 'utf-8'),
+    'application/json',
+  );
+
+  await db
+    .update(inspectionsTable)
+    .set({ compiledReportPath, compiledReportReadyAt: new Date() })
+    .where(eq(inspectionsTable.id, inspectionId));
+
+  res.json({ compiledReportPath });
+});
+
+// GET /inspections/:inspectionId/report/preview-url
+// Loads the stored JSON data blob, signs each photo URL fresh (15-min TTL),
+// builds the full HTML, and returns it directly as { html }.
+// Every call produces fresh signed URLs — the stored blob never embeds expiring ones.
+router.get('/inspections/:inspectionId/report/preview-url', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!inspection.compiledReportPath) {
+    res.status(404).json({ error: 'No compiled report found — compile the report first.' });
+    return;
+  }
+
+  // Load the stored JSON data blob from object storage.
+  const dataFile = await objectStorageService.getObjectEntityFile(inspection.compiledReportPath);
+  const [dataBuffer] = await dataFile.download();
+  const compiledData = JSON.parse(dataBuffer.toString('utf-8')) as {
+    schemaVersion: number;
+    generatedAt: string;
+    inspector: { name: string; email: string | null };
+    inspectionSnapshot: {
+      id: string; address: string | null; claimNumber: string | null;
+      policyNumber: string | null; insuredName: string | null; carrierName: string | null;
+      dateOfLoss: string | null; roofDamageFound: boolean | null;
+      sidingDamageFound: boolean | null; collateralDamageFound: boolean | null;
+      interiorDamageFound: boolean | null; lockedAt: Date | null;
+    };
+    aiSummary: { forensicSummary: string; repairabilityText: string };
+    propertyDetailsHtml: string;
+    photoGroupings: Array<{ title: string; photoIds: string[]; narrative: string }>;
+    attestationHtml: string;
+    photoIndex: Record<string, {
+      objectPath: string; stage: string | null; triadRole: string | null;
+      zone: string | null; subjectType: string | null;
+    }>;
+  };
+
+  // Sign each photo URL fresh — best-effort (a missing or invalid path gets null).
+  const freshSignedUrls = new Map<string, string | null>();
+  await Promise.all(
+    Object.entries(compiledData.photoIndex).map(async ([photoId, entry]) => {
+      const url = await tryGetPhotoSignedUrl(objectStorageService, entry.objectPath);
+      freshSignedUrls.set(photoId, url);
+    }),
+  );
+
+  // Build photo sections HTML from Gemini's groupings + fresh signed URLs.
+  let photoSectionsHtml = '';
+  for (const group of compiledData.photoGroupings) {
+    const cards = group.photoIds
+      .map((pid) => {
+        const entry = compiledData.photoIndex[pid];
+        if (!entry) return '';
+        const signedUrl = freshSignedUrls.get(pid);
+        const imgTag = signedUrl
+          ? `<img src="${escHtml(signedUrl)}" alt="${escHtml(entry.subjectType ?? 'evidence photo')}" loading="lazy">`
+          : `<div style="height:160px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px">Photo unavailable</div>`;
+        const label = [entry.zone, entry.triadRole, entry.subjectType].filter(Boolean).join(' · ');
+        return `<div class="photo-card">${imgTag}<div class="photo-caption">${escHtml(label || 'Evidence photo')}</div></div>`;
+      })
+      .filter(Boolean)
+      .join('');
+    if (!cards) continue;
+
+    photoSectionsHtml += `
+<div class="photo-group">
+  <div class="photo-group-title">${escHtml(group.title)}</div>
+  ${group.narrative ? `<p style="font-size:13px;color:#555;margin-bottom:12px">${escHtml(group.narrative)}</p>` : ''}
+  <div class="photo-grid">${cards}</div>
+</div>`;
+  }
+
+  if (!photoSectionsHtml) {
+    photoSectionsHtml = '<p style="color:#888;font-size:13px">No photos available for this inspection.</p>';
+  }
+
+  // Build a minimal inspection row-alike from the snapshot for buildReportHtml.
+  const snap = compiledData.inspectionSnapshot;
+  const inspSnap = {
+    ...inspection,  // real DB row (for any fields not in snapshot)
+    id: snap.id,
+    address: snap.address,
+    claimNumber: snap.claimNumber,
+    policyNumber: snap.policyNumber,
+    insuredName: snap.insuredName,
+    carrierName: snap.carrierName,
+    dateOfLoss: snap.dateOfLoss,
+    lockedAt: snap.lockedAt ? new Date(snap.lockedAt) : null,
+  } as typeof inspectionsTable.$inferSelect;
+
+  const html = buildReportHtml({
+    inspection: inspSnap,
+    inspector: compiledData.inspector,
+    aiSummary: compiledData.aiSummary,
+    propertyDetailsHtml: compiledData.propertyDetailsHtml,
+    photoSectionsHtml,
+    attestationHtml: compiledData.attestationHtml,
+    generatedAt: compiledData.generatedAt,
+  });
+
+  res.json({ html });
 });
 
 export default router;

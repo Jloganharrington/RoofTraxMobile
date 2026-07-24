@@ -1124,7 +1124,9 @@ export const ListInspectionsResponse = zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
   "generatedAt": zod.coerce.date().describe('ISO-8601 timestamp when this version was generated.')
-}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.')
+}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.'),
+  "compiledReportPath": zod.string().nullish().describe('Object-storage path (`\/objects\/uploads\/{uuid}`) of the Gemini-compiled HTML report. Null until the inspector triggers compilation via POST \/inspections\/{id}\/report\/compile. Populated by the detail view only.'),
+  "compiledReportReadyAt": zod.coerce.date().nullish().describe('ISO-8601 timestamp when the compiled report was last (re-)generated. Null when compiledReportPath is null.')
 }))
 })
 
@@ -1490,7 +1492,9 @@ export const CreateInspectionResponse = zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
   "generatedAt": zod.coerce.date().describe('ISO-8601 timestamp when this version was generated.')
-}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.')
+}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.'),
+  "compiledReportPath": zod.string().nullish().describe('Object-storage path (`\/objects\/uploads\/{uuid}`) of the Gemini-compiled HTML report. Null until the inspector triggers compilation via POST \/inspections\/{id}\/report\/compile. Populated by the detail view only.'),
+  "compiledReportReadyAt": zod.coerce.date().nullish().describe('ISO-8601 timestamp when the compiled report was last (re-)generated. Null when compiledReportPath is null.')
 })
 })
 
@@ -1838,7 +1842,9 @@ export const GetInspectionResponse = zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
   "generatedAt": zod.coerce.date().describe('ISO-8601 timestamp when this version was generated.')
-}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.')
+}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.'),
+  "compiledReportPath": zod.string().nullish().describe('Object-storage path (`\/objects\/uploads\/{uuid}`) of the Gemini-compiled HTML report. Null until the inspector triggers compilation via POST \/inspections\/{id}\/report\/compile. Populated by the detail view only.'),
+  "compiledReportReadyAt": zod.coerce.date().nullish().describe('ISO-8601 timestamp when the compiled report was last (re-)generated. Null when compiledReportPath is null.')
 })
 })
 
@@ -2309,7 +2315,9 @@ export const UpdateInspectionResponse = zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
   "generatedAt": zod.coerce.date().describe('ISO-8601 timestamp when this version was generated.')
-}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.')
+}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.'),
+  "compiledReportPath": zod.string().nullish().describe('Object-storage path (`\/objects\/uploads\/{uuid}`) of the Gemini-compiled HTML report. Null until the inspector triggers compilation via POST \/inspections\/{id}\/report\/compile. Populated by the detail view only.'),
+  "compiledReportReadyAt": zod.coerce.date().nullish().describe('ISO-8601 timestamp when the compiled report was last (re-)generated. Null when compiledReportPath is null.')
 })
 })
 
@@ -3342,7 +3350,9 @@ export const SubmitInspectionResponse = zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
   "generatedAt": zod.coerce.date().describe('ISO-8601 timestamp when this version was generated.')
-}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.')
+}),zod.null()]).optional().describe('AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.'),
+  "compiledReportPath": zod.string().nullish().describe('Object-storage path (`\/objects\/uploads\/{uuid}`) of the Gemini-compiled HTML report. Null until the inspector triggers compilation via POST \/inspections\/{id}\/report\/compile. Populated by the detail view only.'),
+  "compiledReportReadyAt": zod.coerce.date().nullish().describe('ISO-8601 timestamp when the compiled report was last (re-)generated. Null when compiledReportPath is null.')
 })
 })
 
@@ -3489,6 +3499,30 @@ export const CreateInspectionAddendumResponse = zod.object({
   "body": zod.string(),
   "createdAt": zod.coerce.date()
 })
+})
+
+
+/**
+ * @summary Compile the Gemini-generated forensic report for this inspection. Gated: assigned inspector or manager+. Allowed post-submission (allowLocked). Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs are resolved fresh at every preview request so the artifact never goes stale.
+ */
+export const CompileInspectionReportParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const CompileInspectionReportResponse = zod.object({
+  "compiledReportPath": zod.string()
+})
+
+
+/**
+ * @summary Render the compiled forensic report HTML with fresh photo URLs and return it directly. Returns 404 when no report has been compiled yet. Photo URLs are regenerated on every call (15-min TTL each) so the HTML is always valid at the moment of delivery — the stored artifact never embeds expiring signed URLs.
+ */
+export const GetInspectionReportPreviewUrlParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const GetInspectionReportPreviewUrlResponse = zod.object({
+  "html": zod.string()
 })
 
 

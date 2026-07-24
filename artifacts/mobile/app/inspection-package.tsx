@@ -19,6 +19,8 @@ import {
   useRedeliverInspection,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { getApiBaseUrl } from '@/lib/api';
+import { getToken } from '@/lib/tokenStorage';
 import { File as FSFile, Paths, Directory } from 'expo-file-system';
 import * as MailComposer from 'expo-mail-composer';
 import { Icon } from '@/components/Icon';
@@ -86,6 +88,37 @@ export default function InspectionPackageScreen() {
   const voidAgreement = useVoidAgreement();
   const [showVoidInput, setShowVoidInput] = useState(false);
   const [voidReasonText, setVoidReasonText] = useState('');
+
+  // Report compilation state
+  const [compiling, setCompiling] = useState(false);
+  const [compileError, setCompileError] = useState<string | null>(null);
+
+  async function handleCompileReport() {
+    if (compiling) return;
+    setCompiling(true);
+    setCompileError(null);
+    try {
+      const token = await getToken('auth_session_token');
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/report/compile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: '{}',
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      // Refresh the inspection so compiledReportReadyAt updates.
+      await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
+    } catch (err) {
+      setCompileError(err instanceof Error ? err.message : 'Report compilation failed');
+    } finally {
+      setCompiling(false);
+    }
+  }
 
   const handleEmailAgreement = async () => {
     const trimmed = emailRecipient.trim();
@@ -365,6 +398,71 @@ export default function InspectionPackageScreen() {
         </View>
       )}
 
+      {/* Compiled Forensic Report card — forensic inspections only */}
+      {isForensic && (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.headerRow}>
+            <Icon name="file-text" size={20} color={colors.foreground} />
+            <Text style={[styles.title, { color: colors.foreground }]}>Forensic report</Text>
+            {inspection?.compiledReportReadyAt ? (
+              <View style={[styles.stubBadge, { backgroundColor: '#dcfce7' }]}>
+                <Text style={[styles.stubText, { color: '#166534' }]}>Ready</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 19 }}>
+            {inspection?.compiledReportReadyAt
+              ? `Last compiled ${new Date(inspection.compiledReportReadyAt).toLocaleString()}.`
+              : 'Use Gemini to compile the HTML forensic report from all captured data and the AI summary.'}
+          </Text>
+
+          {compileError ? (
+            <Text style={{ color: colors.destructive, fontSize: 12 }}>{compileError}</Text>
+          ) : null}
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={handleCompileReport}
+              disabled={compiling}
+              style={[
+                styles.reportBtn,
+                {
+                  backgroundColor: colors.secondary,
+                  opacity: compiling ? 0.6 : 1,
+                  flex: inspection?.compiledReportReadyAt ? 1 : undefined,
+                },
+              ]}
+            >
+              {compiling ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Icon name="cpu" size={14} color="#fff" />
+              )}
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                {compiling ? 'Compiling…' : inspection?.compiledReportReadyAt ? 'Re-compile' : 'Compile Report'}
+              </Text>
+            </Pressable>
+
+            {inspection?.compiledReportReadyAt ? (
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/inspection-compiled-report',
+                    params: { id },
+                  } as never)
+                }
+                style={[styles.reportBtn, { backgroundColor: colors.primary, flex: 1 }]}
+              >
+                <Icon name="eye" size={14} color={colors.primaryForeground} />
+                <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 13 }}>
+                  Preview Report
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      )}
+
       {/* Forensic agreement card */}
       {isForensic && (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -617,6 +715,14 @@ const styles = StyleSheet.create({
   status: { fontSize: 16, fontWeight: '800' },
   deliveryStatus: { fontSize: 14, fontWeight: '700' },
   errorBox: { borderRadius: 8, borderWidth: 1, padding: 10 },
+  reportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+  },
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',

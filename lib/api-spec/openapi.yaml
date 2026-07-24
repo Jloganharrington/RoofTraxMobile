@@ -2338,6 +2338,97 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/report/compile:
+    post:
+      tags: [Inspections]
+      operationId: compileInspectionReport
+      summary: >-
+        Compile the Gemini-generated forensic report for this inspection.
+        Gated: assigned inspector or manager+. Allowed post-submission (allowLocked).
+        Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs
+        are resolved fresh at every preview request so the artifact never goes stale.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Report data compiled and stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [compiledReportPath]
+                properties:
+                  compiledReportPath:
+                    type: string
+        "400":
+          description: AI summary not yet generated — run the Summary step first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to compile this inspection's report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /inspections/{inspectionId}/report/preview-url:
+    get:
+      tags: [Inspections]
+      operationId: getInspectionReportPreviewUrl
+      summary: >-
+        Render the compiled forensic report HTML with fresh photo URLs and return it
+        directly. Returns 404 when no report has been compiled yet.
+        Photo URLs are regenerated on every call (15-min TTL each) so the HTML
+        is always valid at the moment of delivery — the stored artifact never embeds
+        expiring signed URLs.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Freshly-rendered HTML string ready to load in a WebView.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [html]
+                properties:
+                  html:
+                    type: string
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No compiled report found for this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /bug-reports:
     post:
       tags: [BugReports]
@@ -4044,6 +4135,18 @@ components:
                   format: date-time
                   description: ISO-8601 timestamp when this version was generated.
             - type: "null"
+        compiledReportPath:
+          type: [string, "null"]
+          description: >-
+            Object-storage path (`/objects/uploads/{uuid}`) of the Gemini-compiled
+            HTML report. Null until the inspector triggers compilation via
+            POST /inspections/{id}/report/compile. Populated by the detail view only.
+        compiledReportReadyAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            ISO-8601 timestamp when the compiled report was last (re-)generated.
+            Null when compiledReportPath is null.
     CreateInspectionInput:
       type: object
       properties:

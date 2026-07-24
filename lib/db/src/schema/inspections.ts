@@ -485,6 +485,11 @@ export const inspectionsTable = pgTable('inspections', {
       generatedAt: string;
     } | null>()
     .default(null),
+  // Gemini-compiled HTML report stored in object storage. Written by the
+  // report/compile route; null until the inspector triggers compilation.
+  // Format: `/objects/uploads/{uuid}` — the same convention as uploadObjectBuffer.
+  compiledReportPath: text('compiled_report_path'),
+  compiledReportReadyAt: timestamp('compiled_report_ready_at', { withTimezone: true }),
   // Homeowner contact email captured at scheduling time. Used for appointment
   // notifications and Phase 2 comms; carried forward to the owner record when
   // Phase 2 is completed so reps never have to re-enter it.

@@ -145,4 +145,14 @@ export interface Inspection {
   latestAgreement?: InspectionLatestAgreement;
   /** AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only. */
   aiSummary?: InspectionAiSummary;
+  /**
+     * Object-storage path (`/objects/uploads/{uuid}`) of the Gemini-compiled HTML report. Null until the inspector triggers compilation via POST /inspections/{id}/report/compile. Populated by the detail view only.
+     * @nullable
+     */
+  compiledReportPath?: string | null;
+  /**
+     * ISO-8601 timestamp when the compiled report was last (re-)generated. Null when compiledReportPath is null.
+     * @nullable
+     */
+  compiledReportReadyAt?: Date | null;
 }

@@ -32,6 +32,7 @@ import type {
   CanvassingCurrentEnvelope,
   CanvassingSessionEnvelope,
   CompanyEnvelope,
+  CompileInspectionReport200,
   CreateAttestationInput,
   CreateBugReportInput,
   CreateCompanyRequest,
@@ -57,6 +58,7 @@ import type {
   EmailReportResult,
   ErrorEnvelope,
   GetActivityStatsParams,
+  GetInspectionReportPreviewUrl200,
   GetWeatherEventsParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
@@ -4678,6 +4680,154 @@ export const useCreateInspectionAddendum = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getCreateInspectionAddendumMutationOptions(options));
     }
+
+export const getCompileInspectionReportUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/report/compile`
+}
+
+/**
+ * @summary Compile the Gemini-generated forensic report for this inspection. Gated: assigned inspector or manager+. Allowed post-submission (allowLocked). Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs are resolved fresh at every preview request so the artifact never goes stale.
+ */
+export const compileInspectionReport = async (inspectionId: string, options?: RequestInit): Promise<CompileInspectionReport200> => {
+
+  return customFetch<CompileInspectionReport200>(getCompileInspectionReportUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompileInspectionReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string}, TContext> => {
+
+const mutationKey = ['compileInspectionReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof compileInspectionReport>>, {inspectionId: string}> = (props) => {
+          const {inspectionId} = props ?? {};
+
+          return  compileInspectionReport(inspectionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompileInspectionReportMutationResult = NonNullable<Awaited<ReturnType<typeof compileInspectionReport>>>
+
+    export type CompileInspectionReportMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Compile the Gemini-generated forensic report for this inspection. Gated: assigned inspector or manager+. Allowed post-submission (allowLocked). Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs are resolved fresh at every preview request so the artifact never goes stale.
+ */
+export const useCompileInspectionReport = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof compileInspectionReport>>,
+        TError,
+        {inspectionId: string},
+        TContext
+      > => {
+      return useMutation(getCompileInspectionReportMutationOptions(options));
+    }
+
+export const getGetInspectionReportPreviewUrlUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/report/preview-url`
+}
+
+/**
+ * @summary Render the compiled forensic report HTML with fresh photo URLs and return it directly. Returns 404 when no report has been compiled yet. Photo URLs are regenerated on every call (15-min TTL each) so the HTML is always valid at the moment of delivery — the stored artifact never embeds expiring signed URLs.
+ */
+export const getInspectionReportPreviewUrl = async (inspectionId: string, options?: RequestInit): Promise<GetInspectionReportPreviewUrl200> => {
+
+  return customFetch<GetInspectionReportPreviewUrl200>(getGetInspectionReportPreviewUrlUrl(inspectionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInspectionReportPreviewUrlQueryKey = (inspectionId: string,) => {
+    return [
+    `/api/inspections/${inspectionId}/report/preview-url`
+    ] as const;
+    }
+
+
+export const getGetInspectionReportPreviewUrlQueryOptions = <TData = Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>, TError = ErrorType<ErrorEnvelope>>(inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInspectionReportPreviewUrlQueryKey(inspectionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>> = ({ signal }) => getInspectionReportPreviewUrl(inspectionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: inspectionId !== null && inspectionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInspectionReportPreviewUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>>
+export type GetInspectionReportPreviewUrlQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Render the compiled forensic report HTML with fresh photo URLs and return it directly. Returns 404 when no report has been compiled yet. Photo URLs are regenerated on every call (15-min TTL each) so the HTML is always valid at the moment of delivery — the stored artifact never embeds expiring signed URLs.
+ */
+
+export function useGetInspectionReportPreviewUrl<TData = Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>, TError = ErrorType<ErrorEnvelope>>(
+ inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionReportPreviewUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInspectionReportPreviewUrlQueryOptions(inspectionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getCreateBugReportUrl = () => {
 
