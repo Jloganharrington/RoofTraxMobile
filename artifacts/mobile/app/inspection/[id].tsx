@@ -59,6 +59,7 @@ const STEP_ICONS: Record<StepKey, IconName> = {
   homeowner: 'clipboard',
   declaration: 'check',
   summary: 'zap',
+  estimate: 'dollar-sign',
   submit: 'clipboard',
 };
 
@@ -79,6 +80,7 @@ const STEP_ROUTES: Record<StepKey, string> = {
   homeowner: '/inspection-homeowner',
   declaration: '/inspection-declaration',
   summary: '/inspection-summary',
+  estimate: '/inspection-estimate',
   submit: '/inspection-readiness',
 };
 
@@ -365,6 +367,17 @@ export default function InspectionDetailScreen() {
           subtitle: generatedAt
             ? `Generated ${new Date(generatedAt).toLocaleDateString()}`
             : 'Optional — Claude drafts a forensic narrative for review',
+        };
+      }
+      case 'estimate': {
+        // Non-blocking advisory step — done when an estimate has been saved.
+        const estimate = inspection!.estimate;
+        return {
+          done: Boolean(estimate && estimate.lines.length > 0),
+          subtitle:
+            estimate && estimate.lines.length > 0
+              ? `${estimate.lines.length} line item${estimate.lines.length === 1 ? '' : 's'} — subtotal $${(estimate.subtotalCents / 100).toFixed(2)}`
+              : 'Optional — price the job from the company price book',
         };
       }
       case 'submit':

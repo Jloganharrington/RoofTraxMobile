@@ -65,6 +65,7 @@ import {
   inspectionProductsTable,
   inspectionSidingFacetsTable,
   inspectionSlopesTable,
+  priceBookItemsTable,
   inspectionsTable,
   pinsTable,
   signedAgreementsTable,
@@ -90,6 +91,7 @@ import {
   type HydratedInspectionChildren,
 } from '../lib/inspectionProtocolState';
 import { getCompanyCrmConfig } from '../lib/crm';
+import { computeLines, computeMeasuredBasis } from '../lib/estimate';
 import {
   deliverInspectionToBrain,
   getBrainConfig,
@@ -3153,6 +3155,155 @@ function buildInspectionBrief(
 
   return lines.join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// Estimate step (advisory) — GET/PUT /inspections/:id/estimate.
+// Full-replace PUT keyed on the inspection id, so offline outbox replays are
+// naturally idempotent (last write wins with identical content). The server
+// recomputes the measured basis and all money math; client totals are never
+// trusted. Locked inspections reject with 409 like every other capture write.
+// ---------------------------------------------------------------------------
+
+const EstimateLineBody = z.object({
+  priceBookItemId: z.string().max(100).nullable(),
+  description: z.string().min(1).max(300),
+  unit: z.string().max(60).nullable(),
+  quantity: z.number().positive().finite().max(1_000_000),
+  unitPriceCents: z.number().int().min(0).max(100_000_000),
+  isAdder: z.boolean(),
+});
+
+const PutEstimateBody = z.object({
+  wastePercent: z.number().min(0).max(100),
+  lines: z.array(EstimateLineBody).max(200),
+  note: z.string().max(2000).nullable().optional(),
+});
+
+// GET /inspections/:inspectionId/estimate — the stored estimate or null.
+router.get('/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  res.json({ estimate: inspection.estimate ?? null });
+});
+
+// PUT /inspections/:inspectionId/estimate — save (full replace) the estimate.
+router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const parsed = PutEstimateBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
+    return;
+  }
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  // Snapshot line items referencing the price book must belong to this
+  // company — a cross-tenant id would silently launder another company's
+  // catalog into the report.
+  const refIds = [
+    ...new Set(
+      parsed.data.lines.map((l) => l.priceBookItemId).filter((id): id is string => id != null),
+    ),
+  ];
+  const refItemById = new Map<
+    string,
+    { id: string; name: string; unit: string | null; unitPrice: number }
+  >();
+  if (refIds.length > 0) {
+    const owned = await db
+      .select({
+        id: priceBookItemsTable.id,
+        name: priceBookItemsTable.name,
+        unit: priceBookItemsTable.unit,
+        unitPrice: priceBookItemsTable.unitPrice,
+      })
+      .from(priceBookItemsTable)
+      .where(
+        and(
+          eq(priceBookItemsTable.companyId, actor.companyId),
+          inArray(priceBookItemsTable.id, refIds),
+        ),
+      );
+    if (owned.length !== refIds.length) {
+      res.status(400).json({ error: 'Unknown price book item referenced' });
+      return;
+    }
+    for (const item of owned) refItemById.set(item.id, item);
+  }
+
+  // Referenced lines snapshot the price book AS STORED — description, unit
+  // and unit price come from the DB, never the client, so a tampered body
+  // can't launder a fake price behind a legitimate item id. Manual lines
+  // (priceBookItemId = null) keep the client values.
+  const lineInputs = parsed.data.lines.map((line) => {
+    const ref = line.priceBookItemId ? refItemById.get(line.priceBookItemId) : undefined;
+    return ref
+      ? {
+          ...line,
+          description: ref.name,
+          unit: ref.unit,
+          unitPriceCents: ref.unitPrice,
+        }
+      : line;
+  });
+
+  const [slopes, sidingFacets] = await Promise.all([
+    db
+      .select({ areaSqft: inspectionSlopesTable.areaSqft })
+      .from(inspectionSlopesTable)
+      .where(
+        and(
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+          eq(inspectionSlopesTable.companyId, actor.companyId),
+        ),
+      ),
+    db
+      .select({ id: inspectionSidingFacetsTable.id })
+      .from(inspectionSidingFacetsTable)
+      .where(
+        and(
+          eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
+          eq(inspectionSidingFacetsTable.companyId, actor.companyId),
+        ),
+      ),
+  ]);
+
+  const { lines, subtotalCents } = computeLines(lineInputs);
+  const estimate = {
+    wastePercent: parsed.data.wastePercent,
+    measuredBasis: computeMeasuredBasis({
+      slopeAreasSqft: slopes.map((s) => s.areaSqft),
+      damagedSidingFacetCount: sidingFacets.length,
+      wastePercent: parsed.data.wastePercent,
+    }),
+    lines,
+    subtotalCents,
+    note: parsed.data.note ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const [updated] = await db
+    .update(inspectionsTable)
+    .set({ estimate })
+    .where(
+      and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, actor.companyId)),
+    )
+    .returning();
+
+  res.json({ estimate: updated?.estimate ?? estimate });
+});
 
 // GET /inspections/:inspectionId/summary — returns the stored AI summary or null.
 router.get('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {

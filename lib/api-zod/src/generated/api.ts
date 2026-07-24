@@ -980,7 +980,7 @@ export const ListInspectionsResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
@@ -1060,7 +1060,7 @@ export const ListInspectionsResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1178,6 +1178,27 @@ export const ListInspectionsResponse = zod.object({
   "signedAt": zod.coerce.date(),
   "signerName": zod.string()
 }),zod.null()]).optional().describe('The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only.'),
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number().describe('Waste factor applied to measured roof squares (10 = 10%).'),
+  "measuredBasis": zod.object({
+  "roofAreaSqft": zod.number().nullable(),
+  "roofSquares": zod.number().nullable(),
+  "wasteAdjustedSquares": zod.number().nullable(),
+  "damagedSidingFacetCount": zod.number()
+}),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullable(),
+  "description": zod.string(),
+  "unit": zod.string().nullable(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "totalCents": zod.number(),
+  "isAdder": zod.boolean()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()]).optional().describe('Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.'),
   "aiSummary": zod.union([zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
@@ -1348,7 +1369,7 @@ export const CreateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
@@ -1428,7 +1449,7 @@ export const CreateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1546,6 +1567,27 @@ export const CreateInspectionResponse = zod.object({
   "signedAt": zod.coerce.date(),
   "signerName": zod.string()
 }),zod.null()]).optional().describe('The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only.'),
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number().describe('Waste factor applied to measured roof squares (10 = 10%).'),
+  "measuredBasis": zod.object({
+  "roofAreaSqft": zod.number().nullable(),
+  "roofSquares": zod.number().nullable(),
+  "wasteAdjustedSquares": zod.number().nullable(),
+  "damagedSidingFacetCount": zod.number()
+}),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullable(),
+  "description": zod.string(),
+  "unit": zod.string().nullable(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "totalCents": zod.number(),
+  "isAdder": zod.boolean()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()]).optional().describe('Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.'),
   "aiSummary": zod.union([zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
@@ -1698,7 +1740,7 @@ export const GetInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
@@ -1778,7 +1820,7 @@ export const GetInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -1896,6 +1938,27 @@ export const GetInspectionResponse = zod.object({
   "signedAt": zod.coerce.date(),
   "signerName": zod.string()
 }),zod.null()]).optional().describe('The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only.'),
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number().describe('Waste factor applied to measured roof squares (10 = 10%).'),
+  "measuredBasis": zod.object({
+  "roofAreaSqft": zod.number().nullable(),
+  "roofSquares": zod.number().nullable(),
+  "wasteAdjustedSquares": zod.number().nullable(),
+  "damagedSidingFacetCount": zod.number()
+}),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullable(),
+  "description": zod.string(),
+  "unit": zod.string().nullable(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "totalCents": zod.number(),
+  "isAdder": zod.boolean()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()]).optional().describe('Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.'),
   "aiSummary": zod.union([zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
@@ -2171,7 +2234,7 @@ export const UpdateInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
@@ -2251,7 +2314,7 @@ export const UpdateInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -2369,6 +2432,27 @@ export const UpdateInspectionResponse = zod.object({
   "signedAt": zod.coerce.date(),
   "signerName": zod.string()
 }),zod.null()]).optional().describe('The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only.'),
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number().describe('Waste factor applied to measured roof squares (10 = 10%).'),
+  "measuredBasis": zod.object({
+  "roofAreaSqft": zod.number().nullable(),
+  "roofSquares": zod.number().nullable(),
+  "wasteAdjustedSquares": zod.number().nullable(),
+  "damagedSidingFacetCount": zod.number()
+}),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullable(),
+  "description": zod.string(),
+  "unit": zod.string().nullable(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "totalCents": zod.number(),
+  "isAdder": zod.boolean()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()]).optional().describe('Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.'),
   "aiSummary": zod.union([zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),
@@ -2878,7 +2962,7 @@ export const CreateInspectionPhotoParams = zod.object({
 
 export const CreateInspectionPhotoBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the photo write is idempotent, so a queued offline capture can be retried (e.g. after a lost upload response) without duplicating the evidence row.'),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullish(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]).optional(),
@@ -2904,7 +2988,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
@@ -2972,7 +3056,7 @@ export const CreateAttestationParams = zod.object({
 
 export const CreateAttestationBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, the attestation write is idempotent, so a queued offline attestation can be retried without duplicating the row.'),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]).optional(),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]).optional(),
   "details": zod.record(zod.string(), zod.unknown()).nullish(),
   "signatureData": zod.string().nullish()
@@ -2984,7 +3068,7 @@ export const CreateAttestationResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -3206,7 +3290,7 @@ export const SubmitInspectionResponse = zod.object({
   "id": zod.string(),
   "companyId": zod.string(),
   "inspectionId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "subjectType": zod.enum(['inspection', 'slope', 'elevation', 'damage_instance', 'test_square', 'test_square_hit', 'component', 'penetration', 'product', 'interior_observation', 'siding_facet']),
   "subjectId": zod.string().nullable(),
   "triadRole": zod.union([zod.enum(['wide', 'mid', 'close', 'measurement', 'collateral']).describe('Photo capture role. The forensic triad is wide\/mid\/close; measurement and collateral are standalone roles (REPORT_DATA v2) that map 1:1 onto captureContext.'),zod.null()]),
@@ -3286,7 +3370,7 @@ export const SubmitInspectionResponse = zod.object({
   "companyId": zod.string(),
   "inspectionId": zod.string(),
   "userId": zod.string(),
-  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
+  "stage": zod.union([zod.enum(['arrival', 'property_profile', 'elevation_access', 'facets', 'test_squares', 'components', 'product', 'siding', 'collateral', 'interior', 'repairability', 'mitigation', 'homeowner', 'existing_conditions', 'declaration', 'summary', 'estimate', 'submit']).describe('Protocol v2 step key. S-numbers are retired.'),zod.null()]),
   "attestationType": zod.union([zod.enum(['equipment', 'gps_override', 'stage_signoff']),zod.null()]),
   "details": zod.record(zod.string(), zod.unknown()).nullable(),
   "signatureData": zod.string().nullable(),
@@ -3404,6 +3488,27 @@ export const SubmitInspectionResponse = zod.object({
   "signedAt": zod.coerce.date(),
   "signerName": zod.string()
 }),zod.null()]).optional().describe('The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only.'),
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number().describe('Waste factor applied to measured roof squares (10 = 10%).'),
+  "measuredBasis": zod.object({
+  "roofAreaSqft": zod.number().nullable(),
+  "roofSquares": zod.number().nullable(),
+  "wasteAdjustedSquares": zod.number().nullable(),
+  "damagedSidingFacetCount": zod.number()
+}),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullable(),
+  "description": zod.string(),
+  "unit": zod.string().nullable(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "totalCents": zod.number(),
+  "isAdder": zod.boolean()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()]).optional().describe('Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.'),
   "aiSummary": zod.union([zod.object({
   "forensicSummary": zod.string().describe('3-5 paragraph forensic narrative of the inspection findings.'),
   "repairabilityText": zod.string().describe('Repairability assessment narrative. Empty string when no repairability data was captured.'),

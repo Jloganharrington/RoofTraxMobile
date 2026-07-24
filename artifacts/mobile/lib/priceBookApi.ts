@@ -21,6 +21,7 @@ export interface PriceBookItem {
   name: string;
   description: string | null;
   unitPrice: number; // cents
+  unit: string | null; // billing-unit label, e.g. "per square"
   createdAt: string;
   updatedAt: string;
 }
@@ -68,7 +69,12 @@ export function useListPriceBookItems(
 export function useCreatePriceBookItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; description?: string | null; unitPrice: number }) =>
+    mutationFn: (data: {
+      name: string;
+      description?: string | null;
+      unitPrice: number;
+      unit?: string | null;
+    }) =>
       customFetch<{ item: PriceBookItem }>('/api/price-book/items', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -88,6 +94,7 @@ export function useUpdatePriceBookItem() {
       name?: string;
       description?: string | null;
       unitPrice?: number;
+      unit?: string | null;
     }) =>
       customFetch<{ item: PriceBookItem }>(`/api/price-book/items/${id}`, {
         method: 'PATCH',

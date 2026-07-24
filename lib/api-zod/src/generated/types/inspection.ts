@@ -14,6 +14,7 @@ import type { HomeownerFacts } from './homeownerFacts';
 import type { InspectionAiSummary } from './inspectionAiSummary';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
+import type { InspectionEstimate } from './inspectionEstimate';
 import type { InspectionLatestAgreement } from './inspectionLatestAgreement';
 import type { InspectionPenetration } from './inspectionPenetration';
 import type { InspectionPhase } from './inspectionPhase';
@@ -143,6 +144,8 @@ export interface Inspection {
   measurements?: Measurement[];
   /** The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only. */
   latestAgreement?: InspectionLatestAgreement;
+  /** Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only. */
+  estimate?: InspectionEstimate;
   /** AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only. */
   aiSummary?: InspectionAiSummary;
   /**

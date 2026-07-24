@@ -707,6 +707,7 @@ export const CaptureStage = {
   existing_conditions: 'existing_conditions',
   declaration: 'declaration',
   summary: 'summary',
+  estimate: 'estimate',
   submit: 'submit',
 } as const;
 
@@ -908,6 +909,42 @@ export type InspectionLatestAgreement = {
   id: string;
   signedAt: string;
   signerName: string;
+} | null;
+
+export type InspectionEstimateMeasuredBasis = {
+  /** @nullable */
+  roofAreaSqft: number | null;
+  /** @nullable */
+  roofSquares: number | null;
+  /** @nullable */
+  wasteAdjustedSquares: number | null;
+  damagedSidingFacetCount: number;
+};
+
+export type InspectionEstimateLinesItem = {
+  /** @nullable */
+  priceBookItemId: string | null;
+  description: string;
+  /** @nullable */
+  unit: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
+  isAdder: boolean;
+};
+
+/**
+ * Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.
+ */
+export type InspectionEstimate = {
+  /** Waste factor applied to measured roof squares (10 = 10%). */
+  wastePercent: number;
+  measuredBasis: InspectionEstimateMeasuredBasis;
+  lines: InspectionEstimateLinesItem[];
+  subtotalCents: number;
+  /** @nullable */
+  note: string | null;
+  updatedAt: string;
 } | null;
 
 /**
@@ -1556,6 +1593,8 @@ export interface Inspection {
   measurements?: Measurement[];
   /** The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only. */
   latestAgreement?: InspectionLatestAgreement;
+  /** Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only. */
+  estimate?: InspectionEstimate;
   /** AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only. */
   aiSummary?: InspectionAiSummary;
   /**

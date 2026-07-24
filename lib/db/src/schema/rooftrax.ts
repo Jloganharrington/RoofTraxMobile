@@ -256,6 +256,10 @@ export const priceBookItemsTable = pgTable('price_book_items', {
   name: varchar('name', { length: 200 }).notNull(),
   description: text('description'),
   unitPrice: integer('unit_price').notNull().default(0), // cents
+  // Optional billing-unit label shown next to the price (e.g. "per square",
+  // "per LF", "each"). Free text — companies bill in too many vocabularies
+  // to enumerate.
+  unit: varchar('unit', { length: 60 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()

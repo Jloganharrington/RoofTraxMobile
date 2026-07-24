@@ -22,6 +22,7 @@ export const STAGES = [
   'existing_conditions',
   'declaration',
   'summary',
+  'estimate',
   'submit',
 ] as const;
 export type Stage = (typeof STAGES)[number];
@@ -174,8 +175,15 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
       'Claude Sonnet reviews all captured findings and drafts a forensic summary and repairability narrative for inspector review.',
   },
   {
-    key: 'submit',
+    key: 'estimate',
     order: 17,
+    name: 'Estimate',
+    description:
+      'Advisory pricing step — imports measured roof squares, applies a waste factor, and prices line items from the company price book. Never gates submit.',
+  },
+  {
+    key: 'submit',
+    order: 18,
     name: 'Readiness & Submit',
     description: 'Zero hard deficiencies remain and the package is confirmed ready.',
   },

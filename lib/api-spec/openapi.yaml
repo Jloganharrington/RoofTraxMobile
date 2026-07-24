@@ -3759,6 +3759,7 @@ components:
           existing_conditions,
           declaration,
           summary,
+          estimate,
           submit,
         ]
     FacetDamageType:
@@ -4236,6 +4237,58 @@ components:
                   format: date-time
                 signerName:
                   type: string
+            - type: "null"
+        estimate:
+          description: >-
+            Advisory contractor estimate saved at the Estimate step. Money in
+            integer cents; line rows snapshot the price-book values at save
+            time. Null until a rep saves one. Populated by the detail view only.
+          oneOf:
+            - type: object
+              required: [wastePercent, measuredBasis, lines, subtotalCents, note, updatedAt]
+              properties:
+                wastePercent:
+                  type: number
+                  description: Waste factor applied to measured roof squares (10 = 10%).
+                measuredBasis:
+                  type: object
+                  required: [roofAreaSqft, roofSquares, wasteAdjustedSquares, damagedSidingFacetCount]
+                  properties:
+                    roofAreaSqft:
+                      type: [number, "null"]
+                    roofSquares:
+                      type: [number, "null"]
+                    wasteAdjustedSquares:
+                      type: [number, "null"]
+                    damagedSidingFacetCount:
+                      type: number
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    required: [priceBookItemId, description, unit, quantity, unitPriceCents, totalCents, isAdder]
+                    properties:
+                      priceBookItemId:
+                        type: [string, "null"]
+                      description:
+                        type: string
+                      unit:
+                        type: [string, "null"]
+                      quantity:
+                        type: number
+                      unitPriceCents:
+                        type: integer
+                      totalCents:
+                        type: integer
+                      isAdder:
+                        type: boolean
+                subtotalCents:
+                  type: integer
+                note:
+                  type: [string, "null"]
+                updatedAt:
+                  type: string
+                  format: date-time
             - type: "null"
         aiSummary:
           description: >-

@@ -29,5 +29,6 @@ export const CaptureStage = {
   existing_conditions: 'existing_conditions',
   declaration: 'declaration',
   summary: 'summary',
+  estimate: 'estimate',
   submit: 'submit',
 } as const;

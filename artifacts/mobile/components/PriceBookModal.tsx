@@ -65,6 +65,7 @@ interface ItemFormState {
   name: string;
   description: string;
   unitPrice: string;
+  unit: string;
 }
 
 interface PackageFormState {
@@ -94,6 +95,7 @@ function ItemForm({
   const [name, setName] = React.useState(initial.name);
   const [description, setDescription] = React.useState(initial.description);
   const [unitPrice, setUnitPrice] = React.useState(initial.unitPrice);
+  const [unit, setUnit] = React.useState(initial.unit);
 
   return (
     <View style={{ gap: 12 }}>
@@ -127,6 +129,15 @@ function ItemForm({
         style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
       />
 
+      <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Unit</Text>
+      <TextInput
+        value={unit}
+        onChangeText={setUnit}
+        placeholder='e.g. "per square", "per LF", "each"'
+        placeholderTextColor={colors.mutedForeground}
+        style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
+      />
+
       <View style={s.formActions}>
         <Pressable
           onPress={onCancel}
@@ -136,7 +147,7 @@ function ItemForm({
           <Text style={{ color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
         </Pressable>
         <Pressable
-          onPress={() => onSave({ ...initial, name, description, unitPrice })}
+          onPress={() => onSave({ ...initial, name, description, unitPrice, unit })}
           disabled={saving}
           style={[s.btn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1, flex: 1 }]}
         >
@@ -342,7 +353,7 @@ export function PriceBookModal({
   const deletePackage = useDeletePriceBookPackage();
 
   // Item form state
-  const emptyItem: ItemFormState = { editingId: null, name: '', description: '', unitPrice: '' };
+  const emptyItem: ItemFormState = { editingId: null, name: '', description: '', unitPrice: '', unit: '' };
   const [itemForm, setItemForm] = React.useState<ItemFormState>(emptyItem);
   const [itemSaving, setItemSaving] = React.useState(false);
 
@@ -362,6 +373,7 @@ export function PriceBookModal({
       name: item.name,
       description: item.description ?? '',
       unitPrice: (item.unitPrice / 100).toFixed(2),
+      unit: item.unit ?? '',
     });
     setCurrentView('edit-item');
   }
@@ -402,12 +414,14 @@ export function PriceBookModal({
           name,
           description: state.description.trim() || null,
           unitPrice: cents,
+          unit: state.unit.trim() || null,
         });
       } else {
         await createItem.mutateAsync({
           name,
           description: state.description.trim() || null,
           unitPrice: cents,
+          unit: state.unit.trim() || null,
         });
       }
       setCurrentView('list');
@@ -587,6 +601,11 @@ export function PriceBookModal({
                         ) : null}
                         <Text style={{ color: colors.secondary, fontWeight: '700', marginTop: 4 }}>
                           {formatPrice(item.unitPrice)}
+                          {item.unit ? (
+                            <Text style={{ color: colors.mutedForeground, fontWeight: '400', fontSize: 12 }}>
+                              {'  '}{item.unit}
+                            </Text>
+                          ) : null}
                         </Text>
                       </View>
                       <View style={s.cardActions}>

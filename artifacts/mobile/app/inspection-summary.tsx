@@ -263,12 +263,12 @@ export default function InspectionSummaryScreen() {
           </>
         )}
 
-        {/* Continue to Submit */}
+        {/* Continue to the Estimate step */}
         <Pressable
-          onPress={() => router.push({ pathname: '/inspection-readiness', params: { id } } as never)}
+          onPress={() => router.push({ pathname: '/inspection-estimate', params: { id } } as never)}
           style={[styles.continueBtn, { backgroundColor: colors.secondary }]}
         >
-          <Text style={styles.continueBtnText}>Continue to Submit</Text>
+          <Text style={styles.continueBtnText}>Continue to Estimate</Text>
           <Icon name="chevron-right" size={18} color="#fff" />
         </Pressable>
 

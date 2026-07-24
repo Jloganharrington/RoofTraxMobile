@@ -34,6 +34,9 @@ import {
   inspectionSlopesTable,
   inspectionsTable,
   measurementsTable,
+  priceBookItemsTable,
+  priceBookPackageItemsTable,
+  priceBookPackagesTable,
   testSquareHitsTable,
   testSquaresTable,
   userProfilesTable,
@@ -41,6 +44,7 @@ import {
 } from '@workspace/db';
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 
+import { contractorEstimateForPayload, priceBookSnapshotForPayload } from './estimate';
 import { logger } from './logger';
 import { isHexColor } from './reportTemplate';
 
@@ -191,6 +195,39 @@ export async function buildSubmittedInspection(inspection: InspectionRow) {
     db.select().from(companiesTable).where(eq(companiesTable.id, companyId)),
   ]);
 
+  // Company price book — snapshot for §13 of the proof package, plus the
+  // contractor estimate (§12) captured at the Estimate step. Both null when
+  // absent so pre-estimate packages keep the exhibit-divider behaviour.
+  const [priceBookItems, priceBookPackages, priceBookPackageItems] = await Promise.all([
+    db
+      .select()
+      .from(priceBookItemsTable)
+      .where(eq(priceBookItemsTable.companyId, companyId))
+      .orderBy(priceBookItemsTable.createdAt),
+    db
+      .select()
+      .from(priceBookPackagesTable)
+      .where(eq(priceBookPackagesTable.companyId, companyId))
+      .orderBy(priceBookPackagesTable.createdAt),
+    db
+      .select({
+        packageId: priceBookPackageItemsTable.packageId,
+        itemId: priceBookPackageItemsTable.itemId,
+      })
+      .from(priceBookPackageItemsTable)
+      .innerJoin(
+        priceBookPackagesTable,
+        eq(priceBookPackageItemsTable.packageId, priceBookPackagesTable.id),
+      )
+      .where(eq(priceBookPackagesTable.companyId, companyId)),
+  ]);
+  const itemIdsByPackage = new Map<string, string[]>();
+  for (const row of priceBookPackageItems) {
+    const list = itemIdsByPackage.get(row.packageId) ?? [];
+    list.push(row.itemId);
+    itemIdsByPackage.set(row.packageId, list);
+  }
+
   const testSquareIds = testSquares.map((ts) => ts.id);
   const testSquareHits = testSquareIds.length
     ? await db
@@ -267,6 +304,16 @@ export async function buildSubmittedInspection(inspection: InspectionRow) {
     temporaryRepairs: inspection.temporaryRepairs ?? null,
     propertyProtectionPlan: inspection.propertyProtectionPlan ?? null,
     homeownerFacts: inspection.homeownerFacts ?? null,
+    // §12/§13 pricing content — pre-formatted currency strings; the template
+    // renders these verbatim. Null when nothing was captured (back-compat).
+    contractorEstimate: contractorEstimateForPayload(inspection.estimate),
+    priceBook: priceBookSnapshotForPayload({
+      items: priceBookItems,
+      packages: priceBookPackages.map((pkg) => ({
+        name: pkg.name,
+        itemIds: itemIdsByPackage.get(pkg.id) ?? [],
+      })),
+    }),
     sidingWrbPresent: inspection.sidingWrbPresent ?? null,
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
     damageSurfaceChangeLog: inspection.damageSurfaceChangeLog ?? [],

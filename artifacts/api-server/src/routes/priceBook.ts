@@ -32,20 +32,32 @@ async function requireAdminOrAbove(req: Request, res: Response) {
 // Line items
 // ---------------------------------------------------------------------------
 
+// Read access for any authenticated company member — field reps price
+// estimates from the book; only writes stay admin-gated.
+function requireAuthenticated(req: Request, res: Response) {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  return { companyId: req.user.companyId };
+}
+
 const CreateItemBody = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).nullable().optional(),
   unitPrice: z.number().int().min(0), // cents
+  unit: z.string().max(60).nullable().optional(), // billing-unit label, e.g. "per square"
 });
 
 const UpdateItemBody = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).nullable().optional(),
   unitPrice: z.number().int().min(0).optional(),
+  unit: z.string().max(60).nullable().optional(),
 });
 
 router.get('/price-book/items', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
+  const actor = requireAuthenticated(req, res);
   if (!actor) return;
 
   const items = await db
@@ -74,6 +86,7 @@ router.post('/price-book/items', async (req: Request, res: Response) => {
       name: parsed.data.name,
       description: parsed.data.description ?? null,
       unitPrice: parsed.data.unitPrice,
+      unit: parsed.data.unit ?? null,
     })
     .returning();
 
@@ -111,6 +124,7 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
       ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
       ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
       ...(parsed.data.unitPrice !== undefined ? { unitPrice: parsed.data.unitPrice } : {}),
+      ...(parsed.data.unit !== undefined ? { unit: parsed.data.unit } : {}),
       updatedAt: new Date(),
     })
     .where(eq(priceBookItemsTable.id, req.params.itemId))
@@ -173,7 +187,7 @@ const UpdatePackageBody = z.object({
 });
 
 router.get('/price-book/packages', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
+  const actor = requireAuthenticated(req, res);
   if (!actor) return;
 
   const packages = await db

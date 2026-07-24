@@ -241,6 +241,7 @@ describe('evaluate (protocol v2.1)', () => {
       'existing_conditions',
       'declaration',
       'summary',
+      'estimate',
       'submit',
     ]);
     expect(stepApplies('facets', flags)).toBe(false);

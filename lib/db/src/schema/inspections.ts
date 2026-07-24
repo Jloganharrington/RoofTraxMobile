@@ -74,6 +74,7 @@ export const CAPTURE_STAGES = [
   'existing_conditions',
   'declaration',
   'summary',
+  'estimate',
   'submit',
 ] as const;
 export type CaptureStage = (typeof CAPTURE_STAGES)[number];
@@ -260,6 +261,37 @@ export interface HomeownerFacts {
 // only). Derived values (roofSlopeCount, roofCovering, interiorAreasInspected,
 // temporaryRepairsCompleted, flashingsAndPenetrations) are computed by the
 // Brain from data the app already holds — never asked twice.
+// Advisory contractor estimate saved at the Estimate step. All money in
+// integer cents. Line rows snapshot the price-book item's description /
+// unit / unit price at save time so later price-book edits never rewrite
+// history; priceBookItemId is kept for traceability only (null for manual
+// lines).
+export interface EstimateLineItem {
+  priceBookItemId: string | null;
+  description: string;
+  unit: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  totalCents: number;
+  isAdder: boolean;
+}
+
+export interface InspectionEstimate {
+  /** Waste factor applied to measured roof squares (e.g. 10 = 10%). */
+  wastePercent: number;
+  /** The measurements the estimate was derived from, frozen at save time. */
+  measuredBasis: {
+    roofAreaSqft: number | null;
+    roofSquares: number | null;
+    wasteAdjustedSquares: number | null;
+    damagedSidingFacetCount: number;
+  };
+  lines: EstimateLineItem[];
+  subtotalCents: number;
+  note: string | null;
+  updatedAt: string;
+}
+
 export interface PropertyProfile {
   propertyType?: string | null; // single_family / townhome / condo / multi_family / commercial
   stories?: string | null; // '1' / '1.5' / '2' / '2.5' / '3+'
@@ -478,6 +510,12 @@ export const inspectionsTable = pgTable('inspections', {
   // AI-generated summary written by Claude Sonnet at the Summary step.
   // Persisted here so it survives app restarts and is available for the report.
   // Null until the inspector triggers generation for the first time.
+  // Advisory contractor estimate built at the Estimate step. Full-replace
+  // jsonb document: waste %, the measured basis it was derived from, and
+  // price-book line items with unit-price/total snapshots in integer cents
+  // (snapshots survive later price-book edits). Null until a rep saves one;
+  // never gates submit.
+  estimate: jsonb('estimate').$type<InspectionEstimate | null>().default(null),
   aiSummary: jsonb('ai_summary')
     .$type<{
       forensicSummary: string;
