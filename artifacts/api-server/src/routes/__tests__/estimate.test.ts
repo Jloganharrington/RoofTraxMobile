@@ -324,6 +324,26 @@ describe('estimate routes', () => {
 // Price book read access (field reps price estimates from the book)
 // ---------------------------------------------------------------------------
 
+describe('price book description generation authz', () => {
+  it('gates the AI description endpoint to admins and validates the body', async () => {
+    const unauth = await request(app).post('/api/price-book/generate-description').send({ name: 'Ridge cap' });
+    expect(unauth.status).toBe(401);
+
+    const rep = await request(app)
+      .post('/api/price-book/generate-description')
+      .set(auth(inspectorA.sid))
+      .send({ name: 'Ridge cap', unit: 'per LF' });
+    expect(rep.status).toBe(403);
+
+    const admin = await seedUser('desc-admin', 'admin', 'inspector_canvasser', companyA);
+    const bad = await request(app)
+      .post('/api/price-book/generate-description')
+      .set(auth(admin.sid))
+      .send({ name: '' });
+    expect(bad.status).toBe(400);
+  });
+});
+
 describe('price book read access', () => {
   it('lets a field rep list items and packages, but not write', async () => {
     const items = await request(app).get('/api/price-book/items').set(auth(inspectorA.sid));

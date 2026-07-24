@@ -23,6 +23,7 @@ import {
   useCreatePriceBookPackage,
   useUpdatePriceBookPackage,
   useDeletePriceBookPackage,
+  useGenerateItemDescription,
   type PriceBookItem,
   type PriceBookPackage,
   type PriceBookPackageItem,
@@ -96,6 +97,27 @@ function ItemForm({
   const [description, setDescription] = React.useState(initial.description);
   const [unitPrice, setUnitPrice] = React.useState(initial.unitPrice);
   const [unit, setUnit] = React.useState(initial.unit);
+  const generateDescription = useGenerateItemDescription();
+
+  const handleGenerate = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert('Name required', 'Enter the item name first so the description can be generated.');
+      return;
+    }
+    try {
+      const { description: generated } = await generateDescription.mutateAsync({
+        name: trimmedName,
+        unit: unit.trim() || null,
+      });
+      setDescription(generated);
+    } catch (err) {
+      Alert.alert(
+        'Generation failed',
+        err instanceof Error ? err.message : 'Could not generate a description. Please try again.',
+      );
+    }
+  };
 
   return (
     <View style={{ gap: 12 }}>
@@ -118,6 +140,32 @@ function ItemForm({
         numberOfLines={3}
         style={[s.input, { color: colors.foreground, borderColor: colors.border, minHeight: 72, textAlignVertical: 'top' }]}
       />
+      <Pressable
+        onPress={handleGenerate}
+        disabled={generateDescription.isPending || saving}
+        style={[
+          s.btn,
+          {
+            borderColor: colors.secondary,
+            borderWidth: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            alignSelf: 'flex-start',
+            opacity: generateDescription.isPending ? 0.6 : 1,
+          },
+        ]}
+      >
+        {generateDescription.isPending ? (
+          <ActivityIndicator size="small" color={colors.secondary} />
+        ) : (
+          <Icon name="zap" size={14} color={colors.secondary} />
+        )}
+        <Text style={{ color: colors.secondary, fontWeight: '600' }}>
+          {generateDescription.isPending ? 'Generating…' : 'Generate Description'}
+        </Text>
+      </Pressable>
 
       <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Unit Price *</Text>
       <TextInput

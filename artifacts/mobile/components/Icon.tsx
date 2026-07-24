@@ -48,7 +48,8 @@ export type IconName =
   | 'shield'
   | 'send'
   | 'alert-triangle'
-  | 'refresh-cw';
+  | 'refresh-cw'
+  | 'zap';
 
 type IconProps = {
   name: IconName;
@@ -309,6 +310,10 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
             {...strokeProps}
           />
         </>
+      )}
+
+      {name === 'zap' && (
+        <Path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" {...strokeProps} />
       )}
 
       {name === 'send' && (

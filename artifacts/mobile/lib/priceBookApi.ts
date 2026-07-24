@@ -116,6 +116,17 @@ export function useDeletePriceBookItem() {
   });
 }
 
+/** AI-generate a reusable standard-scope description from name + unit. */
+export function useGenerateItemDescription() {
+  return useMutation({
+    mutationFn: (data: { name: string; unit?: string | null }) =>
+      customFetch<{ description: string }>('/api/price-book/generate-description', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Package hooks
 // ---------------------------------------------------------------------------
