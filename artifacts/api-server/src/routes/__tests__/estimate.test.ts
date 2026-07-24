@@ -126,7 +126,7 @@ describe('estimate math', () => {
     expect(basis.wasteAdjustedSquares).toBeNull();
   });
 
-  it('rounds fractional waste math to 2 decimals', () => {
+  it('rounds waste-adjusted squares UP to the nearest 1/3 square', () => {
     const basis = computeMeasuredBasis({
       slopeAreasSqft: [1234.567],
       damagedSidingFacetCount: 0,
@@ -134,7 +134,18 @@ describe('estimate math', () => {
     });
     expect(basis.roofAreaSqft).toBe(1234.57);
     expect(basis.roofSquares).toBe(12.35);
-    expect(basis.wasteAdjustedSquares).toBe(14.2);
+    // 12.35 * 1.15 = 14.2025 → next third up = 14 1/3 → 14.33
+    expect(basis.wasteAdjustedSquares).toBe(14.33);
+  });
+
+  it('does not bump an exact multiple of 1/3 square', () => {
+    const basis = computeMeasuredBasis({
+      slopeAreasSqft: [2000],
+      damagedSidingFacetCount: 0,
+      wastePercent: 10,
+    });
+    // 20 * 1.10 = 22 exactly — already a whole-bundle figure.
+    expect(basis.wasteAdjustedSquares).toBe(22);
   });
 
   it('recomputes line totals and subtotal in integer cents', () => {
@@ -194,7 +205,8 @@ describe('estimate routes', () => {
     expect(put.body.estimate.lines[0].totalCents).toBe(722500);
     expect(put.body.estimate.measuredBasis.roofAreaSqft).toBe(1500);
     expect(put.body.estimate.measuredBasis.roofSquares).toBe(15);
-    expect(put.body.estimate.measuredBasis.wasteAdjustedSquares).toBe(16.5);
+    // 15 * 1.10 = 16.5 → rounds up to 16 2/3 (next 1/3-square bundle).
+    expect(put.body.estimate.measuredBasis.wasteAdjustedSquares).toBe(16.67);
     expect(put.body.estimate.note).toBe('Steep roof');
 
     const get = await request(app)

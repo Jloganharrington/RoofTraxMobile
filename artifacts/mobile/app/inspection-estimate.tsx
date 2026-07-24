@@ -133,8 +133,12 @@ export default function InspectionEstimateScreen() {
     const n = parseFloat(wasteText);
     return isFinite(n) && n >= 0 && n <= 100 ? n : null;
   }, [wasteText]);
+  // Rounds UP to the nearest 1/3 square (shingle bundle) — matches the
+  // server's computeMeasuredBasis math.
   const wasteAdjustedSquares =
-    measured && wastePercent != null ? round2(measured.squares * (1 + wastePercent / 100)) : null;
+    measured && wastePercent != null
+      ? round2(Math.ceil(measured.squares * (1 + wastePercent / 100) * 3 - 1e-9) / 3)
+      : null;
 
   // Load the stored estimate once.
   const loadEstimate = useCallback(async () => {
