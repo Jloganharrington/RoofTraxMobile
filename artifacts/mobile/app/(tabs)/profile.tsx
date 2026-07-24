@@ -543,6 +543,11 @@ export default function ProfileScreen() {
           {canManageLogo && (
             <AiSettingsCard companyId={companyId ?? ''} colors={colors} />
           )}
+
+          {/* Report Branding — super admin only */}
+          {role === 'super_admin' && (
+            <ReportBrandingCard companyId={companyId ?? ''} colors={colors} />
+          )}
         </AccordionSection>
       )}
 
@@ -828,6 +833,237 @@ function AiSettingsCard({
             </Pressable>
           </View>
         </>
+      )}
+    </View>
+  );
+}
+
+// ── Report Branding (super admin only) ─────────────────────────────────────
+// Company-wide color palette for the compiled forensic report. Applied at
+// preview time server-side, so changes affect all reports immediately.
+
+const REPORT_BRANDING_DEFAULT = {
+  headerColor: '#1a2744',
+  headerTextColor: '#ffffff',
+  accentColor: '#3b82f6',
+};
+
+const REPORT_BRANDING_PRESETS: Array<{ name: string; headerColor: string; headerTextColor: string; accentColor: string }> = [
+  { name: 'Classic Navy', ...REPORT_BRANDING_DEFAULT },
+  { name: 'Slate', headerColor: '#1f2937', headerTextColor: '#ffffff', accentColor: '#f59e0b' },
+  { name: 'Forest', headerColor: '#14532d', headerTextColor: '#ffffff', accentColor: '#22c55e' },
+  { name: 'Burgundy', headerColor: '#5f1a1a', headerTextColor: '#ffffff', accentColor: '#ef4444' },
+  { name: 'Charcoal', headerColor: '#111111', headerTextColor: '#ffffff', accentColor: '#9ca3af' },
+];
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+function ReportBrandingCard({
+  companyId,
+  colors,
+}: {
+  companyId: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [loaded, setLoaded] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [isCustom, setIsCustom] = React.useState(false); // true when a stored palette exists
+  const [headerColor, setHeaderColor] = React.useState(REPORT_BRANDING_DEFAULT.headerColor);
+  const [headerTextColor, setHeaderTextColor] = React.useState(REPORT_BRANDING_DEFAULT.headerTextColor);
+  const [accentColor, setAccentColor] = React.useState(REPORT_BRANDING_DEFAULT.accentColor);
+
+  React.useEffect(() => {
+    if (!companyId) return;
+    let active = true;
+    (async () => {
+      try {
+        const token = await getToken('auth_session_token');
+        const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/report-branding`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!active || !resp.ok) return;
+        const data = (await resp.json()) as {
+          branding: { headerColor: string; headerTextColor: string; accentColor: string } | null;
+        };
+        if (active && data.branding) {
+          setHeaderColor(data.branding.headerColor);
+          setHeaderTextColor(data.branding.headerTextColor);
+          setAccentColor(data.branding.accentColor);
+          setIsCustom(true);
+        }
+      } catch { /* non-critical */ } finally {
+        if (active) setLoaded(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [companyId]);
+
+  const allValid = HEX_RE.test(headerColor) && HEX_RE.test(headerTextColor) && HEX_RE.test(accentColor);
+
+  async function persist(
+    branding: { headerColor: string; headerTextColor: string; accentColor: string } | null,
+  ) {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/report-branding`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ branding }),
+      });
+      if (!resp.ok) {
+        const body = (await resp.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? 'Server error');
+      }
+      if (branding) {
+        setIsCustom(true);
+      } else {
+        setHeaderColor(REPORT_BRANDING_DEFAULT.headerColor);
+        setHeaderTextColor(REPORT_BRANDING_DEFAULT.headerTextColor);
+        setAccentColor(REPORT_BRANDING_DEFAULT.accentColor);
+        setIsCustom(false);
+      }
+      Alert.alert('Saved', 'Report colors updated. All report previews now use this palette.');
+    } catch (err) {
+      Alert.alert('Save failed', err instanceof Error ? err.message : 'Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const colorRow = (
+    label: string,
+    value: string,
+    setValue: (v: string) => void,
+  ) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Text style={{ color: colors.mutedForeground, fontSize: 12, width: 92 }}>{label}</Text>
+      <View
+        style={{
+          width: 26, height: 26, borderRadius: 6,
+          backgroundColor: HEX_RE.test(value) ? value : colors.muted,
+          borderWidth: 1, borderColor: colors.border,
+        }}
+      />
+      <TextInput
+        style={[
+          styles.smtpInput,
+          {
+            flex: 1, color: colors.foreground, borderColor: HEX_RE.test(value) ? colors.border : colors.destructive,
+            backgroundColor: colors.card, paddingVertical: 6, fontSize: 13,
+          },
+        ]}
+        value={value}
+        onChangeText={(t) => setValue(t.trim())}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="#RRGGBB"
+        placeholderTextColor={colors.mutedForeground}
+      />
+    </View>
+  );
+
+  return (
+    <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <View style={styles.sigHeader}>
+        <Icon name="droplet" size={16} color={colors.foreground} />
+        <Text style={[styles.sigTitle, { color: colors.foreground }]}>Report Branding</Text>
+        <View style={[styles.sigBadge, { backgroundColor: isCustom ? '#ecfdf5' : colors.muted }]}>
+          <Text style={[styles.sigBadgeText, { color: isCustom ? colors.success : colors.mutedForeground }]}>
+            {isCustom ? 'Custom palette' : 'Default'}
+          </Text>
+        </View>
+      </View>
+      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+        Color palette for compiled forensic reports. Changes apply immediately to every report preview,
+        including reports compiled earlier.
+      </Text>
+
+      {/* Live preview swatch — mimics the report cover + section title */}
+      <View style={{ borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+        <View style={{ backgroundColor: HEX_RE.test(headerColor) ? headerColor : REPORT_BRANDING_DEFAULT.headerColor, padding: 12 }}>
+          <Text style={{ color: HEX_RE.test(headerTextColor) ? headerTextColor : '#ffffff', fontWeight: '800', fontSize: 13 }}>
+            Forensic Inspection &amp; Repairability Report
+          </Text>
+        </View>
+        <View style={{ backgroundColor: '#ffffff', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 4, height: 16, backgroundColor: HEX_RE.test(accentColor) ? accentColor : REPORT_BRANDING_DEFAULT.accentColor }} />
+          <Text style={{ color: HEX_RE.test(headerColor) ? headerColor : REPORT_BRANDING_DEFAULT.headerColor, fontWeight: '800', fontSize: 11, letterSpacing: 0.7 }}>
+            1 — FORENSIC INSPECTION SUMMARY
+          </Text>
+        </View>
+      </View>
+
+      {/* Presets */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {REPORT_BRANDING_PRESETS.map((p) => {
+          const selected =
+            p.headerColor === headerColor && p.headerTextColor === headerTextColor && p.accentColor === accentColor;
+          return (
+            <Pressable
+              key={p.name}
+              onPress={() => {
+                setHeaderColor(p.headerColor);
+                setHeaderTextColor(p.headerTextColor);
+                setAccentColor(p.accentColor);
+              }}
+              style={{
+                borderWidth: selected ? 2 : 1,
+                borderColor: selected ? colors.primary : colors.border,
+                borderRadius: 8, padding: 8, alignItems: 'center', gap: 4, minWidth: 76,
+                backgroundColor: colors.card,
+              }}
+            >
+              <View style={{ flexDirection: 'row', gap: 3 }}>
+                <View style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: p.headerColor }} />
+                <View style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: p.accentColor }} />
+              </View>
+              <Text style={{ color: colors.foreground, fontSize: 11, fontWeight: '600' }}>{p.name}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* Per-color overrides */}
+      {colorRow('Header', headerColor, setHeaderColor)}
+      {colorRow('Header text', headerTextColor, setHeaderTextColor)}
+      {colorRow('Accent', accentColor, setAccentColor)}
+
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable
+          onPress={() => persist(null)}
+          disabled={saving || !loaded || !isCustom}
+          style={[
+            styles.sigButton,
+            {
+              flex: 1, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+              opacity: saving || !isCustom ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>Reset to default</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => persist({ headerColor, headerTextColor, accentColor })}
+          disabled={saving || !loaded || !allValid}
+          style={[
+            styles.sigButton,
+            { flex: 1, backgroundColor: colors.primary, opacity: saving || !allValid ? 0.5 : 1 },
+          ]}
+        >
+          <Text style={[styles.sigButtonText, { color: colors.primaryForeground }]}>
+            {saving ? 'Saving…' : 'Save palette'}
+          </Text>
+        </Pressable>
+      </View>
+      {!allValid && (
+        <Text style={{ color: colors.destructive, fontSize: 12 }}>
+          Colors must be #RRGGBB hex values.
+        </Text>
       )}
     </View>
   );

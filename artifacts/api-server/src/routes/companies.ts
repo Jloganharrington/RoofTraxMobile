@@ -3,6 +3,8 @@ import { companiesTable, db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
+import { isHexColor } from '../lib/reportTemplate';
+
 const router: IRouter = Router();
 
 // Uppercase alphanumeric, excluding visually ambiguous characters
@@ -173,6 +175,101 @@ router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Resp
     .where(eq(companiesTable.id, companyId));
 
   res.json({ ok: true, settings: newSettings });
+});
+
+// ── Report branding (forensic report color palette) ────────────────────────
+
+// GET /companies/:companyId/report-branding — returns the stored palette
+// (or null when the default palette is in use). Super admin only — this
+// setting is only surfaced in the super-admin settings UI.
+router.get('/companies/:companyId/report-branding', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+  if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
+    res.status(403).json({ error: 'Super admin role required' });
+    return;
+  }
+
+  const [company] = await db
+    .select({ reportBranding: companiesTable.reportBranding })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+
+  if (!company) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  res.json({ branding: company.reportBranding ?? null });
+});
+
+// PATCH /companies/:companyId/report-branding — set or clear the palette.
+// Super admin only. Colors are embedded into rendered report HTML, so only
+// strict #RRGGBB hex values are accepted; anything else is rejected.
+router.patch('/companies/:companyId/report-branding', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+  if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
+    res.status(403).json({ error: 'Super admin role required' });
+    return;
+  }
+
+  const { branding } = req.body as { branding?: unknown };
+
+  // null clears the palette (reset to default).
+  let newBranding: { headerColor: string; headerTextColor: string; accentColor: string } | null;
+  if (branding === null || branding === undefined) {
+    newBranding = null;
+  } else if (typeof branding === 'object') {
+    const b = branding as Record<string, unknown>;
+    if (!isHexColor(b.headerColor) || !isHexColor(b.headerTextColor) || !isHexColor(b.accentColor)) {
+      res.status(400).json({
+        error: 'headerColor, headerTextColor, and accentColor must all be #RRGGBB hex colors',
+      });
+      return;
+    }
+    newBranding = {
+      headerColor: (b.headerColor as string).toLowerCase(),
+      headerTextColor: (b.headerTextColor as string).toLowerCase(),
+      accentColor: (b.accentColor as string).toLowerCase(),
+    };
+  } else {
+    res.status(400).json({ error: 'branding must be an object or null' });
+    return;
+  }
+
+  await db
+    .update(companiesTable)
+    .set({ reportBranding: newBranding })
+    .where(eq(companiesTable.id, companyId));
+
+  res.json({ ok: true, branding: newBranding });
 });
 
 export default router;

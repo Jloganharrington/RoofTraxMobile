@@ -86,6 +86,7 @@ import type {
   PinListEnvelope,
   PreflightResultEnvelope,
   ProfileEnvelope,
+  ReportBrandingEnvelope,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
@@ -105,6 +106,8 @@ import type {
   UpdateProfileCredentialsInput,
   UpdateProfileSignatureInput,
   UpdateProfileSmtpInput,
+  UpdateReportBrandingInput,
+  UpdateReportBrandingResult,
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -694,6 +697,157 @@ export function useGetCompany<TData = Awaited<ReturnType<typeof getCompany>>, TE
 
 
 
+
+export const getGetCompanyReportBrandingUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/report-branding`
+}
+
+/**
+ * Super admin only. A null `branding` means the default palette is in use.
+ * @summary Get the company's forensic-report color palette
+ */
+export const getCompanyReportBranding = async (companyId: string, options?: RequestInit): Promise<ReportBrandingEnvelope> => {
+
+  return customFetch<ReportBrandingEnvelope>(getGetCompanyReportBrandingUrl(companyId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompanyReportBrandingQueryKey = (companyId: string,) => {
+    return [
+    `/api/companies/${companyId}/report-branding`
+    ] as const;
+    }
+
+
+export const getGetCompanyReportBrandingQueryOptions = <TData = Awaited<ReturnType<typeof getCompanyReportBranding>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompanyReportBranding>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompanyReportBrandingQueryKey(companyId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompanyReportBranding>>> = ({ signal }) => getCompanyReportBranding(companyId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompanyReportBranding>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompanyReportBrandingQueryResult = NonNullable<Awaited<ReturnType<typeof getCompanyReportBranding>>>
+export type GetCompanyReportBrandingQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the company's forensic-report color palette
+ */
+
+export function useGetCompanyReportBranding<TData = Awaited<ReturnType<typeof getCompanyReportBranding>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompanyReportBranding>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompanyReportBrandingQueryOptions(companyId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCompanyReportBrandingUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/report-branding`
+}
+
+/**
+ * Super admin only. Pass `branding: null` to reset to the default palette. All colors must be strict `#RRGGBB` hex — they are embedded into rendered report HTML.
+ * @summary Set or clear the company's forensic-report color palette
+ */
+export const updateCompanyReportBranding = async (companyId: string,
+    updateReportBrandingInput: UpdateReportBrandingInput, options?: RequestInit): Promise<UpdateReportBrandingResult> => {
+
+  return customFetch<UpdateReportBrandingResult>(getUpdateCompanyReportBrandingUrl(companyId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateReportBrandingInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCompanyReportBrandingMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyReportBranding>>, TError,{companyId: string;data: BodyType<UpdateReportBrandingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCompanyReportBranding>>, TError,{companyId: string;data: BodyType<UpdateReportBrandingInput>}, TContext> => {
+
+const mutationKey = ['updateCompanyReportBranding'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCompanyReportBranding>>, {companyId: string;data: BodyType<UpdateReportBrandingInput>}> = (props) => {
+          const {companyId,data} = props ?? {};
+
+          return  updateCompanyReportBranding(companyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCompanyReportBrandingMutationResult = NonNullable<Awaited<ReturnType<typeof updateCompanyReportBranding>>>
+    export type UpdateCompanyReportBrandingMutationBody = BodyType<UpdateReportBrandingInput>
+    export type UpdateCompanyReportBrandingMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Set or clear the company's forensic-report color palette
+ */
+export const useUpdateCompanyReportBranding = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyReportBranding>>, TError,{companyId: string;data: BodyType<UpdateReportBrandingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCompanyReportBranding>>,
+        TError,
+        {companyId: string;data: BodyType<UpdateReportBrandingInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCompanyReportBrandingMutationOptions(options));
+    }
 
 export const getExchangeMobileAuthorizationCodeUrl = () => {
 

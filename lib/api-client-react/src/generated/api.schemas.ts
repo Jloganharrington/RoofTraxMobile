@@ -47,6 +47,32 @@ export interface CompanyEnvelope {
   company: Company;
 }
 
+/**
+ * Forensic-report color palette. All values are strict
+ */
+export interface ReportBranding {
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  headerColor: string;
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  headerTextColor: string;
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  accentColor: string;
+}
+
+export interface ReportBrandingEnvelope {
+  branding: ReportBranding | null;
+}
+
+export interface UpdateReportBrandingInput {
+  /** Pass null to reset to the default palette. */
+  branding: ReportBranding | null;
+}
+
+export interface UpdateReportBrandingResult {
+  ok: boolean;
+  branding: ReportBranding | null;
+}
+
 export interface MobileTokenExchangeRequest {
   /** @minLength 1 */
   code: string;

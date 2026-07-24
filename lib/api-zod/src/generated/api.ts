@@ -112,6 +112,64 @@ export const GetCompanyResponse = zod.object({
 
 
 /**
+ * Super admin only. A null `branding` means the default palette is in use.
+ * @summary Get the company's forensic-report color palette
+ */
+export const GetCompanyReportBrandingParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const getCompanyReportBrandingResponseBrandingOneHeaderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const getCompanyReportBrandingResponseBrandingOneHeaderTextColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const getCompanyReportBrandingResponseBrandingOneAccentColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+
+
+export const GetCompanyReportBrandingResponse = zod.object({
+  "branding": zod.union([zod.object({
+  "headerColor": zod.string().regex(getCompanyReportBrandingResponseBrandingOneHeaderColorRegExp),
+  "headerTextColor": zod.string().regex(getCompanyReportBrandingResponseBrandingOneHeaderTextColorRegExp),
+  "accentColor": zod.string().regex(getCompanyReportBrandingResponseBrandingOneAccentColorRegExp)
+}).describe('Forensic-report color palette. All values are strict'),zod.null()])
+})
+
+
+/**
+ * Super admin only. Pass `branding: null` to reset to the default palette. All colors must be strict `#RRGGBB` hex — they are embedded into rendered report HTML.
+ * @summary Set or clear the company's forensic-report color palette
+ */
+export const UpdateCompanyReportBrandingParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const updateCompanyReportBrandingBodyBrandingOneHeaderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateCompanyReportBrandingBodyBrandingOneHeaderTextColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateCompanyReportBrandingBodyBrandingOneAccentColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+
+
+export const UpdateCompanyReportBrandingBody = zod.object({
+  "branding": zod.union([zod.object({
+  "headerColor": zod.string().regex(updateCompanyReportBrandingBodyBrandingOneHeaderColorRegExp),
+  "headerTextColor": zod.string().regex(updateCompanyReportBrandingBodyBrandingOneHeaderTextColorRegExp),
+  "accentColor": zod.string().regex(updateCompanyReportBrandingBodyBrandingOneAccentColorRegExp)
+}).describe('Forensic-report color palette. All values are strict'),zod.null()]).describe('Pass null to reset to the default palette.')
+})
+
+export const updateCompanyReportBrandingResponseBrandingOneHeaderColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateCompanyReportBrandingResponseBrandingOneHeaderTextColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const updateCompanyReportBrandingResponseBrandingOneAccentColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+
+
+export const UpdateCompanyReportBrandingResponse = zod.object({
+  "ok": zod.boolean(),
+  "branding": zod.union([zod.object({
+  "headerColor": zod.string().regex(updateCompanyReportBrandingResponseBrandingOneHeaderColorRegExp),
+  "headerTextColor": zod.string().regex(updateCompanyReportBrandingResponseBrandingOneHeaderTextColorRegExp),
+  "accentColor": zod.string().regex(updateCompanyReportBrandingResponseBrandingOneAccentColorRegExp)
+}).describe('Forensic-report color palette. All values are strict'),zod.null()])
+})
+
+
+/**
  * @summary Exchange a mobile OIDC code for a session token
  */
 

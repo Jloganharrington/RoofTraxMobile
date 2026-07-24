@@ -35,6 +35,16 @@ export const companiesTable = pgTable('companies', {
   aiSettings: jsonb('ai_settings')
     .$type<{ systemPrompt: string | null } | null>()
     .default(null),
+  // Company-level forensic-report color palette, set by a super_admin.
+  // Strict #RRGGBB hex values only (validated at write time and re-validated
+  // at render time). Null means the default palette.
+  reportBranding: jsonb('report_branding')
+    .$type<{
+      headerColor: string;
+      headerTextColor: string;
+      accentColor: string;
+    } | null>()
+    .default(null),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

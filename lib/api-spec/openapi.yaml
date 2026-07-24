@@ -180,6 +180,89 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/report-branding:
+    get:
+      tags: [Companies]
+      operationId: getCompanyReportBranding
+      summary: Get the company's forensic-report color palette
+      description: >-
+        Super admin only. A null `branding` means the default palette is in use.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current report branding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportBrandingEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Companies]
+      operationId: updateCompanyReportBranding
+      summary: Set or clear the company's forensic-report color palette
+      description: >-
+        Super admin only. Pass `branding: null` to reset to the default
+        palette. All colors must be strict `#RRGGBB` hex — they are embedded
+        into rendered report HTML.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReportBrandingInput"
+      responses:
+        "200":
+          description: Palette updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateReportBrandingResult"
+        "400":
+          description: Invalid color values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /mobile-auth/token-exchange:
     post:
       tags: [Auth]
@@ -2832,6 +2915,47 @@ components:
       properties:
         company:
           $ref: "#/components/schemas/Company"
+    ReportBranding:
+      type: object
+      description: Forensic-report color palette. All values are strict #RRGGBB hex.
+      required: [headerColor, headerTextColor, accentColor]
+      properties:
+        headerColor:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        headerTextColor:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+        accentColor:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+    ReportBrandingEnvelope:
+      type: object
+      required: [branding]
+      properties:
+        branding:
+          oneOf:
+            - $ref: "#/components/schemas/ReportBranding"
+            - type: "null"
+    UpdateReportBrandingInput:
+      type: object
+      required: [branding]
+      properties:
+        branding:
+          oneOf:
+            - $ref: "#/components/schemas/ReportBranding"
+            - type: "null"
+          description: Pass null to reset to the default palette.
+    UpdateReportBrandingResult:
+      type: object
+      required: [ok, branding]
+      properties:
+        ok:
+          type: boolean
+        branding:
+          oneOf:
+            - $ref: "#/components/schemas/ReportBranding"
+            - type: "null"
     MobileTokenExchangeRequest:
       type: object
       required: [code, code_verifier, redirect_uri, state]
