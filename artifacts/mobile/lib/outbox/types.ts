@@ -27,6 +27,7 @@ export type OutboxItemKind =
   | 'inspection.measurement'
   | 'inspection.interiorObservation'
   | 'inspection.submission'
+  | 'inspection.photoCaption'
   // Beta bug report — deliberately NOT an inspection write: it never gates
   // inspection submission and a dead bug report must never block the queue.
   | 'bug_report';
@@ -167,6 +168,16 @@ export interface InspectionTestSquareHitOutboxPayload {
 export interface InspectionSubmissionOutboxPayload {
   inspectionId: string;
   input: Record<string, unknown>;
+}
+
+/** Offline-first photo caption update. Merges a single `caption` key into
+ * `overlayJson` on an existing photo. A null caption removes the key.
+ * Replay is idempotent — re-applying the same caption converges on the same
+ * row; a 404 means the photo was deleted and is treated as success. */
+export interface InspectionPhotoCaptionOutboxPayload {
+  inspectionId: string;
+  photoId: string;
+  caption: string | null;
 }
 
 /** Beta bug report (flag-gated instrument). `id` is client-generated so a

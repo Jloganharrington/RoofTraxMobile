@@ -1952,6 +1952,68 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
   res.status(201).json(CreateInspectionPhotoResponse.parse({ photo }));
 });
 
+// Caption edits annotate existing evidence without altering forensic records,
+// so they are permitted on locked inspections (allowLocked behaviour).
+router.patch('/inspections/:inspectionId/photos/:photoId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const photoId = req.params.photoId as string;
+
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
+    res.status(403).json({ error: 'Not authorized to modify this inspection' });
+    return;
+  }
+
+  const parsed = z.object({ caption: z.string().max(200).nullable() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid caption payload' });
+    return;
+  }
+
+  const [photo] = await db
+    .select()
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.id, photoId),
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, actor.companyId),
+      ),
+    );
+
+  if (!photo) {
+    res.status(404).json({ error: 'Photo not found' });
+    return;
+  }
+
+  const currentOverlay = (photo.overlayJson as Record<string, unknown> | null) ?? {};
+  const newOverlay =
+    parsed.data.caption !== null
+      ? { ...currentOverlay, caption: parsed.data.caption }
+      : Object.fromEntries(Object.entries(currentOverlay).filter(([k]) => k !== 'caption'));
+
+  const [updated] = await db
+    .update(inspectionPhotosTable)
+    .set({ overlayJson: Object.keys(newOverlay).length > 0 ? newOverlay : null })
+    .where(
+      and(
+        eq(inspectionPhotosTable.id, photoId),
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, actor.companyId),
+      ),
+    )
+    .returning();
+
+  res.json(CreateInspectionPhotoResponse.parse({ photo: updated }));
+});
+
 router.post('/inspections/:inspectionId/measurements', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;

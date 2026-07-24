@@ -15,7 +15,8 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
-import { markNoCollateralDamage } from '@/lib/inspectionSync';
+import { markNoCollateralDamage, patchPhotoCaption } from '@/lib/inspectionSync';
+import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
 import { isCollateralWaived } from '@/lib/inspectionProtocolState';
 
 // Step 7 · Collateral & Ground Evidence (protocol v2). A simple labeled-photo
@@ -36,6 +37,7 @@ export default function InspectionCollateralScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [waiving, setWaiving] = React.useState(false);
+  const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -74,6 +76,17 @@ export default function InspectionCollateralScreen() {
       await markNoCollateralDamage(queryClient, id, user.id);
     } finally {
       setWaiving(false);
+    }
+  }
+
+  async function handleCaptionChange(photoId: string, caption: string | null) {
+    setSavingCaption(photoId);
+    try {
+      await patchPhotoCaption(queryClient, id, photoId, caption);
+    } catch {
+      // Optimistic update stays; next refetch reconciles.
+    } finally {
+      setSavingCaption(null);
     }
   }
 
@@ -123,6 +136,48 @@ export default function InspectionCollateralScreen() {
           </Text>
         </View>
       </View>
+
+      {/* Per-photo caption chips — shown for every captured collateral photo. */}
+      {collateralPhotos.length > 0 && (
+        <View style={{ gap: 8 }}>
+          <Text style={[styles.section, { color: colors.foreground }]}>Caption each photo</Text>
+          {collateralPhotos.map((photo, index) => {
+            const caption = photo.overlayJson
+              ? ((photo.overlayJson as Record<string, unknown>).caption as string | null) ?? null
+              : null;
+            return (
+              <View
+                key={photo.id}
+                style={[
+                  styles.photoRow,
+                  { backgroundColor: colors.card, borderColor: caption ? colors.success : colors.border },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }}>
+                  <Icon name="image" size={18} color={colors.mutedForeground} />
+                  <Text style={{ color: colors.foreground, fontWeight: '600', flex: 1 }}>
+                    Collateral photo {index + 1}
+                  </Text>
+                  {caption ? (
+                    <View style={[styles.captionBadge, { backgroundColor: colors.primary }]}>
+                      <Text style={{ color: colors.primaryForeground, fontSize: 10, fontWeight: '700' }}>
+                        {caption.split(' – ')[1] ?? caption}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <DamageCaptionChips
+                    value={caption}
+                    saving={savingCaption === photo.id}
+                    onChange={(c) => handleCaptionChange(photo.id, c)}
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       {(['roof', 'ground'] as const).map((section) => (
         <View key={section} style={{ gap: 8 }}>
@@ -243,6 +298,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  photoRow: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  captionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   modalCard: { width: '100%', borderRadius: 16, padding: 20, gap: 12 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },

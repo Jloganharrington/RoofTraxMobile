@@ -14,7 +14,8 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { ELEVATION_DIRECTIONS, type ElevationDirection } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { createElevation, patchInspection } from '@/lib/inspectionSync';
+import { createElevation, patchInspection, patchPhotoCaption } from '@/lib/inspectionSync';
+import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
 import {
   elevationWideCaptured,
   stageDeficiencies,
@@ -44,6 +45,7 @@ export default function InspectionElevationsScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
   const [busy, setBusy] = React.useState<ElevationDirection | null>(null);
+  const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -66,6 +68,17 @@ export default function InspectionElevationsScreen() {
   const doneCount = ELEVATION_DIRECTIONS.filter((d) => captured[d]).length;
   // The current step is the first direction still missing its wide photo.
   const currentDirection = ELEVATION_DIRECTIONS.find((d) => !captured[d]) ?? null;
+
+  async function handleCaptionChange(photoId: string, caption: string | null) {
+    setSavingCaption(photoId);
+    try {
+      await patchPhotoCaption(queryClient, id, photoId, caption);
+    } catch {
+      // Optimistic update stays; next refetch reconciles.
+    } finally {
+      setSavingCaption(null);
+    }
+  }
 
   async function walk(direction: ElevationDirection) {
     if (!inspection) return;
@@ -121,46 +134,69 @@ export default function InspectionElevationsScreen() {
         const isDone = captured[direction];
         const isCurrent = direction === currentDirection;
         const isBusy = busy === direction;
+        const elevation = (inspection.elevations ?? []).find((e) => e.direction === direction);
+        const photo = elevation
+          ? (inspection.photos ?? []).find(
+              (p) => p.subjectType === 'elevation' && p.subjectId === elevation.id,
+            )
+          : null;
+        const caption = photo?.overlayJson
+          ? ((photo.overlayJson as Record<string, unknown>).caption as string | null) ?? null
+          : null;
         return (
-          <Pressable
+          <View
             key={direction}
-            onPress={() => walk(direction)}
-            disabled={isBusy}
-            style={[
-              styles.row,
-              {
-                backgroundColor: colors.card,
-                borderColor: isCurrent ? colors.primary : colors.border,
-                borderWidth: isCurrent ? 2 : 1,
-              },
-            ]}
+            style={{
+              borderRadius: 14,
+              borderWidth: isCurrent ? 2 : 1,
+              borderColor: isCurrent ? colors.primary : colors.border,
+              overflow: 'hidden',
+            }}
           >
-            <View
-              style={[
-                styles.badge,
-                { backgroundColor: isDone ? colors.success : isCurrent ? colors.primary : colors.accent },
-              ]}
+            <Pressable
+              onPress={() => walk(direction)}
+              disabled={isBusy}
+              style={[styles.row, { backgroundColor: colors.card, borderRadius: 0, borderWidth: 0 }]}
             >
-              {isBusy ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Icon
-                  name={isDone ? 'check' : 'camera'}
-                  size={18}
-                  color={isDone || isCurrent ? '#fff' : colors.secondary}
+              <View
+                style={[
+                  styles.badge,
+                  { backgroundColor: isDone ? colors.success : isCurrent ? colors.primary : colors.accent },
+                ]}
+              >
+                {isBusy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Icon
+                    name={isDone ? 'check' : 'camera'}
+                    size={18}
+                    color={isDone || isCurrent ? '#fff' : colors.secondary}
+                  />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                  {index + 1}. {DIRECTION_LABELS[direction]} elevation
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                    {isDone ? 'Wide photo captured' : isCurrent ? 'Next — capture the wide photo' : 'Tap to capture'}
+                  </Text>
+                  <DamageCaptionBadge caption={caption} />
+                </View>
+              </View>
+              <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+            </Pressable>
+            {photo && isDone ? (
+              <View style={{ backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <DamageCaptionChips
+                  value={caption}
+                  saving={savingCaption === photo.id}
+                  onChange={(c) => handleCaptionChange(photo.id, c)}
                 />
-              )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                {index + 1}. {DIRECTION_LABELS[direction]} elevation
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                {isDone ? 'Wide photo captured' : isCurrent ? 'Next — capture the wide photo' : 'Tap to capture'}
-              </Text>
-            </View>
-            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-          </Pressable>
+              </View>
+            ) : null}
+          </View>
         );
       })}
 

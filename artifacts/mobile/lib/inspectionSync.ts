@@ -157,6 +157,39 @@ export async function attestInspection(
   void drainOutbox();
 }
 
+/**
+ * Updates the damage-classification caption on a single photo. Applies
+ * optimistically to the cache, then PATCHes the server. Caption edits are
+ * permitted on locked inspections (they annotate evidence, not the record).
+ * Throws on server error so the caller can handle/revert if needed.
+ */
+export async function patchPhotoCaption(
+  queryClient: QueryClient,
+  inspectionId: string,
+  photoId: string,
+  caption: string | null,
+): Promise<void> {
+  // Optimistic update — merge caption into the photo's overlayJson in cache.
+  patchCachedInspection(queryClient, inspectionId, (insp) => ({
+    ...insp,
+    photos: (insp.photos ?? []).map((p) => {
+      if (p.id !== photoId) return p;
+      const overlay = (p.overlayJson ?? {}) as Record<string, unknown>;
+      const newOverlay =
+        caption != null
+          ? { ...overlay, caption }
+          : Object.fromEntries(Object.entries(overlay).filter(([k]) => k !== 'caption'));
+      return {
+        ...p,
+        overlayJson: Object.keys(newOverlay).length > 0 ? newOverlay : null,
+      };
+    }),
+  }));
+
+  await enqueueOutboxItem('inspection.photoCaption', { inspectionId, photoId, caption });
+  void drainOutbox();
+}
+
 /** Mutates the cached inspection detail in place. No-op if the inspection
  * isn't cached yet (the caller is always on its detail screen, so it is). */
 function patchCachedInspection(

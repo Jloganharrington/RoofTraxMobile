@@ -51,6 +51,8 @@ import type {
 } from '@workspace/api-client-react';
 
 import { uploadFile } from '../upload';
+import { getApiBaseUrl } from '../api';
+import { getToken } from '../tokenStorage';
 import type {
   BugReportOutboxPayload,
   InspectionAttestationOutboxPayload,
@@ -58,6 +60,7 @@ import type {
   InspectionComponentDeleteOutboxPayload,
   InspectionComponentUpdateOutboxPayload,
   InspectionCreateOutboxPayload,
+  InspectionPhotoCaptionOutboxPayload,
   InspectionPhotoOutboxPayload,
   InspectionSidingFacetDeleteOutboxPayload,
   InspectionSidingFacetUpdateOutboxPayload,
@@ -329,6 +332,30 @@ async function syncBugReport(payloadJson: string): Promise<void> {
   } as unknown as CreateBugReportInput);
 }
 
+// Caption update is idempotent — re-applying the same caption converges on the
+// same row. A 404 means the photo was deleted after this item was queued;
+// treat it as success rather than blocking the queue permanently (dead status
+// would require manual intervention). The server PATCH merges caption into the
+// existing overlayJson rather than replacing it, so no other keys are lost.
+async function syncInspectionPhotoCaption(payloadJson: string): Promise<void> {
+  const payload: InspectionPhotoCaptionOutboxPayload = JSON.parse(payloadJson);
+  const apiBase = getApiBaseUrl();
+  const token = await getToken('auth_session_token');
+  const res = await fetch(
+    `${apiBase}/inspections/${payload.inspectionId}/photos/${payload.photoId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ caption: payload.caption }),
+    },
+  );
+  if (res.status === 404) return; // Photo gone — nothing to update, not an error.
+  if (!res.ok) throw new Error(`Photo caption sync failed: ${res.status}`);
+}
+
 // The submission is the last write in the queue for an inspection — it replays
 // after every child create it references (FIFO), so by the time it lands the
 // records and photo hashes in its manifest already exist server-side.
@@ -360,5 +387,6 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.measurement': syncInspectionMeasurement,
   'inspection.interiorObservation': syncInspectionInteriorObservation,
   'inspection.submission': syncInspectionSubmission,
+  'inspection.photoCaption': syncInspectionPhotoCaption,
   'bug_report': syncBugReport,
 };

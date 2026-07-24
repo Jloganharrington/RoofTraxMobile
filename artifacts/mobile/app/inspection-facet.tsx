@@ -18,8 +18,9 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { FACET_DAMAGE_TYPES, type FacetDamageType } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { createDamageInstance, deleteSlope, updateSlope } from '@/lib/inspectionSync';
+import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
+import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
 
 // Facet detail (Step 3 · Roof Facets, protocol v2). One roof plane: area,
 // material, pitch (rise:run — a pitch steeper than 8/12 triggers the steep
@@ -91,6 +92,8 @@ export default function InspectionFacetScreen() {
   const [calcL, setCalcL] = React.useState('');
   const [calcH, setCalcH] = React.useState('');
   const [removing, setRemoving] = React.useState(false);
+  // photoId of the photo currently having its caption saved, or null.
+  const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
   // Which tie-in option was just selected for the first time this session —
   // drives the one-time instructions + photo-capture prompt.
   const [tieInPrompt, setTieInPrompt] = React.useState<{ valley: boolean; hip_ridge: boolean }>({
@@ -232,6 +235,17 @@ export default function InspectionFacetScreen() {
   // rep can proceed to the next facet. Photos and toggles are already
   // persisted as they happen — this is the explicit "done with this facet"
   // exit, so nothing is lost by leaving.
+  async function handleCaptionChange(photoId: string, caption: string | null) {
+    setSavingCaption(photoId);
+    try {
+      await patchPhotoCaption(queryClient, id, photoId, caption);
+    } catch {
+      // Optimistic update stays in cache; next refetch reconciles with server.
+    } finally {
+      setSavingCaption(null);
+    }
+  }
+
   async function saveFacetAndReturn() {
     if (savingDetails) return;
     if (detailsDirty && detailsValid) {
@@ -441,38 +455,59 @@ export default function InspectionFacetScreen() {
 
         {damagePresent ? (
           <>
-            {damageRecords.map((record, index) => (
-              <Pressable
-                key={record.id}
-                onPress={() =>
-                  router.push({
-                    pathname: '/inspection-photo-capture',
-                    params: {
-                      inspectionId: id,
-                      subjectType: 'damage_instance',
-                      subjectId: record.id,
-                      roles: 'wide',
-                      stage: 'facets',
-                      title: `${facet.label} Damage ${index + 1}`,
-                    },
-                  })
-                }
-                style={[styles.row, { backgroundColor: colors.card, borderColor: record.photoCaptured ? colors.success : colors.border }]}
-              >
-                <View style={[styles.badge, { backgroundColor: record.photoCaptured ? colors.success : colors.accent }]}>
-                  <Icon name={record.photoCaptured ? 'check' : 'camera'} size={18} color={record.photoCaptured ? '#fff' : colors.secondary} />
+            {damageRecords.map((record, index) => {
+              const photo = (inspection.photos ?? []).find(
+                (p) => p.subjectType === 'damage_instance' && p.subjectId === record.id,
+              );
+              const caption = photo?.overlayJson
+                ? ((photo.overlayJson as Record<string, unknown>).caption as string | null) ?? null
+                : null;
+              return (
+                <View key={record.id} style={[{ borderRadius: 14, borderWidth: 1, overflow: 'hidden' }, { borderColor: record.photoCaptured ? colors.success : colors.border }]}>
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: '/inspection-photo-capture',
+                        params: {
+                          inspectionId: id,
+                          subjectType: 'damage_instance',
+                          subjectId: record.id,
+                          roles: 'wide',
+                          stage: 'facets',
+                          title: `${facet.label} Damage ${index + 1}`,
+                        },
+                      })
+                    }
+                    style={[styles.row, { backgroundColor: colors.card, borderRadius: 0, borderWidth: 0 }]}
+                  >
+                    <View style={[styles.badge, { backgroundColor: record.photoCaptured ? colors.success : colors.accent }]}>
+                      <Icon name={record.photoCaptured ? 'check' : 'camera'} size={18} color={record.photoCaptured ? '#fff' : colors.secondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                        {facet.label}-Damage {index + 1}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                          {record.photoCaptured ? 'Photo captured' : 'Photo required — tap to capture'}
+                        </Text>
+                        <DamageCaptionBadge caption={caption} />
+                      </View>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+                  </Pressable>
+                  {photo && record.photoCaptured ? (
+                    <View style={{ backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }}>
+                      <DamageCaptionChips
+                        value={caption}
+                        saving={savingCaption === photo.id}
+                        onChange={(c) => handleCaptionChange(photo.id, c)}
+                      />
+                    </View>
+                  ) : null}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                    {facet.label}-Damage {index + 1}
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                    {record.photoCaptured ? 'Photo captured' : 'Photo required — tap to capture'}
-                  </Text>
-                </View>
-                <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-              </Pressable>
-            ))}
+              );
+            })}
             <Pressable
               onPress={addDamageRecord}
               disabled={false}
