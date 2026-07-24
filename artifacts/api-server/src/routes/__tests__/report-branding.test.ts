@@ -193,6 +193,23 @@ describe('report template theming', () => {
     expect(html).toContain('--report-accent: #22c55e');
   });
 
+  it('renders the company logo in the cover when a logoUrl is passed', () => {
+    const html = buildReportHtml({ ...baseParams, logoUrl: 'https://signed.example/logo.png?sig=abc' });
+    expect(html).toContain('class="cover-logo"');
+    expect(html).toContain('src="https://signed.example/logo.png?sig=abc"');
+    expect(html).toContain('alt="Company logo"');
+  });
+
+  it('renders the cover without a logo element when logoUrl is absent', () => {
+    expect(buildReportHtml(baseParams)).not.toContain('<img class="cover-logo"');
+    expect(buildReportHtml({ ...baseParams, logoUrl: null })).not.toContain('<img class="cover-logo"');
+  });
+
+  it('escapes a hostile logo URL', () => {
+    const html = buildReportHtml({ ...baseParams, logoUrl: '"><script>alert(1)</script>' });
+    expect(html).not.toContain('<script>alert(1)</script>');
+  });
+
   it('resolveReportTheme falls back per-field on invalid/legacy data', () => {
     expect(resolveReportTheme(null)).toEqual(DEFAULT_REPORT_THEME);
     expect(resolveReportTheme({ headerColor: 'javascript:alert(1)' })).toEqual(DEFAULT_REPORT_THEME);

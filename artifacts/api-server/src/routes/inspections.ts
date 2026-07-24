@@ -3673,9 +3673,17 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
   // changes affect every preview immediately, even for reports compiled
   // before the change. Invalid/missing values fall back to the defaults.
   const [company] = await db
-    .select({ reportBranding: companiesTable.reportBranding })
+    .select({ reportBranding: companiesTable.reportBranding, logoUrl: companiesTable.logoUrl })
     .from(companiesTable)
     .where(eq(companiesTable.id, actor.companyId));
+
+  // Company logo (when uploaded) is stored as an authenticated
+  // /api/storage/objects/... URL — resolve it to a fresh signed URL at
+  // render time, never embedding a stored expiring URL. Best-effort: an
+  // unusable logo path just renders the cover without a logo.
+  const logoSignedUrl = company?.logoUrl
+    ? await tryGetPhotoSignedUrl(objectStorageService, company.logoUrl)
+    : null;
 
   const html = buildReportHtml({
     inspection: inspSnap,
@@ -3686,6 +3694,7 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
     attestationHtml: compiledData.attestationHtml,
     generatedAt: compiledData.generatedAt,
     theme: resolveReportTheme(company?.reportBranding),
+    logoUrl: logoSignedUrl,
   });
 
   res.json({ html });

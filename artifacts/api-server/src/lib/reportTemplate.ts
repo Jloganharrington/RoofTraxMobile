@@ -73,6 +73,12 @@ export function buildReportHtml(params: {
   attestationHtml: string;
   generatedAt: string;
   theme?: ReportTheme;
+  /**
+   * Freshly-signed (or otherwise render-time-resolved) company logo URL.
+   * Never a stored expiring URL — the caller must sign it per request.
+   * Null/undefined renders the cover exactly as before.
+   */
+  logoUrl?: string | null;
 }): string {
   const { inspection, inspector, aiSummary } = params;
   const theme = resolveReportTheme(params.theme);
@@ -92,7 +98,11 @@ export function buildReportHtml(params: {
   body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; font-size: 14px;
          line-height: 1.6; color: #1a1a1a; background: #fff; }
   .cover { background: var(--report-header-bg); color: var(--report-header-text); padding: 40px 32px 32px; }
+  .cover-title-row { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+  .cover-logo { height: 48px; max-width: 160px; object-fit: contain; flex-shrink: 0;
+                background: #fff; border-radius: 6px; padding: 4px 8px; }
   .cover h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 6px; }
+  .cover-title-row h1 { margin-bottom: 0; }
   .cover h2 { font-size: 15px; font-weight: 400; opacity: 0.8; margin-bottom: 24px; }
   .cover-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 13px; }
   .cover-meta dt { opacity: 0.65; font-weight: 600; text-transform: uppercase; font-size: 10px;
@@ -125,7 +135,9 @@ export function buildReportHtml(params: {
 <body>
 
 <div class="cover">
-  <h1>Forensic Inspection &amp; Repairability Report</h1>
+  ${params.logoUrl
+    ? `<div class="cover-title-row"><img class="cover-logo" src="${escHtml(params.logoUrl)}" alt="Company logo"><h1>Forensic Inspection &amp; Repairability Report</h1></div>`
+    : '<h1>Forensic Inspection &amp; Repairability Report</h1>'}
   <h2>${escHtml(inspection.address ?? 'Address not recorded')}</h2>
   <dl class="cover-meta">
     <dt>Claim #</dt><dd>${escHtml(inspection.claimNumber ?? '—')}</dd>
