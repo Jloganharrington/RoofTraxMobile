@@ -224,6 +224,30 @@ export class ObjectStorageService {
   }
 
   /**
+   * Try to resolve a stored object URL/path to a fresh short-lived signed URL.
+   * Normalizes legacy full-URL rows to `/objects/...` form; external URLs are
+   * returned as-is; anything unusable returns null (best-effort semantics).
+   */
+  async tryGetSignedObjectUrl(objectUrl: string, ttlSec: number = 900): Promise<string | null> {
+    try {
+      let objectPath = objectUrl;
+      if (objectPath.startsWith('http')) {
+        try {
+          const u = new URL(objectPath);
+          const m = u.pathname.match(/\/storage\/objects\/(.+)$/);
+          if (m) objectPath = `/objects/${m[1]}`;
+          else return objectPath; // external URL — use as-is
+        } catch {
+          return null;
+        }
+      }
+      return await this.getSignedDownloadUrl(objectPath, ttlSec);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Upload a Buffer directly from the server (no client presigned URL needed).
    * Uses the same signed-PUT-URL path that the client upload flow uses, so
    * it works in the Replit sidecar environment without direct GCS credentials.

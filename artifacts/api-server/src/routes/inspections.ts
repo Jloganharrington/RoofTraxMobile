@@ -3294,21 +3294,7 @@ async function tryGetPhotoSignedUrl(
   objSvc: ObjectStorageService,
   photoUrl: string,
 ): Promise<string | null> {
-  try {
-    // Normalize legacy full-URL rows to /objects/... format.
-    let objectPath = photoUrl;
-    if (objectPath.startsWith('http')) {
-      try {
-        const u = new URL(objectPath);
-        const m = u.pathname.match(/\/storage\/objects\/(.+)$/);
-        if (m) objectPath = `/objects/${m[1]}`;
-        else return objectPath; // external URL — use as-is
-      } catch { return null; }
-    }
-    return await objSvc.getSignedDownloadUrl(objectPath, 900); // 15-min TTL
-  } catch {
-    return null;
-  }
+  return objSvc.tryGetSignedObjectUrl(photoUrl, 900); // 15-min TTL
 }
 
 // POST /inspections/:inspectionId/report/compile

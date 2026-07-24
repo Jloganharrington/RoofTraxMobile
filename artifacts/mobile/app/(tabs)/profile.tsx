@@ -18,6 +18,7 @@ import { Icon } from '@/components/Icon';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
+import { WebView } from 'react-native-webview';
 import {
   getGetMyProfileQueryKey,
   useListPins,
@@ -871,6 +872,36 @@ function ReportBrandingCard({
   const [headerColor, setHeaderColor] = React.useState(REPORT_BRANDING_DEFAULT.headerColor);
   const [headerTextColor, setHeaderTextColor] = React.useState(REPORT_BRANDING_DEFAULT.headerTextColor);
   const [accentColor, setAccentColor] = React.useState(REPORT_BRANDING_DEFAULT.accentColor);
+  const [previewVisible, setPreviewVisible] = React.useState(false);
+  const [previewHtml, setPreviewHtml] = React.useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+
+  // Fetch a server-rendered sample report using the CURRENT (possibly
+  // unsaved) colors so admins see exactly what a compiled report will look
+  // like — including the signed company logo.
+  async function openPreview() {
+    if (previewLoading) return;
+    setPreviewLoading(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const qs = new URLSearchParams({ headerColor, headerTextColor, accentColor }).toString();
+      const resp = await fetch(
+        `${getApiBaseUrl()}/companies/${companyId}/report-branding/preview?${qs}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!resp.ok) {
+        const body = (await resp.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? 'Server error');
+      }
+      const data = (await resp.json()) as { html: string };
+      setPreviewHtml(data.html);
+      setPreviewVisible(true);
+    } catch (err) {
+      Alert.alert('Preview failed', err instanceof Error ? err.message : 'Check your connection and try again.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   React.useEffect(() => {
     if (!companyId) return;
@@ -1065,6 +1096,65 @@ function ReportBrandingCard({
           Colors must be #RRGGBB hex values.
         </Text>
       )}
+
+      {/* Sample report preview — server-rendered with current colors + logo */}
+      <Pressable
+        onPress={openPreview}
+        disabled={previewLoading || !loaded || !allValid}
+        style={[
+          styles.sigButton,
+          {
+            backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+            opacity: previewLoading || !allValid ? 0.5 : 1,
+            flexDirection: 'row', gap: 6, justifyContent: 'center',
+          },
+        ]}
+      >
+        <Icon name="file-text" size={15} color={colors.foreground} />
+        <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
+          {previewLoading ? 'Loading preview…' : 'Preview sample report'}
+        </Text>
+      </Pressable>
+
+      <Modal
+        visible={previewVisible}
+        animationType="slide"
+        onRequestClose={() => setPreviewVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <View
+            style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 56 : 16, paddingBottom: 12,
+              borderBottomWidth: 1, borderBottomColor: colors.border,
+            }}
+          >
+            <Text style={{ color: colors.foreground, fontWeight: '800', fontSize: 16 }}>
+              Sample Report Preview
+            </Text>
+            <Pressable onPress={() => setPreviewVisible(false)} hitSlop={12}>
+              <Icon name="x" size={22} color={colors.foreground} />
+            </Pressable>
+          </View>
+          {previewHtml ? (
+            <WebView
+              originWhitelist={['*']}
+              source={{ html: previewHtml }}
+              style={{ flex: 1 }}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              )}
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }

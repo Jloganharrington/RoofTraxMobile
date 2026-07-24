@@ -64,6 +64,59 @@ export function resolveReportTheme(branding: unknown): ReportTheme {
  * `theme` colors are injected as CSS custom properties on :root; when no
  * theme is provided the report renders identically to the original design.
  */
+/**
+ * Render a sample forensic report with placeholder data, styled with the
+ * given theme and (optionally) a freshly-signed company logo URL. Used by the
+ * branding-preview endpoint so a super admin can see their palette + logo on
+ * a realistic report cover without compiling a real inspection.
+ *
+ * Reuses buildReportHtml so the preview can never drift from the real
+ * report's markup or styling.
+ */
+export function buildSampleReportHtml(params: {
+  theme?: ReportTheme;
+  logoUrl?: string | null;
+  companyName?: string | null;
+}): string {
+  const now = new Date().toISOString();
+  const sampleInspection = {
+    id: 'SAMPLE-PREVIEW',
+    address: '1234 Maple Street, Springfield, IL 62704',
+    claimNumber: 'CLM-2026-004821',
+    policyNumber: 'HO-88213467',
+    insuredName: 'Jordan Example',
+    carrierName: 'Acme Mutual Insurance',
+    dateOfLoss: '2026-06-14',
+  } as Parameters<typeof buildReportHtml>[0]['inspection'];
+
+  const company = params.companyName?.trim() || 'your company';
+  return buildReportHtml({
+    inspection: sampleInspection,
+    inspector: { name: 'Sam Inspector', email: null },
+    aiSummary: {
+      forensicSummary:
+        'This is a sample report generated to preview your company branding. ' +
+        'The colors and logo shown here are exactly how they will appear on compiled forensic reports for ' +
+        company +
+        '.\nActual reports include the full AI-generated forensic inspection summary in this section.',
+      repairabilityText:
+        'Sample repairability summary. Actual reports include the AI-generated repairability narrative here.',
+    },
+    propertyDetailsHtml:
+      '<table class="detail-table"><tr><th>Attribute</th><th>Value</th></tr>' +
+      '<tr><td>Roof type</td><td>Asphalt shingle (sample)</td></tr>' +
+      '<tr><td>Stories</td><td>2</td></tr></table>',
+    photoSectionsHtml:
+      '<div class="photo-group"><div class="photo-group-title">Sample photo group</div>' +
+      '<p style="color:#888;font-size:13px">Photo evidence from the inspection appears here on real reports.</p></div>',
+    attestationHtml:
+      '<p>Sample inspector attestation text. On real reports this section contains the signed inspector attestation.</p>',
+    generatedAt: now,
+    theme: params.theme,
+    logoUrl: params.logoUrl,
+  });
+}
+
 export function buildReportHtml(params: {
   inspection: typeof inspectionsTable.$inferSelect;
   inspector: { name: string; email: string | null };

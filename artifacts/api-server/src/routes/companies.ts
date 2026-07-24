@@ -3,7 +3,10 @@ import { companiesTable, db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { isHexColor } from '../lib/reportTemplate';
+import { ObjectStorageService } from '../lib/objectStorage';
+import { buildSampleReportHtml, isHexColor, resolveReportTheme } from '../lib/reportTemplate';
+
+const objectStorageService = new ObjectStorageService();
 
 const router: IRouter = Router();
 
@@ -271,5 +274,79 @@ router.patch('/companies/:companyId/report-branding', async (req: Request, res: 
 
   res.json({ ok: true, branding: newBranding });
 });
+
+// GET /companies/:companyId/report-branding/preview — render a sample report
+// styled with the company's CURRENT branding (palette + freshly-signed logo).
+// Optional headerColor/headerTextColor/accentColor query params override the
+// stored palette so admins can preview unsaved color tweaks. Super admin only,
+// matching the other report-branding routes.
+router.get(
+  '/companies/:companyId/report-branding/preview',
+  async (req: Request, res: Response) => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (req.user.companyId !== companyId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    const [actorProfile] = await db
+      .select({ role: userProfilesTable.role })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, req.user.id));
+    if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
+      res.status(403).json({ error: 'Super admin role required' });
+      return;
+    }
+
+    const [company] = await db
+      .select({
+        name: companiesTable.name,
+        reportBranding: companiesTable.reportBranding,
+        logoUrl: companiesTable.logoUrl,
+      })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, companyId));
+
+    if (!company) {
+      res.status(404).json({ error: 'Company not found' });
+      return;
+    }
+
+    // Start from the stored palette, then apply any query-param overrides so
+    // unsaved color edits can be previewed. Each override must be a strict
+    // #RRGGBB hex value — anything else is rejected (these values are
+    // embedded into rendered HTML).
+    const stored = resolveReportTheme(company.reportBranding);
+    const overrides: Partial<Record<'headerColor' | 'headerTextColor' | 'accentColor', string>> = {};
+    for (const key of ['headerColor', 'headerTextColor', 'accentColor'] as const) {
+      const raw = req.query[key];
+      if (raw === undefined) continue;
+      if (!isHexColor(raw)) {
+        res.status(400).json({ error: `${key} must be a #RRGGBB hex color` });
+        return;
+      }
+      overrides[key] = raw.toLowerCase();
+    }
+
+    // Sign the logo fresh for this render — never a stored expiring URL.
+    // Best-effort: an unusable logo path just renders the cover without one.
+    const logoSignedUrl = company.logoUrl
+      ? await objectStorageService.tryGetSignedObjectUrl(company.logoUrl, 900)
+      : null;
+
+    const html = buildSampleReportHtml({
+      theme: { ...stored, ...overrides },
+      logoUrl: logoSignedUrl,
+      companyName: company.name,
+    });
+
+    res.json({ html });
+  },
+);
 
 export default router;

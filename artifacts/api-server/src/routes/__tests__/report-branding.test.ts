@@ -166,6 +166,73 @@ describe('report-branding routes', () => {
   });
 });
 
+describe('branding sample preview route', () => {
+  const previewPath = (companyId: string) => `/api/companies/${companyId}/report-branding/preview`;
+
+  it('requires auth and super_admin role', async () => {
+    const anon = await request(app).get(previewPath(a.companyId));
+    expect(anon.status).toBe(401);
+    for (const sid of [a.adminSid, a.repSid]) {
+      const res = await request(app).get(previewPath(a.companyId)).set(auth(sid));
+      expect(res.status).toBe(403);
+    }
+    const cross = await request(app).get(previewPath(a.companyId)).set(auth(b.superSid));
+    expect(cross.status).toBe(403);
+  });
+
+  it('renders a sample report with the stored palette and freshly-signed logo', async () => {
+    await db
+      .update(companiesTable)
+      .set({ reportBranding: VALID, logoUrl: '/objects/test/logo.png' })
+      .where(eq(companiesTable.id, a.companyId));
+    const signSpy = vi
+      .spyOn(ObjectStorageService.prototype, 'getSignedDownloadUrl')
+      .mockResolvedValue('https://signed.example.test/logo.png?sig=fresh');
+    try {
+      const res = await request(app).get(previewPath(a.companyId)).set(auth(a.superSid));
+      expect(res.status).toBe(200);
+      const html = res.body.html as string;
+      expect(html).toContain(`--report-header-bg: ${VALID.headerColor}`);
+      expect(html).toContain(`--report-accent: ${VALID.accentColor}`);
+      expect(html).toContain('class="cover-logo"');
+      expect(html).toContain('https://signed.example.test/logo.png?sig=fresh');
+      expect(html).toContain('Forensic Inspection &amp; Repairability Report');
+      // Sample content, not real inspection data.
+      expect(html).toContain('SAMPLE-PREVIEW');
+    } finally {
+      signSpy.mockRestore();
+      await db
+        .update(companiesTable)
+        .set({ reportBranding: null, logoUrl: null })
+        .where(eq(companiesTable.id, a.companyId));
+    }
+  });
+
+  it('applies valid query-param color overrides and rejects invalid ones', async () => {
+    const ok = await request(app)
+      .get(`${previewPath(a.companyId)}?headerColor=%23111111&accentColor=%23FF00AA`)
+      .set(auth(a.superSid));
+    expect(ok.status).toBe(200);
+    expect(ok.body.html).toContain('--report-header-bg: #111111');
+    expect(ok.body.html).toContain('--report-accent: #ff00aa');
+    // Non-overridden field falls back to default.
+    expect(ok.body.html).toContain('--report-header-text: #ffffff');
+
+    for (const bad of ['red', '%23fff', '%23123456%3B%7D']) {
+      const res = await request(app)
+        .get(`${previewPath(a.companyId)}?headerColor=${bad}`)
+        .set(auth(a.superSid));
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('renders without a logo when none is stored', async () => {
+    const res = await request(app).get(previewPath(a.companyId)).set(auth(a.superSid));
+    expect(res.status).toBe(200);
+    expect(res.body.html).not.toContain('<img class="cover-logo"');
+  });
+});
+
 describe('report template theming', () => {
   const baseParams = {
     inspection: {
