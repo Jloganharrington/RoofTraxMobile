@@ -3540,16 +3540,6 @@ export const ListScheduledInspectionsResponse = zod.object({
 
 
 /**
- * @summary Manually re-trigger Brain delivery for a submitted inspection (super_admin only). Resets a failed or stuck delivery back to pending and fires an immediate attempt — the same idempotent POST the courier worker would send. Safe to call on an already-delivered inspection (returns 204, no-ops the delivery).
- */
-export const RedeliverInspectionParams = zod.object({
-  "inspectionId": zod.coerce.string()
-})
-
-export const RedeliverInspectionResponse = zod.void()
-
-
-/**
  * @summary Re-run the shared protocol gate server-side (M-F / F1) so the inspector can resolve deficiencies while still on-site. Authoritative — the server hydrates the record and runs the SAME lib/protocol evaluate() the mobile readiness screen runs.
  */
 export const PreflightInspectionParams = zod.object({
@@ -3573,7 +3563,7 @@ export const PreflightInspectionResponse = zod.object({
 
 
 /**
- * @summary Poll an inspection's submission status and package receipt (M-F / F3). When the Brain courier is configured and the submission has been delivered, the envelope carries the Brain's real package status; if the Brain is unreachable the app's local state is returned with the Brain portion marked unavailable — this call never fails on Brain outage.
+ * @summary Poll an inspection's submission status and package receipt (M-F / F3). Returns the app's local intake state: submission status, lock time, manifest, and a receipt with verified record/photo counts.
  */
 export const GetInspectionStatusParams = zod.object({
   "inspectionId": zod.coerce.string()
@@ -3627,14 +3617,7 @@ export const GetInspectionStatusResponse = zod.object({
   "verifiedPhotoCount": zod.number(),
   "recordCount": zod.number(),
   "generatedAtUtc": zod.coerce.date()
-}).describe('STUB receipt (M-F \/ F3). The standalone Brain that renders the real package does not exist yet; this is a clearly-labeled placeholder that reports what the intake verified, never a fabricated deliverable.'),zod.null()]),
-  "brain": zod.object({
-  "available": zod.boolean().describe('Whether the Brain was reachable when this status was assembled.'),
-  "deliveryStatus": zod.union([zod.literal('pending'),zod.literal('delivered'),zod.literal('failed'),zod.literal(null)]).nullable(),
-  "brainSubmissionId": zod.string().nullable(),
-  "lastError": zod.string().nullable(),
-  "status": zod.union([zod.literal('received'),zod.literal('validating'),zod.literal('generating'),zod.literal('package_ready'),zod.literal('rejected'),zod.literal('generation_failed'),zod.literal(null)]).nullable()
-}).describe('App→Brain delivery + package state. `deliveryStatus` is the app\'s own courier state (null when the courier is disabled or the record predates it). `status` is the Brain\'s package status, present only when the Brain was reachable (`available: true`).')
+}).describe('STUB receipt (M-F \/ F3). The standalone Brain that renders the real package does not exist yet; this is a clearly-labeled placeholder that reports what the intake verified, never a fabricated deliverable.'),zod.null()])
 })
 
 

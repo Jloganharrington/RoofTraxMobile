@@ -92,11 +92,6 @@ import {
 } from '../lib/inspectionProtocolState';
 import { getCompanyCrmConfig } from '../lib/crm';
 import { computeLines, computeMeasuredBasis } from '../lib/estimate';
-import {
-  deliverInspectionToBrain,
-  getBrainConfig,
-  machineTokenForCompany,
-} from '../lib/brainCourier';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 
@@ -2336,69 +2331,17 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
     },
   };
 
-  // Queue Brain delivery atomically with the lock when the courier is
-  // enabled; a background attempt fires after the response and a worker
-  // retries failures. Courier failure never fails the rep's submit.
-  const courierEnabled = !!getBrainConfig();
   const [updated] = await db
     .update(inspectionsTable)
     .set({
       status: 'submitted',
       submissionManifest: manifestToStore,
       lockedAt: new Date(),
-      ...(courierEnabled ? { brainDeliveryStatus: 'pending' as const } : {}),
     })
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
 
   res.json(SubmitInspectionResponse.parse({ inspection: updated }));
-
-  if (courierEnabled) {
-    void deliverInspectionToBrain(inspectionId).catch((err) =>
-      req.log.error({ err, inspectionId }, 'Brain delivery kickoff failed'),
-    );
-  }
-});
-
-// Manual redeliver — lets a super admin immediately re-trigger Brain delivery
-// for a submitted inspection without waiting for the backoff worker. Safe to
-// call on an already-delivered inspection (no-ops). Resets failed/stuck
-// deliveries to 'pending' and fires an async attempt.
-router.post('/inspections/:inspectionId/redeliver', async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-
-  if (actor.role !== 'super_admin') {
-    res.status(403).json({ error: 'Only super admins may manually trigger redelivery' });
-    return;
-  }
-
-  if (!getBrainConfig()) {
-    res.status(403).json({ error: 'Brain courier is not configured on this server' });
-    return;
-  }
-
-  const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection || !inspection.lockedAt) {
-    res.status(404).json({ error: 'Inspection not found or not yet submitted' });
-    return;
-  }
-
-  // Reset to pending so the row is eligible for the worker and the immediate
-  // attempt below. Clear the last error so stale messages don't linger.
-  await db
-    .update(inspectionsTable)
-    .set({ brainDeliveryStatus: 'pending', brainLastError: null })
-    .where(eq(inspectionsTable.id, inspectionId));
-
-  res.status(204).end();
-
-  // Fire an immediate attempt in the background — same function the worker
-  // calls, so backoff / idempotency guarantees all apply.
-  void deliverInspectionToBrain(inspectionId).catch((err) =>
-    req.log.error({ err, inspectionId }, 'Manual redeliver attempt failed'),
-  );
 });
 
 // M-F (F1) — Pre-flight. Re-runs the shared gate server-side so the inspector
@@ -2468,78 +2411,17 @@ router.get('/inspections/:inspectionId/status', async (req: Request, res: Respon
     : 0;
   const verifiedPhotoCount = manifest?.photoHashes?.length ?? 0;
 
-  // Return path (§6): when the courier is enabled and this submission was
-  // delivered, ask the Brain for the real package status. If the Brain is
-  // unreachable, return the app's own local state with the Brain portion
-  // marked unavailable — NEVER fail this call, it is the rep's only
-  // visibility.
-  const config = getBrainConfig();
-  const machineToken = config ? machineTokenForCompany(config, inspection.companyId) : null;
-  let brainAvailable = false;
-  let brainStatus:
-    | 'received'
-    | 'validating'
-    | 'generating'
-    | 'package_ready'
-    | 'rejected'
-    | 'generation_failed'
-    | null = null;
-  const KNOWN_BRAIN_STATUSES = [
-    'received',
-    'validating',
-    'generating',
-    'package_ready',
-    'rejected',
-    'generation_failed',
-  ] as const;
-  if (config && machineToken && inspection.brainSubmissionId) {
-    try {
-      const response = await fetch(
-        `${config.baseUrl}/submissions/${encodeURIComponent(inspection.brainSubmissionId)}/status`,
-        {
-          headers: { Authorization: `Bearer ${machineToken}` },
-          signal: AbortSignal.timeout(5_000),
-        },
-      );
-      if (response.ok) {
-        const body = (await response.json()) as { status?: string };
-        // Only accept statuses this contract knows; an unknown value from a
-        // newer Brain degrades to "unavailable" rather than a 500 at parse.
-        const known = KNOWN_BRAIN_STATUSES.find((s) => s === body.status);
-        if (known) {
-          brainAvailable = true;
-          brainStatus = known;
-        }
-      }
-    } catch (error) {
-      req.log.warn(
-        { err: error instanceof Error ? error.message : String(error), inspectionId },
-        'Brain status fetch failed; returning local state',
-      );
-    }
-  }
-
   const receipt = isSubmitted
-    ? brainStatus
-      ? {
-          stage: 'validated' as const,
-          label: 'Package status',
-          message: `Brain package status: ${brainStatus}`,
-          isStub: false,
-          verifiedPhotoCount,
-          recordCount,
-          generatedAtUtc: new Date().toISOString(),
-        }
-      : {
-          stage: 'validated' as const,
-          label: 'Received & validated',
-          message:
-            'The inspection package was received and its evidence verified at intake. Package rendering status from the Brain is not available yet.',
-          isStub: true,
-          verifiedPhotoCount,
-          recordCount,
-          generatedAtUtc: new Date().toISOString(),
-        }
+    ? {
+        stage: 'validated' as const,
+        label: 'Received & validated',
+        message:
+          'The inspection package was received and its evidence verified at intake.',
+        isStub: true,
+        verifiedPhotoCount,
+        recordCount,
+        generatedAtUtc: new Date().toISOString(),
+      }
     : null;
 
   res.json(
@@ -2548,13 +2430,6 @@ router.get('/inspections/:inspectionId/status', async (req: Request, res: Respon
       lockedAt: inspection.lockedAt ? inspection.lockedAt.toISOString() : null,
       submissionManifest: manifest,
       receipt,
-      brain: {
-        available: brainAvailable,
-        deliveryStatus: inspection.brainDeliveryStatus ?? null,
-        brainSubmissionId: inspection.brainSubmissionId ?? null,
-        lastError: inspection.brainLastError ?? null,
-        status: brainStatus,
-      },
     }),
   );
 });

@@ -1,5 +1,4 @@
 import app from "./app";
-import { logBrainCourierStatus, startBrainCourierWorker } from "./lib/brainCourier";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -23,9 +22,4 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
-
-  // App → Brain courier: validated at boot alongside the existing env
-  // checks. Absent config disables the courier with a log, never a crash.
-  logBrainCourierStatus();
-  startBrainCourierWorker();
 });

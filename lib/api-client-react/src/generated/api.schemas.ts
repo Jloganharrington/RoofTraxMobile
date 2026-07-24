@@ -2117,56 +2117,12 @@ export interface PackageReceipt {
   generatedAtUtc: string;
 }
 
-/**
- * @nullable
- */
-export type BrainStatusDeliveryStatus = typeof BrainStatusDeliveryStatus[keyof typeof BrainStatusDeliveryStatus] | null;
-
-
-export const BrainStatusDeliveryStatus = {
-  pending: 'pending',
-  delivered: 'delivered',
-  failed: 'failed',
-} as const;
-
-/**
- * @nullable
- */
-export type BrainStatusStatus = typeof BrainStatusStatus[keyof typeof BrainStatusStatus] | null;
-
-
-export const BrainStatusStatus = {
-  received: 'received',
-  validating: 'validating',
-  generating: 'generating',
-  package_ready: 'package_ready',
-  rejected: 'rejected',
-  generation_failed: 'generation_failed',
-} as const;
-
-/**
- * App→Brain delivery + package state. `deliveryStatus` is the app's own courier state (null when the courier is disabled or the record predates it). `status` is the Brain's package status, present only when the Brain was reachable (`available: true`).
- */
-export interface BrainStatus {
-  /** Whether the Brain was reachable when this status was assembled. */
-  available: boolean;
-  /** @nullable */
-  deliveryStatus: BrainStatusDeliveryStatus;
-  /** @nullable */
-  brainSubmissionId: string | null;
-  /** @nullable */
-  lastError: string | null;
-  /** @nullable */
-  status: BrainStatusStatus;
-}
-
 export interface InspectionStatusEnvelope {
   status: InspectionStatus;
   /** @nullable */
   lockedAt: string | null;
   submissionManifest: SubmissionManifestV1 | null;
   receipt: PackageReceipt | null;
-  brain: BrainStatus;
 }
 
 /**

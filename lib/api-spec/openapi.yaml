@@ -2243,43 +2243,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
-  /inspections/{inspectionId}/redeliver:
-    post:
-      tags: [Inspections]
-      operationId: redeliverInspection
-      summary: >-
-        Manually re-trigger Brain delivery for a submitted inspection
-        (super_admin only). Resets a failed or stuck delivery back to pending
-        and fires an immediate attempt — the same idempotent POST the courier
-        worker would send. Safe to call on an already-delivered inspection
-        (returns 204, no-ops the delivery).
-      parameters:
-        - name: inspectionId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Redeliver queued (or inspection already delivered — no-op).
-        "401":
-          description: Not authenticated.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Not authorized (super_admin required or courier not configured).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "404":
-          description: Inspection not found or not yet submitted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
   /inspections/{inspectionId}/preflight:
     post:
       tags: [Inspections]
@@ -2327,10 +2290,8 @@ paths:
       operationId: getInspectionStatus
       summary: >-
         Poll an inspection's submission status and package receipt (M-F / F3).
-        When the Brain courier is configured and the submission has been
-        delivered, the envelope carries the Brain's real package status; if the
-        Brain is unreachable the app's local state is returned with the Brain
-        portion marked unavailable — this call never fails on Brain outage.
+        Returns the app's local intake state: submission status, lock time,
+        manifest, and a receipt with verified record/photo counts.
       parameters:
         - name: inspectionId
           in: path
@@ -5721,32 +5682,9 @@ components:
         generatedAtUtc:
           type: string
           format: date-time
-    BrainStatus:
-      type: object
-      description: >-
-        App→Brain delivery + package state. `deliveryStatus` is the app's own
-        courier state (null when the courier is disabled or the record predates
-        it). `status` is the Brain's package status, present only when the
-        Brain was reachable (`available: true`).
-      required: [available, deliveryStatus, brainSubmissionId, lastError, status]
-      properties:
-        available:
-          type: boolean
-          description: Whether the Brain was reachable when this status was assembled.
-        deliveryStatus:
-          type: [string, "null"]
-          enum: [pending, delivered, failed, null]
-        brainSubmissionId:
-          type: [string, "null"]
-        lastError:
-          type: [string, "null"]
-        status:
-          type: [string, "null"]
-          enum:
-            [received, validating, generating, package_ready, rejected, generation_failed, null]
     InspectionStatusEnvelope:
       type: object
-      required: [status, lockedAt, submissionManifest, receipt, brain]
+      required: [status, lockedAt, submissionManifest, receipt]
       properties:
         status:
           $ref: "#/components/schemas/InspectionStatus"
@@ -5761,8 +5699,6 @@ components:
           oneOf:
             - $ref: "#/components/schemas/PackageReceipt"
             - type: "null"
-        brain:
-          $ref: "#/components/schemas/BrainStatus"
 
     # ---- M-F (F2) Addenda ----
     CreateInspectionAddendumInput:

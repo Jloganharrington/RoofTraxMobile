@@ -16,7 +16,6 @@ import {
   getGetInspectionStatusQueryKey,
   useGetInspection,
   useGetInspectionStatus,
-  useRedeliverInspection,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getApiBaseUrl } from '@/lib/api';
@@ -29,30 +28,14 @@ import { useProfile } from '@/hooks/useProfile';
 import { useGetAgreement, useEmailAgreement, useVoidAgreement } from '@/lib/agreementApi';
 
 // M-F (F3) — Status & package receipt. Polls the server for this inspection's
-// submission status and a clearly-labeled STUB receipt. The full package (the
-// rendered deliverable) is produced by the standalone Brain, which is NOT built
-// yet — so this screen shows only what intake verified (record + verified-photo
-// counts), and says so plainly. It never fabricates a finished package.
+// submission status and a clearly-labeled receipt showing what intake
+// verified (record + verified-photo counts). It never fabricates a finished
+// package.
 
 const STATUS_LABELS: Record<string, string> = {
   capturing: 'Capturing evidence',
   submitted: 'Submitted — awaiting processing',
   package_ready: 'Package ready',
-};
-
-const BRAIN_STATUS_LABELS: Record<string, string> = {
-  received: 'Received by Brain',
-  validating: 'Brain validating package',
-  generating: 'Brain generating package',
-  package_ready: 'Package ready',
-  rejected: 'Rejected by Brain',
-  generation_failed: 'Brain generation failed',
-};
-
-const DELIVERY_LABELS: Record<string, string> = {
-  pending: 'Delivery in progress…',
-  delivered: 'Delivered to Brain',
-  failed: 'Delivery failed',
 };
 
 export default function InspectionPackageScreen() {
@@ -210,17 +193,6 @@ export default function InspectionPackageScreen() {
     );
   };
 
-  const redeliver = useRedeliverInspection({
-    mutation: {
-      onSuccess: () => {
-        // Give the async delivery attempt a moment to fire, then refetch.
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: getGetInspectionStatusQueryKey(id) });
-        }, 1500);
-      },
-    },
-  });
-
   const data = statusQuery.data;
 
   if (statusQuery.isLoading && !data) {
@@ -244,9 +216,6 @@ export default function InspectionPackageScreen() {
   }
 
   const receipt = data.receipt;
-  const brain = data.brain;
-  const deliveryStatus = brain?.deliveryStatus ?? null;
-  const hasBrainState = deliveryStatus !== null;
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
@@ -272,85 +241,6 @@ export default function InspectionPackageScreen() {
           </Text>
         )}
       </View>
-
-      {/* Brain delivery state — shown once courier has attempted, or always for super admins */}
-      {(hasBrainState || (isSuperAdmin && data.lockedAt)) && (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.headerRow}>
-            {deliveryStatus === 'delivered' ? (
-              <Icon name="send" size={20} color={colors.success} />
-            ) : deliveryStatus === 'failed' ? (
-              <Icon name="alert-triangle" size={20} color={colors.destructive} />
-            ) : (
-              <ActivityIndicator size="small" color={colors.primary} />
-            )}
-            <Text style={[styles.title, { color: colors.foreground }]}>Brain delivery</Text>
-          </View>
-
-          {hasBrainState && (
-            <Text
-              style={[
-                styles.deliveryStatus,
-                {
-                  color:
-                    deliveryStatus === 'delivered'
-                      ? colors.success
-                      : deliveryStatus === 'failed'
-                        ? colors.destructive
-                        : colors.primary,
-                },
-              ]}
-            >
-              {DELIVERY_LABELS[deliveryStatus ?? ''] ?? deliveryStatus}
-            </Text>
-          )}
-
-          {/* Brain-side package status when available */}
-          {brain?.available && brain.status && (
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              {BRAIN_STATUS_LABELS[brain.status] ?? brain.status}
-            </Text>
-          )}
-
-          {/* Last error detail for failed deliveries */}
-          {deliveryStatus === 'failed' && brain?.lastError && (
-            <View
-              style={[
-                styles.errorBox,
-                { backgroundColor: colors.destructive + '18', borderColor: colors.destructive + '40' },
-              ]}
-            >
-              <Text style={{ color: colors.destructive, fontSize: 12, lineHeight: 17 }}>
-                {brain.lastError}
-              </Text>
-            </View>
-          )}
-
-          {/* Super-admin retry button — always shown on locked inspections */}
-          {isSuperAdmin && data.lockedAt && (
-            <Pressable
-              onPress={() => redeliver.mutate({ inspectionId: id })}
-              disabled={redeliver.isPending}
-              style={[
-                styles.retryBtn,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: redeliver.isPending ? 0.6 : 1,
-                },
-              ]}
-            >
-              {redeliver.isPending ? (
-                <ActivityIndicator size="small" color={colors.primaryForeground} />
-              ) : (
-                <Icon name="refresh-cw" size={15} color={colors.primaryForeground} />
-              )}
-              <Text style={[styles.retryText, { color: colors.primaryForeground }]}>
-                {redeliver.isPending ? 'Queuing…' : 'Retry delivery'}
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      )}
 
       {/* Receipt */}
       {receipt ? (
@@ -713,7 +603,6 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 15, fontWeight: '700', flex: 1 },
   status: { fontSize: 16, fontWeight: '800' },
-  deliveryStatus: { fontSize: 14, fontWeight: '700' },
   errorBox: { borderRadius: 8, borderWidth: 1, padding: 10 },
   reportBtn: {
     flexDirection: 'row',
@@ -723,16 +612,6 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 10,
   },
-  retryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    paddingVertical: 11,
-    borderRadius: 10,
-    marginTop: 2,
-  },
-  retryText: { fontSize: 14, fontWeight: '700' },
   stubBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   stubText: { fontSize: 11, fontWeight: '700' },
   statRow: { flexDirection: 'row', gap: 10 },

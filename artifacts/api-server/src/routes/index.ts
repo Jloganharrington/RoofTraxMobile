@@ -14,7 +14,6 @@ import activityRouter from "./activity";
 import weatherRouter from "./weather";
 import crmRouter from "./crm";
 import bugReportsRouter from "./bugReports";
-import internalRouter from "./internal";
 import priceBookRouter from "./priceBook";
 import agreementRouter from "./agreement";
 
@@ -35,7 +34,6 @@ router.use(activityRouter);
 router.use(weatherRouter);
 router.use(crmRouter);
 router.use(bugReportsRouter);
-router.use(internalRouter);
 router.use(priceBookRouter);
 router.use(agreementRouter);
 

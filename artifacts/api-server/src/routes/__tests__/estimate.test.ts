@@ -4,7 +4,6 @@ import {
   inspectionSlopesTable,
   inspectionsTable,
   priceBookItemsTable,
-  priceBookPackageItemsTable,
   priceBookPackagesTable,
   userProfilesTable,
   usersTable,
@@ -15,18 +14,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import app from '../../app';
 import { createSession } from '../../lib/auth';
-import { buildSubmittedInspection } from '../../lib/brainCourier';
-import {
-  computeLines,
-  computeMeasuredBasis,
-  contractorEstimateForPayload,
-  formatCents,
-  priceBookSnapshotForPayload,
-} from '../../lib/estimate';
+import { computeLines, computeMeasuredBasis } from '../../lib/estimate';
 
-// Estimate step — waste/total math, route authz (module access, peer-rep
-// denial, cross-tenant price-book refs, lock immutability), and the Brain
-// payload mapping (§12 contractorEstimate / §13 priceBook shapes).
+// Estimate step — waste/total math and route authz (module access, peer-rep
+// denial, cross-tenant price-book refs, lock immutability).
 
 const RUN_ID = `est-${Date.now().toString(36)}`;
 const auth = (sid: string) => ({ Authorization: `Bearer ${sid}` });
@@ -156,10 +147,6 @@ describe('estimate math', () => {
     expect(subtotalCents).toBe(949999);
   });
 
-  it('formats cents as US currency strings', () => {
-    expect(formatCents(949999)).toBe('$9,499.99');
-    expect(formatCents(0)).toBe('$0.00');
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -359,113 +346,5 @@ describe('price book read access', () => {
       .set(auth(inspectorA.sid))
       .send({ name: 'Nope', unitPrice: 1 });
     expect(write.status).toBe(403);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Brain payload mapping
-// ---------------------------------------------------------------------------
-
-describe('brain payload mapping', () => {
-  it('maps an estimate to pre-formatted contractorEstimate strings', () => {
-    const payload = contractorEstimateForPayload({
-      wastePercent: 10,
-      measuredBasis: {
-        roofAreaSqft: 2000,
-        roofSquares: 20,
-        wasteAdjustedSquares: 22,
-        damagedSidingFacetCount: 0,
-      },
-      lines: [
-        { priceBookItemId: 'x', description: 'Shingles', unit: 'per square', quantity: 22, unitPriceCents: 42500, totalCents: 935000, isAdder: false },
-        { priceBookItemId: null, description: 'Steep charge', unit: null, quantity: 1, unitPriceCents: 15000, totalCents: 15000, isAdder: true },
-      ],
-      subtotalCents: 950000,
-      note: 'Two-story access.',
-      updatedAt: new Date().toISOString(),
-    });
-    expect(payload).toEqual({
-      lines: [
-        { description: 'Shingles (per square)', quantity: '22', unitPrice: '$425.00', total: '$9,350.00', isAdder: false },
-        { description: 'Steep charge', quantity: '1', unitPrice: '$150.00', total: '$150.00', isAdder: true },
-      ],
-      subtotal: '$9,500.00',
-      note: 'Measured roof area 2000 sq ft (20 squares); 10% waste factor applied for 22 billable squares. Two-story access.',
-    });
-  });
-
-  it('returns null for a missing or empty estimate (back-compat)', () => {
-    expect(contractorEstimateForPayload(null)).toBeNull();
-    expect(contractorEstimateForPayload(undefined)).toBeNull();
-    expect(
-      contractorEstimateForPayload({
-        wastePercent: 10,
-        measuredBasis: { roofAreaSqft: null, roofSquares: null, wasteAdjustedSquares: null, damagedSidingFacetCount: 0 },
-        lines: [],
-        subtotalCents: 0,
-        note: null,
-        updatedAt: new Date().toISOString(),
-      }),
-    ).toBeNull();
-  });
-
-  it('maps the price book to package groups plus a standalone catch-all', () => {
-    const now = new Date('2026-07-20T00:00:00Z');
-    const later = new Date('2026-07-22T00:00:00Z');
-    const snapshot = priceBookSnapshotForPayload({
-      items: [
-        { id: 'i1', name: 'Shingles', description: 'HDZ', unit: 'per square', unitPrice: 42500, updatedAt: now },
-        { id: 'i2', name: 'Drip edge', description: null, unit: 'per LF', unitPrice: 350, updatedAt: later },
-      ],
-      packages: [{ name: 'Roofing Package', itemIds: ['i1'] }],
-    });
-    expect(snapshot).not.toBeNull();
-    expect(snapshot!.publishedAt).toBe('2026-07-22');
-    expect(snapshot!.packages).toEqual([
-      { name: 'Roofing Package', items: [{ name: 'Shingles', description: 'HDZ', unit: 'per square', unitPrice: '$425.00' }] },
-      { name: 'Additional Line Items', items: [{ name: 'Drip edge', description: null, unit: 'per LF', unitPrice: '$3.50' }] },
-    ]);
-  });
-
-  it('returns null when the company has no price book', () => {
-    expect(priceBookSnapshotForPayload({ items: [], packages: [] })).toBeNull();
-  });
-
-  it('includes contractorEstimate and priceBook in the submitted payload end-to-end', async () => {
-    const inspectionId = await createInspection(inspectorA.sid);
-    await request(app)
-      .put(`/api/inspections/${inspectionId}/estimate`)
-      .set(auth(inspectorA.sid))
-      .send({
-        wastePercent: 10,
-        lines: [
-          { priceBookItemId: itemA.id, description: 'Architectural Shingles', unit: 'per square', quantity: 10, unitPriceCents: 42500, isAdder: false },
-        ],
-      })
-      .expect(200);
-
-    // Package grouping goes through the junction table.
-    const [pkg] = await db
-      .insert(priceBookPackagesTable)
-      .values({ companyId: companyA, name: 'Roofing Package' })
-      .returning();
-    await db.insert(priceBookPackageItemsTable).values({ packageId: pkg.id, itemId: itemA.id, quantity: 1 });
-
-    const [row] = await db.select().from(inspectionsTable).where(eq(inspectionsTable.id, inspectionId));
-    const payload = await buildSubmittedInspection(row);
-    expect(payload.contractorEstimate).not.toBeNull();
-    expect(payload.contractorEstimate!.subtotal).toBe('$4,250.00');
-    expect(payload.contractorEstimate!.lines[0].description).toBe('Architectural Shingles (per square)');
-    expect(payload.priceBook).not.toBeNull();
-    expect(payload.priceBook!.packages[0].name).toBe('Roofing Package');
-    expect(payload.priceBook!.packages[0].items[0].unitPrice).toBe('$425.00');
-  });
-
-  it('omits both (null) for an inspection without an estimate in a company without a price book', async () => {
-    const inspectionId = await createInspection(inspectorB.sid);
-    const [row] = await db.select().from(inspectionsTable).where(eq(inspectionsTable.id, inspectionId));
-    const payload = await buildSubmittedInspection(row);
-    expect(payload.contractorEstimate).toBeNull();
-    expect(payload.priceBook).toBeNull();
   });
 });
