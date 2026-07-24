@@ -15,6 +15,7 @@ export type IconName =
   | 'camera'
   | 'alert-circle'
   | 'x'
+  | 'calculator'
   | 'smartphone'
   | 'upload'
   | 'check'
@@ -82,6 +83,21 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
       )}
 
       {name === 'x' && <Path d="M18 6 6 18M6 6l12 12" {...strokeProps} />}
+
+      {name === 'calculator' && (
+        <>
+          <Rect x={4} y={2} width={16} height={20} rx={2} {...strokeProps} />
+          <Line x1={8} y1={6} x2={16} y2={6} {...strokeProps} />
+          <Line x1={16} y1={14} x2={16} y2={18} {...strokeProps} />
+          <Line x1={8} y1={10} x2={8.01} y2={10} {...strokeProps} />
+          <Line x1={12} y1={10} x2={12.01} y2={10} {...strokeProps} />
+          <Line x1={16} y1={10} x2={16.01} y2={10} {...strokeProps} />
+          <Line x1={8} y1={14} x2={8.01} y2={14} {...strokeProps} />
+          <Line x1={12} y1={14} x2={12.01} y2={14} {...strokeProps} />
+          <Line x1={8} y1={18} x2={8.01} y2={18} {...strokeProps} />
+          <Line x1={12} y1={18} x2={12.01} y2={18} {...strokeProps} />
+        </>
+      )}
 
       {name === 'droplet' && (
         <Path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" {...strokeProps} />

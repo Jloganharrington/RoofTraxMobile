@@ -13,6 +13,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { Icon } from '@/components/Icon';
+import { CalculatorModal } from '@/components/CalculatorModal';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { useGetInspection, getGetInspectionQueryKey } from '@workspace/api-client-react';
@@ -100,6 +101,7 @@ export default function InspectionEstimateScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [note, setNote] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customDescription, setCustomDescription] = useState('');
   const [customPriceText, setCustomPriceText] = useState('');
@@ -390,7 +392,16 @@ export default function InspectionEstimateScreen() {
 
       {/* Measured basis */}
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.cardTitle, { color: colors.foreground }]}>Measured Basis</Text>
+        <View style={styles.cardHeader}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Measured Basis</Text>
+          <Pressable
+            onPress={() => setCalcOpen(true)}
+            style={[styles.addBtn, { borderWidth: 1, borderColor: colors.secondary, backgroundColor: 'transparent' }]}
+          >
+            <Icon name="calculator" size={14} color={colors.secondary} />
+            <Text style={[styles.addBtnText, { color: colors.secondary }]}>Calculator</Text>
+          </Pressable>
+        </View>
         {measured ? (
           <>
             <Row label="Roof area" value={`${measured.areaSqft.toLocaleString('en-US')} sq ft`} colors={colors} />
@@ -745,6 +756,8 @@ export default function InspectionEstimateScreen() {
         <Text style={styles.continueBtnText}>Save & Continue to Submit</Text>
         <Icon name="arrow-right" size={18} color="#fff" />
       </Pressable>
+
+      <CalculatorModal visible={calcOpen} onClose={() => setCalcOpen(false)} />
     </ScrollView>
   );
 }
