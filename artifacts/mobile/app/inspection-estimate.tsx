@@ -70,6 +70,13 @@ function parseQty(text: string): number | null {
   return isFinite(n) && n > 0 ? n : null;
 }
 
+// Dollar text ("125", "125.5", "$1,250.00") → integer cents, or null if invalid.
+function parsePriceCents(text: string): number | null {
+  const n = parseFloat(text.replace(/[^0-9.]/g, ''));
+  if (!isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
 export default function InspectionEstimateScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -88,6 +95,11 @@ export default function InspectionEstimateScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [note, setNote] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customDescription, setCustomDescription] = useState('');
+  const [customPriceText, setCustomPriceText] = useState('');
+  const [customUnit, setCustomUnit] = useState('');
+  const [customQtyText, setCustomQtyText] = useState('1');
 
   // Measured basis (client-side preview; the server recomputes at save).
   const slopes = inspection?.slopes ?? [];
@@ -158,6 +170,42 @@ export default function InspectionEstimateScreen() {
       },
     ]);
     setPickerOpen(false);
+  }
+
+  // One-off item not in the price book — saved with priceBookItemId: null so
+  // the server keeps the client-supplied description/price (manual line path).
+  function addCustomLine() {
+    const description = customDescription.trim();
+    if (!description) {
+      Alert.alert('Missing description', 'Enter a description for the custom line.');
+      return;
+    }
+    const priceCents = parsePriceCents(customPriceText);
+    if (priceCents == null) {
+      Alert.alert('Invalid price', 'Enter a valid unit price (e.g. 125 or 125.50).');
+      return;
+    }
+    const qty = parseQty(customQtyText);
+    if (qty == null) {
+      Alert.alert('Invalid quantity', 'Enter a quantity greater than zero.');
+      return;
+    }
+    setLines((prev) => [
+      ...prev,
+      {
+        priceBookItemId: null,
+        description,
+        unit: customUnit.trim() || null,
+        quantityText: String(qty),
+        unitPriceCents: priceCents,
+        isAdder: false,
+      },
+    ]);
+    setCustomDescription('');
+    setCustomPriceText('');
+    setCustomUnit('');
+    setCustomQtyText('1');
+    setCustomOpen(false);
   }
 
   function updateLine(index: number, patch: Partial<DraftLine>) {
@@ -288,14 +336,85 @@ export default function InspectionEstimateScreen() {
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.cardHeader}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Line Items</Text>
-          <Pressable
-            onPress={() => setPickerOpen((v) => !v)}
-            style={[styles.addBtn, { backgroundColor: colors.secondary }]}
-          >
-            <Icon name="plus" size={14} color="#fff" />
-            <Text style={styles.addBtnText}>Add item</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => {
+                setCustomOpen((v) => !v);
+                setPickerOpen(false);
+              }}
+              style={[styles.addBtn, { borderWidth: 1, borderColor: colors.secondary, backgroundColor: 'transparent' }]}
+            >
+              <Icon name="edit-3" size={14} color={colors.secondary} />
+              <Text style={[styles.addBtnText, { color: colors.secondary }]}>Custom</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setPickerOpen((v) => !v);
+                setCustomOpen(false);
+              }}
+              style={[styles.addBtn, { backgroundColor: colors.secondary }]}
+            >
+              <Icon name="plus" size={14} color="#fff" />
+              <Text style={styles.addBtnText}>Add item</Text>
+            </Pressable>
+          </View>
         </View>
+
+        {customOpen && (
+          <View style={[styles.customForm, { borderColor: colors.border }]}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+              Custom line item
+            </Text>
+            <TextInput
+              value={customDescription}
+              onChangeText={setCustomDescription}
+              placeholder="Description (e.g. Dumpster rental)"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.customInput, { color: colors.foreground, borderColor: colors.border }]}
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                value={customPriceText}
+                onChangeText={setCustomPriceText}
+                placeholder="Unit price ($)"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="decimal-pad"
+                style={[
+                  styles.customInput,
+                  { flex: 1, color: colors.foreground, borderColor: colors.border },
+                ]}
+              />
+              <TextInput
+                value={customUnit}
+                onChangeText={setCustomUnit}
+                placeholder="Unit (optional)"
+                placeholderTextColor={colors.mutedForeground}
+                style={[
+                  styles.customInput,
+                  { flex: 1, color: colors.foreground, borderColor: colors.border },
+                ]}
+              />
+              <TextInput
+                value={customQtyText}
+                onChangeText={setCustomQtyText}
+                placeholder="Qty"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="decimal-pad"
+                style={[
+                  styles.customInput,
+                  { width: 64, textAlign: 'right', color: colors.foreground, borderColor: colors.border },
+                ]}
+              />
+            </View>
+            <Pressable
+              onPress={addCustomLine}
+              style={[styles.addBtn, { backgroundColor: colors.secondary, alignSelf: 'flex-end' }]}
+            >
+              <Icon name="plus" size={14} color="#fff" />
+              <Text style={styles.addBtnText}>Add custom line</Text>
+            </Pressable>
+          </View>
+        )}
 
         {pickerOpen && (
           <View style={[styles.picker, { borderColor: colors.border }]}>
@@ -490,6 +609,14 @@ const styles = StyleSheet.create({
   },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   picker: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  customForm: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
+  customInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
   pickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
