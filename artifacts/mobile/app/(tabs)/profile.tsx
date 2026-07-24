@@ -774,14 +774,14 @@ function AiSettingsCard({
               { color: hasCustomPrompt ? colors.success : colors.mutedForeground },
             ]}
           >
-            {hasCustomPrompt ? 'Custom prompt' : 'Default'}
+            {hasCustomPrompt ? 'Custom additions' : 'Baseline only'}
           </Text>
         </View>
       </View>
       <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
         {hasCustomPrompt
-          ? 'A custom system prompt is active. Claude will follow these instructions when generating inspection summaries.'
-          : 'Using the built-in prompt. Set a custom system prompt to tailor the AI narrative style for your company.'}
+          ? 'Additional instructions are active. They are layered on top of the standard baseline prompt when generating inspection summaries.'
+          : 'Using the standard baseline prompt. Add company instructions to tailor the AI narrative style — they are applied on top of the baseline, never in place of it.'}
       </Text>
       {!editing ? (
         <Pressable
@@ -789,7 +789,7 @@ function AiSettingsCard({
           style={[styles.sigButton, { backgroundColor: colors.secondary }]}
         >
           <Text style={styles.sigButtonText}>
-            {loaded ? (hasCustomPrompt ? 'Edit custom prompt' : 'Set custom prompt') : 'Loading…'}
+            {loaded ? (hasCustomPrompt ? 'Edit additional instructions' : 'Add company instructions') : 'Loading…'}
           </Text>
         </Pressable>
       ) : (
@@ -807,7 +807,7 @@ function AiSettingsCard({
             ]}
             value={systemPrompt}
             onChangeText={setSystemPrompt}
-            placeholder="Enter a custom system prompt for Claude (leave blank to use the default)…"
+            placeholder="Company instructions added on top of the standard baseline prompt (leave blank to use the baseline only)…"
             placeholderTextColor={colors.mutedForeground}
             multiline
             numberOfLines={5}

@@ -80,6 +80,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
+import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
 import { ObjectNotFoundError, ObjectStorageService } from '../lib/objectStorage';
 
 const objectStorageService = new ObjectStorageService();
@@ -3008,19 +3009,8 @@ router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, r
 
 // ── AI Summary (Claude Sonnet) ─────────────────────────────────────────────
 
-const DEFAULT_AI_SYSTEM_PROMPT = `You are a forensic roofing inspection assistant. \
-Given structured field data captured during a forensic property inspection, \
-produce a professional, factual summary suitable for an insurance claim package. \
-Your response MUST be valid JSON in exactly this shape:
-{
-  "forensicSummary": "<3-5 paragraph narrative describing the storm event context, \
-damage findings across all surfaces, severity, and documentation quality>",
-  "repairabilityText": "<1-2 paragraph assessment of repair-vs-replace determination \
-and supporting rationale, or empty string if no repairability data was captured>"
-}
-Write in third person (e.g. "The inspection found…"). Be specific about measurements, \
-materials, and damage types when available. Do not fabricate details absent from the data. \
-Respond only with the JSON object — no markdown fences, no commentary.`;
+// The baseline system prompt lives in lib/aiSummaryPrompt.ts; company custom
+// prompts are appended to it (never substituted) via composeAiSystemPrompt.
 
 /** Build a plain-text inspection brief for the Claude prompt. */
 function buildInspectionBrief(
@@ -3204,8 +3194,7 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
     .where(eq(companiesTable.id, actor.companyId));
 
   const companySettings = company?.aiSettings as { systemPrompt?: string | null } | null | undefined;
-  const systemPrompt =
-    companySettings?.systemPrompt?.trim() || DEFAULT_AI_SYSTEM_PROMPT;
+  const systemPrompt = composeAiSystemPrompt(companySettings?.systemPrompt);
 
   // Hydrate children so the prompt contains complete field data.
   const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
@@ -3215,7 +3204,13 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
     ? `${brief}\n\n---\nAdditional focus for this summary: ${userPrompt}`
     : brief;
 
-  let summaryResult: { forensicSummary: string; repairabilityText: string };
+  let summaryResult: {
+    forensicSummary: string;
+    repairabilityText: string;
+    confidence?: string;
+    missingOrUnverifiedItems?: string[];
+    qualityFlags?: string[];
+  };
   try {
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
@@ -3230,18 +3225,7 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
     // Strip optional markdown JSON fences before parsing.
     const cleaned = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      parsed = { forensicSummary: rawText, repairabilityText: '' };
-    }
-
-    const p = parsed as Record<string, unknown>;
-    summaryResult = {
-      forensicSummary: typeof p.forensicSummary === 'string' ? p.forensicSummary : rawText,
-      repairabilityText: typeof p.repairabilityText === 'string' ? p.repairabilityText : '',
-    };
+    summaryResult = parseAiSummaryResponse(rawText, cleaned);
   } catch (err) {
     req.log.error({ err }, 'Claude summary generation failed');
     res.status(502).json({ error: 'AI summary generation failed. Please try again.' });
