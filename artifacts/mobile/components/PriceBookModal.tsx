@@ -137,8 +137,8 @@ function ItemForm({
         placeholder="Optional notes about this line item"
         placeholderTextColor={colors.mutedForeground}
         multiline
-        numberOfLines={3}
-        style={[s.input, { color: colors.foreground, borderColor: colors.border, minHeight: 72, textAlignVertical: 'top' }]}
+        numberOfLines={10}
+        style={[s.input, { color: colors.foreground, borderColor: colors.border, minHeight: 220, textAlignVertical: 'top' }]}
       />
       <Pressable
         onPress={handleGenerate}
@@ -576,7 +576,15 @@ export function PriceBookModal({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[s.overlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
       >
-        <View style={[s.sheet, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            s.sheet,
+            { backgroundColor: colors.background },
+            // Full-screen when editing a line item so the description box has
+            // plenty of room to view and edit.
+            currentView === 'edit-item' && s.sheetFullScreen,
+          ]}
+        >
           {/* Header */}
           <View style={[s.header, { borderBottomColor: colors.border }]}>
             {currentView !== 'list' ? (
@@ -797,6 +805,13 @@ const s = StyleSheet.create({
     borderTopRightRadius: 20,
     maxHeight: '92%',
     overflow: 'hidden',
+  },
+  sheetFullScreen: {
+    height: '100%',
+    maxHeight: '100%',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: 54, // clear the status bar / notch
   },
   header: {
     flexDirection: 'row',
