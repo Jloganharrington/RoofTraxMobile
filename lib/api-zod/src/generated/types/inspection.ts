@@ -11,8 +11,10 @@ import type { DamageInstance } from './damageInstance';
 import type { DamageSurfaceChange } from './damageSurfaceChange';
 import type { ExistingCondition } from './existingCondition';
 import type { HomeownerFacts } from './homeownerFacts';
+import type { InspectionAiSummary } from './inspectionAiSummary';
 import type { InspectionComponent } from './inspectionComponent';
 import type { InspectionElevation } from './inspectionElevation';
+import type { InspectionLatestAgreement } from './inspectionLatestAgreement';
 import type { InspectionPenetration } from './inspectionPenetration';
 import type { InspectionPhase } from './inspectionPhase';
 import type { InspectionPhoto } from './inspectionPhoto';
@@ -57,6 +59,11 @@ export interface Inspection {
   carrierName: string | null;
   /** @nullable */
   insuredName: string | null;
+  /**
+     * Homeowner contact email captured at scheduling time. Used for appointment notifications and Phase 2 comms.
+     * @nullable
+     */
+  ownerEmail?: string | null;
   /** @nullable */
   address: string | null;
   /** @nullable */
@@ -67,6 +74,11 @@ export interface Inspection {
   notes: string | null;
   /** @nullable */
   dateOfLoss: string | null;
+  /**
+     * Rep-chosen date for the Phase 2 forensic inspection. Null until booked.
+     * @nullable
+     */
+  scheduledFor?: Date | null;
   stormConfirmedRef: StormConfirmedRef | null;
   arrivalConditions: ArrivalConditions | null;
   homeownerFacts: HomeownerFacts | null;
@@ -129,4 +141,8 @@ export interface Inspection {
   interiorObservations?: InteriorObservation[];
   /** E1 (S7) raw measurements, populated by the detail view only. */
   measurements?: Measurement[];
+  /** The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only. */
+  latestAgreement?: InspectionLatestAgreement;
+  /** AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only. */
+  aiSummary?: InspectionAiSummary;
 }

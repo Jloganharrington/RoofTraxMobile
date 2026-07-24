@@ -28,5 +28,6 @@ export const CaptureStage = {
   homeowner: 'homeowner',
   existing_conditions: 'existing_conditions',
   declaration: 'declaration',
+  summary: 'summary',
   submit: 'submit',
 } as const;

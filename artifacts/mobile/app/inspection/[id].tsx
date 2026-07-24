@@ -58,6 +58,7 @@ const STEP_ICONS: Record<StepKey, IconName> = {
   interior: 'home',
   homeowner: 'clipboard',
   declaration: 'check',
+  summary: 'zap',
   submit: 'clipboard',
 };
 
@@ -77,6 +78,7 @@ const STEP_ROUTES: Record<StepKey, string> = {
   interior: '/inspection-interior',
   homeowner: '/inspection-homeowner',
   declaration: '/inspection-declaration',
+  summary: '/inspection-summary',
   submit: '/inspection-readiness',
 };
 
@@ -355,6 +357,16 @@ export default function InspectionDetailScreen() {
             ? 'Methodology attestation signed'
             : 'Read & sign the inspector attestation',
         };
+      case 'summary': {
+        // Non-blocking advisory step — done when a summary has been generated.
+        const generatedAt = inspection!.aiSummary?.generatedAt;
+        return {
+          done: Boolean(generatedAt),
+          subtitle: generatedAt
+            ? `Generated ${new Date(generatedAt).toLocaleDateString()}`
+            : 'Optional — Claude drafts a forensic narrative for review',
+        };
+      }
       case 'submit':
         return {
           done: submitted,

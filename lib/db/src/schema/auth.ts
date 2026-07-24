@@ -30,6 +30,11 @@ export const companiesTable = pgTable('companies', {
   // authenticated URL (/api/storage/objects/...) — displayed in the FIPSA
   // letterhead instead of the hardcoded NuHome logo.
   logoUrl: varchar('logo_url'),
+  // Company-level AI settings: custom system prompt for the Summary step.
+  // Null means the default prompt is used.
+  aiSettings: jsonb('ai_settings')
+    .$type<{ systemPrompt: string | null } | null>()
+    .default(null),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

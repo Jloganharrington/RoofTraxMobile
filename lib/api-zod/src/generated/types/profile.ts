@@ -38,4 +38,6 @@ export interface Profile {
   certifications?: InspectorCertification[] | null;
   /** @nullable */
   yearsExperience?: number | null;
+  /** @nullable */
+  companyLogoUrl?: string | null;
 }

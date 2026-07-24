@@ -2891,6 +2891,10 @@ components:
             - type: "null"
         yearsExperience:
           type: [number, "null"]
+        # Company logo URL (authenticated storage path). Read from the companies
+        # row so the profile fetch is the only call needed.
+        companyLogoUrl:
+          type: [string, "null"]
     InspectorCertification:
       type: object
       required: [name]
@@ -3539,6 +3543,7 @@ components:
           homeowner,
           existing_conditions,
           declaration,
+          summary,
           submit,
         ]
     FacetDamageType:
@@ -4016,6 +4021,28 @@ components:
                   format: date-time
                 signerName:
                   type: string
+            - type: "null"
+        aiSummary:
+          description: >-
+            AI-generated forensic summary produced at the Summary step by
+            Claude Sonnet. Null until the inspector triggers generation.
+            Populated by the detail view only.
+          oneOf:
+            - type: object
+              required: [forensicSummary, repairabilityText, generatedAt]
+              properties:
+                forensicSummary:
+                  type: string
+                  description: 3-5 paragraph forensic narrative of the inspection findings.
+                repairabilityText:
+                  type: string
+                  description: >-
+                    Repairability assessment narrative. Empty string when no
+                    repairability data was captured.
+                generatedAt:
+                  type: string
+                  format: date-time
+                  description: ISO-8601 timestamp when this version was generated.
             - type: "null"
     CreateInspectionInput:
       type: object

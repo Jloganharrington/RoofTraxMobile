@@ -1,5 +1,5 @@
 import { CreateCompanyBody, CreateCompanyResponse, GetCompanyResponse } from '@workspace/api-zod';
-import { companiesTable, db, userProfilesTable, usersTable } from '@workspace/db';
+import { companiesTable, db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -104,6 +104,75 @@ router.patch('/companies/:companyId/logo', async (req: Request, res: Response) =
     .where(eq(companiesTable.id, companyId));
 
   res.json({ ok: true });
+});
+
+// GET /companies/:companyId/ai-settings — returns the stored AI settings.
+// Accessible to any authenticated member of that company.
+router.get('/companies/:companyId/ai-settings', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const [company] = await db
+    .select({ aiSettings: companiesTable.aiSettings })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+
+  if (!company) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  const settings = company.aiSettings as { systemPrompt?: string | null } | null | undefined;
+  res.json({ settings: { systemPrompt: settings?.systemPrompt ?? null } });
+});
+
+// PATCH /companies/:companyId/ai-settings — update the custom system prompt.
+// Restricted to managers and admins.
+router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+
+  const role = actorProfile?.role ?? 'field_rep';
+  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
+    res.status(403).json({ error: 'Only managers and admins can update AI settings' });
+    return;
+  }
+
+  const { systemPrompt } = req.body as { systemPrompt?: unknown };
+  if (systemPrompt !== null && systemPrompt !== undefined && typeof systemPrompt !== 'string') {
+    res.status(400).json({ error: 'systemPrompt must be a string or null' });
+    return;
+  }
+
+  const newSettings = { systemPrompt: typeof systemPrompt === 'string' ? systemPrompt.trim() || null : null };
+
+  await db
+    .update(companiesTable)
+    .set({ aiSettings: newSettings })
+    .where(eq(companiesTable.id, companyId));
+
+  res.json({ ok: true, settings: newSettings });
 });
 
 export default router;

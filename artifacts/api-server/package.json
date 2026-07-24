@@ -17,6 +17,7 @@
     "@types/pdfkit": "^0.17.6",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/integrations-anthropic-ai": "workspace:*",
     "@workspace/protocol": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

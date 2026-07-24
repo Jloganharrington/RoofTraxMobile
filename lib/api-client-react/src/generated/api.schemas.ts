@@ -186,6 +186,8 @@ export interface Profile {
   certifications?: InspectorCertification[] | null;
   /** @nullable */
   yearsExperience?: number | null;
+  /** @nullable */
+  companyLogoUrl?: string | null;
 }
 
 export interface UpdateProfileCredentialsInput {
@@ -678,6 +680,7 @@ export const CaptureStage = {
   homeowner: 'homeowner',
   existing_conditions: 'existing_conditions',
   declaration: 'declaration',
+  summary: 'summary',
   submit: 'submit',
 } as const;
 
@@ -871,6 +874,27 @@ export interface SubmissionManifestV1 {
   signatureOnFile?: SignatureOnFileRef | null;
   tieInProtocols?: SubmissionManifestV1TieInProtocols;
 }
+
+/**
+ * The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only.
+ */
+export type InspectionLatestAgreement = {
+  id: string;
+  signedAt: string;
+  signerName: string;
+} | null;
+
+/**
+ * AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only.
+ */
+export type InspectionAiSummary = {
+  /** 3-5 paragraph forensic narrative of the inspection findings. */
+  forensicSummary: string;
+  /** Repairability assessment narrative. Empty string when no repairability data was captured. */
+  repairabilityText: string;
+  /** ISO-8601 timestamp when this version was generated. */
+  generatedAt: string;
+} | null;
 
 export interface InspectionSlope {
   id: string;
@@ -1422,6 +1446,11 @@ export interface Inspection {
   carrierName: string | null;
   /** @nullable */
   insuredName: string | null;
+  /**
+     * Homeowner contact email captured at scheduling time. Used for appointment notifications and Phase 2 comms.
+     * @nullable
+     */
+  ownerEmail?: string | null;
   /** @nullable */
   address: string | null;
   /** @nullable */
@@ -1432,6 +1461,11 @@ export interface Inspection {
   notes: string | null;
   /** @nullable */
   dateOfLoss: string | null;
+  /**
+     * Rep-chosen date for the Phase 2 forensic inspection. Null until booked.
+     * @nullable
+     */
+  scheduledFor?: string | null;
   stormConfirmedRef: StormConfirmedRef | null;
   arrivalConditions: ArrivalConditions | null;
   homeownerFacts: HomeownerFacts | null;
@@ -1494,15 +1528,10 @@ export interface Inspection {
   interiorObservations?: InteriorObservation[];
   /** E1 (S7) raw measurements, populated by the detail view only. */
   measurements?: Measurement[];
-  /**
-   * The most recent active (non-voided) signed FIPSA agreement.
-   * Null when no agreement has been signed yet. Populated by the detail view only.
-   */
-  latestAgreement?: { id: string; signedAt: string; signerName: string } | null;
-  /** Homeowner contact email captured at scheduling time. */
-  ownerEmail?: string | null;
-  /** Rep-chosen date for the Phase 2 forensic inspection. Null until booked. */
-  scheduledFor?: string | null;
+  /** The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only. */
+  latestAgreement?: InspectionLatestAgreement;
+  /** AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only. */
+  aiSummary?: InspectionAiSummary;
 }
 
 export interface CreateInspectionInput {
@@ -1570,6 +1599,11 @@ export interface UpdateInspectionInput {
   carrierName?: string | null;
   /** @nullable */
   insuredName?: string | null;
+  /**
+     * Homeowner contact email. Captured at scheduling time; used for appointment notifications and Phase 2 comms.
+     * @nullable
+     */
+  ownerEmail?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
@@ -1580,6 +1614,11 @@ export interface UpdateInspectionInput {
   notes?: string | null;
   /** @nullable */
   dateOfLoss?: string | null;
+  /**
+     * Rep-chosen date for the Phase 2 forensic inspection. Null until booked.
+     * @nullable
+     */
+  scheduledFor?: string | null;
   stormConfirmedRef?: StormConfirmedRef | null;
   arrivalConditions?: ArrivalConditions | null;
   homeownerFacts?: HomeownerFacts | null;

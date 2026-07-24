@@ -73,6 +73,7 @@ export const CAPTURE_STAGES = [
   'homeowner',
   'existing_conditions',
   'declaration',
+  'summary',
   'submit',
 ] as const;
 export type CaptureStage = (typeof CAPTURE_STAGES)[number];
@@ -474,6 +475,16 @@ export const inspectionsTable = pgTable('inspections', {
   brainDeliveryAttempts: integer('brain_delivery_attempts').notNull().default(0),
   brainLastAttemptAt: timestamp('brain_last_attempt_at', { withTimezone: true }),
   brainDeliveredAt: timestamp('brain_delivered_at', { withTimezone: true }),
+  // AI-generated summary written by Claude Sonnet at the Summary step.
+  // Persisted here so it survives app restarts and is available for the report.
+  // Null until the inspector triggers generation for the first time.
+  aiSummary: jsonb('ai_summary')
+    .$type<{
+      forensicSummary: string;
+      repairabilityText: string;
+      generatedAt: string;
+    } | null>()
+    .default(null),
   // Homeowner contact email captured at scheduling time. Used for appointment
   // notifications and Phase 2 comms; carried forward to the owner record when
   // Phase 2 is completed so reps never have to re-enter it.

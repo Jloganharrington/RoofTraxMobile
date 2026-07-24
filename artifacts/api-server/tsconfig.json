@@ -17,6 +17,9 @@
     },
     {
       "path": "../../lib/protocol"
+    },
+    {
+      "path": "../../lib/integrations-anthropic-ai"
     }
   ]
 }

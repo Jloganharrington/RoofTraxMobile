@@ -21,6 +21,7 @@ export const STAGES = [
   'homeowner',
   'existing_conditions',
   'declaration',
+  'summary',
   'submit',
 ] as const;
 export type Stage = (typeof STAGES)[number];
@@ -166,8 +167,15 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
     description: 'The inspector signs off on the completeness of the capture.',
   },
   {
-    key: 'submit',
+    key: 'summary',
     order: 16,
+    name: 'AI Summary',
+    description:
+      'Claude Sonnet reviews all captured findings and drafts a forensic summary and repairability narrative for inspector review.',
+  },
+  {
+    key: 'submit',
+    order: 17,
     name: 'Readiness & Submit',
     description: 'Zero hard deficiencies remain and the package is confirmed ready.',
   },

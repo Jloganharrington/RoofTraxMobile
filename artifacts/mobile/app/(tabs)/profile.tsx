@@ -538,6 +538,11 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           )}
+
+          {/* AI Summary Settings — manager+ only */}
+          {canManageLogo && (
+            <AiSettingsCard companyId={companyId ?? ''} colors={colors} />
+          )}
         </AccordionSection>
       )}
 
@@ -688,6 +693,145 @@ export default function ProfileScreen() {
 // ── Accordion section ─────────────────────────────────────────────────────────
 
 type BadgeVariant = 'success' | 'warn' | 'muted';
+
+// Manager-only card for configuring the AI summary system prompt.
+function AiSettingsCard({
+  companyId,
+  colors,
+}: {
+  companyId: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [loaded, setLoaded] = React.useState(false);
+  const [systemPrompt, setSystemPrompt] = React.useState('');
+  const [editing, setEditing] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+
+  // Load the current setting once on mount (when companyId is known).
+  React.useEffect(() => {
+    if (!companyId) return;
+    let active = true;
+    (async () => {
+      try {
+        const token = await getToken('auth_session_token');
+        const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/ai-settings`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!active || !resp.ok) return;
+        const data = (await resp.json()) as { settings: { systemPrompt: string | null } };
+        if (active) setSystemPrompt(data.settings.systemPrompt ?? '');
+      } catch { /* non-critical */ } finally {
+        if (active) setLoaded(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [companyId]);
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/ai-settings`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ systemPrompt: systemPrompt.trim() || null }),
+      });
+      if (!resp.ok) throw new Error('Server error');
+      setEditing(false);
+      Alert.alert('Saved', 'AI summary settings updated.');
+    } catch {
+      Alert.alert('Save failed', 'Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasCustomPrompt = systemPrompt.trim().length > 0;
+
+  return (
+    <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <View style={styles.sigHeader}>
+        <Icon name="zap" size={16} color={colors.foreground} />
+        <Text style={[styles.sigTitle, { color: colors.foreground }]}>AI Summary Settings</Text>
+        <View
+          style={[
+            styles.sigBadge,
+            { backgroundColor: hasCustomPrompt ? '#ecfdf5' : colors.muted },
+          ]}
+        >
+          <Text
+            style={[
+              styles.sigBadgeText,
+              { color: hasCustomPrompt ? colors.success : colors.mutedForeground },
+            ]}
+          >
+            {hasCustomPrompt ? 'Custom prompt' : 'Default'}
+          </Text>
+        </View>
+      </View>
+      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+        {hasCustomPrompt
+          ? 'A custom system prompt is active. Claude will follow these instructions when generating inspection summaries.'
+          : 'Using the built-in prompt. Set a custom system prompt to tailor the AI narrative style for your company.'}
+      </Text>
+      {!editing ? (
+        <Pressable
+          onPress={() => { setEditing(true); }}
+          style={[styles.sigButton, { backgroundColor: colors.secondary }]}
+        >
+          <Text style={styles.sigButtonText}>
+            {loaded ? (hasCustomPrompt ? 'Edit custom prompt' : 'Set custom prompt') : 'Loading…'}
+          </Text>
+        </Pressable>
+      ) : (
+        <>
+          <TextInput
+            style={[
+              styles.smtpInput,
+              {
+                color: colors.foreground,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                minHeight: 120,
+                textAlignVertical: 'top',
+              },
+            ]}
+            value={systemPrompt}
+            onChangeText={setSystemPrompt}
+            placeholder="Enter a custom system prompt for Claude (leave blank to use the default)…"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            numberOfLines={5}
+          />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => setEditing(false)}
+              style={[
+                styles.sigButton,
+                { flex: 1, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+              ]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={save}
+              disabled={saving}
+              style={[styles.sigButton, { flex: 1, backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.sigButtonText, { color: colors.primaryForeground }]}>
+                {saving ? 'Saving…' : 'Save'}
+              </Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
 
 function AccordionSection({
   title,

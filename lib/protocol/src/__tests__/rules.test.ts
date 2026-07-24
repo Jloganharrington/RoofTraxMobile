@@ -240,6 +240,7 @@ describe('evaluate (protocol v2.1)', () => {
       'homeowner',
       'existing_conditions',
       'declaration',
+      'summary',
       'submit',
     ]);
     expect(stepApplies('facets', flags)).toBe(false);

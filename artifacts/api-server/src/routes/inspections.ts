@@ -48,8 +48,10 @@ import {
   EmailInspectionReportBody,
 } from '@workspace/api-zod';
 import nodemailer from 'nodemailer';
+import { anthropic } from '@workspace/integrations-anthropic-ai';
 import {
   attestationsTable,
+  companiesTable,
   damageInstancesTable,
   db,
   inspectionAddendaTable,
@@ -2999,6 +3001,261 @@ router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, r
   }
 
   res.json({ scheduled: true, emailSent: true });
+});
+
+// ── AI Summary (Claude Sonnet) ─────────────────────────────────────────────
+
+const DEFAULT_AI_SYSTEM_PROMPT = `You are a forensic roofing inspection assistant. \
+Given structured field data captured during a forensic property inspection, \
+produce a professional, factual summary suitable for an insurance claim package. \
+Your response MUST be valid JSON in exactly this shape:
+{
+  "forensicSummary": "<3-5 paragraph narrative describing the storm event context, \
+damage findings across all surfaces, severity, and documentation quality>",
+  "repairabilityText": "<1-2 paragraph assessment of repair-vs-replace determination \
+and supporting rationale, or empty string if no repairability data was captured>"
+}
+Write in third person (e.g. "The inspection found…"). Be specific about measurements, \
+materials, and damage types when available. Do not fabricate details absent from the data. \
+Respond only with the JSON object — no markdown fences, no commentary.`;
+
+/** Build a plain-text inspection brief for the Claude prompt. */
+function buildInspectionBrief(
+  inspection: Awaited<ReturnType<typeof loadInspectionInCompany>>,
+  children: Awaited<ReturnType<typeof hydrateInspectionChildren>>,
+): string {
+  if (!inspection) return '';
+  const lines: string[] = [];
+
+  lines.push(`PROPERTY: ${inspection.insuredName ?? 'Unknown'}`);
+  if (inspection.address) lines.push(`ADDRESS: ${inspection.address}`);
+  if (inspection.claimNumber) lines.push(`CLAIM #: ${inspection.claimNumber}`);
+  if (inspection.dateOfLoss) lines.push(`DATE OF LOSS: ${inspection.dateOfLoss}`);
+
+  const pp = inspection.propertyProfile as
+    | {
+        propertyType?: string | null;
+        stories?: number | null;
+        roofAge?: number | null;
+        roofAgeBasis?: string | null;
+        deckType?: string | null;
+      }
+    | null
+    | undefined;
+  if (pp) {
+    lines.push('');
+    lines.push('PROPERTY PROFILE:');
+    if (pp.propertyType) lines.push(`  Type: ${pp.propertyType}`);
+    if (pp.stories) lines.push(`  Stories: ${pp.stories}`);
+    if (pp.roofAge != null) lines.push(`  Roof age: ${pp.roofAge} years (basis: ${pp.roofAgeBasis ?? 'unknown'})`);
+    if (pp.deckType) lines.push(`  Deck: ${pp.deckType}`);
+  }
+
+  const arr = inspection.arrivalConditions as
+    | { sky?: string; windCondition?: string; tempF?: number; personnel?: string[] }
+    | null
+    | undefined;
+  if (arr) {
+    lines.push('');
+    lines.push('ARRIVAL CONDITIONS:');
+    if (arr.sky) lines.push(`  Sky: ${arr.sky}`);
+    if (arr.windCondition) lines.push(`  Wind: ${arr.windCondition}`);
+    if (arr.tempF != null) lines.push(`  Temp: ${arr.tempF}°F`);
+    if (arr.personnel?.length) lines.push(`  Personnel: ${arr.personnel.join(', ')}`);
+  }
+
+  lines.push('');
+  lines.push('DAMAGE FLAGS:');
+  lines.push(`  Roof: ${inspection.roofDamageFound ? 'YES' : 'no'}`);
+  lines.push(`  Siding: ${inspection.sidingDamageFound ? 'YES' : 'no'}`);
+  lines.push(`  Collateral: ${inspection.collateralDamageFound ? 'YES' : 'no'}`);
+  lines.push(`  Interior: ${inspection.interiorDamageFound ? 'YES' : 'no'}`);
+
+  const slopes = children.slopes ?? [];
+  if (slopes.length > 0) {
+    lines.push('');
+    lines.push('ROOF FACETS:');
+    for (const s of slopes) {
+      const parts: string[] = [`  ${s.label}`];
+      if (s.areaSqft != null) parts.push(`${s.areaSqft.toFixed(1)} sqft`);
+      if (s.materialType) parts.push(s.materialType);
+      if (s.pitchRise != null && s.pitchRun != null)
+        parts.push(`${s.pitchRise}/${s.pitchRun} pitch`);
+      if (s.damageType) parts.push(`damage: ${s.damageType}`);
+      lines.push(parts.join(' | '));
+    }
+  }
+
+  const sidingFacets = children.sidingFacets ?? [];
+  if (sidingFacets.length > 0) {
+    lines.push('');
+    lines.push('SIDING FACETS:');
+    for (const sf of sidingFacets) {
+      lines.push(`  ${sf.label} — damage: ${sf.damageType ?? 'none'}`);
+    }
+  }
+
+  const products = children.products ?? [];
+  if (products.length > 0) {
+    lines.push('');
+    lines.push('ROOFING PRODUCTS:');
+    for (const p of products) {
+      const brand = (p as { brand?: string | null }).brand;
+      const method = p.identificationMethod;
+      lines.push(`  ${brand ?? 'Unknown brand'} (${method})`);
+    }
+  }
+
+  const ra = inspection.repairabilityAssessment as
+    | { determination?: string; notes?: string | null }
+    | null
+    | undefined;
+  if (ra) {
+    lines.push('');
+    lines.push('REPAIRABILITY ASSESSMENT:');
+    lines.push(`  Determination: ${ra.determination ?? 'not set'}`);
+    if (ra.notes) lines.push(`  Notes: ${ra.notes}`);
+  }
+
+  const interiorObs = children.interiorObservations ?? [];
+  if (interiorObs.length > 0) {
+    lines.push('');
+    lines.push('INTERIOR / ATTIC OBSERVATIONS:');
+    for (const obs of interiorObs) {
+      const o = obs as { location?: string; description?: string };
+      if (o.location || o.description) {
+        lines.push(`  ${o.location ?? ''}: ${o.description ?? ''}`);
+      }
+    }
+  }
+
+  const ec = inspection.existingOrUnrelatedConditions as
+    | Array<{ condition?: string; notes?: string }>
+    | null
+    | undefined;
+  if (ec?.length) {
+    lines.push('');
+    lines.push('EXISTING / UNRELATED CONDITIONS:');
+    for (const c of ec) {
+      lines.push(`  - ${c.condition ?? ''}: ${c.notes ?? ''}`);
+    }
+  }
+
+  const hof = inspection.homeownerFacts as
+    | { priorRepairs?: string | null; priorClaims?: string | null }
+    | null
+    | undefined;
+  if (hof) {
+    lines.push('');
+    lines.push('HOMEOWNER FACTS:');
+    if (hof.priorRepairs) lines.push(`  Prior repairs: ${hof.priorRepairs}`);
+    if (hof.priorClaims) lines.push(`  Prior claims: ${hof.priorClaims}`);
+  }
+
+  const testSquares = children.testSquares ?? [];
+  if (testSquares.length > 0) {
+    lines.push('');
+    lines.push(`TEST SQUARES: ${testSquares.length} square(s) documented`);
+  }
+
+  return lines.join('\n');
+}
+
+// GET /inspections/:inspectionId/summary — returns the stored AI summary or null.
+router.get('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  res.json({ summary: inspection.aiSummary ?? null });
+});
+
+// POST /inspections/:inspectionId/summary — calls Claude Sonnet and stores result.
+// Optional body: { userPrompt?: string } for regeneration with custom guidance.
+// Uses the same write-authorization path as all other inspection mutations:
+// only the assigned inspector or a manager/admin may trigger or overwrite the
+// AI summary (allowLocked: true so it can be regenerated post-submission too).
+router.post('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const userPrompt =
+    typeof (req.body as { userPrompt?: unknown })?.userPrompt === 'string'
+      ? ((req.body as { userPrompt: string }).userPrompt.trim())
+      : '';
+
+  // Load company AI settings for an optional custom system prompt.
+  const [company] = await db
+    .select({ aiSettings: companiesTable.aiSettings })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, actor.companyId));
+
+  const companySettings = company?.aiSettings as { systemPrompt?: string | null } | null | undefined;
+  const systemPrompt =
+    companySettings?.systemPrompt?.trim() || DEFAULT_AI_SYSTEM_PROMPT;
+
+  // Hydrate children so the prompt contains complete field data.
+  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
+
+  const brief = buildInspectionBrief(inspection, children);
+  const userContent = userPrompt
+    ? `${brief}\n\n---\nAdditional focus for this summary: ${userPrompt}`
+    : brief;
+
+  let summaryResult: { forensicSummary: string; repairabilityText: string };
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }],
+    });
+
+    const rawText =
+      message.content[0].type === 'text' ? message.content[0].text : '';
+
+    // Strip optional markdown JSON fences before parsing.
+    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      parsed = { forensicSummary: rawText, repairabilityText: '' };
+    }
+
+    const p = parsed as Record<string, unknown>;
+    summaryResult = {
+      forensicSummary: typeof p.forensicSummary === 'string' ? p.forensicSummary : rawText,
+      repairabilityText: typeof p.repairabilityText === 'string' ? p.repairabilityText : '',
+    };
+  } catch (err) {
+    req.log.error({ err }, 'Claude summary generation failed');
+    res.status(502).json({ error: 'AI summary generation failed. Please try again.' });
+    return;
+  }
+
+  const summary = {
+    ...summaryResult,
+    generatedAt: new Date().toISOString(),
+  };
+
+  await db
+    .update(inspectionsTable)
+    .set({ aiSummary: summary })
+    .where(eq(inspectionsTable.id, inspectionId));
+
+  res.json({ summary });
 });
 
 export default router;

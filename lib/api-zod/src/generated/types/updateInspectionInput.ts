@@ -39,6 +39,11 @@ export interface UpdateInspectionInput {
   carrierName?: string | null;
   /** @nullable */
   insuredName?: string | null;
+  /**
+     * Homeowner contact email. Captured at scheduling time; used for appointment notifications and Phase 2 comms.
+     * @nullable
+     */
+  ownerEmail?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
@@ -49,6 +54,11 @@ export interface UpdateInspectionInput {
   notes?: string | null;
   /** @nullable */
   dateOfLoss?: string | null;
+  /**
+     * Rep-chosen date for the Phase 2 forensic inspection. Null until booked.
+     * @nullable
+     */
+  scheduledFor?: Date | null;
   stormConfirmedRef?: StormConfirmedRef | null;
   arrivalConditions?: ArrivalConditions | null;
   homeownerFacts?: HomeownerFacts | null;
