@@ -12,10 +12,17 @@ if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
   );
 }
 
+// The provisioned base URL may or may not include a scheme; the SDK requires
+// a fully-qualified URL, so normalize it here.
+const rawBaseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+const baseUrl = /^https?:\/\//.test(rawBaseUrl)
+  ? rawBaseUrl
+  : `https://${rawBaseUrl}`;
+
 export const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
   httpOptions: {
     apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+    baseUrl,
   },
 });

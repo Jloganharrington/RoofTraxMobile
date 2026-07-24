@@ -3472,7 +3472,7 @@ ${JSON.stringify(photoBrief)}
 
   try {
     const response = await geminiAi.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-pro-preview',
       contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }],
       config: { responseMimeType: 'application/json', maxOutputTokens: 8192 },
     });
