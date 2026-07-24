@@ -106,6 +106,12 @@ export default function InspectionEstimateScreen() {
   const [customUnit, setCustomUnit] = useState('');
   const [customQtyText, setCustomQtyText] = useState('1');
   const [customSaveToBook, setCustomSaveToBook] = useState(false);
+  // Inline line editing — index of the line being edited plus a draft of its
+  // editable fields. Only one line edits at a time.
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editDescription, setEditDescription] = useState('');
+  const [editPriceText, setEditPriceText] = useState('');
+  const [editUnit, setEditUnit] = useState('');
 
   // Price-book writes are admin-gated server-side; mirror that gate here so
   // reps below admin never see a toggle that would 403.
@@ -249,6 +255,49 @@ export default function InspectionEstimateScreen() {
 
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index));
+    setEditingIndex((cur) => (cur === index ? null : cur != null && cur > index ? cur - 1 : cur));
+  }
+
+  function startEditLine(index: number) {
+    const line = lines[index];
+    if (!line) return;
+    setEditingIndex(index);
+    setEditDescription(line.description);
+    setEditPriceText((line.unitPriceCents / 100).toFixed(2));
+    setEditUnit(line.unit ?? '');
+  }
+
+  // Commit an inline edit. The server re-hydrates description/unit/price from
+  // the catalog for any line that still references a price book item, so if
+  // the rep actually changed one of those fields on a price-book line we must
+  // convert it to a manual line (priceBookItemId: null) or the override would
+  // be silently discarded at save.
+  function saveEditLine() {
+    if (editingIndex == null) return;
+    const line = lines[editingIndex];
+    if (!line) return;
+    const description = editDescription.trim();
+    if (!description) {
+      Alert.alert('Missing description', 'Enter a description for the line.');
+      return;
+    }
+    const priceCents = parsePriceCents(editPriceText);
+    if (priceCents == null) {
+      Alert.alert('Invalid price', 'Enter a valid unit price (e.g. 125 or 125.50).');
+      return;
+    }
+    const unit = editUnit.trim() || null;
+    const changed =
+      description !== line.description ||
+      priceCents !== line.unitPriceCents ||
+      unit !== line.unit;
+    updateLine(editingIndex, {
+      description,
+      unitPriceCents: priceCents,
+      unit,
+      priceBookItemId: changed ? null : line.priceBookItemId,
+    });
+    setEditingIndex(null);
   }
 
   const subtotalCents = useMemo(
@@ -524,9 +573,72 @@ export default function InspectionEstimateScreen() {
           lines.map((line, i) => {
             const qty = parseQty(line.quantityText);
             const total = qty != null ? Math.round(qty * line.unitPriceCents) : null;
+            if (editingIndex === i) {
+              return (
+                <View
+                  key={`${line.priceBookItemId ?? 'manual'}-${i}`}
+                  style={[styles.lineRow, { borderColor: colors.secondary, flexDirection: 'column', gap: 8 }]}
+                >
+                  <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+                    Edit line item
+                  </Text>
+                  <TextInput
+                    value={editDescription}
+                    onChangeText={setEditDescription}
+                    placeholder="Description"
+                    placeholderTextColor={colors.mutedForeground}
+                    style={[styles.customInput, { color: colors.foreground, borderColor: colors.border }]}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TextInput
+                      value={editPriceText}
+                      onChangeText={setEditPriceText}
+                      placeholder="Unit price ($)"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="decimal-pad"
+                      style={[
+                        styles.customInput,
+                        { flex: 1, color: colors.foreground, borderColor: colors.border },
+                      ]}
+                    />
+                    <TextInput
+                      value={editUnit}
+                      onChangeText={setEditUnit}
+                      placeholder="Unit (optional)"
+                      placeholderTextColor={colors.mutedForeground}
+                      style={[
+                        styles.customInput,
+                        { flex: 1, color: colors.foreground, borderColor: colors.border },
+                      ]}
+                    />
+                  </View>
+                  {line.priceBookItemId != null && (
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                      Changing this price book item makes it a one-off line for this estimate; the
+                      price book itself is not changed.
+                    </Text>
+                  )}
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+                    <Pressable
+                      onPress={() => setEditingIndex(null)}
+                      style={[styles.addBtn, { borderWidth: 1, borderColor: colors.border }]}
+                    >
+                      <Text style={[styles.addBtnText, { color: colors.foreground }]}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={saveEditLine}
+                      style={[styles.addBtn, { backgroundColor: colors.secondary }]}
+                    >
+                      <Icon name="check" size={14} color="#fff" />
+                      <Text style={styles.addBtnText}>Done</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            }
             return (
               <View key={`${line.priceBookItemId ?? 'manual'}-${i}`} style={[styles.lineRow, { borderColor: colors.border }]}>
-                <View style={{ flex: 1 }}>
+                <Pressable style={{ flex: 1 }} onPress={() => startEditLine(i)}>
                   <Text style={{ color: colors.foreground, fontWeight: '500' }}>
                     {line.description}
                   </Text>
@@ -563,14 +675,19 @@ export default function InspectionEstimateScreen() {
                       </Text>
                     </Pressable>
                   </View>
-                </View>
+                </Pressable>
                 <View style={{ alignItems: 'flex-end', gap: 8 }}>
                   <Text style={{ color: colors.foreground, fontWeight: '700' }}>
                     {total != null ? formatCents(total) : '—'}
                   </Text>
-                  <Pressable onPress={() => removeLine(i)} hitSlop={8}>
-                    <Icon name="trash-2" size={16} color={colors.destructive} />
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+                    <Pressable onPress={() => startEditLine(i)} hitSlop={8}>
+                      <Icon name="edit-3" size={16} color={colors.mutedForeground} />
+                    </Pressable>
+                    <Pressable onPress={() => removeLine(i)} hitSlop={8}>
+                      <Icon name="trash-2" size={16} color={colors.destructive} />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             );
