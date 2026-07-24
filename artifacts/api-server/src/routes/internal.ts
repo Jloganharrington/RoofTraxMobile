@@ -13,7 +13,7 @@
 import { timingSafeEqual } from 'crypto';
 import { Readable } from 'stream';
 
-import { db, inspectionPhotosTable, inspectionsTable } from '@workspace/db';
+import { companiesTable, db, inspectionPhotosTable, inspectionsTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -102,6 +102,81 @@ router.get('/internal/photos/:photoId', async (req: Request, res: Response) => {
     }
     req.log.error({ err: error, photoId }, 'Error serving photo to Brain');
     res.status(500).json({ error: 'Failed to serve photo' });
+  }
+});
+
+/**
+ * Normalize a stored object URL/path (either a full authenticated URL or an
+ * /api/storage/objects/... path) to the /objects/... form
+ * getObjectEntityFile expects. Returns null when it isn't an object path.
+ */
+function toObjectPath(stored: string): string | null {
+  let pathname = stored;
+  if (stored.startsWith('http')) {
+    try {
+      pathname = new URL(stored).pathname; // discards query/fragment
+    } catch {
+      return null;
+    }
+  } else {
+    // strip any query/fragment from a bare path
+    pathname = pathname.split(/[?#]/, 1)[0] ?? pathname;
+  }
+  const m =
+    pathname.match(/\/(?:api\/)?storage\/objects\/(.+)$/) ?? pathname.match(/^\/objects\/(.+)$/);
+  return m ? `/objects/${m[1]}` : null;
+}
+
+// Company logo for the compiled Proof Package. Same machine-token gate and
+// company scoping as photo evidence; the courier sends
+// `objstore://company-logo/{companyId}` and the Brain resolves it here.
+router.get('/internal/company-logo/:companyId', async (req: Request, res: Response) => {
+  const scope = resolveMachineToken(req);
+  if (!scope) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = req.params.companyId as string;
+  // 404 for "no such company", "no logo", AND "outside this token's scope" —
+  // do not leak the distinction.
+  if (scope.companyId !== null && companyId !== scope.companyId) {
+    res.status(404).json({ error: 'Logo not found' });
+    return;
+  }
+  const [company] = await db
+    .select({ logoUrl: companiesTable.logoUrl })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+  if (!company?.logoUrl) {
+    res.status(404).json({ error: 'Logo not found' });
+    return;
+  }
+
+  try {
+    const objectPath = toObjectPath(company.logoUrl);
+    if (!objectPath) {
+      res.status(404).json({ error: 'Logo not found' });
+      return;
+    }
+    const file = await objectStorageService.getObjectEntityFile(objectPath);
+    const response = await objectStorageService.downloadObject(file);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+
+    if (response.body) {
+      Readable.fromWeb(response.body as ReadableStream<Uint8Array>).pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: 'Logo bytes not found in storage' });
+      return;
+    }
+    req.log.error({ err: error, companyId }, 'Error serving company logo to Brain');
+    res.status(500).json({ error: 'Failed to serve company logo' });
   }
 });
 

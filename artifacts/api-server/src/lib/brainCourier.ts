@@ -20,6 +20,7 @@
 //   the chain-of-custody claim, so never inline the bytes here.
 import {
   attestationsTable,
+  companiesTable,
   damageInstancesTable,
   db,
   inspectionAddendaTable,
@@ -41,6 +42,7 @@ import {
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 
 import { logger } from './logger';
+import { isHexColor } from './reportTemplate';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -123,6 +125,31 @@ export function photoObjstoreRef(photoId: string): string {
   return `objstore://photos/${photoId}`;
 }
 
+/** `objstore://` ref for the company logo — durable (never an expiring signed
+ *  URL); the Brain resolves it against the machine-token proxy
+ *  (routes/internal.ts GET /internal/company-logo/:companyId). */
+export function companyLogoObjstoreRef(companyId: string): string {
+  return `objstore://company-logo/${companyId}`;
+}
+
+/**
+ * Company report palette for the Brain payload. Field-by-field strict
+ * #RRGGBB validation (same validator the in-app report uses); invalid or
+ * missing fields are omitted, and a palette with nothing valid is null so
+ * unbranded companies produce payloads identical to before this field.
+ */
+export function brandingForPayload(
+  reportBranding: unknown,
+): { headerColor?: string; headerTextColor?: string; accentColor?: string } | null {
+  if (!reportBranding || typeof reportBranding !== 'object') return null;
+  const b = reportBranding as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of ['headerColor', 'headerTextColor', 'accentColor'] as const) {
+    if (isHexColor(b[key])) out[key] = b[key] as string;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 export async function buildSubmittedInspection(inspection: InspectionRow) {
   const { id: inspectionId, companyId } = inspection;
   const scoped = <T extends { inspectionId: any; companyId: any }>(table: T) =>
@@ -144,6 +171,7 @@ export async function buildSubmittedInspection(inspection: InspectionRow) {
     addenda,
     [inspectorUser],
     [inspectorProfile],
+    [company],
   ] = await Promise.all([
     db.select().from(inspectionSlopesTable).where(scoped(inspectionSlopesTable)).orderBy(inspectionSlopesTable.createdAt),
     db.select().from(inspectionSidingFacetsTable).where(scoped(inspectionSidingFacetsTable)).orderBy(inspectionSidingFacetsTable.createdAt),
@@ -160,6 +188,7 @@ export async function buildSubmittedInspection(inspection: InspectionRow) {
     db.select().from(inspectionAddendaTable).where(scoped(inspectionAddendaTable)).orderBy(inspectionAddendaTable.createdAt),
     db.select().from(usersTable).where(eq(usersTable.id, inspection.inspectorUserId)),
     db.select().from(userProfilesTable).where(eq(userProfilesTable.userId, inspection.inspectorUserId)),
+    db.select().from(companiesTable).where(eq(companiesTable.id, companyId)),
   ]);
 
   const testSquareIds = testSquares.map((ts) => ts.id);
@@ -183,6 +212,15 @@ export async function buildSubmittedInspection(inspection: InspectionRow) {
     id: inspectionId,
     companyId,
     stateCode: 'VA', // hardcoded for NuHome/Virginia-only phase; derive from address/service-areas when multi-state work begins
+    // Proof-Package branding: the company's saved report palette + logo so
+    // the compiled document reskins automatically. `logo` is an objstore://
+    // ref (never a stored expiring URL) fetched through the machine-token
+    // proxy exactly like photo evidence.
+    company: {
+      name: company?.name ?? null,
+      branding: brandingForPayload(company?.reportBranding),
+      logo: company?.logoUrl ? companyLogoObjstoreRef(companyId) : null,
+    },
     submittedAtUtc: iso(inspection.lockedAt),
     phase: inspection.phase,
     property: {
