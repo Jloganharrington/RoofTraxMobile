@@ -16,7 +16,12 @@ import { Icon } from '@/components/Icon';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { useGetInspection, getGetInspectionQueryKey } from '@workspace/api-client-react';
-import { useListPriceBookItems, type PriceBookItem } from '@/lib/priceBookApi';
+import {
+  useCreatePriceBookItem,
+  useListPriceBookItems,
+  type PriceBookItem,
+} from '@/lib/priceBookApi';
+import { useProfile } from '@/hooks/useProfile';
 
 // Estimate step (advisory) — imports measured roof squares from the facet
 // step, applies an adjustable waste factor, and prices line items from the
@@ -100,6 +105,13 @@ export default function InspectionEstimateScreen() {
   const [customPriceText, setCustomPriceText] = useState('');
   const [customUnit, setCustomUnit] = useState('');
   const [customQtyText, setCustomQtyText] = useState('1');
+  const [customSaveToBook, setCustomSaveToBook] = useState(false);
+
+  // Price-book writes are admin-gated server-side; mirror that gate here so
+  // reps below admin never see a toggle that would 403.
+  const { role } = useProfile();
+  const canWritePriceBook = role === 'admin' || role === 'super_admin';
+  const createItem = useCreatePriceBookItem();
 
   // Measured basis (client-side preview; the server recomputes at save).
   const slopes = inspection?.slopes ?? [];
@@ -174,7 +186,9 @@ export default function InspectionEstimateScreen() {
 
   // One-off item not in the price book — saved with priceBookItemId: null so
   // the server keeps the client-supplied description/price (manual line path).
-  function addCustomLine() {
+  // With "Also save to price book" on (admins only), the item is created in
+  // the catalog first and the line references it like a picker-added item.
+  async function addCustomLine() {
     const description = customDescription.trim();
     if (!description) {
       Alert.alert('Missing description', 'Enter a description for the custom line.');
@@ -190,12 +204,32 @@ export default function InspectionEstimateScreen() {
       Alert.alert('Invalid quantity', 'Enter a quantity greater than zero.');
       return;
     }
+    const unit = customUnit.trim() || null;
+
+    let priceBookItemId: string | null = null;
+    if (customSaveToBook && canWritePriceBook) {
+      try {
+        const created = await createItem.mutateAsync({
+          name: description,
+          unitPrice: priceCents,
+          unit,
+        });
+        priceBookItemId = created.item.id;
+      } catch (e) {
+        // Don't lose the rep's work — add the line as a plain one-off and say so.
+        Alert.alert(
+          'Not saved to price book',
+          `${e instanceof Error ? e.message : 'The price book save failed.'} The line was still added to this estimate as a one-off.`,
+        );
+      }
+    }
+
     setLines((prev) => [
       ...prev,
       {
-        priceBookItemId: null,
+        priceBookItemId,
         description,
-        unit: customUnit.trim() || null,
+        unit,
         quantityText: String(qty),
         unitPriceCents: priceCents,
         isAdder: false,
@@ -205,6 +239,7 @@ export default function InspectionEstimateScreen() {
     setCustomPriceText('');
     setCustomUnit('');
     setCustomQtyText('1');
+    setCustomSaveToBook(false);
     setCustomOpen(false);
   }
 
@@ -406,11 +441,46 @@ export default function InspectionEstimateScreen() {
                 ]}
               />
             </View>
+            {canWritePriceBook && (
+              <Pressable
+                onPress={() => setCustomSaveToBook((v) => !v)}
+                style={styles.saveToBookRow}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: customSaveToBook }}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    {
+                      borderColor: customSaveToBook ? colors.secondary : colors.border,
+                      backgroundColor: customSaveToBook ? colors.secondary : 'transparent',
+                    },
+                  ]}
+                >
+                  {customSaveToBook && <Icon name="check" size={12} color="#fff" />}
+                </View>
+                <Text style={{ color: colors.foreground, fontSize: 13 }}>
+                  Also save to price book
+                </Text>
+              </Pressable>
+            )}
             <Pressable
-              onPress={addCustomLine}
-              style={[styles.addBtn, { backgroundColor: colors.secondary, alignSelf: 'flex-end' }]}
+              onPress={() => void addCustomLine()}
+              disabled={createItem.isPending}
+              style={[
+                styles.addBtn,
+                {
+                  backgroundColor: colors.secondary,
+                  alignSelf: 'flex-end',
+                  opacity: createItem.isPending ? 0.6 : 1,
+                },
+              ]}
             >
-              <Icon name="plus" size={14} color="#fff" />
+              {createItem.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Icon name="plus" size={14} color="#fff" />
+              )}
               <Text style={styles.addBtnText}>Add custom line</Text>
             </Pressable>
           </View>
@@ -610,6 +680,15 @@ const styles = StyleSheet.create({
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   picker: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
   customForm: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
+  saveToBookRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   customInput: {
     borderWidth: 1,
     borderRadius: 8,
