@@ -22,8 +22,12 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        // Active = brand orange, inactive = muted slate. Both tokens are
+        // legible on every tab-bar surface (white card on Android/web, light
+        // or dark blur on iOS) — never hardcode white here: it disappears on
+        // light backgrounds.
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: '#ffffff',
+        tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: true,
         headerStyle: { backgroundColor: colors.secondary },
         headerTintColor: '#ffffff',
