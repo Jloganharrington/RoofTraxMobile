@@ -29,6 +29,16 @@ import { useProfile } from '@/hooks/useProfile';
 // company price book. Saved as a full-replace PUT so retries are idempotent;
 // never gates submit.
 
+// Evidence link draft — reviewedBy/reviewedAt are stamped server-side, so the
+// client only ever sends these four fields. Links a rep creates here are
+// inspector-sourced and approved (the rep IS the reviewer).
+type EvidenceLinkDraft = {
+  targetType: 'photo' | 'damage_instance';
+  targetId: string;
+  linkSource: 'inspector' | 'user' | 'ai_suggested' | 'imported';
+  reviewStatus: 'unreviewed' | 'approved' | 'rejected';
+};
+
 type EstimateLine = {
   priceBookItemId: string | null;
   description: string;
@@ -37,6 +47,7 @@ type EstimateLine = {
   unitPriceCents: number;
   totalCents: number;
   isAdder: boolean;
+  evidenceLinks?: EvidenceLinkDraft[];
 };
 
 type Estimate = {
@@ -60,6 +71,7 @@ type DraftLine = {
   quantityText: string;
   unitPriceCents: number;
   isAdder: boolean;
+  evidenceLinks: EvidenceLinkDraft[];
 };
 
 function formatCents(cents: number): string {
@@ -123,6 +135,9 @@ export default function InspectionEstimateScreen() {
 
   // Measured basis (client-side preview; the server recomputes at save).
   const slopes = inspection?.slopes ?? [];
+  // Evidence-link candidates — findings and photos captured on this inspection.
+  const damageInstances = inspection?.damageInstances ?? [];
+  const photos = inspection?.photos ?? [];
   const measured = useMemo(() => {
     const areas = slopes
       .map((s) => s.areaSqft)
@@ -162,6 +177,12 @@ export default function InspectionEstimateScreen() {
             quantityText: String(l.quantity),
             unitPriceCents: l.unitPriceCents,
             isAdder: l.isAdder,
+            evidenceLinks: (l.evidenceLinks ?? []).map((el) => ({
+              targetType: el.targetType,
+              targetId: el.targetId,
+              linkSource: el.linkSource,
+              reviewStatus: el.reviewStatus,
+            })),
           })),
         );
       }
@@ -191,6 +212,7 @@ export default function InspectionEstimateScreen() {
             : '1',
         unitPriceCents: item.unitPrice,
         isAdder: false,
+        evidenceLinks: [],
       },
     ]);
     setPickerOpen(false);
@@ -245,6 +267,7 @@ export default function InspectionEstimateScreen() {
         quantityText: String(qty),
         unitPriceCents: priceCents,
         isAdder: false,
+        evidenceLinks: [],
       },
     ]);
     setCustomDescription('');
@@ -278,6 +301,28 @@ export default function InspectionEstimateScreen() {
   // the rep actually changed one of those fields on a price-book line we must
   // convert it to a manual line (priceBookItemId: null) or the override would
   // be silently discarded at save.
+  // Toggle an evidence link on the line being edited. Links a rep creates are
+  // inspector-sourced and approved; the server stamps who/when.
+  function toggleEvidenceLink(lineIndex: number, targetType: 'photo' | 'damage_instance', targetId: string) {
+    setLines((prev) =>
+      prev.map((l, i) => {
+        if (i !== lineIndex) return l;
+        const existing = l.evidenceLinks.find(
+          (el) => el.targetType === targetType && el.targetId === targetId,
+        );
+        return {
+          ...l,
+          evidenceLinks: existing
+            ? l.evidenceLinks.filter((el) => el !== existing)
+            : [
+                ...l.evidenceLinks,
+                { targetType, targetId, linkSource: 'inspector' as const, reviewStatus: 'approved' as const },
+              ],
+        };
+      }),
+    );
+  }
+
   function saveEditLine() {
     if (editingIndex == null) return;
     const line = lines[editingIndex];
@@ -334,6 +379,7 @@ export default function InspectionEstimateScreen() {
         quantity: qty,
         unitPriceCents: l.unitPriceCents,
         isAdder: l.isAdder,
+        ...(l.evidenceLinks.length > 0 ? { evidenceLinks: l.evidenceLinks } : {}),
       });
     }
     setSaving(true);
@@ -632,6 +678,79 @@ export default function InspectionEstimateScreen() {
                       Changing this price book item makes it a one-off line for this estimate; the
                       price book itself is not changed.
                     </Text>
+                  )}
+                  {(damageInstances.length > 0 || photos.length > 0) && (
+                    <View style={{ gap: 6 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+                        Link evidence (appears in the Proof Package index)
+                      </Text>
+                      {damageInstances.length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {damageInstances.map((d) => {
+                            const on = line.evidenceLinks.some(
+                              (el) => el.targetType === 'damage_instance' && el.targetId === d.id,
+                            );
+                            return (
+                              <Pressable
+                                key={d.id}
+                                onPress={() => toggleEvidenceLink(i, 'damage_instance', d.id)}
+                                style={[
+                                  styles.adderToggle,
+                                  {
+                                    borderColor: on ? colors.secondary : colors.border,
+                                    backgroundColor: on ? colors.secondary + '22' : 'transparent',
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={{
+                                    color: on ? colors.secondary : colors.mutedForeground,
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                  }}
+                                >
+                                  {`${d.damageType}${d.severity ? ` · ${d.severity}` : ''}`}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+                      {photos.length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {photos.map((p, pi) => {
+                            const on = line.evidenceLinks.some(
+                              (el) => el.targetType === 'photo' && el.targetId === p.id,
+                            );
+                            const label =
+                              [p.zone, p.stage].filter(Boolean).join(' · ') || `Photo ${pi + 1}`;
+                            return (
+                              <Pressable
+                                key={p.id}
+                                onPress={() => toggleEvidenceLink(i, 'photo', p.id)}
+                                style={[
+                                  styles.adderToggle,
+                                  {
+                                    borderColor: on ? colors.secondary : colors.border,
+                                    backgroundColor: on ? colors.secondary + '22' : 'transparent',
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={{
+                                    color: on ? colors.secondary : colors.mutedForeground,
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                  }}
+                                >
+                                  {label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
                   )}
                   <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
                     <Pressable

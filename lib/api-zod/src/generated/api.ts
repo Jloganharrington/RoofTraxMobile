@@ -1193,7 +1193,17 @@ export const ListInspectionsResponse = zod.object({
   "quantity": zod.number(),
   "unitPriceCents": zod.number(),
   "totalCents": zod.number(),
-  "isAdder": zod.boolean()
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected']),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.string().nullable()
+})).optional().describe('Structured evidence links (photo\/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy\/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved.'),
+  "linkedPhotoIds": zod.array(zod.string()).optional().describe('Server-derived photo ids from APPROVED links only.'),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional().describe('Server-derived damage-instance ids from APPROVED links only.')
 })),
   "subtotalCents": zod.number(),
   "note": zod.string().nullable(),
@@ -1582,7 +1592,17 @@ export const CreateInspectionResponse = zod.object({
   "quantity": zod.number(),
   "unitPriceCents": zod.number(),
   "totalCents": zod.number(),
-  "isAdder": zod.boolean()
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected']),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.string().nullable()
+})).optional().describe('Structured evidence links (photo\/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy\/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved.'),
+  "linkedPhotoIds": zod.array(zod.string()).optional().describe('Server-derived photo ids from APPROVED links only.'),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional().describe('Server-derived damage-instance ids from APPROVED links only.')
 })),
   "subtotalCents": zod.number(),
   "note": zod.string().nullable(),
@@ -1953,7 +1973,17 @@ export const GetInspectionResponse = zod.object({
   "quantity": zod.number(),
   "unitPriceCents": zod.number(),
   "totalCents": zod.number(),
-  "isAdder": zod.boolean()
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected']),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.string().nullable()
+})).optional().describe('Structured evidence links (photo\/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy\/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved.'),
+  "linkedPhotoIds": zod.array(zod.string()).optional().describe('Server-derived photo ids from APPROVED links only.'),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional().describe('Server-derived damage-instance ids from APPROVED links only.')
 })),
   "subtotalCents": zod.number(),
   "note": zod.string().nullable(),
@@ -2447,7 +2477,17 @@ export const UpdateInspectionResponse = zod.object({
   "quantity": zod.number(),
   "unitPriceCents": zod.number(),
   "totalCents": zod.number(),
-  "isAdder": zod.boolean()
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected']),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.string().nullable()
+})).optional().describe('Structured evidence links (photo\/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy\/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved.'),
+  "linkedPhotoIds": zod.array(zod.string()).optional().describe('Server-derived photo ids from APPROVED links only.'),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional().describe('Server-derived damage-instance ids from APPROVED links only.')
 })),
   "subtotalCents": zod.number(),
   "note": zod.string().nullable(),
@@ -3503,7 +3543,17 @@ export const SubmitInspectionResponse = zod.object({
   "quantity": zod.number(),
   "unitPriceCents": zod.number(),
   "totalCents": zod.number(),
-  "isAdder": zod.boolean()
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected']),
+  "reviewedBy": zod.string().nullable(),
+  "reviewedAt": zod.string().nullable()
+})).optional().describe('Structured evidence links (photo\/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy\/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved.'),
+  "linkedPhotoIds": zod.array(zod.string()).optional().describe('Server-derived photo ids from APPROVED links only.'),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional().describe('Server-derived damage-instance ids from APPROVED links only.')
 })),
   "subtotalCents": zod.number(),
   "note": zod.string().nullable(),

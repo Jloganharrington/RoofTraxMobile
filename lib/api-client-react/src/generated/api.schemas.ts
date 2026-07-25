@@ -921,6 +921,44 @@ export type InspectionEstimateMeasuredBasis = {
   damagedSidingFacetCount: number;
 };
 
+export type InspectionEstimateLinesItemEvidenceLinksItemTargetType = typeof InspectionEstimateLinesItemEvidenceLinksItemTargetType[keyof typeof InspectionEstimateLinesItemEvidenceLinksItemTargetType];
+
+
+export const InspectionEstimateLinesItemEvidenceLinksItemTargetType = {
+  photo: 'photo',
+  damage_instance: 'damage_instance',
+} as const;
+
+export type InspectionEstimateLinesItemEvidenceLinksItemLinkSource = typeof InspectionEstimateLinesItemEvidenceLinksItemLinkSource[keyof typeof InspectionEstimateLinesItemEvidenceLinksItemLinkSource];
+
+
+export const InspectionEstimateLinesItemEvidenceLinksItemLinkSource = {
+  inspector: 'inspector',
+  user: 'user',
+  ai_suggested: 'ai_suggested',
+  imported: 'imported',
+} as const;
+
+export type InspectionEstimateLinesItemEvidenceLinksItemReviewStatus = typeof InspectionEstimateLinesItemEvidenceLinksItemReviewStatus[keyof typeof InspectionEstimateLinesItemEvidenceLinksItemReviewStatus];
+
+
+export const InspectionEstimateLinesItemEvidenceLinksItemReviewStatus = {
+  unreviewed: 'unreviewed',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export type InspectionEstimateLinesItemEvidenceLinksItem = {
+  targetType: InspectionEstimateLinesItemEvidenceLinksItemTargetType;
+  targetId: string;
+  linkSource: InspectionEstimateLinesItemEvidenceLinksItemLinkSource;
+  reviewStatus: InspectionEstimateLinesItemEvidenceLinksItemReviewStatus;
+  /** @nullable */
+  reviewedBy: string | null;
+  /** @nullable */
+  reviewedAt: string | null;
+};
+
 export type InspectionEstimateLinesItem = {
   /** @nullable */
   priceBookItemId: string | null;
@@ -931,6 +969,12 @@ export type InspectionEstimateLinesItem = {
   unitPriceCents: number;
   totalCents: number;
   isAdder: boolean;
+  /** Structured evidence links (photo/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved. */
+  evidenceLinks?: InspectionEstimateLinesItemEvidenceLinksItem[];
+  /** Server-derived photo ids from APPROVED links only. */
+  linkedPhotoIds?: string[];
+  /** Server-derived damage-instance ids from APPROVED links only. */
+  linkedDamageInstanceIds?: string[];
 };
 
 /**

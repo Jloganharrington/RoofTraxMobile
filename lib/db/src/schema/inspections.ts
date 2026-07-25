@@ -266,6 +266,27 @@ export interface HomeownerFacts {
 // unit / unit price at save time so later price-book edits never rewrite
 // history; priceBookItemId is kept for traceability only (null for manual
 // lines).
+// Evidence-chain link provenance (photo/finding → scope line). Who created
+// the link and whether a reviewer approved it. AI-suggested links must never
+// be treated as verified evidence unless approved.
+export const EVIDENCE_LINK_SOURCES = ['inspector', 'user', 'ai_suggested', 'imported'] as const;
+export type EvidenceLinkSource = (typeof EVIDENCE_LINK_SOURCES)[number];
+
+export const EVIDENCE_LINK_REVIEW_STATUSES = ['unreviewed', 'approved', 'rejected'] as const;
+export type EvidenceLinkReviewStatus = (typeof EVIDENCE_LINK_REVIEW_STATUSES)[number];
+
+// A structured link from an estimate/scope line to a piece of evidence — a
+// photo or a damage finding. reviewedBy/reviewedAt are stamped SERVER-SIDE
+// whenever reviewStatus is approved/rejected; never trusted from the client.
+export interface EvidenceLink {
+  targetType: 'photo' | 'damage_instance';
+  targetId: string;
+  linkSource: EvidenceLinkSource;
+  reviewStatus: EvidenceLinkReviewStatus;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+}
+
 export interface EstimateLineItem {
   priceBookItemId: string | null;
   description: string;
@@ -274,6 +295,13 @@ export interface EstimateLineItem {
   unitPriceCents: number;
   totalCents: number;
   isAdder: boolean;
+  /** Structured evidence links (with provenance/review state). Optional —
+   *  absent on legacy lines. */
+  evidenceLinks?: EvidenceLink[];
+  /** Server-derived convenience arrays of APPROVED link targets only.
+   *  Recomputed on every save from evidenceLinks; never client-trusted. */
+  linkedPhotoIds?: string[];
+  linkedDamageInstanceIds?: string[];
 }
 
 export interface InspectionEstimate {

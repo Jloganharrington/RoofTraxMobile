@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InspectionEstimateLinesItemEvidenceLinksItem } from './inspectionEstimateLinesItemEvidenceLinksItem';
 
 export type InspectionEstimateLinesItem = {
   /** @nullable */
@@ -16,4 +17,10 @@ export type InspectionEstimateLinesItem = {
   unitPriceCents: number;
   totalCents: number;
   isAdder: boolean;
+  /** Structured evidence links (photo/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved. */
+  evidenceLinks?: InspectionEstimateLinesItemEvidenceLinksItem[];
+  /** Server-derived photo ids from APPROVED links only. */
+  linkedPhotoIds?: string[];
+  /** Server-derived damage-instance ids from APPROVED links only. */
+  linkedDamageInstanceIds?: string[];
 };

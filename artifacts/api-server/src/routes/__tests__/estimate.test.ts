@@ -1,6 +1,8 @@
 import {
   companiesTable,
+  damageInstancesTable,
   db,
+  inspectionPhotosTable,
   inspectionSlopesTable,
   inspectionsTable,
   priceBookItemsTable,
@@ -322,6 +324,169 @@ describe('estimate routes', () => {
 // ---------------------------------------------------------------------------
 // Price book read access (field reps price estimates from the book)
 // ---------------------------------------------------------------------------
+
+describe('estimate evidence links', () => {
+  it('validates targets, stamps reviews server-side, and derives approved-only arrays', async () => {
+    const inspectionId = await createInspection(inspectorA.sid);
+    const [photo] = await db
+      .insert(inspectionPhotosTable)
+      .values({
+        inspectionId,
+        companyId: companyA,
+        subjectType: 'inspection',
+        url: '/objects/uploads/test-photo',
+        sha256: 'a'.repeat(64),
+      })
+      .returning();
+    const [dmg] = await db
+      .insert(damageInstancesTable)
+      .values({ inspectionId, companyId: companyA, damageType: 'hail', severity: 'moderate' })
+      .returning();
+
+    // Dangling id rejected.
+    const bad = await request(app)
+      .put(`/api/inspections/${inspectionId}/estimate`)
+      .set(auth(inspectorA.sid))
+      .send({
+        wastePercent: 10,
+        lines: [
+          {
+            priceBookItemId: null,
+            description: 'Repair',
+            unit: null,
+            quantity: 1,
+            unitPriceCents: 1000,
+            isAdder: false,
+            evidenceLinks: [
+              { targetType: 'photo', targetId: 'does-not-exist', linkSource: 'inspector', reviewStatus: 'approved' },
+            ],
+          },
+        ],
+      });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toContain('unknown photo');
+
+    // Valid save — approved inspector link + unreviewed AI suggestion.
+    const ok = await request(app)
+      .put(`/api/inspections/${inspectionId}/estimate`)
+      .set(auth(inspectorA.sid))
+      .send({
+        wastePercent: 10,
+        lines: [
+          {
+            priceBookItemId: null,
+            description: 'Repair',
+            unit: null,
+            quantity: 1,
+            unitPriceCents: 1000,
+            isAdder: false,
+            evidenceLinks: [
+              { targetType: 'photo', targetId: photo.id, linkSource: 'inspector', reviewStatus: 'approved' },
+              { targetType: 'damage_instance', targetId: dmg.id, linkSource: 'ai_suggested', reviewStatus: 'unreviewed' },
+            ],
+          },
+        ],
+      });
+    expect(ok.status).toBe(200);
+    const line = ok.body.estimate.lines[0];
+    expect(line.evidenceLinks).toHaveLength(2);
+    const approved = line.evidenceLinks.find((l: { targetId: string }) => l.targetId === photo.id);
+    // Server-stamped from the acting user, never client-supplied.
+    expect(approved.reviewedBy).toBe(inspectorA.userId);
+    expect(approved.reviewedAt).toBeTruthy();
+    const unreviewed = line.evidenceLinks.find((l: { targetId: string }) => l.targetId === dmg.id);
+    expect(unreviewed.reviewedBy).toBeNull();
+    // Derived convenience arrays include approved targets only.
+    expect(line.linkedPhotoIds).toEqual([photo.id]);
+    expect(line.linkedDamageInstanceIds).toEqual([]);
+
+    // Idempotent replay keeps the original review stamp.
+    const replay = await request(app)
+      .put(`/api/inspections/${inspectionId}/estimate`)
+      .set(auth(inspectorA.sid))
+      .send({
+        wastePercent: 10,
+        lines: [
+          {
+            priceBookItemId: null,
+            description: 'Repair',
+            unit: null,
+            quantity: 1,
+            unitPriceCents: 1000,
+            isAdder: false,
+            evidenceLinks: [
+              { targetType: 'photo', targetId: photo.id, linkSource: 'inspector', reviewStatus: 'approved' },
+            ],
+          },
+        ],
+      });
+    expect(replay.status).toBe(200);
+    expect(replay.body.estimate.lines[0].evidenceLinks[0].reviewedAt).toBe(approved.reviewedAt);
+  });
+
+  it('rejects a cross-tenant evidence target even when the id exists', async () => {
+    const inspectionA = await createInspection(inspectorA.sid);
+    const inspectionB = await createInspection(inspectorB.sid);
+    const [dmgB] = await db
+      .insert(damageInstancesTable)
+      .values({ inspectionId: inspectionB, companyId: companyB, damageType: 'wind' })
+      .returning();
+
+    const res = await request(app)
+      .put(`/api/inspections/${inspectionA}/estimate`)
+      .set(auth(inspectorA.sid))
+      .send({
+        wastePercent: 0,
+        lines: [
+          {
+            priceBookItemId: null,
+            description: 'Repair',
+            unit: null,
+            quantity: 1,
+            unitPriceCents: 100,
+            isAdder: false,
+            evidenceLinks: [
+              { targetType: 'damage_instance', targetId: dmgB.id, linkSource: 'inspector', reviewStatus: 'approved' },
+            ],
+          },
+        ],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects client-supplied reviewedBy/reviewedAt fields via strict body parsing', async () => {
+    const inspectionId = await createInspection(inspectorA.sid);
+    const res = await request(app)
+      .put(`/api/inspections/${inspectionId}/estimate`)
+      .set(auth(inspectorA.sid))
+      .send({
+        wastePercent: 0,
+        lines: [
+          {
+            priceBookItemId: null,
+            description: 'Repair',
+            unit: null,
+            quantity: 1,
+            unitPriceCents: 100,
+            isAdder: false,
+            evidenceLinks: [
+              {
+                targetType: 'photo',
+                targetId: 'x',
+                linkSource: 'inspector',
+                reviewStatus: 'approved',
+                reviewedBy: 'attacker',
+                reviewedAt: '1999-01-01T00:00:00Z',
+              },
+            ],
+          },
+        ],
+      });
+    // Either rejected as unknown target (extra keys stripped) — but never
+    // persisted with the client-supplied stamp.
+    expect(res.status).toBe(400);
+  });
+});
 
 describe('price book description generation authz', () => {
   it('gates the AI description endpoint to admins and validates the body', async () => {

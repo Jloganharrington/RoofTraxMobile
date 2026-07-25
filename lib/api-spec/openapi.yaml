@@ -4243,6 +4243,43 @@ components:
                         type: integer
                       isAdder:
                         type: boolean
+                      evidenceLinks:
+                        type: array
+                        description: >-
+                          Structured evidence links (photo/finding → this scope
+                          line) with provenance and review state. Absent on
+                          legacy lines. reviewedBy/reviewedAt are stamped
+                          server-side; AI-suggested links are never treated as
+                          verified unless approved.
+                        items:
+                          type: object
+                          required: [targetType, targetId, linkSource, reviewStatus, reviewedBy, reviewedAt]
+                          properties:
+                            targetType:
+                              type: string
+                              enum: [photo, damage_instance]
+                            targetId:
+                              type: string
+                            linkSource:
+                              type: string
+                              enum: [inspector, user, ai_suggested, imported]
+                            reviewStatus:
+                              type: string
+                              enum: [unreviewed, approved, rejected]
+                            reviewedBy:
+                              type: [string, "null"]
+                            reviewedAt:
+                              type: [string, "null"]
+                      linkedPhotoIds:
+                        type: array
+                        description: Server-derived photo ids from APPROVED links only.
+                        items:
+                          type: string
+                      linkedDamageInstanceIds:
+                        type: array
+                        description: Server-derived damage-instance ids from APPROVED links only.
+                        items:
+                          type: string
                 subtotalCents:
                   type: integer
                 note:

@@ -137,6 +137,8 @@ export function buildReportHtml(params: {
    * Rendered after the attestation when provided.
    */
   evidenceManifestHtml?: string | null;
+  /** Server-built Evidence-to-Scope Index appendix (approved links only). */
+  evidenceScopeIndexHtml?: string | null;
 }): string {
   const { inspection, inspector, aiSummary } = params;
   const theme = resolveReportTheme(params.theme);
@@ -243,6 +245,13 @@ ${aiSummary.repairabilityText ? `
   <div class="section-title">${aiSummary.repairabilityText ? '5' : '4'} — Inspector Attestation</div>
   <div class="attestation">${params.attestationHtml}</div>
 </div>
+
+${params.evidenceScopeIndexHtml ? `
+<!-- Appendix: Evidence-to-Scope Index (server-generated, approved links only) -->
+<div class="section">
+  <div class="section-title">Appendix — Evidence-to-Scope Index</div>
+  ${params.evidenceScopeIndexHtml}
+</div>` : ''}
 
 ${params.evidenceManifestHtml ? `
 <!-- Appendix: Evidence Manifest (server-generated provenance record) -->

@@ -76,7 +76,12 @@ import {
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
-import type { Role, RepairabilityAssessment } from '@workspace/db';
+import type {
+  Role,
+  RepairabilityAssessment,
+  EvidenceLink,
+  InspectionEstimate,
+} from '@workspace/db';
 import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -93,6 +98,14 @@ import {
 } from '../lib/inspectionProtocolState';
 import { getCompanyCrmConfig } from '../lib/crm';
 import { computeLines, computeMeasuredBasis } from '../lib/estimate';
+import {
+  buildEvidenceScopeIndexHtml,
+  buildLinkedFindingSummary,
+  collectApprovedScopeLinks,
+  normalizeEvidenceLinks,
+  type ApprovedScopeLink,
+  type LinkedFindingSummary,
+} from '../lib/evidenceChain';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 
@@ -3040,6 +3053,15 @@ function buildInspectionBrief(
 // trusted. Locked inspections reject with 409 like every other capture write.
 // ---------------------------------------------------------------------------
 
+const EvidenceLinkBody = z.object({
+  targetType: z.enum(['photo', 'damage_instance']),
+  targetId: z.string().min(1).max(100),
+  linkSource: z.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  reviewStatus: z.enum(['unreviewed', 'approved', 'rejected']),
+  // reviewedBy / reviewedAt are intentionally NOT accepted from the client —
+  // the server stamps them (normalizeEvidenceLinks) from the acting user.
+});
+
 const EstimateLineBody = z.object({
   priceBookItemId: z.string().max(100).nullable(),
   description: z.string().min(1).max(300),
@@ -3047,6 +3069,7 @@ const EstimateLineBody = z.object({
   quantity: z.number().positive().finite().max(1_000_000),
   unitPriceCents: z.number().int().min(0).max(100_000_000),
   isAdder: z.boolean(),
+  evidenceLinks: z.array(EvidenceLinkBody).max(100).optional(),
 });
 
 const PutEstimateBody = z.object({
@@ -3135,6 +3158,60 @@ router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
       : line;
   });
 
+  // Evidence links: validate targets belong to THIS inspection (dangling ids
+  // rejected) and stamp review metadata server-side. Prior stamps are kept
+  // for unchanged decisions so idempotent outbox replays don't churn them.
+  const anyLinks = lineInputs.some((l) => (l.evidenceLinks?.length ?? 0) > 0);
+  let normalizedLinksByLine: (EvidenceLink[] | undefined)[] = lineInputs.map(() => undefined);
+  if (anyLinks) {
+    const [photoRows, damageRows] = await Promise.all([
+      db
+        .select({ id: inspectionPhotosTable.id })
+        .from(inspectionPhotosTable)
+        .where(
+          and(
+            eq(inspectionPhotosTable.inspectionId, inspectionId),
+            eq(inspectionPhotosTable.companyId, actor.companyId),
+          ),
+        ),
+      db
+        .select({ id: damageInstancesTable.id })
+        .from(damageInstancesTable)
+        .where(
+          and(
+            eq(damageInstancesTable.inspectionId, inspectionId),
+            eq(damageInstancesTable.companyId, actor.companyId),
+          ),
+        ),
+    ]);
+    const validPhotoIds = new Set(photoRows.map((r) => r.id));
+    const validDamageInstanceIds = new Set(damageRows.map((r) => r.id));
+    // Prior review stamps across the whole stored estimate (lines may move).
+    const prior = new Map<string, EvidenceLink>();
+    const storedEstimate = inspection.estimate as InspectionEstimate | null;
+    for (const line of storedEstimate?.lines ?? []) {
+      for (const link of line.evidenceLinks ?? []) {
+        prior.set(`${link.targetType}:${link.targetId}`, link);
+      }
+    }
+    const now = new Date().toISOString();
+    normalizedLinksByLine = [];
+    for (const line of lineInputs) {
+      const result = normalizeEvidenceLinks(line.evidenceLinks, {
+        validPhotoIds,
+        validDamageInstanceIds,
+        reviewerUserId: actor.userId,
+        now,
+        prior,
+      });
+      if ('error' in result) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      normalizedLinksByLine.push(result.links.length > 0 ? result.links : undefined);
+    }
+  }
+
   const [slopes, sidingFacets] = await Promise.all([
     db
       .select({ areaSqft: inspectionSlopesTable.areaSqft })
@@ -3156,7 +3233,26 @@ router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
       ),
   ]);
 
-  const { lines, subtotalCents } = computeLines(lineInputs);
+  // computeLines only does money math — strip the raw client links and
+  // attach the server-normalized ones plus approved-only derived arrays.
+  const { lines: computedLines, subtotalCents } = computeLines(
+    lineInputs.map(({ evidenceLinks: _drop, ...rest }) => rest),
+  );
+  const lines = computedLines.map((line, i) => {
+    const links = normalizedLinksByLine[i];
+    if (!links) return line;
+    const approved = links.filter((l) => l.reviewStatus === 'approved');
+    return {
+      ...line,
+      evidenceLinks: links,
+      linkedPhotoIds: approved
+        .filter((l) => l.targetType === 'photo')
+        .map((l) => l.targetId),
+      linkedDamageInstanceIds: approved
+        .filter((l) => l.targetType === 'damage_instance')
+        .map((l) => l.targetId),
+    };
+  });
   const estimate = {
     wastePercent: parsed.data.wastePercent,
     measuredBasis: computeMeasuredBasis({
@@ -3387,6 +3483,10 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   // original capture timestamp, integrity hash, and any non-destructive
   // annotations layered over the original. AI captions/groupings live
   // separately in photoGroupings and never replace this record.
+  const findingLookups = {
+    damageById: new Map(children.damageInstances.map((d) => [d.id, d])),
+    slopeById: new Map(children.slopes.map((s) => [s.id, s])),
+  };
   const evidenceManifestEntries = children.photos
     .map((p) => ({
       photoId: p.id,
@@ -3396,23 +3496,40 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
       uploadedAt: p.createdAt ? new Date(p.createdAt).toISOString() : null,
       stage: p.stage ?? null,
       subjectType: p.subjectType ?? null,
+      subjectId: p.subjectId ?? null,
       triadRole: p.triadRole ?? null,
       zone: p.zone ?? null,
       annotations: p.overlayJson ?? null,
       hasExif: p.exifJson != null,
+      // Compact immutable summary of the linked finding (photo → finding leg
+      // of the evidence chain). Null when the photo has no subject link.
+      linkedFinding: buildLinkedFindingSummary(
+        { subjectType: p.subjectType ?? null, subjectId: p.subjectId ?? null },
+        findingLookups,
+      ),
     }))
     .sort((a, b) => a.photoId.localeCompare(b.photoId));
+
+  // Approved evidence→scope links resolved at compile time from the stored
+  // estimate. Unreviewed/rejected (incl. AI-suggested) links never enter the
+  // snapshot or the manifest hash. Link changes therefore produce a new
+  // compiled version with a new manifest digest automatically.
+  const estimateForLinks = inspection.estimate as InspectionEstimate | null;
+  const approvedScopeLinks = collectApprovedScopeLinks(estimateForLinks?.lines);
   const inspectionDate = inspection.lockedAt
     ? new Date(inspection.lockedAt).toISOString()
     : inspection.updatedAt
       ? new Date(inspection.updatedAt).toISOString()
       : null;
   const evidenceManifest = {
-    manifestVersion: 1,
+    manifestVersion: 2,
     inspectionId: inspection.id,
     inspectionDate,
     photoCount: evidenceManifestEntries.length,
     photos: evidenceManifestEntries,
+    // Approved evidence→scope links are part of the manifest, so they are
+    // covered by the integrity hash below.
+    approvedScopeLinks,
   };
   // Integrity hash over the manifest itself so any later tampering with a
   // stored package is detectable (entries are sorted for a stable digest).
@@ -3570,7 +3687,7 @@ ${JSON.stringify(photoBrief)}
   // so the stored data never embeds expiring credentials.
   const generatedAt = new Date().toISOString();
   const compiledData = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt,
     inspector,
     inspectionSnapshot: {
@@ -3643,8 +3760,26 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
     return;
   }
 
+  // Optional ?version=<index> re-opens an older compiled version. Validated
+  // against the append-only version history; default is the latest package.
+  let reportPath = inspection.compiledReportPath;
+  const rawVersion = req.query.version;
+  if (typeof rawVersion === 'string' && rawVersion !== '') {
+    const versions = (inspection.compiledReportVersions ?? []) as Array<{
+      path: string;
+      generatedAt: string;
+      evidenceManifestSha256: string;
+    }>;
+    const idx = Number(rawVersion);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= versions.length) {
+      res.status(400).json({ error: 'Unknown report version' });
+      return;
+    }
+    reportPath = versions[idx].path;
+  }
+
   // Load the stored JSON data blob from object storage.
-  const dataFile = await objectStorageService.getObjectEntityFile(inspection.compiledReportPath);
+  const dataFile = await objectStorageService.getObjectEntityFile(reportPath);
   const [dataBuffer] = await dataFile.download();
   const compiledData = JSON.parse(dataBuffer.toString('utf-8')) as {
     schemaVersion: number;
@@ -3677,7 +3812,12 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
         stage: string | null; subjectType: string | null;
         triadRole: string | null; zone: string | null;
         annotations: unknown; hasExif: boolean;
+        // Present from schemaVersion 3 onward.
+        subjectId?: string | null;
+        linkedFinding?: LinkedFindingSummary | null;
       }>;
+      // Present from schemaVersion 3 onward.
+      approvedScopeLinks?: ApprovedScopeLink[];
     };
     evidenceManifestSha256?: string;
   };
@@ -3762,6 +3902,26 @@ AI-written captions elsewhere in this report are descriptive aids only and do no
 </p>`;
   }
 
+  // Build the Evidence-to-Scope Index appendix (schemaVersion >= 3 blobs
+  // that carry approved links). Older blobs simply omit the section.
+  let evidenceScopeIndexHtml: string | null = null;
+  if (manifest?.approvedScopeLinks?.length) {
+    const findingDisplayById = new Map<string, { displayRef: string; location: string | null }>();
+    for (const p of manifest.photos) {
+      if (p.linkedFinding && p.linkedFinding.subjectType === 'damage_instance') {
+        findingDisplayById.set(p.linkedFinding.subjectId, {
+          displayRef: p.linkedFinding.displayRef,
+          location: p.linkedFinding.location,
+        });
+      }
+    }
+    evidenceScopeIndexHtml = buildEvidenceScopeIndexHtml({
+      approvedScopeLinks: manifest.approvedScopeLinks,
+      manifestPhotos: manifest.photos,
+      findingDisplayById,
+    });
+  }
+
   // Build a minimal inspection row-alike from the snapshot for buildReportHtml.
   const snap = compiledData.inspectionSnapshot;
   const inspSnap = {
@@ -3803,6 +3963,7 @@ AI-written captions elsewhere in this report are descriptive aids only and do no
     theme: resolveReportTheme(company?.reportBranding),
     logoUrl: logoSignedUrl,
     evidenceManifestHtml,
+    evidenceScopeIndexHtml,
   });
 
   res.json({ html });
