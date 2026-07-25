@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -44,6 +44,7 @@ export default function InspectionPackageScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { role } = useProfile();
   const isSuperAdmin = role === 'super_admin';
+  const isManagerOrAdmin = role === 'manager' || role === 'admin' || role === 'super_admin';
 
   const statusQuery = useGetInspectionStatus(id, {
     query: {
@@ -76,6 +77,64 @@ export default function InspectionPackageScreen() {
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
 
+  // Content-lint state for the latest compiled version. The server lints
+  // every AI fragment against the contractor-lane policy; `blocked` prevents
+  // export until a manager resolves or a clean re-compile passes.
+  type LintFinding = { fragmentRef: string; ruleId: string; matchedText: string; severity: string };
+  const [lintStatus, setLintStatus] = useState<'passed' | 'needs_review' | 'blocked' | null>(null);
+  const [lintFindings, setLintFindings] = useState<LintFinding[]>([]);
+  const [lintResolved, setLintResolved] = useState(false);
+  const [resolving, setResolving] = useState(false);
+
+  const refreshLint = useCallback(async () => {
+    try {
+      const token = await getToken('auth_session_token');
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/report/lint`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        lintStatus: 'passed' | 'needs_review' | 'blocked';
+        findings: LintFinding[];
+        resolution: { path: string } | null;
+      };
+      setLintStatus(body.lintStatus);
+      setLintFindings(body.findings ?? []);
+      setLintResolved(body.resolution != null);
+    } catch {
+      // Non-fatal: lint banner just stays hidden offline.
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (inspection?.compiledReportReadyAt) void refreshLint();
+  }, [inspection?.compiledReportReadyAt, refreshLint]);
+
+  async function handleResolveLint() {
+    if (resolving) return;
+    setResolving(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/report/lint-resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: '{}',
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      await refreshLint();
+    } catch (err) {
+      Alert.alert('Could not resolve', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setResolving(false);
+    }
+  }
+
   async function handleCompileReport() {
     if (compiling) return;
     setCompiling(true);
@@ -93,6 +152,15 @@ export default function InspectionPackageScreen() {
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      const body = (await res.json().catch(() => ({}))) as {
+        lintStatus?: 'passed' | 'needs_review' | 'blocked';
+        findings?: LintFinding[];
+      };
+      if (body.lintStatus) {
+        setLintStatus(body.lintStatus);
+        setLintFindings(body.findings ?? []);
+        setLintResolved(false); // a new compile always re-enters the gate
       }
       // Refresh the inspection so compiledReportReadyAt updates.
       await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
@@ -308,6 +376,66 @@ export default function InspectionPackageScreen() {
 
           {compileError ? (
             <Text style={{ color: colors.destructive, fontSize: 12 }}>{compileError}</Text>
+          ) : null}
+
+          {/* Content-lint banner — surfaces contractor-lane policy findings */}
+          {lintStatus && lintStatus !== 'passed' ? (
+            <View
+              style={{
+                borderRadius: 8,
+                padding: 10,
+                gap: 6,
+                backgroundColor: lintStatus === 'blocked' && !lintResolved ? '#fee2e2' : '#fef9c3',
+              }}
+            >
+              <Text
+                style={{
+                  fontWeight: '700',
+                  fontSize: 13,
+                  color: lintStatus === 'blocked' && !lintResolved ? '#991b1b' : '#854d0e',
+                }}
+              >
+                {lintStatus === 'blocked'
+                  ? lintResolved
+                    ? 'Blocked content resolved by a reviewer — export allowed'
+                    : 'Export blocked: report contains insurance-advocacy or legal language'
+                  : 'Needs review: report contains language a reviewer should check'}
+              </Text>
+              {lintFindings.slice(0, 5).map((f, i) => (
+                <Text key={i} style={{ fontSize: 12, color: '#57534e' }}>
+                  • {f.fragmentRef} — {f.ruleId}: “{f.matchedText}”
+                </Text>
+              ))}
+              {lintFindings.length > 5 ? (
+                <Text style={{ fontSize: 12, color: '#57534e' }}>
+                  …and {lintFindings.length - 5} more
+                </Text>
+              ) : null}
+              {lintStatus === 'blocked' && !lintResolved ? (
+                <Text style={{ fontSize: 12, color: '#57534e' }}>
+                  Re-compile after regenerating the AI summary
+                  {isManagerOrAdmin ? ', or resolve explicitly to allow export as-is.' : '. A manager can also resolve it explicitly.'}
+                </Text>
+              ) : null}
+              {lintStatus === 'blocked' && !lintResolved && isManagerOrAdmin ? (
+                <Pressable
+                  onPress={handleResolveLint}
+                  disabled={resolving}
+                  style={{
+                    alignSelf: 'flex-start',
+                    backgroundColor: '#991b1b',
+                    borderRadius: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    opacity: resolving ? 0.6 : 1,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                    {resolving ? 'Resolving…' : 'Resolve & allow export'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
 
           <View style={{ flexDirection: 'row', gap: 8 }}>

@@ -1,3 +1,5 @@
+import { CONTRACTOR_LANE_POLICY } from './contentPolicy';
+
 // Baseline system prompt for the AI forensic inspection summary.
 // The text below is the verbatim company-wide baseline supplied by the
 // product owner. Companies cannot edit it; their saved custom prompt is
@@ -10,9 +12,15 @@ export const BASELINE_AI_SYSTEM_PROMPT = "You are a forensic property-inspection
  * additional instructions. The additions cannot remove the baseline.
  */
 export function composeAiSystemPrompt(companyAdditions?: string | null): string {
+  // The shared contractor-lane policy is appended to the immutable baseline
+  // so BOTH generation models (this Claude summary prompt and the Gemini
+  // compile prompt) consume the exact same policy module and cannot drift.
+  const base = `${BASELINE_AI_SYSTEM_PROMPT}
+
+${CONTRACTOR_LANE_POLICY}`;
   const extra = companyAdditions?.trim();
-  if (!extra) return BASELINE_AI_SYSTEM_PROMPT;
-  return `${BASELINE_AI_SYSTEM_PROMPT}
+  if (!extra) return base;
+  return `${base}
 
 ADDITIONAL COMPANY INSTRUCTIONS
 The company operating this platform has supplied the following additional instructions. Apply them only where they do not conflict with the rules above; the rules above always take precedence, and the OUTPUT FORMAT is unchangeable.

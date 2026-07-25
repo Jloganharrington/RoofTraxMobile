@@ -106,6 +106,13 @@ import {
   type ApprovedScopeLink,
   type LinkedFindingSummary,
 } from '../lib/evidenceChain';
+import {
+  CARRIER_FACING_CONTENT_CLASSES,
+  CONTRACTOR_LANE_POLICY,
+  lintReportFragments,
+  type ContentClass,
+  type LintFragmentInput,
+} from '../lib/contentPolicy';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 
@@ -3355,9 +3362,18 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
     return;
   }
 
+  // Contractor-lane lint over the AI narrative before storage. The content
+  // is stored verbatim — never rewritten — with the lint result alongside it
+  // so reviewers can see exactly what tripped which rule.
+  const summaryLint = lintReportFragments([
+    { fragmentRef: 'forensicSummary', contentClass: 'construction_fact', text: summaryResult.forensicSummary },
+    { fragmentRef: 'repairabilityText', contentClass: 'repairability_analysis', text: summaryResult.repairabilityText },
+  ]);
+
   const summary = {
     ...summaryResult,
     generatedAt: new Date().toISOString(),
+    lint: summaryLint,
   };
 
   await db
@@ -3574,6 +3590,9 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   }));
 
   const geminiPrompt = `You are a technical report writer for a forensic roofing inspection company.
+
+${CONTRACTOR_LANE_POLICY}
+
 Given the structured inspection data below, return a JSON object with EXACTLY these keys:
 {
   "propertyConstructionDetailsHtml": "<complete HTML for a property details table>",
@@ -3686,8 +3705,37 @@ ${JSON.stringify(photoBrief)}
   // omitted from this artifact; they are signed fresh on every preview request
   // so the stored data never embeds expiring credentials.
   const generatedAt = new Date().toISOString();
+
+  // Content-class map for every stored fragment (schemaVersion 4). Carrier
+  // rendering includes only carrier-facing classes; internal_metadata is
+  // provenance/processing data surfaced only via server-built appendices.
+  const contentClasses: Record<string, ContentClass> = {
+    'aiSummary.forensicSummary': 'construction_fact',
+    'aiSummary.repairabilityText': 'repairability_analysis',
+    propertyDetailsHtml: 'construction_fact',
+    photoGroupings: 'photo_narrative',
+    attestationHtml: 'attestation',
+    photoIndex: 'internal_metadata',
+    evidenceManifest: 'internal_metadata',
+  };
+
+  // Contractor-lane lint over every AI-generated fragment before storage.
+  // Content is stored verbatim — findings only classify it; `blocked` gates
+  // finalization/export until a reviewer edits or explicitly resolves.
+  const lintFragmentInputs: LintFragmentInput[] = [
+    { fragmentRef: 'aiSummary.forensicSummary', contentClass: 'construction_fact', text: aiSummary.forensicSummary },
+    { fragmentRef: 'aiSummary.repairabilityText', contentClass: 'repairability_analysis', text: aiSummary.repairabilityText },
+    { fragmentRef: 'propertyDetailsHtml', contentClass: 'construction_fact', text: propertyDetailsHtml, isHtml: true },
+    { fragmentRef: 'attestationHtml', contentClass: 'attestation', text: attestationHtml, isHtml: true },
+    ...photoGroupings.flatMap((g, i): LintFragmentInput[] => [
+      { fragmentRef: `photoGroupings[${i}].title`, contentClass: 'photo_narrative', text: g.title },
+      { fragmentRef: `photoGroupings[${i}].narrative`, contentClass: 'photo_narrative', text: g.narrative ?? '' },
+    ]),
+  ];
+  const lint = lintReportFragments(lintFragmentInputs);
+
   const compiledData = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generatedAt,
     inspector,
     inspectionSnapshot: {
@@ -3714,6 +3762,9 @@ ${JSON.stringify(photoBrief)}
     // integrity digest of the manifest itself.
     evidenceManifest,
     evidenceManifestSha256: manifestSha256,
+    // Present from schemaVersion 4 onward.
+    contentClasses,
+    lint,
   };
 
   const compiledReportPath = await objectStorageService.uploadObjectBuffer(
@@ -3728,6 +3779,7 @@ ${JSON.stringify(photoBrief)}
     path: compiledReportPath,
     generatedAt,
     evidenceManifestSha256: manifestSha256,
+    lintStatus: lint.lintStatus,
   });
   await db
     .update(inspectionsTable)
@@ -3738,7 +3790,7 @@ ${JSON.stringify(photoBrief)}
     })
     .where(eq(inspectionsTable.id, inspectionId));
 
-  res.json({ compiledReportPath });
+  res.json({ compiledReportPath, lintStatus: lint.lintStatus, findings: lint.findings });
 });
 
 // GET /inspections/:inspectionId/report/preview-url
@@ -3820,6 +3872,44 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
       approvedScopeLinks?: ApprovedScopeLink[];
     };
     evidenceManifestSha256?: string;
+    // Present from schemaVersion 4 onward.
+    contentClasses?: Record<string, ContentClass>;
+    lint?: { lintStatus: 'passed' | 'needs_review' | 'blocked'; findings: unknown[] };
+  };
+
+  // ── Blocked-content gate ──────────────────────────────────────────────
+  // A `blocked` lint result prevents finalization/export of this version
+  // until a reviewer recompiles clean content or explicitly resolves the
+  // findings (resolution is scoped to this exact blob path). Reviewers can
+  // still open it with ?review=1 to see what they are resolving.
+  if (compiledData.lint?.lintStatus === 'blocked') {
+    const resolved = inspection.reportLintResolution?.path === reportPath;
+    // Reviewer bypass is an authorization boundary, not a convention: only
+    // manager/admin roles (the roles that can resolve) may open a blocked
+    // version, and only by explicitly asking for review mode.
+    const reviewMode =
+      (req.query.review === '1' || req.query.review === 'true') && isManagerOrAdmin(actor.role);
+    if (!resolved && !reviewMode) {
+      res.status(409).json({
+        error:
+          'This report version contains blocked content (insurance-advocacy or legal language) and cannot be exported until a reviewer resolves it.',
+        lintStatus: 'blocked',
+        findings: compiledData.lint.findings,
+      });
+      return;
+    }
+  }
+
+  // Carrier-facing content-class allowlist (schemaVersion >= 4). Fragments
+  // whose class is not carrier-facing are omitted from the rendered report
+  // body — omit, never infer. Older blobs (no contentClasses) render
+  // unchanged for backward compatibility.
+  const classOf = (fragmentRef: string): ContentClass | null =>
+    compiledData.contentClasses ? (compiledData.contentClasses[fragmentRef] ?? null) : null;
+  const carrierVisible = (fragmentRef: string): boolean => {
+    if (!compiledData.contentClasses) return true; // pre-v4 blob
+    const cls = classOf(fragmentRef);
+    return cls !== null && CARRIER_FACING_CONTENT_CLASSES.has(cls);
   };
 
   // Sign each photo URL fresh — best-effort (a missing or invalid path gets null).
@@ -3955,10 +4045,13 @@ AI-written captions elsewhere in this report are descriptive aids only and do no
   const html = buildReportHtml({
     inspection: inspSnap,
     inspector: compiledData.inspector,
-    aiSummary: compiledData.aiSummary,
-    propertyDetailsHtml: compiledData.propertyDetailsHtml,
-    photoSectionsHtml,
-    attestationHtml: compiledData.attestationHtml,
+    aiSummary: {
+      forensicSummary: carrierVisible('aiSummary.forensicSummary') ? compiledData.aiSummary.forensicSummary : '',
+      repairabilityText: carrierVisible('aiSummary.repairabilityText') ? compiledData.aiSummary.repairabilityText : '',
+    },
+    propertyDetailsHtml: carrierVisible('propertyDetailsHtml') ? compiledData.propertyDetailsHtml : '',
+    photoSectionsHtml: carrierVisible('photoGroupings') ? photoSectionsHtml : '',
+    attestationHtml: carrierVisible('attestationHtml') ? compiledData.attestationHtml : '',
     generatedAt: compiledData.generatedAt,
     theme: resolveReportTheme(company?.reportBranding),
     logoUrl: logoSignedUrl,
@@ -3967,6 +4060,87 @@ AI-written captions elsewhere in this report are descriptive aids only and do no
   });
 
   res.json({ html });
+});
+
+// GET /inspections/:inspectionId/report/lint
+// Returns the lint status/findings of the latest compiled version plus any
+// reviewer resolution, so the mobile review UI can surface them.
+router.get('/inspections/:inspectionId/report/lint', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!inspection.compiledReportPath) {
+    res.status(404).json({ error: 'No compiled report found — compile the report first.' });
+    return;
+  }
+
+  const dataFile = await objectStorageService.getObjectEntityFile(inspection.compiledReportPath);
+  const [dataBuffer] = await dataFile.download();
+  const compiledData = JSON.parse(dataBuffer.toString('utf-8')) as {
+    lint?: { lintStatus: string; findings: unknown[] };
+  };
+
+  const resolution =
+    inspection.reportLintResolution?.path === inspection.compiledReportPath
+      ? inspection.reportLintResolution
+      : null;
+
+  res.json({
+    // Pre-v4 blobs carry no lint — report them as passed (legacy content is
+    // grandfathered; only newly compiled versions enter the gate).
+    lintStatus: compiledData.lint?.lintStatus ?? 'passed',
+    findings: compiledData.lint?.findings ?? [],
+    resolution,
+  });
+});
+
+// POST /inspections/:inspectionId/report/lint-resolve — { note? }
+// Manager/admin-only explicit resolution of a blocked lint result on the
+// LATEST compiled version. Scoped to the exact blob path, so any subsequent
+// re-compile re-enters the gate. Content is never rewritten by this action.
+router.post('/inspections/:inspectionId/report/lint-resolve', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  if (!isManagerOrAdmin(actor.role)) {
+    res.status(403).json({ error: 'Only a manager or admin can resolve report content findings' });
+    return;
+  }
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!inspection.compiledReportPath) {
+    res.status(404).json({ error: 'No compiled report found — compile the report first.' });
+    return;
+  }
+
+  const note =
+    typeof (req.body as { note?: unknown })?.note === 'string'
+      ? (req.body as { note: string }).note.trim().slice(0, 2000) || null
+      : null;
+
+  const resolution = {
+    path: inspection.compiledReportPath,
+    resolvedBy: actor.userId,
+    resolvedAt: new Date().toISOString(),
+    note,
+  };
+
+  await db
+    .update(inspectionsTable)
+    .set({ reportLintResolution: resolution })
+    .where(eq(inspectionsTable.id, inspectionId));
+
+  res.json({ resolution });
 });
 
 export default router;

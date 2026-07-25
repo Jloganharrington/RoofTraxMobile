@@ -7,10 +7,12 @@ import {
 } from '../aiSummaryPrompt';
 
 describe('composeAiSystemPrompt', () => {
-  it('returns the baseline verbatim when there are no company additions', () => {
-    expect(composeAiSystemPrompt()).toBe(BASELINE_AI_SYSTEM_PROMPT);
-    expect(composeAiSystemPrompt(null)).toBe(BASELINE_AI_SYSTEM_PROMPT);
-    expect(composeAiSystemPrompt('   ')).toBe(BASELINE_AI_SYSTEM_PROMPT);
+  it('starts with the baseline verbatim (plus the shared contractor-lane policy) when there are no company additions', () => {
+    // The shared contractor-lane policy is always appended after the baseline.
+    for (const composed of [composeAiSystemPrompt(), composeAiSystemPrompt(null), composeAiSystemPrompt('   ')]) {
+      expect(composed.startsWith(BASELINE_AI_SYSTEM_PROMPT)).toBe(true);
+      expect(composed).toContain('CONTRACTOR CONSTRUCTION-DOCUMENT LANE');
+    }
   });
 
   it('appends company additions after the full baseline, never replacing it', () => {

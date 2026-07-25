@@ -257,6 +257,39 @@ export interface HomeownerFacts {
   recordedAtUtc: string;
 }
 
+// ── Contractor-lane content lint (Phase 2 forensic report) ────────────────
+// The Phase 2 report is a contractor construction document. Every AI-written
+// fragment is linted server-side against a forbidden-phrase rule set before
+// storage; results are stored verbatim alongside the content (AI text is
+// never silently rewritten).
+
+export const REPORT_LINT_STATUSES = ['passed', 'needs_review', 'blocked'] as const;
+export type ReportLintStatus = (typeof REPORT_LINT_STATUSES)[number];
+
+export interface ReportLintFinding {
+  // Which fragment the finding is in, e.g. "forensicSummary",
+  // "photoGroupings[2].narrative".
+  fragmentRef: string;
+  ruleId: string;
+  matchedText: string;
+  severity: 'blocked' | 'needs_review';
+}
+
+export interface ReportLintResult {
+  lintStatus: ReportLintStatus;
+  findings: ReportLintFinding[];
+}
+
+// Reviewer resolution of a blocked lint result — server-stamped, scoped to
+// one compiled blob path so re-compiles always re-enter the gate.
+export interface ReportLintResolution {
+  // Compiled report blob path this resolution applies to.
+  path: string;
+  resolvedBy: string; // user id (manager/admin)
+  resolvedAt: string; // ISO timestamp, server-stamped
+  note: string | null;
+}
+
 // REPORT_DATA v2 — Property Profile (field-captured, non-derived fields
 // only). Derived values (roofSlopeCount, roofCovering, interiorAreasInspected,
 // temporaryRepairsCompleted, flashingsAndPenetrations) are computed by the
@@ -537,6 +570,10 @@ export const inspectionsTable = pgTable('inspections', {
       forensicSummary: string;
       repairabilityText: string;
       generatedAt: string;
+      // Contractor-lane content lint over the AI narrative (additive; present
+      // from summaries generated after the lint gate shipped). Content is
+      // never rewritten — findings only classify it for reviewer attention.
+      lint?: ReportLintResult;
     } | null>()
     .default(null),
   // Gemini-compiled HTML report stored in object storage. Written by the
@@ -549,6 +586,14 @@ export const inspectionsTable = pgTable('inspections', {
   // (never read-modify-write) so concurrent compiles can't drop entries and
   // every prior package version stays retrievable with its manifest digest.
   compiledReportVersions: jsonb('compiled_report_versions').notNull().default([]),
+  // Reviewer resolution of a `blocked` content-lint result on a compiled
+  // report version. Keyed by the compiled blob path (version entries are
+  // append-only, so resolution lives here rather than mutating history).
+  // Null until a manager/admin explicitly resolves; a new compile with a
+  // different path requires a fresh resolution.
+  reportLintResolution: jsonb('report_lint_resolution')
+    .$type<ReportLintResolution | null>()
+    .default(null),
   // Homeowner contact email captured at scheduling time. Used for appointment
   // notifications and Phase 2 comms; carried forward to the owner record when
   // Phase 2 is completed so reps never have to re-enter it.

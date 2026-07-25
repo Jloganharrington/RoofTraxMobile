@@ -6,6 +6,7 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
+import { useProfile } from '@/hooks/useProfile';
 
 // The Gemini-compiled HTML forensic report in a full-screen WebView.
 // Fetches a short-lived signed URL from GET /inspections/:id/report/preview-url,
@@ -15,6 +16,8 @@ import { getToken } from '@/lib/tokenStorage';
 export default function InspectionCompiledReportScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { role } = useProfile();
+  const isReviewer = role === 'manager' || role === 'admin' || role === 'super_admin';
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,7 +33,11 @@ export default function InspectionCompiledReportScreen() {
     setError(null);
     try {
       const token = await getToken('auth_session_token');
-      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/report/preview-url`, {
+      // review=1: managers/admins may open a blocked version for review; the
+      // server enforces the role check, so the flag is inert for field reps.
+      // Export/consumer fetches without the flag stay gated until resolved.
+      const reviewParam = isReviewer ? '?review=1' : '';
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/report/preview-url${reviewParam}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) {
@@ -44,7 +51,7 @@ export default function InspectionCompiledReportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, isReviewer]);
 
   useEffect(() => { void fetchHtml(); }, [fetchHtml]);
 
