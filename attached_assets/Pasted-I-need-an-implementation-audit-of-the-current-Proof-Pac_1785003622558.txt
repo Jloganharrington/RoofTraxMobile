@@ -1,0 +1,28 @@
+I need an implementation audit of the current Proof Package / Forensic Inspection & Repairability Report pipeline.
+
+Please trace and report how the system currently handles these two areas:
+
+1. Evidence index / photo-to-scope mapping
+
+Is there currently a formal evidence index in the generated report or package data?
+For each inspection photo, what metadata is stored and persisted: original storage path, photo ID, capture timestamp, upload timestamp, inspector/source, location/group, AI caption, tags, annotations, linked damage finding, linked repair/scope item, and any hash or version identifier?
+Does the JSON snapshot store a photo-to-scope-element relationship, or only grouped photos and captions?
+Where in the code are photo grouping, caption generation, and report rendering performed?
+Does the rendered HTML or downloaded PDF contain a table/index mapping each photo to the specific issue and repair item it supports?
+Are original image files, EXIF metadata, annotations, and any image transformations preserved separately from the report-rendered image?
+2. Separation of contractor construction facts from policyholder claim decisions
+
+Does the current package data model or rendering pipeline distinguish between:
+construction findings, observed damage, repair methodology, code/manufacturer support, measurements, and pricing basis; versus
+policy coverage interpretation, payment demands, settlement positions, legal/regulatory escalation, or other policyholder-only claim advocacy?
+Is there an audience, role, visibility, or content-type field on report sections, AI prompts, JSON snapshot nodes, or generated artifacts?
+What safeguards currently prevent AI-generated report language from making coverage conclusions, payment demands, legal conclusions, or public-adjusting-style statements?
+Which prompts, schemas, services, and renderer components control this language?
+Can contractor-facing and policyholder-facing artifacts currently be generated separately from the same claim data? If yes, explain the exact flow. If no, identify the code areas that would need to change.
+For both areas, return:
+
+Current behavior
+Relevant file paths, functions, database tables/schema fields, and object-storage keys
+What is persisted in the versioned JSON snapshot versus generated only at render time
+Any gaps, ambiguities, or risks you found
+A concise recommendation for the smallest safe implementation change—but do not implement it yet.
