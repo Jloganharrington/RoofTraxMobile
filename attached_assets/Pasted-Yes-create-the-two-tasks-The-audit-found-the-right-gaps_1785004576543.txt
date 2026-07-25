@@ -1,0 +1,133 @@
+Yes—create the two tasks. The audit found the right gaps, but I would make the implementation requirements more specific so the evidence chain is trustworthy and the AI guardrails are enforceable.
+
+One important refinement: do not automatically put raw EXIF/GPS coordinates into a carrier-facing PDF. Preserve that data in the original evidence record and manifest availability, but expose precise location only through an explicit privacy/reviewer setting.
+
+Task 1 — Structured Evidence-to-Finding-to-Scope Chain
+
+Implement a structured, versioned evidence chain for the Forensic Inspection & Repairability Report. Do not alter original photo storage, signed-URL behavior, existing annotations, or existing manifest hash behavior except as needed to include the new fields.
+
+Goal
+Allow the finalized package to prove the relationship:
+
+photo/evidence → damage finding → repair or estimate scope item
+
+without relying solely on AI narrative.
+
+Data model
+
+Preserve subjectId in the compiled JSON snapshot and Evidence Manifest wherever subjectType is currently persisted.
+Include a compact immutable linked-finding summary in the manifest when a photo has a subject link:
+subjectType
+subjectId
+stable finding/display reference
+location/zone/slope when available
+observed-condition summary from the linked record, if available
+Add optional structured link arrays to estimate/scope line items:
+linkedPhotoIds: string[]
+linkedDamageInstanceIds: string[]
+Store link provenance for every evidence relationship:
+linkSource: "inspector" | "user" | "ai_suggested" | "imported"
+reviewStatus: "unreviewed" | "approved" | "rejected"
+reviewedBy
+reviewedAt
+AI may suggest links, but AI-suggested links must never render as verified evidence links unless approved by the inspector/reviewer.
+
+Snapshot and manifest behavior
+
+Include all approved links in the versioned compiled JSON snapshot and in the SHA-256 manifest input.
+Preserve the current photo hash, storage path, timestamps, context, and non-destructive annotation behavior.
+Do not embed raw EXIF/GPS coordinate values in the carrier-facing manifest by default. Continue preserving originals in storage; retain only availability/hash/status unless an explicit future disclosure setting is added.
+
+Rendering Add an “Evidence-to-Scope Index” appendix table to the finalized report/PDF with these columns:
+
+| Evidence ID | Photo / Location | Linked Finding | Linked Scope Item | Link Status |
+
+Include only inspector-approved links in carrier-facing output.
+If no approved mapping exists, omit the scope link rather than inferring one.
+Keep grouped photo captions separate from evidence provenance and mapping data.
+
+Validation
+
+Prevent dangling IDs in saved snapshots.
+A scope item may have zero, one, or many linked photos/findings.
+A photo may support zero, one, or many findings/scope items.
+Existing compiled report versions must continue to render even if they predate this schema; use a schema-version migration/default behavior rather than breaking old packages.
+
+Tests / acceptance criteria
+
+An approved photo → finding → scope relationship survives compilation, versioning, preview, PDF generation, and re-open of an old version.
+Changing a link creates a new compiled package version and changes the manifest hash.
+An unreviewed AI-suggested link does not appear in the final evidence-to-scope appendix.
+Original photo bytes and non-destructive overlay JSON remain unchanged.
+Existing schema-v2 and older report versions still render successfully.
+
+Return the changed schema fields, migration strategy, API endpoints/UI state added, renderer changes, and tests added.
+
+Task 2 — Enforced Construction-Fact Content Controls
+
+Implement structural safeguards so the Phase 2 Forensic Inspection & Repairability Report remains a contractor construction document and cannot silently drift into policy interpretation, payment advocacy, legal conclusions, or public-adjusting language.
+
+Goal
+Enforce a construction-fact-only report class across all AI-generated fragments, not only the Claude forensic summary.
+
+Content classification Add a required contentClass to generated/stored Phase 2 snapshot nodes and compiled fragments. Use this initial enum:
+
+construction_fact
+inspection_methodology
+repairability_analysis
+photo_narrative
+attestation
+internal_metadata
+
+Do not add policyholder advocacy classes to the Phase 2 package. Those belong in a separate future policyholder artifact/workflow.
+
+Prompt controls
+
+Extract the existing Claude construction-lane prohibitions into one shared prompt-policy module.
+Apply that same shared policy to both:
+Claude forensic summary generation
+Gemini compilation of property narratives, photo groupings/captions, repairability fragments, and attestation support text
+The shared policy must prohibit:
+coverage determinations
+policy interpretation
+payment or settlement demands
+statements that a carrier “must pay”
+bad-faith or regulatory accusations
+legal conclusions
+contractor representation of the policyholder in claim negotiation
+Require attributable, evidence-grounded phrasing such as:
+“The inspection documentation identifies…”
+“The observed condition is consistent with…”
+“The proposed repair method requires…”
+“The applicable installation guidance states…”
+
+Server-side lint Add a post-generation lint step that runs against every generated fragment before it is stored in the compiled package:
+
+Scan all Claude and Gemini output, including captions, group narratives, repairability text, property narrative, and attestation-support language.
+Use a configurable forbidden-phrase/rule set plus context-aware rules where feasible.
+Store lint results with the compiled version:
+lintStatus: "passed" | "needs_review" | "blocked"
+findings array with fragment reference, rule ID, matched text, and severity
+Do not silently rewrite AI content.
+A blocked result must prevent finalization/export until a reviewer edits or explicitly resolves the finding.
+A needs_review result may remain editable but must be visible in the review UI.
+
+Rendering and future compatibility
+
+The final carrier-facing Phase 2 report must render only approved construction-fact content classes.
+Preserve existing Phase 1 homeowner-report behavior.
+Design the schema so a future audience/visibility field can be added later, but do not build multi-audience filtering in this task.
+
+Tests / acceptance criteria
+
+Claude and Gemini both receive the shared contractor-lane policy.
+A generated phrase such as “the insurer must pay,” “this is covered,” or “bad faith” is flagged before finalization.
+A technical statement such as “replacement of the flashing requires temporary removal of interfacing shingles” passes.
+Blocked content cannot be finalized or exported until resolved.
+Existing compiled versions continue rendering without failure.
+
+Return the shared prompt-policy module, updated prompt call sites, schema changes, lint rules, finalization/export gates, UI review behavior, and test coverage.
+
+These are properly independent tasks. Task 1 makes the package more defensible as evidence; Task 2 keeps it technically credible and safely inside the contractor’s construction lane.
+
+Jul 25, 2026, 2:35 PM
