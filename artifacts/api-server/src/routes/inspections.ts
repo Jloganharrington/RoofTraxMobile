@@ -2365,6 +2365,74 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
   res.json(SubmitInspectionResponse.parse({ inspection: updated }));
 });
 
+// POST /inspections/:inspectionId/unlock — { reason }
+// Manager/admin-only reopen of a submitted (locked) inspection so its data
+// can be edited again. Locking stays one-way for reps; every unlock appends
+// an audit entry to the append-only unlock_log (SQL `||`, never
+// read-modify-write) so a re-submitted package clearly shows it was reopened,
+// by whom, when, and why. The prior submission manifest is left in place —
+// re-submission rebuilds and replaces it.
+router.post('/inspections/:inspectionId/unlock', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  if (!isManagerOrAdmin(actor.role)) {
+    res.status(403).json({ error: 'Only a manager or admin can unlock a submitted inspection' });
+    return;
+  }
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+  if (!inspection.lockedAt) {
+    res.status(400).json({ error: 'Inspection is not locked' });
+    return;
+  }
+
+  const reason =
+    typeof (req.body as { reason?: unknown })?.reason === 'string'
+      ? (req.body as { reason: string }).reason.trim().slice(0, 2000)
+      : '';
+  if (!reason) {
+    res.status(400).json({ error: 'A reason is required to unlock a submitted inspection' });
+    return;
+  }
+
+  const [actorUser] = await db.select().from(usersTable).where(eq(usersTable.id, actor.userId));
+  const unlockEvent = {
+    unlockedBy: actor.userId,
+    unlockedByName:
+      [actorUser?.firstName, actorUser?.lastName].filter(Boolean).join(' ') ||
+      actorUser?.email ||
+      null,
+    unlockedAt: new Date().toISOString(),
+    reason,
+    previousLockedAt: inspection.lockedAt.toISOString(),
+    previousStatus: inspection.status,
+  };
+
+  // Atomic: the lock predicate lives in the UPDATE itself, so concurrent
+  // unlock requests can't both append audit entries — only the request that
+  // actually flips locked_at → NULL writes to the log.
+  const [updated] = await db
+    .update(inspectionsTable)
+    .set({
+      lockedAt: null,
+      status: 'capturing',
+      unlockLog: sql`${inspectionsTable.unlockLog} || ${JSON.stringify(unlockEvent)}::jsonb`,
+    })
+    .where(and(eq(inspectionsTable.id, inspectionId), isNotNull(inspectionsTable.lockedAt)))
+    .returning();
+  if (!updated) {
+    res.status(400).json({ error: 'Inspection is not locked' });
+    return;
+  }
+
+  res.json({ inspection: { id: updated.id, status: updated.status, lockedAt: null }, unlockEvent });
+});
+
 // M-F (F1) — Pre-flight. Re-runs the shared gate server-side so the inspector
 // can resolve deficiencies while still on-site, before leaving. Authoritative:
 // hydrates stored rows and runs the SAME evaluate() the client runs. Scoped to
@@ -3765,6 +3833,9 @@ ${JSON.stringify(photoBrief)}
     // Present from schemaVersion 4 onward.
     contentClasses,
     lint,
+    // Manager-authorized reopen history — disclosed in the rendered package
+    // so a re-submitted record never hides that it was unlocked and edited.
+    unlockLog: inspection.unlockLog ?? [],
   };
 
   const compiledReportPath = await objectStorageService.uploadObjectBuffer(
@@ -3875,6 +3946,12 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
     // Present from schemaVersion 4 onward.
     contentClasses?: Record<string, ContentClass>;
     lint?: { lintStatus: 'passed' | 'needs_review' | 'blocked'; findings: unknown[] };
+    unlockLog?: Array<{
+      unlockedByName: string | null;
+      unlockedAt: string;
+      reason: string;
+      previousLockedAt: string;
+    }>;
   };
 
   // ── Blocked-content gate ──────────────────────────────────────────────
@@ -3990,6 +4067,32 @@ AI-written captions elsewhere in this report are descriptive aids only and do no
       : ''
   }
 </p>`;
+  }
+
+  // Record reopen history — disclosed inside the Evidence Manifest appendix
+  // (server-built, never AI-generated). Older blobs without unlockLog simply
+  // omit the section.
+  if (compiledData.unlockLog?.length) {
+    const fmt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : 'Not recorded');
+    const reopenRows = compiledData.unlockLog
+      .map(
+        (u) => `<tr>
+          <td>${escHtml(fmt(u.previousLockedAt))}</td>
+          <td>${escHtml(fmt(u.unlockedAt))}</td>
+          <td>${escHtml(u.unlockedByName ?? 'Manager')}</td>
+          <td>${escHtml(u.reason)}</td>
+        </tr>`,
+      )
+      .join('');
+    const reopenHtml = `
+<h3 style="font-size:13px;margin-top:18px">Record Reopen History</h3>
+<p style="font-size:12px;color:#555">This record was reopened for editing after submission by a manager. Each reopen
+is disclosed below; the package was re-verified and re-locked at re-submission.</p>
+<table class="detail-table" style="font-size:11px">
+  <tr><th>Originally locked</th><th>Reopened</th><th>Authorized by</th><th>Reason</th></tr>
+  ${reopenRows}
+</table>`;
+    evidenceManifestHtml = (evidenceManifestHtml ?? '') + reopenHtml;
   }
 
   // Build the Evidence-to-Scope Index appendix (schemaVersion >= 3 blobs

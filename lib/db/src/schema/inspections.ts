@@ -290,6 +290,18 @@ export interface ReportLintResolution {
   note: string | null;
 }
 
+// One manager-authorized reopen of a locked (submitted) inspection. All
+// fields server-stamped; `reason` is required at the API so the audit trail
+// always says why the evidentiary seal was broken.
+export interface InspectionUnlockEvent {
+  unlockedBy: string; // user id (manager/admin)
+  unlockedByName: string | null;
+  unlockedAt: string; // ISO timestamp, server-stamped
+  reason: string;
+  previousLockedAt: string; // ISO timestamp the record had been locked since
+  previousStatus: string;
+}
+
 // REPORT_DATA v2 — Property Profile (field-captured, non-derived fields
 // only). Derived values (roofSlopeCount, roofCovering, interiorAreasInspected,
 // temporaryRepairsCompleted, flashingsAndPenetrations) are computed by the
@@ -594,6 +606,11 @@ export const inspectionsTable = pgTable('inspections', {
   reportLintResolution: jsonb('report_lint_resolution')
     .$type<ReportLintResolution | null>()
     .default(null),
+  // Append-only history of manager-authorized unlocks. Locking is one-way for
+  // reps; a manager/admin may reopen a submitted record for editing, and every
+  // reopen is recorded here (never removed) so a re-submitted package clearly
+  // shows it was reopened. Appended via SQL `||`, never read-modify-write.
+  unlockLog: jsonb('unlock_log').notNull().default([]).$type<InspectionUnlockEvent[]>(),
   // Homeowner contact email captured at scheduling time. Used for appointment
   // notifications and Phase 2 comms; carried forward to the owner record when
   // Phase 2 is completed so reps never have to re-enter it.

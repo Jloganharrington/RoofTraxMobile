@@ -135,6 +135,52 @@ export default function InspectionPackageScreen() {
     }
   }
 
+  // Manager-only unlock of a submitted (locked) inspection. The server
+  // requires a reason and appends it to a permanent audit log disclosed in
+  // every future compiled report.
+  const [showUnlockInput, setShowUnlockInput] = useState(false);
+  const [unlockReason, setUnlockReason] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+
+  async function handleUnlock() {
+    const reason = unlockReason.trim();
+    if (!reason) {
+      Alert.alert('Reason required', 'Explain why this submitted record needs to be reopened — it becomes part of the permanent audit trail.');
+      return;
+    }
+    if (unlocking) return;
+    setUnlocking(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/unlock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      setShowUnlockInput(false);
+      setUnlockReason('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) }),
+        queryClient.invalidateQueries({ queryKey: getGetInspectionStatusQueryKey(id) }),
+      ]);
+      Alert.alert(
+        'Inspection unlocked',
+        'The record is editable again. The reopen is recorded in the audit trail, and the package must be re-submitted when editing is done.',
+      );
+    } catch (err) {
+      Alert.alert('Could not unlock', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   async function handleCompileReport() {
     if (compiling) return;
     setCompiling(true);
@@ -299,10 +345,85 @@ export default function InspectionPackageScreen() {
           {STATUS_LABELS[data.status] ?? data.status}
         </Text>
         {data.lockedAt ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            Locked {new Date(data.lockedAt).toLocaleString()} — the record is now immutable;
-            corrections are filed as addenda.
-          </Text>
+          <>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Locked {new Date(data.lockedAt).toLocaleString()} — the record is now immutable;
+              corrections are filed as addenda.
+            </Text>
+            {isManagerOrAdmin && !showUnlockInput ? (
+              <Pressable
+                onPress={() => setShowUnlockInput(true)}
+                style={{
+                  alignSelf: 'flex-start',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 6,
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                }}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 12 }}>
+                  Unlock for editing…
+                </Text>
+              </Pressable>
+            ) : null}
+            {isManagerOrAdmin && showUnlockInput ? (
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                  Reopening a submitted record is permanently disclosed in the report's audit
+                  trail. Give the reason for this unlock:
+                </Text>
+                <TextInput
+                  value={unlockReason}
+                  onChangeText={setUnlockReason}
+                  placeholder="e.g. Linking evidence photos to estimate lines added after submission"
+                  placeholderTextColor={colors.mutedForeground}
+                  multiline
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    padding: 10,
+                    minHeight: 60,
+                    color: colors.foreground,
+                    fontSize: 13,
+                  }}
+                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    onPress={handleUnlock}
+                    disabled={unlocking}
+                    style={{
+                      backgroundColor: colors.destructive,
+                      borderRadius: 6,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      opacity: unlocking ? 0.6 : 1,
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+                      {unlocking ? 'Unlocking…' : 'Unlock record'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setShowUnlockInput(false);
+                      setUnlockReason('');
+                    }}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 6,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                    }}
+                  >
+                    <Text style={{ color: colors.foreground, fontSize: 12 }}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </>
         ) : (
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
             Not yet submitted. Once submitted, the record locks and a receipt appears here.

@@ -19,3 +19,7 @@ Permanently rejected (4xx) outbox items are marked `dead` and never retried — 
 - Editable child records (toggle-style UI) need: 404-tolerant replay on BOTH delete and update handlers (a queued update can trail a local delete), and a synchronous ref-based in-flight guard in the tap handler — React `disabled` state alone can't stop a double-tap from enqueuing conflicting ops.
 
 **Self-sufficient gated patches:** any server-side 4xx gate on a PATCH field (e.g. preliminaryCompletedAt requires >=1 damage surface) can dead-letter a replayed outbox item and permanently count as an unsynced write. Client patches that trip such gates must carry the qualifying fields in the SAME patch (server evaluates the merged state), so a replay can never 400.
+
+## Audit-log appends must ride the state-flip UPDATE
+When an action both flips a state column (e.g. locked_at → NULL) and appends an audit entry to a jsonb log, the state predicate must live in the UPDATE's WHERE clause (`WHERE ... AND locked_at IS NOT NULL`), returning 400 when no row matched. A read-then-update pre-check lets concurrent requests each append a permanent false audit entry.
+**Why:** review caught this exact race on the manager unlock route — forensic audit logs must never contain events for transitions that didn't happen.

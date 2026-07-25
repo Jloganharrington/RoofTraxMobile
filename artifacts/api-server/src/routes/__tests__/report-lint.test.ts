@@ -206,6 +206,32 @@ describe('blocked-content export gate', () => {
     expect(res.status).toBe(200);
   });
 
+  it('reopen history in the blob is disclosed in the rendered report, HTML-escaped', async () => {
+    const path = `/objects/uploads/${RUN_ID}-reopen`;
+    const id = await seedCompiledInspection(
+      path,
+      baseCompiledData({
+        lint: { lintStatus: 'passed', findings: [] },
+        unlockLog: [
+          {
+            unlockedBy: 'u1',
+            unlockedByName: 'Mia <Manager>',
+            unlockedAt: '2026-07-10T10:00:00Z',
+            reason: 'Added evidence links <script>alert(1)</script>',
+            previousLockedAt: '2026-07-01T12:00:00Z',
+            previousStatus: 'submitted',
+          },
+        ],
+      }),
+    );
+    const res = await request(app).get(`/api/inspections/${id}/report/preview-url`).set(auth(rep.sid));
+    expect(res.status).toBe(200);
+    expect(res.body.html).toContain('Record Reopen History');
+    expect(res.body.html).toContain('Mia &lt;Manager&gt;');
+    expect(res.body.html).toContain('Added evidence links &lt;script&gt;');
+    expect(res.body.html).not.toContain('<script>alert(1)</script>');
+  });
+
   it('old pre-lint blobs (schemaVersion 3, no lint/contentClasses) render unchanged', async () => {
     const path = `/objects/uploads/${RUN_ID}-legacy`;
     const legacy = JSON.parse(baseCompiledData({})) as Record<string, unknown>;
