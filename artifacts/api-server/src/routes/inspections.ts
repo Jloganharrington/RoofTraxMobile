@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   CreateAttestationBody,
@@ -3381,6 +3382,44 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
     };
   }
 
+  // Immutable evidence manifest — built entirely server-side from DB rows
+  // (never AI-generated). Preserves each photo's provenance: source id,
+  // original capture timestamp, integrity hash, and any non-destructive
+  // annotations layered over the original. AI captions/groupings live
+  // separately in photoGroupings and never replace this record.
+  const evidenceManifestEntries = children.photos
+    .map((p) => ({
+      photoId: p.id,
+      objectPath: p.url,
+      sha256: p.sha256,
+      capturedAtUtc: p.capturedAtUtc ? new Date(p.capturedAtUtc).toISOString() : null,
+      uploadedAt: p.createdAt ? new Date(p.createdAt).toISOString() : null,
+      stage: p.stage ?? null,
+      subjectType: p.subjectType ?? null,
+      triadRole: p.triadRole ?? null,
+      zone: p.zone ?? null,
+      annotations: p.overlayJson ?? null,
+      hasExif: p.exifJson != null,
+    }))
+    .sort((a, b) => a.photoId.localeCompare(b.photoId));
+  const inspectionDate = inspection.lockedAt
+    ? new Date(inspection.lockedAt).toISOString()
+    : inspection.updatedAt
+      ? new Date(inspection.updatedAt).toISOString()
+      : null;
+  const evidenceManifest = {
+    manifestVersion: 1,
+    inspectionId: inspection.id,
+    inspectionDate,
+    photoCount: evidenceManifestEntries.length,
+    photos: evidenceManifestEntries,
+  };
+  // Integrity hash over the manifest itself so any later tampering with a
+  // stored package is detectable (entries are sorted for a stable digest).
+  const manifestSha256 = createHash('sha256')
+    .update(JSON.stringify(evidenceManifest), 'utf-8')
+    .digest('hex');
+
   // Build a concise structured brief for Gemini (not the full raw DB blob).
   const pp = inspection.propertyProfile as {
     propertyType?: string; stories?: number; roofAge?: number;
@@ -3531,7 +3570,7 @@ ${JSON.stringify(photoBrief)}
   // so the stored data never embeds expiring credentials.
   const generatedAt = new Date().toISOString();
   const compiledData = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt,
     inspector,
     inspectionSnapshot: {
@@ -3554,6 +3593,10 @@ ${JSON.stringify(photoBrief)}
     attestationHtml,
     // Stable per-photo metadata (object paths, NOT signed URLs).
     photoIndex,
+    // Server-built provenance record for every evidence photo, plus an
+    // integrity digest of the manifest itself.
+    evidenceManifest,
+    evidenceManifestSha256: manifestSha256,
   };
 
   const compiledReportPath = await objectStorageService.uploadObjectBuffer(
@@ -3561,9 +3604,21 @@ ${JSON.stringify(photoBrief)}
     'application/json',
   );
 
+  // Append this version to the append-only history via SQL `||` (never
+  // read-modify-write) so concurrent compiles can't drop entries and every
+  // prior package version stays retrievable with its manifest digest.
+  const versionEntry = JSON.stringify({
+    path: compiledReportPath,
+    generatedAt,
+    evidenceManifestSha256: manifestSha256,
+  });
   await db
     .update(inspectionsTable)
-    .set({ compiledReportPath, compiledReportReadyAt: new Date() })
+    .set({
+      compiledReportPath,
+      compiledReportReadyAt: new Date(),
+      compiledReportVersions: sql`${inspectionsTable.compiledReportVersions} || ${versionEntry}::jsonb`,
+    })
     .where(eq(inspectionsTable.id, inspectionId));
 
   res.json({ compiledReportPath });
@@ -3610,6 +3665,21 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
       objectPath: string; stage: string | null; triadRole: string | null;
       zone: string | null; subjectType: string | null;
     }>;
+    // Present from schemaVersion 2 onward.
+    evidenceManifest?: {
+      manifestVersion: number;
+      inspectionId: string;
+      inspectionDate: string | null;
+      photoCount: number;
+      photos: Array<{
+        photoId: string; objectPath: string; sha256: string;
+        capturedAtUtc: string | null; uploadedAt: string | null;
+        stage: string | null; subjectType: string | null;
+        triadRole: string | null; zone: string | null;
+        annotations: unknown; hasExif: boolean;
+      }>;
+    };
+    evidenceManifestSha256?: string;
   };
 
   // Sign each photo URL fresh — best-effort (a missing or invalid path gets null).
@@ -3649,6 +3719,47 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
 
   if (!photoSectionsHtml) {
     photoSectionsHtml = '<p style="color:#888;font-size:13px">No photos available for this inspection.</p>';
+  }
+
+  // Build the Evidence Manifest appendix — entirely server-side from the
+  // stored manifest (schemaVersion >= 2). Provenance is never AI-generated.
+  let evidenceManifestHtml: string | null = null;
+  const manifest = compiledData.evidenceManifest;
+  if (manifest && Array.isArray(manifest.photos)) {
+    const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : 'Not recorded');
+    const rows = manifest.photos
+      .map((m) => {
+        const hasAnnotations =
+          m.annotations != null &&
+          (typeof m.annotations !== 'object' || Object.keys(m.annotations as object).length > 0);
+        const context = [m.stage, m.zone, m.subjectType, m.triadRole].filter(Boolean).join(' · ');
+        return `<tr>
+          <td style="font-family:monospace;font-size:10px">${escHtml(m.photoId)}</td>
+          <td>${escHtml(fmt(m.capturedAtUtc))}</td>
+          <td>${escHtml(fmt(m.uploadedAt))}</td>
+          <td style="font-family:monospace;font-size:10px;word-break:break-all">${escHtml(m.sha256)}</td>
+          <td>${escHtml(context || '—')}</td>
+          <td>${hasAnnotations ? 'Annotated (original preserved)' : 'None'}</td>
+        </tr>`;
+      })
+      .join('');
+    evidenceManifestHtml = `
+<p style="font-size:12px;color:#555">This manifest is generated directly from the original capture records and is
+preserved verbatim in every version of this package. Photo IDs, capture timestamps, and SHA-256 integrity hashes
+identify the original source files. Annotations are non-destructive overlays; the original images are never modified.
+AI-written captions elsewhere in this report are descriptive aids only and do not replace this provenance record.</p>
+<table class="detail-table" style="font-size:11px">
+  <tr><th>Photo ID</th><th>Captured</th><th>Uploaded</th><th>SHA-256</th><th>Context</th><th>Edits/Annotations</th></tr>
+  ${rows}
+</table>
+<p style="font-size:11px;color:#555">
+  Inspection date: ${escHtml(fmt(manifest.inspectionDate))} ·
+  Photos: ${manifest.photos.length}${
+    compiledData.evidenceManifestSha256
+      ? ` · Manifest SHA-256: <span style="font-family:monospace;word-break:break-all">${escHtml(compiledData.evidenceManifestSha256)}</span>`
+      : ''
+  }
+</p>`;
   }
 
   // Build a minimal inspection row-alike from the snapshot for buildReportHtml.
@@ -3691,6 +3802,7 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
     generatedAt: compiledData.generatedAt,
     theme: resolveReportTheme(company?.reportBranding),
     logoUrl: logoSignedUrl,
+    evidenceManifestHtml,
   });
 
   res.json({ html });

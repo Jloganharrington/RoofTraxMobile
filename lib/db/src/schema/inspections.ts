@@ -516,6 +516,11 @@ export const inspectionsTable = pgTable('inspections', {
   // Format: `/objects/uploads/{uuid}` — the same convention as uploadObjectBuffer.
   compiledReportPath: text('compiled_report_path'),
   compiledReportReadyAt: timestamp('compiled_report_ready_at', { withTimezone: true }),
+  // Append-only history of compiled report versions. Each entry:
+  // { path, generatedAt, evidenceManifestSha256 }. Appended via SQL `||`
+  // (never read-modify-write) so concurrent compiles can't drop entries and
+  // every prior package version stays retrievable with its manifest digest.
+  compiledReportVersions: jsonb('compiled_report_versions').notNull().default([]),
   // Homeowner contact email captured at scheduling time. Used for appointment
   // notifications and Phase 2 comms; carried forward to the owner record when
   // Phase 2 is completed so reps never have to re-enter it.

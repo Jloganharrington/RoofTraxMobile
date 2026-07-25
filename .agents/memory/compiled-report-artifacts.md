@@ -12,4 +12,6 @@ description: Rules for persisting AI-generated report artifacts with photos and 
 
 **How to apply:** Any future export path (PDF, email) must resolve photo refs at generation time from the JSON blob, and reuse the sanitized fragments — never re-trust stored LLM output.
 
+**Rule 3:** Provenance (evidence manifest: photo ids, capture timestamps, sha256, annotation overlays) must be built server-side from DB rows at compile time and baked into each compiled blob — never AI-generated and never replaced by AI captions. Keep an append-only jsonb version history (`||` append, never read-modify-write) since the report path pointer is overwritten per compile; digest the manifest (sorted entries → sha256) so tampering is detectable. Renderers must gate new sections on schemaVersion/field presence so older blobs still render.
+
 **Also:** esbuild config externalizes `@google/*`, so `@google/genai` must be a direct dependency of api-server (not just of the integrations lib) or the server crashes at startup with ERR_MODULE_NOT_FOUND.

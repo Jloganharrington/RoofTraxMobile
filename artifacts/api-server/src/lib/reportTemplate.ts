@@ -132,6 +132,11 @@ export function buildReportHtml(params: {
    * Null/undefined renders the cover exactly as before.
    */
   logoUrl?: string | null;
+  /**
+   * Server-built (never AI-generated) evidence manifest appendix HTML.
+   * Rendered after the attestation when provided.
+   */
+  evidenceManifestHtml?: string | null;
 }): string {
   const { inspection, inspector, aiSummary } = params;
   const theme = resolveReportTheme(params.theme);
@@ -238,6 +243,13 @@ ${aiSummary.repairabilityText ? `
   <div class="section-title">${aiSummary.repairabilityText ? '5' : '4'} — Inspector Attestation</div>
   <div class="attestation">${params.attestationHtml}</div>
 </div>
+
+${params.evidenceManifestHtml ? `
+<!-- Appendix: Evidence Manifest (server-generated provenance record) -->
+<div class="section">
+  <div class="section-title">Appendix — Evidence Manifest</div>
+  ${params.evidenceManifestHtml}
+</div>` : ''}
 
 <div class="footer">
   Generated ${escHtml(new Date(params.generatedAt).toLocaleString())} · Inspection ${escHtml(inspection.id)} ·
