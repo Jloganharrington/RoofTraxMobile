@@ -7,8 +7,7 @@ import {
 } from '../aiSummaryPrompt';
 
 describe('composeAiSystemPrompt', () => {
-  it('starts with the baseline verbatim (plus the shared contractor-lane policy) when there are no company additions', () => {
-    // The shared contractor-lane policy is always appended after the baseline.
+  it('starts with the baseline verbatim (which embeds the contractor-lane rules in Section 1) when there are no company additions', () => {
     for (const composed of [composeAiSystemPrompt(), composeAiSystemPrompt(null), composeAiSystemPrompt('   ')]) {
       expect(composed.startsWith(BASELINE_AI_SYSTEM_PROMPT)).toBe(true);
       expect(composed).toContain('CONTRACTOR CONSTRUCTION-DOCUMENT LANE');
@@ -26,11 +25,24 @@ describe('composeAiSystemPrompt', () => {
   });
 
   it('baseline contains the key sections of the supplied prompt verbatim', () => {
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('forensic property-inspection summary writer');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('CORE OUTPUT REQUIREMENT');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('"summary"');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('missing_or_unverified_items');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('CONFIDENCE DEFINITIONS');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('AI SUMMARY AGENT — SYSTEM PROMPT');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain(
+      'SECTION 1 — CONTRACTOR CONSTRUCTION-DOCUMENT LANE (MANDATORY)',
+    );
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('SECTION 2 — REPAIRABILITY ANALYSIS');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('Step 8 — Recorded determination and its basis');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('2.2 — Evidence anchoring (mandatory)');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('SECTION 6 — SELF-CHECK BEFORE RETURNING OUTPUT');
+  });
+
+  it('appends the platform JSON output-format envelope after the baseline', () => {
+    const composed = composeAiSystemPrompt();
+    expect(composed).toContain('OUTPUT FORMAT (PLATFORM REQUIREMENT — UNCHANGEABLE)');
+    expect(composed).toContain('missing_or_unverified_items');
+    expect(composed).toContain('CONFIDENCE DEFINITIONS');
+    expect(composed.indexOf('OUTPUT FORMAT (PLATFORM REQUIREMENT')).toBeGreaterThan(
+      BASELINE_AI_SYSTEM_PROMPT.length - 1,
+    );
   });
 });
 
