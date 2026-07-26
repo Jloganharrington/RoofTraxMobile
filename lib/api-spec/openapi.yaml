@@ -4540,6 +4540,13 @@ components:
         can never output "full replacement required".
       required: [answers, determination, basisFactors, nextStep]
       properties:
+        roofMaterial:
+          type: [string, "null"]
+          enum: [asphalt_shingle, cedar_shake, standing_seam_metal, null]
+          description: >-
+            Roof flows only: which roofing-material question flow was
+            completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam
+            SM-xxx). Legacy roof flows without this field are asphalt.
         answers:
           type: object
           additionalProperties:

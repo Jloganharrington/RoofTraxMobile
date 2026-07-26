@@ -170,6 +170,7 @@ export * from './repairabilityAssessmentInputVersion';
 export * from './repairabilitySystemFlow';
 export * from './repairabilitySystemFlowAnswers';
 export * from './repairabilitySystemFlowDetermination';
+export * from './repairabilitySystemFlowRoofMaterial';
 export * from './reportBranding';
 export * from './reportBrandingEnvelope';
 export * from './retailData';

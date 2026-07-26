@@ -554,6 +554,516 @@ function sidingQuestions(): QuestionDef[] {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Roof material branching: the roof flow is selected by material. Asphalt
+// shingle keeps the original RR-xxx flow unchanged; cedar shake (CS-xxx) and
+// standing seam metal (SM-xxx) have their own question sets and vocabularies.
+// ---------------------------------------------------------------------------
+
+type RoofMaterial = 'asphalt_shingle' | 'cedar_shake' | 'standing_seam_metal';
+
+const ROOF_MATERIAL_OPTIONS: Opt[] = [
+  o('asphalt_shingle', 'Asphalt Shingle'),
+  o('cedar_shake', 'Cedar Shake'),
+  o('standing_seam_metal', 'Standing Seam Metal'),
+];
+
+const AVAILABILITY_STATUS_OPTIONS: Opt[] = [
+  o('available', 'Current product available'),
+  o('manufacturer_confirmed', 'Discontinued — manufacturer confirmed'),
+  o('distributor_confirmed', 'Discontinued — distributor confirmed'),
+  o('not_verified', 'Availability not verified'),
+  o('unknown', 'Unknown / Not identified'),
+];
+
+function cedarQuestions(facetOptions: Opt[]): QuestionDef[] {
+  return [
+    { id: 'CS-001', label: 'Is direct physical cedar-shake damage documented?', type: 'radio', options: YNU },
+    {
+      id: 'CS-002',
+      label: 'Which roof facet(s) or area(s) are being assessed?',
+      type: 'multi',
+      options: [...facetOptions, o('other_area', 'Other documented roof area')],
+      visible: (a) => a['CS-001'] === 'yes',
+    },
+    {
+      id: 'CS-003',
+      label: 'Which documented damage conditions are present?',
+      type: 'multi',
+      options: [
+        o('split_shake', 'Split shake'),
+        o('cracked_shake', 'Cracked shake'),
+        o('broken_shake', 'Broken shake'),
+        o('missing_shake', 'Missing shake'),
+        o('displaced_shake', 'Displaced shake'),
+        o('fastener_damage', 'Fastener-related damage'),
+        o('surface_puncture', 'Surface puncture'),
+        o('edge_damage', 'Edge damage'),
+        o('other', 'Other documented condition'),
+      ],
+      visible: (a) => a['CS-001'] === 'yes',
+      hint: 'Each selected condition requires linked photo evidence below.',
+    },
+    {
+      id: 'CS-004',
+      label: 'Assessment type',
+      type: 'radio',
+      options: [
+        o('visual_screening', 'Visual and documentary screening only'),
+        o('non_destructive', 'Controlled non-destructive evaluation'),
+        o('controlled_test', 'Controlled shake-removal test'),
+        o('post_removal', 'Post-removal concealed-condition evaluation'),
+      ],
+    },
+    {
+      id: 'CS-010',
+      label: 'Is the existing cedar shake product identified?',
+      type: 'radio',
+      options: [
+        o('exact', 'Exact manufacturer and product identified'),
+        o('species_profile', 'Cedar species and shake profile identified'),
+        o('material_type_only', 'Cedar shake material type identified only'),
+        o('not_identified', 'Not identified'),
+      ],
+    },
+    {
+      id: 'CS-011',
+      label: 'What cedar shake type is documented?',
+      type: 'multi',
+      options: [
+        o('tapersawn', 'Tapersawn shake'),
+        o('handsplit_resawn', 'Hand-split and resawn shake'),
+        o('heavy_handsplit_resawn', 'Heavy hand-split and resawn shake'),
+        o('straight_split', 'Straight-split shake'),
+        o('other_profile', 'Other documented profile'),
+        o('unknown', 'Unknown / Not verified'),
+      ],
+      visible: (a) => !!a['CS-010'] && a['CS-010'] !== 'not_identified',
+    },
+    {
+      id: 'CS-012',
+      label: 'What product attributes are documented?',
+      type: 'multi',
+      options: [
+        o('species', 'Wood species'),
+        o('grade', 'Grade'),
+        o('length', 'Length'),
+        o('butt_thickness', 'Butt thickness'),
+        o('exposure', 'Exposure'),
+        o('treatment_status', 'Treatment status'),
+        o('fire_retardant', 'Fire-retardant treatment'),
+        o('preservative', 'Preservative treatment'),
+        o('fastener_type', 'Fastener type'),
+        o('interlayment_type', 'Interlayment type'),
+        o('underlayment_type', 'Underlayment type'),
+        o('other', 'Other documented attribute'),
+      ],
+      visible: (a) => !!a['CS-010'] && a['CS-010'] !== 'not_identified',
+    },
+    {
+      id: 'CS-013',
+      label: 'What supports the cedar shake identification?',
+      type: 'multi',
+      options: [
+        o('physical_sample', 'Physical shake sample'),
+        o('rear_marking', 'Rear marking or tag'),
+        o('lab_identification', 'Laboratory identification'),
+        o('manufacturer_documentation', 'Manufacturer documentation'),
+        o('invoice_permit', 'Prior invoice or permit record'),
+        o('field_measurement', 'Contractor field measurement'),
+        o('other', 'Other documented source'),
+      ],
+      visible: (a) => !!a['CS-010'] && a['CS-010'] !== 'not_identified',
+      hint: 'Requires linked evidence below.',
+    },
+    { id: 'CS-020', label: 'Is the existing cedar shake product documented as discontinued or unavailable?', type: 'radio', options: AVAILABILITY_STATUS_OPTIONS },
+    { id: 'CS-021', label: 'Has a sufficient quantity of matching cedar shake material been located?', type: 'radio', options: AVAILABILITY_OPTIONS },
+    { id: 'CS-022', label: 'Has a proposed replacement cedar shake been identified?', type: 'radio', options: YN_NA },
+    {
+      id: 'CS-022A',
+      label: 'Has the proposed shake been compared to the existing shake?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('pending', 'Comparison pending')],
+      visible: (a) => a['CS-022'] === 'yes',
+    },
+    {
+      id: 'CS-022B',
+      label: 'Which differences were documented?',
+      type: 'multi',
+      options: [
+        o('species', 'Species'),
+        o('grade', 'Grade'),
+        o('shake_profile', 'Shake profile'),
+        o('length', 'Length'),
+        o('butt_thickness', 'Butt thickness'),
+        o('exposure', 'Exposure'),
+        o('split_texture', 'Split texture'),
+        o('surface_appearance', 'Surface appearance'),
+        o('color', 'Color'),
+        o('treatment_status', 'Treatment status'),
+        o('fire_classification', 'Fire classification'),
+        o('fastener_requirements', 'Fastener requirements'),
+        o('interlayment_compatibility', 'Interlayment compatibility'),
+        o('other', 'Other documented difference'),
+      ],
+      visible: (a) => a['CS-022'] === 'yes' && a['CS-022A'] === 'yes',
+      hint: 'Each selected difference requires linked measurement, sample photo, supplier data, or manufacturer document below.',
+    },
+    { id: 'CS-030', label: 'Would the proposed repair require removal or disturbance of adjacent undamaged shakes?', type: 'radio', options: YNU },
+    { id: 'CS-031', label: 'Is the existing cedar shake course or overlap arrangement documented?', type: 'radio', options: YNU },
+    {
+      id: 'CS-032',
+      label: 'Is interlayment, underlayment, or skip-sheathing condition relevant to the proposed repair?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('unknown', 'Unknown / Not verified'), o('not_applicable', 'Not applicable')],
+    },
+    {
+      id: 'CS-032A',
+      label: 'What condition is documented?',
+      type: 'multi',
+      options: [
+        o('interlayment_present', 'Interlayment present'),
+        o('interlayment_unknown', 'Interlayment condition unknown'),
+        o('underlayment_exposed', 'Underlayment exposed'),
+        o('underlayment_damaged', 'Underlayment damaged'),
+        o('skip_sheathing', 'Skip sheathing present'),
+        o('decking_limits_repair', 'Decking condition limits repair'),
+        o('assembly_not_visible', 'Existing assembly not fully visible'),
+        o('other', 'Other documented condition'),
+      ],
+      visible: (a) => a['CS-032'] === 'yes',
+    },
+    {
+      id: 'CS-033',
+      label: 'Is a manufacturer, CSSB, or product-specific repair method available for the identified shake system?',
+      type: 'radio',
+      options: [
+        o('supports', 'Yes — supports proposed repair method'),
+        o('does_not_support', 'Yes — does not support proposed repair method'),
+        o('not_reviewed', 'Available but not reviewed'),
+        o('not_available', 'Not available'),
+        o('product_not_identified', 'Product not sufficiently identified'),
+      ],
+      hint: 'If "supports" or "does not support" is selected, link the document below.',
+    },
+    { id: 'CS-040', label: 'Was a controlled cedar-shake removal or repairability test performed?', type: 'radio', options: TEST_PERFORMED_OPTIONS },
+    { id: 'CS-041', label: 'Was the test initiated at an already damaged shake?', type: 'radio', options: YN_NA, visible: (a) => a['CS-040'] === 'yes' },
+    { id: 'CS-042', label: 'Did adjacent shakes split, crack, break, or become damaged during the test?', type: 'radio', options: YN_NA, visible: (a) => a['CS-040'] === 'yes' },
+    { id: 'CS-043', label: 'Could adjacent shakes be reset into a secure, weather-resistant position?', type: 'radio', options: YN_UNK, visible: (a) => a['CS-040'] === 'yes' },
+    {
+      id: 'CS-044',
+      label: 'Did the replacement shake fit the existing course, exposure, and overlap configuration?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('partially', 'Partially'), o('no_replacement_tested', 'No replacement shake tested')],
+      visible: (a) => a['CS-040'] === 'yes',
+    },
+    { id: 'CS-045', label: 'Did the test expose or disturb interlayment, underlayment, or deck components?', type: 'radio', options: YN_UNK, visible: (a) => a['CS-040'] === 'yes' },
+    {
+      id: 'CS-046',
+      label: 'Did the test create an exposed or non-weather-resistant condition?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No')],
+      visible: (a) => a['CS-040'] === 'yes',
+      hint: 'Test photos or video are required below before the test can support a determination.',
+    },
+    {
+      id: 'CS-046A',
+      label: 'Was temporary weather protection installed?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('not_needed', 'Not needed')],
+      // Available only when emergency mitigation was required, or the
+      // controlled test created an exposed condition.
+      visible: (a) => (a['CS-040'] === 'yes' && a['CS-046'] === 'yes') || a['CS-040'] === 'no_emergency',
+    },
+    {
+      id: 'CS-046B',
+      label: 'Temporary protection type',
+      type: 'multi',
+      options: [
+        o('tarp', 'Tarp'),
+        o('membrane', 'Temporary membrane'),
+        o('temporary_shake', 'Temporary shake'),
+        o('other', 'Other documented protection'),
+      ],
+      visible: (a) =>
+        ((a['CS-040'] === 'yes' && a['CS-046'] === 'yes') || a['CS-040'] === 'no_emergency') &&
+        a['CS-046A'] === 'yes',
+    },
+  ];
+}
+
+function metalQuestions(facetOptions: Opt[]): QuestionDef[] {
+  return [
+    { id: 'SM-001', label: 'Is direct physical standing-seam metal damage documented?', type: 'radio', options: YNU },
+    {
+      id: 'SM-002',
+      label: 'Which roof facet(s), panel(s), or area(s) are being assessed?',
+      type: 'multi',
+      options: [...facetOptions, o('other_area', 'Other documented panel or area')],
+      visible: (a) => a['SM-001'] === 'yes',
+    },
+    {
+      id: 'SM-003',
+      label: 'Which documented damage conditions are present?',
+      type: 'multi',
+      options: [
+        o('panel_puncture', 'Panel puncture'),
+        o('panel_tear', 'Panel tear'),
+        o('panel_deformation', 'Panel deformation'),
+        o('seam_deformation', 'Seam deformation'),
+        o('seam_separation', 'Seam separation'),
+        o('clip_fastener_condition', 'Clip or fastener-related condition'),
+        o('coating_damage', 'Coating damage'),
+        o('corrosion', 'Corrosion'),
+        o('flashing_damage', 'Flashing damage'),
+        o('ridge_condition', 'Ridge condition'),
+        o('eave_condition', 'Eave condition'),
+        o('penetration_condition', 'Penetration condition'),
+        o('other', 'Other documented condition'),
+      ],
+      visible: (a) => a['SM-001'] === 'yes',
+      hint: 'Requires linked photo evidence below.',
+    },
+    {
+      id: 'SM-004',
+      label: 'Assessment type',
+      type: 'radio',
+      options: [
+        o('visual_screening', 'Visual and documentary screening only'),
+        o('non_destructive', 'Controlled non-destructive evaluation'),
+        o('controlled_test', 'Controlled seam-release or panel-removal test'),
+        o('post_removal', 'Post-removal concealed-condition evaluation'),
+      ],
+    },
+    {
+      id: 'SM-010',
+      label: 'Is the standing seam system identified?',
+      type: 'radio',
+      options: [
+        o('exact', 'Exact manufacturer and panel system identified'),
+        o('manufacturer_profile', 'Manufacturer and panel profile identified'),
+        o('metal_seam_only', 'Metal type and seam profile identified only'),
+        o('not_identified', 'Not identified'),
+      ],
+    },
+    {
+      id: 'SM-011',
+      label: 'What standing seam attributes are documented?',
+      type: 'multi',
+      options: [
+        o('metal_type', 'Metal type'),
+        o('panel_width', 'Panel width'),
+        o('seam_height', 'Seam height'),
+        o('seam_profile', 'Seam profile'),
+        o('panel_gauge', 'Panel gauge'),
+        o('coating_type', 'Coating type'),
+        o('color', 'Color'),
+        o('panel_length', 'Panel length'),
+        o('clip_system', 'Clip system'),
+        o('fastener_system', 'Fastener system'),
+        o('underlayment_type', 'Underlayment type'),
+        o('deck_type', 'Deck type'),
+        o('panel_orientation', 'Panel orientation'),
+        o('other', 'Other documented attribute'),
+      ],
+      visible: (a) => !!a['SM-010'] && a['SM-010'] !== 'not_identified',
+    },
+    {
+      id: 'SM-012',
+      label: 'What supports system identification?',
+      type: 'multi',
+      options: [
+        o('panel_stamp', 'Panel stamp or marking'),
+        o('physical_sample', 'Physical panel sample'),
+        o('manufacturer_documentation', 'Manufacturer documentation'),
+        o('installer_invoice', 'Installer invoice'),
+        o('permit_record', 'Permit record'),
+        o('field_measurement', 'Field measurement'),
+        o('lab_identification', 'Laboratory identification'),
+        o('other', 'Other documented source'),
+      ],
+      visible: (a) => !!a['SM-010'] && a['SM-010'] !== 'not_identified',
+      hint: 'Requires linked evidence below.',
+    },
+    { id: 'SM-020', label: 'Is the existing standing seam panel system documented as discontinued or unavailable?', type: 'radio', options: AVAILABILITY_STATUS_OPTIONS },
+    { id: 'SM-021', label: 'Has a sufficient quantity of matching replacement panels been located?', type: 'radio', options: AVAILABILITY_OPTIONS },
+    { id: 'SM-022', label: 'Has a proposed replacement panel system been identified?', type: 'radio', options: YN_NA },
+    {
+      id: 'SM-022A',
+      label: 'Has the replacement panel been compared to the existing panel system?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('pending', 'Comparison pending')],
+      visible: (a) => a['SM-022'] === 'yes',
+    },
+    {
+      id: 'SM-022B',
+      label: 'Which differences were documented?',
+      type: 'multi',
+      options: [
+        o('metal_type', 'Metal type'),
+        o('panel_width', 'Panel width'),
+        o('seam_height', 'Seam height'),
+        o('seam_profile', 'Seam profile'),
+        o('panel_gauge', 'Panel gauge'),
+        o('coating_type', 'Coating type'),
+        o('color', 'Color'),
+        o('clip_system', 'Clip system'),
+        o('fastener_system', 'Fastener system'),
+        o('panel_length', 'Panel length'),
+        o('underlayment_requirements', 'Underlayment requirements'),
+        o('flashing_compatibility', 'Flashing compatibility'),
+        o('warranty_requirements', 'Warranty requirements'),
+        o('other', 'Other documented difference'),
+      ],
+      visible: (a) => a['SM-022'] === 'yes' && a['SM-022A'] === 'yes',
+      hint: 'Requires linked comparison evidence below.',
+    },
+    { id: 'SM-030', label: 'Is the damaged panel part of a continuous panel running from ridge to eave?', type: 'radio', options: YNU },
+    { id: 'SM-031', label: 'Does the proposed repair require releasing, unseaming, or removing adjacent panels?', type: 'radio', options: YNU },
+    { id: 'SM-032', label: 'Is the panel-removal sequence documented for the identified system?', type: 'radio', options: YNU },
+    {
+      id: 'SM-033',
+      label: 'Would the proposed repair disturb clips, fasteners, underlayment, ridge details, eave details, valleys, or flashing?',
+      type: 'radio',
+      options: YNU,
+    },
+    {
+      id: 'SM-033A',
+      label: 'Which components would be disturbed?',
+      type: 'multi',
+      options: [
+        o('adjacent_panels', 'Adjacent panels'),
+        o('clips', 'Clips'),
+        o('concealed_fasteners', 'Concealed fasteners'),
+        o('underlayment', 'Underlayment'),
+        o('ridge_assembly', 'Ridge assembly'),
+        o('eave_assembly', 'Eave assembly'),
+        o('valley_flashing', 'Valley flashing'),
+        o('sidewall_flashing', 'Sidewall flashing'),
+        o('penetration_flashing', 'Penetration flashing'),
+        o('snow_retention', 'Snow-retention system'),
+        o('other', 'Other documented component'),
+      ],
+      visible: (a) => a['SM-033'] === 'yes',
+    },
+    {
+      id: 'SM-034',
+      label: 'Is a manufacturer repair or panel-replacement method available for the identified standing seam system?',
+      type: 'radio',
+      options: [
+        o('supports', 'Yes — supports proposed repair method'),
+        o('does_not_support', 'Yes — does not support proposed repair method'),
+        o('not_reviewed', 'Available but not reviewed'),
+        o('not_available', 'Not available'),
+        o('product_not_identified', 'System not sufficiently identified'),
+      ],
+      hint: 'If "supports" or "does not support" is selected, link the document below.',
+    },
+    { id: 'SM-040', label: 'Was a controlled seam-release or panel-removal test performed?', type: 'radio', options: TEST_PERFORMED_OPTIONS },
+    { id: 'SM-041', label: 'Was the test initiated at an already damaged panel or seam location?', type: 'radio', options: YN_NA, visible: (a) => a['SM-040'] === 'yes' },
+    { id: 'SM-042', label: 'Could the identified seam be released without deforming adjacent panel seams?', type: 'radio', options: YN_UNK, visible: (a) => a['SM-040'] === 'yes' },
+    { id: 'SM-043', label: 'Could adjacent panels be reseamed and restored to a secure, weather-resistant position?', type: 'radio', options: YN_UNK, visible: (a) => a['SM-040'] === 'yes' },
+    { id: 'SM-044', label: 'Were clips, fasteners, underlayment, or flashing disturbed during the test?', type: 'radio', options: YN_UNK, visible: (a) => a['SM-040'] === 'yes' },
+    {
+      id: 'SM-045',
+      label: 'Did the proposed replacement panel physically match and integrate with the existing system?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('partially', 'Partially'), o('no_replacement_tested', 'No replacement panel tested')],
+      visible: (a) => a['SM-040'] === 'yes',
+    },
+    {
+      id: 'SM-046',
+      label: 'Did the test create an exposed or non-weather-resistant condition?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No')],
+      visible: (a) => a['SM-040'] === 'yes',
+      hint: 'Photo/video evidence is required below for all controlled-test outcomes.',
+    },
+    {
+      id: 'SM-046A',
+      label: 'Was temporary weather protection installed?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('not_needed', 'Not needed')],
+      // Available only when emergency mitigation was required, or the
+      // controlled test created an exposed condition.
+      visible: (a) => (a['SM-040'] === 'yes' && a['SM-046'] === 'yes') || a['SM-040'] === 'no_emergency',
+    },
+    {
+      id: 'SM-046B',
+      label: 'Temporary protection type',
+      type: 'multi',
+      options: [
+        o('tarp', 'Tarp'),
+        o('membrane', 'Temporary membrane'),
+        o('temporary_panel', 'Temporary metal panel'),
+        o('flashing_protection', 'Temporary flashing protection'),
+        o('other', 'Other documented protection'),
+      ],
+      visible: (a) =>
+        ((a['SM-040'] === 'yes' && a['SM-046'] === 'yes') || a['SM-040'] === 'no_emergency') &&
+        a['SM-046A'] === 'yes',
+    },
+  ];
+}
+
+const CEDAR_BASIS_OPTIONS: Opt[] = [
+  o('matching_cedar_available', 'Matching cedar material available in sufficient quantity'),
+  o('matching_cedar_unavailable', 'Matching cedar material unavailable in sufficient quantity'),
+  o('proposed_shake_compatible', 'Proposed shake is compatible with existing shake system'),
+  o('proposed_shake_not_compatible', 'Proposed shake is not compatible with existing shake system'),
+  o('adjacent_shakes_removed_without_damage', 'Adjacent shakes removed without damage'),
+  o('adjacent_shakes_damaged_during_test', 'Adjacent shakes split, cracked, or broke during testing'),
+  o('shakes_reset_securely', 'Existing shakes reset securely'),
+  o('shakes_could_not_reset', 'Existing shakes could not be reset securely'),
+  o('replacement_shake_fit', 'Replacement shake fit existing course and overlap geometry'),
+  o('replacement_shake_did_not_fit', 'Replacement shake did not fit existing course and overlap geometry'),
+  o('repair_disturbs_interlayment_deck', 'Repair disturbs interlayment, underlayment, or deck components'),
+  o('guidance_supports_repair', 'Manufacturer or technical guidance supports repair'),
+  o('guidance_does_not_support_repair', 'Manufacturer or technical guidance does not support repair'),
+  o('evidence_incomplete', 'Supporting evidence remains incomplete'),
+];
+
+const METAL_BASIS_OPTIONS: Opt[] = [
+  o('matching_panel_available', 'Matching panel system available in sufficient quantity'),
+  o('matching_panel_unavailable', 'Matching panel system unavailable in sufficient quantity'),
+  o('replacement_panel_compatible', 'Proposed replacement panel is compatible'),
+  o('replacement_panel_not_compatible', 'Proposed replacement panel is not compatible'),
+  o('seam_released_without_deformation', 'Panel seam released without deformation'),
+  o('adjacent_seam_deformed_during_test', 'Adjacent seam or panel deformed during testing'),
+  o('panels_reseamed_securely', 'Existing panels could be reseamed securely'),
+  o('panels_could_not_reseam', 'Existing panels could not be reseamed securely'),
+  o('replacement_panel_integrated', 'Replacement panel integrated with existing system'),
+  o('replacement_panel_did_not_integrate', 'Replacement panel did not integrate with existing system'),
+  o('repair_disturbs_attachment_or_flashing', 'Repair requires disturbance of clips, fasteners, underlayment, or flashing'),
+  o('manufacturer_supports_repair', 'Manufacturer guidance supports repair'),
+  o('manufacturer_does_not_support_repair', 'Manufacturer guidance does not support repair'),
+  o('evidence_incomplete', 'Supporting evidence remains incomplete'),
+];
+
+const CEDAR_NEXT_STEPS: Opt[] = [
+  o('prepare_repair_scope', 'Prepare limited cedar shake repair scope'),
+  o('obtain_identification', 'Obtain shake sample or laboratory identification'),
+  o('obtain_availability', 'Obtain supplier availability documentation'),
+  o('obtain_substitute_comparison', 'Obtain substitute-material comparison'),
+  o('obtain_guidance', 'Obtain manufacturer or CSSB repair guidance'),
+  o('conduct_test', 'Conduct controlled shake-removal test'),
+  o('maintain_protection', 'Maintain temporary weather protection'),
+  o('document_concealed', 'Document concealed conditions after removal'),
+  o('prepare_summary', 'Prepare repairability summary from current record'),
+];
+
+const METAL_NEXT_STEPS: Opt[] = [
+  o('prepare_repair_scope', 'Prepare limited standing seam repair scope'),
+  o('obtain_identification', 'Obtain panel-system identification'),
+  o('obtain_availability', 'Obtain supplier availability documentation'),
+  o('obtain_substitute_comparison', 'Obtain replacement-panel comparison'),
+  o('obtain_guidance', 'Obtain manufacturer repair instructions'),
+  o('conduct_test', 'Conduct controlled seam-release test'),
+  o('maintain_protection', 'Maintain temporary weather protection'),
+  o('document_concealed', 'Document concealed conditions after removal'),
+  o('prepare_summary', 'Prepare repairability summary from current record'),
+];
+
 const DETERMINATION_OPTIONS: Opt[] = [
   o('supported', 'Spot repair supported by documented evidence'),
   o('conditionally_supported', 'Spot repair conditionally supported'),
@@ -747,6 +1257,175 @@ function validateFlow(system: 'roof' | 'siding', flow: FlowState): string[] {
   return errors;
 }
 
+// Client-side mirror of the server's cedar/standing-seam validation gates
+// (the server re-checks everything on save).
+const MATERIAL_VALIDATION = {
+  cedar_shake: {
+    prefix: 'CS' as const,
+    label: 'Cedar Shake',
+    requiredRoot: ['001', '004', '010', '020', '021', '022', '030', '031', '032', '033', '040'],
+    identificationSupport: ['011', '013'],
+    guidanceQ: '033',
+    availableFactor: 'matching_cedar_available',
+    unavailableFactor: 'matching_cedar_unavailable',
+    compatibleFactor: 'proposed_shake_compatible',
+    notCompatibleFactor: 'proposed_shake_not_compatible',
+    couldNotResetFactor: 'shakes_could_not_reset',
+    directFactors: [
+      'adjacent_shakes_removed_without_damage', 'adjacent_shakes_damaged_during_test',
+      'shakes_reset_securely', 'shakes_could_not_reset', 'replacement_shake_fit', 'replacement_shake_did_not_fit',
+    ],
+    productFactors: ['matching_cedar_available', 'matching_cedar_unavailable', 'proposed_shake_compatible', 'proposed_shake_not_compatible'],
+    manufacturerFactors: ['guidance_supports_repair', 'guidance_does_not_support_repair'],
+    limitationFactors: [
+      'matching_cedar_unavailable', 'proposed_shake_not_compatible', 'adjacent_shakes_damaged_during_test',
+      'shakes_could_not_reset', 'replacement_shake_did_not_fit', 'repair_disturbs_interlayment_deck',
+      'guidance_does_not_support_repair', 'evidence_incomplete',
+    ],
+  },
+  standing_seam_metal: {
+    prefix: 'SM' as const,
+    label: 'Standing Seam Metal',
+    requiredRoot: ['001', '004', '010', '020', '021', '022', '030', '031', '032', '033', '034', '040'],
+    identificationSupport: ['011', '012'],
+    guidanceQ: '034',
+    availableFactor: 'matching_panel_available',
+    unavailableFactor: 'matching_panel_unavailable',
+    compatibleFactor: 'replacement_panel_compatible',
+    notCompatibleFactor: 'replacement_panel_not_compatible',
+    couldNotResetFactor: 'panels_could_not_reseam',
+    directFactors: [
+      'seam_released_without_deformation', 'adjacent_seam_deformed_during_test', 'panels_reseamed_securely',
+      'panels_could_not_reseam', 'replacement_panel_integrated', 'replacement_panel_did_not_integrate',
+    ],
+    productFactors: ['matching_panel_available', 'matching_panel_unavailable', 'replacement_panel_compatible', 'replacement_panel_not_compatible'],
+    manufacturerFactors: ['manufacturer_supports_repair', 'manufacturer_does_not_support_repair'],
+    limitationFactors: [
+      'matching_panel_unavailable', 'replacement_panel_not_compatible', 'adjacent_seam_deformed_during_test',
+      'panels_could_not_reseam', 'replacement_panel_did_not_integrate', 'repair_disturbs_attachment_or_flashing',
+      'manufacturer_does_not_support_repair', 'evidence_incomplete',
+    ],
+  },
+};
+
+function validateMaterialFlowClient(material: 'cedar_shake' | 'standing_seam_metal', flow: FlowState): string[] {
+  const cfg = MATERIAL_VALIDATION[material];
+  const q = cfg.prefix;
+  const label = cfg.label;
+  const a = flow.answers;
+  const errors: string[] = [];
+  const single = (id: string) => (typeof a[id] === 'string' ? (a[id] as string) : undefined);
+  const multi = (id: string) => (Array.isArray(a[id]) ? (a[id] as string[]) : []);
+  const hasEvidence = flow.evidencePhotoIds.length > 0 || flow.evidenceDocRefs.length > 0;
+
+  for (const suffix of cfg.requiredRoot) {
+    if (!single(`${q}-${suffix}`)) errors.push(`${label}: answer ${q}-${suffix} — it is required.`);
+  }
+  const damage = single(`${q}-001`);
+  if (damage === 'yes' && multi(`${q}-002`).length === 0) {
+    errors.push(`${label}: select the affected area(s) being assessed.`);
+  }
+  if (multi(`${q}-003`).length > 0 && !hasEvidence) {
+    errors.push(`${label}: documented damage conditions require linked photo evidence.`);
+  }
+  if ((damage === 'no' || damage === 'unknown') && flow.determination !== 'indeterminate') {
+    errors.push(`${label}: without documented damage, the determination must be "Repairability cannot yet be determined".`);
+  }
+  const pid = single(`${q}-010`);
+  if (pid && pid !== 'not_identified') {
+    for (const suffix of cfg.identificationSupport) {
+      if (multi(`${q}-${suffix}`).length === 0) {
+        errors.push(`${label}: complete ${q}-${suffix} — identification support is required.`);
+      }
+    }
+    if (!hasEvidence) errors.push(`${label}: identification requires linked photo, sample, or document evidence.`);
+  }
+  const disc = single(`${q}-020`);
+  if ((disc === 'manufacturer_confirmed' || disc === 'distributor_confirmed') && !hasEvidence) {
+    errors.push(`${label}: confirmed discontinuation requires linked manufacturer/distributor evidence.`);
+  }
+  const availability = single(`${q}-021`);
+  if (availability === 'no_sufficient_quantity' && !hasEvidence) {
+    errors.push(`${label}: "no sufficient quantity located" requires documented availability-search evidence.`);
+  }
+  if (flow.basisFactors.includes(cfg.unavailableFactor) && availability !== 'no_sufficient_quantity') {
+    errors.push(`${label}: the unavailable-material factor requires a documented search finding no sufficient quantity.`);
+  }
+  if (flow.basisFactors.includes(cfg.availableFactor) && availability !== 'sufficient_quantity') {
+    errors.push(`${label}: the available-material factor requires a documented sufficient-quantity finding.`);
+  }
+  if (multi(`${q}-022B`).length > 0 && !hasEvidence) {
+    errors.push(`${label}: documented substitute differences require linked comparison evidence.`);
+  }
+  if (
+    (flow.basisFactors.includes(cfg.compatibleFactor) || flow.basisFactors.includes(cfg.notCompatibleFactor)) &&
+    single(`${q}-022A`) !== 'yes'
+  ) {
+    errors.push(`${label}: substitute-compatibility factors require a completed documented comparison.`);
+  }
+  const testPerformed = single(`${q}-040`) === 'yes';
+  const usedDirect = flow.basisFactors.filter((f) => cfg.directFactors.includes(f));
+  if (usedDirect.length > 0) {
+    if (!testPerformed) errors.push(`${label}: test-derived basis factors require a controlled test (answer Yes to ${q}-040).`);
+    else if (!hasEvidence) errors.push(`${label}: a controlled test cannot support the determination unless test photos/video are linked.`);
+  }
+  if (flow.basisFactors.includes(cfg.couldNotResetFactor)) {
+    const guidanceLimit = single(`${q}-${cfg.guidanceQ}`) === 'does_not_support' && hasEvidence;
+    if (!(testPerformed && hasEvidence) && !guidanceLimit) {
+      errors.push(`${label}: "could not be reset/reseamed" requires a linked test record or documented manufacturer limitation.`);
+    }
+  }
+  if (flow.basisFactors.some((f) => cfg.manufacturerFactors.includes(f))) {
+    const g = single(`${q}-${cfg.guidanceQ}`);
+    if ((g !== 'supports' && g !== 'does_not_support') || !hasEvidence) {
+      errors.push(`${label}: guidance basis factors require a reviewed repair method with a linked document reference.`);
+    }
+  }
+  if (flow.determination && flow.determination !== 'indeterminate' && !hasEvidence) {
+    errors.push(`${label}: a conclusive determination requires linked photo or document evidence.`);
+  }
+  const emergency = single(`${q}-040`) === 'no_emergency';
+  const testExposed = testPerformed && single(`${q}-046`) === 'yes';
+  if ((single(`${q}-046A`) !== undefined || multi(`${q}-046B`).length > 0) && !emergency && !testExposed) {
+    errors.push(`${label}: temporary weather protection only applies to emergency mitigation or an exposed test condition.`);
+  }
+  if (testExposed && !single(`${q}-046A`)) {
+    errors.push(`${label}: an exposed test condition requires the temporary-protection answer.`);
+  }
+  if (flow.basisFactors.length === 0) errors.push(`${label}: select at least one documented basis factor.`);
+  const direct = flow.basisFactors.some((f) => cfg.directFactors.includes(f));
+  const product = flow.basisFactors.some((f) => cfg.productFactors.includes(f));
+  const manufacturer = flow.basisFactors.some((f) => cfg.manufacturerFactors.includes(f));
+  const supporting = flow.basisFactors.some((f) => f !== 'evidence_incomplete');
+  const limitation = flow.basisFactors.some((f) => cfg.limitationFactors.includes(f));
+  switch (flow.determination) {
+    case 'supported':
+      if (!(direct || product || manufacturer)) {
+        errors.push(`${label}: "supported" requires at least one direct-test, product, or manufacturer basis factor.`);
+      }
+      break;
+    case 'conditionally_supported':
+      if (!supporting || !limitation) {
+        errors.push(`${label}: "conditionally supported" requires a supporting factor plus an unresolved limitation.`);
+      }
+      break;
+    case 'not_supported':
+      if (flow.basisFactors.length < 2 || !(direct || product)) {
+        errors.push(`${label}: "does not support" requires at least two basis factors, including one direct-test or product-evidence factor.`);
+      }
+      break;
+    case 'indeterminate':
+      if (!flow.basisFactors.includes('evidence_incomplete')) {
+        errors.push(`${label}: "cannot yet be determined" requires the "supporting evidence remains incomplete" factor.`);
+      }
+      break;
+    default:
+      errors.push(`${label}: select a determination.`);
+  }
+  if (!flow.nextStep) errors.push(`${label}: select the next step.`);
+  return errors;
+}
+
 export default function InspectionRepairabilityScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -759,6 +1438,7 @@ export default function InspectionRepairabilityScreen() {
   const existing = inspection?.repairabilityAssessment ?? null;
 
   const [systems, setSystems] = React.useState<Array<'roof' | 'siding'>>([]);
+  const [roofMaterial, setRoofMaterial] = React.useState<RoofMaterial | null>(null);
   const [roofFlow, setRoofFlow] = React.useState<FlowState>(emptyFlow());
   const [sidingFlow, setSidingFlow] = React.useState<FlowState>(emptyFlow());
   const [docRefDraft, setDocRefDraft] = React.useState<{ roof: string; siding: string }>({ roof: '', siding: '' });
@@ -785,7 +1465,13 @@ export default function InspectionRepairabilityScreen() {
           evidenceDocRefs: f.evidenceDocRefs ?? [],
           notes: f.notes ?? '',
         });
-        if (ex.roof) setRoofFlow(toState(ex.roof));
+        if (ex.roof) {
+          setRoofFlow(toState(ex.roof));
+          // Roof flows saved before material branching are asphalt shingle.
+          setRoofMaterial(
+            ((ex.roof as { roofMaterial?: RoofMaterial | null }).roofMaterial ?? 'asphalt_shingle') as RoofMaterial,
+          );
+        }
         if (ex.siding) setSidingFlow(toState(ex.siding));
       }
       // Legacy (v1) records are not hydrated into the new flow — the rep
@@ -816,8 +1502,9 @@ export default function InspectionRepairabilityScreen() {
   const photos = inspection.photos ?? [];
   const facetOptions: Opt[] = (inspection.slopes ?? []).map((s) => o(`facet:${s.id}`, s.label));
 
-  function buildPayloadFlow(flow: FlowState) {
+  function buildPayloadFlow(flow: FlowState, material?: RoofMaterial | null) {
     return {
+      ...(material ? { roofMaterial: material } : {}),
       answers: flow.answers,
       determination: flow.determination as 'supported' | 'conditionally_supported' | 'not_supported' | 'indeterminate',
       basisFactors: flow.basisFactors,
@@ -832,7 +1519,15 @@ export default function InspectionRepairabilityScreen() {
     if (saving) return;
     const allErrors: string[] = [];
     if (systems.length === 0) allErrors.push('Select at least one system (roof or siding) to assess.');
-    if (systems.includes('roof')) allErrors.push(...validateFlow('roof', roofFlow));
+    if (systems.includes('roof')) {
+      if (!roofMaterial) {
+        allErrors.push('Select the roofing material assessed (asphalt shingle, cedar shake, or standing seam metal).');
+      } else if (roofMaterial === 'asphalt_shingle') {
+        allErrors.push(...validateFlow('roof', roofFlow));
+      } else {
+        allErrors.push(...validateMaterialFlowClient(roofMaterial, roofFlow));
+      }
+    }
     if (systems.includes('siding')) allErrors.push(...validateFlow('siding', sidingFlow));
     setErrors(allErrors);
     if (allErrors.length > 0) return;
@@ -842,7 +1537,7 @@ export default function InspectionRepairabilityScreen() {
         repairabilityAssessment: {
           version: 2,
           systems,
-          ...(systems.includes('roof') ? { roof: buildPayloadFlow(roofFlow) } : { roof: null }),
+          ...(systems.includes('roof') ? { roof: buildPayloadFlow(roofFlow, roofMaterial) } : { roof: null }),
           ...(systems.includes('siding') ? { siding: buildPayloadFlow(sidingFlow) } : { siding: null }),
           recordedAtUtc: new Date().toISOString(),
         },
@@ -856,10 +1551,31 @@ export default function InspectionRepairabilityScreen() {
   function renderFlow(system: 'roof' | 'siding') {
     const flow = system === 'roof' ? roofFlow : sidingFlow;
     const setFlow = system === 'roof' ? setRoofFlow : setSidingFlow;
-    const questions = system === 'roof' ? roofQuestions(facetOptions) : sidingQuestions();
-    const basisOptions = system === 'roof' ? ROOF_BASIS_OPTIONS : SIDING_BASIS_OPTIONS;
-    const nextSteps = system === 'roof' ? ROOF_NEXT_STEPS : SIDING_NEXT_STEPS;
-    const title = system === 'roof' ? 'Roofing Repairability' : 'Siding Repairability';
+    let questions: QuestionDef[];
+    let basisOptions: Opt[];
+    let nextSteps: Opt[];
+    let title: string;
+    if (system === 'siding') {
+      questions = sidingQuestions();
+      basisOptions = SIDING_BASIS_OPTIONS;
+      nextSteps = SIDING_NEXT_STEPS;
+      title = 'Siding Repairability Assessment';
+    } else if (roofMaterial === 'cedar_shake') {
+      questions = cedarQuestions(facetOptions);
+      basisOptions = CEDAR_BASIS_OPTIONS;
+      nextSteps = CEDAR_NEXT_STEPS;
+      title = 'Cedar Shake Repairability Assessment';
+    } else if (roofMaterial === 'standing_seam_metal') {
+      questions = metalQuestions(facetOptions);
+      basisOptions = METAL_BASIS_OPTIONS;
+      nextSteps = METAL_NEXT_STEPS;
+      title = 'Standing Seam Metal Roof Repairability Assessment';
+    } else {
+      questions = roofQuestions(facetOptions);
+      basisOptions = ROOF_BASIS_OPTIONS;
+      nextSteps = ROOF_NEXT_STEPS;
+      title = 'Asphalt Shingle Repairability Assessment';
+    }
 
     const setAnswer = (qid: string, v: string | string[] | undefined) =>
       setFlow((f) => {
@@ -1150,7 +1866,44 @@ export default function InspectionRepairabilityScreen() {
           </Text>
         ) : null}
 
-        {systems.includes('roof') ? renderFlow('roof') : null}
+        {systems.includes('roof') ? (
+          <View style={{ gap: 10 }}>
+            <Text style={[styles.qLabel, { color: colors.foreground }]}>Roofing material assessed</Text>
+            <View style={styles.chipWrap}>
+              {ROOF_MATERIAL_OPTIONS.map((opt) => {
+                const on = roofMaterial === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      if (on) return;
+                      setRoofMaterial(opt.value as RoofMaterial);
+                      // Each material has its own question flow and factor
+                      // vocabulary — switching starts a fresh roof record.
+                      setRoofFlow(emptyFlow());
+                    }}
+                    style={[
+                      styles.sysToggle,
+                      {
+                        borderColor: on ? colors.primary : colors.border,
+                        backgroundColor: on ? colors.primary : colors.card,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: on ? colors.primaryForeground : colors.foreground, fontWeight: '700' }}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {roofMaterial ? renderFlow('roof') : (
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                Select the roofing material to open its question flow.
+              </Text>
+            )}
+          </View>
+        ) : null}
         {systems.includes('siding') ? renderFlow('siding') : null}
 
         {errors.length > 0 ? (

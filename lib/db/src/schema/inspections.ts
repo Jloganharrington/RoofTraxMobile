@@ -400,9 +400,16 @@ export type RepairabilityDetermination =
   | 'not_supported'
   | 'indeterminate';
 
+// Roof flows branch by roofing material. Legacy v2 roof flows written before
+// material branching carry no roofMaterial — readers treat those as
+// asphalt_shingle (the only flow that existed then).
+export type RepairabilityRoofMaterial = 'asphalt_shingle' | 'cedar_shake' | 'standing_seam_metal';
+
 export interface RepairabilitySystemFlow {
-  // Answers keyed by question id (e.g. 'RR-001', 'SR-032A'). Radio answers
-  // are single value keys; multi-selects are arrays of value keys.
+  // Roof flows only: which material's question flow was completed.
+  roofMaterial?: RepairabilityRoofMaterial | null;
+  // Answers keyed by question id (e.g. 'RR-001', 'CS-032A', 'SM-042').
+  // Radio answers are single value keys; multi-selects are arrays of value keys.
   answers: Record<string, string | string[]>;
   determination: RepairabilityDetermination;
   basisFactors: string[];

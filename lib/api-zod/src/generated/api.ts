@@ -1092,6 +1092,7 @@ export const ListInspectionsResponse = zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1101,6 +1102,7 @@ export const ListInspectionsResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1498,6 +1500,7 @@ export const CreateInspectionResponse = zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1507,6 +1510,7 @@ export const CreateInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1886,6 +1890,7 @@ export const GetInspectionResponse = zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1895,6 +1900,7 @@ export const GetInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2114,6 +2120,7 @@ export const UpdateInspectionBody = zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2123,6 +2130,7 @@ export const UpdateInspectionBody = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2404,6 +2412,7 @@ export const UpdateInspectionResponse = zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2413,6 +2422,7 @@ export const UpdateInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -3477,6 +3487,7 @@ export const SubmitInspectionResponse = zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -3486,6 +3497,7 @@ export const SubmitInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),

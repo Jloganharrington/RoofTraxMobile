@@ -1,0 +1,592 @@
+A. Cedar Shake Scope and Damage
+CS-001 — Is direct physical cedar-shake damage documented?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+If Yes:
+
+CS-002 — Which roof facet(s) or area(s) are being assessed?
+Type: Multi-select from roof-facet inventory
+Required: Yes
+
+CS-003 — Which documented damage conditions are present?
+Type: Multi-select
+
+Split shake
+Cracked shake
+Broken shake
+Missing shake
+Displaced shake
+Fastener-related damage
+Surface puncture
+Edge damage
+Other documented condition
+Require linked photo evidence for each selected condition.
+
+CS-004 — Assessment Type
+Type: Radio
+Required: Yes
+
+Visual and documentary screening only
+Controlled non-destructive evaluation
+Controlled shake-removal test
+Post-removal concealed-condition evaluation
+B. Existing Cedar Shake Identification
+CS-010 — Is the existing cedar shake product identified?
+Type: Radio
+Required: Yes
+
+Exact manufacturer and product identified
+Cedar species and shake profile identified
+Cedar shake material type identified only
+Not identified
+CS-011 — What cedar shake type is documented?
+Type: Multi-select
+Required when material type is identified
+
+Tapersawn shake
+Hand-split and resawn shake
+Heavy hand-split and resawn shake
+Straight-split shake
+Other documented profile
+Unknown / Not verified
+CS-012 — What product attributes are documented?
+Type: Multi-select
+
+Wood species
+Grade
+Length
+Butt thickness
+Exposure
+Treatment status
+Fire-retardant treatment
+Preservative treatment
+Fastener type
+Interlayment type
+Underlayment type
+Other documented attribute
+CS-013 — What supports the cedar shake identification?
+Type: Multi-select
+Required when CS-010 is not “Not identified”
+
+Physical shake sample
+Rear marking or tag
+Laboratory identification
+Manufacturer documentation
+Prior invoice or permit record
+Contractor field measurement
+Other documented source
+Require linked evidence.
+
+C. Cedar Availability and Substitute Comparison
+CS-020 — Is the existing cedar shake product documented as discontinued or unavailable?
+Type: Radio
+Required: Yes
+
+Current product available
+Discontinued — manufacturer confirmed
+Discontinued — distributor confirmed
+Availability not verified
+Unknown / Not identified
+CS-021 — Has a sufficient quantity of matching cedar shake material been located?
+Type: Radio
+Required: Yes
+
+Yes — sufficient quantity located
+Limited quantity located
+No sufficient quantity located after documented search
+Search not performed
+Unknown / Not verified
+CS-022 — Has a proposed replacement cedar shake been identified?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not applicable
+If Yes:
+
+CS-022A — Has the proposed shake been compared to the existing shake?
+Type: Radio
+
+Yes
+No
+Comparison pending
+If Yes:
+
+CS-022B — Which differences were documented?
+Type: Multi-select
+
+Species
+Grade
+Shake profile
+Length
+Butt thickness
+Exposure
+Split texture
+Surface appearance
+Color
+Treatment status
+Fire classification
+Fastener requirements
+Interlayment compatibility
+Other documented difference
+Require linked measurement, sample photo, supplier data, or manufacturer document for each selected difference.
+
+D. Cedar Repair Mechanics
+CS-030 — Would the proposed repair require removal or disturbance of adjacent undamaged shakes?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+CS-031 — Is the existing cedar shake course or overlap arrangement documented?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+CS-032 — Is interlayment, underlayment, or skip-sheathing condition relevant to the proposed repair?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+Not applicable
+If Yes:
+
+CS-032A — What condition is documented?
+Type: Multi-select
+
+Interlayment present
+Interlayment condition unknown
+Underlayment exposed
+Underlayment damaged
+Skip sheathing present
+Decking condition limits repair
+Existing assembly not fully visible
+Other documented condition
+CS-033 — Is a manufacturer, CSSB, or product-specific repair method available for the identified shake system?
+Type: Radio
+Required: Yes
+
+Yes — supports proposed repair method
+Yes — does not support proposed repair method
+Available but not reviewed
+Not available
+Product not sufficiently identified
+Require linked document if either support option is selected.
+
+E. Controlled Cedar Shake Test
+CS-040 — Was a controlled cedar-shake removal or repairability test performed?
+Type: Radio
+Required: Yes
+
+Yes
+No — owner authorization not obtained
+No — not needed based on existing evidence
+No — unsafe conditions
+No — deferred pending further review
+No — emergency mitigation required
+If Yes:
+
+CS-041 — Was the test initiated at an already damaged shake?
+Type: Radio
+
+Yes
+No
+Not applicable
+CS-042 — Did adjacent shakes split, crack, break, or become damaged during the test?
+Type: Radio
+
+Yes
+No
+Not applicable
+CS-043 — Could adjacent shakes be reset into a secure, weather-resistant position?
+Type: Radio
+
+Yes
+No
+Unknown
+CS-044 — Did the replacement shake fit the existing course, exposure, and overlap configuration?
+Type: Radio
+
+Yes
+No
+Partially
+No replacement shake tested
+CS-045 — Did the test expose or disturb interlayment, underlayment, or deck components?
+Type: Radio
+
+Yes
+No
+Unknown
+CS-046 — Did the test create an exposed or non-weather-resistant condition?
+Type: Radio
+
+Yes
+No
+If Yes:
+
+CS-046A — Was temporary weather protection installed?
+Type: Radio
+
+Yes
+No
+Not needed
+CS-046B — Temporary protection type
+Type: Multi-select
+
+Tarp
+Temporary membrane
+Temporary shake
+Other documented protection
+Require test photos or video before allowing the test to support a determination.
+
+F. Cedar Shake Determination
+CS-050 — Based on the documented record, is a limited cedar shake repair technically supportable?
+Type: Radio
+Required: Yes
+
+Spot repair supported by documented evidence
+Spot repair conditionally supported
+Documented evidence does not support a reliable spot repair
+Repairability cannot yet be determined
+CS-051 — Select documented basis factors
+Type: Multi-select
+Required: Yes
+
+Matching cedar material available in sufficient quantity
+Matching cedar material unavailable in sufficient quantity
+Proposed shake is compatible with existing shake system
+Proposed shake is not compatible with existing shake system
+Adjacent shakes removed without damage
+Adjacent shakes split, cracked, or broke during testing
+Existing shakes reset securely
+Existing shakes could not be reset securely
+Replacement shake fit existing course and overlap geometry
+Replacement shake did not fit existing course and overlap geometry
+Repair disturbs interlayment, underlayment, or deck components
+Manufacturer or technical guidance supports repair
+Manufacturer or technical guidance does not support repair
+Supporting evidence remains incomplete
+CS-052 — Cedar Shake Next Step
+Type: Radio
+
+Prepare limited cedar shake repair scope
+Obtain shake sample or laboratory identification
+Obtain supplier availability documentation
+Obtain substitute-material comparison
+Obtain manufacturer or CSSB repair guidance
+Conduct controlled shake-removal test
+Maintain temporary weather protection
+Document concealed conditions after removal
+Prepare repairability summary from current record
+CodeCopy
+# Standing Seam Metal Repairability Flow ```text SECTION HEADER: Standing Seam Metal Roof Repairability Assessment
+A. Standing Seam Scope and Damage
+SM-001 — Is direct physical standing-seam metal damage documented?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+If Yes:
+
+SM-002 — Which roof facet(s), panel(s), or area(s) are being assessed?
+Type: Multi-select from roof-facet or panel inventory
+Required: Yes
+
+SM-003 — Which documented damage conditions are present?
+Type: Multi-select
+
+Panel puncture
+Panel tear
+Panel deformation
+Seam deformation
+Seam separation
+Clip or fastener-related condition
+Coating damage
+Corrosion
+Flashing damage
+Ridge condition
+Eave condition
+Penetration condition
+Other documented condition
+Require linked photo evidence.
+
+SM-004 — Assessment Type
+Type: Radio
+Required: Yes
+
+Visual and documentary screening only
+Controlled non-destructive evaluation
+Controlled seam-release or panel-removal test
+Post-removal concealed-condition evaluation
+B. Standing Seam System Identification
+SM-010 — Is the standing seam system identified?
+Type: Radio
+Required: Yes
+
+Exact manufacturer and panel system identified
+Manufacturer and panel profile identified
+Metal type and seam profile identified only
+Not identified
+SM-011 — What standing seam attributes are documented?
+Type: Multi-select
+Required when SM-010 is not “Not identified”
+
+Metal type
+Panel width
+Seam height
+Seam profile
+Panel gauge
+Coating type
+Color
+Panel length
+Clip system
+Fastener system
+Underlayment type
+Deck type
+Panel orientation
+Other documented attribute
+SM-012 — What supports system identification?
+Type: Multi-select
+Required when identified
+
+Panel stamp or marking
+Physical panel sample
+Manufacturer documentation
+Installer invoice
+Permit record
+Field measurement
+Laboratory identification
+Other documented source
+Require linked evidence.
+
+C. Standing Seam Availability and Substitute Comparison
+SM-020 — Is the existing standing seam panel system documented as discontinued or unavailable?
+Type: Radio
+Required: Yes
+
+Current panel system available
+Discontinued — manufacturer confirmed
+Discontinued — distributor confirmed
+Availability not verified
+Unknown / Not identified
+SM-021 — Has a sufficient quantity of matching replacement panels been located?
+Type: Radio
+Required: Yes
+
+Yes — sufficient quantity located
+Limited quantity located
+No sufficient quantity located after documented search
+Search not performed
+Unknown / Not verified
+SM-022 — Has a proposed replacement panel system been identified?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not applicable
+If Yes:
+
+SM-022A — Has the replacement panel been compared to the existing panel system?
+Type: Radio
+
+Yes
+No
+Comparison pending
+If Yes:
+
+SM-022B — Which differences were documented?
+Type: Multi-select
+
+Metal type
+Panel width
+Seam height
+Seam profile
+Panel gauge
+Coating type
+Color
+Clip system
+Fastener system
+Panel length
+Underlayment requirements
+Flashing compatibility
+Warranty requirements
+Other documented difference
+Require linked comparison evidence.
+
+D. Standing Seam Repair Mechanics
+SM-030 — Is the damaged panel part of a continuous panel running from ridge to eave?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+SM-031 — Does the proposed repair require releasing, unseaming, or removing adjacent panels?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+SM-032 — Is the panel-removal sequence documented for the identified system?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+SM-033 — Would the proposed repair disturb clips, fasteners, underlayment, ridge details, eave details, valleys, or flashing?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+If Yes:
+
+SM-033A — Which components would be disturbed?
+Type: Multi-select
+
+Adjacent panels
+Clips
+Concealed fasteners
+Underlayment
+Ridge assembly
+Eave assembly
+Valley flashing
+Sidewall flashing
+Penetration flashing
+Snow-retention system
+Other documented component
+SM-034 — Is a manufacturer repair or panel-replacement method available for the identified standing seam system?
+Type: Radio
+Required: Yes
+
+Yes — supports proposed repair method
+Yes — does not support proposed repair method
+Available but not reviewed
+Not available
+System not sufficiently identified
+Require linked document if support option is selected.
+
+E. Controlled Standing Seam Test
+SM-040 — Was a controlled seam-release or panel-removal test performed?
+Type: Radio
+Required: Yes
+
+Yes
+No — owner authorization not obtained
+No — not needed based on existing evidence
+No — unsafe conditions
+No — deferred pending further review
+No — emergency mitigation required
+If Yes:
+
+SM-041 — Was the test initiated at an already damaged panel or seam location?
+Type: Radio
+
+Yes
+No
+Not applicable
+SM-042 — Could the identified seam be released without deforming adjacent panel seams?
+Type: Radio
+
+Yes
+No
+Unknown
+SM-043 — Could adjacent panels be reseamed and restored to a secure, weather-resistant position?
+Type: Radio
+
+Yes
+No
+Unknown
+SM-044 — Were clips, fasteners, underlayment, or flashing disturbed during the test?
+Type: Radio
+
+Yes
+No
+Unknown
+SM-045 — Did the proposed replacement panel physically match and integrate with the existing system?
+Type: Radio
+
+Yes
+No
+Partially
+No replacement panel tested
+SM-046 — Did the test create an exposed or non-weather-resistant condition?
+Type: Radio
+
+Yes
+No
+If Yes:
+
+SM-046A — Was temporary weather protection installed?
+Type: Radio
+
+Yes
+No
+Not needed
+SM-046B — Temporary protection type
+Type: Multi-select
+
+Tarp
+Temporary membrane
+Temporary metal panel
+Temporary flashing protection
+Other documented protection
+Require photo/video evidence for all controlled-test outcomes.
+
+F. Standing Seam Metal Determination
+SM-050 — Based on the documented record, is a limited standing seam metal repair technically supportable?
+Type: Radio
+Required: Yes
+
+Spot repair supported by documented evidence
+Spot repair conditionally supported
+Documented evidence does not support a reliable spot repair
+Repairability cannot yet be determined
+SM-051 — Select documented basis factors
+Type: Multi-select
+Required: Yes
+
+Matching panel system available in sufficient quantity
+Matching panel system unavailable in sufficient quantity
+Proposed replacement panel is compatible
+Proposed replacement panel is not compatible
+Panel seam released without deformation
+Adjacent seam or panel deformed during testing
+Existing panels could be reseamed securely
+Existing panels could not be reseamed securely
+Replacement panel integrated with existing system
+Replacement panel did not integrate with existing system
+Repair requires disturbance of clips, fasteners, underlayment, or flashing
+Manufacturer guidance supports repair
+Manufacturer guidance does not support repair
+Supporting evidence remains incomplete
+SM-052 — Standing Seam Metal Next Step
+Type: Radio
+
+Prepare limited standing seam repair scope
+Obtain panel-system identification
+Obtain supplier availability documentation
+Obtain replacement-panel comparison
+Obtain manufacturer repair instructions
+Conduct controlled seam-release test
+Maintain temporary weather protection
+Document concealed conditions after removal
+Prepare repairability summary from current record
+CodeCopy
+## Shared Validation Rules for Cedar and Standing Seam ```text 1. Do not allow “documented evidence does not support a reliable spot repair” unless: - At least two basis factors are selected; and - At least one is direct-test evidence or product/material evidence. 2. Do not allow: - “Discontinued confirmed” without linked manufacturer/distributor evidence. - “No sufficient quantity located” without a documented availability search. - “Adjacent material damaged during test” without linked test media. - “Could not reset/reseam securely” without a test record or manufacturer instruction. - “Substitute incompatible” without a documented comparison. 3. Do not allow any output phrase: - Full replacement required - Carrier must replace - Insurance owes - Code requires replacement - Material cannot be repaired 4. Temporary weather protection must only be available when: - Emergency mitigation is selected; or - A controlled test created an exposed or non-weather-resistant condition. 5. Keep Cedar Shake and Standing Seam determinations separate from Asphalt Shingle determinations. Do not reuse shingle-specific questions, terminology, or repair logic for cedar or standing seam systems.

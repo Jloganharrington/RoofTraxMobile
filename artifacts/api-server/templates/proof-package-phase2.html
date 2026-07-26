@@ -901,7 +901,7 @@ function renderRepairabilityAssessment(){
       const basis = (flow.basisFactors || []).map(humanize).join("; ") || "—";
       const docs = (flow.evidenceDocRefs || []).join("; ");
       body += `
-        <p style="margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600;">${system === "roof" ? "Roofing" : "Siding"} Repairability</p>
+        <p style="margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600;">${system === "roof" ? ({asphalt_shingle:"Asphalt Shingle",cedar_shake:"Cedar Shake",standing_seam_metal:"Standing Seam Metal Roof"}[flow.roofMaterial] || "Asphalt Shingle") : "Siding"} Repairability Assessment</p>
         <div class="kv-grid">
           <div class="kv-row"><span class="k">Determination</span><span class="v sans">${DET_LABELS[flow.determination] || humanize(flow.determination)}</span></div>
           <div class="kv-row"><span class="k">Documented Basis Factors</span><span class="v sans">${esc(basis)}</span></div>

@@ -7,11 +7,17 @@
  */
 import type { RepairabilitySystemFlowAnswers } from './repairabilitySystemFlowAnswers';
 import type { RepairabilitySystemFlowDetermination } from './repairabilitySystemFlowDetermination';
+import type { RepairabilitySystemFlowRoofMaterial } from './repairabilitySystemFlowRoofMaterial';
 
 /**
  * One system's (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx / SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output "full replacement required".
  */
 export interface RepairabilitySystemFlow {
+  /**
+     * Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.
+     * @nullable
+     */
+  roofMaterial?: RepairabilitySystemFlowRoofMaterial;
   answers: RepairabilitySystemFlowAnswers;
   determination: RepairabilitySystemFlowDetermination;
   basisFactors: string[];
