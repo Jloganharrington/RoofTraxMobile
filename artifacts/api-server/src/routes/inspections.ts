@@ -88,6 +88,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
+import { DETERMINATION_LABELS, validateRepairabilityAssessment } from '../lib/repairabilityRules';
 import { ObjectNotFoundError, ObjectStorageService } from '../lib/objectStorage';
 
 const objectStorageService = new ObjectStorageService();
@@ -417,6 +418,14 @@ async function hydrateInspectionChildren(
   };
 }
 
+// Stored repairabilityAssessment jsonb may predate the v2 question-flow
+// schema. API response schemas are v2-only, so surface legacy rows as null
+// rather than failing the whole response parse; report compiles read the
+// raw DB row and keep their own legacy fallback rendering.
+function apiSafeRepairability(ra: unknown): unknown {
+  return ra && typeof ra === 'object' && (ra as { version?: number }).version === 2 ? ra : null;
+}
+
 router.get('/inspections', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -448,6 +457,7 @@ router.get('/inspections', async (req: Request, res: Response) => {
       homeownerFacts: null,
       stormConfirmedRef: null,
       submissionManifest: null,
+      repairabilityAssessment: apiSafeRepairability(row.repairabilityAssessment),
     };
   });
 
@@ -702,6 +712,7 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
     GetInspectionResponse.parse({
       inspection: {
         ...inspection,
+        repairabilityAssessment: apiSafeRepairability(inspection.repairabilityAssessment),
         ...children,
         latestAgreement: latestAgreementRow,
       },
@@ -868,6 +879,19 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
   let repairabilityToStore: RepairabilityAssessment | null | undefined =
     parsed.data.repairabilityAssessment;
   if (parsed.data.repairabilityAssessment) {
+    // v2 question flow: the determination is gated by documented basis
+    // factors + universal evidence rules; the server is the authority so a
+    // raw API call can't bypass the mobile flow's gating.
+    const violations = validateRepairabilityAssessment(
+      parsed.data.repairabilityAssessment as unknown as RepairabilityAssessment,
+    );
+    if (violations.length > 0) {
+      res.status(400).json({
+        error: 'Repairability assessment failed validation',
+        details: violations,
+      });
+      return;
+    }
     const [assessor] = await db
       .select({
         firstName: usersTable.firstName,
@@ -889,7 +913,7 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       credentialParts.push(`${assessor.yearsExperience} years experience`);
     }
     repairabilityToStore = {
-      ...parsed.data.repairabilityAssessment,
+      ...(parsed.data.repairabilityAssessment as unknown as RepairabilityAssessment),
       assessorName:
         [assessor?.firstName, assessor?.lastName].filter(Boolean).join(' ') || null,
       assessorCredentials: credentialParts.length > 0 ? credentialParts.join('; ') : null,
@@ -975,7 +999,16 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
 
-  res.json(UpdateInspectionResponse.parse({ inspection: updated }));
+  res.json(
+    UpdateInspectionResponse.parse({
+      inspection: {
+        ...updated,
+        repairabilityAssessment: apiSafeRepairability(
+          (updated as { repairabilityAssessment?: unknown }).repairabilityAssessment,
+        ),
+      },
+    }),
+  );
 });
 
 router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Response) => {
@@ -3077,15 +3110,30 @@ function buildInspectionBrief(
     }
   }
 
-  const ra = inspection.repairabilityAssessment as
-    | { determination?: string; notes?: string | null }
-    | null
-    | undefined;
+  const ra = inspection.repairabilityAssessment as RepairabilityAssessment | null | undefined;
   if (ra) {
     lines.push('');
     lines.push('REPAIRABILITY ASSESSMENT:');
-    lines.push(`  Determination: ${ra.determination ?? 'not set'}`);
-    if (ra.notes) lines.push(`  Notes: ${ra.notes}`);
+    if (ra.version === 2) {
+      for (const system of ['roof', 'siding'] as const) {
+        const flow = ra[system];
+        if (!flow) continue;
+        lines.push(`  ${system === 'roof' ? 'Roofing' : 'Siding'}:`);
+        lines.push(
+          `    Determination: ${DETERMINATION_LABELS[flow.determination] ?? flow.determination}`,
+        );
+        if (flow.basisFactors?.length) {
+          lines.push(`    Documented basis factors: ${flow.basisFactors.join(', ')}`);
+        }
+        if (flow.nextStep) lines.push(`    Next step: ${flow.nextStep}`);
+        if (flow.notes) lines.push(`    Notes: ${flow.notes}`);
+      }
+    } else {
+      // Legacy v1 record.
+      const legacy = ra as unknown as { determination?: string; recommendation?: string | null };
+      lines.push(`  Determination: ${legacy.determination ?? 'not set'}`);
+      if (legacy.recommendation) lines.push(`  Recommendation: ${legacy.recommendation}`);
+    }
   }
 
   const interiorObs = children.interiorObservations ?? [];
@@ -3705,9 +3753,18 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   const arr = inspection.arrivalConditions as {
     sky?: string; windCondition?: string; tempF?: number; personnel?: string[];
   } | null;
-  const ra = inspection.repairabilityAssessment as {
-    overallDetermination?: string; rationale?: string;
-  } | null;
+  const raRaw = inspection.repairabilityAssessment as RepairabilityAssessment | null;
+  const raSummary = raRaw
+    ? raRaw.version === 2
+      ? (['roof', 'siding'] as const)
+          .filter((s) => raRaw[s])
+          .map(
+            (s) =>
+              `${s}: ${DETERMINATION_LABELS[raRaw[s]!.determination] ?? raRaw[s]!.determination}`,
+          )
+          .join('; ') || 'Not recorded'
+      : ((raRaw as unknown as { determination?: string }).determination ?? 'Not recorded')
+    : null;
   const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
 
   const photoBrief = children.photos.slice(0, 80).map((p) => ({
@@ -3769,7 +3826,7 @@ Property: ${JSON.stringify({
 
 Property Profile: ${JSON.stringify(pp)}
 Arrival Conditions: ${JSON.stringify(arr)}
-Repairability Assessment: ${JSON.stringify(ra)}
+Repairability Assessment: ${JSON.stringify(raRaw)}
 Homeowner Facts: ${JSON.stringify(hf)}
 Roof Facets (${slopes.length} total): ${JSON.stringify(slopes.slice(0, 20))}
 Installed Products: ${JSON.stringify(products)}
@@ -3818,7 +3875,7 @@ ${JSON.stringify(photoBrief)}
         <tr><th>Roof damage found</th><td>${inspection.roofDamageFound ? 'Yes' : 'No'}</td></tr>
         <tr><th>Siding damage found</th><td>${inspection.sidingDamageFound ? 'Yes' : 'No'}</td></tr>
         <tr><th>Collateral damage</th><td>${inspection.collateralDamageFound ? 'Yes' : 'No'}</td></tr>
-        <tr><th>Repairability</th><td>${escHtml(ra?.overallDetermination ?? 'Not recorded')}</td></tr>
+        <tr><th>Repairability</th><td>${escHtml(raSummary ?? 'Not recorded')}</td></tr>
         <tr><th>Arrival conditions</th><td>${escHtml([arr?.sky, arr?.windCondition].filter(Boolean).join(', ') || 'Not recorded')}</td></tr>
       </table>`;
     }

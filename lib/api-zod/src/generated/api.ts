@@ -851,6 +851,8 @@ export const ListTeamLocationsResponse = zod.object({
 
 
 
+
+
 export const ListInspectionsResponse = zod.object({
   "inspections": zod.array(zod.object({
   "id": zod.string(),
@@ -1087,23 +1089,28 @@ export const ListInspectionsResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
   "repairabilityAssessment": zod.union([zod.object({
-  "questionPresented": zod.string().min(1),
-  "methodology": zod.string().nullish(),
-  "materialsReviewed": zod.string().nullish(),
-  "fieldTestFindings": zod.object({
-  "repairAttemptMade": zod.boolean().nullish(),
-  "adjacentShinglesFractured": zod.boolean().nullish(),
-  "matchingMaterialSourceable": zod.boolean().nullish(),
-  "productDiscontinued": zod.boolean().nullish(),
+  "version": zod.literal(2),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
+  "roof": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
   "notes": zod.string().nullish()
-}),
-  "conditionScoring": zod.string().nullish(),
-  "repairAttemptRisks": zod.string().nullish(),
-  "determination": zod.enum(['repairable', 'not_repairable']),
-  "recommendation": zod.string().nullish(),
-  "supportingPhotoIds": zod.array(zod.string()).optional(),
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
+  "siding": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
+  "notes": zod.string().nullish()
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
 })),zod.null()]).optional(),
@@ -1244,6 +1251,8 @@ export const CreateInspectionBody = zod.object({
   "collateralDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — collateral.'),
   "interiorDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — interior (explicit claim-scope decision).')
 })
+
+
 
 
 
@@ -1486,23 +1495,28 @@ export const CreateInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
   "repairabilityAssessment": zod.union([zod.object({
-  "questionPresented": zod.string().min(1),
-  "methodology": zod.string().nullish(),
-  "materialsReviewed": zod.string().nullish(),
-  "fieldTestFindings": zod.object({
-  "repairAttemptMade": zod.boolean().nullish(),
-  "adjacentShinglesFractured": zod.boolean().nullish(),
-  "matchingMaterialSourceable": zod.boolean().nullish(),
-  "productDiscontinued": zod.boolean().nullish(),
+  "version": zod.literal(2),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
+  "roof": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
   "notes": zod.string().nullish()
-}),
-  "conditionScoring": zod.string().nullish(),
-  "repairAttemptRisks": zod.string().nullish(),
-  "determination": zod.enum(['repairable', 'not_repairable']),
-  "recommendation": zod.string().nullish(),
-  "supportingPhotoIds": zod.array(zod.string()).optional(),
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
+  "siding": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
+  "notes": zod.string().nullish()
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
 })),zod.null()]).optional(),
@@ -1625,6 +1639,8 @@ export const CreateInspectionResponse = zod.object({
 export const GetInspectionParams = zod.object({
   "inspectionId": zod.coerce.string()
 })
+
+
 
 
 
@@ -1867,23 +1883,28 @@ export const GetInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
   "repairabilityAssessment": zod.union([zod.object({
-  "questionPresented": zod.string().min(1),
-  "methodology": zod.string().nullish(),
-  "materialsReviewed": zod.string().nullish(),
-  "fieldTestFindings": zod.object({
-  "repairAttemptMade": zod.boolean().nullish(),
-  "adjacentShinglesFractured": zod.boolean().nullish(),
-  "matchingMaterialSourceable": zod.boolean().nullish(),
-  "productDiscontinued": zod.boolean().nullish(),
+  "version": zod.literal(2),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
+  "roof": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
   "notes": zod.string().nullish()
-}),
-  "conditionScoring": zod.string().nullish(),
-  "repairAttemptRisks": zod.string().nullish(),
-  "determination": zod.enum(['repairable', 'not_repairable']),
-  "recommendation": zod.string().nullish(),
-  "supportingPhotoIds": zod.array(zod.string()).optional(),
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
+  "siding": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
+  "notes": zod.string().nullish()
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
 })),zod.null()]).optional(),
@@ -2022,6 +2043,8 @@ export const UpdateInspectionParams = zod.object({
 
 
 
+
+
 export const UpdateInspectionBody = zod.object({
   "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']).optional(),
   "phase": zod.enum(['preliminary', 'forensic']).optional().describe('Business phase of a single inspection record (P0). Begins as `preliminary` (light top-of-funnel capture) and advances IN PLACE to `forensic` at the P4 checkpoint — one record, never two.'),
@@ -2088,23 +2111,28 @@ export const UpdateInspectionBody = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
   "repairabilityAssessment": zod.union([zod.object({
-  "questionPresented": zod.string().min(1),
-  "methodology": zod.string().nullish(),
-  "materialsReviewed": zod.string().nullish(),
-  "fieldTestFindings": zod.object({
-  "repairAttemptMade": zod.boolean().nullish(),
-  "adjacentShinglesFractured": zod.boolean().nullish(),
-  "matchingMaterialSourceable": zod.boolean().nullish(),
-  "productDiscontinued": zod.boolean().nullish(),
+  "version": zod.literal(2),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
+  "roof": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
   "notes": zod.string().nullish()
-}),
-  "conditionScoring": zod.string().nullish(),
-  "repairAttemptRisks": zod.string().nullish(),
-  "determination": zod.enum(['repairable', 'not_repairable']),
-  "recommendation": zod.string().nullish(),
-  "supportingPhotoIds": zod.array(zod.string()).optional(),
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
+  "siding": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
+  "notes": zod.string().nullish()
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.'),zod.null()]).optional(),
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.'),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)
@@ -2129,6 +2157,8 @@ export const UpdateInspectionBody = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional()
 })
+
+
 
 
 
@@ -2371,23 +2401,28 @@ export const UpdateInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
   "repairabilityAssessment": zod.union([zod.object({
-  "questionPresented": zod.string().min(1),
-  "methodology": zod.string().nullish(),
-  "materialsReviewed": zod.string().nullish(),
-  "fieldTestFindings": zod.object({
-  "repairAttemptMade": zod.boolean().nullish(),
-  "adjacentShinglesFractured": zod.boolean().nullish(),
-  "matchingMaterialSourceable": zod.boolean().nullish(),
-  "productDiscontinued": zod.boolean().nullish(),
+  "version": zod.literal(2),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
+  "roof": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
   "notes": zod.string().nullish()
-}),
-  "conditionScoring": zod.string().nullish(),
-  "repairAttemptRisks": zod.string().nullish(),
-  "determination": zod.enum(['repairable', 'not_repairable']),
-  "recommendation": zod.string().nullish(),
-  "supportingPhotoIds": zod.array(zod.string()).optional(),
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
+  "siding": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
+  "notes": zod.string().nullish()
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
 })),zod.null()]).optional(),
@@ -3201,6 +3236,8 @@ export const SubmitInspectionBody = zod.object({
 
 
 
+
+
 export const SubmitInspectionResponse = zod.object({
   "inspection": zod.object({
   "id": zod.string(),
@@ -3437,23 +3474,28 @@ export const SubmitInspectionResponse = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
   "repairabilityAssessment": zod.union([zod.object({
-  "questionPresented": zod.string().min(1),
-  "methodology": zod.string().nullish(),
-  "materialsReviewed": zod.string().nullish(),
-  "fieldTestFindings": zod.object({
-  "repairAttemptMade": zod.boolean().nullish(),
-  "adjacentShinglesFractured": zod.boolean().nullish(),
-  "matchingMaterialSourceable": zod.boolean().nullish(),
-  "productDiscontinued": zod.boolean().nullish(),
+  "version": zod.literal(2),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
+  "roof": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
   "notes": zod.string().nullish()
-}),
-  "conditionScoring": zod.string().nullish(),
-  "repairAttemptRisks": zod.string().nullish(),
-  "determination": zod.enum(['repairable', 'not_repairable']),
-  "recommendation": zod.string().nullish(),
-  "supportingPhotoIds": zod.array(zod.string()).optional(),
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
+  "siding": zod.union([zod.object({
+  "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
+  "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
+  "basisFactors": zod.array(zod.string()),
+  "nextStep": zod.string().min(1),
+  "evidencePhotoIds": zod.array(zod.string()).optional(),
+  "evidenceDocRefs": zod.array(zod.string()).optional(),
+  "notes": zod.string().nullish()
+}).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted.').and(zod.object({
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
 })),zod.null()]).optional(),

@@ -387,24 +387,38 @@ export interface PropertyProfile {
 // Null on the inspection row means "not performed" and the report section
 // omits. assessorName/assessorCredentials are injected server-side from the
 // inspector's profile at save time — never typed in the field.
+// v2 (2026-07-26): structured question-flow record. Per-system (roof /
+// siding) answer maps keyed by question id (RR-xxx / SR-xxx), a gated
+// 4-level determination (never "full replacement required"), documented
+// basis factors, and linked evidence. Validation rules live in
+// api-server/src/lib/repairabilityRules.ts. Legacy v1 records (free-text
+// fields + repairable/not_repairable) may still exist in stored rows;
+// readers must tolerate both shapes.
+export type RepairabilityDetermination =
+  | 'supported'
+  | 'conditionally_supported'
+  | 'not_supported'
+  | 'indeterminate';
+
+export interface RepairabilitySystemFlow {
+  // Answers keyed by question id (e.g. 'RR-001', 'SR-032A'). Radio answers
+  // are single value keys; multi-selects are arrays of value keys.
+  answers: Record<string, string | string[]>;
+  determination: RepairabilityDetermination;
+  basisFactors: string[];
+  nextStep: string;
+  evidencePhotoIds?: string[];
+  evidenceDocRefs?: string[];
+  notes?: string | null;
+}
+
 export interface RepairabilityAssessment {
-  questionPresented: string;
-  methodology?: string | null;
-  materialsReviewed?: string | null;
-  fieldTestFindings: {
-    repairAttemptMade?: boolean | null;
-    adjacentShinglesFractured?: boolean | null; // brittleness result
-    matchingMaterialSourceable?: boolean | null;
-    productDiscontinued?: boolean | null;
-    notes?: string | null;
-  };
-  conditionScoring?: string | null;
-  repairAttemptRisks?: string | null;
-  determination: 'repairable' | 'not_repairable';
-  recommendation?: string | null;
+  version: 2;
+  systems: Array<'roof' | 'siding'>;
+  roof?: RepairabilitySystemFlow | null;
+  siding?: RepairabilitySystemFlow | null;
   assessorName?: string | null; // server-populated
   assessorCredentials?: string | null; // server-populated
-  supportingPhotoIds?: string[];
   recordedAtUtc: string;
 }
 

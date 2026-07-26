@@ -316,16 +316,36 @@ export default function InspectionDetailScreen() {
               ? 'Property & construction described'
               : 'Type, stories, roof age & basis, deck type',
         };
-      case 'repairability':
+      case 'repairability': {
+        const ra = inspection!.repairabilityAssessment as unknown as {
+          version?: number;
+          roof?: { determination?: string } | null;
+          siding?: { determination?: string } | null;
+          determination?: string;
+        } | null;
+        const detLabel = (d?: string) =>
+          d === 'supported'
+            ? 'spot repair supported'
+            : d === 'conditionally_supported'
+              ? 'conditionally supported'
+              : d === 'not_supported'
+                ? 'spot repair not supported'
+                : d === 'indeterminate'
+                  ? 'cannot yet be determined'
+                  : (d ?? 'recorded');
         return {
-          done: inspection!.repairabilityAssessment != null,
+          done: ra != null,
           subtitle:
-            inspection!.repairabilityAssessment != null
-              ? inspection!.repairabilityAssessment.determination === 'repairable'
-                ? 'Determination: repairable'
-                : 'Determination: not repairable'
-              : 'Repair-vs-replace field determination (optional — omits if skipped)',
+            ra != null
+              ? ra.version === 2
+                ? (['roof', 'siding'] as const)
+                    .filter((s) => ra[s])
+                    .map((s) => `${s === 'roof' ? 'Roof' : 'Siding'}: ${detLabel(ra[s]?.determination)}`)
+                    .join(' · ') || 'Assessment recorded'
+                : `Determination: ${detLabel(ra.determination)}`
+              : 'Structured repairability question flow (optional — omits if skipped)',
         };
+      }
       case 'mitigation':
         return {
           done: inspection!.temporaryRepairs != null,

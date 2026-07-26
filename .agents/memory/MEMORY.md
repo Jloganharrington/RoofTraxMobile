@@ -27,4 +27,5 @@
 - [Append-only jsonb audit logs](outbox-replay-ordering-and-orphan-gates.md) — append via SQL `col || new::jsonb`, never read-modify-write in JS, or concurrent PATCHes drop audit entries.
 - [Per-user SMTP emailing](user-supplied-smtp.md) — user-supplied outbound hosts need DNS-vetted SSRF guard; encrypted write-only creds; route-scoped body limits.
 - [Compiled report artifacts](compiled-report-artifacts.md) — never persist expiring signed URLs in stored reports; sanitize LLM HTML; @google/genai must be a direct api-server dep (esbuild externalizes @google/*).
+- [Versioned jsonb vs narrowed API schemas](jsonb-schema-versioning.md) — narrowing a jsonb response schema needs legacy-null normalization at every response parse site or old rows 500.
 - [Estimate price-book snapshot integrity](estimate-price-snapshots.md) — catalog-referencing lines must be server-hydrated (price/desc/unit from DB); advisory steps join all three stage mirrors but get no gate rules.

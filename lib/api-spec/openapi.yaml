@@ -4530,49 +4530,72 @@ components:
           type: [string, "null"]
         recordedAtUtc:
           type: string
-    RepairabilityFieldTestFindings:
+    RepairabilitySystemFlow:
       type: object
+      description: >-
+        One system's (roof or siding) question-flow record. `answers` is keyed
+        by question id (RR-xxx / SR-xxx); radio answers are single value keys,
+        multi-selects are arrays of value keys. The determination is gated
+        server-side by documented basis factors and evidence rules — the app
+        can never output "full replacement required".
+      required: [answers, determination, basisFactors, nextStep]
       properties:
-        repairAttemptMade:
-          type: [boolean, "null"]
-        adjacentShinglesFractured:
-          type: [boolean, "null"]
-        matchingMaterialSourceable:
-          type: [boolean, "null"]
-        productDiscontinued:
-          type: [boolean, "null"]
+        answers:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+        determination:
+          type: string
+          enum: [supported, conditionally_supported, not_supported, indeterminate]
+        basisFactors:
+          type: array
+          items:
+            type: string
+        nextStep:
+          type: string
+          minLength: 1
+        evidencePhotoIds:
+          type: array
+          items:
+            type: string
+        evidenceDocRefs:
+          type: array
+          items:
+            type: string
         notes:
           type: [string, "null"]
     RepairabilityAssessmentInput:
       type: object
       description: >-
-        Client-sent repairability assessment. assessorName/assessorCredentials
-        are IGNORED if sent — the server populates them from the inspector's
-        profile. Must be explicitly performed; never defaulted.
-      required: [questionPresented, fieldTestFindings, determination, recordedAtUtc]
+        Client-sent repairability assessment (v2 question flow).
+        assessorName/assessorCredentials are IGNORED if sent — the server
+        populates them from the inspector's profile. Must be explicitly
+        performed; never defaulted. Each selected system requires its own
+        completed flow; one system's evidence never populates the other's
+        determination.
+      required: [version, systems, recordedAtUtc]
       properties:
-        questionPresented:
-          type: string
-          minLength: 1
-        methodology:
-          type: [string, "null"]
-        materialsReviewed:
-          type: [string, "null"]
-        fieldTestFindings:
-          $ref: "#/components/schemas/RepairabilityFieldTestFindings"
-        conditionScoring:
-          type: [string, "null"]
-        repairAttemptRisks:
-          type: [string, "null"]
-        determination:
-          type: string
-          enum: [repairable, not_repairable]
-        recommendation:
-          type: [string, "null"]
-        supportingPhotoIds:
+        version:
+          type: number
+          enum: [2]
+        systems:
           type: array
+          minItems: 1
           items:
             type: string
+            enum: [roof, siding]
+        roof:
+          oneOf:
+            - $ref: "#/components/schemas/RepairabilitySystemFlow"
+            - type: "null"
+        siding:
+          oneOf:
+            - $ref: "#/components/schemas/RepairabilitySystemFlow"
+            - type: "null"
         recordedAtUtc:
           type: string
     RepairabilityAssessment:

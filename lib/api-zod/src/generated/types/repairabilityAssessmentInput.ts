@@ -5,27 +5,18 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { RepairabilityAssessmentInputDetermination } from './repairabilityAssessmentInputDetermination';
-import type { RepairabilityFieldTestFindings } from './repairabilityFieldTestFindings';
+import type { RepairabilityAssessmentInputSystemsItem } from './repairabilityAssessmentInputSystemsItem';
+import type { RepairabilityAssessmentInputVersion } from './repairabilityAssessmentInputVersion';
+import type { RepairabilitySystemFlow } from './repairabilitySystemFlow';
 
 /**
- * Client-sent repairability assessment. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile. Must be explicitly performed; never defaulted.
+ * Client-sent repairability assessment (v2 question flow). assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system's evidence never populates the other's determination.
  */
 export interface RepairabilityAssessmentInput {
-  /** @minLength 1 */
-  questionPresented: string;
-  /** @nullable */
-  methodology?: string | null;
-  /** @nullable */
-  materialsReviewed?: string | null;
-  fieldTestFindings: RepairabilityFieldTestFindings;
-  /** @nullable */
-  conditionScoring?: string | null;
-  /** @nullable */
-  repairAttemptRisks?: string | null;
-  determination: RepairabilityAssessmentInputDetermination;
-  /** @nullable */
-  recommendation?: string | null;
-  supportingPhotoIds?: string[];
+  version: RepairabilityAssessmentInputVersion;
+  /** @minItems 1 */
+  systems: RepairabilityAssessmentInputSystemsItem[];
+  roof?: RepairabilitySystemFlow | null;
+  siding?: RepairabilitySystemFlow | null;
   recordedAtUtc: string;
 }

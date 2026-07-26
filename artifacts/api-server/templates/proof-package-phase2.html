@@ -886,24 +886,54 @@ function renderRepairabilityAssessment(){
   const ra = REPORT_DATA.repairabilityAssessment;
   const anchor = document.getElementById("repairabilityAnchor");
   if (!ra){ anchor.remove(); return; }
+  const DET_LABELS = {
+    supported: "Spot repair supported by documented evidence",
+    conditionally_supported: "Spot repair conditionally supported",
+    not_supported: "Documented evidence does not support a reliable spot repair",
+    indeterminate: "Repairability cannot yet be determined",
+  };
+  const humanize = (v) => String(v || "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  let body = "";
+  if (ra.version === 2) {
+    for (const system of ["roof", "siding"]) {
+      const flow = ra[system];
+      if (!flow) continue;
+      const basis = (flow.basisFactors || []).map(humanize).join("; ") || "—";
+      const docs = (flow.evidenceDocRefs || []).join("; ");
+      body += `
+        <p style="margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600;">${system === "roof" ? "Roofing" : "Siding"} Repairability</p>
+        <div class="kv-grid">
+          <div class="kv-row"><span class="k">Determination</span><span class="v sans">${DET_LABELS[flow.determination] || humanize(flow.determination)}</span></div>
+          <div class="kv-row"><span class="k">Documented Basis Factors</span><span class="v sans">${esc(basis)}</span></div>
+          <div class="kv-row"><span class="k">Next Step</span><span class="v sans">${humanize(flow.nextStep) || "—"}</span></div>
+          ${docs ? `<div class="kv-row"><span class="k">Document References</span><span class="v sans">${esc(docs)}</span></div>` : ""}
+          ${flow.notes ? `<div class="kv-row"><span class="k">Notes</span><span class="v sans">${esc(flow.notes)}</span></div>` : ""}
+        </div>`;
+    }
+  } else {
+    body = `
+    <div class="kv-grid">
+      <div class="kv-row"><span class="k">Question Presented</span><span class="v sans">${esc(ra.questionPresented) || "—"}</span></div>
+      <div class="kv-row"><span class="k">Methodology</span><span class="v sans">${esc(ra.methodology) || "—"}</span></div>
+      <div class="kv-row"><span class="k">Materials Reviewed</span><span class="v sans">${esc(ra.materialsReviewed) || "—"}</span></div>
+      <div class="kv-row"><span class="k">Condition Scoring</span><span class="v sans">${esc(ra.conditionScoring) || "—"}</span></div>
+      <div class="kv-row"><span class="k">Determination</span><span class="v sans">${esc(ra.determination) || "—"}</span></div>
+    </div>
+    <p style="margin-top:10px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600;">Repair-Attempt Risks</p>
+    <p>${esc(ra.repairAttemptRisks) || "—"}</p>
+    <div class="note-box"><b>Recommendation —</b> ${esc(ra.recommendation) || "—"}</div>`;
+  }
   const page = buildPage(`
     <div class="part-label">Part 1 — Forensic Inspection Report</div>
     <div class="eyebrow">Repairability Assessment</div>
-    <h2 class="section-title">Question Presented &amp; Findings</h2>
+    <h2 class="section-title">Repairability Assessment</h2>
     <div class="section-rule"></div>
     <div class="kv-grid">
-      <div class="kv-row"><span class="k">Question Presented</span><span class="v sans">${ra.questionPresented || "—"}</span></div>
-      <div class="kv-row"><span class="k">Methodology</span><span class="v sans">${ra.methodology || "—"}</span></div>
-      <div class="kv-row"><span class="k">Materials Reviewed</span><span class="v sans">${ra.materialsReviewed || "—"}</span></div>
-      <div class="kv-row"><span class="k">Condition Scoring</span><span class="v sans">${ra.conditionScoring || "—"}</span></div>
-      <div class="kv-row"><span class="k">Determination</span><span class="v sans">${ra.determination || "—"}</span></div>
-      <div class="kv-row"><span class="k">Assessor</span><span class="v sans">${ra.assessorName || "—"}</span></div>
+      <div class="kv-row"><span class="k">Systems Assessed</span><span class="v sans">${ra.version === 2 ? (ra.systems || []).map((s) => s === "roof" ? "Roof" : "Siding").join(", ") : "—"}</span></div>
+      <div class="kv-row"><span class="k">Assessor</span><span class="v sans">${esc(ra.assessorName) || "—"}</span></div>
+      ${ra.assessorCredentials ? `<div class="kv-row"><span class="k">Credentials</span><span class="v sans">${esc(ra.assessorCredentials)}</span></div>` : ""}
     </div>
-    <p style="margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600;">Field-Test Findings</p>
-    <p>${ra.fieldTestFindings || "—"}</p>
-    <p style="margin-top:10px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600;">Repair-Attempt Risks</p>
-    <p>${ra.repairAttemptRisks || "—"}</p>
-    <div class="note-box"><b>Recommendation —</b> ${ra.recommendation || "—"}</div>
+    ${body}
   `, "repairabilityAssessment");
   insertAt("repairabilityAnchor", page);
   anchor.remove();

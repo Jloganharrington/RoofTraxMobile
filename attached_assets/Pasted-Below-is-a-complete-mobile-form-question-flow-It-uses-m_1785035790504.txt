@@ -1,0 +1,633 @@
+Below is a complete mobile-form question flow. It uses mostly radio selectors, yes/no/unknown choices, and conditional evidence requirements. It is designed so the app can produce a defensible repairability record without letting users jump straight from “damage exists” to “full replacement required.”
+
+Repairability Assessment
+Root Selection
+R-001 — Repairability Assessed On?
+Type: Multi-select
+Required: Yes
+
+Roof
+Siding
+Logic:
+
+If Roof selected → Open Roofing Repairability Flow.
+If Siding selected → Open Siding Repairability Flow.
+If both selected → Complete each flow independently.
+Do not allow one system’s evidence to populate the other system’s determination.
+Roofing Repairability Flow
+A. Roofing Assessment Scope
+RR-001 — Is direct physical roof-covering damage documented?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+Logic:
+
+If Yes → require selection of affected facet(s) and linked evidence.
+If No or Unknown → permit documentation, but force final determination to “Repairability cannot yet be determined.”
+RR-002 — Which roof facet(s) or area(s) are being assessed?
+Type: Multi-select from existing roof-facet inventory
+Required when RR-001 = Yes
+
+Facet labels from measurement or inspection data
+Other documented roof area
+RR-003 — Is the affected roofing material accessible for evaluation?
+Type: Radio
+Required: Yes
+
+Yes
+Yes, with limited access
+No
+Unknown / Not verified
+If “Yes, with limited access,” show:
+
+RR-003A — What limits access?
+Type: Multi-select
+
+Steep pitch
+Height
+Roof geometry
+Active weather conditions
+Safety limitation
+Vegetation or site obstruction
+Roof access not authorized
+Other documented condition
+Validation: Access limitations alone cannot support “spot repair not supported.”
+
+RR-004 — Assessment Type
+Type: Radio
+Required: Yes
+
+Visual and documentary screening only
+Controlled non-destructive evaluation
+Controlled repairability test
+Post-removal concealed-condition evaluation
+B. Existing Roofing Product Identification
+RR-010 — Is the existing roofing product identified?
+Type: Radio
+Required: Yes
+
+Exact manufacturer and product identified
+Manufacturer and profile identified; exact product not confirmed
+Material type identified only
+Not identified
+RR-011 — What supports the roofing product identification?
+Type: Multi-select
+Required when RR-010 is not “Not identified”
+
+Rear-side shingle stamp
+Physical sample
+Laboratory identification report
+Manufacturer confirmation
+Prior invoice or permit record
+Field comparison
+Other documented source
+Validation: Require at least one linked photo, sample record, laboratory result, invoice, or document reference.
+
+RR-012 — Is the existing product documented as discontinued?
+Type: Radio
+Required: Yes
+
+Yes — manufacturer confirmed
+Yes — distributor confirmed
+Reported but not verified
+No
+Unknown / Not verified
+If manufacturer/distributor confirmed, require:
+
+RR-012A — Discontinuation Evidence
+Type: Multi-select
+
+Manufacturer letter or email
+Manufacturer product document
+Distributor written confirmation
+Supplier written confirmation
+Other document
+Validation: “Discontinued” cannot be used as a basis factor unless evidence is linked.
+
+C. Availability and Substitute Material
+RR-020 — Has a sufficient quantity of the same roofing product been located?
+Type: Radio
+Required: Yes
+
+Yes — sufficient quantity located
+Limited quantity located
+No sufficient quantity located after documented search
+Search not performed
+Unknown / Not verified
+If “Yes,” “Limited,” or “No sufficient quantity,” show:
+
+RR-020A — What sources were searched?
+Type: Multi-select
+
+Manufacturer
+Local distributor
+Regional distributor
+Salvage supplier
+Specialty roofing supplier
+Existing contractor inventory
+Other documented source
+RR-021 — Has a proposed substitute shingle been identified?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not applicable
+If Yes:
+
+RR-021A — Has the substitute been physically compared to the existing shingle?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Comparison pending
+If Yes:
+
+RR-021B — Which differences were documented?
+Type: Multi-select
+
+Exposure
+Thickness
+Overall profile
+Tab profile
+Seal strip location
+Nail zone
+Granule texture
+Color
+Wind classification
+Starter compatibility
+Ridge compatibility
+Other measured difference
+Validation: Any selected difference requires linked photo, measurement, sample comparison, or document reference.
+
+D. Roofing Repair Mechanics
+RR-030 — Would the documented repair method require lifting or disturbing adjacent undamaged shingles?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+If Yes:
+
+RR-030A — What adjacent materials must be disturbed?
+Type: Multi-select
+
+Overlying shingle course
+Adjacent field shingles
+Ridge or hip shingles
+Starter shingles
+Flashing
+Underlayment
+Vent or penetration component
+Other documented component
+RR-031 — Are the existing shingles documented as capable of being reset after lifting?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not tested
+Unknown / Not verified
+Validation: “No” requires direct test evidence or a documented manufacturer/product limitation.
+
+RR-032 — Is a manufacturer repair or installation method available for the identified roofing product?
+Type: Radio
+Required: Yes
+
+Yes — supports proposed repair method
+Yes — does not support proposed repair method
+Available but not reviewed
+Not available
+Product not sufficiently identified
+If either “supports” or “does not support” is selected, require document reference.
+
+E. Controlled Roofing Repairability Test
+RR-040 — Was a controlled roofing repairability test performed?
+Type: Radio
+Required: Yes
+
+Yes
+No — owner authorization not obtained
+No — not needed based on existing evidence
+No — unsafe conditions
+No — deferred pending further review
+No — emergency mitigation was required
+If Yes:
+
+RR-041 — Was the test initiated at an already damaged shingle?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not applicable
+RR-042 — Did the test require lifting adjacent shingles to access fasteners?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown
+RR-043 — Did adjacent shingles fracture, tear, delaminate, or become damaged during the test?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not applicable
+If Yes: require photo or video evidence.
+
+RR-044 — Could adjacent shingles be reset into a secure, weather-resistant position?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown
+RR-045 — Was a verified compatible replacement shingle available for the test?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Product compatibility not evaluated
+RR-046 — If a replacement was tested, did it integrate with the existing roof covering?
+Type: Radio
+Required when RR-045 = Yes
+
+Yes
+No
+Partially
+Not applicable
+RR-047 — Did the controlled test create an exposed or non-weather-resistant condition?
+Type: Radio
+Required: Yes
+
+Yes
+No
+If Yes:
+
+RR-047A — What condition occurred?
+Type: Multi-select
+
+Adjacent shingle fractured
+Shingle could not be reset
+Underlayment exposed
+Fastener holes could not be reliably resealed
+Material split, tore, or deformed
+Other documented condition
+RR-047B — Was temporary weather protection installed?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not needed
+If Yes:
+
+RR-047C — Temporary protection type
+Type: Multi-select
+
+Tarp
+Temporary membrane
+Temporary replacement material
+Other documented protection
+RR-048 — Were test photos or video linked?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Validation: A test cannot support the final determination unless RR-048 = Yes.
+
+F. Roofing Repairability Determination
+RR-050 — Based on the documented record, is a limited roofing repair technically supportable?
+Type: Radio
+Required: Yes
+
+Spot repair supported by documented evidence
+Spot repair conditionally supported
+Documented evidence does not support a reliable spot repair
+Repairability cannot yet be determined
+RR-051 — Select the documented basis factors
+Type: Multi-select
+Required: Yes
+
+Same product available in sufficient quantity
+Same product unavailable in sufficient quantity
+Substitute product physically compatible
+Substitute product not physically compatible
+Controlled removal completed without adjacent damage
+Controlled removal caused adjacent damage
+Existing shingles reset securely
+Existing shingles could not be reset securely
+Manufacturer guidance supports repair
+Manufacturer guidance does not support repair
+Repair requires disturbance of additional materials
+Repair can be completed without disturbance beyond damaged area
+Supporting evidence remains incomplete
+Roofing determination validation
+Data Table
+4 rows
+
+Export CSV
+Determination	Required validation
+Spot repair supported	At least one direct, product, or manufacturer basis factor
+Spot repair conditionally supported	At least one supporting factor plus one unresolved limitation
+Evidence does not support reliable spot repair	At least two basis factors, including one direct-test or product-evidence factor
+Repairability cannot yet be determined	At least one “supporting evidence remains incomplete” factor
+RR-052 — Roofing Next Step
+Type: Radio
+Required: Yes
+
+Prepare limited roofing repair scope
+Obtain product identification
+Obtain availability documentation
+Obtain substitute comparison
+Obtain manufacturer repair instructions
+Conduct controlled repairability test
+Maintain temporary weather protection
+Document concealed conditions after removal
+Prepare repairability summary from current record
+Siding Repairability Flow
+A. Siding Assessment Scope
+SR-001 — Is direct physical siding damage documented?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+If Yes: require affected elevation(s) and linked evidence.
+
+SR-002 — Which siding elevation(s) or area(s) are being assessed?
+Type: Multi-select
+
+Front
+Right
+Rear
+Left
+Other labeled elevation
+SR-003 — Is the damaged siding accessible for evaluation?
+Type: Radio
+Required: Yes
+
+Yes
+Yes, with limited access
+No
+Unknown / Not verified
+SR-004 — Assessment Type
+Type: Radio
+Required: Yes
+
+Visual and documentary screening only
+Controlled non-destructive evaluation
+Controlled panel-detach test
+Post-removal concealed-condition evaluation
+B. Existing Siding Product Identification
+SR-010 — Is the existing siding product identified?
+Type: Radio
+Required: Yes
+
+Exact manufacturer and product identified
+Manufacturer and profile identified; exact product not confirmed
+Material type identified only
+Not identified
+SR-011 — What supports the siding identification?
+Type: Multi-select
+Required when identified
+
+Rear-side panel stamp
+Physical sample
+Laboratory identification report
+Manufacturer confirmation
+Prior invoice or permit record
+Field comparison
+Other documented source
+SR-012 — Is the existing siding documented as discontinued?
+Type: Radio
+Required: Yes
+
+Yes — manufacturer confirmed
+Yes — distributor confirmed
+Reported but not verified
+No
+Unknown / Not verified
+C. Availability and Substitute Siding
+SR-020 — Has a sufficient quantity of the same siding product been located?
+Type: Radio
+Required: Yes
+
+Yes — sufficient quantity located
+Limited quantity located
+No sufficient quantity located after documented search
+Search not performed
+Unknown / Not verified
+SR-021 — Has a substitute siding product been identified?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Not applicable
+If Yes:
+
+SR-021A — Has the substitute been physically compared to the existing siding?
+Type: Radio
+
+Yes
+No
+Comparison pending
+If Yes:
+
+SR-021B — Which differences were documented?
+Type: Multi-select
+
+Exposure
+Thickness
+Panel profile
+Butt projection
+Lock geometry
+Nail hem
+Texture
+Gloss
+Color
+Panel length
+Corner compatibility
+Trim compatibility
+Other measured difference
+D. Siding Repair Mechanics and Natural Breaks
+SR-030 — Would repair require detaching adjacent undamaged siding panels?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+SR-031 — Are continuous courses or interlocking panels involved?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+SR-032 — Is there a documented natural break near the damaged area?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+If Yes:
+
+SR-032A — What type of natural break is documented?
+Type: Multi-select
+
+Outside corner with corner post
+Inside corner
+Full-height masonry transition
+Distinct cladding transition
+Story break
+Full-width trim band
+Other documented break
+SR-033 — Would a limited repair disturb weather-resistive barrier, flashing, trim, or accessory components?
+Type: Radio
+Required: Yes
+
+Yes
+No
+Unknown / Not verified
+E. Controlled Siding Repairability Test
+SR-040 — Was a controlled panel-detach or repairability test performed?
+Type: Radio
+Required: Yes
+
+Yes
+No — owner authorization not obtained
+No — not needed based on existing evidence
+No — unsafe conditions
+No — deferred pending further review
+No — emergency mitigation was required
+If Yes:
+
+SR-041 — Was the test initiated at an already damaged panel or area?
+Type: Radio
+
+Yes
+No
+Not applicable
+SR-042 — Did adjacent panels crack, deform, tear, or become damaged during the test?
+Type: Radio
+
+Yes
+No
+Not applicable
+SR-043 — Could adjacent panels be reset and re-engaged securely?
+Type: Radio
+
+Yes
+No
+Unknown
+SR-044 — Did the proposed substitute engage the existing lock system?
+Type: Radio
+
+Yes
+No
+Partially
+No substitute tested
+SR-045 — Did the controlled test disturb WRB, flashing, trim, or accessory components?
+Type: Radio
+
+Yes
+No
+Unknown
+SR-046 — Did the test create an exposed or non-weather-resistant condition?
+Type: Radio
+
+Yes
+No
+If Yes:
+
+SR-046A — Was temporary protection installed?
+Type: Radio
+
+Yes
+No
+Not needed
+SR-046B — Temporary protection type
+Type: Multi-select
+Shown if temporary protection = Yes
+
+Temporary membrane
+Temporary panel
+Tarp
+Temporary flashing protection
+Other documented protection
+F. Siding Repairability Determination
+SR-050 — Based on the documented record, is a limited siding repair technically supportable?
+Type: Radio
+Required: Yes
+
+Spot repair supported by documented evidence
+Spot repair conditionally supported
+Documented evidence does not support a reliable spot repair
+Repairability cannot yet be determined
+SR-051 — Select the documented basis factors
+Type: Multi-select
+Required: Yes
+
+Same product available in sufficient quantity
+Same product unavailable in sufficient quantity
+Substitute product physically compatible
+Substitute product not physically compatible
+Existing panels detached without damage
+Existing panels cracked or deformed during testing
+Existing panels reset securely
+Existing panels could not be reset securely
+Existing and substitute locks engaged
+Existing and substitute locks did not engage
+Repair requires disturbance of additional panels
+Repair can terminate at a documented natural break
+No documented natural break supports the proposed limited repair
+Repair disturbs WRB, flashing, trim, or accessories
+Supporting evidence remains incomplete
+Siding determination validation
+Use the same validation rules as roofing:
+
+“Does not support reliable spot repair” requires at least two basis factors, including one direct-test or product-evidence factor.
+“Supported” requires an identified repair method and at least one supporting factor.
+“Conditionally supported” requires a limitation.
+“Cannot yet be determined” requires an unresolved-evidence reason.
+SR-052 — Siding Next Step
+Type: Radio
+Required: Yes
+
+Prepare limited siding repair scope
+Obtain product identification
+Obtain availability documentation
+Obtain substitute comparison
+Document natural breaks and visibility
+Conduct controlled panel-detach test
+Maintain temporary protection
+Document concealed conditions after removal
+Prepare repairability summary from current record
+Universal Evidence Rules
+Apply these to both sections:
+
+Any answer that supports a conclusion must require a linked photo, video, measurement, sample, manufacturer document, laboratory report, supplier search, or test record.
+A user cannot select “discontinued” as confirmed without a linked manufacturer or distributor source.
+A user cannot select “not sourceable” without a documented supplier/manufacturer search.
+A user cannot select “adjacent material fractured” unless a controlled test was performed.
+A user cannot select “could not reset” without a linked test record or manufacturer instruction.
+The app must never output “full replacement required.”
+The app may output only:
+Spot repair supported
+Spot repair conditionally supported
+Documented evidence does not support reliable spot repair
+Repairability cannot yet be determined
+Temporary weather protection is recorded only as a consequence of a controlled test or emergency condition—not as evidence that repair is impossible.

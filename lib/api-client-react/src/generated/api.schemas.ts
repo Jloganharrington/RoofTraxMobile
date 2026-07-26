@@ -1327,46 +1327,57 @@ export interface PropertyProfile {
   recordedAtUtc: string;
 }
 
-export interface RepairabilityFieldTestFindings {
-  /** @nullable */
-  repairAttemptMade?: boolean | null;
-  /** @nullable */
-  adjacentShinglesFractured?: boolean | null;
-  /** @nullable */
-  matchingMaterialSourceable?: boolean | null;
-  /** @nullable */
-  productDiscontinued?: boolean | null;
+export type RepairabilityAssessmentInputVersion = typeof RepairabilityAssessmentInputVersion[keyof typeof RepairabilityAssessmentInputVersion];
+
+
+export const RepairabilityAssessmentInputVersion = {
+  NUMBER_2: 2,
+} as const;
+
+export type RepairabilityAssessmentInputSystemsItem = typeof RepairabilityAssessmentInputSystemsItem[keyof typeof RepairabilityAssessmentInputSystemsItem];
+
+
+export const RepairabilityAssessmentInputSystemsItem = {
+  roof: 'roof',
+  siding: 'siding',
+} as const;
+
+export type RepairabilitySystemFlowDetermination = typeof RepairabilitySystemFlowDetermination[keyof typeof RepairabilitySystemFlowDetermination];
+
+
+export const RepairabilitySystemFlowDetermination = {
+  supported: 'supported',
+  conditionally_supported: 'conditionally_supported',
+  not_supported: 'not_supported',
+  indeterminate: 'indeterminate',
+} as const;
+
+export type RepairabilitySystemFlowAnswers = {[key: string]: string | string[]};
+
+/**
+ * One system's (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx / SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output "full replacement required".
+ */
+export interface RepairabilitySystemFlow {
+  answers: RepairabilitySystemFlowAnswers;
+  determination: RepairabilitySystemFlowDetermination;
+  basisFactors: string[];
+  /** @minLength 1 */
+  nextStep: string;
+  evidencePhotoIds?: string[];
+  evidenceDocRefs?: string[];
   /** @nullable */
   notes?: string | null;
 }
 
-export type RepairabilityAssessmentInputDetermination = typeof RepairabilityAssessmentInputDetermination[keyof typeof RepairabilityAssessmentInputDetermination];
-
-
-export const RepairabilityAssessmentInputDetermination = {
-  repairable: 'repairable',
-  not_repairable: 'not_repairable',
-} as const;
-
 /**
- * Client-sent repairability assessment. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile. Must be explicitly performed; never defaulted.
+ * Client-sent repairability assessment (v2 question flow). assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system's evidence never populates the other's determination.
  */
 export interface RepairabilityAssessmentInput {
-  /** @minLength 1 */
-  questionPresented: string;
-  /** @nullable */
-  methodology?: string | null;
-  /** @nullable */
-  materialsReviewed?: string | null;
-  fieldTestFindings: RepairabilityFieldTestFindings;
-  /** @nullable */
-  conditionScoring?: string | null;
-  /** @nullable */
-  repairAttemptRisks?: string | null;
-  determination: RepairabilityAssessmentInputDetermination;
-  /** @nullable */
-  recommendation?: string | null;
-  supportingPhotoIds?: string[];
+  version: RepairabilityAssessmentInputVersion;
+  /** @minItems 1 */
+  systems: RepairabilityAssessmentInputSystemsItem[];
+  roof?: RepairabilitySystemFlow | null;
+  siding?: RepairabilitySystemFlow | null;
   recordedAtUtc: string;
 }
 
