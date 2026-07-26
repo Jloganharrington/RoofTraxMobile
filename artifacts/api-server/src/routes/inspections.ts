@@ -3056,12 +3056,24 @@ function buildInspectionBrief(
 
   const products = children.products ?? [];
   if (products.length > 0) {
+    // Index slopes by id so each product can name the facet it was found on.
+    const slopeById = new Map((children.slopes ?? []).map((s) => [s.id, s.label]));
     lines.push('');
-    lines.push('ROOFING PRODUCTS:');
+    lines.push('ROOFING PRODUCT IDENTIFICATION:');
     for (const p of products) {
-      const brand = (p as { brand?: string | null }).brand;
-      const method = p.identificationMethod;
-      lines.push(`  ${brand ?? 'Unknown brand'} (${method})`);
+      const parts: string[] = [];
+      if (p.category) parts.push(`category: ${p.category}`);
+      parts.push(
+        p.brand || p.productLine
+          ? [p.brand, p.productLine].filter(Boolean).join(' ')
+          : 'Unidentified product',
+      );
+      parts.push(`identification method: ${p.identificationMethod}`);
+      if (p.slopeId && slopeById.has(p.slopeId)) parts.push(`slope: ${slopeById.get(p.slopeId)}`);
+      if (p.itelSampleRef) parts.push(`ITEL sample ref: ${p.itelSampleRef}`);
+      if (p.unidentifiableReason) parts.push(`unidentifiable reason: ${p.unidentifiableReason}`);
+      lines.push(`  - ${parts.join(' | ')}`);
+      if (p.notes) lines.push(`    Notes: ${p.notes}`);
     }
   }
 
