@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -101,7 +103,11 @@ export default function InspectionExistingConditionsScreen() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
+    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Existing Conditions' }} />
 
       <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -176,6 +182,7 @@ export default function InspectionExistingConditionsScreen() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

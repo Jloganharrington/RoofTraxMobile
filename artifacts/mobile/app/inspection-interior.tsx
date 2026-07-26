@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -115,7 +117,11 @@ export default function InspectionInteriorScreen() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
+    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Interior / Attic' }} />
 
       <View
@@ -185,7 +191,10 @@ export default function InspectionInteriorScreen() {
       <View style={{ height: 40 }} />
 
       <Modal visible={adding} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.rowTitle, { color: colors.foreground }]}>Interior observation</Text>
             <Field
@@ -252,9 +261,10 @@ export default function InspectionInteriorScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

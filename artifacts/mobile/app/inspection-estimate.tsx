@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Alert,
   Pressable,
@@ -426,6 +428,10 @@ export default function InspectionEstimateScreen() {
   const sidingFacetCount = inspection?.sidingFacets?.length ?? 0;
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={styles.body}
@@ -878,6 +884,7 @@ export default function InspectionEstimateScreen() {
 
       <CalculatorModal visible={calcOpen} onClose={() => setCalcOpen(false)} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

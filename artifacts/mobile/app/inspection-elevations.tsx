@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -103,7 +105,11 @@ export default function InspectionElevationsScreen() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
+    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View
         style={[
           styles.summary,
@@ -262,6 +268,7 @@ export default function InspectionElevationsScreen() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

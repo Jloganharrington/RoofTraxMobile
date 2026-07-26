@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
   ActivityIndicator,
   Alert,
   Platform,
@@ -215,9 +216,14 @@ export default function PinNewScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.locationBlock}>
         {geocode.isLoading ? (
@@ -418,6 +424,7 @@ export default function PinNewScreen() {
         );
       })()}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

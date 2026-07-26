@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Alert,
   Image,
@@ -345,9 +347,14 @@ export default function InspectionPhotoCaptureScreen() {
   const isBusy = capturingRole !== null || uploadingRole !== null || queueing;
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
     >
       <Text style={[styles.title, { color: colors.foreground }]}>{params.title ?? 'Evidence photos'}</Text>
       {!hideStepLabels && (
@@ -513,7 +520,10 @@ export default function InspectionPhotoCaptureScreen() {
       )}
 
       <Modal visible={annotatingRole !== null} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.stepTitle, { color: colors.foreground }]}>Add a note</Text>
             <TextInput
@@ -542,9 +552,10 @@ export default function InspectionPhotoCaptureScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

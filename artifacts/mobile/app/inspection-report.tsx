@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Alert,
   Modal,
@@ -198,9 +200,14 @@ export default function InspectionReportScreen() {
   const photoCount = (inspection.photos ?? []).filter((p) => p.preliminaryRole).length;
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={[styles.headerCard, { backgroundColor: colors.secondary }]}>
         <Text style={styles.headerEyebrow}>PRELIMINARY SUMMARY</Text>
@@ -427,6 +434,7 @@ export default function InspectionReportScreen() {
         ) : null}
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Alert,
   Modal,
@@ -24,6 +26,7 @@ type Summary = {
   forensicSummary: string;
   repairabilityText: string;
   generatedAt: string;
+  editedAt?: string;
 };
 
 export default function InspectionSummaryScreen() {
@@ -38,6 +41,11 @@ export default function InspectionSummaryScreen() {
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenPrompt, setRegenPrompt] = useState('');
   const [regenSaving, setRegenSaving] = useState(false);
+
+  // Inline manual edit of the forensic summary (no regeneration)
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   /** Fetch stored summary from the server. */
   const loadSummary = useCallback(async () => {
@@ -87,6 +95,38 @@ export default function InspectionSummaryScreen() {
     }
   }
 
+  /** Save a manual edit of the forensic summary — no regeneration involved. */
+  async function saveEdit() {
+    const text = editDraft.trim();
+    if (!text) {
+      Alert.alert('Empty summary', 'The forensic summary cannot be empty.');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const resp = await fetch(`${getApiBaseUrl()}/inspections/${id}/summary`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ forensicSummary: text }),
+      });
+      if (!resp.ok) {
+        const err = (await resp.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${resp.status}`);
+      }
+      const data = (await resp.json()) as { summary: Summary };
+      setSummary(data.summary);
+      setEditing(false);
+    } catch (err) {
+      Alert.alert('Save failed', err instanceof Error ? err.message : 'Try again.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function handleRegen() {
     setRegenSaving(true);
     const prompt = regenPrompt.trim();
@@ -113,7 +153,10 @@ export default function InspectionSummaryScreen() {
         transparent
         onRequestClose={() => setRegenOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               Regenerate Summary
@@ -151,12 +194,17 @@ export default function InspectionSummaryScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1, backgroundColor: colors.background }}
+      >
       <ScrollView
         style={{ backgroundColor: colors.background }}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View style={[styles.headerCard, { backgroundColor: colors.secondary }]}>
@@ -230,11 +278,78 @@ export default function InspectionSummaryScreen() {
             <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.sectionHeader}>
                 <Icon name="file-text" size={16} color={colors.foreground} />
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Forensic Summary</Text>
+                <Text style={[styles.sectionTitle, { color: colors.foreground, flex: 1 }]}>Forensic Summary</Text>
+                {!editing ? (
+                  <Pressable
+                    onPress={() => {
+                      setEditDraft(summary.forensicSummary);
+                      setEditing(true);
+                    }}
+                    hitSlop={8}
+                    style={[styles.editBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+                  >
+                    <Icon name="edit-3" size={13} color={colors.foreground} />
+                    <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: '600' }}>Edit</Text>
+                  </Pressable>
+                ) : null}
               </View>
-              <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
-                {summary.forensicSummary}
-              </Text>
+              {editing ? (
+                <>
+                  <TextInput
+                    value={editDraft}
+                    onChangeText={setEditDraft}
+                    multiline
+                    autoFocus
+                    textAlignVertical="top"
+                    style={[
+                      styles.editInput,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  />
+                  <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                    Edits are saved as-is (no AI involved) and go through the same content checks
+                    as generated text.
+                  </Text>
+                  <View style={styles.modalBtnRow}>
+                    <Pressable
+                      onPress={() => { setEditing(false); setEditDraft(''); }}
+                      disabled={editSaving}
+                      style={[styles.modalBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+                    >
+                      <Text style={{ color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={saveEdit}
+                      disabled={editSaving}
+                      style={[styles.modalBtn, { backgroundColor: colors.primary, opacity: editSaving ? 0.6 : 1 }]}
+                    >
+                      {editSaving ? (
+                        <ActivityIndicator size="small" color={colors.primaryForeground} />
+                      ) : (
+                        <Icon name="check" size={15} color={colors.primaryForeground} />
+                      )}
+                      <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>
+                        {editSaving ? 'Saving…' : 'Save'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 22 }}>
+                    {summary.forensicSummary}
+                  </Text>
+                  {summary.editedAt ? (
+                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                      Manually edited {new Date(summary.editedAt).toLocaleString()}
+                    </Text>
+                  ) : null}
+                </>
+              )}
             </View>
 
             {/* Repairability Assessment */}
@@ -274,6 +389,7 @@ export default function InspectionSummaryScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
     </>
   );
 }
@@ -367,6 +483,23 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   modalBtnRow: { flexDirection: 'row', gap: 10 },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 220,
+    fontSize: 14,
+    lineHeight: 21,
+  },
   modalBtn: {
     flex: 1,
     flexDirection: 'row',

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
   ActivityIndicator,
   Alert,
   Platform,
@@ -216,9 +217,14 @@ export default function PinEditScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.locationBlock}>
         <Text style={[styles.address, { color: colors.foreground }]}>
@@ -396,6 +402,7 @@ export default function PinEditScreen() {
         );
       })()}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

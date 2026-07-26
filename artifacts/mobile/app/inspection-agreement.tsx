@@ -336,7 +336,10 @@ export default function InspectionAgreementScreen() {
           }
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.ownerNameCard, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               Owner's Name
@@ -382,7 +385,7 @@ export default function InspectionAgreementScreen() {
               </Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Owner signature modal ────────────────────────────────────────────── */}
@@ -876,7 +879,10 @@ export default function InspectionAgreementScreen() {
 
       {/* 4. Schedule calendar */}
       <Modal visible={showSchedule} animationType="slide" transparent onRequestClose={() => setShowSchedule(false)}>
-        <View style={styles.sheetOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.sheetOverlay}
+        >
           <View style={[styles.sheetCard, { backgroundColor: colors.card }]}>
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -974,7 +980,7 @@ export default function InspectionAgreementScreen() {
                   </>}
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </View>

@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -106,7 +108,11 @@ export default function InspectionCollateralScreen() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
+    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Collateral & Ground' }} />
 
       <View
@@ -229,7 +235,10 @@ export default function InspectionCollateralScreen() {
 
       {/* Custom-label entry before capture. */}
       <Modal visible={labelTarget !== null} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
             <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
               Label this {labelTarget === 'roof' ? 'roof-level' : 'ground-level'} photo
@@ -257,9 +266,10 @@ export default function InspectionCollateralScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

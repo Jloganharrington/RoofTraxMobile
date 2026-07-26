@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
   ActivityIndicator,
   Alert,
   Image,
@@ -341,9 +342,14 @@ export default function ProfileScreen() {
   const showCompanySection = canManageLogo || canManagePriceBook;
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
       {/* ── Identity card — always visible ───────────────────────────────────── */}
       <View style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -633,7 +639,10 @@ export default function ProfileScreen() {
         animationType="fade"
         onRequestClose={() => { if (!smtpSaving) setSmtpOpen(false); }}
       >
-        <View style={styles.sigModalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.sigModalOverlay}
+        >
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
             <View style={[styles.sigModalCard, { backgroundColor: colors.background }]}>
               <Text style={[styles.sigTitle, { color: colors.foreground }]}>Email sending setup</Text>
@@ -659,7 +668,7 @@ export default function ProfileScreen() {
               </View>
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={capturing} transparent animationType="fade" onRequestClose={() => { if (!savingSignature) setCapturing(false); }}>
@@ -693,6 +702,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -586,6 +586,10 @@ export const inspectionsTable = pgTable('inspections', {
       // from summaries generated after the lint gate shipped). Content is
       // never rewritten — findings only classify it for reviewer attention.
       lint?: ReportLintResult;
+      // Set when the narrative was manually revised via PATCH (no AI
+      // involvement). Absent on purely generated summaries.
+      editedAt?: string;
+      editedBy?: string;
     } | null>()
     .default(null),
   // Gemini-compiled HTML report stored in object storage. Written by the

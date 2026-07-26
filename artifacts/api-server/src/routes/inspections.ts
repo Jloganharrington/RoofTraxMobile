@@ -3452,6 +3452,70 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
   res.json({ summary });
 });
 
+// PATCH /inspections/:inspectionId/summary — manual edit of the stored AI
+// summary narrative without regenerating. Same write authorization as
+// generation (assigned inspector or manager/admin; allowLocked so a
+// post-submission summary can be corrected too). The edited text goes
+// through the SAME contractor-lane lint as generated text — the lint is the
+// enforcement layer, so a manual edit can't bypass it. Edits are stamped
+// (editedAt/editedBy) so the record shows the narrative was human-revised.
+router.patch('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const existing = inspection.aiSummary;
+  if (!existing) {
+    res.status(400).json({ error: 'No summary exists yet — generate one first' });
+    return;
+  }
+
+  const body = req.body as { forensicSummary?: unknown; repairabilityText?: unknown };
+  const forensicSummary =
+    typeof body.forensicSummary === 'string' ? body.forensicSummary.trim() : undefined;
+  const repairabilityText =
+    typeof body.repairabilityText === 'string' ? body.repairabilityText.trim() : undefined;
+  if (forensicSummary === undefined && repairabilityText === undefined) {
+    res.status(400).json({ error: 'Nothing to update' });
+    return;
+  }
+  if (forensicSummary !== undefined && forensicSummary.length === 0) {
+    res.status(400).json({ error: 'The forensic summary cannot be empty' });
+    return;
+  }
+  if (forensicSummary !== undefined && forensicSummary.length > 20000) {
+    res.status(400).json({ error: 'Summary is too long' });
+    return;
+  }
+
+  const nextForensic = forensicSummary ?? existing.forensicSummary ?? '';
+  const nextRepairability = repairabilityText ?? existing.repairabilityText ?? '';
+
+  const summaryLint = lintReportFragments([
+    { fragmentRef: 'forensicSummary', contentClass: 'construction_fact', text: nextForensic },
+    { fragmentRef: 'repairabilityText', contentClass: 'repairability_analysis', text: nextRepairability },
+  ]);
+
+  const summary = {
+    ...existing,
+    forensicSummary: nextForensic,
+    repairabilityText: nextRepairability,
+    lint: summaryLint,
+    editedAt: new Date().toISOString(),
+    editedBy: actor.userId,
+  };
+
+  await db
+    .update(inspectionsTable)
+    .set({ aiSummary: summary })
+    .where(eq(inspectionsTable.id, inspectionId));
+
+  res.json({ summary });
+});
+
 // ── Report Compilation (Gemini 2.5-flash) ─────────────────────────────────
 
 /**
