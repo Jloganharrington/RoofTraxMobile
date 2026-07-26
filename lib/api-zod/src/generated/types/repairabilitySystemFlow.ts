@@ -7,6 +7,7 @@
  */
 import type { RepairabilitySystemFlowAnswers } from './repairabilitySystemFlowAnswers';
 import type { RepairabilitySystemFlowDetermination } from './repairabilitySystemFlowDetermination';
+import type { RepairabilitySystemFlowProductMatch } from './repairabilitySystemFlowProductMatch';
 import type { RepairabilitySystemFlowRoofMaterial } from './repairabilitySystemFlowRoofMaterial';
 
 /**
@@ -18,6 +19,8 @@ export interface RepairabilitySystemFlow {
      * @nullable
      */
   roofMaterial?: RepairabilitySystemFlowRoofMaterial;
+  /** Set when RR-010 = catalog_match: the probable product match picked from the company's Known Product Catalog. Clients send only productId; name/photo/width/exposure are server-hydrated snapshots from the catalog at save time. */
+  productMatch?: RepairabilitySystemFlowProductMatch;
   answers: RepairabilitySystemFlowAnswers;
   determination: RepairabilitySystemFlowDetermination;
   basisFactors: string[];

@@ -853,6 +853,8 @@ export const ListTeamLocationsResponse = zod.object({
 
 
 
+
+
 export const ListInspectionsResponse = zod.object({
   "inspections": zod.array(zod.object({
   "id": zod.string(),
@@ -1093,6 +1095,13 @@ export const ListInspectionsResponse = zod.object({
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1103,6 +1112,13 @@ export const ListInspectionsResponse = zod.object({
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1253,6 +1269,8 @@ export const CreateInspectionBody = zod.object({
   "collateralDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — collateral.'),
   "interiorDamageFound": zod.boolean().optional().describe('Phase 1 damage surface — interior (explicit claim-scope decision).')
 })
+
+
 
 
 
@@ -1501,6 +1519,13 @@ export const CreateInspectionResponse = zod.object({
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1511,6 +1536,13 @@ export const CreateInspectionResponse = zod.object({
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1643,6 +1675,8 @@ export const CreateInspectionResponse = zod.object({
 export const GetInspectionParams = zod.object({
   "inspectionId": zod.coerce.string()
 })
+
+
 
 
 
@@ -1891,6 +1925,13 @@ export const GetInspectionResponse = zod.object({
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -1901,6 +1942,13 @@ export const GetInspectionResponse = zod.object({
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2051,6 +2099,8 @@ export const UpdateInspectionParams = zod.object({
 
 
 
+
+
 export const UpdateInspectionBody = zod.object({
   "status": zod.enum(['scheduled', 'capturing', 'validating', 'submitted', 'package_ready']).optional(),
   "phase": zod.enum(['preliminary', 'forensic']).optional().describe('Business phase of a single inspection record (P0). Begins as `preliminary` (light top-of-funnel capture) and advances IN PLACE to `forensic` at the P4 checkpoint — one record, never two.'),
@@ -2121,6 +2171,13 @@ export const UpdateInspectionBody = zod.object({
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2131,6 +2188,13 @@ export const UpdateInspectionBody = zod.object({
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2165,6 +2229,8 @@ export const UpdateInspectionBody = zod.object({
   "recordedAtUtc": zod.string()
 }).describe('Specialized property-protection plan (scaffold\/specialized cases, NOT ordinary tarping). specializedRequired is an explicit flag; labor and rental costs are office-side.'),zod.null()]).optional()
 })
+
+
 
 
 
@@ -2413,6 +2479,13 @@ export const UpdateInspectionResponse = zod.object({
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -2423,6 +2496,13 @@ export const UpdateInspectionResponse = zod.object({
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -3248,6 +3328,8 @@ export const SubmitInspectionBody = zod.object({
 
 
 
+
+
 export const SubmitInspectionResponse = zod.object({
   "inspection": zod.object({
   "id": zod.string(),
@@ -3488,6 +3570,13 @@ export const SubmitInspectionResponse = zod.object({
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),
@@ -3498,6 +3587,13 @@ export const SubmitInspectionResponse = zod.object({
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
+  "productMatch": zod.union([zod.null(),zod.object({
+  "productId": zod.string().min(1),
+  "name": zod.string().optional(),
+  "photoPath": zod.string().nullish(),
+  "widthInches": zod.number().nullish(),
+  "exposureInches": zod.number().nullish()
+})]).optional().describe('Set when RR-010 = catalog_match: the probable product match picked from the company\'s Known Product Catalog. Clients send only productId; name\/photo\/width\/exposure are server-hydrated snapshots from the catalog at save time.'),
   "answers": zod.record(zod.string(), zod.union([zod.string(),zod.array(zod.string())])),
   "determination": zod.enum(['supported', 'conditionally_supported', 'not_supported', 'indeterminate']),
   "basisFactors": zod.array(zod.string()),

@@ -304,3 +304,27 @@ export const priceBookPackageItemsTable = pgTable(
 
 export type PriceBookItem = typeof priceBookItemsTable.$inferSelect;
 export type PriceBookPackage = typeof priceBookPackagesTable.$inferSelect;
+
+// Known discontinued roofing products a company maintains in settings.
+// Reps pick from this catalog during a repairability assessment (RR-010A);
+// the picked product's attributes are snapshotted onto the flow server-side.
+export const discontinuedProductsTable = pgTable('discontinued_products', {
+  id: varchar('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 200 }).notNull(),
+  // Servable object path (e.g. /objects/uploads/{uuid}) for a reference photo.
+  photoPath: text('photo_path'),
+  widthInches: doublePrecision('width_inches'),
+  exposureInches: doublePrecision('exposure_inches'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type DiscontinuedProduct = typeof discontinuedProductsTable.$inferSelect;

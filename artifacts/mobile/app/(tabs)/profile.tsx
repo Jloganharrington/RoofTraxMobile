@@ -33,6 +33,7 @@ import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { PriceBookModal } from '@/components/PriceBookModal';
+import { DiscontinuedProductsModal } from '@/components/DiscontinuedProductsModal';
 import { saveSignatureFromDataUrl } from '@/lib/profileSignature';
 import { uploadFile } from '@/lib/upload';
 import { getApiBaseUrl } from '@/lib/api';
@@ -240,6 +241,7 @@ export default function ProfileScreen() {
   }
   const [smtpOpen, setSmtpOpen] = React.useState(false);
   const [priceBookOpen, setPriceBookOpen] = React.useState(false);
+  const [productCatalogOpen, setProductCatalogOpen] = React.useState(false);
   const canManagePriceBook = role === 'admin' || role === 'super_admin';
   const [smtpSaving, setSmtpSaving] = React.useState(false);
   const [smtpHost, setSmtpHost] = React.useState('');
@@ -546,6 +548,22 @@ export default function ProfileScreen() {
             </View>
           )}
 
+          {canManagePriceBook && (
+            <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={styles.sigHeader}>
+                <Icon name="archive" size={16} color={colors.foreground} />
+                <Text style={[styles.sigTitle, { color: colors.foreground }]}>Known Product Catalog</Text>
+              </View>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                Known discontinued roofing products with photo, width, and exposure. Reps match
+                against this catalog during repairability assessments.
+              </Text>
+              <Pressable onPress={() => setProductCatalogOpen(true)} style={[styles.sigButton, { backgroundColor: colors.secondary }]}>
+                <Text style={styles.sigButtonText}>Manage Product Catalog</Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* AI Summary Settings — manager+ only */}
           {canManageLogo && (
             <AiSettingsCard companyId={companyId ?? ''} colors={colors} />
@@ -632,6 +650,7 @@ export default function ProfileScreen() {
 
       {/* ── Modals (unchanged) ───────────────────────────────────────────────── */}
       <PriceBookModal visible={priceBookOpen} onClose={() => setPriceBookOpen(false)} />
+      <DiscontinuedProductsModal visible={productCatalogOpen} onClose={() => setProductCatalogOpen(false)} />
 
       <Modal
         visible={smtpOpen}

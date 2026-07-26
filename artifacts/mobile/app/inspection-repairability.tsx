@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,6 +17,12 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { patchInspection } from '@/lib/inspectionSync';
+import {
+  ProductMatchPickerModal,
+  formatInches,
+  storagePhotoUri,
+  useStorageAuthHeaders,
+} from '@/components/DiscontinuedProductsModal';
 
 // Repairability Assessment v2 — structured question flow (2026-07-26 spec).
 // Radio / yes-no-unknown selectors with conditional evidence requirements,
@@ -25,6 +32,14 @@ import { patchInspection } from '@/lib/inspectionSync';
 
 type Answers = Record<string, string | string[]>;
 
+interface ProductMatch {
+  productId: string;
+  name: string;
+  photoPath?: string | null;
+  widthInches?: number | null;
+  exposureInches?: number | null;
+}
+
 interface FlowState {
   answers: Answers;
   determination: string | null;
@@ -33,6 +48,8 @@ interface FlowState {
   evidencePhotoIds: string[];
   evidenceDocRefs: string[];
   notes: string;
+  // RR-010A: probable product match from the Known Product Catalog.
+  productMatch: ProductMatch | null;
 }
 
 const emptyFlow = (): FlowState => ({
@@ -43,6 +60,7 @@ const emptyFlow = (): FlowState => ({
   evidencePhotoIds: [],
   evidenceDocRefs: [],
   notes: '',
+  productMatch: null,
 });
 
 type Opt = { value: string; label: string };
@@ -164,22 +182,14 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
     },
     {
       id: 'RR-010',
-      label: 'Is the existing roofing product identified?',
+      label: 'Does the existing roof match a known roofing-product profile?',
       type: 'radio',
       options: [
-        o('exact', 'Exact manufacturer and product identified'),
-        o('manufacturer_profile', 'Manufacturer and profile identified; exact product not confirmed'),
-        o('material_type_only', 'Material type identified only'),
-        o('not_identified', 'Not identified'),
+        o('catalog_match', 'Yes — select from Known Product Catalog'),
+        o('manufacturer_profile', 'No — manufacturer/profile may still be identifiable'),
+        o('material_type_only', 'No — material type only identified'),
+        o('not_identified', 'Unable to identify'),
       ],
-    },
-    {
-      id: 'RR-011',
-      label: 'What supports the roofing product identification?',
-      type: 'multi',
-      options: IDENTIFICATION_SOURCES,
-      visible: (a) => !!a['RR-010'] && a['RR-010'] !== 'not_identified',
-      hint: 'Requires at least one linked photo, sample, lab result, invoice, or document reference below.',
     },
     { id: 'RR-012', label: 'Is the existing product documented as discontinued?', type: 'radio', options: DISCONTINUATION_OPTIONS },
     {
@@ -1170,8 +1180,13 @@ function validateFlow(system: 'roof' | 'siding', flow: FlowState): string[] {
   }
   const pid = single(`${q}-010`);
   if (pid && pid !== 'not_identified') {
-    if (multi(`${q}-011`).length === 0) errors.push(`${label}: select what supports the product identification.`);
+    if (system === 'siding' && multi(`${q}-011`).length === 0) {
+      errors.push(`${label}: select what supports the product identification.`);
+    }
     if (!hasEvidence) errors.push(`${label}: product identification requires linked photo or document evidence.`);
+  }
+  if (system === 'roof' && pid === 'catalog_match' && !flow.productMatch) {
+    errors.push(`${label}: select the probable product match from the Known Product Catalog (RR-011).`);
   }
   const disc = single(`${q}-012`);
   if ((disc === 'manufacturer_confirmed' || disc === 'distributor_confirmed') && (multi(`${q}-012A`).length === 0 || !hasEvidence)) {
@@ -1442,6 +1457,8 @@ export default function InspectionRepairabilityScreen() {
   const [roofFlow, setRoofFlow] = React.useState<FlowState>(emptyFlow());
   const [sidingFlow, setSidingFlow] = React.useState<FlowState>(emptyFlow());
   const [docRefDraft, setDocRefDraft] = React.useState<{ roof: string; siding: string }>({ roof: '', siding: '' });
+  const [productPickerOpen, setProductPickerOpen] = React.useState(false);
+  const storageAuthHeaders = useStorageAuthHeaders();
   const [saving, setSaving] = React.useState(false);
   const [errors, setErrors] = React.useState<string[]>([]);
   const [hydrated, setHydrated] = React.useState(false);
@@ -1464,6 +1481,7 @@ export default function InspectionRepairabilityScreen() {
           evidencePhotoIds: f.evidencePhotoIds ?? [],
           evidenceDocRefs: f.evidenceDocRefs ?? [],
           notes: f.notes ?? '',
+          productMatch: ((f as { productMatch?: ProductMatch | null }).productMatch ?? null),
         });
         if (ex.roof) {
           setRoofFlow(toState(ex.roof));
@@ -1505,6 +1523,7 @@ export default function InspectionRepairabilityScreen() {
   function buildPayloadFlow(flow: FlowState, material?: RoofMaterial | null) {
     return {
       ...(material ? { roofMaterial: material } : {}),
+      ...(flow.productMatch ? { productMatch: flow.productMatch } : {}),
       answers: flow.answers,
       determination: flow.determination as 'supported' | 'conditionally_supported' | 'not_supported' | 'indeterminate',
       basisFactors: flow.basisFactors,
@@ -1582,7 +1601,9 @@ export default function InspectionRepairabilityScreen() {
         const answers = { ...f.answers };
         if (v === undefined || (Array.isArray(v) && v.length === 0)) delete answers[qid];
         else answers[qid] = v;
-        return { ...f, answers };
+        // Leaving the catalog-match identification path drops the picked product.
+        const productMatch = qid === 'RR-010' && v !== 'catalog_match' ? null : f.productMatch;
+        return { ...f, answers, productMatch };
       });
 
     return (
@@ -1635,6 +1656,46 @@ export default function InspectionRepairabilityScreen() {
               </View>
               {qd.hint ? (
                 <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{qd.hint}</Text>
+              ) : null}
+              {/* RR-011: probable product match from the Known Product Catalog */}
+              {system === 'roof' &&
+              roofMaterial === 'asphalt_shingle' &&
+              qd.id === 'RR-010' &&
+              current === 'catalog_match' ? (
+                <View style={{ gap: 6 }}>
+                  <Text style={[styles.qLabel, { color: colors.foreground }]}>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>RR-011  </Text>
+                    Select Probable Product Match
+                  </Text>
+                  {flow.productMatch ? (
+                    <View style={[styles.productCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                      {flow.productMatch.photoPath && storageAuthHeaders ? (
+                        <Image
+                          source={{ uri: storagePhotoUri(flow.productMatch.photoPath), headers: storageAuthHeaders }}
+                          style={styles.productThumb}
+                          resizeMode="cover"
+                        />
+                      ) : null}
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={{ color: colors.foreground, fontWeight: '700' }} numberOfLines={2}>
+                          {flow.productMatch.name}
+                        </Text>
+                        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                          Width {formatInches(flow.productMatch.widthInches)} · Exposure{' '}
+                          {formatInches(flow.productMatch.exposureInches)}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
+                  <Pressable
+                    onPress={() => setProductPickerOpen(true)}
+                    style={[styles.chip, { borderColor: colors.primary, alignSelf: 'flex-start' }]}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>
+                      {flow.productMatch ? 'Change product match' : 'Open Known Product Catalog'}
+                    </Text>
+                  </Pressable>
+                </View>
               ) : null}
             </View>
           );
@@ -1880,7 +1941,21 @@ export default function InspectionRepairabilityScreen() {
                       setRoofMaterial(opt.value as RoofMaterial);
                       // Each material has its own question flow and factor
                       // vocabulary — switching starts a fresh roof record.
-                      setRoofFlow(emptyFlow());
+                      const fresh = emptyFlow();
+                      // RR-001/RR-002 auto-answer from the facets section:
+                      // slopes already record whether damage was documented
+                      // and where. Still editable by the rep.
+                      if (opt.value === 'asphalt_shingle') {
+                        const slopes = inspection.slopes ?? [];
+                        const damaged = slopes.filter((s) => s.damagePresent);
+                        if (slopes.length > 0) {
+                          fresh.answers['RR-001'] = damaged.length > 0 ? 'yes' : 'no';
+                          if (damaged.length > 0) {
+                            fresh.answers['RR-002'] = damaged.map((s) => `facet:${s.id}`);
+                          }
+                        }
+                      }
+                      setRoofFlow(fresh);
                     }}
                     style={[
                       styles.sysToggle,
@@ -1934,6 +2009,23 @@ export default function InspectionRepairabilityScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      <ProductMatchPickerModal
+        visible={productPickerOpen}
+        onClose={() => setProductPickerOpen(false)}
+        onSelect={(p) => {
+          setRoofFlow((f) => ({
+            ...f,
+            productMatch: {
+              productId: p.id,
+              name: p.name,
+              photoPath: p.photoPath,
+              widthInches: p.widthInches,
+              exposureInches: p.exposureInches,
+            },
+          }));
+          setProductPickerOpen(false);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -1947,6 +2039,8 @@ const styles = StyleSheet.create({
   qLabel: { fontSize: 14, fontWeight: '600' },
   sectionLabel: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  productCard: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, padding: 10 },
+  productThumb: { width: 64, height: 64, borderRadius: 8 },
   chip: { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   sysToggle: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
   detRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 12 },

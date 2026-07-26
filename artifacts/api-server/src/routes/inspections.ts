@@ -66,6 +66,7 @@ import {
   inspectionProductsTable,
   inspectionSidingFacetsTable,
   inspectionSlopesTable,
+  discontinuedProductsTable,
   priceBookItemsTable,
   inspectionsTable,
   pinsTable,
@@ -879,12 +880,41 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
   let repairabilityToStore: RepairabilityAssessment | null | undefined =
     parsed.data.repairabilityAssessment;
   if (parsed.data.repairabilityAssessment) {
+    // Known Product Catalog match (RR-010A): the client sends only the
+    // productId — name/photo/width/exposure are snapshotted here from the
+    // company's catalog so the stored record can't carry spoofed attributes
+    // and survives later catalog edits/deletes.
+    const incomingAssessment = parsed.data.repairabilityAssessment as unknown as RepairabilityAssessment;
+    const roofFlowIn = incomingAssessment.roof;
+    if (roofFlowIn?.productMatch) {
+      const [product] = await db
+        .select()
+        .from(discontinuedProductsTable)
+        .where(
+          and(
+            eq(discontinuedProductsTable.id, roofFlowIn.productMatch.productId),
+            eq(discontinuedProductsTable.companyId, req.user.companyId),
+          ),
+        );
+      if (!product) {
+        res.status(400).json({
+          error: 'Repairability assessment failed validation',
+          details: ['Asphalt Shingle: the selected catalog product match no longer exists.'],
+        });
+        return;
+      }
+      roofFlowIn.productMatch = {
+        productId: product.id,
+        name: product.name,
+        photoPath: product.photoPath,
+        widthInches: product.widthInches,
+        exposureInches: product.exposureInches,
+      };
+    }
     // v2 question flow: the determination is gated by documented basis
     // factors + universal evidence rules; the server is the authority so a
     // raw API call can't bypass the mobile flow's gating.
-    const violations = validateRepairabilityAssessment(
-      parsed.data.repairabilityAssessment as unknown as RepairabilityAssessment,
-    );
+    const violations = validateRepairabilityAssessment(incomingAssessment);
     if (violations.length > 0) {
       res.status(400).json({
         error: 'Repairability assessment failed validation',

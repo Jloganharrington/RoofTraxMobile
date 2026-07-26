@@ -217,6 +217,54 @@ function validMetalFlow(): RepairabilitySystemFlow {
   };
 }
 
+describe('RR-010 known product catalog match', () => {
+  const match = {
+    productId: 'prod-1',
+    name: 'Horizon Shadow 25',
+    photoPath: '/objects/p.jpg',
+    widthInches: 39.375,
+    exposureInches: 5.625,
+  };
+
+  it('legacy "exact" identification stays valid', () => {
+    expect(validateSystemFlow('roof', validRoofFlow())).toEqual([]);
+  });
+
+  it('catalog_match with a picked product is valid', () => {
+    const flow = validRoofFlow({ productMatch: match });
+    flow.answers['RR-010'] = 'catalog_match';
+    expect(validateSystemFlow('roof', flow)).toEqual([]);
+  });
+
+  it('catalog_match requires the RR-011 product selection', () => {
+    const flow = validRoofFlow();
+    flow.answers['RR-010'] = 'catalog_match';
+    expect(validateSystemFlow('roof', flow).join(' ')).toContain('RR-011');
+  });
+
+  it('roof identification no longer requires RR-011 supporting sources', () => {
+    const flow = validRoofFlow();
+    delete flow.answers['RR-011'];
+    expect(validateSystemFlow('roof', flow)).toEqual([]);
+  });
+
+  it('a product match without catalog_match is inconsistent', () => {
+    const flow = validRoofFlow({ productMatch: match });
+    expect(validateSystemFlow('roof', flow).join(' ')).toContain('only applies when RR-010 is a catalog match');
+  });
+
+  it('productMatch does not apply to siding flows', () => {
+    const flow = validRoofFlow({ productMatch: match });
+    delete (flow as { roofMaterial?: unknown }).roofMaterial;
+    expect(validateSystemFlow('siding', flow).join(' ')).toContain('does not apply to siding');
+  });
+
+  it('productMatch does not apply to cedar/metal flows', () => {
+    const flow = validCedarFlow({ productMatch: match });
+    expect(validateSystemFlow('roof', flow).join(' ')).toContain('does not apply');
+  });
+});
+
 describe('roof material branching', () => {
   it('a roof flow without roofMaterial is validated as asphalt shingle (legacy)', () => {
     const flow = validRoofFlow();

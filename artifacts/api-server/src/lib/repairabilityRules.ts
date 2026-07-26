@@ -220,15 +220,30 @@ function validateShingleOrSidingFlow(system: RepairabilitySystem, flow: Repairab
     );
   }
 
-  // Product identified requires supporting identification source + linked evidence.
+  // Product identified requires linked evidence. Siding also requires a
+  // supporting identification source (SR-011); on the roof flow RR-011 IS
+  // the Known Product Catalog selection (see below).
   const productId = answer(flow, `${q}-010`);
   if (productId && productId !== 'not_identified') {
-    if (multiAnswer(flow, `${q}-011`).length === 0) {
+    if (system === 'siding' && multiAnswer(flow, `${q}-011`).length === 0) {
       errors.push(`${label}: product identification requires at least one supporting source (${q}-011).`);
     }
     if (!hasEvidence(flow)) {
       errors.push(`${label}: product identification requires linked photo, sample, or document evidence.`);
     }
+  }
+  // Known Product Catalog match (roof only). RR-010 = catalog_match requires
+  // the picked product (RR-011); a product match with any other answer is
+  // inconsistent. Legacy records use 'exact', which stays valid.
+  if (system === 'roof') {
+    if (productId === 'catalog_match' && !flow.productMatch?.productId) {
+      errors.push(`${label}: a Known Product Catalog match requires the probable product selection (RR-011).`);
+    }
+    if (flow.productMatch && productId !== 'catalog_match') {
+      errors.push(`${label}: a probable product match (RR-011) only applies when RR-010 is a catalog match.`);
+    }
+  } else if (flow.productMatch) {
+    errors.push(`${label}: productMatch does not apply to siding flows.`);
   }
 
   // Discontinuation confirmed requires linked discontinuation evidence.
@@ -419,6 +434,10 @@ function validateMaterialFlow(cfg: MaterialFlowConfig, flow: RepairabilitySystem
   const evidence = hasEvidence(flow);
   const testPerformed = answer(flow, `${q}-040`) === 'yes';
 
+  // The Known Product Catalog (RR-010A) is asphalt-shingle-only.
+  if (flow.productMatch) {
+    errors.push(`${label}: a Known Product Catalog match does not apply to this material's flow.`);
+  }
   for (const suffix of cfg.requiredRoot) {
     if (!answer(flow, `${q}-${suffix}`)) errors.push(`${label}: ${q}-${suffix} is required.`);
   }

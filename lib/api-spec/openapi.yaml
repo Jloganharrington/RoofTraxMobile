@@ -4547,6 +4547,28 @@ components:
             Roof flows only: which roofing-material question flow was
             completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam
             SM-xxx). Legacy roof flows without this field are asphalt.
+        productMatch:
+          description: >-
+            Set when RR-010 = catalog_match: the probable product match
+            picked from the company's Known Product Catalog. Clients send
+            only productId; name/photo/width/exposure are server-hydrated
+            snapshots from the catalog at save time.
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [productId]
+              properties:
+                productId:
+                  type: string
+                  minLength: 1
+                name:
+                  type: string
+                photoPath:
+                  type: [string, "null"]
+                widthInches:
+                  type: [number, "null"]
+                exposureInches:
+                  type: [number, "null"]
         answers:
           type: object
           additionalProperties:

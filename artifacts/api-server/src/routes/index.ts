@@ -15,6 +15,7 @@ import weatherRouter from "./weather";
 import crmRouter from "./crm";
 import bugReportsRouter from "./bugReports";
 import priceBookRouter from "./priceBook";
+import discontinuedProductsRouter from "./discontinuedProducts";
 import agreementRouter from "./agreement";
 
 const router: IRouter = Router();
@@ -35,6 +36,7 @@ router.use(weatherRouter);
 router.use(crmRouter);
 router.use(bugReportsRouter);
 router.use(priceBookRouter);
+router.use(discontinuedProductsRouter);
 router.use(agreementRouter);
 
 export default router;

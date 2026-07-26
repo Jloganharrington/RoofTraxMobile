@@ -1365,6 +1365,21 @@ export const RepairabilitySystemFlowDetermination = {
   indeterminate: 'indeterminate',
 } as const;
 
+/**
+ * Set when RR-010 = catalog_match: the probable product match picked from the company's Known Product Catalog. Clients send only productId; name/photo/width/exposure are server-hydrated snapshots from the catalog at save time.
+ */
+export type RepairabilitySystemFlowProductMatch = {
+  /** @minLength 1 */
+  productId: string;
+  name?: string;
+  /** @nullable */
+  photoPath?: string | null;
+  /** @nullable */
+  widthInches?: number | null;
+  /** @nullable */
+  exposureInches?: number | null;
+} | null;
+
 export type RepairabilitySystemFlowAnswers = {[key: string]: string | string[]};
 
 /**
@@ -1376,6 +1391,8 @@ export interface RepairabilitySystemFlow {
      * @nullable
      */
   roofMaterial?: RepairabilitySystemFlowRoofMaterial;
+  /** Set when RR-010 = catalog_match: the probable product match picked from the company's Known Product Catalog. Clients send only productId; name/photo/width/exposure are server-hydrated snapshots from the catalog at save time. */
+  productMatch?: RepairabilitySystemFlowProductMatch;
   answers: RepairabilitySystemFlowAnswers;
   determination: RepairabilitySystemFlowDetermination;
   basisFactors: string[];

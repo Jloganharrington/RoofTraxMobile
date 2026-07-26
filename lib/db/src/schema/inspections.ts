@@ -405,9 +405,26 @@ export type RepairabilityDetermination =
 // asphalt_shingle (the only flow that existed then).
 export type RepairabilityRoofMaterial = 'asphalt_shingle' | 'cedar_shake' | 'standing_seam_metal';
 
+// Snapshot of the Known Product Catalog entry a rep matched during
+// identification (RR-010A). Attributes are server-hydrated from the
+// company's discontinued-products catalog at save time so the record
+// stays intact even if the catalog entry is later edited or removed.
+export interface RepairabilityProductMatch {
+  productId: string;
+  // Optional on input (clients may send only productId); always present in
+  // stored records because the server hydrates it from the catalog.
+  name?: string;
+  photoPath?: string | null;
+  widthInches?: number | null;
+  exposureInches?: number | null;
+}
+
 export interface RepairabilitySystemFlow {
   // Roof flows only: which material's question flow was completed.
   roofMaterial?: RepairabilityRoofMaterial | null;
+  // Set when RR-010 = catalog_match: the probable product match picked
+  // from the company's Known Product Catalog.
+  productMatch?: RepairabilityProductMatch | null;
   // Answers keyed by question id (e.g. 'RR-001', 'CS-032A', 'SM-042').
   // Radio answers are single value keys; multi-selects are arrays of value keys.
   answers: Record<string, string | string[]>;
