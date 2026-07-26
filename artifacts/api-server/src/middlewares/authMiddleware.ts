@@ -27,6 +27,15 @@ declare global {
   }
 }
 
+// Concurrent requests on the same session must NOT each attempt a token
+// refresh: OIDC refresh tokens are single-use (rotated on each grant), so
+// parallel refreshes race — the first wins, the rest get an error, and
+// treating that error as "invalid session" destroyed a perfectly good login.
+// Dedupe in-flight refreshes per sid, and on failure re-read the session
+// from the DB before giving up (a sibling request may have just refreshed
+// and rotated the tokens for us).
+const inflightRefreshes = new Map<string, Promise<SessionData | null>>();
+
 async function refreshIfExpired(
   sid: string,
   session: SessionData,
@@ -36,19 +45,40 @@ async function refreshIfExpired(
 
   if (!session.refresh_token) return null;
 
-  try {
-    const config = await getOidcConfig();
-    const tokens = await oidc.refreshTokenGrant(config, session.refresh_token);
-    session.access_token = tokens.access_token;
-    session.refresh_token = tokens.refresh_token ?? session.refresh_token;
-    session.expires_at = tokens.expiresIn()
-      ? now + tokens.expiresIn()!
-      : session.expires_at;
-    await updateSession(sid, session);
-    return session;
-  } catch {
-    return null;
-  }
+  const existing = inflightRefreshes.get(sid);
+  if (existing) return existing;
+
+  const refreshPromise = (async (): Promise<SessionData | null> => {
+    try {
+      const config = await getOidcConfig();
+      const tokens = await oidc.refreshTokenGrant(config, session.refresh_token!);
+      session.access_token = tokens.access_token;
+      session.refresh_token = tokens.refresh_token ?? session.refresh_token;
+      session.expires_at = tokens.expiresIn()
+        ? Math.floor(Date.now() / 1000) + tokens.expiresIn()!
+        : session.expires_at;
+      await updateSession(sid, session);
+      return session;
+    } catch {
+      // The grant failed — most commonly because another server instance or
+      // an earlier request already used (and rotated) this refresh token.
+      // Re-read the stored session: if it now carries fresh tokens, use it
+      // instead of destroying the login.
+      const latest = await getSession(sid);
+      if (
+        latest?.user?.id &&
+        (!latest.expires_at || Math.floor(Date.now() / 1000) <= latest.expires_at)
+      ) {
+        return latest;
+      }
+      return null;
+    }
+  })().finally(() => {
+    inflightRefreshes.delete(sid);
+  });
+
+  inflightRefreshes.set(sid, refreshPromise);
+  return refreshPromise;
 }
 
 export async function authMiddleware(
