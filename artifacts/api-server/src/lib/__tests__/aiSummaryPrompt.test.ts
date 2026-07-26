@@ -7,10 +7,12 @@ import {
 } from '../aiSummaryPrompt';
 
 describe('composeAiSystemPrompt', () => {
-  it('starts with the baseline verbatim (which embeds the contractor-lane rules in Section 1) when there are no company additions', () => {
+  it('starts with the baseline verbatim (which embeds the lane constraints) when there are no company additions', () => {
     for (const composed of [composeAiSystemPrompt(), composeAiSystemPrompt(null), composeAiSystemPrompt('   ')]) {
       expect(composed.startsWith(BASELINE_AI_SYSTEM_PROMPT)).toBe(true);
-      expect(composed).toContain('CONTRACTOR CONSTRUCTION-DOCUMENT LANE');
+      expect(composed).toContain(
+        'No code, manufacturer, policy, coverage, payment, carrier, or legal conclusion is included.',
+      );
     }
   });
 
@@ -25,24 +27,30 @@ describe('composeAiSystemPrompt', () => {
   });
 
   it('baseline contains the key sections of the supplied prompt verbatim', () => {
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('AI SUMMARY AGENT — SYSTEM PROMPT');
     expect(BASELINE_AI_SYSTEM_PROMPT).toContain(
-      'SECTION 1 — CONTRACTOR CONSTRUCTION-DOCUMENT LANE (MANDATORY)',
+      'You are a forensic property-inspection summary writer for a construction documentation platform.',
     );
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('SECTION 2 — REPAIRABILITY ANALYSIS');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('Step 8 — Recorded determination and its basis');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('2.2 — Evidence anchoring (mandatory)');
-    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('SECTION 6 — SELF-CHECK BEFORE RETURNING OUTPUT');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('OUTPUT FORMAT');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('CLOSED-EVIDENCE RULE');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('PARAGRAPH 1 — INSPECTION PURPOSE AND GENERAL FINDINGS');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('PARAGRAPH 2 — REPAIRABILITY SUMMARY');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('REPAIRABILITY EVIDENCE CATEGORIES');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('REPAIRABILITY CONCLUSION LEVELS');
+    expect(BASELINE_AI_SYSTEM_PROMPT).toContain('QUALITY-CONTROL RULES');
   });
 
-  it('appends the platform JSON output-format envelope after the baseline', () => {
+  it('the baseline carries its own JSON output contract; no conflicting platform envelope is appended', () => {
     const composed = composeAiSystemPrompt();
-    expect(composed).toContain('OUTPUT FORMAT (PLATFORM REQUIREMENT — UNCHANGEABLE)');
-    expect(composed).toContain('missing_or_unverified_items');
-    expect(composed).toContain('CONFIDENCE DEFINITIONS');
-    expect(composed.indexOf('OUTPUT FORMAT (PLATFORM REQUIREMENT')).toBeGreaterThan(
-      BASELINE_AI_SYSTEM_PROMPT.length - 1,
-    );
+    // The prompt's own contract: { summary, repairability_conclusion,
+    // repairability_basis, quality_flags }
+    expect(composed).toContain('"summary"');
+    expect(composed).toContain('"repairability_conclusion"');
+    expect(composed).toContain('"repairability_basis"');
+    expect(composed).toContain('"quality_flags"');
+    // The retired platform envelope must NOT be appended — it would
+    // contradict the baseline's own format.
+    expect(composed).not.toContain('OUTPUT FORMAT (PLATFORM REQUIREMENT');
+    expect(composed).not.toContain('CONFIDENCE DEFINITIONS');
   });
 });
 

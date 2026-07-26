@@ -17,14 +17,16 @@ import {
 
 describe('shared prompt policy', () => {
   it('Claude summary system prompt always includes the contractor-lane rules', () => {
-    // The 2026-07-25 baseline embeds the lane rules verbatim in its Section 1
-    // (rather than appending the shared module), so assert on the lane's
-    // load-bearing markers instead of exact module inclusion.
-    const laneMarker = 'CONTRACTOR CONSTRUCTION-DOCUMENT LANE (MANDATORY)';
+    // The 2026-07-26 baseline embeds the lane constraints in its
+    // closed-evidence and quality-control rules (rather than appending the
+    // shared module), so assert on the lane's load-bearing markers instead
+    // of exact module inclusion.
+    const laneMarker =
+      'No code, manufacturer, policy, coverage, payment, carrier, or legal conclusion is included.';
     const composed = composeAiSystemPrompt(null);
     expect(composed).toContain(laneMarker);
-    expect(composed).toContain('PROHIBITED CONTENT');
-    expect(composed).toContain('REQUIRED ATTRIBUTABLE PHRASING');
+    expect(composed).toContain('Coverage');
+    expect(composed).toContain('Carrier obligation');
     // Company additions append AFTER the policy — they can never displace it.
     const withCompany = composeAiSystemPrompt('Always mention our warranty.');
     expect(withCompany).toContain(laneMarker);
