@@ -85,7 +85,7 @@ interface QuestionDef {
 const ROOF_DISPLAY_ID: Record<string, string> = {
   'RR-002': 'RR-001',
   'RR-003': 'RR-002',
-  'RR-003A': 'RR-003',
+  'RR-003A': 'RR-002A',
   'RR-010': 'RR-005',
   'RR-011': 'RR-005A',
 };
@@ -158,11 +158,8 @@ const ACCESS_LIMITS: Opt[] = [
   o('steep_pitch', 'Steep pitch'),
   o('height', 'Height'),
   o('geometry', 'Roof geometry'),
-  o('weather', 'Active weather conditions'),
   o('safety', 'Safety limitation'),
   o('vegetation', 'Vegetation or site obstruction'),
-  o('not_authorized', 'Access not authorized'),
-  o('other', 'Other documented condition'),
 ];
 
 function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
@@ -181,11 +178,11 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
     { id: 'RR-003', displayId: 'RR-002', label: 'Is the affected roofing area accessible for evaluation?', type: 'radio', options: ACCESS_OPTIONS },
     {
       id: 'RR-003A',
-      displayId: 'RR-003',
+      displayId: 'RR-002A',
       label: 'What limits access?',
       type: 'multi',
       options: ACCESS_LIMITS,
-      visible: (a) => a['RR-003'] === 'limited',
+      visible: (a) => a['RR-003'] === 'limited' || a['RR-003'] === 'no',
       hint: 'Access limitations alone cannot support "spot repair not supported".',
     },
     {
