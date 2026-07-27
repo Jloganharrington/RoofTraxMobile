@@ -160,7 +160,7 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
       options: [...facetOptions, o('other_area', 'Other documented roof area')],
       visible: (a) => a['RR-001'] === 'yes',
     },
-    { id: 'RR-003', label: 'Is the affected roofing material accessible for evaluation?', type: 'radio', options: ACCESS_OPTIONS },
+    { id: 'RR-003', label: 'Is the affected roofing area accessible for evaluation?', type: 'radio', options: ACCESS_OPTIONS },
     {
       id: 'RR-003A',
       label: 'What limits access?',
