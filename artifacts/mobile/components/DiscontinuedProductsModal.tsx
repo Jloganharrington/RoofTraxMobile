@@ -323,6 +323,13 @@ export function DiscontinuedProductsModal({
                       <Text style={styles.buttonText}>{form.editingId ? 'Save Changes' : 'Add Product'}</Text>
                     )}
                   </Pressable>
+                  <Pressable
+                    onPress={() => setForm(null)}
+                    disabled={saving || photoUploading}
+                    style={[styles.button, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.foreground }]}>Cancel</Text>
+                  </Pressable>
                 </>
               ) : (
                 <>
