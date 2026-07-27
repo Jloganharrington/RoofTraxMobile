@@ -200,7 +200,15 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
       visible: (a) => a['RR-012'] === 'manufacturer_confirmed' || a['RR-012'] === 'distributor_confirmed',
       hint: '"Discontinued" cannot be used as a basis factor unless evidence is linked.',
     },
-    { id: 'RR-020', label: 'Has a sufficient quantity of the same roofing product been located?', type: 'radio', options: AVAILABILITY_OPTIONS },
+    {
+      id: 'RR-020',
+      label: 'Has a sufficient quantity of the same roofing product been located?',
+      type: 'radio',
+      options: AVAILABILITY_OPTIONS,
+      // Availability search is moot once discontinuation is confirmed by the
+      // manufacturer or distributor.
+      visible: (a) => a['RR-012'] !== 'manufacturer_confirmed' && a['RR-012'] !== 'distributor_confirmed',
+    },
     {
       id: 'RR-020A',
       label: 'What sources were searched?',
@@ -211,7 +219,12 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
         a['RR-020'] === 'limited_quantity' ||
         a['RR-020'] === 'no_sufficient_quantity',
     },
-    { id: 'RR-021', label: 'Is there a compatible replacement shingle available?', type: 'radio', options: [o('yes', 'Yes'), o('no', 'No')] },
+    {
+      id: 'RR-021',
+      label: 'Is there a compatible replacement shingle available?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('no', 'No'), o('unknown_not_verified', 'Unknown / Not Verified')],
+    },
     {
       id: 'RR-021A',
       label: 'Has the substitute been physically compared to the existing shingle?',
@@ -1166,7 +1179,11 @@ function validateFlow(system: 'roof' | 'siding', flow: FlowState): string[] {
   const multi = (id: string) => (Array.isArray(a[id]) ? (a[id] as string[]) : []);
   const hasEvidence = flow.evidencePhotoIds.length > 0 || flow.evidenceDocRefs.length > 0;
 
+  const discConfirmed =
+    single(`${q}-012`) === 'manufacturer_confirmed' || single(`${q}-012`) === 'distributor_confirmed';
   for (const id of ['001', '003', '004', '010', '012', '020', '021', '040']) {
+    // RR-020 (availability search) is skipped when discontinuation is confirmed.
+    if (id === '020' && system === 'roof' && discConfirmed) continue;
     if (!single(`${q}-${id}`)) errors.push(`${label}: answer ${q}-${id} — it is required.`);
   }
   if (single(`${q}-001`) === 'yes' && multi(`${q}-002`).length === 0) {
@@ -1603,6 +1620,11 @@ export default function InspectionRepairabilityScreen() {
         else answers[qid] = v;
         // Leaving the catalog-match identification path drops the picked product.
         const productMatch = qid === 'RR-010' && v !== 'catalog_match' ? null : f.productMatch;
+        // Confirmed discontinuation hides the availability search (RR-020).
+        if (qid === 'RR-012' && (v === 'manufacturer_confirmed' || v === 'distributor_confirmed')) {
+          delete answers['RR-020'];
+          delete answers['RR-020A'];
+        }
         return { ...f, answers, productMatch };
       });
 

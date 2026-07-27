@@ -203,7 +203,13 @@ function validateShingleOrSidingFlow(system: RepairabilitySystem, flow: Repairab
   if (!answer(flow, `${q}-004`)) errors.push(`${label}: ${q}-004 (assessment type) is required.`);
   if (!answer(flow, `${q}-010`)) errors.push(`${label}: ${q}-010 (product identification) is required.`);
   if (!answer(flow, `${q}-012`)) errors.push(`${label}: ${q}-012 (discontinuation) is required.`);
-  if (!answer(flow, `${q}-020`)) errors.push(`${label}: ${q}-020 (availability) is required.`);
+  // RR-020 (availability search) is not asked when discontinuation is already
+  // confirmed by the manufacturer or distributor (roof flow only).
+  const discAnswer = answer(flow, `${q}-012`);
+  const discConfirmed = discAnswer === 'manufacturer_confirmed' || discAnswer === 'distributor_confirmed';
+  if (!answer(flow, `${q}-020`) && !(system === 'roof' && discConfirmed)) {
+    errors.push(`${label}: ${q}-020 (availability) is required.`);
+  }
   if (!answer(flow, `${q}-021`)) errors.push(`${label}: ${q}-021 (substitute identified) is required.`);
   if (!answer(flow, `${q}-040`)) errors.push(`${label}: ${q}-040 (controlled test) is required.`);
   if (!flow.nextStep?.trim()) errors.push(`${label}: next step (${q}-052) is required.`);

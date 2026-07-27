@@ -242,6 +242,15 @@ describe('RR-010 known product catalog match', () => {
     expect(validateSystemFlow('roof', flow).join(' ')).toContain('RR-011');
   });
 
+  it('confirmed discontinuation makes RR-020 optional on the roof flow', () => {
+    const flow = validRoofFlow();
+    flow.answers['RR-012'] = 'manufacturer_confirmed';
+    flow.answers['RR-012A'] = ['manufacturer_letter'];
+    delete flow.answers['RR-020'];
+    delete flow.answers['RR-020A'];
+    expect(validateSystemFlow('roof', flow).join(' ')).not.toContain('RR-020 (availability) is required');
+  });
+
   it('roof identification no longer requires RR-011 supporting sources', () => {
     const flow = validRoofFlow();
     delete flow.answers['RR-011'];
