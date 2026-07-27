@@ -211,7 +211,7 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
         a['RR-020'] === 'limited_quantity' ||
         a['RR-020'] === 'no_sufficient_quantity',
     },
-    { id: 'RR-021', label: 'Has a proposed substitute shingle been identified?', type: 'radio', options: YN_NA },
+    { id: 'RR-021', label: 'Is there a compatible replacement shingle available?', type: 'radio', options: [o('yes', 'Yes'), o('no', 'No')] },
     {
       id: 'RR-021A',
       label: 'Has the substitute been physically compared to the existing shingle?',
