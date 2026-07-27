@@ -92,7 +92,7 @@ const ROOF_DISPLAY_ID: Record<string, string> = {
 const roofDisplayId = (id: string) => ROOF_DISPLAY_ID[id] ?? id;
 
 // TEMPORARY: set to false (or remove) after the question-wording review.
-const SHOW_ALL_ROOF_QUESTIONS_FOR_REVIEW = true;
+const SHOW_ALL_ROOF_QUESTIONS_FOR_REVIEW = false;
 
 const IDENTIFICATION_SOURCES: Opt[] = [
   o('rear_stamp', 'Rear-side stamp'),
@@ -175,7 +175,13 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
       options: [...facetOptions, o('other_area', 'Other documented roof area')],
       visible: (a) => a['RR-001'] === 'yes',
     },
-    { id: 'RR-003', displayId: 'RR-002', label: 'Is the affected roofing area accessible for evaluation?', type: 'radio', options: ACCESS_OPTIONS },
+    {
+      id: 'RR-003',
+      displayId: 'RR-002',
+      label: 'Is the affected roofing area accessible for evaluation?',
+      type: 'radio',
+      options: [o('yes', 'Yes'), o('limited', 'Yes, with limited access'), o('no', 'No')],
+    },
     {
       id: 'RR-003A',
       displayId: 'RR-002A',
