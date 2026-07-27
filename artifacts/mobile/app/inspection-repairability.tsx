@@ -77,7 +77,19 @@ interface QuestionDef {
   options: Opt[];
   visible?: (a: Answers) => boolean;
   hint?: string;
+  /** User-facing question number when it differs from the internal answer key. */
+  displayId?: string;
 }
+
+/** Roof (asphalt) questions were renumbered for display; internal keys are stable. */
+const ROOF_DISPLAY_ID: Record<string, string> = {
+  'RR-002': 'RR-001',
+  'RR-003': 'RR-002',
+  'RR-003A': 'RR-003',
+  'RR-010': 'RR-005',
+  'RR-011': 'RR-005A',
+};
+const roofDisplayId = (id: string) => ROOF_DISPLAY_ID[id] ?? id;
 
 // TEMPORARY: set to false (or remove) after the question-wording review.
 const SHOW_ALL_ROOF_QUESTIONS_FOR_REVIEW = true;
@@ -155,17 +167,21 @@ const ACCESS_LIMITS: Opt[] = [
 
 function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
   return [
-    { id: 'RR-001', label: 'Is direct physical roof-covering damage documented?', type: 'radio', options: YNU },
+    // RR-001 (damage documented) was removed from the UI — it is auto-answered
+    // from the Facets section. Internal answer keys stay stable for the server
+    // and older records; new user-facing numbers are shown via displayId.
     {
       id: 'RR-002',
+      displayId: 'RR-001',
       label: 'Which roof facet(s) or area(s) are being assessed?',
       type: 'multi',
       options: [...facetOptions, o('other_area', 'Other documented roof area')],
       visible: (a) => a['RR-001'] === 'yes',
     },
-    { id: 'RR-003', label: 'Is the affected roofing area accessible for evaluation?', type: 'radio', options: ACCESS_OPTIONS },
+    { id: 'RR-003', displayId: 'RR-002', label: 'Is the affected roofing area accessible for evaluation?', type: 'radio', options: ACCESS_OPTIONS },
     {
       id: 'RR-003A',
+      displayId: 'RR-003',
       label: 'What limits access?',
       type: 'multi',
       options: ACCESS_LIMITS,
@@ -180,18 +196,16 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
         o('visual_screening', 'Visual and documentary screening only'),
         o('non_destructive', 'Controlled non-destructive evaluation'),
         o('controlled_test', 'Controlled repairability test'),
-        o('post_removal', 'Post-removal concealed-condition evaluation'),
       ],
     },
     {
       id: 'RR-010',
+      displayId: 'RR-005',
       label: 'Does the existing roof match a known roofing-product profile?',
       type: 'radio',
       options: [
         o('catalog_match', 'Yes — select from Known Product Catalog'),
-        o('manufacturer_profile', 'No — manufacturer/profile may still be identifiable'),
-        o('material_type_only', 'No — material type only identified'),
-        o('not_identified', 'Unable to identify'),
+        o('manufacturer_profile', 'No — NTS/ITEL Needed to Identify'),
       ],
     },
     { id: 'RR-012', label: 'Is the existing product documented as discontinued?', type: 'radio', options: DISCONTINUATION_OPTIONS },
@@ -1184,10 +1198,11 @@ function validateFlow(system: 'roof' | 'siding', flow: FlowState): string[] {
 
   const discConfirmed =
     single(`${q}-012`) === 'manufacturer_confirmed' || single(`${q}-012`) === 'distributor_confirmed';
+  const disp = (id: string) => (system === 'roof' ? roofDisplayId(id) : id);
   for (const id of ['001', '003', '004', '010', '012', '020', '021', '040']) {
     // RR-020 (availability search) is skipped when discontinuation is confirmed.
     if (id === '020' && system === 'roof' && discConfirmed) continue;
-    if (!single(`${q}-${id}`)) errors.push(`${label}: answer ${q}-${id} — it is required.`);
+    if (!single(`${q}-${id}`)) errors.push(`${label}: answer ${disp(`${q}-${id}`)} — it is required.`);
   }
   if (single(`${q}-001`) === 'yes' && multi(`${q}-002`).length === 0) {
     errors.push(`${label}: select the affected area(s) being assessed.`);
@@ -1206,7 +1221,7 @@ function validateFlow(system: 'roof' | 'siding', flow: FlowState): string[] {
     if (!hasEvidence) errors.push(`${label}: product identification requires linked photo or document evidence.`);
   }
   if (system === 'roof' && pid === 'catalog_match' && !flow.productMatch) {
-    errors.push(`${label}: select the probable product match from the Known Product Catalog (RR-011).`);
+    errors.push(`${label}: select the probable product match from the Known Product Catalog (RR-005A).`);
   }
   const disc = single(`${q}-012`);
   if ((disc === 'manufacturer_confirmed' || disc === 'distributor_confirmed') && (multi(`${q}-012A`).length === 0 || !hasEvidence)) {
@@ -1519,6 +1534,18 @@ export default function InspectionRepairabilityScreen() {
     }
   }, [existing, hydrated]);
 
+  // New assessments: pre-select the systems that already have marked damage
+  // in the Facets / elevation sections. Editable by the rep.
+  const autoSystemsApplied = React.useRef(false);
+  React.useEffect(() => {
+    if (!inspection || existing || autoSystemsApplied.current) return;
+    autoSystemsApplied.current = true;
+    const auto: Array<'roof' | 'siding'> = [];
+    if ((inspection.slopes ?? []).some((s) => s.damagePresent)) auto.push('roof');
+    if ((inspection.sidingFacets ?? []).some((f) => f.damaged)) auto.push('siding');
+    if (auto.length > 0) setSystems(auto);
+  }, [inspection, existing]);
+
   if (inspectionQuery.isLoading && !inspection) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -1539,6 +1566,10 @@ export default function InspectionRepairabilityScreen() {
 
   const photos = inspection.photos ?? [];
   const facetOptions: Opt[] = (inspection.slopes ?? []).map((s) => o(`facet:${s.id}`, s.label));
+  // The asphalt flow's facet question only offers facets with marked damage.
+  const damagedFacetOptions: Opt[] = (inspection.slopes ?? [])
+    .filter((s) => s.damagePresent)
+    .map((s) => o(`facet:${s.id}`, s.label));
 
   function buildPayloadFlow(flow: FlowState, material?: RoofMaterial | null) {
     return {
@@ -1610,7 +1641,7 @@ export default function InspectionRepairabilityScreen() {
       nextSteps = METAL_NEXT_STEPS;
       title = 'Standing Seam Metal Roof Repairability Assessment';
     } else {
-      questions = roofQuestions(facetOptions);
+      questions = roofQuestions(damagedFacetOptions);
       basisOptions = ROOF_BASIS_OPTIONS;
       nextSteps = ROOF_NEXT_STEPS;
       title = 'Asphalt Shingle Repairability Assessment';
@@ -1645,7 +1676,7 @@ export default function InspectionRepairabilityScreen() {
           return (
             <View key={qd.id} style={{ gap: 6 }}>
               <Text style={[styles.qLabel, { color: colors.foreground }]}>
-                <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{qd.id}  </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{qd.displayId ?? qd.id}  </Text>
                 {qd.label}
               </Text>
               <View style={styles.chipWrap}>
@@ -1693,7 +1724,7 @@ export default function InspectionRepairabilityScreen() {
               current === 'catalog_match' ? (
                 <View style={{ gap: 6 }}>
                   <Text style={[styles.qLabel, { color: colors.foreground }]}>
-                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>RR-011  </Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>RR-005A  </Text>
                     Select Probable Product Match
                   </Text>
                   {flow.productMatch ? (
@@ -1971,17 +2002,15 @@ export default function InspectionRepairabilityScreen() {
                       // Each material has its own question flow and factor
                       // vocabulary — switching starts a fresh roof record.
                       const fresh = emptyFlow();
-                      // RR-001/RR-002 auto-answer from the facets section:
-                      // slopes already record whether damage was documented
-                      // and where. Still editable by the rep.
+                      // Damage documentation is auto-answered from the facets
+                      // section (RR-001 has no UI question anymore); the facet
+                      // selection prefills from damaged facets, still editable.
                       if (opt.value === 'asphalt_shingle') {
                         const slopes = inspection.slopes ?? [];
                         const damaged = slopes.filter((s) => s.damagePresent);
-                        if (slopes.length > 0) {
-                          fresh.answers['RR-001'] = damaged.length > 0 ? 'yes' : 'no';
-                          if (damaged.length > 0) {
-                            fresh.answers['RR-002'] = damaged.map((s) => `facet:${s.id}`);
-                          }
+                        fresh.answers['RR-001'] = damaged.length > 0 ? 'yes' : 'no';
+                        if (damaged.length > 0) {
+                          fresh.answers['RR-002'] = damaged.map((s) => `facet:${s.id}`);
                         }
                       }
                       setRoofFlow(fresh);
