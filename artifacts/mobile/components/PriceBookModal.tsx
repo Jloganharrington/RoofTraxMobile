@@ -130,6 +130,25 @@ function ItemForm({
         style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
       />
 
+      <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Unit Price *</Text>
+      <TextInput
+        value={unitPrice}
+        onChangeText={setUnitPrice}
+        placeholder="0.00"
+        placeholderTextColor={colors.mutedForeground}
+        keyboardType="decimal-pad"
+        style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
+      />
+
+      <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Unit</Text>
+      <TextInput
+        value={unit}
+        onChangeText={setUnit}
+        placeholder='e.g. "per square", "per LF", "each"'
+        placeholderTextColor={colors.mutedForeground}
+        style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
+      />
+
       <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Description</Text>
       <TextInput
         value={description}
@@ -166,25 +185,6 @@ function ItemForm({
           {generateDescription.isPending ? 'Generating…' : 'Generate Description'}
         </Text>
       </Pressable>
-
-      <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Unit Price *</Text>
-      <TextInput
-        value={unitPrice}
-        onChangeText={setUnitPrice}
-        placeholder="0.00"
-        placeholderTextColor={colors.mutedForeground}
-        keyboardType="decimal-pad"
-        style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
-      />
-
-      <Text style={[s.fieldLabel, { color: colors.mutedForeground }]}>Unit</Text>
-      <TextInput
-        value={unit}
-        onChangeText={setUnit}
-        placeholder='e.g. "per square", "per LF", "each"'
-        placeholderTextColor={colors.mutedForeground}
-        style={[s.input, { color: colors.foreground, borderColor: colors.border }]}
-      />
 
       <View style={s.formActions}>
         <Pressable
