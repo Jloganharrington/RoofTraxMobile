@@ -1,6 +1,17 @@
 import { getApiBaseUrl } from './api';
 import { getToken } from './tokenStorage';
 
+export class UploadError extends Error {
+  status: number;
+  /** 'api' = our API rejected the request; 'storage' = the presigned PUT failed. */
+  source: 'api' | 'storage';
+  constructor(message: string, status: number, source: 'api' | 'storage') {
+    super(message);
+    this.status = status;
+    this.source = source;
+  }
+}
+
 interface RequestUploadUrlResult {
   uploadURL: string;
   objectPath: string;
@@ -33,7 +44,11 @@ export async function uploadFile(
   });
 
   if (!requestRes.ok) {
-    throw new Error(`Failed to request upload URL: ${requestRes.status}`);
+    throw new UploadError(
+      `Failed to request upload URL: ${requestRes.status}`,
+      requestRes.status,
+      'api',
+    );
   }
 
   const { uploadURL, objectPath }: RequestUploadUrlResult = await requestRes.json();
@@ -45,7 +60,11 @@ export async function uploadFile(
   });
 
   if (!putRes.ok) {
-    throw new Error(`Failed to upload file: ${putRes.status}`);
+    throw new UploadError(
+      `Failed to upload file: ${putRes.status}`,
+      putRes.status,
+      'storage',
+    );
   }
 
   // objectPath is already in /objects/{id} format — return it directly so the

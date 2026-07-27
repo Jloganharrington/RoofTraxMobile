@@ -28,4 +28,5 @@
 - [Per-user SMTP emailing](user-supplied-smtp.md) — user-supplied outbound hosts need DNS-vetted SSRF guard; encrypted write-only creds; route-scoped body limits.
 - [Compiled report artifacts](compiled-report-artifacts.md) — never persist expiring signed URLs in stored reports; sanitize LLM HTML; @google/genai must be a direct api-server dep (esbuild externalizes @google/*).
 - [Versioned jsonb vs narrowed API schemas](jsonb-schema-versioning.md) — narrowing a jsonb response schema needs legacy-null normalization at every response parse site or old rows 500.
+- [Session lifecycle & orphan sessions](session-lifecycle-orphans.md) — auth must verify user row exists (test cleanup orphans sessions → FK 500s) and slide session expiry on activity.
 - [Estimate price-book snapshot integrity](estimate-price-snapshots.md) — catalog-referencing lines must be server-hydrated (price/desc/unit from DB); advisory steps join all three stage mirrors but get no gate rules.

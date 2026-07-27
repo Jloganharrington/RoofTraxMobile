@@ -65,6 +65,18 @@ export async function updateSession(
     .where(eq(sessionsTable.sid, sid));
 }
 
+/**
+ * Sliding session renewal: push the session's DB expiry out to a fresh
+ * SESSION_TTL from now. Called on authenticated requests (throttled by the
+ * auth middleware) so active users are not logged out 7 days after login.
+ */
+export async function touchSession(sid: string): Promise<void> {
+  await db
+    .update(sessionsTable)
+    .set({ expire: new Date(Date.now() + SESSION_TTL) })
+    .where(eq(sessionsTable.sid, sid));
+}
+
 export async function deleteSession(sid: string): Promise<void> {
   await db.delete(sessionsTable).where(eq(sessionsTable.sid, sid));
 }

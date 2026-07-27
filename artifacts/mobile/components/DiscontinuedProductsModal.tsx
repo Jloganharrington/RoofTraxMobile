@@ -18,7 +18,7 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
-import { uploadFile } from '@/lib/upload';
+import { uploadFile, UploadError } from '@/lib/upload';
 import {
   useListDiscontinuedProducts,
   useCreateDiscontinuedProduct,
@@ -186,8 +186,15 @@ export function DiscontinuedProductsModal({
     try {
       const objectPath = await uploadFile(result.assets[0].uri, 'image/jpeg');
       setForm((f) => (f ? { ...f, photoPath: objectPath } : f));
-    } catch {
-      Alert.alert('Upload failed', 'Could not upload the photo. Try again.');
+    } catch (err) {
+      if (err instanceof UploadError && err.status === 401 && err.source === 'api') {
+        Alert.alert(
+          'Session expired',
+          'Your login session has expired. Please sign out and sign back in, then try again.',
+        );
+      } else {
+        Alert.alert('Upload failed', 'Could not upload the photo. Try again.');
+      }
     } finally {
       setPhotoUploading(false);
     }

@@ -1,4 +1,6 @@
 import type { AuthUser } from '@workspace/api-zod';
+import { db, usersTable } from '@workspace/db';
+import { eq } from 'drizzle-orm';
 import { type NextFunction, type Request, type Response } from 'express';
 import * as oidc from 'openid-client';
 
@@ -7,6 +9,7 @@ import {
   getOidcConfig,
   getSession,
   getSessionId,
+  touchSession,
   updateSession,
   type SessionData,
 } from '../lib/auth';
@@ -110,6 +113,44 @@ export async function authMiddleware(
     return;
   }
 
+  // Sessions can outlive their user (e.g. test seeding/cleanup, account
+  // deletion). A stale session must not keep authorizing requests — and any
+  // insert referencing users.id would abort on the FK. Verify the user row
+  // still exists before treating the request as authenticated.
+  const [userRow] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.id, refreshed.user.id));
+  if (!userRow) {
+    await clearSession(res, sid);
+    next();
+    return;
+  }
+
+  // Sliding renewal: extend the session's DB expiry on activity (at most
+  // once per hour per sid) so active users aren't logged out a hard 7 days
+  // after login. Fire-and-forget — renewal failure must not fail the request.
+  const now = Date.now();
+  const lastTouch = sessionTouchTimes.get(sid) ?? 0;
+  if (now - lastTouch > SESSION_TOUCH_INTERVAL_MS) {
+    // Bound the throttle map: entries older than the interval are no longer
+    // useful (they'd allow a touch anyway), so sweep them before inserting.
+    if (sessionTouchTimes.size >= SESSION_TOUCH_MAP_MAX) {
+      for (const [key, ts] of sessionTouchTimes) {
+        if (now - ts > SESSION_TOUCH_INTERVAL_MS) sessionTouchTimes.delete(key);
+      }
+    }
+    sessionTouchTimes.set(sid, now);
+    void touchSession(sid).catch(() => {});
+  }
+
   req.user = refreshed.user;
   next();
 }
+
+// Throttle sliding-renewal writes: touching the session row on every request
+// would add a DB write per API call for no benefit.
+const SESSION_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+// Sweep threshold so the throttle map cannot grow unbounded with unique sids.
+const SESSION_TOUCH_MAP_MAX = 10_000;
+const sessionTouchTimes = new Map<string, number>();
