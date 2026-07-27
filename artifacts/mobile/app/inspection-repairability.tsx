@@ -79,6 +79,9 @@ interface QuestionDef {
   hint?: string;
 }
 
+// TEMPORARY: set to false (or remove) after the question-wording review.
+const SHOW_ALL_ROOF_QUESTIONS_FOR_REVIEW = true;
+
 const IDENTIFICATION_SOURCES: Opt[] = [
   o('rear_stamp', 'Rear-side stamp'),
   o('physical_sample', 'Physical sample'),
@@ -1633,7 +1636,11 @@ export default function InspectionRepairabilityScreen() {
         <Text style={[styles.flowTitle, { color: colors.foreground }]}>{title}</Text>
 
         {questions.map((qd) => {
-          if (qd.visible && !qd.visible(flow.answers)) return null;
+          // TEMPORARY (review): show all roof questions regardless of their
+          // conditional visibility so the full question set can be reviewed.
+          // Remove SHOW_ALL_ROOF_QUESTIONS_FOR_REVIEW to restore normal flow.
+          const forceVisible = SHOW_ALL_ROOF_QUESTIONS_FOR_REVIEW && system === 'roof';
+          if (!forceVisible && qd.visible && !qd.visible(flow.answers)) return null;
           const current = flow.answers[qd.id];
           return (
             <View key={qd.id} style={{ gap: 6 }}>
