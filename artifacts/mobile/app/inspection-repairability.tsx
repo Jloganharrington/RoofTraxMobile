@@ -28,6 +28,11 @@ export default function InspectionRepairabilityScreen() {
   const inspection = inspectionQuery.data?.inspection;
   const existing = inspection?.repairabilityAssessment ?? null;
 
+  // Gate question: the systems selection only opens when an assessment is
+  // warranted and authorized.
+  const [warranted, setWarranted] = React.useState<
+    'yes' | 'not_warranted_discontinued' | 'not_authorized' | null
+  >(null);
   const [systems, setSystems] = React.useState<Array<'roof' | 'siding'>>([]);
   const [hydrated, setHydrated] = React.useState(false);
 
@@ -74,8 +79,42 @@ export default function InspectionRepairabilityScreen() {
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: 'Repairability' }} />
 
-      <Text style={[styles.qLabel, { color: colors.foreground }]}>Repairability assessed on</Text>
+      <Text style={[styles.qLabel, { color: colors.foreground }]}>
+        Is a Repairability Assessment warranted and authorized at this time?
+      </Text>
       <View style={styles.chipWrap}>
+        {(
+          [
+            { value: 'yes', label: 'Yes' },
+            { value: 'not_warranted_discontinued', label: 'Not Warranted - Discontinued' },
+            { value: 'not_authorized', label: 'Not Authorized' },
+          ] as const
+        ).map((opt) => {
+          const on = warranted === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              onPress={() => setWarranted(on ? null : opt.value)}
+              style={[
+                styles.sysToggle,
+                {
+                  borderColor: on ? colors.primary : colors.border,
+                  backgroundColor: on ? colors.primary : colors.card,
+                },
+              ]}
+            >
+              <Text style={{ color: on ? colors.primaryForeground : colors.foreground, fontWeight: '700' }}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {warranted === 'yes' ? (
+        <>
+          <Text style={[styles.qLabel, { color: colors.foreground }]}>Repairability assessed on</Text>
+          <View style={styles.chipWrap}>
         {(['roof', 'siding'] as const).map((sys) => {
           const on = systems.includes(sys);
           return (
@@ -95,8 +134,10 @@ export default function InspectionRepairabilityScreen() {
               </Text>
             </Pressable>
           );
-        })}
-      </View>
+            })}
+          </View>
+        </>
+      ) : null}
 
       <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Icon name="tool" size={22} color={colors.primary} />
