@@ -6,17 +6,26 @@ import { useColors } from '@/hooks/useColors';
 export function CalendarPicker({
   selected,
   minDate,
+  maxDate,
   onSelect,
 }: {
   selected: Date;
-  minDate: Date;
+  /** Dates before this are disabled (optional). */
+  minDate?: Date;
+  /** Dates after this are disabled (optional). */
+  maxDate?: Date;
   onSelect: (d: Date) => void;
 }) {
   const colors = useColors();
   const [viewYear, setViewYear] = useState(selected.getFullYear());
   const [viewMonth, setViewMonth] = useState(selected.getMonth());
 
-  const today = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+  const min = minDate
+    ? new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate())
+    : null;
+  const max = maxDate
+    ? new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate())
+    : null;
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
@@ -64,7 +73,7 @@ export function CalendarPicker({
           {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
             if (!day) return <View key={col} style={styles.dayCell} />;
             const cellDate = new Date(viewYear, viewMonth, day);
-            const isPast = cellDate < today;
+            const isPast = (min !== null && cellDate < min) || (max !== null && cellDate > max);
             const isSel =
               selected.getFullYear() === viewYear &&
               selected.getMonth() === viewMonth &&

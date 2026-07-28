@@ -15,6 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { getGetWeatherEventsQueryKey, useGetWeatherEvents } from '@workspace/api-client-react';
 import type { WeatherCandidate } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { CalendarPicker } from '@/components/CalendarPicker';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { patchInspection } from '@/lib/inspectionSync';
@@ -72,6 +73,7 @@ export default function InspectionStormScreen() {
   const [manualType, setManualType] = React.useState<'hail' | 'wind' | 'tornado'>('hail');
   const [manualSaving, setManualSaving] = React.useState(false);
   const [manualError, setManualError] = React.useState<string | null>(null);
+  const [calendarOpen, setCalendarOpen] = React.useState(false);
 
   // Strict calendar validation — JS Date normalizes impossible dates (e.g.
   // 2025-02-29 → Mar 1), so round-trip the parsed components instead.
@@ -208,15 +210,20 @@ export default function InspectionStormScreen() {
             </Text>
 
             <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Date of Storm</Text>
-            <TextInput
-              value={manualDate}
-              onChangeText={setManualDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.mutedForeground}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
-            />
+            <Pressable
+              onPress={() => setCalendarOpen(true)}
+              style={[styles.input, styles.dateField, { borderColor: colors.border }]}
+            >
+              <Icon name="calendar" size={18} color={colors.secondary} />
+              <Text
+                style={{
+                  color: manualDate ? colors.foreground : colors.mutedForeground,
+                  fontSize: 15,
+                }}
+              >
+                {manualDate || 'Select date'}
+              </Text>
+            </Pressable>
 
             <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Storm Description</Text>
             <TextInput
@@ -281,6 +288,34 @@ export default function InspectionStormScreen() {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Calendar date picker */}
+        <Modal
+          visible={calendarOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCalendarOpen(false)}
+        >
+          <Pressable style={styles.calendarBackdrop} onPress={() => setCalendarOpen(false)}>
+            <Pressable
+              style={[styles.calendarCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <CalendarPicker
+                selected={manualDateValid ? new Date(`${manualDate.trim()}T12:00:00`) : new Date()}
+                maxDate={new Date()}
+                onSelect={(d) => {
+                  const y = d.getFullYear();
+                  const mo = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  setManualDate(`${y}-${mo}-${day}`);
+                  setManualError(null);
+                  setCalendarOpen(false);
+                }}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
       </Modal>
     </ScrollView>
   );
@@ -352,6 +387,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
+  dateField: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  calendarBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  calendarCard: {
+    alignSelf: 'stretch',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+  },
   typeRow: { flexDirection: 'row', gap: 8 },
   typePill: {
     paddingHorizontal: 16,
