@@ -261,7 +261,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
 
     <li><span class="lead">Deliverable &mdash; Forensic Proof Package.</span> Contractor shall prepare and deliver to Owner a Forensic Proof Package consisting of: (a) a written forensic inspection report; (b) organized photographic documentation; (c) measurements and diagrams; (d) weather event research findings; (e) material identification and availability findings, with supplier quotes where applicable; and (f) a documented repair scope and fixed-price estimate for the restoration work.</li>
 
-    <li><span class="lead">Fee.</span> The fee for the services and deliverables described above is $1,250.00 (the &ldquo;Documentation Fee&rdquo;), due upon delivery of the Forensic Proof Package.</li>
+    <li><span class="lead">Fee.</span> The fee for the services and deliverables described above is $750.00 (the &ldquo;Documentation Fee&rdquo;), due upon delivery of the Forensic Proof Package.</li>
 
     <li><span class="lead">Credit Toward Construction.</span> If the Owner executes a written Restoration Agreement with Contractor for the restoration work documented in the Forensic Proof Package, the entire Documentation Fee will be credited in full against the construction contract price.</li>
 
@@ -271,7 +271,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
 
     <li><span class="lead">No Construction Work Awarded.</span> This Agreement authorizes inspection and preconstruction services only. No construction or restoration work is awarded, promised, or authorized under this Agreement unless expressly stated in a written addendum to this agreement, signed by both parties.</li>
 
-    <li><span class="lead">General.</span> This Agreement is governed by Virginia law and is the entire agreement between the parties regarding its subject matter. Any dispute arising under this Agreement shall be resolved by binding arbitration before a single arbitrator under the Commercial Rules of the American Arbitration Association.</li>
+    <li><span class="lead">General.</span> This Agreement is governed by Virginia law and is the entire agreement between the parties regarding its subject matter. Any dispute arising under this Agreement shall be resolved by binding arbitration before a single arbitrator under the Commercial Rules of the American Arbitration Association. If conditions warrant, homeowner authorizes the contractor to complete a Repairability Assessment using a simulated repair protocol.</li>
   </ol>
 
   <div class="sig-grid">
