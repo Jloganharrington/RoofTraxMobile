@@ -435,6 +435,13 @@ export default function InspectionDetailScreen() {
             </Text>
             <View style={styles.coolingBtnRow}>
               <Pressable
+                onPress={() => router.back()}
+                style={[styles.coolingBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+              >
+                <Icon name="x" size={15} color={colors.mutedForeground} />
+                <Text style={[styles.coolingBtnText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
                 onPress={() =>
                   router.replace({
                     pathname: '/inspection-agreement',
