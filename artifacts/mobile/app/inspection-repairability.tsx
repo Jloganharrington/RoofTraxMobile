@@ -344,7 +344,7 @@ export default function InspectionRepairabilityScreen() {
       {showRap ? (
         <>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Repair Attempt Protocol
+            Repairability Assessment Protocol
           </Text>
 
           {renderInstructionCard('Instructions — Marking', MARKING_STEPS)}
@@ -465,8 +465,8 @@ export default function InspectionRepairabilityScreen() {
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Scorecard</Text>
             {(
               [
-                // X plus shingles 1–8 are all handled during the protocol.
-                ['Manipulated shingles', 9],
+                // Shingles 1–8 (X itself does not count as manipulated).
+                ['Manipulated shingles', 8],
                 ['New collateral-damaged shingles', collateralSet.size],
                 ['Mat-transfer findings on 1–2', matTransferCount],
                 ['Delamination', categoryCount('delamination')],
@@ -491,13 +491,6 @@ export default function InspectionRepairabilityScreen() {
         </>
       ) : null}
 
-      <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Icon name="tool" size={22} color={colors.primary} />
-        <Text style={{ color: colors.mutedForeground, flex: 1, fontSize: 13 }}>
-          The repairability assessment questions are being rebuilt. Recording an assessment is
-          temporarily unavailable.
-        </Text>
-      </View>
     </ScrollView>
   );
 }
@@ -505,7 +498,6 @@ export default function InspectionRepairabilityScreen() {
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 14 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  summary: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
   qLabel: { fontSize: 14, fontWeight: '600' },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 6 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
