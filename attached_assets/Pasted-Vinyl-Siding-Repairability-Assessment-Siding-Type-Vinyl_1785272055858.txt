@@ -1,0 +1,87 @@
+Vinyl Siding Repairability Assessment
+Siding Type
+Vinyl Siding → Open Vinyl Repairability Assessment
+Aluminum Siding → Route to the Product ID–supported non-repairability document; no simulated repair flow unless the Product ID determination specifically supports one.
+Instructions
+Identify an already damaged vinyl siding panel to be removed.
+Mark the damaged panel with an “X.”
+Mark the panel directly above X as 1.
+Mark the panel directly below X as 2.
+Mark any adjacent panel, lap, J-channel, corner post, or trim component that must be manipulated as 3, 4, T1, T2, as applicable.
+Take a clear photograph of the complete marked repair zone.
+Save as: VAP1 — Marked Vinyl Repair Zone / Pre-Manipulation Baseline.
+
+Simulated Repair Procedure
+Use a siding unlock/zip tool to release Panel 1 from Panel X.
+Locate and gently remove all fasteners securing Panel X.
+Release Panel X from the lower locking edge and applicable lap or trim interfaces.
+Remove Panel X.
+Install a compatible replacement panel in X’s original location.
+Re-engage the lower locking edge and Panel 1.
+Refasten through the proper nailing hem only. Do not face-nail the replacement panel.
+Confirm all manipulated panels and trim components are properly seated, aligned, locked, and able to move normally.
+Post-Test Questions
+All “A” questions appear only after a Yes response.
+
+1. Did any manipulated vinyl panel sustain a new crack, split, tear, puncture, or break?
+
+Yes / No
+1A. Select all affected panels/components: 1, 2, 3, 4, T1, T2, etc.
+
+Photograph one example with a factual note.
+2. Did any manipulated panel sustain new locking-edge, lap-joint, or interlock damage?
+
+Yes / No
+2A. Select all affected panels/components.
+
+Photograph one example with a factual note.
+3. Did any manipulated panel sustain new nail-hem or fastening-slot damage?
+
+Yes / No
+3A. Select all affected panels/components.
+
+Photograph one example with a factual note.
+4. Did any J-channel, corner post, utility block, window/door trim, or other siding interface sustain new damage or become unable to be properly resecured?
+
+Yes / No
+4A. Select all affected trim components.
+
+Photograph one example with a factual note.
+5. Did any manipulated panel fail to re-seat, align, lock, or retain normal movement after replacement of X?
+
+Yes / No
+5A. Select all affected panels/components.
+
+Photograph one example with a factual note.
+Required Final Archive Photo
+Take a final marked photo of the repaired zone.
+Annotate X and all panels/components with newly documented collateral damage.
+Keep this image in the full inspection archive.
+Vinyl Repairability Scorecard
+Count unique newly affected panels or components, not each damage label.
+
+Data Table
+9 rows
+
+Export CSV
+Scorecard item	Value
+Target panels removed	[count]
+Panels manipulated	[count]
+Trim/interface components manipulated	[count]
+New collateral-damaged panels	[unique count]
+Cracked / split / torn / punctured panels	[count]
+Locking-edge / lap-joint failures	[count]
+Nail-hem / fastening-slot damage	[count]
+Trim/interface damage	[count]
+Reseating / alignment / movement concerns	[count]
+Report Output
+Include:
+
+VAP1 — marked pre-manipulation repair-zone photo.
+Up to two newly damaged-panel or component photos.
+Photo priority:
+
+A broken, stretched, or non-reengageable locking edge/lap joint.
+A cracked, split, torn, or broken surrounding vinyl panel.
+A trim-interface or nail-hem failure if it is the strongest documented result.
+This keeps the siding protocol as simple as the asphalt flow: mark → baseline photo → normal removal/replacement → annotate collateral effects → unique-component scorecard.
