@@ -419,9 +419,47 @@ export interface RepairabilityProductMatch {
   exposureInches?: number | null;
 }
 
+// Repair Attempt Protocol (RAP) — asphalt-shingle roof flows only. Mirrors
+// the mobile RAP screen: shingle "X" is pulled, shingles 1–8 around it are
+// manipulated, mat transfer is checked on 1–2, and five collateral-damage
+// questions cover shingles 3–8. Photo fields reference inspection_photos
+// row ids (never URLs). Optional/absent on flows recorded before RAP; the
+// report renders the scorecard only when a RAP record is present.
+export type RapYesNo = 'yes' | 'no';
+
+// Ordered — this order is also the report/scorecard display order and the
+// photo-priority order (delamination first, then creasing/cracking).
+export type RapDamageCategoryKey =
+  | 'delamination'
+  | 'creasing'
+  | 'nailZone'
+  | 'puncture'
+  | 'reseat';
+
+export interface RapDamageFinding {
+  answer: RapYesNo;
+  /** Affected shingle numbers (3–8). */
+  shingles: number[];
+  /** inspection_photos id of the one example photo for this category. */
+  photoId?: string | null;
+  note?: string | null;
+}
+
+export interface RepairAttemptProtocol {
+  /** inspection_photos id of the marked-shingles (RAP1) photo. */
+  rap1PhotoId?: string | null;
+  /** Mat-transfer findings on shingles 1 and 2 during removal. */
+  matTransfer: { shingle1: RapYesNo | null; shingle2: RapYesNo | null };
+  /** Collateral-damage answers keyed by category. */
+  damage: Partial<Record<RapDamageCategoryKey, RapDamageFinding>>;
+}
+
 export interface RepairabilitySystemFlow {
   // Roof flows only: which material's question flow was completed.
   roofMaterial?: RepairabilityRoofMaterial | null;
+  // Asphalt-shingle roof flows only: the Repair Attempt Protocol record.
+  // Absent on siding flows, non-asphalt roof flows, and pre-RAP records.
+  rap?: RepairAttemptProtocol | null;
   // Set when RR-010 = catalog_match: the probable product match picked
   // from the company's Known Product Catalog.
   productMatch?: RepairabilityProductMatch | null;

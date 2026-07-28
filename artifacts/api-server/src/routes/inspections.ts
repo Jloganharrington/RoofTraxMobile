@@ -90,6 +90,13 @@ import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from 
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
 import { DETERMINATION_LABELS, validateRepairabilityAssessment } from '../lib/repairabilityRules';
+import {
+  buildRapReportSection,
+  computeRapScorecard,
+  extractRap,
+  rapScorecardBriefLines,
+  type RapReportSection,
+} from '../lib/rapScorecard';
 import { ObjectNotFoundError, ObjectStorageService } from '../lib/objectStorage';
 
 const objectStorageService = new ObjectStorageService();
@@ -3157,6 +3164,13 @@ function buildInspectionBrief(
         }
         if (flow.nextStep) lines.push(`    Next step: ${flow.nextStep}`);
         if (flow.notes) lines.push(`    Notes: ${flow.notes}`);
+        // Repair Attempt Protocol scorecard (asphalt-shingle roof flows).
+        const rap = system === 'roof' ? extractRap(ra) : null;
+        if (rap) {
+          for (const line of rapScorecardBriefLines(computeRapScorecard(rap))) {
+            lines.push(`    ${line}`);
+          }
+        }
       }
     } else {
       // Legacy v1 record.
@@ -3795,6 +3809,9 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
           .join('; ') || 'Not recorded'
       : ((raRaw as unknown as { determination?: string }).determination ?? 'Not recorded')
     : null;
+  // Server-built RAP scorecard section (null for pre-RAP assessments — the
+  // report simply omits it). Photo references are ids, never URLs.
+  const rapSection = buildRapReportSection(inspection.repairabilityAssessment);
   const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
 
   const photoBrief = children.photos.slice(0, 80).map((p) => ({
@@ -3948,6 +3965,8 @@ ${JSON.stringify(photoBrief)}
     attestationHtml: 'attestation',
     photoIndex: 'internal_metadata',
     evidenceManifest: 'internal_metadata',
+    // Server-computed counts + photo references — factual, carrier-facing.
+    rapSection: 'construction_fact',
   };
 
   // Contractor-lane lint over every AI-generated fragment before storage.
@@ -3966,7 +3985,7 @@ ${JSON.stringify(photoBrief)}
   const lint = lintReportFragments(lintFragmentInputs);
 
   const compiledData = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     generatedAt,
     inspector,
     inspectionSnapshot: {
@@ -3993,6 +4012,9 @@ ${JSON.stringify(photoBrief)}
     // integrity digest of the manifest itself.
     evidenceManifest,
     evidenceManifestSha256: manifestSha256,
+    // Server-built Repair Attempt Protocol scorecard + photo references
+    // (schemaVersion 5). Null when the assessment predates RAP.
+    rapSection,
     // Present from schemaVersion 4 onward.
     contentClasses,
     lint,
@@ -4106,6 +4128,9 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
       approvedScopeLinks?: ApprovedScopeLink[];
     };
     evidenceManifestSha256?: string;
+    // Present from schemaVersion 5 onward — server-built RAP scorecard +
+    // photo references. Absent/null on older blobs and pre-RAP assessments.
+    rapSection?: RapReportSection | null;
     // Present from schemaVersion 4 onward.
     contentClasses?: Record<string, ContentClass>;
     lint?: { lintStatus: 'passed' | 'needs_review' | 'blocked'; findings: unknown[] };
@@ -4189,6 +4214,49 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
 
   if (!photoSectionsHtml) {
     photoSectionsHtml = '<p style="color:#888;font-size:13px">No photos available for this inspection.</p>';
+  }
+
+  // Build the Repair Attempt Protocol section — entirely server-side from
+  // the stored scorecard (never AI-generated). Photos are signed fresh at
+  // render time via photoIndex, exactly like the photo-evidence section.
+  let rapSectionHtml: string | null = null;
+  const rapSection = compiledData.rapSection;
+  if (rapSection && carrierVisible('rapSection')) {
+    const sc = rapSection.scorecard;
+    const scoreRows: Array<[string, number]> = [
+      ['Manipulated shingles', sc.manipulatedShingles],
+      ['New collateral-damaged shingles', sc.newCollateralDamagedShingles],
+      ['Mat-transfer findings on shingles 1–2', sc.matTransferCount],
+      ...sc.categories.map((c): [string, number] => [c.label, c.count]),
+    ];
+    const scorecardHtml = `<table class="detail-table">
+      <tr><th>Scorecard</th><th>Count</th></tr>
+      ${scoreRows.map(([label, count]) => `<tr><td>${escHtml(label)}</td><td>${escHtml(count)}</td></tr>`).join('\n      ')}
+    </table>`;
+
+    const rapPhotoCard = (photoId: string, caption: string): string => {
+      const entry = compiledData.photoIndex[photoId];
+      if (!entry) return '';
+      const signedUrl = freshSignedUrls.get(photoId);
+      const imgTag = signedUrl
+        ? `<img src="${escHtml(signedUrl)}" alt="${escHtml(caption)}" loading="lazy">`
+        : `<div style="height:160px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px">Photo unavailable</div>`;
+      return `<div class="photo-card">${imgTag}<div class="photo-caption">${escHtml(caption)}</div></div>`;
+    };
+    const rapCards = [
+      ...(rapSection.rap1PhotoId
+        ? [rapPhotoCard(rapSection.rap1PhotoId, 'RAP1 — marked shingles before pull')]
+        : []),
+      ...rapSection.examplePhotos.map((p) =>
+        rapPhotoCard(p.photoId, [p.label, p.note].filter(Boolean).join(' — ')),
+      ),
+    ]
+      .filter(Boolean)
+      .join('');
+
+    rapSectionHtml = `${scorecardHtml}${
+      rapCards ? `<div class="photo-grid" style="margin-top:16px">${rapCards}</div>` : ''
+    }`;
   }
 
   // Build the Evidence Manifest appendix — entirely server-side from the
@@ -4319,6 +4387,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
     photoSectionsHtml: carrierVisible('photoGroupings') ? photoSectionsHtml : '',
     attestationHtml: carrierVisible('attestationHtml') ? compiledData.attestationHtml : '',
     generatedAt: compiledData.generatedAt,
+    rapSectionHtml,
     theme: resolveReportTheme(company?.reportBranding),
     logoUrl: logoSignedUrl,
     evidenceManifestHtml,

@@ -125,6 +125,12 @@ export function buildReportHtml(params: {
   photoSectionsHtml: string;
   attestationHtml: string;
   generatedAt: string;
+  /**
+   * Server-built Repair Attempt Protocol scorecard + priority photos
+   * (never AI-generated). Omitted for pre-RAP assessments — the report
+   * renders without the section, exactly as before.
+   */
+  rapSectionHtml?: string | null;
   theme?: ReportTheme;
   /**
    * Freshly-signed (or otherwise render-time-resolved) company logo URL.
@@ -231,18 +237,25 @@ export function buildReportHtml(params: {
   ${params.photoSectionsHtml}
 </div>
 
-<!-- Section 4: Repairability Summary (from Claude AI Summary) -->
+<!-- Section 4 (when present): Repair Attempt Protocol scorecard (server-built) -->
+${params.rapSectionHtml ? `
+<div class="section">
+  <div class="section-title">4 — Repair Attempt Protocol</div>
+  ${params.rapSectionHtml}
+</div>` : ''}
+
+<!-- Repairability Summary (from Claude AI Summary) -->
 ${aiSummary.repairabilityText ? `
 <div class="section">
-  <div class="section-title">4 — Repairability Summary</div>
+  <div class="section-title">${params.rapSectionHtml ? '5' : '4'} — Repairability Summary</div>
   <div class="narrative">
     ${aiSummary.repairabilityText.split('\n').map(p => p.trim() ? `<p>${escHtml(p)}</p>` : '').join('')}
   </div>
 </div>` : ''}
 
-<!-- Section 5: Inspector Attestation -->
+<!-- Inspector Attestation -->
 <div class="section">
-  <div class="section-title">${aiSummary.repairabilityText ? '5' : '4'} — Inspector Attestation</div>
+  <div class="section-title">${3 + (params.rapSectionHtml ? 1 : 0) + (aiSummary.repairabilityText ? 1 : 0) + 1} — Inspector Attestation</div>
   <div class="attestation">${params.attestationHtml}</div>
 </div>
 
