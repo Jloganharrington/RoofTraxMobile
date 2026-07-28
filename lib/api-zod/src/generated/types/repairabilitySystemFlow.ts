@@ -9,11 +9,14 @@ import type { RepairabilitySystemFlowAnswers } from './repairabilitySystemFlowAn
 import type { RepairabilitySystemFlowDetermination } from './repairabilitySystemFlowDetermination';
 import type { RepairabilitySystemFlowProductMatch } from './repairabilitySystemFlowProductMatch';
 import type { RepairabilitySystemFlowRoofMaterial } from './repairabilitySystemFlowRoofMaterial';
+import type { RepairAttemptProtocol } from './repairAttemptProtocol';
 
 /**
  * One system's (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx / SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output "full replacement required".
  */
 export interface RepairabilitySystemFlow {
+  /** Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records. */
+  rap?: RepairAttemptProtocol | null;
   /**
      * Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.
      * @nullable

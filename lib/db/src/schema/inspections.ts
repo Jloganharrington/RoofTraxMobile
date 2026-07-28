@@ -446,6 +446,10 @@ export interface RapDamageFinding {
 }
 
 export interface RepairAttemptProtocol {
+  /** How many shingles required manipulation to complete the protocol
+   * (6, 7, or 8). Null while unanswered; legacy records without it render
+   * the historical fixed count. */
+  manipulatedCount?: 6 | 7 | 8 | null;
   /** inspection_photos id of the marked-shingles (RAP1) photo. */
   rap1PhotoId?: string | null;
   /** Mat-transfer findings on shingles 1 and 2 during removal. */
@@ -483,6 +487,30 @@ export interface RepairabilityAssessment {
   assessorCredentials?: string | null; // server-populated
   recordedAtUtc: string;
 }
+
+// v3 (2026-07-28): Repair Attempt Protocol flow — the rebuilt Repairability
+// screen. Gate question (warranted/authorized), assessed systems, roof type,
+// and the RAP record at the top level. Partial protocol runs are savable so
+// field answers are never lost; server validation enforces internal
+// consistency only. Stored rows may be v1 (legacy free-text), v2 (question
+// flow), or v3 — readers must tolerate all three shapes.
+export type RepairabilityWarranted = 'yes' | 'not_warranted_discontinued' | 'not_authorized';
+
+export interface RepairabilityAssessmentV3 {
+  version: 3;
+  warranted: RepairabilityWarranted;
+  /** Empty unless warranted === 'yes'. */
+  systems: Array<'roof' | 'siding'>;
+  roofType?: 'asphalt_shingle' | null;
+  /** Present when the asphalt-shingle roof protocol was run. */
+  rap?: RepairAttemptProtocol | null;
+  assessorName?: string | null; // server-populated
+  assessorCredentials?: string | null; // server-populated
+  recordedAtUtc: string;
+}
+
+/** Any currently-writable stored shape (legacy v1 rows also still exist). */
+export type StoredRepairabilityAssessment = RepairabilityAssessment | RepairabilityAssessmentV3;
 
 // REPORT_DATA v2 — pre-existing / non-storm conditions the inspector
 // explicitly EXCLUDES from the claim. A credibility asset, not a concession.
@@ -622,7 +650,7 @@ export const inspectionsTable = pgTable('inspections', {
   // REPORT_DATA v2 capture blocks — all nullable; null means "not captured"
   // and the corresponding report section omits.
   propertyProfile: jsonb('property_profile').$type<PropertyProfile | null>(),
-  repairabilityAssessment: jsonb('repairability_assessment').$type<RepairabilityAssessment | null>(),
+  repairabilityAssessment: jsonb('repairability_assessment').$type<StoredRepairabilityAssessment | null>(),
   existingOrUnrelatedConditions: jsonb('existing_or_unrelated_conditions').$type<
     ExistingCondition[] | null
   >(),

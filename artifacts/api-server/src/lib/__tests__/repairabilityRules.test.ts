@@ -395,3 +395,146 @@ describe('validateRepairabilityAssessment — system isolation', () => {
     expect(validateRepairabilityAssessment(assessment(validRoofFlow()))).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// v3 — Repair Attempt Protocol flow. Internal consistency only; partial runs
+// must be savable so field answers are never lost.
+// ---------------------------------------------------------------------------
+
+import type { RepairabilityAssessmentV3, RepairAttemptProtocol } from '@workspace/db';
+import { validateRepairabilityAssessmentV3 } from '../repairabilityRules';
+
+const v3 = (overrides: Partial<RepairabilityAssessmentV3> = {}): RepairabilityAssessmentV3 => ({
+  version: 3,
+  warranted: 'yes',
+  systems: ['roof'],
+  roofType: 'asphalt_shingle',
+  rap: null,
+  recordedAtUtc: '2026-07-28T00:00:00Z',
+  ...overrides,
+});
+
+const rapV3 = (overrides: Partial<RepairAttemptProtocol> = {}): RepairAttemptProtocol => ({
+  manipulatedCount: 8,
+  rap1PhotoId: 'ph-rap1',
+  matTransfer: { shingle1: 'no', shingle2: 'no' },
+  damage: {},
+  ...overrides,
+});
+
+describe('validateRepairabilityAssessmentV3', () => {
+  it('accepts a not-warranted assessment with nothing else recorded', () => {
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({ warranted: 'not_warranted_discontinued', systems: [], roofType: null, rap: null }),
+      ),
+    ).toEqual([]);
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({ warranted: 'not_authorized', systems: [], roofType: null, rap: null }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects systems/roofType/rap when the assessment is not warranted', () => {
+    const errors = validateRepairabilityAssessmentV3(
+      v3({ warranted: 'not_authorized', rap: rapV3() }),
+    );
+    expect(errors.join(' ')).toContain('warranted and authorized');
+  });
+
+  it('requires at least one system when warranted', () => {
+    const errors = validateRepairabilityAssessmentV3(v3({ systems: [], roofType: null }));
+    expect(errors.join(' ')).toContain('At least one system');
+  });
+
+  it('rejects a rap without an asphalt-shingle roof', () => {
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({ systems: ['siding'], roofType: null, rap: rapV3() }),
+      ).join(' '),
+    ).toContain('asphalt-shingle');
+    expect(
+      validateRepairabilityAssessmentV3(v3({ roofType: null, rap: rapV3() })).join(' '),
+    ).toContain('asphalt-shingle');
+  });
+
+  it('accepts a partial rap — unanswered questions are legal', () => {
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          rap: rapV3({
+            manipulatedCount: null,
+            rap1PhotoId: null,
+            matTransfer: { shingle1: null, shingle2: null },
+            damage: { delamination: { answer: 'yes', shingles: [3] } },
+          }),
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects a Yes damage finding without affected shingles, and a No finding with them', () => {
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({ rap: rapV3({ damage: { creasing: { answer: 'yes', shingles: [] } } }) }),
+      ).join(' '),
+    ).toContain('at least one affected shingle');
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({ rap: rapV3({ damage: { creasing: { answer: 'no', shingles: [3] } } }) }),
+      ).join(' '),
+    ).toContain('cannot carry affected shingles');
+  });
+
+  it('bounds affected shingles to 3..manipulatedCount', () => {
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          rap: rapV3({
+            manipulatedCount: 6,
+            damage: { puncture: { answer: 'yes', shingles: [7] } },
+          }),
+        }),
+      ).join(' '),
+    ).toContain('between 3 and 6');
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          rap: rapV3({
+            manipulatedCount: 6,
+            damage: { puncture: { answer: 'yes', shingles: [3, 6] } },
+          }),
+        }),
+      ),
+    ).toEqual([]);
+    // Unanswered count falls back to the widest bound (8).
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          rap: rapV3({
+            manipulatedCount: null,
+            damage: { puncture: { answer: 'yes', shingles: [8] } },
+          }),
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects unknown damage categories and duplicate shingles', () => {
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          rap: rapV3({
+            damage: { bogus: { answer: 'yes', shingles: [3] } } as never,
+          }),
+        }),
+      ).join(' '),
+    ).toContain('unknown damage category');
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({ rap: rapV3({ damage: { reseat: { answer: 'yes', shingles: [3, 3] } } }) }),
+      ).join(' '),
+    ).toContain('unique');
+  });
+});

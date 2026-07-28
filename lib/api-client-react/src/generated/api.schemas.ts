@@ -1327,20 +1327,105 @@ export interface PropertyProfile {
   recordedAtUtc: string;
 }
 
-export type RepairabilityAssessmentInputVersion = typeof RepairabilityAssessmentInputVersion[keyof typeof RepairabilityAssessmentInputVersion];
+export type RepairabilityAssessmentV2InputVersion = typeof RepairabilityAssessmentV2InputVersion[keyof typeof RepairabilityAssessmentV2InputVersion];
 
 
-export const RepairabilityAssessmentInputVersion = {
+export const RepairabilityAssessmentV2InputVersion = {
   NUMBER_2: 2,
 } as const;
 
-export type RepairabilityAssessmentInputSystemsItem = typeof RepairabilityAssessmentInputSystemsItem[keyof typeof RepairabilityAssessmentInputSystemsItem];
+export type RepairabilityAssessmentV2InputSystemsItem = typeof RepairabilityAssessmentV2InputSystemsItem[keyof typeof RepairabilityAssessmentV2InputSystemsItem];
 
 
-export const RepairabilityAssessmentInputSystemsItem = {
+export const RepairabilityAssessmentV2InputSystemsItem = {
   roof: 'roof',
   siding: 'siding',
 } as const;
+
+/**
+ * How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.
+ */
+export type RepairAttemptProtocolManipulatedCount = typeof RepairAttemptProtocolManipulatedCount[keyof typeof RepairAttemptProtocolManipulatedCount] | null;
+
+
+export const RepairAttemptProtocolManipulatedCount = {
+  NUMBER_6: 6,
+  NUMBER_7: 7,
+  NUMBER_8: 8,
+} as const;
+
+/**
+ * @nullable
+ */
+export type RepairAttemptProtocolMatTransferShingle1 = typeof RepairAttemptProtocolMatTransferShingle1[keyof typeof RepairAttemptProtocolMatTransferShingle1] | null;
+
+
+export const RepairAttemptProtocolMatTransferShingle1 = {
+  yes: 'yes',
+  no: 'no',
+} as const;
+
+/**
+ * @nullable
+ */
+export type RepairAttemptProtocolMatTransferShingle2 = typeof RepairAttemptProtocolMatTransferShingle2[keyof typeof RepairAttemptProtocolMatTransferShingle2] | null;
+
+
+export const RepairAttemptProtocolMatTransferShingle2 = {
+  yes: 'yes',
+  no: 'no',
+} as const;
+
+export type RapDamageFindingAnswer = typeof RapDamageFindingAnswer[keyof typeof RapDamageFindingAnswer];
+
+
+export const RapDamageFindingAnswer = {
+  yes: 'yes',
+  no: 'no',
+} as const;
+
+/**
+ * One collateral-damage question's finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).
+ */
+export interface RapDamageFinding {
+  answer: RapDamageFindingAnswer;
+  shingles: number[];
+  /** @nullable */
+  photoId?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+export type RepairAttemptProtocolMatTransfer = {
+  /** @nullable */
+  shingle1: RepairAttemptProtocolMatTransferShingle1;
+  /** @nullable */
+  shingle2: RepairAttemptProtocolMatTransferShingle2;
+};
+
+/**
+ * Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.
+ */
+export type RepairAttemptProtocolDamage = {
+  delamination?: RapDamageFinding;
+  creasing?: RapDamageFinding;
+  nailZone?: RapDamageFinding;
+  puncture?: RapDamageFinding;
+  reseat?: RapDamageFinding;
+};
+
+/**
+ * Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle "X" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.
+ */
+export interface RepairAttemptProtocol {
+  /** How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count. */
+  manipulatedCount?: RepairAttemptProtocolManipulatedCount;
+  /** @nullable */
+  rap1PhotoId?: string | null;
+  matTransfer: RepairAttemptProtocolMatTransfer;
+  /** Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered. */
+  damage: RepairAttemptProtocolDamage;
+}
 
 /**
  * Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.
@@ -1386,6 +1471,8 @@ export type RepairabilitySystemFlowAnswers = {[key: string]: string | string[]};
  * One system's (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx / SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output "full replacement required".
  */
 export interface RepairabilitySystemFlow {
+  /** Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records. */
+  rap?: RepairAttemptProtocol | null;
   /**
      * Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.
      * @nullable
@@ -1407,21 +1494,78 @@ export interface RepairabilitySystemFlow {
 /**
  * Client-sent repairability assessment (v2 question flow). assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system's evidence never populates the other's determination.
  */
-export interface RepairabilityAssessmentInput {
-  version: RepairabilityAssessmentInputVersion;
+export interface RepairabilityAssessmentV2Input {
+  version: RepairabilityAssessmentV2InputVersion;
   /** @minItems 1 */
-  systems: RepairabilityAssessmentInputSystemsItem[];
+  systems: RepairabilityAssessmentV2InputSystemsItem[];
   roof?: RepairabilitySystemFlow | null;
   siding?: RepairabilitySystemFlow | null;
   recordedAtUtc: string;
 }
 
-export type RepairabilityAssessment = RepairabilityAssessmentInput & ({
+export type RepairabilityAssessmentV2 = RepairabilityAssessmentV2Input & ({
   /** @nullable */
   assessorName?: string | null;
   /** @nullable */
   assessorCredentials?: string | null;
 });
+
+export type RepairabilityAssessmentV3InputVersion = typeof RepairabilityAssessmentV3InputVersion[keyof typeof RepairabilityAssessmentV3InputVersion];
+
+
+export const RepairabilityAssessmentV3InputVersion = {
+  NUMBER_3: 3,
+} as const;
+
+export type RepairabilityAssessmentV3InputWarranted = typeof RepairabilityAssessmentV3InputWarranted[keyof typeof RepairabilityAssessmentV3InputWarranted];
+
+
+export const RepairabilityAssessmentV3InputWarranted = {
+  yes: 'yes',
+  not_warranted_discontinued: 'not_warranted_discontinued',
+  not_authorized: 'not_authorized',
+} as const;
+
+export type RepairabilityAssessmentV3InputSystemsItem = typeof RepairabilityAssessmentV3InputSystemsItem[keyof typeof RepairabilityAssessmentV3InputSystemsItem];
+
+
+export const RepairabilityAssessmentV3InputSystemsItem = {
+  roof: 'roof',
+  siding: 'siding',
+} as const;
+
+/**
+ * @nullable
+ */
+export type RepairabilityAssessmentV3InputRoofType = typeof RepairabilityAssessmentV3InputRoofType[keyof typeof RepairabilityAssessmentV3InputRoofType] | null;
+
+
+export const RepairabilityAssessmentV3InputRoofType = {
+  asphalt_shingle: 'asphalt_shingle',
+} as const;
+
+/**
+ * Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile.
+ */
+export interface RepairabilityAssessmentV3Input {
+  version: RepairabilityAssessmentV3InputVersion;
+  warranted: RepairabilityAssessmentV3InputWarranted;
+  /** Systems the repairability assessment covers. Must be empty unless warranted is "yes". */
+  systems: RepairabilityAssessmentV3InputSystemsItem[];
+  /** @nullable */
+  roofType?: RepairabilityAssessmentV3InputRoofType;
+  rap?: RepairAttemptProtocol | null;
+  recordedAtUtc: string;
+}
+
+export type RepairabilityAssessmentV3 = RepairabilityAssessmentV3Input & ({
+  /** @nullable */
+  assessorName?: string | null;
+  /** @nullable */
+  assessorCredentials?: string | null;
+});
+
+export type RepairabilityAssessment = RepairabilityAssessmentV2 | RepairabilityAssessmentV3;
 
 /**
  * A pre-existing / non-storm condition explicitly excluded from the claim.
@@ -1740,6 +1884,8 @@ export interface CreateInspectionInput {
   /** Phase 1 damage surface — interior (explicit claim-scope decision). */
   interiorDamageFound?: boolean;
 }
+
+export type RepairabilityAssessmentInput = RepairabilityAssessmentV2Input | RepairabilityAssessmentV3Input;
 
 export interface UpdateInspectionInput {
   status?: InspectionStatus;

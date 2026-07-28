@@ -3,10 +3,10 @@ name: RAP scorecard mirror
 description: Repair Attempt Protocol scorecard math exists in two places (mobile screen + api-server lib) and must stay in lockstep.
 ---
 
-The Repair Attempt Protocol scorecard math (manipulated shingles = 9, unique collateral set across mat-transfer 1–2 + damage categories over shingles 3–8, per-category counts) is duplicated:
+The Repair Attempt Protocol scorecard math (manipulated shingles = explicit `manipulatedCount` 6/7/8 when answered, legacy fallback 9; unique collateral set across mat-transfer 1–2 + damage categories over shingles 3–8, per-category counts) is duplicated:
 
 - mobile: the repairability screen computes it live for the rep
-- api-server: `src/lib/rapScorecard.ts` recomputes it from the stored `repairabilityAssessment.roof.rap` jsonb for reports and AI briefs
+- api-server: `src/lib/rapScorecard.ts` recomputes it from the stored jsonb for reports and AI briefs. `extractRap` must handle both storage locations: v2 keeps the RAP at `roof.rap`, v3 keeps it top-level at `rap` (repairability jsonb is now v1|v2|v3; v3 = warranted gate + systems + roofType + rap)
 
 **Why:** the report must show exactly the counts the rep saw; there is no shared package between the Expo app and the server for this today.
 

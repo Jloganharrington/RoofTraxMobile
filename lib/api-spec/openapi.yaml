@@ -4530,6 +4530,74 @@ components:
           type: [string, "null"]
         recordedAtUtc:
           type: string
+    RapDamageFinding:
+      type: object
+      description: >-
+        One collateral-damage question's finding in the Repair Attempt
+        Protocol. `shingles` are the affected shingle numbers (3-8, within
+        the manipulated count); `photoId` references the one example
+        inspection_photos row for this category (never a URL).
+      required: [answer, shingles]
+      properties:
+        answer:
+          type: string
+          enum: [yes, no]
+        shingles:
+          type: array
+          items:
+            type: number
+        photoId:
+          type: [string, "null"]
+        note:
+          type: [string, "null"]
+    RepairAttemptProtocol:
+      type: object
+      description: >-
+        Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only.
+        Shingle "X" is pulled, shingles 1-8 around it are manipulated, mat
+        transfer is checked on 1-2, and five collateral-damage questions
+        cover shingles 3-8. Photo fields reference inspection_photos row ids
+        (client-generated for offline idempotency), never URLs.
+      required: [matTransfer, damage]
+      properties:
+        manipulatedCount:
+          description: >-
+            How many shingles required manipulation to complete the protocol
+            (6, 7, or 8). Null while unanswered; legacy records without it
+            render the historical fixed count.
+          oneOf:
+            - type: number
+              enum: [6, 7, 8]
+            - type: "null"
+        rap1PhotoId:
+          type: [string, "null"]
+        matTransfer:
+          type: object
+          required: [shingle1, shingle2]
+          properties:
+            shingle1:
+              type: [string, "null"]
+              enum: [yes, no, null]
+            shingle2:
+              type: [string, "null"]
+              enum: [yes, no, null]
+        damage:
+          type: object
+          description: >-
+            Collateral-damage findings keyed by category (delamination,
+            creasing, nailZone, puncture, reseat). Missing keys mean the
+            question is unanswered.
+          properties:
+            delamination:
+              $ref: "#/components/schemas/RapDamageFinding"
+            creasing:
+              $ref: "#/components/schemas/RapDamageFinding"
+            nailZone:
+              $ref: "#/components/schemas/RapDamageFinding"
+            puncture:
+              $ref: "#/components/schemas/RapDamageFinding"
+            reseat:
+              $ref: "#/components/schemas/RapDamageFinding"
     RepairabilitySystemFlow:
       type: object
       description: >-
@@ -4540,6 +4608,14 @@ components:
         can never output "full replacement required".
       required: [answers, determination, basisFactors, nextStep]
       properties:
+        rap:
+          description: >-
+            Asphalt-shingle roof flows only: the Repair Attempt Protocol
+            record. Absent on siding flows, non-asphalt roof flows, and
+            pre-RAP records.
+          oneOf:
+            - $ref: "#/components/schemas/RepairAttemptProtocol"
+            - type: "null"
         roofMaterial:
           type: [string, "null"]
           enum: [asphalt_shingle, cedar_shake, standing_seam_metal, null]
@@ -4597,7 +4673,7 @@ components:
             type: string
         notes:
           type: [string, "null"]
-    RepairabilityAssessmentInput:
+    RepairabilityAssessmentV2Input:
       type: object
       description: >-
         Client-sent repairability assessment (v2 question flow).
@@ -4627,15 +4703,67 @@ components:
             - type: "null"
         recordedAtUtc:
           type: string
-    RepairabilityAssessment:
+    RepairabilityAssessmentV3Input:
+      type: object
+      description: >-
+        Client-sent repairability assessment (v3 — Repair Attempt Protocol
+        flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed
+        systems, roof type, and the RAP record. Partial protocol runs are
+        savable — internal consistency is validated server-side, but
+        unanswered questions are legal so field answers are never lost.
+        assessorName/assessorCredentials are IGNORED if sent — the server
+        populates them from the inspector's profile.
+      required: [version, warranted, systems, recordedAtUtc]
+      properties:
+        version:
+          type: number
+          enum: [3]
+        warranted:
+          type: string
+          enum: [yes, not_warranted_discontinued, not_authorized]
+        systems:
+          description: >-
+            Systems the repairability assessment covers. Must be empty unless
+            warranted is "yes".
+          type: array
+          items:
+            type: string
+            enum: [roof, siding]
+        roofType:
+          type: [string, "null"]
+          enum: [asphalt_shingle, null]
+        rap:
+          oneOf:
+            - $ref: "#/components/schemas/RepairAttemptProtocol"
+            - type: "null"
+        recordedAtUtc:
+          type: string
+    RepairabilityAssessmentInput:
+      oneOf:
+        - $ref: "#/components/schemas/RepairabilityAssessmentV2Input"
+        - $ref: "#/components/schemas/RepairabilityAssessmentV3Input"
+    RepairabilityAssessmentV2:
       allOf:
-        - $ref: "#/components/schemas/RepairabilityAssessmentInput"
+        - $ref: "#/components/schemas/RepairabilityAssessmentV2Input"
         - type: object
           properties:
             assessorName:
               type: [string, "null"]
             assessorCredentials:
               type: [string, "null"]
+    RepairabilityAssessmentV3:
+      allOf:
+        - $ref: "#/components/schemas/RepairabilityAssessmentV3Input"
+        - type: object
+          properties:
+            assessorName:
+              type: [string, "null"]
+            assessorCredentials:
+              type: [string, "null"]
+    RepairabilityAssessment:
+      oneOf:
+        - $ref: "#/components/schemas/RepairabilityAssessmentV2"
+        - $ref: "#/components/schemas/RepairabilityAssessmentV3"
     ExistingCondition:
       type: object
       description: >-

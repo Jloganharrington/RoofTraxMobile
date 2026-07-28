@@ -80,6 +80,8 @@ import {
 import type {
   Role,
   RepairabilityAssessment,
+  RepairabilityAssessmentV3,
+  StoredRepairabilityAssessment,
   EvidenceLink,
   InspectionEstimate,
 } from '@workspace/db';
@@ -89,7 +91,12 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
-import { DETERMINATION_LABELS, validateRepairabilityAssessment } from '../lib/repairabilityRules';
+import {
+  DETERMINATION_LABELS,
+  RAP_WARRANTED_LABELS,
+  validateRepairabilityAssessment,
+  validateRepairabilityAssessmentV3,
+} from '../lib/repairabilityRules';
 import {
   buildRapReportSection,
   computeRapScorecard,
@@ -426,12 +433,45 @@ async function hydrateInspectionChildren(
   };
 }
 
-// Stored repairabilityAssessment jsonb may predate the v2 question-flow
-// schema. API response schemas are v2-only, so surface legacy rows as null
+// Stored repairabilityAssessment jsonb may predate the v2/v3 schemas. API
+// response schemas accept v2 and v3 only, so surface legacy rows as null
 // rather than failing the whole response parse; report compiles read the
 // raw DB row and keep their own legacy fallback rendering.
 function apiSafeRepairability(ra: unknown): unknown {
-  return ra && typeof ra === 'object' && (ra as { version?: number }).version === 2 ? ra : null;
+  if (!ra || typeof ra !== 'object') return null;
+  const version = (ra as { version?: number }).version;
+  return version === 2 || version === 3 ? ra : null;
+}
+
+// Assessor identity comes from the inspector's profile at save time — never
+// from the client payload. Shared by the v2 and v3 repairability save paths.
+async function buildAssessorStamp(
+  inspectorUserId: string,
+): Promise<{ assessorName: string | null; assessorCredentials: string | null }> {
+  const [assessor] = await db
+    .select({
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      certifications: userProfilesTable.certifications,
+      yearsExperience: userProfilesTable.yearsExperience,
+    })
+    .from(usersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
+    .where(eq(usersTable.id, inspectorUserId));
+  const certs = (assessor?.certifications ?? []) as Array<{
+    name: string;
+    issuingBody?: string | null;
+  }>;
+  const credentialParts = certs.map((c) =>
+    c.issuingBody ? `${c.name} (${c.issuingBody})` : c.name,
+  );
+  if (assessor?.yearsExperience != null) {
+    credentialParts.push(`${assessor.yearsExperience} years experience`);
+  }
+  return {
+    assessorName: [assessor?.firstName, assessor?.lastName].filter(Boolean).join(' ') || null,
+    assessorCredentials: credentialParts.length > 0 ? credentialParts.join('; ') : null,
+  };
 }
 
 router.get('/inspections', async (req: Request, res: Response) => {
@@ -884,9 +924,60 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
 
   // REPORT_DATA v2 — repairability assessment: assessor identity comes from
   // the inspector's profile, never from the client payload.
-  let repairabilityToStore: RepairabilityAssessment | null | undefined =
-    parsed.data.repairabilityAssessment;
-  if (parsed.data.repairabilityAssessment) {
+  let repairabilityToStore: StoredRepairabilityAssessment | null | undefined =
+    parsed.data.repairabilityAssessment as StoredRepairabilityAssessment | null | undefined;
+  const incomingVersion = parsed.data.repairabilityAssessment
+    ? (parsed.data.repairabilityAssessment as { version?: number }).version
+    : undefined;
+  if (parsed.data.repairabilityAssessment && incomingVersion === 3) {
+    // v3 — Repair Attempt Protocol flow. Internal-consistency validation
+    // (partial runs are savable), plus: every referenced photo id must be a
+    // real inspection_photos row of THIS inspection, so the record can't
+    // point at another tenant's (or a nonexistent) photo. The mobile outbox
+    // enqueues photo creates before the assessment update and drains FIFO,
+    // so by the time this replays the rows exist.
+    const incomingV3 = parsed.data.repairabilityAssessment as unknown as RepairabilityAssessmentV3;
+    const violations = validateRepairabilityAssessmentV3(incomingV3);
+    if (violations.length > 0) {
+      res.status(400).json({
+        error: 'Repairability assessment failed validation',
+        details: violations,
+      });
+      return;
+    }
+    const photoIds = new Set<string>();
+    if (incomingV3.rap?.rap1PhotoId) photoIds.add(incomingV3.rap.rap1PhotoId);
+    for (const finding of Object.values(incomingV3.rap?.damage ?? {})) {
+      if (finding?.photoId) photoIds.add(finding.photoId);
+    }
+    if (photoIds.size > 0) {
+      const rows = await db
+        .select({ id: inspectionPhotosTable.id })
+        .from(inspectionPhotosTable)
+        .where(
+          and(
+            inArray(inspectionPhotosTable.id, [...photoIds]),
+            eq(inspectionPhotosTable.inspectionId, inspectionId),
+            eq(inspectionPhotosTable.companyId, actor.companyId),
+          ),
+        );
+      const found = new Set(rows.map((r) => r.id));
+      const missing = [...photoIds].filter((id) => !found.has(id));
+      if (missing.length > 0) {
+        res.status(400).json({
+          error: 'Repairability assessment failed validation',
+          details: [
+            `Repair Attempt Protocol photo(s) not found on this inspection: ${missing.join(', ')}`,
+          ],
+        });
+        return;
+      }
+    }
+    repairabilityToStore = {
+      ...incomingV3,
+      ...(await buildAssessorStamp(inspection.inspectorUserId)),
+    };
+  } else if (parsed.data.repairabilityAssessment) {
     // Known Product Catalog match (RR-010A): the client sends only the
     // productId — name/photo/width/exposure are snapshotted here from the
     // company's catalog so the stored record can't carry spoofed attributes
@@ -900,7 +991,7 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
         .where(
           and(
             eq(discontinuedProductsTable.id, roofFlowIn.productMatch.productId),
-            eq(discontinuedProductsTable.companyId, req.user.companyId),
+            eq(discontinuedProductsTable.companyId, actor.companyId),
           ),
         );
       if (!product) {
@@ -929,31 +1020,9 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       });
       return;
     }
-    const [assessor] = await db
-      .select({
-        firstName: usersTable.firstName,
-        lastName: usersTable.lastName,
-        certifications: userProfilesTable.certifications,
-        yearsExperience: userProfilesTable.yearsExperience,
-      })
-      .from(usersTable)
-      .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
-      .where(eq(usersTable.id, inspection.inspectorUserId));
-    const certs = (assessor?.certifications ?? []) as Array<{
-      name: string;
-      issuingBody?: string | null;
-    }>;
-    const credentialParts = certs.map((c) =>
-      c.issuingBody ? `${c.name} (${c.issuingBody})` : c.name,
-    );
-    if (assessor?.yearsExperience != null) {
-      credentialParts.push(`${assessor.yearsExperience} years experience`);
-    }
     repairabilityToStore = {
       ...(parsed.data.repairabilityAssessment as unknown as RepairabilityAssessment),
-      assessorName:
-        [assessor?.firstName, assessor?.lastName].filter(Boolean).join(' ') || null,
-      assessorCredentials: credentialParts.length > 0 ? credentialParts.join('; ') : null,
+      ...(await buildAssessorStamp(inspection.inspectorUserId)),
     };
   }
 
@@ -3147,7 +3216,7 @@ function buildInspectionBrief(
     }
   }
 
-  const ra = inspection.repairabilityAssessment as RepairabilityAssessment | null | undefined;
+  const ra = inspection.repairabilityAssessment as StoredRepairabilityAssessment | null | undefined;
   if (ra) {
     lines.push('');
     lines.push('REPAIRABILITY ASSESSMENT:');
@@ -3170,6 +3239,18 @@ function buildInspectionBrief(
           for (const line of rapScorecardBriefLines(computeRapScorecard(rap))) {
             lines.push(`    ${line}`);
           }
+        }
+      }
+    } else if (ra.version === 3) {
+      // v3 — Repair Attempt Protocol flow.
+      const v3 = ra as RepairabilityAssessmentV3;
+      lines.push(`  Warranted/authorized: ${RAP_WARRANTED_LABELS[v3.warranted] ?? v3.warranted}`);
+      if (v3.systems.length > 0) lines.push(`  Assessed on: ${v3.systems.join(', ')}`);
+      if (v3.roofType) lines.push(`  Roof type: ${v3.roofType.replace(/_/g, ' ')}`);
+      const rap = extractRap(ra);
+      if (rap) {
+        for (const line of rapScorecardBriefLines(computeRapScorecard(rap))) {
+          lines.push(`  ${line}`);
         }
       }
     } else {
@@ -3797,7 +3878,7 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   const arr = inspection.arrivalConditions as {
     sky?: string; windCondition?: string; tempF?: number; personnel?: string[];
   } | null;
-  const raRaw = inspection.repairabilityAssessment as RepairabilityAssessment | null;
+  const raRaw = inspection.repairabilityAssessment as StoredRepairabilityAssessment | null;
   const raSummary = raRaw
     ? raRaw.version === 2
       ? (['roof', 'siding'] as const)
@@ -3807,7 +3888,11 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
               `${s}: ${DETERMINATION_LABELS[raRaw[s]!.determination] ?? raRaw[s]!.determination}`,
           )
           .join('; ') || 'Not recorded'
-      : ((raRaw as unknown as { determination?: string }).determination ?? 'Not recorded')
+      : raRaw.version === 3
+        ? raRaw.warranted === 'yes'
+          ? `Repair Attempt Protocol performed (${raRaw.systems.join(', ') || 'no systems'})`
+          : (RAP_WARRANTED_LABELS[raRaw.warranted] ?? raRaw.warranted)
+        : ((raRaw as unknown as { determination?: string }).determination ?? 'Not recorded')
     : null;
   // Server-built RAP scorecard section (null for pre-RAP assessments — the
   // report simply omits it). Photo references are ids, never URLs.

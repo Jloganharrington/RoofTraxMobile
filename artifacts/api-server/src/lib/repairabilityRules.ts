@@ -7,7 +7,13 @@
 // enforces these interactively; this module is the server-side authority so
 // the gate cannot be bypassed by a raw API call.
 
-import type { RepairabilityAssessment, RepairabilitySystemFlow } from '@workspace/db';
+import type {
+  RepairabilityAssessment,
+  RepairabilityAssessmentV3,
+  RepairabilitySystemFlow,
+  RepairAttemptProtocol,
+  RapDamageCategoryKey,
+} from '@workspace/db';
 
 export type RepairabilitySystem = 'roof' | 'siding';
 
@@ -120,6 +126,13 @@ export const METAL_BASIS_FACTORS: Record<string, { label: string; category: Fact
   manufacturer_supports_repair: { label: 'Manufacturer guidance supports repair', category: 'manufacturer' },
   manufacturer_does_not_support_repair: { label: 'Manufacturer guidance does not support repair', category: 'manufacturer' },
   evidence_incomplete: { label: 'Supporting evidence remains incomplete', category: 'incomplete' },
+};
+
+/** v3 gate-question labels — matches the rebuilt mobile screen's options. */
+export const RAP_WARRANTED_LABELS: Record<string, string> = {
+  yes: 'Yes',
+  not_warranted_discontinued: 'Not Warranted - Discontinued',
+  not_authorized: 'Not Authorized',
 };
 
 export const DETERMINATION_LABELS: Record<string, string> = {
@@ -602,6 +615,97 @@ function validateMaterialFlow(cfg: MaterialFlowConfig, flow: RepairabilitySystem
       errors.push(`${label}: a determination is required.`);
   }
 
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// v3 — Repair Attempt Protocol (RAP) flow, 2026-07-28 rebuilt screen.
+// Philosophy differs from v2: partial protocol runs are SAVABLE (a rep must
+// never lose field answers because a question is still open), so validation
+// enforces internal consistency only — never completeness. The scorecard and
+// report render whatever was answered.
+// ---------------------------------------------------------------------------
+
+const RAP_CATEGORY_KEYS: RapDamageCategoryKey[] = [
+  'delamination',
+  'creasing',
+  'nailZone',
+  'puncture',
+  'reseat',
+];
+
+function validateRap(rap: RepairAttemptProtocol): string[] {
+  const errors: string[] = [];
+  const count = rap.manipulatedCount;
+  if (count != null && count !== 6 && count !== 7 && count !== 8) {
+    errors.push('RAP: manipulated-shingle count must be 6, 7, or 8.');
+  }
+  const maxShingle = count ?? 8;
+  const damage = rap.damage ?? {};
+  for (const key of Object.keys(damage)) {
+    if (!RAP_CATEGORY_KEYS.includes(key as RapDamageCategoryKey)) {
+      errors.push(`RAP: unknown damage category "${key}".`);
+      continue;
+    }
+    const finding = damage[key as RapDamageCategoryKey];
+    if (!finding) continue;
+    const shingles = Array.isArray(finding.shingles) ? finding.shingles : [];
+    if (finding.answer === 'yes' && shingles.length === 0) {
+      errors.push(`RAP: ${key} answered Yes requires at least one affected shingle.`);
+    }
+    if (finding.answer === 'no' && shingles.length > 0) {
+      errors.push(`RAP: ${key} answered No cannot carry affected shingles.`);
+    }
+    const invalid = shingles.filter(
+      (s) => !Number.isInteger(s) || s < 3 || s > maxShingle,
+    );
+    if (invalid.length > 0) {
+      errors.push(
+        `RAP: ${key} affected shingles must be between 3 and ${maxShingle} (the manipulated count); got ${invalid.join(', ')}.`,
+      );
+    }
+    if (new Set(shingles).size !== shingles.length) {
+      errors.push(`RAP: ${key} affected shingles must be unique.`);
+    }
+  }
+  return errors;
+}
+
+/**
+ * Validate a v3 (Repair Attempt Protocol) assessment. Returns violations
+ * (empty = valid). Structural gates: the systems selection only exists when
+ * the assessment is warranted and authorized, and a RAP record only exists
+ * for an asphalt-shingle roof.
+ */
+export function validateRepairabilityAssessmentV3(ra: RepairabilityAssessmentV3): string[] {
+  const errors: string[] = [];
+  const systems = Array.isArray(ra.systems) ? ra.systems : [];
+
+  if (ra.warranted !== 'yes') {
+    if (systems.length > 0) {
+      errors.push('Systems can only be assessed when the assessment is warranted and authorized.');
+    }
+    if (ra.roofType) {
+      errors.push('Roof type only applies when the assessment is warranted and authorized.');
+    }
+    if (ra.rap) {
+      errors.push('A Repair Attempt Protocol record only applies when the assessment is warranted and authorized.');
+    }
+    return errors;
+  }
+
+  if (systems.length === 0) {
+    errors.push('At least one system (roof or siding) must be selected when the assessment is warranted.');
+  }
+  if (ra.roofType && !systems.includes('roof')) {
+    errors.push('Roof type only applies when the roof system is selected.');
+  }
+  if (ra.rap) {
+    if (!systems.includes('roof') || ra.roofType !== 'asphalt_shingle') {
+      errors.push('The Repair Attempt Protocol only applies to asphalt-shingle roof assessments.');
+    }
+    errors.push(...validateRap(ra.rap));
+  }
   return errors;
 }
 

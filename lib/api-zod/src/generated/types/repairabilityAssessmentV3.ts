@@ -5,7 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { RepairabilityAssessmentV2Input } from './repairabilityAssessmentV2Input';
 import type { RepairabilityAssessmentV3Input } from './repairabilityAssessmentV3Input';
 
-export type RepairabilityAssessmentInput = RepairabilityAssessmentV2Input | RepairabilityAssessmentV3Input;
+export type RepairabilityAssessmentV3 = RepairabilityAssessmentV3Input & ({
+  /** @nullable */
+  assessorName?: string | null;
+  /** @nullable */
+  assessorCredentials?: string | null;
+});

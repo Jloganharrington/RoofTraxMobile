@@ -11,7 +11,9 @@ import type {
 // the same counts the rep saw in the field. Everything here is defensive:
 // stored jsonb may be legacy v1, v2 without RAP, or partially filled.
 
-/** Shingle "X" plus shingles 1–8 are all handled during the protocol. */
+/** Legacy fallback: shingle "X" plus shingles 1–8 are all handled during the
+ *  protocol. Used only for RAP records that predate the explicit
+ *  manipulated-count question (v3 records carry `manipulatedCount`). */
 export const RAP_MANIPULATED_SHINGLE_COUNT = 9;
 
 export interface RapCategoryDef {
@@ -58,14 +60,18 @@ export interface RapReportSection {
 
 /**
  * Pull the RAP record out of a stored repairabilityAssessment jsonb value.
- * Returns null for legacy v1 records, v2 records without a roof RAP, or
- * anything malformed — callers treat null as "no RAP section".
+ * v2 records carry it inside the roof flow (`roof.rap`); v3 records carry
+ * it at the top level (`rap`). Returns null for legacy v1 records, records
+ * without a RAP, or anything malformed — callers treat null as "no RAP
+ * section".
  */
 export function extractRap(assessment: unknown): RepairAttemptProtocol | null {
   if (!assessment || typeof assessment !== 'object') return null;
-  const ra = assessment as Partial<RepairabilityAssessment> & { version?: number };
-  if (ra.version !== 2) return null;
-  const rap = ra.roof?.rap;
+  const ra = assessment as Partial<RepairabilityAssessment> & {
+    version?: number;
+    rap?: RepairAttemptProtocol | null;
+  };
+  const rap = ra.version === 2 ? ra.roof?.rap : ra.version === 3 ? ra.rap : null;
   if (!rap || typeof rap !== 'object') return null;
   if (!rap.damage || typeof rap.damage !== 'object') return null;
   return rap;
@@ -88,7 +94,9 @@ export function computeRapScorecard(rap: RepairAttemptProtocol): RapScorecard {
   }
   const matTransferCount = (mt.shingle1 === 'yes' ? 1 : 0) + (mt.shingle2 === 'yes' ? 1 : 0);
   return {
-    manipulatedShingles: RAP_MANIPULATED_SHINGLE_COUNT,
+    // v3 records answer the count explicitly (6/7/8); legacy records render
+    // the historical fixed count. Mirrors the mobile screen's scorecard.
+    manipulatedShingles: rap.manipulatedCount ?? RAP_MANIPULATED_SHINGLE_COUNT,
     newCollateralDamagedShingles: collateralSet.size,
     matTransferCount,
     categories: RAP_DAMAGE_CATEGORIES.map((cat) => ({

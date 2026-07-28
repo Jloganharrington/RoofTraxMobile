@@ -1090,10 +1090,50 @@ export const ListInspectionsResponse = zod.object({
   "framingConditionNotes": zod.string().nullish(),
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
-  "repairabilityAssessment": zod.union([zod.object({
+  "repairabilityAssessment": zod.union([zod.union([zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -1111,6 +1151,46 @@ export const ListInspectionsResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -1131,7 +1211,56 @@ export const ListInspectionsResponse = zod.object({
 }).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
-})),zod.null()]).optional(),
+})),zod.object({
+  "version": zod.literal(3),
+  "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
+  "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+}))]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)
@@ -1514,10 +1643,50 @@ export const CreateInspectionResponse = zod.object({
   "framingConditionNotes": zod.string().nullish(),
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
-  "repairabilityAssessment": zod.union([zod.object({
+  "repairabilityAssessment": zod.union([zod.union([zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -1535,6 +1704,46 @@ export const CreateInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -1555,7 +1764,56 @@ export const CreateInspectionResponse = zod.object({
 }).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
-})),zod.null()]).optional(),
+})),zod.object({
+  "version": zod.literal(3),
+  "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
+  "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+}))]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)
@@ -1920,10 +2178,50 @@ export const GetInspectionResponse = zod.object({
   "framingConditionNotes": zod.string().nullish(),
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
-  "repairabilityAssessment": zod.union([zod.object({
+  "repairabilityAssessment": zod.union([zod.union([zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -1941,6 +2239,46 @@ export const GetInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -1961,7 +2299,56 @@ export const GetInspectionResponse = zod.object({
 }).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
-})),zod.null()]).optional(),
+})),zod.object({
+  "version": zod.literal(3),
+  "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
+  "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+}))]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)
@@ -2166,10 +2553,50 @@ export const UpdateInspectionBody = zod.object({
   "framingConditionNotes": zod.string().nullish(),
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
-  "repairabilityAssessment": zod.union([zod.object({
+  "repairabilityAssessment": zod.union([zod.union([zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -2187,6 +2614,46 @@ export const UpdateInspectionBody = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -2204,7 +2671,53 @@ export const UpdateInspectionBody = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
-}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.'),zod.null()]).optional(),
+}).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.'),zod.object({
+  "version": zod.literal(3),
+  "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
+  "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.')]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)
@@ -2474,10 +2987,50 @@ export const UpdateInspectionResponse = zod.object({
   "framingConditionNotes": zod.string().nullish(),
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
-  "repairabilityAssessment": zod.union([zod.object({
+  "repairabilityAssessment": zod.union([zod.union([zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -2495,6 +3048,46 @@ export const UpdateInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -2515,7 +3108,56 @@ export const UpdateInspectionResponse = zod.object({
 }).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
-})),zod.null()]).optional(),
+})),zod.object({
+  "version": zod.literal(3),
+  "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
+  "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+}))]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)
@@ -3565,10 +4207,50 @@ export const SubmitInspectionResponse = zod.object({
   "framingConditionNotes": zod.string().nullish(),
   "recordedAtUtc": zod.string()
 }).describe('REPORT_DATA v2 — field-captured property\/construction description. Only non-derived fields; roofSlopeCount, roofCovering, interiorAreasInspected etc. are derived Brain-side.'),zod.null()]).optional(),
-  "repairabilityAssessment": zod.union([zod.object({
+  "repairabilityAssessment": zod.union([zod.union([zod.object({
   "version": zod.literal(2),
   "systems": zod.array(zod.enum(['roof', 'siding'])).min(1),
   "roof": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -3586,6 +4268,46 @@ export const SubmitInspectionResponse = zod.object({
   "notes": zod.string().nullish()
 }).describe('One system\'s (roof or siding) question-flow record. `answers` is keyed by question id (RR-xxx \/ SR-xxx); radio answers are single value keys, multi-selects are arrays of value keys. The determination is gated server-side by documented basis factors and evidence rules — the app can never output \"full replacement required\".'),zod.null()]).optional(),
   "siding": zod.union([zod.object({
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional().describe('Asphalt-shingle roof flows only: the Repair Attempt Protocol record. Absent on siding flows, non-asphalt roof flows, and pre-RAP records.'),
   "roofMaterial": zod.union([zod.literal('asphalt_shingle'),zod.literal('cedar_shake'),zod.literal('standing_seam_metal'),zod.literal(null)]).nullish().describe('Roof flows only: which roofing-material question flow was completed (asphalt RR-xxx, cedar shake CS-xxx, or standing seam SM-xxx). Legacy roof flows without this field are asphalt.'),
   "productMatch": zod.union([zod.null(),zod.object({
   "productId": zod.string().min(1),
@@ -3606,7 +4328,56 @@ export const SubmitInspectionResponse = zod.object({
 }).describe('Client-sent repairability assessment (v2 question flow). assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile. Must be explicitly performed; never defaulted. Each selected system requires its own completed flow; one system\'s evidence never populates the other\'s determination.').and(zod.object({
   "assessorName": zod.string().nullish(),
   "assessorCredentials": zod.string().nullish()
-})),zod.null()]).optional(),
+})),zod.object({
+  "version": zod.literal(3),
+  "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
+  "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
+  "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "rap": zod.union([zod.object({
+  "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
+  "rap1PhotoId": zod.string().nullish(),
+  "matTransfer": zod.object({
+  "shingle1": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable(),
+  "shingle2": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal(null)]).nullable()
+}),
+  "damage": zod.object({
+  "delamination": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "creasing": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailZone": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "puncture": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "shingles": zod.array(zod.number()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
+}).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "recordedAtUtc": zod.string()
+}).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
+  "assessorName": zod.string().nullish(),
+  "assessorCredentials": zod.string().nullish()
+}))]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
   "location": zod.string().min(1),
   "note": zod.string().min(1)

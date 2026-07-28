@@ -41,11 +41,42 @@ describe('extractRap', () => {
     const r = rap();
     expect(extractRap(v2Assessment(r))).toEqual(r);
   });
+
+  it('returns the top-level rap record from a v3 assessment', () => {
+    const r = rap({ manipulatedCount: 7 });
+    expect(
+      extractRap({
+        version: 3,
+        warranted: 'yes',
+        systems: ['roof'],
+        roofType: 'asphalt_shingle',
+        rap: r,
+        recordedAtUtc: '2026-07-28T00:00:00Z',
+      }),
+    ).toEqual(r);
+  });
+
+  it('returns null for a v3 assessment without a rap', () => {
+    expect(
+      extractRap({
+        version: 3,
+        warranted: 'not_authorized',
+        systems: [],
+        rap: null,
+        recordedAtUtc: '2026-07-28T00:00:00Z',
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('computeRapScorecard (mirrors the mobile screen math)', () => {
-  it('counts 9 manipulated shingles always', () => {
+  it('counts 9 manipulated shingles for legacy records without a manipulatedCount', () => {
     expect(computeRapScorecard(rap()).manipulatedShingles).toBe(9);
+  });
+
+  it('uses the explicit manipulatedCount when answered (v3)', () => {
+    expect(computeRapScorecard(rap({ manipulatedCount: 6 })).manipulatedShingles).toBe(6);
+    expect(computeRapScorecard(rap({ manipulatedCount: 8 })).manipulatedShingles).toBe(8);
   });
 
   it('counts unique collateral shingles once across mat transfer and damage categories', () => {

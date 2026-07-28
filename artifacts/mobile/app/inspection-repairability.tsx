@@ -10,29 +10,38 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import * as Crypto from 'expo-crypto';
+import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { getApiBaseUrl } from '@/lib/api';
 import {
   captureEvidencePhoto,
   CameraPermissionDeniedError,
+  persistCapturedPhotoForOutbox,
   type CapturedEvidencePhoto,
 } from '@/lib/inspectionPhoto';
+import { appendOptimisticPhotos, patchInspection } from '@/lib/inspectionSync';
+import { drainOutbox } from '@/lib/outbox/drain';
+import { enqueueOutboxItem } from '@/lib/outbox/queue';
+import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 import { useGetInspection, getGetInspectionQueryKey } from '@workspace/api-client-react';
 
 // ---------------------------------------------------------------------------
-// Repairability screen — rebuilt question set (in progress).
+// Repairability screen — Repair Attempt Protocol (v3 assessment).
 //
-// Current flow: warranted/authorized gate → systems → roof type (asphalt
-// shingle only for now) → Repair Attempt Protocol (RAP): marking
-// instructions, RAP1 photo, pull procedure, mat-transfer checks on shingles
-// 1–2, collateral-damage questions 1–5 over shingles 3–8, and a live
-// scorecard of unique newly damaged shingles.
+// Flow: warranted/authorized gate → systems → roof type (asphalt shingle
+// only for now) → Repair Attempt Protocol (RAP): marking instructions, RAP1
+// photo, pull procedure, mat-transfer checks on shingles 1–2,
+// collateral-damage questions 1–5 over shingles 3–8, and a live scorecard of
+// unique newly damaged shingles.
 //
-// Saving is still disabled: the API server enforces the OLD flow rules, so a
-// record in this new shape would be rejected. Photos are captured locally
-// only. Server validation (repairabilityRules.ts) and previously saved
-// assessments are intentionally untouched.
+// Saving is offline-first: new photos are persisted locally and queued in
+// the outbox (client-generated ids for idempotency) BEFORE the assessment
+// update is queued, so the FIFO drain lands the photo rows first and the
+// server's photo-id verification passes. Reopening the screen rehydrates
+// the saved v3 record; saved photos render from the record's photo rows.
 // ---------------------------------------------------------------------------
 
 type YesNo = 'yes' | 'no';
@@ -81,17 +90,27 @@ const DAMAGE_QUESTIONS: DamageQuestionDef[] = [
   },
 ];
 
+/** A protocol photo slot: a fresh local capture (pending upload) and/or the
+ * saved inspection_photos row id from a previous save. A new capture
+ * replaces the saved id on save. */
+interface PhotoSlot {
+  local: CapturedEvidencePhoto | null;
+  photoId: string | null;
+}
+
+const emptyPhotoSlot = (): PhotoSlot => ({ local: null, photoId: null });
+
 interface DamageAnswer {
   answer: YesNo | null;
   shingles: ShingleNum[];
-  photo: CapturedEvidencePhoto | null;
+  photo: PhotoSlot;
   note: string;
 }
 
 const emptyDamageAnswer = (): DamageAnswer => ({
   answer: null,
   shingles: [],
-  photo: null,
+  photo: emptyPhotoSlot(),
   note: '',
 });
 
@@ -139,7 +158,7 @@ export default function InspectionRepairabilityScreen() {
   // Repairability Assessment Protocol state — asphalt shingle.
   // Supplies the "Manipulated shingles" scorecard count.
   const [manipulatedCount, setManipulatedCount] = React.useState<6 | 7 | 8 | null>(null);
-  const [rap1Photo, setRap1Photo] = React.useState<CapturedEvidencePhoto | null>(null);
+  const [rap1Photo, setRap1Photo] = React.useState<PhotoSlot>(emptyPhotoSlot());
   const [matTransfer, setMatTransfer] = React.useState<{ 1: YesNo | null; 2: YesNo | null }>({
     1: null,
     2: null,
@@ -148,6 +167,8 @@ export default function InspectionRepairabilityScreen() {
     Object.fromEntries(DAMAGE_QUESTIONS.map((q) => [q.key, emptyDamageAnswer()])),
   );
   const [capturing, setCapturing] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const queryClient = useQueryClient();
 
   // xA follow-ups only offer the shingles that were actually manipulated:
   // 3 through the answered manipulation count (e.g. 7 chosen → no 8).
@@ -172,11 +193,60 @@ export default function InspectionRepairabilityScreen() {
     });
   }, [manipulatedCount]);
 
-  // Existing record: show its systems selection.
+  // Existing record: rehydrate every answer so reopening never loses work.
   React.useEffect(() => {
     if (existing && !hydrated) {
-      const ex = existing as unknown as { version?: number; systems?: Array<'roof' | 'siding'> };
-      if (ex.version === 2) setSystems(ex.systems ?? []);
+      const ex = existing as unknown as {
+        version?: number;
+        systems?: Array<'roof' | 'siding'>;
+        warranted?: 'yes' | 'not_warranted_discontinued' | 'not_authorized';
+        roofType?: 'asphalt_shingle' | null;
+        rap?: {
+          manipulatedCount?: 6 | 7 | 8 | null;
+          rap1PhotoId?: string | null;
+          matTransfer?: { shingle1?: YesNo | null; shingle2?: YesNo | null };
+          damage?: Record<
+            string,
+            { answer?: YesNo; shingles?: number[]; photoId?: string | null; note?: string | null }
+          >;
+        } | null;
+      };
+      if (ex.version === 3) {
+        setWarranted(ex.warranted ?? null);
+        setSystems(ex.systems ?? []);
+        setRoofType(ex.roofType ?? null);
+        const rap = ex.rap;
+        if (rap) {
+          setManipulatedCount(rap.manipulatedCount ?? null);
+          setRap1Photo({ local: null, photoId: rap.rap1PhotoId ?? null });
+          setMatTransfer({
+            1: rap.matTransfer?.shingle1 ?? null,
+            2: rap.matTransfer?.shingle2 ?? null,
+          });
+          setDamage(
+            Object.fromEntries(
+              DAMAGE_QUESTIONS.map((q) => {
+                const f = rap.damage?.[q.key];
+                return [
+                  q.key,
+                  f
+                    ? {
+                        answer: f.answer ?? null,
+                        shingles: (f.shingles ?? []).filter(
+                          (s): s is ShingleNum => s >= 3 && s <= 8,
+                        ),
+                        photo: { local: null, photoId: f.photoId ?? null },
+                        note: f.note ?? '',
+                      }
+                    : emptyDamageAnswer(),
+                ];
+              }),
+            ),
+          );
+        }
+      } else if (ex.version === 2) {
+        setSystems(ex.systems ?? []);
+      }
       setHydrated(true);
     }
   }, [existing, hydrated]);
@@ -192,6 +262,22 @@ export default function InspectionRepairabilityScreen() {
     if ((inspection.sidingFacets ?? []).some((f) => f.damaged)) auto.push('siding');
     if (auto.length > 0) setSystems(auto);
   }, [inspection, existing]);
+
+  // Saved photos render from the record's photo rows (object-storage paths
+  // are relative and served through the API's storage proxy).
+  const photoUrlById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    const apiBase = getApiBaseUrl().replace(/\/+$/, '');
+    for (const p of inspection?.photos ?? []) {
+      const url = (p as { url?: string | null }).url;
+      if (!url) continue;
+      map.set(p.id, url.startsWith('/objects/') ? `${apiBase}/storage${url}` : url);
+    }
+    return map;
+  }, [inspection?.photos]);
+
+  const slotUri = (slot: PhotoSlot): string | null =>
+    slot.local?.localUri ?? (slot.photoId ? (photoUrlById.get(slot.photoId) ?? null) : null);
 
   const takePhoto = async (slot: string, assign: (p: CapturedEvidencePhoto) => void) => {
     if (capturing) return;
@@ -272,31 +358,163 @@ export default function InspectionRepairabilityScreen() {
 
   const renderPhotoButton = (
     slot: string,
-    photo: CapturedEvidencePhoto | null,
+    photo: PhotoSlot,
     assign: (p: CapturedEvidencePhoto) => void,
     label: string,
-  ) => (
-    <View style={styles.photoRow}>
-      {photo ? (
-        <Image source={{ uri: photo.localUri }} style={styles.photoThumb} />
-      ) : null}
-      <Pressable
-        onPress={() => takePhoto(slot, assign)}
-        style={[styles.photoBtn, { borderColor: colors.primary, backgroundColor: colors.card }]}
-      >
-        {capturing === slot ? (
-          <ActivityIndicator color={colors.primary} size="small" />
-        ) : (
-          <Icon name="camera" size={18} color={colors.primary} />
-        )}
-        <Text style={{ color: colors.primary, fontWeight: '700' }}>
-          {photo ? 'Retake' : label}
-        </Text>
-      </Pressable>
-    </View>
-  );
+  ) => {
+    const uri = slotUri(photo);
+    return (
+      <View style={styles.photoRow}>
+        {uri ? <Image source={{ uri }} style={styles.photoThumb} /> : null}
+        <Pressable
+          onPress={() => takePhoto(slot, assign)}
+          style={[styles.photoBtn, { borderColor: colors.primary, backgroundColor: colors.card }]}
+        >
+          {capturing === slot ? (
+            <ActivityIndicator color={colors.primary} size="small" />
+          ) : (
+            <Icon name="camera" size={18} color={colors.primary} />
+          )}
+          <Text style={{ color: colors.primary, fontWeight: '700' }}>
+            {uri ? 'Retake' : label}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
 
   const showRap = warranted === 'yes' && systems.includes('roof') && roofType === 'asphalt_shingle';
+
+  // Save gating: the gate question is always required; a warranted
+  // assessment needs at least one system, and a roof selection needs its
+  // type. Partial RAP answers are savable by design (never lose field work).
+  const canSave =
+    warranted != null &&
+    (warranted !== 'yes' || (systems.length > 0 && (!systems.includes('roof') || roofType != null)));
+
+  // Persist + queue one locally captured protocol photo, mirroring the
+  // preliminary-photos path: durable local copy, client-generated id, outbox
+  // enqueue, optimistic cache row. RAP photos are generic inspection photos
+  // (no stage/roles) — the assessment references them by id.
+  const queueProtocolPhoto = async (shot: CapturedEvidencePhoto): Promise<string> => {
+    const persisted = await persistCapturedPhotoForOutbox(shot);
+    const photoId = Crypto.randomUUID();
+    const payload: InspectionPhotoOutboxPayload = {
+      id: photoId,
+      inspectionId: id,
+      subjectType: 'inspection',
+      subjectId: null,
+      stage: null,
+      triadRole: null,
+      preliminaryRole: null,
+      localFilePath: persisted.localFilePath,
+      mimeType: shot.mimeType,
+      sha256: persisted.sha256,
+      exifJson: persisted.exifJson,
+      overlayJson: persisted.overlayJson,
+      capturedAtUtc: persisted.capturedAtUtc,
+      latitude: persisted.latitude,
+      longitude: persisted.longitude,
+    };
+    await enqueueOutboxItem('inspection.photo', payload);
+    appendOptimisticPhotos(queryClient, id, [
+      {
+        id: photoId,
+        subjectType: 'inspection',
+        subjectId: null,
+        stage: null,
+        triadRole: null,
+        preliminaryRole: null,
+        sha256: persisted.sha256,
+      },
+    ]);
+    return photoId;
+  };
+
+  const handleSave = async () => {
+    if (!canSave || saving || !warranted) return;
+    setSaving(true);
+    try {
+      const rapIncluded = showRap;
+
+      // 1) Queue any NEW local captures first — the outbox drains FIFO, so
+      //    the photo rows exist before the assessment update replays and the
+      //    server verifies the referenced ids.
+      let rap1PhotoId = rap1Photo.photoId;
+      const damagePhotoIds: Record<string, string | null> = {};
+      if (rapIncluded) {
+        if (rap1Photo.local) {
+          rap1PhotoId = await queueProtocolPhoto(rap1Photo.local);
+          setRap1Photo({ local: null, photoId: rap1PhotoId });
+        }
+        for (const q of DAMAGE_QUESTIONS) {
+          const a = damage[q.key];
+          if (a.answer === 'yes' && a.photo.local) {
+            const pid = await queueProtocolPhoto(a.photo.local);
+            damagePhotoIds[q.key] = pid;
+            setDamage((d) => ({
+              ...d,
+              [q.key]: { ...d[q.key], photo: { local: null, photoId: pid } },
+            }));
+          } else {
+            damagePhotoIds[q.key] = a.photo.photoId;
+          }
+        }
+      }
+
+      // 2) Queue the assessment itself (v3 shape). Assessor identity is
+      //    stamped server-side from the inspector's profile.
+      const assessment =
+        warranted === 'yes'
+          ? {
+              version: 3 as const,
+              warranted,
+              systems,
+              roofType: systems.includes('roof') ? roofType : null,
+              rap: rapIncluded
+                ? {
+                    manipulatedCount,
+                    rap1PhotoId,
+                    matTransfer: { shingle1: matTransfer[1], shingle2: matTransfer[2] },
+                    damage: Object.fromEntries(
+                      DAMAGE_QUESTIONS.filter((q) => damage[q.key].answer != null).map((q) => {
+                        const a = damage[q.key];
+                        const isYes = a.answer === 'yes';
+                        return [
+                          q.key,
+                          {
+                            answer: a.answer,
+                            shingles: isYes ? a.shingles : [],
+                            photoId: isYes ? damagePhotoIds[q.key] : null,
+                            note: isYes && a.note.trim() ? a.note.trim() : null,
+                          },
+                        ];
+                      }),
+                    ),
+                  }
+                : null,
+              recordedAtUtc: new Date().toISOString(),
+            }
+          : {
+              version: 3 as const,
+              warranted,
+              systems: [],
+              roofType: null,
+              rap: null,
+              recordedAtUtc: new Date().toISOString(),
+            };
+
+      await patchInspection(queryClient, id, {
+        repairabilityAssessment: assessment,
+      } as Parameters<typeof patchInspection>[2]);
+      drainOutbox();
+      router.back();
+    } catch {
+      Alert.alert('Could not save', 'Something went wrong saving the assessment. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
@@ -394,7 +612,12 @@ export default function InspectionRepairabilityScreen() {
 
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Take Photograph (RAP1)</Text>
-            {renderPhotoButton('rap1', rap1Photo, setRap1Photo, 'Take RAP1 Photo')}
+            {renderPhotoButton(
+              'rap1',
+              rap1Photo,
+              (p) => setRap1Photo((prev) => ({ ...prev, local: p })),
+              'Take RAP1 Photo',
+            )}
           </View>
 
           {renderInstructionCard('Instructions — Pull', PULL_STEPS)}
@@ -480,7 +703,7 @@ export default function InspectionRepairabilityScreen() {
                     {renderPhotoButton(
                       q.key,
                       a.photo,
-                      (p) => setA({ photo: p }),
+                      (p) => setA({ photo: { ...a.photo, local: p } }),
                       'Take Example Photo',
                     )}
                     <TextInput
@@ -534,6 +757,44 @@ export default function InspectionRepairabilityScreen() {
         </>
       ) : null}
 
+      <Pressable
+        onPress={handleSave}
+        disabled={!canSave || saving}
+        style={[
+          styles.saveBtn,
+          {
+            backgroundColor: canSave && !saving ? colors.primary : colors.border,
+          },
+        ]}
+      >
+        {saving ? (
+          <ActivityIndicator color={colors.primaryForeground} size="small" />
+        ) : (
+          <Icon
+            name="check"
+            size={18}
+            color={canSave ? colors.primaryForeground : colors.mutedForeground}
+          />
+        )}
+        <Text
+          style={{
+            color: canSave && !saving ? colors.primaryForeground : colors.mutedForeground,
+            fontWeight: '800',
+            fontSize: 15,
+          }}
+        >
+          Save Repairability Assessment
+        </Text>
+      </Pressable>
+      {!canSave ? (
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }}>
+          {warranted == null
+            ? 'Answer whether an assessment is warranted and authorized to save.'
+            : systems.length === 0
+              ? 'Select at least one system to save.'
+              : 'Select the type of roof to save.'}
+        </Text>
+      ) : null}
     </ScrollView>
   );
 }
@@ -568,4 +829,13 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   scoreRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3 },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 8,
+  },
 });

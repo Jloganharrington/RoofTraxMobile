@@ -337,12 +337,20 @@ export default function InspectionDetailScreen() {
           done: ra != null,
           subtitle:
             ra != null
-              ? ra.version === 2
-                ? (['roof', 'siding'] as const)
-                    .filter((s) => ra[s])
-                    .map((s) => `${s === 'roof' ? 'Roof' : 'Siding'}: ${detLabel(ra[s]?.determination)}`)
-                    .join(' · ') || 'Assessment recorded'
-                : `Determination: ${detLabel(ra.determination)}`
+              ? ra.version === 3
+                ? (ra as { warranted?: string; systems?: string[] }).warranted === 'yes'
+                  ? `Repair Attempt Protocol · ${((ra as { systems?: string[] }).systems ?? [])
+                      .map((s) => (s === 'roof' ? 'Roof' : 'Siding'))
+                      .join(' · ') || 'recorded'}`
+                  : (ra as { warranted?: string }).warranted === 'not_authorized'
+                    ? 'Not authorized'
+                    : 'Not warranted — discontinued'
+                : ra.version === 2
+                  ? (['roof', 'siding'] as const)
+                      .filter((s) => ra[s])
+                      .map((s) => `${s === 'roof' ? 'Roof' : 'Siding'}: ${detLabel(ra[s]?.determination)}`)
+                      .join(' · ') || 'Assessment recorded'
+                  : `Determination: ${detLabel(ra.determination)}`
               : 'Structured repairability question flow (optional — omits if skipped)',
         };
       }
