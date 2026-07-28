@@ -168,6 +168,8 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
   const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
+  const itemId = String(req.params.itemId);
+
   const parsed = UpdateItemBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
@@ -179,7 +181,7 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
     .from(priceBookItemsTable)
     .where(
       and(
-        eq(priceBookItemsTable.id, req.params.itemId),
+        eq(priceBookItemsTable.id, itemId),
         eq(priceBookItemsTable.companyId, actor.companyId),
       ),
     );
@@ -198,7 +200,7 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
       ...(parsed.data.unit !== undefined ? { unit: parsed.data.unit } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(priceBookItemsTable.id, req.params.itemId))
+    .where(eq(priceBookItemsTable.id, itemId))
     .returning();
 
   res.json({ item: updated });
@@ -208,12 +210,14 @@ router.delete('/price-book/items/:itemId', async (req: Request, res: Response) =
   const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
+  const itemId = String(req.params.itemId);
+
   const [existing] = await db
     .select({ id: priceBookItemsTable.id })
     .from(priceBookItemsTable)
     .where(
       and(
-        eq(priceBookItemsTable.id, req.params.itemId),
+        eq(priceBookItemsTable.id, itemId),
         eq(priceBookItemsTable.companyId, actor.companyId),
       ),
     );
@@ -225,7 +229,7 @@ router.delete('/price-book/items/:itemId', async (req: Request, res: Response) =
 
   await db
     .delete(priceBookItemsTable)
-    .where(eq(priceBookItemsTable.id, req.params.itemId));
+    .where(eq(priceBookItemsTable.id, itemId));
 
   res.json({ ok: true });
 });
@@ -330,6 +334,8 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
   const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
+  const packageId = String(req.params.packageId);
+
   const parsed = UpdatePackageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
@@ -341,7 +347,7 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
     .from(priceBookPackagesTable)
     .where(
       and(
-        eq(priceBookPackagesTable.id, req.params.packageId),
+        eq(priceBookPackagesTable.id, packageId),
         eq(priceBookPackagesTable.companyId, actor.companyId),
       ),
     );
@@ -360,19 +366,19 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
         : {}),
       updatedAt: new Date(),
     })
-    .where(eq(priceBookPackagesTable.id, req.params.packageId))
+    .where(eq(priceBookPackagesTable.id, packageId))
     .returning();
 
   // Replace item assignments when provided
   if (parsed.data.itemAssignments !== undefined) {
     await db
       .delete(priceBookPackageItemsTable)
-      .where(eq(priceBookPackageItemsTable.packageId, req.params.packageId));
+      .where(eq(priceBookPackageItemsTable.packageId, packageId));
 
     if (parsed.data.itemAssignments.length > 0) {
       await db.insert(priceBookPackageItemsTable).values(
         parsed.data.itemAssignments.map((a) => ({
-          packageId: req.params.packageId,
+          packageId: packageId,
           itemId: a.itemId,
           quantity: a.quantity,
         })),
@@ -383,7 +389,7 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
   const finalAssignments = await db
     .select()
     .from(priceBookPackageItemsTable)
-    .where(eq(priceBookPackageItemsTable.packageId, req.params.packageId));
+    .where(eq(priceBookPackageItemsTable.packageId, packageId));
 
   res.json({
     package: {
@@ -397,12 +403,14 @@ router.delete('/price-book/packages/:packageId', async (req: Request, res: Respo
   const actor = await requireAdminOrAbove(req, res);
   if (!actor) return;
 
+  const packageId = String(req.params.packageId);
+
   const [existing] = await db
     .select({ id: priceBookPackagesTable.id })
     .from(priceBookPackagesTable)
     .where(
       and(
-        eq(priceBookPackagesTable.id, req.params.packageId),
+        eq(priceBookPackagesTable.id, packageId),
         eq(priceBookPackagesTable.companyId, actor.companyId),
       ),
     );
@@ -414,7 +422,7 @@ router.delete('/price-book/packages/:packageId', async (req: Request, res: Respo
 
   await db
     .delete(priceBookPackagesTable)
-    .where(eq(priceBookPackagesTable.id, req.params.packageId));
+    .where(eq(priceBookPackagesTable.id, packageId));
 
   res.json({ ok: true });
 });

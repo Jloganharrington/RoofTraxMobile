@@ -795,12 +795,15 @@ router.get('/documents', async (req: Request, res: Response) => {
   }
 
   // ── Helper: inspection rows by phase ────────────────────────────────────────
-  async function queryInspectionPhase(phase: string): Promise<DocumentListItem[]> {
+  const { companyId: actorCompanyId, userId: actorUserId } = actor;
+  async function queryInspectionPhase(
+    phase: 'preliminary' | 'forensic',
+  ): Promise<DocumentListItem[]> {
     const conds: Parameters<typeof and>[0][] = [
-      eq(inspectionsTable.companyId, actor.companyId),
+      eq(inspectionsTable.companyId, actorCompanyId),
       eq(inspectionsTable.phase, phase),
     ];
-    if (!isManager) conds.push(eq(inspectionsTable.inspectorUserId, actor.userId));
+    if (!isManager) conds.push(eq(inspectionsTable.inspectorUserId, actorUserId));
     if (q) {
       const p = `%${q}%`;
       conds.push(or(ilike(inspectionsTable.address, p), ilike(inspectionsTable.insuredName, p)));
