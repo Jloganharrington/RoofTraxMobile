@@ -297,10 +297,10 @@ function roofQuestions(facetOptions: Opt[]): QuestionDef[] {
     },
     {
       id: 'RR-031',
-      label: 'Are the existing shingles documented as capable of being reset after lifting?',
+      label: 'Is a Simulated Repair Assessment warranted and authorized?',
       type: 'radio',
       options: [o('yes', 'Yes'), o('no', 'No'), o('not_tested', 'Not tested'), o('unknown', 'Unknown / Not verified')],
-      hint: '"No" requires direct test evidence or a documented manufacturer/product limitation.',
+      visible: (a) => a['RR-030'] === 'yes',
     },
     {
       id: 'RR-032',
