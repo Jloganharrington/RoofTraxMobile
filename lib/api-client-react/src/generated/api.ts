@@ -59,6 +59,7 @@ import type {
   EmailReportInput,
   EmailReportResult,
   ErrorEnvelope,
+  FipsaSettingsEnvelope,
   GetActivityStatsParams,
   GetInspectionReportPreviewUrl200,
   GetWeatherEventsParams,
@@ -100,6 +101,7 @@ import type {
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateBugReportInput,
+  UpdateFipsaSettingsInput,
   UpdateInspectionComponentInput,
   UpdateInspectionInput,
   UpdateInspectionSidingFacetInput,
@@ -699,6 +701,157 @@ export function useGetCompany<TData = Awaited<ReturnType<typeof getCompany>>, TE
 
 
 
+
+export const getGetCompanyFipsaSettingsUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/fipsa-settings`
+}
+
+/**
+ * Super admin only. Null fields mean not configured — the agreement template falls back to blank lines and the default $750.00 fee.
+ * @summary Get the company's FIPSA agreement settings
+ */
+export const getCompanyFipsaSettings = async (companyId: string, options?: RequestInit): Promise<FipsaSettingsEnvelope> => {
+
+  return customFetch<FipsaSettingsEnvelope>(getGetCompanyFipsaSettingsUrl(companyId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompanyFipsaSettingsQueryKey = (companyId: string,) => {
+    return [
+    `/api/companies/${companyId}/fipsa-settings`
+    ] as const;
+    }
+
+
+export const getGetCompanyFipsaSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getCompanyFipsaSettings>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompanyFipsaSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompanyFipsaSettingsQueryKey(companyId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompanyFipsaSettings>>> = ({ signal }) => getCompanyFipsaSettings(companyId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompanyFipsaSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompanyFipsaSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getCompanyFipsaSettings>>>
+export type GetCompanyFipsaSettingsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the company's FIPSA agreement settings
+ */
+
+export function useGetCompanyFipsaSettings<TData = Awaited<ReturnType<typeof getCompanyFipsaSettings>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompanyFipsaSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompanyFipsaSettingsQueryOptions(companyId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCompanyFipsaSettingsUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/fipsa-settings`
+}
+
+/**
+ * Super admin only. Sets the contractor legal name, contractor address, and Documentation Fee (in cents) printed on generated FIPSA agreements. Pass null for a field to clear it.
+ * @summary Update the company's FIPSA agreement settings
+ */
+export const updateCompanyFipsaSettings = async (companyId: string,
+    updateFipsaSettingsInput: UpdateFipsaSettingsInput, options?: RequestInit): Promise<FipsaSettingsEnvelope> => {
+
+  return customFetch<FipsaSettingsEnvelope>(getUpdateCompanyFipsaSettingsUrl(companyId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateFipsaSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCompanyFipsaSettingsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyFipsaSettings>>, TError,{companyId: string;data: BodyType<UpdateFipsaSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCompanyFipsaSettings>>, TError,{companyId: string;data: BodyType<UpdateFipsaSettingsInput>}, TContext> => {
+
+const mutationKey = ['updateCompanyFipsaSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCompanyFipsaSettings>>, {companyId: string;data: BodyType<UpdateFipsaSettingsInput>}> = (props) => {
+          const {companyId,data} = props ?? {};
+
+          return  updateCompanyFipsaSettings(companyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCompanyFipsaSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateCompanyFipsaSettings>>>
+    export type UpdateCompanyFipsaSettingsMutationBody = BodyType<UpdateFipsaSettingsInput>
+    export type UpdateCompanyFipsaSettingsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update the company's FIPSA agreement settings
+ */
+export const useUpdateCompanyFipsaSettings = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyFipsaSettings>>, TError,{companyId: string;data: BodyType<UpdateFipsaSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCompanyFipsaSettings>>,
+        TError,
+        {companyId: string;data: BodyType<UpdateFipsaSettingsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCompanyFipsaSettingsMutationOptions(options));
+    }
 
 export const getGetCompanyReportBrandingUrl = (companyId: string,) => {
 

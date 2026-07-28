@@ -21,8 +21,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import SignatureScreen, { type SignatureViewRef } from 'react-native-signature-canvas';
 import { WebView } from 'react-native-webview';
 import {
+  getGetCompanyFipsaSettingsQueryKey,
   getGetMyProfileQueryKey,
+  useGetCompanyFipsaSettings,
   useListPins,
+  useUpdateCompanyFipsaSettings,
   useUpdateProfileCredentials,
   useUpdateProfileSignature,
   useUpdateProfileSmtp,
@@ -573,6 +576,11 @@ export default function ProfileScreen() {
           {role === 'super_admin' && (
             <ReportBrandingCard companyId={companyId ?? ''} colors={colors} />
           )}
+
+          {/* FIPSA Agreement Settings — super admin only */}
+          {role === 'super_admin' && (
+            <FipsaSettingsCard companyId={companyId ?? ''} colors={colors} />
+          )}
         </AccordionSection>
       )}
 
@@ -877,6 +885,140 @@ const REPORT_BRANDING_DEFAULT = {
   headerTextColor: '#ffffff',
   accentColor: '#3b82f6',
 };
+
+// FIPSA agreement settings — contractor legal identity + Documentation Fee
+// printed on every generated FIPSA agreement (multi-tenant template).
+function FipsaSettingsCard({
+  companyId,
+  colors,
+}: {
+  companyId: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const queryClient = useQueryClient();
+  const settingsQuery = useGetCompanyFipsaSettings(companyId, {
+    query: {
+      enabled: !!companyId,
+      queryKey: getGetCompanyFipsaSettingsQueryKey(companyId),
+    },
+  });
+  const update = useUpdateCompanyFipsaSettings();
+
+  const [legalName, setLegalName] = React.useState('');
+  const [address, setAddress] = React.useState('');
+  const [feeText, setFeeText] = React.useState('');
+  const [seeded, setSeeded] = React.useState(false);
+
+  React.useEffect(() => {
+    const s = settingsQuery.data?.settings;
+    if (s && !seeded) {
+      setLegalName(s.contractorLegalName ?? '');
+      setAddress(s.contractorAddress ?? '');
+      setFeeText(s.fipsaFeeCents != null ? (s.fipsaFeeCents / 100).toFixed(2) : '');
+      setSeeded(true);
+    }
+  }, [settingsQuery.data, seeded]);
+
+  // "750", "750.5", "$1,000.00" → integer cents; null = blank; NaN = invalid.
+  function parseFeeCents(raw: string): number | null | undefined {
+    const t = raw.trim().replace(/[$,\s]/g, '');
+    if (!t) return null;
+    if (!/^\d+(\.\d{1,2})?$/.test(t)) return undefined;
+    return Math.round(parseFloat(t) * 100);
+  }
+
+  const feeCents = parseFeeCents(feeText);
+  const feeValid = feeCents !== undefined;
+
+  async function save() {
+    if (update.isPending) return;
+    if (!feeValid) {
+      Alert.alert('Invalid fee', 'Enter the FIPSA fee as a dollar amount, e.g. 750 or 750.00.');
+      return;
+    }
+    try {
+      await update.mutateAsync({
+        companyId,
+        data: {
+          settings: {
+            contractorLegalName: legalName.trim() || null,
+            contractorAddress: address.trim() || null,
+            fipsaFeeCents: feeCents ?? null,
+          },
+        },
+      });
+      // Agreement screen reads these from the profile fetch.
+      await queryClient.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+      Alert.alert('Saved', 'FIPSA agreement settings updated. New agreements will use them.');
+    } catch (err) {
+      Alert.alert('Save failed', err instanceof Error ? err.message : 'Check your connection and try again.');
+    }
+  }
+
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.foreground,
+  } as const;
+
+  return (
+    <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 6 }}>
+      <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
+        FIPSA Agreement Settings
+      </Text>
+      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+        Printed on every FIPSA agreement: the contractor line on page 1, the Notice of
+        Cancellation on page 2, and the Documentation Fee in clause 3.
+      </Text>
+
+      <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+        Contractor Company Legal Name
+      </Text>
+      <TextInput
+        value={legalName}
+        onChangeText={setLegalName}
+        placeholder="e.g. NuHome Exteriors, Inc."
+        placeholderTextColor={colors.mutedForeground}
+        style={inputStyle}
+      />
+
+      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Contractor Address</Text>
+      <TextInput
+        value={address}
+        onChangeText={setAddress}
+        placeholder="e.g. 3615-A Chain Bridge Rd, Fairfax, VA 20131"
+        placeholderTextColor={colors.mutedForeground}
+        style={inputStyle}
+      />
+
+      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>FIPSA Fee (USD)</Text>
+      <TextInput
+        value={feeText}
+        onChangeText={setFeeText}
+        placeholder="750.00"
+        placeholderTextColor={colors.mutedForeground}
+        keyboardType="decimal-pad"
+        style={[inputStyle, !feeValid && { borderColor: colors.destructive }]}
+      />
+
+      <Pressable
+        onPress={save}
+        disabled={update.isPending || settingsQuery.isLoading}
+        style={[styles.sigButton, { backgroundColor: colors.secondary, opacity: update.isPending ? 0.6 : 1, marginTop: 4 }]}
+      >
+        {update.isPending ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.sigButtonText}>Save FIPSA Settings</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+}
 
 const REPORT_BRANDING_PRESETS: Array<{ name: string; headerColor: string; headerTextColor: string; accentColor: string }> = [
   { name: 'Classic Navy', ...REPORT_BRANDING_DEFAULT },

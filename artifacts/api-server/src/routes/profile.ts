@@ -39,7 +39,15 @@ function checkSmtpTestRateLimit(userId: string): boolean {
 // envelope (both must include the signature-on-file fields — M-F / F0).
 function toProfileEnvelope(
   profile: typeof userProfilesTable.$inferSelect,
-  company: { companyId: string; companyName: string; companyLogoUrl?: string | null; betaBugReporting: boolean },
+  company: {
+    companyId: string;
+    companyName: string;
+    companyLogoUrl?: string | null;
+    betaBugReporting: boolean;
+    contractorLegalName?: string | null;
+    contractorAddress?: string | null;
+    fipsaFeeCents?: number | null;
+  },
 ) {
   return GetMyProfileResponse.parse({
     profile: {
@@ -70,6 +78,11 @@ function toProfileEnvelope(
       betaBugReporting: company.betaBugReporting,
       certifications: profile.certifications ?? null,
       yearsExperience: profile.yearsExperience ?? null,
+      // FIPSA agreement settings — company-level, needed by the agreement
+      // screen when rendering the FIPSA template.
+      contractorLegalName: company.contractorLegalName ?? null,
+      contractorAddress: company.contractorAddress ?? null,
+      fipsaFeeCents: company.fipsaFeeCents ?? null,
     },
   });
 }
@@ -81,6 +94,9 @@ async function loadCompany(userId: string) {
       companyName: companiesTable.name,
       companyLogoUrl: companiesTable.logoUrl,
       betaBugReporting: companiesTable.betaBugReporting,
+      contractorLegalName: companiesTable.contractorLegalName,
+      contractorAddress: companiesTable.contractorAddress,
+      fipsaFeeCents: companiesTable.fipsaFeeCents,
     })
     .from(usersTable)
     .innerJoin(companiesTable, eq(companiesTable.id, usersTable.companyId))

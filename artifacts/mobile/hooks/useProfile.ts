@@ -21,6 +21,9 @@ export function useProfile() {
     companyId: query.data?.profile.companyId,
     companyName: query.data?.profile.companyName,
     companyLogoUrl: query.data?.profile.companyLogoUrl ?? null,
+    contractorLegalName: query.data?.profile.contractorLegalName ?? null,
+    contractorAddress: query.data?.profile.contractorAddress ?? null,
+    fipsaFeeCents: query.data?.profile.fipsaFeeCents ?? null,
     // M-F (F0) — signature-on-file. Null until the inspector captures one.
     signatureUrl: query.data?.profile.signatureUrl ?? null,
     signatureSha256: query.data?.profile.signatureSha256 ?? null,

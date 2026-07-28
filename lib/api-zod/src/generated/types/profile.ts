@@ -40,4 +40,10 @@ export interface Profile {
   yearsExperience?: number | null;
   /** @nullable */
   companyLogoUrl?: string | null;
+  /** @nullable */
+  contractorLegalName?: string | null;
+  /** @nullable */
+  contractorAddress?: string | null;
+  /** @nullable */
+  fipsaFeeCents?: number | null;
 }

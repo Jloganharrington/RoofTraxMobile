@@ -112,6 +112,48 @@ export const GetCompanyResponse = zod.object({
 
 
 /**
+ * Super admin only. Null fields mean not configured — the agreement template falls back to blank lines and the default $750.00 fee.
+ * @summary Get the company's FIPSA agreement settings
+ */
+export const GetCompanyFipsaSettingsParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const GetCompanyFipsaSettingsResponse = zod.object({
+  "settings": zod.object({
+  "contractorLegalName": zod.string().nullable(),
+  "contractorAddress": zod.string().nullable(),
+  "fipsaFeeCents": zod.number().nullable().describe('Documentation Fee in cents (e.g. 75000 = $750.00).')
+})
+})
+
+
+/**
+ * Super admin only. Sets the contractor legal name, contractor address, and Documentation Fee (in cents) printed on generated FIPSA agreements. Pass null for a field to clear it.
+ * @summary Update the company's FIPSA agreement settings
+ */
+export const UpdateCompanyFipsaSettingsParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const UpdateCompanyFipsaSettingsBody = zod.object({
+  "settings": zod.object({
+  "contractorLegalName": zod.string().nullable(),
+  "contractorAddress": zod.string().nullable(),
+  "fipsaFeeCents": zod.number().nullable().describe('Documentation Fee in cents (e.g. 75000 = $750.00).')
+})
+})
+
+export const UpdateCompanyFipsaSettingsResponse = zod.object({
+  "settings": zod.object({
+  "contractorLegalName": zod.string().nullable(),
+  "contractorAddress": zod.string().nullable(),
+  "fipsaFeeCents": zod.number().nullable().describe('Documentation Fee in cents (e.g. 75000 = $750.00).')
+})
+})
+
+
+/**
  * Super admin only. A null `branding` means the default palette is in use.
  * @summary Get the company's forensic-report color palette
  */
@@ -290,7 +332,10 @@ export const GetMyProfileResponse = zod.object({
   "expiry": zod.string().nullish()
 })),zod.null()]).optional(),
   "yearsExperience": zod.number().nullish(),
-  "companyLogoUrl": zod.string().nullish()
+  "companyLogoUrl": zod.string().nullish(),
+  "contractorLegalName": zod.string().nullish(),
+  "contractorAddress": zod.string().nullish(),
+  "fipsaFeeCents": zod.number().nullish()
 })
 })
 
@@ -339,7 +384,10 @@ export const UpdateProfileCredentialsResponse = zod.object({
   "expiry": zod.string().nullish()
 })),zod.null()]).optional(),
   "yearsExperience": zod.number().nullish(),
-  "companyLogoUrl": zod.string().nullish()
+  "companyLogoUrl": zod.string().nullish(),
+  "contractorLegalName": zod.string().nullish(),
+  "contractorAddress": zod.string().nullish(),
+  "fipsaFeeCents": zod.number().nullish()
 })
 })
 
@@ -384,7 +432,10 @@ export const UpdateProfileSignatureResponse = zod.object({
   "expiry": zod.string().nullish()
 })),zod.null()]).optional(),
   "yearsExperience": zod.number().nullish(),
-  "companyLogoUrl": zod.string().nullish()
+  "companyLogoUrl": zod.string().nullish(),
+  "contractorLegalName": zod.string().nullish(),
+  "contractorAddress": zod.string().nullish(),
+  "fipsaFeeCents": zod.number().nullish()
 })
 })
 
@@ -446,7 +497,10 @@ export const UpdateProfileSmtpResponse = zod.object({
   "expiry": zod.string().nullish()
 })),zod.null()]).optional(),
   "yearsExperience": zod.number().nullish(),
-  "companyLogoUrl": zod.string().nullish()
+  "companyLogoUrl": zod.string().nullish(),
+  "contractorLegalName": zod.string().nullish(),
+  "contractorAddress": zod.string().nullish(),
+  "fipsaFeeCents": zod.number().nullish()
 })
 })
 

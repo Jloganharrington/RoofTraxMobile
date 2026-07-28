@@ -22,6 +22,13 @@ export interface FipsaData {
   ownerNames: string;
   agreementDate: string; // MM/DD/YYYY
   propertyAddress: string;
+  // Multi-tenant contractor identity + fee (from the company profile).
+  // Empty strings leave the template's printed fallbacks untouched
+  // (blank header lines / NuHome notice text / $750.00 fee).
+  contractorLegalName?: string;
+  contractorAddress?: string;
+  /** Formatted fee, e.g. "$750.00". Empty = template default. */
+  documentationFee?: string;
   owner: FipsaParty;
   contractorRep: FipsaParty;
   cancellation: {
@@ -64,6 +71,11 @@ export function buildFipsaHtml(data: FipsaData): string {
       ownerNames: data.ownerNames,
       agreementDate: data.agreementDate,
       propertyAddress: data.propertyAddress,
+      contractorLegalName: data.contractorLegalName ?? '',
+      contractorAddress: data.contractorAddress ?? '',
+      contractorLegalNameUpper: (data.contractorLegalName ?? '').toUpperCase(),
+      contractorAddressUpper: (data.contractorAddress ?? '').toUpperCase(),
+      documentationFee: data.documentationFee ?? '',
       owner: data.owner,
       contractorRep: data.contractorRep,
       cancellation: data.cancellation,
@@ -193,6 +205,11 @@ const FIPSA_TEMPLATE = `<!doctype html>
   .fill.grow{ flex:1 1 auto; min-width:220px; }
   .fill.short{ min-width:130px; }
   .fill.mid{ min-width:170px; }
+  /* Fixed 40-character line (Owner(s) / Contractor). */
+  .fill.fixed40{ width:40ch; min-width:0; flex:0 0 auto;
+                 overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  /* Date line: just wide enough for MM/DD/YYYY plus ~3 spaces. */
+  .fill.date{ min-width:0; width:13ch; flex:0 0 auto; white-space:nowrap; }
 
   /* ---------- Clauses ---------- */
   ol.clauses{ margin:0; padding-left:22px; }
@@ -246,22 +263,26 @@ const FIPSA_TEMPLATE = `<!doctype html>
   <div class="hdr-fields">
     <div class="hdr-row">
       <span class="hdr-label">Owner(s):</span>
-      <span class="fill grow" data-field="ownerNames"></span>
-      <span class="hdr-label">Date:</span>
-      <span class="fill short" data-field="agreementDate"></span>
-    </div>
-    <div class="hdr-row">
+      <span class="fill fixed40" data-field="ownerNames"></span>
       <span class="hdr-label">Property Address:</span>
       <span class="fill grow" data-field="propertyAddress"></span>
+      <span class="hdr-label">Date:</span>
+      <span class="fill date" data-field="agreementDate"></span>
+    </div>
+    <div class="hdr-row">
+      <span class="hdr-label">Contractor:</span>
+      <span class="fill fixed40" data-field="contractorLegalName"></span>
+      <span class="hdr-label">Address:</span>
+      <span class="fill grow" data-field="contractorAddress"></span>
     </div>
   </div>
 
   <ol class="clauses">
-    <li><span class="lead">Engagement &amp; Authorization.</span> Owner retains NuHome Exteriors, Inc. (&ldquo;Contractor&rdquo;) to perform a comprehensive Phase 2 forensic inspection of the systems identified above at the Property. Owner authorizes Contractor and its personnel to access the Property, both exterior and interior areas as reasonably required, and to take physical measurements; capture photographs and video; install test squares and perform surface-level examination where appropriate; research weather and storm event data for the Property; identify installed materials, including verification of discontinued or unavailable products; obtain supplier and manufacturer quotes; and develop a repair scope with a fixed-price estimate.</li>
+    <li><span class="lead">Engagement &amp; Authorization.</span> Owner retains the Contractor to perform a comprehensive Forensic Inspection and Repairability Assessment of the Storm Related damage to the above property. Owner authorizes contractor and its personnel to access the property, both exterior and interior areas as reasonably required, and to take physical measurements; capture photographs and video; install test squares and perform surface level examination where appropriate; perform a repairability assessment if conditions warrant; research weather and storm event data for the property; identify installed materials, including verification of discontinued or unavailable products; obtain supplier and manufacturer quotes; and develop a repair scope with a fixed price estimate.</li>
 
     <li><span class="lead">Deliverable &mdash; Forensic Proof Package.</span> Contractor shall prepare and deliver to Owner a Forensic Proof Package consisting of: (a) a written forensic inspection report; (b) organized photographic documentation; (c) measurements and diagrams; (d) weather event research findings; (e) material identification and availability findings, with supplier quotes where applicable; and (f) a documented repair scope and fixed-price estimate for the restoration work.</li>
 
-    <li><span class="lead">Fee.</span> The fee for the services and deliverables described above is $750.00 (the &ldquo;Documentation Fee&rdquo;), due upon delivery of the Forensic Proof Package.</li>
+    <li><span class="lead">Fee.</span> The fee for the services and deliverables described above is <span data-field="documentationFee">$750.00</span> (the &ldquo;Documentation Fee&rdquo;), due upon delivery of the Forensic Proof Package.</li>
 
     <li><span class="lead">Credit Toward Construction.</span> If Owner executes a written construction agreement with Contractor for the restoration work documented in the Forensic Proof Package within three (3) days of its delivery (the &ldquo;Credit Period&rdquo;), the entire Documentation Fee will be credited in full against the construction contract price.</li>
 
@@ -269,9 +290,9 @@ const FIPSA_TEMPLATE = `<!doctype html>
 
     <li><span class="lead">Cancellation; When the Fee Is Earned.</span> Owner may cancel this Agreement in writing at any time before the inspection is performed at no cost. Once the inspection has been performed, the Documentation Fee is fully earned upon Contractor&rsquo;s delivery of the Forensic Proof Package which shall occur within 24 hours of the termination of the FTC Cooling-Off Period, regardless of the outcome of any insurance claim or whether Owner proceeds with construction.</li>
 
-    <li><span class="lead">Role of Contractor; Not a Public Adjuster.</span> Contractor is a licensed construction contractor engaged to document construction conditions, repair scope, and repair cost. Contractor is not a public adjuster and will not adjust, negotiate, or settle any insurance claim on Owner&rsquo;s behalf, advise Owner on insurance coverage, or act as Owner&rsquo;s representative with any insurer (Va. Code &sect; 38.2-1845.12). Any information Contractor provides to an insurer is limited to construction scope, conditions, and pricing, at Owner&rsquo;s direction.</li>
+    <li><span class="lead">Role of Contractor; Not a Public Adjuster.</span> Contractor is a licensed construction contractor engaged to document construction conditions, repair scope, and repair cost. Contractor is not a public adjuster and will not adjust, negotiate, or settle any insurance claim on Owner&rsquo;s behalf, advise Owner on insurance coverage, or act as Owner&rsquo;s representative with any insurer. Any information Contractor provides to an insurer is limited to construction scope, conditions, and pricing, at Owner&rsquo;s direction.</li>
 
-    <li><span class="lead">No Construction Work Awarded.</span> This Agreement authorizes inspection and preconstruction services only. No construction or restoration work is awarded, promised, or authorized under this Agreement unless expressly stated in a separate written construction agreement signed by both parties. If conditions warrant, homeowner authorizes the contractor to complete a Repairability Assessment using a simulated repair protocol.</li>
+    <li><span class="lead">No Construction Work Awarded.</span> This Agreement authorizes inspection and preconstruction services only. No construction or restoration work is awarded, promised, or authorized under this Agreement unless expressly stated in a separate written construction agreement signed by both parties.</li>
 
     <li><span class="lead">General.</span> This Agreement is governed by Virginia law and is the entire agreement between the parties regarding its subject matter. Any dispute arising under this Agreement shall be resolved by binding arbitration before a single arbitrator under the Commercial Rules of the American Arbitration Association.</li>
   </ol>
@@ -312,7 +333,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
 
   <p>If you do make the goods available to the seller and the seller does not pick them up within 20 days of the date of your Notice of Cancellation, you may retain or dispose of the goods without any further obligation. If you fail to make the goods available to the seller, or if you agree to return the goods to the seller and fail to do so, then you remain liable for performance of all obligations under the contract.</p>
 
-  <p>To cancel this transaction, mail or deliver a signed and dated copy of this Cancellation Notice or any other written notice, or send a telegram, to NUHOME EXTERIORS, INC, at 3615-A CHAIN BRIDGE RD, FAIRFAX, VA 20131, NOT LATER THAN MIDNIGHT OF <span class="fill short" data-field="cancellation.cancelDeadline"></span>.</p>
+  <p>To cancel this transaction, mail or deliver a signed and dated copy of this Cancellation Notice or any other written notice, or send a telegram, to <span data-field="contractorLegalNameUpper">NUHOME EXTERIORS, INC</span>, at <span data-field="contractorAddressUpper">3615-A CHAIN BRIDGE RD, FAIRFAX, VA 20131</span>, NOT LATER THAN MIDNIGHT OF <span class="fill short" data-field="cancellation.cancelDeadline"></span>.</p>
 
   <p class="hereby">I HEREBY CANCEL THIS TRANSACTION.</p>
 

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const sessionsTable = pgTable(
@@ -38,6 +38,13 @@ export const companiesTable = pgTable('companies', {
   // Company-level forensic-report color palette, set by a super_admin.
   // Strict #RRGGBB hex values only (validated at write time and re-validated
   // at render time). Null means the default palette.
+  // FIPSA agreement settings (multi-tenant agreement): the contractor's
+  // legal name and address printed on the agreement + Notice of Cancellation,
+  // and the Documentation Fee in cents. Null = not configured yet (the
+  // template falls back to blank lines / $750.00 default fee).
+  contractorLegalName: varchar('contractor_legal_name'),
+  contractorAddress: varchar('contractor_address'),
+  fipsaFeeCents: integer('fipsa_fee_cents'),
   reportBranding: jsonb('report_branding')
     .$type<{
       headerColor: string;

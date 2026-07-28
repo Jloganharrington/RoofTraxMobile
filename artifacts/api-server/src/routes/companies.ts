@@ -1,4 +1,11 @@
-import { CreateCompanyBody, CreateCompanyResponse, GetCompanyResponse } from '@workspace/api-zod';
+import {
+  CreateCompanyBody,
+  CreateCompanyResponse,
+  GetCompanyResponse,
+  GetCompanyFipsaSettingsResponse,
+  UpdateCompanyFipsaSettingsBody,
+  UpdateCompanyFipsaSettingsResponse,
+} from '@workspace/api-zod';
 import { companiesTable, db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -181,6 +188,123 @@ router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Resp
 });
 
 // ── Report branding (forensic report color palette) ────────────────────────
+
+// Shared authz for FIPSA-settings routes: authenticated super admin of the
+// same company. Returns the actor's companyId, or null after responding.
+async function requireSameCompanySuperAdmin(
+  req: Request,
+  res: Response,
+): Promise<string | null> {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+  if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
+    res.status(403).json({ error: 'Super admin role required' });
+    return null;
+  }
+  return companyId;
+}
+
+// GET /companies/:companyId/fipsa-settings — contractor legal name, address,
+// and Documentation Fee printed on generated FIPSA agreements. Super admin
+// only (field reps receive these via their profile fetch instead).
+router.get('/companies/:companyId/fipsa-settings', async (req: Request, res: Response) => {
+  const companyId = await requireSameCompanySuperAdmin(req, res);
+  if (!companyId) return;
+
+  const [company] = await db
+    .select({
+      contractorLegalName: companiesTable.contractorLegalName,
+      contractorAddress: companiesTable.contractorAddress,
+      fipsaFeeCents: companiesTable.fipsaFeeCents,
+    })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+
+  if (!company) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  res.json(
+    GetCompanyFipsaSettingsResponse.parse({
+      settings: {
+        contractorLegalName: company.contractorLegalName ?? null,
+        contractorAddress: company.contractorAddress ?? null,
+        fipsaFeeCents: company.fipsaFeeCents ?? null,
+      },
+    }),
+  );
+});
+
+// PATCH /companies/:companyId/fipsa-settings — super admin only. These values
+// are embedded into a legal document, so they are validated and trimmed here.
+router.patch('/companies/:companyId/fipsa-settings', async (req: Request, res: Response) => {
+  const companyId = await requireSameCompanySuperAdmin(req, res);
+  if (!companyId) return;
+
+  const parsed = UpdateCompanyFipsaSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid FIPSA settings payload' });
+    return;
+  }
+  const s = parsed.data.settings;
+
+  const legalName = s.contractorLegalName?.trim() || null;
+  const address = s.contractorAddress?.trim() || null;
+  const feeCents = s.fipsaFeeCents ?? null;
+  if (legalName !== null && legalName.length > 200) {
+    res.status(400).json({ error: 'Contractor legal name is too long (max 200 characters)' });
+    return;
+  }
+  if (address !== null && address.length > 300) {
+    res.status(400).json({ error: 'Contractor address is too long (max 300 characters)' });
+    return;
+  }
+  if (feeCents !== null && (!Number.isInteger(feeCents) || feeCents < 0 || feeCents > 100_000_00)) {
+    res.status(400).json({ error: 'FIPSA fee must be a whole number of cents between 0 and $100,000' });
+    return;
+  }
+
+  const [updated] = await db
+    .update(companiesTable)
+    .set({
+      contractorLegalName: legalName,
+      contractorAddress: address,
+      fipsaFeeCents: feeCents,
+    })
+    .where(eq(companiesTable.id, companyId))
+    .returning({
+      contractorLegalName: companiesTable.contractorLegalName,
+      contractorAddress: companiesTable.contractorAddress,
+      fipsaFeeCents: companiesTable.fipsaFeeCents,
+    });
+
+  if (!updated) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  res.json(
+    UpdateCompanyFipsaSettingsResponse.parse({
+      settings: {
+        contractorLegalName: updated.contractorLegalName ?? null,
+        contractorAddress: updated.contractorAddress ?? null,
+        fipsaFeeCents: updated.fipsaFeeCents ?? null,
+      },
+    }),
+  );
+});
 
 // GET /companies/:companyId/report-branding — returns the stored palette
 // (or null when the default palette is in use). Super admin only — this

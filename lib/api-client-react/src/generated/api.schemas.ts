@@ -47,6 +47,26 @@ export interface CompanyEnvelope {
   company: Company;
 }
 
+export interface FipsaSettings {
+  /** @nullable */
+  contractorLegalName: string | null;
+  /** @nullable */
+  contractorAddress: string | null;
+  /**
+     * Documentation Fee in cents (e.g. 75000 = $750.00).
+     * @nullable
+     */
+  fipsaFeeCents: number | null;
+}
+
+export interface FipsaSettingsEnvelope {
+  settings: FipsaSettings;
+}
+
+export interface UpdateFipsaSettingsInput {
+  settings: FipsaSettings;
+}
+
 /**
  * Forensic-report color palette. All values are strict
  */
@@ -214,6 +234,12 @@ export interface Profile {
   yearsExperience?: number | null;
   /** @nullable */
   companyLogoUrl?: string | null;
+  /** @nullable */
+  contractorLegalName?: string | null;
+  /** @nullable */
+  contractorAddress?: string | null;
+  /** @nullable */
+  fipsaFeeCents?: number | null;
 }
 
 export interface UpdateProfileCredentialsInput {

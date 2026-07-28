@@ -180,6 +180,96 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/fipsa-settings:
+    get:
+      tags: [Companies]
+      operationId: getCompanyFipsaSettings
+      summary: Get the company's FIPSA agreement settings
+      description: >-
+        Super admin only. Null fields mean not configured — the agreement
+        template falls back to blank lines and the default $750.00 fee.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current FIPSA settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FipsaSettingsEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Companies]
+      operationId: updateCompanyFipsaSettings
+      summary: Update the company's FIPSA agreement settings
+      description: >-
+        Super admin only. Sets the contractor legal name, contractor address,
+        and Documentation Fee (in cents) printed on generated FIPSA
+        agreements. Pass null for a field to clear it.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFipsaSettingsInput"
+      responses:
+        "200":
+          description: Settings updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FipsaSettingsEnvelope"
+        "400":
+          description: Invalid values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /companies/{companyId}/report-branding:
     get:
       tags: [Companies]
@@ -2928,6 +3018,32 @@ components:
       properties:
         company:
           $ref: "#/components/schemas/Company"
+    FipsaSettings:
+      type: object
+      required: [contractorLegalName, contractorAddress, fipsaFeeCents]
+      properties:
+        contractorLegalName:
+          type: [string, "null"]
+        contractorAddress:
+          type: [string, "null"]
+        fipsaFeeCents:
+          type: [number, "null"]
+          description: Documentation Fee in cents (e.g. 75000 = $750.00).
+
+    FipsaSettingsEnvelope:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/FipsaSettings"
+
+    UpdateFipsaSettingsInput:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/FipsaSettings"
+
     ReportBranding:
       type: object
       description: Forensic-report color palette. All values are strict #RRGGBB hex.
@@ -3123,6 +3239,16 @@ components:
         # row so the profile fetch is the only call needed.
         companyLogoUrl:
           type: [string, "null"]
+        # FIPSA agreement settings (company-level, multi-tenant agreement).
+        # Surfaced on the profile so the agreement screen needs no extra fetch.
+        # Null = not configured; the template falls back to blank lines and
+        # the $750.00 default fee.
+        contractorLegalName:
+          type: [string, "null"]
+        contractorAddress:
+          type: [string, "null"]
+        fipsaFeeCents:
+          type: [number, "null"]
     InspectorCertification:
       type: object
       required: [name]

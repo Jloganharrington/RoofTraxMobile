@@ -78,7 +78,20 @@ type ActiveModal = 'owner' | 'rep' | 'ownerName' | null;
 export default function InspectionAgreementScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { companyName, companyLogoUrl } = useProfile();
+  const { companyName, companyLogoUrl, contractorLegalName, contractorAddress, fipsaFeeCents } =
+    useProfile();
+
+  // Formatted Documentation Fee from the company profile ("" = keep the
+  // template's default $750.00).
+  const documentationFee =
+    fipsaFeeCents != null
+      ? `$${(fipsaFeeCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : '';
+  const fipsaCompanyFields = {
+    contractorLegalName: contractorLegalName ?? '',
+    contractorAddress: contractorAddress ?? '',
+    documentationFee,
+  };
   const { user } = useAuth();
 
   const inspectionQuery = useGetInspection(id, {
@@ -190,6 +203,7 @@ export default function InspectionAgreementScreen() {
       ownerNames: signerName || '___________________________',
       agreementDate: todayMDY,
       propertyAddress: inspection?.address ?? '',
+      ...fipsaCompanyFields,
       logoUrl: logoDataUri ?? undefined,
       owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
       contractorRep: {
@@ -204,7 +218,7 @@ export default function InspectionAgreementScreen() {
         buyerSignatureImage: '',
       },
     });
-  }, [signerName, repPrintName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName, logoDataUri]);
+  }, [signerName, repPrintName, inspection?.address, todayMDY, cancelDeadlineMDY, companyName, logoDataUri, contractorLegalName, contractorAddress, documentationFee]);
 
   const canSign =
     hasScrolledToBottom &&
@@ -257,6 +271,7 @@ export default function InspectionAgreementScreen() {
                 ownerNames: ownerName,
                 agreementDate: todayMDY,
                 propertyAddress: inspection.address ?? '',
+                ...fipsaCompanyFields,
                 logoUrl: logoDataUri ?? undefined,
                 owner: {
                   signatureImage: `data:image/png;base64,${ownerSigData}`,
@@ -670,6 +685,7 @@ export default function InspectionAgreementScreen() {
                 ownerNames: signerName || '___________________________',
                 agreementDate: todayMDY,
                 propertyAddress: inspection?.address ?? '',
+                ...fipsaCompanyFields,
                 logoUrl: logoDataUri ?? undefined,
                 owner: { signatureImage: '', printName: signerName, signDate: todayMDY },
                 contractorRep: {
