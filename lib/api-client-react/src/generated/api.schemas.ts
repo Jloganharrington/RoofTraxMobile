@@ -1094,6 +1094,8 @@ export interface InspectionPhoto {
      * @nullable
      */
   sidingComponentIndex: number | null;
+  /** Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation. */
+  includeInProofPackage: boolean;
   createdAt: string;
 }
 
@@ -2329,6 +2331,23 @@ export interface PreflightResult {
 
 export interface PreflightResultEnvelope {
   preflight: PreflightResult;
+}
+
+export type CurateInspectionPhotosRequestCurationItem = {
+  photoId: string;
+  include: boolean;
+};
+
+export interface CurateInspectionPhotosRequest {
+  /** @minItems 1 */
+  curation: CurateInspectionPhotosRequestCurationItem[];
+}
+
+export interface CurationResultEnvelope {
+  /** How many photo rows were updated. */
+  updated: number;
+  /** Total photos on the inspection now flagged for the Proof Package. */
+  includedCount: number;
 }
 
 export type PackageReceiptStage = typeof PackageReceiptStage[keyof typeof PackageReceiptStage];

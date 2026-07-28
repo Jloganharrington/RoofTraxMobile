@@ -1004,6 +1004,7 @@ export const ListInspectionsResponse = zod.object({
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
+  "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -1557,6 +1558,7 @@ export const CreateInspectionResponse = zod.object({
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
+  "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -2092,6 +2094,7 @@ export const GetInspectionResponse = zod.object({
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
+  "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -2901,6 +2904,7 @@ export const UpdateInspectionResponse = zod.object({
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
+  "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -3815,6 +3819,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
+  "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
   "createdAt": zod.coerce.date()
 })
 })
@@ -4121,6 +4126,7 @@ export const SubmitInspectionResponse = zod.object({
   "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
+  "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Captured evidence photos, populated by the detail view only.'),
   "components": zod.array(zod.object({
@@ -4507,6 +4513,29 @@ export const ListScheduledInspectionsResponse = zod.object({
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable()
 }).describe('A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.'))
+})
+
+
+/**
+ * @summary Pre-submission photo curation. Bulk-sets each listed photo's includeInProofPackage flag. Photos not listed are left unchanged. No minimum or maximum — the curation dashboard alone decides.
+ */
+export const CurateInspectionPhotosParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+
+
+
+export const CurateInspectionPhotosBody = zod.object({
+  "curation": zod.array(zod.object({
+  "photoId": zod.string(),
+  "include": zod.boolean()
+})).min(1)
+})
+
+export const CurateInspectionPhotosResponse = zod.object({
+  "updated": zod.number().describe('How many photo rows were updated.'),
+  "includedCount": zod.number().describe('Total photos on the inspection now flagged for the Proof Package.')
 })
 
 

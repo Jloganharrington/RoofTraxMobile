@@ -2243,6 +2243,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/photo-curation:
+    post:
+      tags: [Inspections]
+      operationId: curateInspectionPhotos
+      summary: >-
+        Pre-submission photo curation. Bulk-sets each listed photo's
+        includeInProofPackage flag. Photos not listed are left unchanged.
+        No minimum or maximum — the curation dashboard alone decides.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CurateInspectionPhotosRequest"
+      responses:
+        "200":
+          description: Curation applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurationResultEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized to modify this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /inspections/{inspectionId}/preflight:
     post:
       tags: [Inspections]
@@ -5494,6 +5546,7 @@ components:
           zone,
           sidingRole,
           sidingComponentIndex,
+          includeInProofPackage,
           createdAt,
         ]
       properties:
@@ -5557,6 +5610,11 @@ components:
           description: >-
             1-based component slot (S{n}C{k}) this photo evidences. Set only
             when sidingRole is 'component'.
+        includeInProofPackage:
+          type: boolean
+          description: >-
+            Pre-submission curation flag. When false the photo remains stored
+            evidence but is omitted from Proof Package generation.
         createdAt:
           type: string
           format: date-time
@@ -5872,6 +5930,33 @@ components:
       properties:
         preflight:
           $ref: "#/components/schemas/PreflightResult"
+
+    CurateInspectionPhotosRequest:
+      type: object
+      required: [curation]
+      properties:
+        curation:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [photoId, include]
+            properties:
+              photoId:
+                type: string
+              include:
+                type: boolean
+
+    CurationResultEnvelope:
+      type: object
+      required: [updated, includedCount]
+      properties:
+        updated:
+          type: number
+          description: How many photo rows were updated.
+        includedCount:
+          type: number
+          description: Total photos on the inspection now flagged for the Proof Package.
 
     # ---- M-F (F3) Status & package receipt ----
     PackageReceipt:

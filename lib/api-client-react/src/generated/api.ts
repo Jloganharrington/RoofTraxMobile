@@ -52,6 +52,8 @@ import type {
   CreateTestSquareHitInput,
   CreateTestSquareInput,
   CrmStatusEnvelope,
+  CurateInspectionPhotosRequest,
+  CurationResultEnvelope,
   DamageInstanceEnvelope,
   DeleteSuccess,
   EmailReportInput,
@@ -4543,6 +4545,78 @@ export function useListScheduledInspections<TData = Awaited<ReturnType<typeof li
 
 
 
+
+export const getCurateInspectionPhotosUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/photo-curation`
+}
+
+/**
+ * @summary Pre-submission photo curation. Bulk-sets each listed photo's includeInProofPackage flag. Photos not listed are left unchanged. No minimum or maximum — the curation dashboard alone decides.
+ */
+export const curateInspectionPhotos = async (inspectionId: string,
+    curateInspectionPhotosRequest: CurateInspectionPhotosRequest, options?: RequestInit): Promise<CurationResultEnvelope> => {
+
+  return customFetch<CurationResultEnvelope>(getCurateInspectionPhotosUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(curateInspectionPhotosRequest)
+  }
+);}
+
+
+
+
+
+export const getCurateInspectionPhotosMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof curateInspectionPhotos>>, TError,{inspectionId: string;data: BodyType<CurateInspectionPhotosRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof curateInspectionPhotos>>, TError,{inspectionId: string;data: BodyType<CurateInspectionPhotosRequest>}, TContext> => {
+
+const mutationKey = ['curateInspectionPhotos'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof curateInspectionPhotos>>, {inspectionId: string;data: BodyType<CurateInspectionPhotosRequest>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  curateInspectionPhotos(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CurateInspectionPhotosMutationResult = NonNullable<Awaited<ReturnType<typeof curateInspectionPhotos>>>
+    export type CurateInspectionPhotosMutationBody = BodyType<CurateInspectionPhotosRequest>
+    export type CurateInspectionPhotosMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Pre-submission photo curation. Bulk-sets each listed photo's includeInProofPackage flag. Photos not listed are left unchanged. No minimum or maximum — the curation dashboard alone decides.
+ */
+export const useCurateInspectionPhotos = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof curateInspectionPhotos>>, TError,{inspectionId: string;data: BodyType<CurateInspectionPhotosRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof curateInspectionPhotos>>,
+        TError,
+        {inspectionId: string;data: BodyType<CurateInspectionPhotosRequest>},
+        TContext
+      > => {
+      return useMutation(getCurateInspectionPhotosMutationOptions(options));
+    }
 
 export const getPreflightInspectionUrl = (inspectionId: string,) => {
 

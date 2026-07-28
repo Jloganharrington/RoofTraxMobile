@@ -912,6 +912,7 @@ export function appendOptimisticPhotos(
       preliminaryRole: p.preliminaryRole ?? null,
       url: '',
       sha256: p.sha256,
+      includeInProofPackage: true,
       exifJson: null,
       overlayJson: null,
       capturedAtUtc: now,

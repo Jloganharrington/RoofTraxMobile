@@ -46,5 +46,7 @@ export interface InspectionPhoto {
      * @nullable
      */
   sidingComponentIndex: number | null;
+  /** Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation. */
+  includeInProofPackage: boolean;
   createdAt: Date;
 }

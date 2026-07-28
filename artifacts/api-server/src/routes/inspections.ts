@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   CreateAttestationBody,
   CreateAttestationResponse,
+  CurateInspectionPhotosBody,
+  CurateInspectionPhotosResponse,
   CreateDamageInstanceBody,
   CreateDamageInstanceResponse,
   CreateInspectionBody,
@@ -2237,6 +2239,69 @@ router.post('/inspections/:inspectionId/measurements', async (req: Request, res:
   res.status(201).json(CreateMeasurementResponse.parse({ measurement }));
 });
 
+// Pre-submission Proof Package curation. Bulk-sets includeInProofPackage on
+// the listed photos. Photos not listed are untouched. No minimum/maximum —
+// the curation dashboard alone decides what ships in the package; the photos
+// themselves remain stored evidence either way.
+router.post('/inspections/:inspectionId/photo-curation', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  const parsed = CurateInspectionPhotosBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid curation payload' });
+    return;
+  }
+
+  // Last-write-wins per photo id within one request.
+  const flagById = new Map<string, boolean>();
+  for (const item of parsed.data.curation) flagById.set(item.photoId, item.include);
+  const includeIds = [...flagById.entries()].filter(([, v]) => v).map(([k]) => k);
+  const excludeIds = [...flagById.entries()].filter(([, v]) => !v).map(([k]) => k);
+
+  const scope = (ids: string[]) =>
+    and(
+      inArray(inspectionPhotosTable.id, ids),
+      eq(inspectionPhotosTable.inspectionId, inspectionId),
+      eq(inspectionPhotosTable.companyId, actor.companyId),
+    );
+
+  let updated = 0;
+  if (includeIds.length > 0) {
+    const rows = await db
+      .update(inspectionPhotosTable)
+      .set({ includeInProofPackage: true })
+      .where(scope(includeIds))
+      .returning({ id: inspectionPhotosTable.id });
+    updated += rows.length;
+  }
+  if (excludeIds.length > 0) {
+    const rows = await db
+      .update(inspectionPhotosTable)
+      .set({ includeInProofPackage: false })
+      .where(scope(excludeIds))
+      .returning({ id: inspectionPhotosTable.id });
+    updated += rows.length;
+  }
+
+  const [{ count: includedCount }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, actor.companyId),
+        eq(inspectionPhotosTable.includeInProofPackage, true),
+      ),
+    );
+
+  res.status(200).json(CurateInspectionPhotosResponse.parse({ updated, includedCount }));
+});
+
 router.post('/inspections/:inspectionId/attestations', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -3820,7 +3885,13 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
     damageById: new Map(children.damageInstances.map((d) => [d.id, d])),
     slopeById: new Map(children.slopes.map((s) => [s.id, s])),
   };
-  const evidenceManifestEntries = children.photos
+  // Pre-submission curation: photos flagged includeInProofPackage=false stay
+  // stored evidence but are omitted from the package — the AI grouping brief
+  // and the evidence manifest both draw only from curated photos. The
+  // photoIndex above intentionally stays complete so explicitly referenced
+  // protocol photos (e.g. RAP1) always resolve at render time.
+  const curatedPhotos = children.photos.filter((p) => p.includeInProofPackage !== false);
+  const evidenceManifestEntries = curatedPhotos
     .map((p) => ({
       photoId: p.id,
       objectPath: p.url,
@@ -3899,7 +3970,7 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   const rapSection = buildRapReportSection(inspection.repairabilityAssessment);
   const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
 
-  const photoBrief = children.photos.slice(0, 80).map((p) => ({
+  const photoBrief = curatedPhotos.slice(0, 80).map((p) => ({
     id: p.id,
     stage: p.stage ?? null,
     subjectType: p.subjectType ?? null,
@@ -4029,9 +4100,18 @@ ${JSON.stringify(photoBrief)}
     return;
   }
 
-  // Normalise Gemini's groupings — fallback to one group if it returned none.
+  // Curation boundary: groupings may only reference curated photos. Gemini
+  // only ever sees the curated brief, but its output is untrusted — drop any
+  // rogue/non-curated id before render, and prune groups that empty out.
+  const curatedIds = new Set(curatedPhotos.map((p) => p.id));
+  photoGroupings = photoGroupings
+    .map((g) => ({ ...g, photoIds: g.photoIds.filter((pid) => curatedIds.has(pid)) }))
+    .filter((g) => g.photoIds.length > 0);
+
+  // Normalise Gemini's groupings — fallback to one group (curated photos
+  // only) if it returned none.
   if (photoGroupings.length === 0) {
-    photoGroupings = [{ title: 'Evidence Photos', photoIds: children.photos.map((p) => p.id), narrative: '' }];
+    photoGroupings = [{ title: 'Evidence Photos', photoIds: curatedPhotos.map((p) => p.id), narrative: '' }];
   }
 
   // Store a JSON data blob — NOT rendered HTML. Photo URLs are intentionally

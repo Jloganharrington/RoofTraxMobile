@@ -889,6 +889,10 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   // sidingRole is 'component'; the gate matches it against the facet's
   // components array positionally. Null elsewhere.
   sidingComponentIndex: integer('siding_component_index'),
+  // Pre-submission curation: when false, the photo is kept as captured
+  // evidence but omitted from Proof Package generation (report body, AI
+  // grouping brief, and evidence manifest). Defaults to included.
+  includeInProofPackage: boolean('include_in_proof_package').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
