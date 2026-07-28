@@ -50,7 +50,20 @@ export type IconName =
   | 'send'
   | 'alert-triangle'
   | 'refresh-cw'
-  | 'zap';
+  | 'zap'
+  | 'folder'
+  | 'search'
+  | 'briefcase'
+  | 'archive'
+  | 'settings'
+  | 'zoom-in'
+  | 'arrow-right'
+  | 'arrow-left'
+  | 'cpu'
+  | 'eye'
+  | 'slash'
+  | 'dollar-sign'
+  | 'edit-2';
 
 type IconProps = {
   name: IconName;
@@ -353,6 +366,107 @@ export function Icon({ name, size = 24, color = '#000' }: IconProps) {
           <Polyline points="1 20 1 14 7 14" {...strokeProps} />
           <Path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" {...strokeProps} />
         </>
+      )}
+      {name === 'folder' && (
+        <Path
+          d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+          {...strokeProps}
+        />
+      )}
+
+      {name === 'search' && (
+        <>
+          <Circle cx={11} cy={11} r={8} {...strokeProps} />
+          <Line x1={21} y1={21} x2={16.65} y2={16.65} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'briefcase' && (
+        <>
+          <Rect x={2} y={7} width={20} height={14} rx={2} ry={2} {...strokeProps} />
+          <Path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" {...strokeProps} />
+        </>
+      )}
+
+      {name === 'archive' && (
+        <>
+          <Polyline points="21 8 21 21 3 21 3 8" {...strokeProps} />
+          <Rect x={1} y={3} width={22} height={5} {...strokeProps} />
+          <Line x1={10} y1={12} x2={14} y2={12} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'settings' && (
+        <>
+          <Circle cx={12} cy={12} r={3} {...strokeProps} />
+          <Path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            {...strokeProps}
+          />
+        </>
+      )}
+
+      {name === 'zoom-in' && (
+        <>
+          <Circle cx={11} cy={11} r={8} {...strokeProps} />
+          <Line x1={21} y1={21} x2={16.65} y2={16.65} {...strokeProps} />
+          <Line x1={11} y1={8} x2={11} y2={14} {...strokeProps} />
+          <Line x1={8} y1={11} x2={14} y2={11} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'arrow-right' && (
+        <>
+          <Line x1={5} y1={12} x2={19} y2={12} {...strokeProps} />
+          <Polyline points="12 5 19 12 12 19" {...strokeProps} />
+        </>
+      )}
+
+      {name === 'arrow-left' && (
+        <>
+          <Line x1={19} y1={12} x2={5} y2={12} {...strokeProps} />
+          <Polyline points="12 19 5 12 12 5" {...strokeProps} />
+        </>
+      )}
+
+      {name === 'cpu' && (
+        <>
+          <Rect x={4} y={4} width={16} height={16} rx={2} ry={2} {...strokeProps} />
+          <Rect x={9} y={9} width={6} height={6} {...strokeProps} />
+          <Line x1={9} y1={1} x2={9} y2={4} {...strokeProps} />
+          <Line x1={15} y1={1} x2={15} y2={4} {...strokeProps} />
+          <Line x1={9} y1={20} x2={9} y2={23} {...strokeProps} />
+          <Line x1={15} y1={20} x2={15} y2={23} {...strokeProps} />
+          <Line x1={20} y1={9} x2={23} y2={9} {...strokeProps} />
+          <Line x1={20} y1={14} x2={23} y2={14} {...strokeProps} />
+          <Line x1={1} y1={9} x2={4} y2={9} {...strokeProps} />
+          <Line x1={1} y1={14} x2={4} y2={14} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'eye' && (
+        <>
+          <Path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" {...strokeProps} />
+          <Circle cx={12} cy={12} r={3} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'slash' && (
+        <>
+          <Circle cx={12} cy={12} r={10} {...strokeProps} />
+          <Line x1={4.93} y1={4.93} x2={19.07} y2={19.07} {...strokeProps} />
+        </>
+      )}
+
+      {name === 'dollar-sign' && (
+        <>
+          <Line x1={12} y1={1} x2={12} y2={23} {...strokeProps} />
+          <Path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" {...strokeProps} />
+        </>
+      )}
+
+      {name === 'edit-2' && (
+        <Path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" {...strokeProps} />
       )}
     </Svg>
   );
