@@ -34,6 +34,8 @@ export default function InspectionRepairabilityScreen() {
     'yes' | 'not_warranted_discontinued' | 'not_authorized' | null
   >(null);
   const [systems, setSystems] = React.useState<Array<'roof' | 'siding'>>([]);
+  // Type of roof — shown when Roof is selected. More types will be added later.
+  const [roofType, setRoofType] = React.useState<'asphalt_shingle' | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
 
   // Existing record: show its systems selection.
@@ -136,6 +138,39 @@ export default function InspectionRepairabilityScreen() {
           );
             })}
           </View>
+
+          {systems.includes('roof') ? (
+            <>
+              <Text style={[styles.qLabel, { color: colors.foreground }]}>Type of Roof</Text>
+              <View style={styles.chipWrap}>
+                {([{ value: 'asphalt_shingle', label: 'Asphalt Shingle' }] as const).map((opt) => {
+                  const on = roofType === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => setRoofType(on ? null : opt.value)}
+                      style={[
+                        styles.sysToggle,
+                        {
+                          borderColor: on ? colors.primary : colors.border,
+                          backgroundColor: on ? colors.primary : colors.card,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: on ? colors.primaryForeground : colors.foreground,
+                          fontWeight: '700',
+                        }}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
         </>
       ) : null}
 
