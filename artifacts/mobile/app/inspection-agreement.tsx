@@ -379,26 +379,49 @@ export default function InspectionAgreementScreen() {
                 },
               ]}
             />
-            <Pressable
-              onPress={() => {
-                const name = ownerNameDraft.trim();
-                if (name.length < 2) return;
-                setSignerName(name);
-                setActiveModal(null);
-              }}
-              disabled={ownerNameDraft.trim().length < 2}
-              style={[
-                styles.modalBtn,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: ownerNameDraft.trim().length >= 2 ? 1 : 0.45,
-                },
-              ]}
-            >
-              <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
-                Continue
-              </Text>
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={() => {
+                  // Leaving without a name — close the modal and return to the
+                  // previous screen (the name is required to sign, so staying
+                  // here without it would just re-open the modal).
+                  setActiveModal(null);
+                  router.back();
+                }}
+                style={[
+                  styles.modalBtn,
+                  {
+                    flex: 1,
+                    backgroundColor: colors.background,
+                    borderWidth: 1.5,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>Back</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const name = ownerNameDraft.trim();
+                  if (name.length < 2) return;
+                  setSignerName(name);
+                  setActiveModal(null);
+                }}
+                disabled={ownerNameDraft.trim().length < 2}
+                style={[
+                  styles.modalBtn,
+                  {
+                    flex: 1,
+                    backgroundColor: colors.primary,
+                    opacity: ownerNameDraft.trim().length >= 2 ? 1 : 0.45,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>
+                  Continue
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
