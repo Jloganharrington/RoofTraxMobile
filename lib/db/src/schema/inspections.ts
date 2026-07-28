@@ -458,6 +458,47 @@ export interface RepairAttemptProtocol {
   damage: Partial<Record<RapDamageCategoryKey, RapDamageFinding>>;
 }
 
+// Vinyl Assessment Protocol (VAP) — vinyl-siding flows only. Mirrors the
+// mobile vinyl repairability screen: panel "X" is removed and replaced,
+// surrounding panels 1–4 and trim components T1+ are manipulated, and five
+// collateral-damage questions cover the manipulated components. Photo fields
+// reference inspection_photos row ids (never URLs).
+
+// Ordered — this order is the report/scorecard display order (question order
+// 1–5 on the mobile screen). Photo PRIORITY differs: see
+// VAP_PHOTO_PRIORITY in the server scorecard lib (locking edge first).
+export type VapDamageCategoryKey =
+  | 'crackSplit'
+  | 'lockingEdge'
+  | 'nailHem'
+  | 'trimInterface'
+  | 'reseat';
+
+/** Manipulated-component label: panels "1"–"4", trim "T1"–"T4". */
+export type VapComponentId = string;
+
+export interface VapDamageFinding {
+  answer: RapYesNo;
+  /** Affected components ("1"–"4", "T1"–"T4"). */
+  components: VapComponentId[];
+  /** inspection_photos id of the one example photo for this category. */
+  photoId?: string | null;
+  note?: string | null;
+}
+
+export interface VinylAssessmentProtocol {
+  /** Panels manipulated beside/around X (2–6). Null while unanswered. */
+  panelsManipulated?: number | null;
+  /** Trim/interface components manipulated (0–4). Null while unanswered. */
+  trimManipulated?: number | null;
+  /** inspection_photos id of the marked repair-zone (VAP1) photo. */
+  vap1PhotoId?: string | null;
+  /** inspection_photos id of the final annotated archive photo. */
+  finalPhotoId?: string | null;
+  /** Collateral-damage answers keyed by category. */
+  damage: Partial<Record<VapDamageCategoryKey, VapDamageFinding>>;
+}
+
 export interface RepairabilitySystemFlow {
   // Roof flows only: which material's question flow was completed.
   roofMaterial?: RepairabilityRoofMaterial | null;
@@ -502,8 +543,13 @@ export interface RepairabilityAssessmentV3 {
   /** Empty unless warranted === 'yes'. */
   systems: Array<'roof' | 'siding'>;
   roofType?: 'asphalt_shingle' | null;
+  /** Siding material — vinyl runs the VAP; aluminum routes to the Product
+   * ID–supported non-repairability determination (no simulated repair). */
+  sidingType?: 'vinyl' | 'aluminum' | null;
   /** Present when the asphalt-shingle roof protocol was run. */
   rap?: RepairAttemptProtocol | null;
+  /** Present when the vinyl-siding protocol was run. */
+  vap?: VinylAssessmentProtocol | null;
   assessorName?: string | null; // server-populated
   assessorCredentials?: string | null; // server-populated
   recordedAtUtc: string;

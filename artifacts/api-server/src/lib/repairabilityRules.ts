@@ -13,6 +13,8 @@ import type {
   RepairabilitySystemFlow,
   RepairAttemptProtocol,
   RapDamageCategoryKey,
+  VinylAssessmentProtocol,
+  VapDamageCategoryKey,
 } from '@workspace/db';
 
 export type RepairabilitySystem = 'roof' | 'siding';
@@ -671,6 +673,55 @@ function validateRap(rap: RepairAttemptProtocol): string[] {
   return errors;
 }
 
+const VAP_CATEGORY_KEYS: VapDamageCategoryKey[] = [
+  'crackSplit',
+  'lockingEdge',
+  'nailHem',
+  'trimInterface',
+  'reseat',
+];
+
+/** Valid manipulated-component labels: panels 1-4, trim T1-T4. */
+const VAP_COMPONENT_RE = /^(?:[1-4]|T[1-4])$/;
+
+function validateVap(vap: VinylAssessmentProtocol): string[] {
+  const errors: string[] = [];
+  const panels = vap.panelsManipulated;
+  if (panels != null && (!Number.isInteger(panels) || panels < 2 || panels > 6)) {
+    errors.push('VAP: manipulated-panel count must be between 2 and 6.');
+  }
+  const trim = vap.trimManipulated;
+  if (trim != null && (!Number.isInteger(trim) || trim < 0 || trim > 4)) {
+    errors.push('VAP: manipulated trim/interface component count must be between 0 and 4.');
+  }
+  const damage = vap.damage ?? {};
+  for (const key of Object.keys(damage)) {
+    if (!VAP_CATEGORY_KEYS.includes(key as VapDamageCategoryKey)) {
+      errors.push(`VAP: unknown damage category "${key}".`);
+      continue;
+    }
+    const finding = damage[key as VapDamageCategoryKey];
+    if (!finding) continue;
+    const components = Array.isArray(finding.components) ? finding.components : [];
+    if (finding.answer === 'yes' && components.length === 0) {
+      errors.push(`VAP: ${key} answered Yes requires at least one affected component.`);
+    }
+    if (finding.answer === 'no' && components.length > 0) {
+      errors.push(`VAP: ${key} answered No cannot carry affected components.`);
+    }
+    const invalid = components.filter((c) => typeof c !== 'string' || !VAP_COMPONENT_RE.test(c));
+    if (invalid.length > 0) {
+      errors.push(
+        `VAP: ${key} affected components must be panels 1-4 or trim T1-T4; got ${invalid.join(', ')}.`,
+      );
+    }
+    if (new Set(components).size !== components.length) {
+      errors.push(`VAP: ${key} affected components must be unique.`);
+    }
+  }
+  return errors;
+}
+
 /**
  * Validate a v3 (Repair Attempt Protocol) assessment. Returns violations
  * (empty = valid). Structural gates: the systems selection only exists when
@@ -691,6 +742,12 @@ export function validateRepairabilityAssessmentV3(ra: RepairabilityAssessmentV3)
     if (ra.rap) {
       errors.push('A Repair Attempt Protocol record only applies when the assessment is warranted and authorized.');
     }
+    if (ra.sidingType) {
+      errors.push('Siding type only applies when the assessment is warranted and authorized.');
+    }
+    if (ra.vap) {
+      errors.push('A Vinyl Assessment Protocol record only applies when the assessment is warranted and authorized.');
+    }
     return errors;
   }
 
@@ -705,6 +762,15 @@ export function validateRepairabilityAssessmentV3(ra: RepairabilityAssessmentV3)
       errors.push('The Repair Attempt Protocol only applies to asphalt-shingle roof assessments.');
     }
     errors.push(...validateRap(ra.rap));
+  }
+  if (ra.sidingType && !systems.includes('siding')) {
+    errors.push('Siding type only applies when the siding system is selected.');
+  }
+  if (ra.vap) {
+    if (!systems.includes('siding') || ra.sidingType !== 'vinyl') {
+      errors.push('The Vinyl Assessment Protocol only applies to vinyl siding assessments.');
+    }
+    errors.push(...validateVap(ra.vap));
   }
   return errors;
 }

@@ -106,6 +106,14 @@ import {
   rapScorecardBriefLines,
   type RapReportSection,
 } from '../lib/rapScorecard';
+import {
+  buildVapReportSection,
+  computeVapScorecard,
+  extractVap,
+  isVapArchiveOnlyPhoto,
+  vapScorecardBriefLines,
+  type VapReportSection,
+} from '../lib/vapScorecard';
 import { ObjectNotFoundError, ObjectStorageService } from '../lib/objectStorage';
 
 const objectStorageService = new ObjectStorageService();
@@ -950,6 +958,11 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     const photoIds = new Set<string>();
     if (incomingV3.rap?.rap1PhotoId) photoIds.add(incomingV3.rap.rap1PhotoId);
     for (const finding of Object.values(incomingV3.rap?.damage ?? {})) {
+      if (finding?.photoId) photoIds.add(finding.photoId);
+    }
+    if (incomingV3.vap?.vap1PhotoId) photoIds.add(incomingV3.vap.vap1PhotoId);
+    if (incomingV3.vap?.finalPhotoId) photoIds.add(incomingV3.vap.finalPhotoId);
+    for (const finding of Object.values(incomingV3.vap?.damage ?? {})) {
       if (finding?.photoId) photoIds.add(finding.photoId);
     }
     if (photoIds.size > 0) {
@@ -3312,9 +3325,23 @@ function buildInspectionBrief(
       lines.push(`  Warranted/authorized: ${RAP_WARRANTED_LABELS[v3.warranted] ?? v3.warranted}`);
       if (v3.systems.length > 0) lines.push(`  Assessed on: ${v3.systems.join(', ')}`);
       if (v3.roofType) lines.push(`  Roof type: ${v3.roofType.replace(/_/g, ' ')}`);
+      if (v3.sidingType) {
+        lines.push(`  Siding type: ${v3.sidingType}`);
+        if (v3.sidingType === 'aluminum') {
+          lines.push(
+            '  Aluminum siding: routed to the Product ID-supported non-repairability determination — no simulated repair performed.',
+          );
+        }
+      }
       const rap = extractRap(ra);
       if (rap) {
         for (const line of rapScorecardBriefLines(computeRapScorecard(rap))) {
+          lines.push(`  ${line}`);
+        }
+      }
+      const vap = extractVap(ra);
+      if (vap) {
+        for (const line of vapScorecardBriefLines(computeVapScorecard(vap))) {
           lines.push(`  ${line}`);
         }
       }
@@ -3890,7 +3917,14 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   // and the evidence manifest both draw only from curated photos. The
   // photoIndex above intentionally stays complete so explicitly referenced
   // protocol photos (e.g. RAP1) always resolve at render time.
-  const curatedPhotos = children.photos.filter((p) => p.includeInProofPackage !== false);
+  // The VAP final archive photo is archive-only by product rule: it stays
+  // stored evidence but must never enter the report output (photo brief,
+  // photo groupings, or evidence manifest) — enforced here, not on mobile.
+  const curatedPhotos = children.photos.filter(
+    (p) =>
+      p.includeInProofPackage !== false &&
+      !isVapArchiveOnlyPhoto(inspection.repairabilityAssessment, p.id),
+  );
   const evidenceManifestEntries = curatedPhotos
     .map((p) => ({
       photoId: p.id,
@@ -3968,6 +4002,8 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
   // Server-built RAP scorecard section (null for pre-RAP assessments — the
   // report simply omits it). Photo references are ids, never URLs.
   const rapSection = buildRapReportSection(inspection.repairabilityAssessment);
+  // Server-built VAP scorecard section (vinyl siding; null when absent).
+  const vapSection = buildVapReportSection(inspection.repairabilityAssessment);
   const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
 
   const photoBrief = curatedPhotos.slice(0, 80).map((p) => ({
@@ -4132,6 +4168,7 @@ ${JSON.stringify(photoBrief)}
     evidenceManifest: 'internal_metadata',
     // Server-computed counts + photo references — factual, carrier-facing.
     rapSection: 'construction_fact',
+    vapSection: 'construction_fact',
   };
 
   // Contractor-lane lint over every AI-generated fragment before storage.
@@ -4180,6 +4217,9 @@ ${JSON.stringify(photoBrief)}
     // Server-built Repair Attempt Protocol scorecard + photo references
     // (schemaVersion 5). Null when the assessment predates RAP.
     rapSection,
+    // Server-built Vinyl Assessment Protocol scorecard + photo references.
+    // Null when no vinyl-siding protocol was run.
+    vapSection,
     // Present from schemaVersion 4 onward.
     contentClasses,
     lint,
@@ -4296,6 +4336,9 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
     // Present from schemaVersion 5 onward — server-built RAP scorecard +
     // photo references. Absent/null on older blobs and pre-RAP assessments.
     rapSection?: RapReportSection | null;
+    // Server-built VAP (vinyl siding) scorecard + photo references.
+    // Absent/null on older blobs and non-vinyl assessments.
+    vapSection?: VapReportSection | null;
     // Present from schemaVersion 4 onward.
     contentClasses?: Record<string, ContentClass>;
     lint?: { lintStatus: 'passed' | 'needs_review' | 'blocked'; findings: unknown[] };
@@ -4421,6 +4464,50 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
 
     rapSectionHtml = `${scorecardHtml}${
       rapCards ? `<div class="photo-grid" style="margin-top:16px">${rapCards}</div>` : ''
+    }`;
+  }
+
+  // Build the Vinyl Assessment Protocol section — same server-side pattern
+  // as the RAP section (scorecard table + VAP1 + priority example photos).
+  // The final archive photo stays in the inspection archive, not the report.
+  let vapSectionHtml: string | null = null;
+  const vapSection = compiledData.vapSection;
+  if (vapSection && carrierVisible('vapSection')) {
+    const sc = vapSection.scorecard;
+    const scoreRows: Array<[string, number]> = [
+      ['Target panels removed', sc.targetPanelsRemoved],
+      ['Panels manipulated', sc.panelsManipulated],
+      ['Trim/interface components manipulated', sc.trimManipulated],
+      ['New collateral-damaged panels', sc.newCollateralDamagedComponents],
+      ...sc.categories.map((c): [string, number] => [c.label, c.count]),
+    ];
+    const scorecardHtml = `<table class="detail-table">
+      <tr><th>Scorecard</th><th>Count</th></tr>
+      ${scoreRows.map(([label, count]) => `<tr><td>${escHtml(label)}</td><td>${escHtml(count)}</td></tr>`).join('\n      ')}
+    </table>`;
+
+    const vapPhotoCard = (photoId: string, caption: string): string => {
+      const entry = compiledData.photoIndex[photoId];
+      if (!entry) return '';
+      const signedUrl = freshSignedUrls.get(photoId);
+      const imgTag = signedUrl
+        ? `<img src="${escHtml(signedUrl)}" alt="${escHtml(caption)}" loading="lazy">`
+        : `<div style="height:160px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px">Photo unavailable</div>`;
+      return `<div class="photo-card">${imgTag}<div class="photo-caption">${escHtml(caption)}</div></div>`;
+    };
+    const vapCards = [
+      ...(vapSection.vap1PhotoId
+        ? [vapPhotoCard(vapSection.vap1PhotoId, 'VAP1 — marked vinyl repair zone / pre-manipulation baseline')]
+        : []),
+      ...vapSection.examplePhotos.map((p) =>
+        vapPhotoCard(p.photoId, [p.label, p.note].filter(Boolean).join(' — ')),
+      ),
+    ]
+      .filter(Boolean)
+      .join('');
+
+    vapSectionHtml = `${scorecardHtml}${
+      vapCards ? `<div class="photo-grid" style="margin-top:16px">${vapCards}</div>` : ''
     }`;
   }
 
@@ -4553,6 +4640,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
     attestationHtml: carrierVisible('attestationHtml') ? compiledData.attestationHtml : '',
     generatedAt: compiledData.generatedAt,
     rapSectionHtml,
+    vapSectionHtml,
     theme: resolveReportTheme(company?.reportBranding),
     logoUrl: logoSignedUrl,
     evidenceManifestHtml,

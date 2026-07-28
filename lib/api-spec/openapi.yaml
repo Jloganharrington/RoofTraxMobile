@@ -4776,6 +4776,75 @@ components:
               $ref: "#/components/schemas/RapDamageFinding"
             reseat:
               $ref: "#/components/schemas/RapDamageFinding"
+    VapDamageFinding:
+      type: object
+      description: >-
+        One collateral-damage question's finding in the Vinyl Assessment
+        Protocol. `components` are the affected component labels (panels
+        "1"-"4", trim "T1"-"T4"); `photoId` references the one example
+        inspection_photos row for this category (never a URL).
+      required: [answer, components]
+      properties:
+        answer:
+          type: string
+          enum: [yes, no]
+        components:
+          type: array
+          items:
+            type: string
+        photoId:
+          type: [string, "null"]
+        note:
+          type: [string, "null"]
+    VinylAssessmentProtocol:
+      type: object
+      description: >-
+        Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel
+        "X" is removed and replaced, surrounding panels 1-4 and trim
+        components T1+ are manipulated, and five collateral-damage questions
+        cover the manipulated components. Photo fields reference
+        inspection_photos row ids (client-generated for offline
+        idempotency), never URLs.
+      required: [damage]
+      properties:
+        panelsManipulated:
+          description: >-
+            How many panels (beyond X) were manipulated to complete the
+            protocol (2-6). Null while unanswered.
+          oneOf:
+            - type: number
+              enum: [2, 3, 4, 5, 6]
+            - type: "null"
+        trimManipulated:
+          description: >-
+            How many trim/interface components were manipulated (0-4).
+            Null while unanswered.
+          oneOf:
+            - type: number
+              enum: [0, 1, 2, 3, 4]
+            - type: "null"
+        vap1PhotoId:
+          type: [string, "null"]
+        finalPhotoId:
+          description: Final annotated archive photo of the repaired zone.
+          type: [string, "null"]
+        damage:
+          type: object
+          description: >-
+            Collateral-damage findings keyed by category (crackSplit,
+            lockingEdge, nailHem, trimInterface, reseat). Missing keys mean
+            the question is unanswered.
+          properties:
+            crackSplit:
+              $ref: "#/components/schemas/VapDamageFinding"
+            lockingEdge:
+              $ref: "#/components/schemas/VapDamageFinding"
+            nailHem:
+              $ref: "#/components/schemas/VapDamageFinding"
+            trimInterface:
+              $ref: "#/components/schemas/VapDamageFinding"
+            reseat:
+              $ref: "#/components/schemas/VapDamageFinding"
     RepairabilitySystemFlow:
       type: object
       description: >-
@@ -4910,9 +4979,20 @@ components:
         roofType:
           type: [string, "null"]
           enum: [asphalt_shingle, null]
+        sidingType:
+          description: >-
+            Siding material — vinyl runs the Vinyl Assessment Protocol;
+            aluminum routes to the Product ID-supported non-repairability
+            determination (no simulated repair).
+          type: [string, "null"]
+          enum: [vinyl, aluminum, null]
         rap:
           oneOf:
             - $ref: "#/components/schemas/RepairAttemptProtocol"
+            - type: "null"
+        vap:
+          oneOf:
+            - $ref: "#/components/schemas/VinylAssessmentProtocol"
             - type: "null"
         recordedAtUtc:
           type: string

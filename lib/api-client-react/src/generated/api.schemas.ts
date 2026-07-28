@@ -1573,6 +1573,96 @@ export const RepairabilityAssessmentV3InputRoofType = {
 } as const;
 
 /**
+ * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+ * @nullable
+ */
+export type RepairabilityAssessmentV3InputSidingType = typeof RepairabilityAssessmentV3InputSidingType[keyof typeof RepairabilityAssessmentV3InputSidingType] | null;
+
+
+export const RepairabilityAssessmentV3InputSidingType = {
+  vinyl: 'vinyl',
+  aluminum: 'aluminum',
+} as const;
+
+/**
+ * How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.
+ */
+export type VinylAssessmentProtocolPanelsManipulated = typeof VinylAssessmentProtocolPanelsManipulated[keyof typeof VinylAssessmentProtocolPanelsManipulated] | null;
+
+
+export const VinylAssessmentProtocolPanelsManipulated = {
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+  NUMBER_5: 5,
+  NUMBER_6: 6,
+} as const;
+
+/**
+ * How many trim/interface components were manipulated (0-4). Null while unanswered.
+ */
+export type VinylAssessmentProtocolTrimManipulated = typeof VinylAssessmentProtocolTrimManipulated[keyof typeof VinylAssessmentProtocolTrimManipulated] | null;
+
+
+export const VinylAssessmentProtocolTrimManipulated = {
+  NUMBER_0: 0,
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
+export type VapDamageFindingAnswer = typeof VapDamageFindingAnswer[keyof typeof VapDamageFindingAnswer];
+
+
+export const VapDamageFindingAnswer = {
+  yes: 'yes',
+  no: 'no',
+} as const;
+
+/**
+ * One collateral-damage question's finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels "1"-"4", trim "T1"-"T4"); `photoId` references the one example inspection_photos row for this category (never a URL).
+ */
+export interface VapDamageFinding {
+  answer: VapDamageFindingAnswer;
+  components: string[];
+  /** @nullable */
+  photoId?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+/**
+ * Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.
+ */
+export type VinylAssessmentProtocolDamage = {
+  crackSplit?: VapDamageFinding;
+  lockingEdge?: VapDamageFinding;
+  nailHem?: VapDamageFinding;
+  trimInterface?: VapDamageFinding;
+  reseat?: VapDamageFinding;
+};
+
+/**
+ * Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel "X" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.
+ */
+export interface VinylAssessmentProtocol {
+  /** How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered. */
+  panelsManipulated?: VinylAssessmentProtocolPanelsManipulated;
+  /** How many trim/interface components were manipulated (0-4). Null while unanswered. */
+  trimManipulated?: VinylAssessmentProtocolTrimManipulated;
+  /** @nullable */
+  vap1PhotoId?: string | null;
+  /**
+     * Final annotated archive photo of the repaired zone.
+     * @nullable
+     */
+  finalPhotoId?: string | null;
+  /** Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered. */
+  damage: VinylAssessmentProtocolDamage;
+}
+
+/**
  * Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile.
  */
 export interface RepairabilityAssessmentV3Input {
@@ -1582,7 +1672,13 @@ export interface RepairabilityAssessmentV3Input {
   systems: RepairabilityAssessmentV3InputSystemsItem[];
   /** @nullable */
   roofType?: RepairabilityAssessmentV3InputRoofType;
+  /**
+     * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+     * @nullable
+     */
+  sidingType?: RepairabilityAssessmentV3InputSidingType;
   rap?: RepairAttemptProtocol | null;
+  vap?: VinylAssessmentProtocol | null;
   recordedAtUtc: string;
 }
 

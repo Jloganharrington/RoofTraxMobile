@@ -1271,6 +1271,7 @@ export const ListInspectionsResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -1311,6 +1312,44 @@ export const ListInspectionsResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
 }).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "vap": zod.union([zod.object({
+  "panelsManipulated": zod.union([zod.union([zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),zod.null()]).optional().describe('How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.'),
+  "trimManipulated": zod.union([zod.union([zod.literal(0),zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),zod.null()]).optional().describe('How many trim\/interface components were manipulated (0-4). Null while unanswered.'),
+  "vap1PhotoId": zod.string().nullish(),
+  "finalPhotoId": zod.string().nullish().describe('Final annotated archive photo of the repaired zone.'),
+  "damage": zod.object({
+  "crackSplit": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "lockingEdge": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailHem": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "trimInterface": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
+}).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -1825,6 +1864,7 @@ export const CreateInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -1865,6 +1905,44 @@ export const CreateInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
 }).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "vap": zod.union([zod.object({
+  "panelsManipulated": zod.union([zod.union([zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),zod.null()]).optional().describe('How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.'),
+  "trimManipulated": zod.union([zod.union([zod.literal(0),zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),zod.null()]).optional().describe('How many trim\/interface components were manipulated (0-4). Null while unanswered.'),
+  "vap1PhotoId": zod.string().nullish(),
+  "finalPhotoId": zod.string().nullish().describe('Final annotated archive photo of the repaired zone.'),
+  "damage": zod.object({
+  "crackSplit": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "lockingEdge": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailHem": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "trimInterface": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
+}).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -2361,6 +2439,7 @@ export const GetInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -2401,6 +2480,44 @@ export const GetInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
 }).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "vap": zod.union([zod.object({
+  "panelsManipulated": zod.union([zod.union([zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),zod.null()]).optional().describe('How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.'),
+  "trimManipulated": zod.union([zod.union([zod.literal(0),zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),zod.null()]).optional().describe('How many trim\/interface components were manipulated (0-4). Null while unanswered.'),
+  "vap1PhotoId": zod.string().nullish(),
+  "finalPhotoId": zod.string().nullish().describe('Final annotated archive photo of the repaired zone.'),
+  "damage": zod.object({
+  "crackSplit": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "lockingEdge": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailHem": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "trimInterface": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
+}).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -2733,6 +2850,7 @@ export const UpdateInspectionBody = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -2773,6 +2891,44 @@ export const UpdateInspectionBody = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
 }).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "vap": zod.union([zod.object({
+  "panelsManipulated": zod.union([zod.union([zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),zod.null()]).optional().describe('How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.'),
+  "trimManipulated": zod.union([zod.union([zod.literal(0),zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),zod.null()]).optional().describe('How many trim\/interface components were manipulated (0-4). Null while unanswered.'),
+  "vap1PhotoId": zod.string().nullish(),
+  "finalPhotoId": zod.string().nullish().describe('Final annotated archive photo of the repaired zone.'),
+  "damage": zod.object({
+  "crackSplit": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "lockingEdge": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailHem": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "trimInterface": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
+}).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.')]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
@@ -3171,6 +3327,7 @@ export const UpdateInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -3211,6 +3368,44 @@ export const UpdateInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
 }).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "vap": zod.union([zod.object({
+  "panelsManipulated": zod.union([zod.union([zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),zod.null()]).optional().describe('How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.'),
+  "trimManipulated": zod.union([zod.union([zod.literal(0),zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),zod.null()]).optional().describe('How many trim\/interface components were manipulated (0-4). Null while unanswered.'),
+  "vap1PhotoId": zod.string().nullish(),
+  "finalPhotoId": zod.string().nullish().describe('Final annotated archive photo of the repaired zone.'),
+  "damage": zod.object({
+  "crackSplit": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "lockingEdge": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailHem": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "trimInterface": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
+}).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -4393,6 +4588,7 @@ export const SubmitInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -4433,6 +4629,44 @@ export const SubmitInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Repair Attempt Protocol. `shingles` are the affected shingle numbers (3-8, within the manipulated count); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (delamination, creasing, nailZone, puncture, reseat). Missing keys mean the question is unanswered.')
 }).describe('Repair Attempt Protocol (RAP) record — asphalt-shingle roofs only. Shingle \"X\" is pulled, shingles 1-8 around it are manipulated, mat transfer is checked on 1-2, and five collateral-damage questions cover shingles 3-8. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "vap": zod.union([zod.object({
+  "panelsManipulated": zod.union([zod.union([zod.literal(2),zod.literal(3),zod.literal(4),zod.literal(5),zod.literal(6)]),zod.null()]).optional().describe('How many panels (beyond X) were manipulated to complete the protocol (2-6). Null while unanswered.'),
+  "trimManipulated": zod.union([zod.union([zod.literal(0),zod.literal(1),zod.literal(2),zod.literal(3),zod.literal(4)]),zod.null()]).optional().describe('How many trim\/interface components were manipulated (0-4). Null while unanswered.'),
+  "vap1PhotoId": zod.string().nullish(),
+  "finalPhotoId": zod.string().nullish().describe('Final annotated archive photo of the repaired zone.'),
+  "damage": zod.object({
+  "crackSplit": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "lockingEdge": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "nailHem": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "trimInterface": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).'),
+  "reseat": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "components": zod.array(zod.string()),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
+}).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
+}).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),

@@ -114,6 +114,81 @@ const emptyDamageAnswer = (): DamageAnswer => ({
   note: '',
 });
 
+// ── Vinyl Assessment Protocol (VAP) — vinyl siding ──────────────────────────
+type VapComponent = '1' | '2' | '3' | '4' | 'T1' | 'T2' | 'T3' | 'T4';
+const VAP_COMPONENTS: VapComponent[] = ['1', '2', '3', '4', 'T1', 'T2', 'T3', 'T4'];
+
+interface VapDamageAnswer {
+  answer: YesNo | null;
+  components: VapComponent[];
+  photo: PhotoSlot;
+  note: string;
+}
+
+const emptyVapDamageAnswer = (): VapDamageAnswer => ({
+  answer: null,
+  components: [],
+  photo: emptyPhotoSlot(),
+  note: '',
+});
+
+// Question order 1–5 — also the scorecard display order. Example-photo
+// priority for the report differs: locking edge first, then crack/split,
+// then nail-hem/trim (mirrored in the server's vapScorecard lib).
+const VAP_QUESTIONS: Array<{ key: string; num: number; label: string; scoreLabel: string }> = [
+  {
+    key: 'crackSplit',
+    num: 1,
+    label: 'Did any manipulated vinyl panel sustain a new crack, split, tear, puncture, or break?',
+    scoreLabel: 'Cracked/split/torn/punctured panels',
+  },
+  {
+    key: 'lockingEdge',
+    num: 2,
+    label: 'Did any manipulated panel sustain new locking-edge, lap-joint, or interlock damage?',
+    scoreLabel: 'Locking-edge/lap-joint failures',
+  },
+  {
+    key: 'nailHem',
+    num: 3,
+    label: 'Did any manipulated panel sustain new nail-hem or fastening-slot damage?',
+    scoreLabel: 'Nail-hem/fastening-slot damage',
+  },
+  {
+    key: 'trimInterface',
+    num: 4,
+    label:
+      'Did any J-channel, corner post, utility block, window/door trim, or other siding interface sustain new damage or become unable to be properly resecured?',
+    scoreLabel: 'Trim/interface damage',
+  },
+  {
+    key: 'reseat',
+    num: 5,
+    label:
+      'Did any manipulated panel fail to re-seat, align, lock, or retain normal movement after replacement of X?',
+    scoreLabel: 'Reseating/alignment/movement concerns',
+  },
+];
+
+const VAP_MARKING_STEPS = [
+  'Identify an already damaged vinyl siding panel to be removed',
+  'Mark the damaged panel with an "X"',
+  'Mark the panel directly above X as 1',
+  'Mark the panel directly below X as 2',
+  'Mark any adjacent panel, lap, J-channel, corner post, or trim component that must be manipulated as 3, 4, T1, T2, as applicable',
+];
+
+const VAP_PROCEDURE_STEPS = [
+  'Use a siding unlock/zip tool to release Panel 1 from Panel X',
+  'Locate and gently remove all fasteners securing Panel X',
+  'Release Panel X from the lower locking edge and applicable lap or trim interfaces',
+  'Remove Panel X',
+  "Install a compatible replacement panel in X's original location",
+  'Re-engage the lower locking edge and Panel 1',
+  'Refasten through the proper nailing hem only. Do not face-nail the replacement panel',
+  'Confirm all manipulated panels and trim components are properly seated, aligned, locked, and able to move normally',
+];
+
 const MARKING_STEPS = [
   'Identify an already damaged field shingle to be pulled',
   'Mark the damaged shingle with an "X"',
@@ -153,6 +228,9 @@ export default function InspectionRepairabilityScreen() {
   const [systems, setSystems] = React.useState<Array<'roof' | 'siding'>>([]);
   // Type of roof — shown when Roof is selected. More types will be added later.
   const [roofType, setRoofType] = React.useState<'asphalt_shingle' | null>(null);
+  // Type of siding — shown when Siding is selected. Vinyl runs the VAP;
+  // aluminum routes to the Product ID–supported determination.
+  const [sidingType, setSidingType] = React.useState<'vinyl' | 'aluminum' | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
 
   // Repairability Assessment Protocol state — asphalt shingle.
@@ -165,6 +243,14 @@ export default function InspectionRepairabilityScreen() {
   });
   const [damage, setDamage] = React.useState<Record<string, DamageAnswer>>(() =>
     Object.fromEntries(DAMAGE_QUESTIONS.map((q) => [q.key, emptyDamageAnswer()])),
+  );
+  // Vinyl Assessment Protocol state — vinyl siding.
+  const [panelsManipulated, setPanelsManipulated] = React.useState<2 | 3 | 4 | 5 | 6 | null>(null);
+  const [trimManipulated, setTrimManipulated] = React.useState<0 | 1 | 2 | 3 | 4 | null>(null);
+  const [vap1Photo, setVap1Photo] = React.useState<PhotoSlot>(emptyPhotoSlot());
+  const [vapFinalPhoto, setVapFinalPhoto] = React.useState<PhotoSlot>(emptyPhotoSlot());
+  const [vapDamage, setVapDamage] = React.useState<Record<string, VapDamageAnswer>>(() =>
+    Object.fromEntries(VAP_QUESTIONS.map((q) => [q.key, emptyVapDamageAnswer()])),
   );
   const [capturing, setCapturing] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -201,6 +287,17 @@ export default function InspectionRepairabilityScreen() {
         systems?: Array<'roof' | 'siding'>;
         warranted?: 'yes' | 'not_warranted_discontinued' | 'not_authorized';
         roofType?: 'asphalt_shingle' | null;
+        sidingType?: 'vinyl' | 'aluminum' | null;
+        vap?: {
+          panelsManipulated?: 2 | 3 | 4 | 5 | 6 | null;
+          trimManipulated?: 0 | 1 | 2 | 3 | 4 | null;
+          vap1PhotoId?: string | null;
+          finalPhotoId?: string | null;
+          damage?: Record<
+            string,
+            { answer?: YesNo; components?: string[]; photoId?: string | null; note?: string | null }
+          >;
+        } | null;
         rap?: {
           manipulatedCount?: 6 | 7 | 8 | null;
           rap1PhotoId?: string | null;
@@ -215,6 +312,34 @@ export default function InspectionRepairabilityScreen() {
         setWarranted(ex.warranted ?? null);
         setSystems(ex.systems ?? []);
         setRoofType(ex.roofType ?? null);
+        setSidingType(ex.sidingType ?? null);
+        const vap = ex.vap;
+        if (vap) {
+          setPanelsManipulated(vap.panelsManipulated ?? null);
+          setTrimManipulated(vap.trimManipulated ?? null);
+          setVap1Photo({ local: null, photoId: vap.vap1PhotoId ?? null });
+          setVapFinalPhoto({ local: null, photoId: vap.finalPhotoId ?? null });
+          setVapDamage(
+            Object.fromEntries(
+              VAP_QUESTIONS.map((q) => {
+                const f = vap.damage?.[q.key];
+                return [
+                  q.key,
+                  f
+                    ? {
+                        answer: f.answer ?? null,
+                        components: (f.components ?? []).filter((c): c is VapComponent =>
+                          (VAP_COMPONENTS as string[]).includes(c),
+                        ),
+                        photo: { local: null, photoId: f.photoId ?? null },
+                        note: f.note ?? '',
+                      }
+                    : emptyVapDamageAnswer(),
+                ];
+              }),
+            ),
+          );
+        }
         const rap = ex.rap;
         if (rap) {
           setManipulatedCount(rap.manipulatedCount ?? null);
@@ -312,6 +437,16 @@ export default function InspectionRepairabilityScreen() {
   const categoryCount = (key: string) =>
     damage[key].answer === 'yes' ? damage[key].shingles.length : 0;
 
+  // VAP scorecard math — count unique newly affected panels or components,
+  // not each damage label (a component counts once across all questions).
+  const vapCollateralSet = new Set<string>();
+  for (const q of VAP_QUESTIONS) {
+    const a = vapDamage[q.key];
+    if (a.answer === 'yes') for (const c of a.components) vapCollateralSet.add(c);
+  }
+  const vapCategoryCount = (key: string) =>
+    vapDamage[key].answer === 'yes' ? vapDamage[key].components.length : 0;
+
   const chipStyle = (on: boolean) => [
     styles.sysToggle,
     {
@@ -384,13 +519,20 @@ export default function InspectionRepairabilityScreen() {
   };
 
   const showRap = warranted === 'yes' && systems.includes('roof') && roofType === 'asphalt_shingle';
+  const showVap = warranted === 'yes' && systems.includes('siding') && sidingType === 'vinyl';
+  const showAluminumRoute =
+    warranted === 'yes' && systems.includes('siding') && sidingType === 'aluminum';
 
   // Save gating: the gate question is always required; a warranted
-  // assessment needs at least one system, and a roof selection needs its
-  // type. Partial RAP answers are savable by design (never lose field work).
+  // assessment needs at least one system, and a roof/siding selection needs
+  // its type. Partial protocol answers are savable by design (never lose
+  // field work).
   const canSave =
     warranted != null &&
-    (warranted !== 'yes' || (systems.length > 0 && (!systems.includes('roof') || roofType != null)));
+    (warranted !== 'yes' ||
+      (systems.length > 0 &&
+        (!systems.includes('roof') || roofType != null) &&
+        (!systems.includes('siding') || sidingType != null)));
 
   // Persist + queue one locally captured protocol photo, mirroring the
   // preliminary-photos path: durable local copy, client-generated id, outbox
@@ -436,6 +578,7 @@ export default function InspectionRepairabilityScreen() {
     setSaving(true);
     try {
       const rapIncluded = showRap;
+      const vapIncluded = showVap;
 
       // 1) Queue any NEW local captures first — the outbox drains FIFO, so
       //    the photo rows exist before the assessment update replays and the
@@ -461,6 +604,32 @@ export default function InspectionRepairabilityScreen() {
           }
         }
       }
+      let vap1PhotoId = vap1Photo.photoId;
+      let vapFinalPhotoId = vapFinalPhoto.photoId;
+      const vapDamagePhotoIds: Record<string, string | null> = {};
+      if (vapIncluded) {
+        if (vap1Photo.local) {
+          vap1PhotoId = await queueProtocolPhoto(vap1Photo.local);
+          setVap1Photo({ local: null, photoId: vap1PhotoId });
+        }
+        if (vapFinalPhoto.local) {
+          vapFinalPhotoId = await queueProtocolPhoto(vapFinalPhoto.local);
+          setVapFinalPhoto({ local: null, photoId: vapFinalPhotoId });
+        }
+        for (const q of VAP_QUESTIONS) {
+          const a = vapDamage[q.key];
+          if (a.answer === 'yes' && a.photo.local) {
+            const pid = await queueProtocolPhoto(a.photo.local);
+            vapDamagePhotoIds[q.key] = pid;
+            setVapDamage((d) => ({
+              ...d,
+              [q.key]: { ...d[q.key], photo: { local: null, photoId: pid } },
+            }));
+          } else {
+            vapDamagePhotoIds[q.key] = a.photo.photoId;
+          }
+        }
+      }
 
       // 2) Queue the assessment itself (v3 shape). Assessor identity is
       //    stamped server-side from the inspector's profile.
@@ -471,6 +640,30 @@ export default function InspectionRepairabilityScreen() {
               warranted,
               systems,
               roofType: systems.includes('roof') ? roofType : null,
+              sidingType: systems.includes('siding') ? sidingType : null,
+              vap: vapIncluded
+                ? {
+                    panelsManipulated,
+                    trimManipulated,
+                    vap1PhotoId,
+                    finalPhotoId: vapFinalPhotoId,
+                    damage: Object.fromEntries(
+                      VAP_QUESTIONS.filter((q) => vapDamage[q.key].answer != null).map((q) => {
+                        const a = vapDamage[q.key];
+                        const isYes = a.answer === 'yes';
+                        return [
+                          q.key,
+                          {
+                            answer: a.answer,
+                            components: isYes ? a.components : [],
+                            photoId: isYes ? vapDamagePhotoIds[q.key] : null,
+                            note: isYes && a.note.trim() ? a.note.trim() : null,
+                          },
+                        ];
+                      }),
+                    ),
+                  }
+                : null,
               rap: rapIncluded
                 ? {
                     manipulatedCount,
@@ -500,7 +693,9 @@ export default function InspectionRepairabilityScreen() {
               warranted,
               systems: [],
               roofType: null,
+              sidingType: null,
               rap: null,
+              vap: null,
               recordedAtUtc: new Date().toISOString(),
             };
 
@@ -581,7 +776,50 @@ export default function InspectionRepairabilityScreen() {
               </View>
             </>
           ) : null}
+
+          {systems.includes('siding') ? (
+            <>
+              <Text style={[styles.qLabel, { color: colors.foreground }]}>Type of Siding</Text>
+              <View style={styles.chipWrap}>
+                {(
+                  [
+                    { value: 'vinyl', label: 'Vinyl Siding' },
+                    { value: 'aluminum', label: 'Aluminum Siding' },
+                  ] as const
+                ).map((opt) => {
+                  const on = sidingType === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => setSidingType(on ? null : opt.value)}
+                      style={chipStyle(on)}
+                    >
+                      <Text style={chipText(on)}>{opt.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
         </>
+      ) : null}
+
+      {showAluminumRoute ? (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+            Aluminum Siding — No Simulated Repair
+          </Text>
+          <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 20 }}>
+            Aluminum siding routes to the Product ID–supported non-repairability document. Complete
+            the product identification against the Known Product Catalog; do not run a simulated
+            repair unless the Product ID determination specifically supports one.
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 18 }}>
+            If the product is confirmed discontinued, record the assessment as "Not Warranted -
+            Discontinued" with the catalog match — the report will carry the Product ID
+            determination instead of a protocol scorecard.
+          </Text>
+        </View>
       ) : null}
 
       {showRap ? (
@@ -757,6 +995,199 @@ export default function InspectionRepairabilityScreen() {
         </>
       ) : null}
 
+      {showVap ? (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Vinyl Siding Repairability Assessment
+          </Text>
+
+          {renderInstructionCard('Instructions — Marking', VAP_MARKING_STEPS)}
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Take Photograph (VAP1)
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Clear photograph of the complete marked repair zone — VAP1: Marked Vinyl Repair Zone /
+              Pre-Manipulation Baseline.
+            </Text>
+            {renderPhotoButton(
+              'vap1',
+              vap1Photo,
+              (p) => setVap1Photo((prev) => ({ ...prev, local: p })),
+              'Take VAP1 Photo',
+            )}
+          </View>
+
+          {renderInstructionCard('Simulated Repair Procedure', VAP_PROCEDURE_STEPS)}
+
+          <Text style={[styles.qLabel, { color: colors.foreground }]}>
+            How many panels (beyond X) were manipulated to complete the protocol?
+          </Text>
+          <View style={styles.chipWrap}>
+            {([2, 3, 4, 5, 6] as const).map((n) => {
+              const on = panelsManipulated === n;
+              return (
+                <Pressable
+                  key={n}
+                  onPress={() => setPanelsManipulated(on ? null : n)}
+                  style={chipStyle(on)}
+                >
+                  <Text style={chipText(on)}>{n}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.qLabel, { color: colors.foreground }]}>
+            How many trim/interface components were manipulated?
+          </Text>
+          <View style={styles.chipWrap}>
+            {([0, 1, 2, 3, 4] as const).map((n) => {
+              const on = trimManipulated === n;
+              return (
+                <Pressable
+                  key={n}
+                  onPress={() => setTrimManipulated(on ? null : n)}
+                  style={chipStyle(on)}
+                >
+                  <Text style={chipText(on)}>{n}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {VAP_QUESTIONS.map((q) => {
+            const a = vapDamage[q.key];
+            const setA = (patch: Partial<VapDamageAnswer>) =>
+              setVapDamage((d) => ({ ...d, [q.key]: { ...d[q.key], ...patch } }));
+            return (
+              <View key={q.key} style={{ gap: 8 }}>
+                <Text style={[styles.qLabel, { color: colors.foreground }]}>
+                  {q.num}: {q.label}
+                </Text>
+                <View style={styles.chipWrap}>
+                  {(['yes', 'no'] as const).map((v) => {
+                    const on = a.answer === v;
+                    return (
+                      <Pressable
+                        key={v}
+                        onPress={() => setA({ answer: on ? null : v })}
+                        style={chipStyle(on)}
+                      >
+                        <Text style={chipText(on)}>{v === 'yes' ? 'Yes' : 'No'}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {a.answer === 'yes' ? (
+                  <View
+                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
+                    <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                      {q.num}A: Select all affected panels/components
+                    </Text>
+                    <View style={styles.chipWrap}>
+                      {VAP_COMPONENTS.map((c) => {
+                        const on = a.components.includes(c);
+                        return (
+                          <Pressable
+                            key={c}
+                            onPress={() =>
+                              setA({
+                                components: on
+                                  ? a.components.filter((x) => x !== c)
+                                  : VAP_COMPONENTS.filter(
+                                      (x) => a.components.includes(x) || x === c,
+                                    ),
+                              })
+                            }
+                            style={chipStyle(on)}
+                          >
+                            <Text style={chipText(on)}>{c}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                      Photograph one example with a factual note.
+                    </Text>
+                    {renderPhotoButton(
+                      `vap-${q.key}`,
+                      a.photo,
+                      (p) => setA({ photo: { ...a.photo, local: p } }),
+                      'Take Example Photo',
+                    )}
+                    <TextInput
+                      value={a.note}
+                      onChangeText={(t) => setA({ note: t })}
+                      placeholder="Photo note (which panel/component, what you see)…"
+                      placeholderTextColor={colors.mutedForeground}
+                      multiline
+                      style={[
+                        styles.noteInput,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Required Final Archive Photo
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Final marked photo of the repaired zone — annotate X and all panels/components with
+              newly documented collateral damage. Kept in the full inspection archive.
+            </Text>
+            {renderPhotoButton(
+              'vapFinal',
+              vapFinalPhoto,
+              (p) => setVapFinalPhoto((prev) => ({ ...prev, local: p })),
+              'Take Final Archive Photo',
+            )}
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Vinyl Repairability Scorecard</Text>
+            {(
+              [
+                ['Target panels removed', 1],
+                ['Panels manipulated', panelsManipulated ?? 0],
+                ['Trim/interface components manipulated', trimManipulated ?? 0],
+                // Unique newly affected panels or components, not each damage label.
+                ['New collateral-damaged panels', vapCollateralSet.size],
+                ['Cracked/split/torn/punctured panels', vapCategoryCount('crackSplit')],
+                ['Locking-edge/lap-joint failures', vapCategoryCount('lockingEdge')],
+                ['Nail-hem/fastening-slot damage', vapCategoryCount('nailHem')],
+                ['Trim/interface damage', vapCategoryCount('trimInterface')],
+                ['Reseating/alignment/movement concerns', vapCategoryCount('reseat')],
+              ] as Array<[string, number]>
+            ).map(([label, count]) => (
+              <View key={label} style={styles.scoreRow}>
+                <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>{label}</Text>
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 15 }}>
+                  {count}
+                </Text>
+              </View>
+            ))}
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>
+              This scorecard, the VAP1 photo, and up to 2 newly-damaged photos go to the report —
+              priority to a locking-edge/lap-joint failure, then a cracked/split panel, then a
+              trim-interface or nail-hem failure.
+            </Text>
+          </View>
+        </>
+      ) : null}
+
       <Pressable
         onPress={handleSave}
         disabled={!canSave || saving}
@@ -792,7 +1223,9 @@ export default function InspectionRepairabilityScreen() {
             ? 'Answer whether an assessment is warranted and authorized to save.'
             : systems.length === 0
               ? 'Select at least one system to save.'
-              : 'Select the type of roof to save.'}
+              : systems.includes('roof') && roofType == null
+                ? 'Select the type of roof to save.'
+                : 'Select the type of siding to save.'}
         </Text>
       ) : null}
     </ScrollView>

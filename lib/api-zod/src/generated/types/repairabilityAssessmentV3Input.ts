@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { RepairabilityAssessmentV3InputRoofType } from './repairabilityAssessmentV3InputRoofType';
+import type { RepairabilityAssessmentV3InputSidingType } from './repairabilityAssessmentV3InputSidingType';
 import type { RepairabilityAssessmentV3InputSystemsItem } from './repairabilityAssessmentV3InputSystemsItem';
 import type { RepairabilityAssessmentV3InputVersion } from './repairabilityAssessmentV3InputVersion';
 import type { RepairabilityAssessmentV3InputWarranted } from './repairabilityAssessmentV3InputWarranted';
 import type { RepairAttemptProtocol } from './repairAttemptProtocol';
+import type { VinylAssessmentProtocol } from './vinylAssessmentProtocol';
 
 /**
  * Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile.
@@ -21,6 +23,12 @@ export interface RepairabilityAssessmentV3Input {
   systems: RepairabilityAssessmentV3InputSystemsItem[];
   /** @nullable */
   roofType?: RepairabilityAssessmentV3InputRoofType;
+  /**
+     * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+     * @nullable
+     */
+  sidingType?: RepairabilityAssessmentV3InputSidingType;
   rap?: RepairAttemptProtocol | null;
+  vap?: VinylAssessmentProtocol | null;
   recordedAtUtc: string;
 }
