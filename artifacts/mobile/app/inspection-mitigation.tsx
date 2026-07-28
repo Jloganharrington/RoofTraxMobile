@@ -17,6 +17,7 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { patchInspection } from '@/lib/inspectionSync';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // REPORT_DATA v2 §4 — Temporary repairs & mitigation. Reachable from BOTH the
 // Phase 1 hub (a tarp most often goes on at the first visit) and the Phase 2
@@ -27,6 +28,7 @@ export default function InspectionMitigationScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'mitigation');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

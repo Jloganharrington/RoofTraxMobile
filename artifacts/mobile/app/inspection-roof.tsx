@@ -19,6 +19,7 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createMeasurement, createSlope } from '@/lib/inspectionSync';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Step 3 · Roof Facets (protocol v2). Facet-first: the inspector answers
 // "How many facets does this roof have?" once, which seeds an editable
@@ -43,6 +44,7 @@ export default function InspectionRoofScreen() {
   const headerHeight = insets.top + 44;
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'facets');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

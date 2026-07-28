@@ -18,6 +18,7 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { patchInspection } from '@/lib/inspectionSync';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // REPORT_DATA v2 §1 — Property Profile. Only non-derived fields are asked
 // here; slope count, roof covering, interior areas inspected etc. are derived
@@ -60,6 +61,7 @@ export default function InspectionPropertyProfileScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'property_profile');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

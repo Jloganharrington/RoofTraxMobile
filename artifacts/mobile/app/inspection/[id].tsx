@@ -63,26 +63,8 @@ const STEP_ICONS: Record<StepKey, IconName> = {
   submit: 'clipboard',
 };
 
-const STEP_ROUTES: Record<StepKey, string> = {
-  arrival: '/inspection-arrival',
-  property_profile: '/inspection-property-profile',
-  repairability: '/inspection-repairability',
-  mitigation: '/inspection-mitigation',
-  existing_conditions: '/inspection-existing-conditions',
-  elevation_access: '/inspection-elevations',
-  facets: '/inspection-roof',
-  test_squares: '/inspection-test-squares',
-  components: '/inspection-components',
-  siding: '/inspection-siding',
-  collateral: '/inspection-collateral',
-  product: '/inspection-product',
-  interior: '/inspection-interior',
-  homeowner: '/inspection-homeowner',
-  declaration: '/inspection-declaration',
-  summary: '/inspection-summary',
-  estimate: '/inspection-estimate',
-  submit: '/inspection-readiness',
-};
+// Shared with the header "Next" button so hub cards and Next never drift.
+import { STEP_ROUTES } from '@/hooks/useNextSectionHeader';
 
 export default function InspectionDetailScreen() {
   const colors = useColors();

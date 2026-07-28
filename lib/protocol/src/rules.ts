@@ -53,7 +53,12 @@ function checkArrival(state: InspectionProtocolState): Deficiency[] {
 // NO_DAMAGE_SURFACE_SELECTED, not here, so an untouched walk-through doesn't
 // scream before the inspector has walked.)
 function checkElevationAccess(state: InspectionProtocolState): Deficiency[] {
-  return ELEVATION_DIRECTIONS.filter(
+  // Townhome/attached structures share side walls — right and left
+  // elevations are not required (still credited when captured).
+  const required = state.sideElevationsExempt
+    ? ELEVATION_DIRECTIONS.filter((d) => d !== 'right' && d !== 'left')
+    : ELEVATION_DIRECTIONS;
+  return required.filter(
     (direction) => !state.elevations[direction]?.widePhotoCaptured,
   ).map((direction) =>
     deficiency(

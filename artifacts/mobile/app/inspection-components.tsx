@@ -24,6 +24,7 @@ import type { ComponentStatus as ComponentStatusValue } from '@workspace/api-cli
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createComponent, createPenetration, deleteComponent, updateComponent } from '@/lib/inspectionSync';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // C4 — Components documentation (grouped under the S3 slope/roof phase). Pure
 // documentation, no protocol gate: the inspector records which existing roof
@@ -139,6 +140,7 @@ export default function InspectionComponentsScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'components');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

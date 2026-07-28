@@ -34,6 +34,7 @@ import { drainOutbox } from '@/lib/outbox/drain';
 import { enqueueOutboxItem } from '@/lib/outbox/queue';
 import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Siding Inspection (protocol v2.1, conditional on sidingDamageFound).
 // S1 always exists — it is auto-seeded the first time this screen opens with
@@ -48,6 +49,7 @@ export default function InspectionSidingScreen() {
   const headerHeight = insets.top + 44;
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'siding');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

@@ -22,6 +22,7 @@ import {
   elevationWideCaptured,
   stageDeficiencies,
 } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Elevation Walk (protocol v2.1). Walks the inspector around the structure in
 // a fixed front -> right -> rear -> left order, capturing one wide overview
@@ -41,6 +42,7 @@ export default function InspectionElevationsScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'elevation_access');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -67,9 +69,16 @@ export default function InspectionElevationsScreen() {
 
   const captured = elevationWideCaptured(inspection);
   const remaining = stageDeficiencies(inspection, 'elevation_access').length;
-  const doneCount = ELEVATION_DIRECTIONS.filter((d) => captured[d]).length;
-  // The current step is the first direction still missing its wide photo.
-  const currentDirection = ELEVATION_DIRECTIONS.find((d) => !captured[d]) ?? null;
+  // Townhomes share side walls with the neighboring units — right/left
+  // elevations are optional (the gate engine exempts them too).
+  const isTownhome = inspection.propertyProfile?.propertyType === 'townhome';
+  const requiredDirections: readonly ElevationDirection[] = isTownhome
+    ? ELEVATION_DIRECTIONS.filter((d) => d !== 'right' && d !== 'left')
+    : ELEVATION_DIRECTIONS;
+  const doneCount = requiredDirections.filter((d) => captured[d]).length;
+  // The current step is the first REQUIRED direction still missing its wide
+  // photo (optional side elevations never block progression).
+  const currentDirection = requiredDirections.find((d) => !captured[d]) ?? null;
 
   async function handleCaptionChange(photoId: string, caption: string | null) {
     setSavingCaption(photoId);
@@ -127,17 +136,20 @@ export default function InspectionElevationsScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
             {remaining === 0
-              ? 'All elevations captured'
-              : `${doneCount} of 4 elevations captured`}
+              ? 'All required elevations captured'
+              : `${doneCount} of ${requiredDirections.length} required elevations captured`}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            One wide overview photo per face, walked front → right → rear → left.
+            {isTownhome
+              ? 'Townhome — right and left elevations are shared walls and optional.'
+              : 'One wide overview photo per face, walked front → right → rear → left.'}
           </Text>
         </View>
       </View>
 
       {ELEVATION_DIRECTIONS.map((direction, index) => {
         const isDone = captured[direction];
+        const isOptional = !requiredDirections.includes(direction);
         const isCurrent = direction === currentDirection;
         const isBusy = busy === direction;
         const elevation = (inspection.elevations ?? []).find((e) => e.direction === direction);
@@ -183,10 +195,17 @@ export default function InspectionElevationsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowTitle, { color: colors.foreground }]}>
                   {index + 1}. {DIRECTION_LABELS[direction]} elevation
+                  {isOptional ? ' (optional)' : ''}
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                    {isDone ? 'Wide photo captured' : isCurrent ? 'Next — capture the wide photo' : 'Tap to capture'}
+                    {isDone
+                      ? 'Wide photo captured'
+                      : isCurrent
+                        ? 'Next — capture the wide photo'
+                        : isOptional
+                          ? 'Optional for townhomes — tap to capture if accessible'
+                          : 'Tap to capture'}
                   </Text>
                   <DamageCaptionBadge caption={caption} />
                 </View>

@@ -22,6 +22,7 @@ import {
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { attestInspection, patchInspection } from '@/lib/inspectionSync';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Step 1 · Arrival Log (protocol v2). Data-only — no photos here. Records sky
 // / wind / temp via pickers, personnel present as a multi-select, and
@@ -46,6 +47,7 @@ export default function InspectionArrivalScreen() {
     latitude?: string;
     longitude?: string;
   }>();
+  useNextSectionHeader(id, 'arrival');
 
   const geoLat = latitude ? Number(latitude) : null;
   const geoLng = longitude ? Number(longitude) : null;

@@ -18,6 +18,7 @@ import { useAuth } from '@/lib/auth';
 import { useProfile } from '@/hooks/useProfile';
 import { recordSignatureAttestation } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // E5 / S8 — Attestation & signature. The inspector reads the methodology
 // declaration and attests to it by applying their signature-on-file (M-F / F0):
@@ -39,6 +40,7 @@ export default function InspectionDeclarationScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'declaration');
   const { signatureUrl, signatureSha256, signatureSignedAt, isLoading: profileLoading } =
     useProfile();
 

@@ -20,6 +20,7 @@ import { Icon, type IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createTestSquare, createTestSquareHit } from '@/lib/inspectionSync';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Step 4 · Test Squares (protocol v2). Hail-gated checklist: every facet whose
 // damage type carries hail (hail or hail_and_wind) needs one test square with
@@ -39,6 +40,7 @@ export default function InspectionTestSquaresScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'test_squares');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

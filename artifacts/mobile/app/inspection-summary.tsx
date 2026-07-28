@@ -17,6 +17,7 @@ import { useColors } from '@/hooks/useColors';
 import { Icon } from '@/components/Icon';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // AI Summary step — lets the inspector trigger a Claude Sonnet analysis of all
 // inspection findings and review the generated narrative before submitting.
@@ -32,6 +33,7 @@ type Summary = {
 export default function InspectionSummaryScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'summary');
 
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);

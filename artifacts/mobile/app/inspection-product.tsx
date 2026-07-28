@@ -21,6 +21,7 @@ import type { ProductIdMethod as ProductIdMethodValue } from '@workspace/api-cli
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { attestInspection, createProduct } from '@/lib/inspectionSync';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // C5 — Product identification (grouped under the S4 close-up phase). The
 // inspector documents the roofing product with close-ups (brand/profile,
@@ -62,6 +63,7 @@ export default function InspectionProductScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'product');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

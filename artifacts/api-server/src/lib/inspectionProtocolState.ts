@@ -45,6 +45,9 @@ export interface HydratedInspectionChildren {
   // alongside the hydrated child collections.
   damageFlags: DamageFlags;
   sidingMeasurementReportRef: string | null;
+  // From the inspection row's propertyProfile jsonb — townhomes share side
+  // walls, so right/left elevations are exempt from the gate.
+  propertyType: string | null;
   photos: InspectionPhoto[];
   elevations: InspectionElevation[];
   slopes: InspectionSlope[];
@@ -122,6 +125,8 @@ export function buildServerProtocolState(
       timePresent: Boolean(arrivalConditions?.timeLocal ?? arrivalConditions?.recordedAtUtc),
     },
     elevations: elevationState,
+    // Mirrored in the mobile mapper (buildProtocolState).
+    sideElevationsExempt: children.propertyType === 'townhome',
     damageFlags,
     facets: slopes.map((slope) => ({
       id: slope.id,

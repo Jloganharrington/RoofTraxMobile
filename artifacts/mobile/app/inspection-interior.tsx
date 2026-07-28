@@ -20,6 +20,7 @@ import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
 import { createInteriorObservation, markNoInteriorClaim } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // E2 / S6 — Interior / Ancillary. This stage is conditional, never a hard
 // block: an inspection either records at least one interior/attic observation
@@ -39,6 +40,7 @@ export default function InspectionInteriorScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'interior');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

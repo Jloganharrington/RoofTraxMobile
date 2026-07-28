@@ -270,7 +270,7 @@ async function hydrateInspectionChildren(
 ): Promise<
   Omit<
     HydratedInspectionChildren,
-    'arrivalConditions' | 'damageFlags' | 'sidingMeasurementReportRef'
+    'arrivalConditions' | 'damageFlags' | 'sidingMeasurementReportRef' | 'propertyType'
   > & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }
 > {
   const [
@@ -2531,6 +2531,7 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
       interiorDamageFound: inspection.interiorDamageFound,
     },
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
+    propertyType: inspection.propertyProfile?.propertyType ?? null,
   });
   if (evaluation.deficiencies.length > 0) {
     res.status(422).json({
@@ -2675,6 +2676,7 @@ router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Re
       interiorDamageFound: inspection.interiorDamageFound,
     },
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
+    propertyType: inspection.propertyProfile?.propertyType ?? null,
   });
 
   res.json(

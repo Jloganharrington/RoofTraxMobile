@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth';
 import { markNoCollateralDamage, patchPhotoCaption } from '@/lib/inspectionSync';
 import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
 import { isCollateralWaived } from '@/lib/inspectionProtocolState';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Step 7 · Collateral & Ground Evidence (protocol v2). A simple labeled-photo
 // pass with no hard gate: the inspector shoots roof-level collateral first
@@ -38,6 +39,7 @@ export default function InspectionCollateralScreen() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'collateral');
   const [waiving, setWaiving] = React.useState(false);
   const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
 

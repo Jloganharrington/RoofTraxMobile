@@ -17,6 +17,7 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { updateHomeownerFacts } from '@/lib/inspectionSync';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // E3 — Homeowner facts. Additive, no gate. The inspector records what the
 // homeowner reported (date-of-loss awareness, prior repairs, prior claims) as
@@ -26,6 +27,7 @@ export default function InspectionHomeownerScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'homeowner');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

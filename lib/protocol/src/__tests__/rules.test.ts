@@ -77,6 +77,20 @@ describe('evaluate (protocol v2.1)', () => {
     expect(result.softFlags).toEqual([]);
   });
 
+  it('exempts right/left elevations for townhomes (shared walls)', () => {
+    const state = completeState();
+    state.elevations = { front: { widePhotoCaptured: true }, back: { widePhotoCaptured: true } };
+    state.sideElevationsExempt = true;
+    expect(
+      evaluate(state).deficiencies.filter((d) => d.stage === 'elevation_access'),
+    ).toHaveLength(0);
+    // Without the exemption the same state flags both sides.
+    state.sideElevationsExempt = false;
+    expect(
+      evaluate(state).deficiencies.filter((d) => d.stage === 'elevation_access'),
+    ).toHaveLength(2);
+  });
+
   it('flags all four missing elevations independently', () => {
     const state = completeState();
     state.elevations = {};

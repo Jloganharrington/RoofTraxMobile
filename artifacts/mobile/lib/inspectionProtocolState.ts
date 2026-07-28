@@ -85,6 +85,9 @@ export function buildProtocolState(inspection: Inspection): InspectionProtocolSt
       timePresent: Boolean(arrivalConditions?.timeLocal ?? arrivalConditions?.recordedAtUtc),
     },
     elevations: elevationState,
+    // Townhomes share side walls with neighboring units — right/left
+    // elevations are exempt. Mirrored in the server mapper.
+    sideElevationsExempt: inspection.propertyProfile?.propertyType === 'townhome',
     damageFlags: {
       roofDamageFound: Boolean(inspection.roofDamageFound),
       sidingDamageFound: Boolean(inspection.sidingDamageFound),

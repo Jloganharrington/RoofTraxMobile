@@ -49,6 +49,9 @@ export interface InspectionProtocolState {
   // Step 2 — Elevation Walk: four wide elevation photos plus the three
   // damage-found flags. The flags drive which conditional steps apply.
   elevations: Partial<Record<ElevationDirection, { widePhotoCaptured: boolean }>>;
+  // Attached structures (townhome/townhouse) share side walls with the
+  // neighboring units, so the right and left elevations are not required.
+  sideElevationsExempt?: boolean;
   damageFlags: DamageFlags;
   // Step 3 — Facets & Measurements. One entry per documented facet.
   facets: Array<{

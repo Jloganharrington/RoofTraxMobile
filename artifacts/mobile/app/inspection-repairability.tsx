@@ -27,6 +27,7 @@ import { drainOutbox } from '@/lib/outbox/drain';
 import { enqueueOutboxItem } from '@/lib/outbox/queue';
 import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 import { useGetInspection, getGetInspectionQueryKey } from '@workspace/api-client-react';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // ---------------------------------------------------------------------------
 // Repairability screen — Repair Attempt Protocol (v3 assessment).
@@ -213,6 +214,7 @@ const RESET_STEPS = [
 export default function InspectionRepairabilityScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'repairability');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },

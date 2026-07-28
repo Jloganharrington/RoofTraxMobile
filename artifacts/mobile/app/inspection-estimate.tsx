@@ -25,6 +25,7 @@ import {
   type PriceBookItem,
 } from '@/lib/priceBookApi';
 import { useProfile } from '@/hooks/useProfile';
+import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Estimate step (advisory) — imports measured roof squares from the facet
 // step, applies an adjustable waste factor, and prices line items from the
@@ -101,6 +102,7 @@ export default function InspectionEstimateScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
+  useNextSectionHeader(id, 'estimate');
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
