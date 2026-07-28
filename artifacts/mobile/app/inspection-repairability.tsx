@@ -101,7 +101,7 @@ const MARKING_STEPS = [
   'Mark the shingles directly below "X" as 1 & 2',
   'Mark the shingles left and right as 3 & 4',
   'Mark the two shingles above "X" as 5 & 6',
-  'Mark the shingles above 5 & 6 as 7 & 8',
+  'Mark the shingles above 5 & 6 as 7 & 8 (if needed)',
 ];
 
 const PULL_STEPS = [
@@ -136,7 +136,9 @@ export default function InspectionRepairabilityScreen() {
   const [roofType, setRoofType] = React.useState<'asphalt_shingle' | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
 
-  // RAP (Repair Attempt Protocol) state — asphalt shingle.
+  // Repairability Assessment Protocol state — asphalt shingle.
+  // Supplies the "Manipulated shingles" scorecard count.
+  const [manipulatedCount, setManipulatedCount] = React.useState<6 | 7 | 8 | null>(null);
   const [rap1Photo, setRap1Photo] = React.useState<CapturedEvidencePhoto | null>(null);
   const [matTransfer, setMatTransfer] = React.useState<{ 1: YesNo | null; 2: YesNo | null }>({
     1: null,
@@ -349,6 +351,24 @@ export default function InspectionRepairabilityScreen() {
 
           {renderInstructionCard('Instructions — Marking', MARKING_STEPS)}
 
+          <Text style={[styles.qLabel, { color: colors.foreground }]}>
+            How many shingles require manipulation to complete the protocol?
+          </Text>
+          <View style={styles.chipWrap}>
+            {([6, 7, 8] as const).map((n) => {
+              const on = manipulatedCount === n;
+              return (
+                <Pressable
+                  key={n}
+                  onPress={() => setManipulatedCount(on ? null : n)}
+                  style={chipStyle(on)}
+                >
+                  <Text style={chipText(on)}>{n}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Take Photograph (RAP1)</Text>
             {renderPhotoButton('rap1', rap1Photo, setRap1Photo, 'Take RAP1 Photo')}
@@ -465,8 +485,8 @@ export default function InspectionRepairabilityScreen() {
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Scorecard</Text>
             {(
               [
-                // Shingles 1–8 (X itself does not count as manipulated).
-                ['Manipulated shingles', 8],
+                // Supplied by the "How many shingles require manipulation" question.
+                ['Manipulated shingles', manipulatedCount ?? 0],
                 ['New collateral-damaged shingles', collateralSet.size],
                 ['Mat-transfer findings on 1–2', matTransferCount],
                 ['Delamination', categoryCount('delamination')],
