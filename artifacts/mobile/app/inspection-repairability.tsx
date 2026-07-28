@@ -149,6 +149,29 @@ export default function InspectionRepairabilityScreen() {
   );
   const [capturing, setCapturing] = React.useState<string | null>(null);
 
+  // xA follow-ups only offer the shingles that were actually manipulated:
+  // 3 through the answered manipulation count (e.g. 7 chosen → no 8).
+  const selectableShingles = SHINGLES_3_8.filter((s) => s <= (manipulatedCount ?? 8));
+
+  // If the count is lowered after selections were made, drop now-invalid picks.
+  React.useEffect(() => {
+    const max = manipulatedCount ?? 8;
+    setDamage((d) => {
+      let changed = false;
+      const next: Record<string, DamageAnswer> = {};
+      for (const [k, a] of Object.entries(d)) {
+        const kept = a.shingles.filter((s) => s <= max);
+        if (kept.length !== a.shingles.length) {
+          changed = true;
+          next[k] = { ...a, shingles: kept };
+        } else {
+          next[k] = a;
+        }
+      }
+      return changed ? next : d;
+    });
+  }, [manipulatedCount]);
+
   // Existing record: show its systems selection.
   React.useEffect(() => {
     if (existing && !hydrated) {
@@ -432,7 +455,7 @@ export default function InspectionRepairabilityScreen() {
                       {q.num}A: Select all affected shingles
                     </Text>
                     <View style={styles.chipWrap}>
-                      {SHINGLES_3_8.map((s) => {
+                      {selectableShingles.map((s) => {
                         const on = a.shingles.includes(s);
                         return (
                           <Pressable
