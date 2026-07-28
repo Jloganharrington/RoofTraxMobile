@@ -308,7 +308,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
       </div>
     </div>
     <div class="sig-col">
-      <div class="sig-party">NUHOME EXTERIORS, INC.</div>
+      <div class="sig-party" data-field="contractorLegalNameUpper">NUHOME EXTERIORS, INC.</div>
       <span class="sigline"><img data-sig="contractorRep" alt="" /></span>
       <div class="sig-caption">Authorized Representative</div>
       <div class="sig-printrow">
