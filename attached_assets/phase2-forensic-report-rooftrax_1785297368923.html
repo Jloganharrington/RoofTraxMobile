@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forensic Inspection Report &amp; BEI Proof Package</title>
+<meta name="description" content="Phase 2 — Forensic Inspection Report & Proof Package, aligned to the RoofTrax Pro Brain data model (contract v1) and the canonical A–M exhibit set.">
+<style>
+  /* ============================================================
+     FORENSIC INSPECTION REPORT & PROOF PACKAGE (business Phase 2)
+     Reworked to the RoofTrax Pro Brain package: canonical exhibits
+     A–M, fixed lettering (an exhibit that doesn't apply is OMITTED,
+     letters do NOT re-shift), organized around the Brain's
+     SubmittedInspection contract-v1 + resolved company/state config +
+     computed scope. UPPA posture is structural: contractor findings +
+     the contractor's OWN fixed incurred cost, never a coverage
+     determination or what a carrier owes.
+
+     DATA SOURCE: REPORT_DATA at the bottom mirrors the Brain's merge —
+       property/storm/inspector/methodology/slopes/testSquares/damage/
+       measurements/components(by area)/products/photos  (SubmittedInspection)
+       company/state packs                                (ResolvedConfig)
+       scope line items + subtotal                        (computeScope, B5)
+     ============================================================ */
+  :root{
+    --ink:#191E24; --ink-soft:#3A424C; --slate:#667080; --slate-soft:#99A1AC;
+    --line:#D9DEE3; --line-soft:#E9ECEF; --paper:#FFFFFF; --paper-alt:#F5F4F1;
+    --accent:#A6431F; --accent-soft:#F1E1D9; --good:#2F6E4E; --good-soft:#E4EEE8;
+    --warn:#B4790A; --warn-soft:#F5EBD8; --navy:#1E2A3A;
+    --serif: Arial, Helvetica, "Liberation Sans", "Arimo", sans-serif;
+    --sans:  Arial, Helvetica, "Liberation Sans", "Arimo", sans-serif;
+    --mono:  Arial, Helvetica, "Liberation Sans", "Arimo", sans-serif;
+    --page-w:8.5in; --page-h:11in; --margin:0.55in;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:#7B8290; font-family:var(--sans); color:var(--ink); }
+
+  .sheet{
+    width:var(--page-w); min-height:var(--page-h); margin:0.35in auto; background:var(--paper);
+    box-shadow:0 0 0 1px rgba(0,0,0,.04), 0 12px 30px rgba(0,0,0,.28);
+    display:flex; flex-direction:column; position:relative;
+  }
+  .sheet__body{ flex:1 1 auto; padding:0.42in var(--margin) 0.3in var(--margin); display:flex; flex-direction:column; }
+
+  .runhead{ display:flex; align-items:center; padding:0.28in var(--margin) 0.16in var(--margin); border-bottom:1.5px solid var(--ink); }
+  .logo-slot{ width:34px; height:34px; border-radius:4px; background:var(--paper-alt); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; color:var(--slate-soft); overflow:hidden; flex:none; }
+  .logo-slot img{ width:100%; height:100%; object-fit:contain; }
+  .runhead .rh-title{ margin-left:12px; font-size:11px; color:var(--slate); font-weight:600; }
+
+  .runfoot{ display:flex; align-items:center; justify-content:space-between; padding:0.14in var(--margin) 0.22in var(--margin);
+    border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--slate-soft); letter-spacing:.03em; }
+  .runfoot span b{ color:var(--ink-soft); font-weight:600; }
+
+  h1,h2,h3{ font-family:var(--serif); font-weight:600; color:var(--ink); margin:0; }
+  .eyebrow{ font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); font-weight:600; margin:0 0 6px 0; }
+  .section-title{ font-size:15px; margin-bottom:2px; }
+  .section-rule{ height:1px; background:var(--line); margin:8px 0 14px 0; }
+  p{ margin:0 0 8px 0; font-size:11px; line-height:1.55; color:var(--ink-soft); text-align:justify; }
+  .micro{ font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--slate); font-weight:600; }
+
+  /* cover */
+  .cover{ padding:0; background:var(--navy); color:#fff; }
+  .cover__top{ padding:0.5in var(--margin) 0.3in var(--margin); display:flex; align-items:center; }
+  #logo-slot-cover{ width:44px; height:44px; border-radius:5px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18);
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; color:rgba(255,255,255,.5); overflow:hidden; }
+  #logo-slot-cover img{ width:100%; height:100%; object-fit:contain; }
+  .cover__photo{ margin:0 var(--margin); position:relative; height:3.15in;
+    background:linear-gradient(180deg, rgba(10,13,17,0) 55%, rgba(10,13,17,.65) 100%), repeating-linear-gradient(135deg, #2C3644 0 18px, #263140 18px 36px);
+    border:1px solid rgba(255,255,255,.15); }
+  .frame-corner{ position:absolute; width:20px; height:20px; }
+  .frame-corner.tl{ top:10px; left:10px; border-top:2px solid #fff; border-left:2px solid #fff; }
+  .frame-corner.tr{ top:10px; right:10px; border-top:2px solid #fff; border-right:2px solid #fff; }
+  .frame-corner.bl{ bottom:10px; left:10px; border-bottom:2px solid #fff; border-left:2px solid #fff; }
+  .frame-corner.br{ bottom:10px; right:10px; border-bottom:2px solid #fff; border-right:2px solid #fff; }
+  .cover__photo-tag{ position:absolute; bottom:12px; left:14px; color:#fff; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .cover__photo-placeholder{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; color:rgba(255,255,255,.35); letter-spacing:.08em; text-transform:uppercase; }
+  .cover__title-block{ padding:0.34in var(--margin) 0 var(--margin); }
+  .cover__doctype{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#D98B6E; font-weight:600; margin-bottom:8px; }
+  .cover__title{ font-size:26px; line-height:1.18; margin-bottom:6px; color:#fff; }
+  .cover__address{ font-size:13.5px; color:rgba(255,255,255,.75); font-weight:500; }
+  .cover__meta{ margin:0.32in var(--margin) 0 var(--margin); border-top:1.5px solid rgba(255,255,255,.3); display:grid; grid-template-columns:repeat(2,1fr); gap:0; }
+  .cover__meta div{ padding:12px 16px 12px 0; border-right:1px solid rgba(255,255,255,.15); }
+  .cover__meta div:nth-child(2n){ border-right:none; }
+  .cover__meta .label{ font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.45); margin-bottom:4px; }
+  .cover__meta .value{ font-size:12px; font-weight:600; color:#fff; }
+  .cover__meta .value.mono{ font-family:var(--mono); font-weight:500; }
+  .cover__foot{ margin-top:auto; padding:0.3in var(--margin) 0.45in var(--margin); display:flex; justify-content:space-between; align-items:flex-end; border-top:1px solid rgba(255,255,255,.15); }
+  .cover__foot .prepared{ font-size:11px; color:rgba(255,255,255,.6); line-height:1.6; }
+  .cover__foot .prepared b{ color:#fff; }
+  .cover__stamp{ font-family:var(--mono); font-size:11px; color:rgba(255,255,255,.6); border:1px solid rgba(255,255,255,.25); border-radius:3px; padding:6px 10px; text-align:center; }
+  .cover__stamp b{ color:#fff; }
+
+  /* kv + tables */
+  .kv-grid{ display:grid; grid-template-columns:1fr 1fr; gap:0 24px; margin-bottom:6px; }
+  .kv-row{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line-soft); font-size:11px; gap:10px; }
+  .kv-row .k{ color:var(--slate); flex:none; }
+  .kv-row .v{ font-weight:600; color:var(--ink); font-family:var(--mono); font-size:11px; text-align:right; }
+  .kv-row .v.sans{ font-family:var(--sans); }
+
+  .score-table{ width:100%; border-collapse:collapse; margin-top:8px; font-size:11px; }
+  .score-table th{ text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--slate); font-weight:600; border-bottom:1.5px solid var(--ink); padding:6px 8px; }
+  .score-table td{ border-bottom:1px solid var(--line-soft); padding:8px; vertical-align:top; }
+  .score-table tr:last-child td{ border-bottom:none; }
+  .score-table td.num{ font-family:var(--mono); text-align:right; white-space:nowrap; }
+  .score-table tfoot td{ border-top:1.5px solid var(--ink); border-bottom:none; font-weight:700; padding-top:9px; }
+  .verdict{ display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.04em; padding:2px 8px; border-radius:20px; text-transform:uppercase; }
+  .verdict.replace{ background:var(--accent-soft); color:var(--accent); }
+  .verdict.repair{ background:var(--good-soft); color:var(--good); }
+  .verdict.monitor{ background:var(--warn-soft); color:var(--warn); }
+
+  .exhibit{ border:1px solid var(--line); border-radius:6px; margin:14px 0; overflow:hidden; display:flex; break-inside:avoid; }
+  .exhibit__tab{ flex:none; width:46px; background:var(--ink); color:#fff; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; }
+  .exhibit__body{ padding:12px 14px; flex:1; }
+  .exhibit__head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; gap:10px; }
+  .exhibit__title{ font-size:11px; font-weight:600; color:var(--ink); }
+  .exhibit__code{ font-family:var(--mono); font-size:11px; color:var(--accent); font-weight:600; white-space:nowrap; }
+  .exhibit__body p{ font-size:11px; margin:0; }
+
+  .photo-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:6px; }
+  .photo-cell{ position:relative; }
+  .photo-frame{ position:relative; height:2.6in; border:1px solid var(--line-soft); background:repeating-linear-gradient(135deg, #EDEAE4 0 14px, #E4E0D8 14px 28px); }
+  .photo-frame .frame-corner{ width:14px; height:14px; border-color:#B7ACA0; }
+  .photo-frame .frame-corner.tl,.photo-frame .frame-corner.tr{ top:6px; }
+  .photo-frame .frame-corner.bl,.photo-frame .frame-corner.br{ bottom:6px; }
+  .photo-frame .frame-corner.tl,.photo-frame .frame-corner.bl{ left:6px; }
+  .photo-frame .frame-corner.tr,.photo-frame .frame-corner.br{ right:6px; }
+  .photo-caption{ font-size:11px; margin-top:5px; display:flex; justify-content:space-between; gap:8px; }
+  .photo-caption .id{ font-family:var(--mono); color:var(--slate-soft); }
+  .photo-caption .desc{ color:var(--ink-soft); font-weight:500; text-align:right; }
+  .exhibit-ribbon{ display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.05em; background:var(--ink); color:#fff; padding:2px 7px; border-radius:3px; margin-bottom:8px; }
+
+  .note-box{ border-left:3px solid var(--accent); background:var(--accent-soft); padding:10px 14px; margin-top:10px; font-size:11px; color:var(--ink-soft); line-height:1.55; text-align:justify; }
+  .note-box b{ color:var(--ink); }
+  .note-box.info{ border-left-color:var(--slate); background:var(--paper-alt); }
+  .note-box.uppa{ border-left-color:var(--navy); background:#EEF1F4; }
+
+  .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:8px 0 4px 0; }
+  .stat{ border:1px solid var(--line); border-radius:5px; padding:10px 12px; }
+  .stat .n{ font-size:19px; font-weight:700; color:var(--ink); }
+  .stat .l{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--slate); margin-top:2px; }
+
+  .toc-row{ display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px dotted var(--line); font-size:11px; gap:10px; }
+  .toc-row .n{ font-family:var(--mono); color:var(--accent); font-weight:600; width:74px; flex:none; }
+  .toc-row .t{ flex:1; color:var(--ink-soft); }
+  .toc-row .p{ font-family:var(--mono); color:var(--slate-soft); }
+
+  .sig-block{ display:grid; grid-template-columns:1.4fr 1fr; gap:26px; margin-top:20px; align-items:end; }
+  .sig-slot{ height:64px; border:1px dashed var(--line); border-radius:5px; background:var(--paper-alt); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; color:var(--slate-soft); }
+  .sig-slot img{ max-height:100%; max-width:100%; object-fit:contain; }
+  .sig-line{ border-top:1px solid var(--ink-soft); margin-top:8px; padding-top:5px; font-size:11px; color:var(--slate); }
+  .sig-line .role{ font-weight:600; color:var(--ink); }
+
+  @media print{
+    html,body{ background:none; }
+    .sheet{ margin:0; box-shadow:none; page-break-after:always; }
+    .sheet:last-child{ page-break-after:auto; }
+    @page{ size:8.5in 11in; margin:0; }
+    .toolbar{ display:none; }
+  }
+  .toolbar{ position:sticky; top:0; z-index:9; background:#12151A; color:#cfd4da; font-family:var(--sans); font-size:12px;
+    padding:10px 18px; display:flex; align-items:center; justify-content:center; gap:14px; }
+  .toolbar button{ font-family:var(--sans); font-size:12px; background:var(--accent); color:#fff; border:none; padding:6px 14px; border-radius:5px; cursor:pointer; font-weight:600; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">Forensic Inspection Report &amp; BEI Proof Package — template preview &nbsp;•&nbsp; <button onclick="window.print()">Print / Save as PDF</button></div>
+
+<!-- PAGE 1 — COVER -->
+<div class="sheet cover">
+  <div class="cover__top"><div id="logo-slot-cover"><span>LOGO</span></div></div>
+  <div class="cover__photo">
+    <div class="cover__photo-placeholder">Front-of-home photograph — carried over from Phase 1</div>
+    <div class="frame-corner tl"></div><div class="frame-corner tr"></div><div class="frame-corner bl"></div><div class="frame-corner br"></div>
+    <div class="cover__photo-tag" data-field="coverPhotoTag">S0 · PROPERTY OVERVIEW</div>
+  </div>
+  <div class="cover__title-block">
+    <div class="cover__doctype">Phase 2 of 2 — Forensic Inspection · BEI Proof Package</div>
+    <h1 class="cover__title">Forensic Inspection Report<br>and Proof Package</h1>
+    <div class="cover__address" data-field="propertyAddress">—</div>
+  </div>
+  <div class="cover__meta">
+    <div><div class="label">Insured</div><div class="value" data-field="insuredName">—</div></div>
+    <div><div class="label">Carrier</div><div class="value" data-field="carrier">—</div></div>
+    <div><div class="label">Claim Number</div><div class="value mono" data-field="claimNumber">—</div></div>
+    <div><div class="label">Date of Loss</div><div class="value mono" data-field="lossDate">—</div></div>
+  </div>
+  <div class="cover__foot">
+    <div class="prepared">Prepared by <b data-field="companyLegalName">—</b><br><span data-field="inspectorName">—</span>, Field Inspector</div>
+    <div class="cover__stamp">PROOF PACKAGE<br><b data-field="reportId">—</b></div>
+  </div>
+</div>
+
+<!-- PAGE 2 — SUMMARY, CONTENTS & DISCLAIMER -->
+<div class="sheet">
+  <div class="runhead"><div class="logo-slot"><span>LOGO</span></div><div class="rh-title">Summary &amp; Contents</div></div>
+  <div class="sheet__body">
+    <div class="eyebrow">00 — Summary &amp; Contents</div>
+    <h2 class="section-title">Proof Package Summary</h2>
+    <div class="section-rule"></div>
+    <p><span data-field="companyLegalName2">—</span> documents the physical roof damage observed at the property below, the weather event believed to have caused it, the building-code requirements for a compliant repair, and the contractor's fixed incurred cost to restore the property to its pre-loss condition.</p>
+
+    <div class="kv-grid" style="margin-top:6px;">
+      <div class="kv-row"><span class="k">Insured</span><span class="v sans" data-field="insuredName2">—</span></div>
+      <div class="kv-row"><span class="k">Property</span><span class="v sans" data-field="propertyAddress2">—</span></div>
+      <div class="kv-row"><span class="k">Carrier</span><span class="v sans" data-field="carrier2">—</span></div>
+      <div class="kv-row"><span class="k">Policy Number</span><span class="v" data-field="policyNumber">—</span></div>
+      <div class="kv-row"><span class="k">Claim Number</span><span class="v" data-field="claimNumber2">—</span></div>
+      <div class="kv-row"><span class="k">Date of Loss</span><span class="v" data-field="lossDate2">—</span></div>
+      <div class="kv-row"><span class="k">Phase 1 (Preliminary)</span><span class="v" data-field="phase1Date">—</span></div>
+      <div class="kv-row"><span class="k">Phase 2 (Forensic)</span><span class="v" data-field="phase2Date">—</span></div>
+      <div class="kv-row"><span class="k">Jurisdiction</span><span class="v sans" data-field="jurisdiction">—</span></div>
+      <div class="kv-row"><span class="k">Fixed Incurred Cost</span><span class="v" data-field="scopeSubtotal">—</span></div>
+    </div>
+
+    <p class="micro" style="margin-top:16px;">Contents</p>
+    <div id="exhibitIndexRows"></div>
+
+    <div class="note-box uppa" style="margin-top:16px;">
+      <b data-field="companyBrand">—</b> is a licensed contractor, not a public adjuster.
+      <span data-field="uppaDisclaimer">—</span>
+      <br><span class="micro" style="display:inline-block; margin-top:6px;">Governing statute: <span data-field="uppaStatute">—</span></span>
+    </div>
+  </div>
+  <div class="runfoot"><span>Forensic Inspection Report &amp; Proof Package · <b data-field="propertyAddressShort">—</b></span><span>Page <span class="page-num"></span> of <span class="page-total"></span></span></div>
+</div>
+
+<!-- Canonical exhibits A–M render here, in fixed order, applicable-only. -->
+<div id="exhibitsAnchor"></div>
+
+<!-- FINAL PAGE — CERTIFICATION -->
+<div class="sheet">
+  <div class="runhead"><div class="logo-slot"><span>LOGO</span></div><div class="rh-title">Certification</div></div>
+  <div class="sheet__body">
+    <div class="eyebrow">99 — Certification</div>
+    <h2 class="section-title">Inspector Certification</h2>
+    <div class="section-rule"></div>
+    <p data-field="certificationText">—</p>
+    <p style="margin-top:10px;">This report is a contractor scope submission documenting physical findings and the contractor's own fixed incurred cost. It does not negotiate, adjust, or advise on the settlement of the claim, and it does not represent a coverage determination or state what any carrier owes.</p>
+    <div class="sig-block">
+      <div>
+        <div class="sig-slot" id="cert-sig-slot"><span>SIGNATURE ON FILE</span></div>
+        <div class="sig-line">Prepared by — <span class="role" data-field="inspectorName3">—</span></div>
+      </div>
+      <div>
+        <div class="sig-slot" style="border-style:solid; background:transparent;"></div>
+        <div class="sig-line">Date — <span data-field="phase2Date2">—</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="runfoot"><span>Forensic Inspection Report &amp; Proof Package · <b data-field="propertyAddressShort2">—</b></span><span>Page <span class="page-num"></span> of <span class="page-total"></span></span></div>
+</div>
+
+<script>
+/* ============================================================
+   REPORT_DATA — merge target mirroring the RoofTrax Pro Brain:
+   SubmittedInspection (contract v1) + ResolvedConfig + computeScope.
+   Sample = the Brain's fixture claim (Reyes / Fairfax VA hail), so the
+   HTML report and the Brain PDF tell the same story.
+   ============================================================ */
+const REPORT_DATA = {
+  logoUrl: "",
+  reportId: "RPT-CLM-2026-0417",
+
+  // --- ResolvedConfig.company (company pack) ---
+  companyLegalName: "NuHome Exteriors LLC",
+  companyBrand: "NuHome Exteriors",
+  licenses: [{ state: "VA", number: "2705-064938A", classification: "VA Class A Contractor" }],
+  qualifications: "NuHome Exteriors is a licensed Virginia Class A roofing contractor specializing in storm restoration. This report documents physical findings observed during a forensic roof inspection and the contractor's fixed incurred cost to restore the property to its pre-loss condition — a statement of contractor findings and cost, not an assessment of policy coverage.",
+
+  // --- ResolvedConfig.state (state pack) ---
+  jurisdiction: "Virginia (VA)",
+  // Real, sourced VA homeowner-rights content (state-scoped; {{contractor}} /
+  // {{license}} substituted from the company pack at render).
+  homeownerRights: {
+    title: "Homeowner Information Page",
+    subtitle: "Your Property Insurance Claim: What Virginia Law Provides",
+    preparedByNote: "Provided for general educational purposes by {{contractor}} — {{license}}.",
+    sections: [
+      { heading: "Our Role — and What It Is Not", paragraphs: [
+        "{{contractor}} is your contractor. Our role in this claim is limited to matters within our professional expertise: identifying and documenting physical damage, assessing repairability, preparing the scope and cost of repairs, and citing the building codes and manufacturer requirements that govern how those repairs must be performed.",
+        "We are not a public adjuster, attorney, or insurance advisor. Under Virginia law (Va. Code § 38.2-1845.1 et seq.), only a licensed public adjuster or a licensed attorney may negotiate, adjust, or provide advice regarding the settlement of your insurance claim on your behalf. All decisions regarding your claim — including whether to accept, dispute, or appeal any coverage determination — are yours alone to make. The information below is general, publicly available information about Virginia law. It is not advice about your specific claim."
+      ]},
+      { heading: "What Virginia Law Requires of Your Insurance Company", paragraphs: [
+        "Virginia's Unfair Claim Settlement Practices rules (Va. Code § 38.2-510 and 14VAC5-400) establish minimum standards insurers must follow when handling property claims. Among them:",
+        "Acknowledgment. Your insurer must acknowledge receipt of your claim within 15 calendar days, and must respond to your inquiries within 15 calendar days. (14VAC5-400-50)",
+        "Prompt decision. Within 15 calendar days after receiving your properly executed proof of loss, your insurer must advise you whether the claim is accepted or denied. If it needs more time, it must tell you why in writing and continue to provide written status updates while the investigation remains open. (14VAC5-400-60)",
+        "Written denials with reasons. Any denial must be given to you in writing and must include a reasonable written explanation of its basis; if the denial relies on a policy provision, the insurer must specifically reference that provision. (14VAC5-400-70)",
+        "No misrepresentation. An insurer may not misrepresent policy provisions or knowingly conceal from you, directly or by omission, benefits, coverages, or other provisions of your policy that apply to your claim. (14VAC5-400-40)",
+        "Fair settlement practices. Virginia law prohibits insurers from failing to attempt in good faith to make prompt, fair, and equitable settlements of claims in which liability has become reasonably clear. (Va. Code § 38.2-510)"
+      ]},
+      { heading: "Your Rights as a Virginia Policyholder", paragraphs: [
+        "You have the right to communicate directly with your insurer. You may speak with your adjuster, request documents, and ask that any coverage position be put in writing.",
+        "You have the right to a written explanation. If any part of your claim is denied or reduced, you may request the specific policy language the insurer is relying upon.",
+        "You have the right to select your own contractor. Unless your policy explicitly requires otherwise, you are entitled to hire the licensed contractor of your choice to perform repairs to your property. Virginia's Unfair Claim Settlement Practices Act (Va. Code § 38.2-510) prohibits insurers from conditioning payment, delaying processing, or applying pressure designed to cause you to abandon your chosen contractor. Where a signed repair contract already exists, insurer conduct intended to cause you to breach that contract may give rise to additional legal claims under Virginia common law. If your insurer suggests or implies that you should use a different contractor than the one you have selected, request that communication in writing and contact the Virginia Bureau of Insurance.",
+        "You have the right to review your policy. You are entitled to a complete copy of your policy, including all endorsements, from your insurer or agent.",
+        "You have the right to professional representation. You may, at your option, hire a licensed public adjuster (licensed by the Virginia Bureau of Insurance under Va. Code § 38.2-1845.2) or a licensed attorney to advise on or negotiate your claim. You can verify a public adjuster's license through the State Corporation Commission's license lookup.",
+        "You have the right to invoke your policy's dispute provisions. Most property policies contain provisions (such as an appraisal clause) that establish a process for resolving disagreements about the amount of loss. Whether and how to invoke any such provision is your decision.",
+        "You have the right to file a complaint. If you believe your insurer has not handled your claim in accordance with Virginia law, you may file a complaint with the Virginia State Corporation Commission, Bureau of Insurance:"
+      ]},
+      { heading: "How This Proof Package Fits In", paragraphs: [
+        "The documentation in this package — storm data, photographs, code citations, and our repairability assessment — reflects our professional findings as your contractor regarding the physical condition of your property and the scope of repairs required. You are free to share this package with your insurer, your public adjuster, or your attorney. What you do with it, and every decision about your claim, remains entirely in your hands."
+      ]}
+    ],
+    complaintBlock: [
+      "Virginia Bureau of Insurance — Consumer Services",
+      "P.O. Box 1157, Richmond, VA 23218",
+      "Toll-free: 1-877-310-6560",
+      "scc.virginia.gov (Bureau of Insurance → File a Complaint)"
+    ],
+    closingDisclaimer: "This document is provided for general informational purposes only and does not constitute legal, insurance, or claims advice. {{contractor}} does not negotiate, adjust, or advise on the settlement of insurance claims. For advice regarding your specific claim, consult a licensed public adjuster or attorney. Statutory and regulatory references are current as of the date of preparation; verify current law at law.lis.virginia.gov."
+  },
+  uppaDisclaimer: "Under Virginia's public adjuster licensing law, only a licensed public adjuster may negotiate or effect the settlement of a claim on behalf of an insured. Nothing in this package negotiates, adjusts, or advises on claim settlement, and nothing here states what any carrier owes. [COUNSEL REVIEW REQUIRED before go-live.]",
+  uppaStatute: "Va. Code § 38.2-1845.1 et seq.",
+
+  // --- SubmittedInspection.property ---
+  propertyAddress: "1420 Chain Bridge Rd, Fairfax, VA 22030",
+  propertyAddressShort: "1420 Chain Bridge Rd",
+  insuredName: "Jordan & Alex Reyes",
+  carrier: "USAA",
+  policyNumber: "USAA-88231145",
+  claimNumber: "CLM-2026-0417",
+  lossDate: "05/18/2026",
+  phase1Date: "05/18/2026",
+  phase2Date: "05/20/2026",
+
+  inspectorName: "Sam Whitfield",
+
+  // --- SubmittedInspection.storm (confirmed in Phase 1, inherited read-only) ---
+  storm: {
+    confirmedDate: "May 18, 2026", dateLocalTime: "May 18, 2026 · 7:12 PM",
+    type: "Hail (w/ damaging wind)", hailSize: "1.75\"", windSpeed: "58 mph", distance: "2.1 mi",
+    coordinates: "38.8462, -77.3064",
+    source: "NOAA/NWS Local Storm Report — WFO LWX (Sterling, VA), via Visual Crossing",
+    narrative: "On May 18, 2026 at 7:12 PM local time, the NWS LWX (Sterling, VA) logged a hail report measuring 1.75\" in diameter approximately 2.1 mi from the insured property (38.8462, -77.3064). Retrieval and eligibility are deterministic — this event was selected as the storm of record under fixed severe-weather gates, with no AI scoring.",
+    note: "Quarter to half-dollar size hail reported with a severe thunderstorm.",
+    causation: "Verified meteorological data confirms a severe convective storm producing 1.75\" hail and damaging wind at the property on the date of loss. The documented damage — mat fractures, granule loss with mat exposure, and soft-metal impact spatter — is consistent with the recorded event and inconsistent with routine wear.",
+    ifNotFor: "If not for the hail and wind event of the date above, the mat fractures, granule loss, and soft-metal impact marks documented throughout this report would not be present. No other causal mechanism accounts for the observed pattern."
+  },
+
+  // --- SubmittedInspection.methodology + auto-logged capture counts ---
+  methodology: {
+    inspectedAt: "05/20/2026 13:30", conditions: "Clear, 74°F, winds calm.",
+    equipment: ["Extension ladder", "Chalk line", "Hail gauge", "Pitch gauge", "GPS camera"],
+    protocol: "One 10'x10' test square was chalked on each accessible directional slope; each impact was circled and photographed with a scale reference and classified. Damage is documented wide/mid/close with a scale reference in the close photo. Full-resolution originals are preserved unaltered with capture time (UTC), GPS, and a SHA-256 recorded at capture for chain of custody.",
+    capture: { elevations: 4, slopes: 2, testSquares: 2, totalHits: 16, damageInstances: 3, measurements: 5, photos: 6 }
+  },
+
+  // --- Areas impacted (drives which damage sections appear) ---
+  areasImpacted: [
+    { key: "roof", name: "Roof", impacted: true },
+    { key: "siding", name: "Siding", impacted: false },
+    { key: "interior", name: "Interior", impacted: true },
+    { key: "collateral", name: "Collateral", impacted: true }
+  ],
+
+  // --- components by area (condition + method + verdict) ---
+  components: {
+    roof: [
+      { component: "Field shingles (all slopes)", condition: "Mat fractures, granule loss w/ mat exposure; product discontinued", method: "Full roof replacement, like-kind & quality", verdict: "replace" },
+      { component: "Decking — north eave", condition: "Two sheets delaminated OSB", method: "Localized decking replacement, re-nail to R803", verdict: "replace" },
+      { component: "Drip edge (eaves/rakes)", condition: "Absent — not present at eaves or rakes", method: "Install code-required drip edge (R905.2.8.5)", verdict: "replace" }
+    ],
+    interior: [
+      { component: "Ceiling — upstairs bedroom", condition: "Water staining; moisture 18.5%", method: "Drywall patch, texture-match, repaint", verdict: "repair" }
+    ],
+    collateral: [
+      { component: "Aluminum gutters", condition: "Soft-metal impact spatter (causation evidence)", method: "Document; section replacement where functional loss", verdict: "monitor" }
+    ]
+  },
+
+  // --- code library, cross-referenced FROM the scope element (Exhibit I) ---
+  codeCitations: [
+    { key: "code-r908", element: "roof_covering", title: "Roof Replacement", cite: "IRC R908.3 (VA USBC)", body: "Roof replacement includes removal of existing coverings down to the deck; required where existing coverings are damaged such that repair is not permitted." },
+    { key: "code-r905", element: "drip_edge", title: "Drip Edge", cite: "IRC R905.2.8.5 (VA USBC)", body: "A drip edge shall be provided at eaves and rake edges of shingle roofs; adjacent segments lapped and fastened per code spacing." },
+    { key: "code-r803", element: "decking", title: "Roof Sheathing / Decking", cite: "IRC R803 (VA USBC)", body: "Roof sheathing shall provide a sound substrate; deteriorated or non-conforming decking exposed during tear-off must be replaced to receive the new covering." }
+  ],
+
+  // --- SubmittedInspection.measurements (Exhibit H) ---
+  measurement: {
+    slopes: [{ label: "Front (South)", sqft: 1520 }, { label: "Back (North)", sqft: 1480 }],
+    linear: [{ type: "Ridge", lf: 42 }, { type: "Eave", lf: 96 }, { type: "Rake", lf: 68 }],
+    totalSqft: 3000, squares: 30.0
+  },
+
+  // --- computeScope() output (Exhibit J / K / L) — fixed incurred cost ---
+  scope: {
+    currency: "USD", basePricePerSquare: 650, squares: 30.0, subtotal: 20159.00,
+    basisStatement: "Pricing reflects NuHome Exteriors' fixed incurred cost per roofing square (100 sq ft), inclusive of materials and labor. It is the insured's actual contractual obligation under an executed fixed-price agreement — not a carrier-software (Xactimate) estimate, and it does not represent what any carrier owes.",
+    lineItems: [
+      { description: "Remove and replace roof covering (incurred cost per square)", qty: 30.0, unit: "SQ", rate: 650, total: 19500.00, isAdder: false, codeRefs: ["IRC R908.3"] },
+      { description: "Replacement roof decking — documented deteriorated sections; final sheet count confirmed at tear-off", qty: 1, unit: "SHEET", rate: 85, total: 85.00, isAdder: true, trigger: "Deteriorated decking documented (photo + component status) during tear-off.", codeRefs: ["IRC R803"] },
+      { description: "Drip edge (code-required where absent) — eave + rake linear feet", qty: 164, unit: "LF", rate: 3.5, total: 574.00, isAdder: true, trigger: "Existing roof documented without a compliant drip edge at eaves/rakes.", codeRefs: ["IRC R905.2.8.5"] }
+    ]
+  },
+
+  // --- product ID (folds into Roof / Exhibit G manufacturer) ---
+  product: { brand: "GAF", line: "Timberline HDZ", identification: "field_identified", discontinued: true,
+    discontinuedNote: "The installed shingle profile is confirmed discontinued by the manufacturer. A uniform, code-compliant repair therefore requires full-slope — or full-roof — replacement." },
+
+  // --- Exhibit E photos, tagged by area (chain of custody: sha256) ---
+  photos: [
+    { id: "IMG-014", area: "roof", stage: "S5", subject: "Slope: Front", desc: "Mat fracture + granule loss, close (scale)", sha256: "4444444444444444" },
+    { id: "IMG-017", area: "roof", stage: "S3", subject: "Slope: Front", desc: "Front slope overview", sha256: "3333333333333333" },
+    { id: "IMG-021", area: "roof", stage: "S4", subject: "Test square: Front", desc: "Chalked test square, 9 hits", sha256: "6666666666666666" },
+    { id: "IMG-031", area: "interior", stage: "S6", subject: "Interior", desc: "Ceiling staining, upstairs bedroom", sha256: "aaaaaaaaaaaaaaaa" },
+    { id: "IMG-025", area: "collateral", stage: "S2", subject: "Elevation: Left", desc: "Gutter — soft-metal impact spatter", sha256: "bbbbbbbbbbbbbbbb" }
+  ],
+
+  // --- AI exhibits (B6 — repairability F, manufacturer G, conclusion M) ---
+  ai: {
+    repairabilitySummary: "AI-assisted repairability/matching analysis is generated by the analysis engine and provided in the supporting documentation. [Pending the model decision — B6.]",
+    conclusion: "Based on the documented storm event, the observed mat fractures and granule loss across all slopes, the confirmed discontinuation of the installed product, and the applicable code, a code-compliant, reasonably uniform repair cannot be achieved by partial replacement. Full roof replacement is the indicated method. [Signed conclusion — the inspector's on-file signature is applied at package generation.]"
+  },
+
+  certificationText: "I certify that the observations, measurements, and photographic evidence in this report were made by me or under my direct supervision and accurately represent the condition of the property on the date of inspection."
+};
+
+/* ---------- field binding ---------- */
+function fieldValue(data, exact){
+  const flat = {
+    coverPhotoTag: "S0 · PROPERTY OVERVIEW",
+    companyLegalName: data.companyLegalName, companyLegalName2: data.companyLegalName,
+    companyBrand: data.companyBrand,
+    propertyAddress: data.propertyAddress, propertyAddress2: data.propertyAddress,
+    propertyAddressShort: data.propertyAddressShort, propertyAddressShort2: data.propertyAddressShort,
+    insuredName: data.insuredName, insuredName2: data.insuredName,
+    carrier: data.carrier, carrier2: data.carrier,
+    claimNumber: data.claimNumber, claimNumber2: data.claimNumber,
+    lossDate: data.lossDate, lossDate2: data.lossDate,
+    policyNumber: data.policyNumber, reportId: data.reportId,
+    phase1Date: data.phase1Date, phase2Date: data.phase2Date, phase2Date2: data.phase2Date,
+    jurisdiction: data.jurisdiction, inspectorName: data.inspectorName,
+    inspectorName3: data.inspectorName,
+    uppaDisclaimer: data.uppaDisclaimer, uppaStatute: data.uppaStatute,
+    certificationText: data.certificationText,
+    scopeSubtotal: money(data.scope.subtotal, data.scope.currency)
+  };
+  return flat[exact];
+}
+function bindFields(data){
+  document.querySelectorAll("[data-field]").forEach(el=>{
+    const v = fieldValue(data, el.getAttribute("data-field"));
+    if (v !== undefined && v !== null) el.textContent = v;
+  });
+}
+function money(n, currency){ return new Intl.NumberFormat("en-US",{style:"currency",currency:currency||"USD"}).format(n); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// Substitute company tokens into state-scoped content (keeps the state pack company-agnostic).
+function licenseToken(){ const l=(REPORT_DATA.licenses||[]).find(x=>x.state==="VA")||(REPORT_DATA.licenses||[])[0]; return l?`${l.classification} License #${l.number}`:""; }
+function fillTokens(s){ return String(s==null?"":s).replace(/\{\{contractor\}\}/g, REPORT_DATA.companyLegalName).replace(/\{\{license\}\}/g, licenseToken()); }
+
+/* ---------- page + exhibit scaffolding ---------- */
+function buildPage(rhTitle, innerHTML){
+  const page = document.createElement("div");
+  page.className = "sheet";
+  page.innerHTML = `
+    <div class="runhead"><div class="logo-slot"><span>LOGO</span></div><div class="rh-title">${esc(rhTitle)}</div></div>
+    <div class="sheet__body">${innerHTML}</div>
+    <div class="runfoot"><span>Forensic Inspection Report &amp; Proof Package · <b>${esc(REPORT_DATA.propertyAddressShort||"")}</b></span>
+      <span>Page <span class="page-num"></span> of <span class="page-total"></span></span></div>`;
+  return page;
+}
+// Header block for an exhibit page; stamps the anchor used by the contents index.
+function exHead(letter, num, title, subtitle){
+  return `<div class="eyebrow" data-exhibit-anchor="${letter}">${num} — Exhibit ${letter}</div>
+          <h2 class="section-title">Exhibit ${letter} — ${esc(title)}</h2>
+          <div class="section-rule"></div>
+          ${subtitle ? `<p class="micro" style="margin-bottom:10px;">${esc(subtitle)}</p>` : ""}`;
+}
+function chunk(arr, n){ const out=[]; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; }
+
+/* ---------- canonical A–M exhibit definitions (fixed letters) ---------- */
+const D = REPORT_DATA;
+const impactedAreas = () => D.areasImpacted.filter(a => a.impacted);
+
+const EXHIBIT_DEFS = [
+  { letter:"A", title:"Homeowner Information", applies:()=>true, render:()=>{
+      const r = D.homeownerRights;
+      const chunks = chunk(r.sections, 2);
+      return chunks.map((sc, ci) => {
+        const isFirst = ci===0, isLast = ci===chunks.length-1;
+        // Homeowner Information renders 2px larger than the document body for readability.
+        const head = isFirst
+          ? exHead("A","01",r.title,"") +
+            `<p style="font-style:italic; font-size:13px; margin-top:-4px;">${esc(r.subtitle)}</p>
+             <p style="font-size:12px; color:var(--slate);">${esc(fillTokens(r.preparedByNote))}</p>`
+          : `<div class="eyebrow">01 — Exhibit A (cont'd)</div><h2 class="section-title">Homeowner Information (cont'd)</h2><div class="section-rule"></div>`;
+        const body = sc.map(section =>
+          `<p class="micro" style="margin-top:10px; font-size:13px;">${esc(section.heading)}</p>` +
+          section.paragraphs.map(p=>`<p style="font-size:12px;">${esc(fillTokens(p))}</p>`).join("")
+        ).join("");
+        const tail = isLast
+          ? `<div class="note-box info" style="margin-top:10px; font-size:13px;">${r.complaintBlock.map(l=>esc(l)).join("<br>")}</div>
+             <p style="margin-top:10px; font-style:italic; font-size:12px; color:var(--slate);">${esc(fillTokens(r.closingDisclaimer))}</p>`
+          : "";
+        return buildPage("Exhibit A", head + body + tail);
+      });
+  } },
+
+  { letter:"B", title:"Statement of Qualifications", applies:()=>true, render:()=>[buildPage("Exhibit B", exHead("B","02","Statement of Qualifications","Licensure & professional basis for the findings.") +
+      `<p>${esc(D.qualifications)}</p>
+       <p class="micro" style="margin-top:12px;">Licensure</p>
+       <table class="score-table"><thead><tr><th>State</th><th>License #</th><th>Classification</th></tr></thead><tbody>
+       ${D.licenses.map(l=>`<tr><td>${esc(l.state)}</td><td>${esc(l.number)}</td><td>${esc(l.classification)}</td></tr>`).join("")}
+       </tbody></table>`)] },
+
+  { letter:"C", title:"Inspection Methodology", applies:()=>true, render:()=>{ const m=D.methodology, c=m.capture;
+      return [buildPage("Exhibit C", exHead("C","03","Inspection Methodology","Conditions, protocol, and the auto-logged capture record.") +
+      `<div class="kv-grid">
+         <div class="kv-row"><span class="k">Inspected</span><span class="v">${esc(m.inspectedAt)}</span></div>
+         <div class="kv-row"><span class="k">Inspector</span><span class="v sans">${esc(D.inspectorName)}</span></div>
+         <div class="kv-row"><span class="k">Conditions</span><span class="v sans">${esc(m.conditions)}</span></div>
+         <div class="kv-row"><span class="k">Equipment</span><span class="v sans">${esc(m.equipment.join(", "))}</span></div>
+       </div>
+       <p style="margin-top:12px;">${esc(m.protocol)}</p>
+       <p class="micro" style="margin-top:12px;">Auto-Logged Capture Record</p>
+       <div class="stat-grid">
+         <div class="stat"><div class="n">${c.elevations}</div><div class="l">Elevations</div></div>
+         <div class="stat"><div class="n">${c.slopes}</div><div class="l">Slopes</div></div>
+         <div class="stat"><div class="n">${c.testSquares}</div><div class="l">Test squares</div></div>
+         <div class="stat"><div class="n">${c.totalHits}</div><div class="l">Impacts recorded</div></div>
+         <div class="stat"><div class="n">${c.damageInstances}</div><div class="l">Damage instances</div></div>
+         <div class="stat"><div class="n">${c.photos}</div><div class="l">Evidence photos</div></div>
+       </div>`)]; } },
+
+  { letter:"D", title:"Storm Event Verification", applies:()=>!!D.storm, render:()=>{ const s=D.storm;
+      return [buildPage("Exhibit D", exHead("D","04","Storm Event Verification","Certified weather for the date of loss establishing the causal event.") +
+      `<div class="kv-grid">
+         <div class="kv-row"><span class="k">Confirmed event</span><span class="v sans">${esc(s.type)}</span></div>
+         <div class="kv-row"><span class="k">Date &amp; local time</span><span class="v">${esc(s.dateLocalTime || s.confirmedDate)}</span></div>
+         <div class="kv-row"><span class="k">Max hail size</span><span class="v">${esc(s.hailSize)}</span></div>
+         <div class="kv-row"><span class="k">Max wind speed</span><span class="v">${esc(s.windSpeed)}</span></div>
+         <div class="kv-row"><span class="k">Distance from property</span><span class="v">${esc(s.distance)}</span></div>
+         ${s.coordinates ? `<div class="kv-row"><span class="k">Report location</span><span class="v">${esc(s.coordinates)}</span></div>` : ``}
+         <div class="kv-row"><span class="k">Verification source</span><span class="v sans">${esc(s.source)}</span></div>
+       </div>
+       ${s.narrative ? `<p class="micro" style="margin-top:14px;">Event Summary</p><p>${esc(s.narrative)}</p>` : ``}
+       ${s.note ? `<p class="micro" style="margin-top:14px;">Reporting Note (verbatim)</p><p><i>${esc(s.note)}</i></p>` : ``}
+       <p class="micro" style="margin-top:14px;">Causation Summary</p><p>${esc(s.causation)}</p>
+       <div class="note-box"><b>"If not for" —</b> ${esc(s.ifNotFor)}</div>`)]; } },
+
+  { letter:"E", title:"Damage Documentation & Photo Index", applies:()=>D.photos.length>0 || impactedAreas().length>0, render:renderExhibitE },
+
+  { letter:"F", title:"Repairability Assessment", applies:()=>true, render:()=>[buildPage("Exhibit F", exHead("F","06","Repairability Assessment","Matching & uniformity analysis.") +
+      `<div class="note-box info">${esc(D.ai.repairabilitySummary)}</div>`)] },
+
+  { letter:"G", title:"Manufacturer Documentation", applies:()=>D.areasImpacted.some(a=>a.key==="roof"&&a.impacted), render:()=>[buildPage("Exhibit G", exHead("G","07","Manufacturer Documentation","Product identification & discontinuation.") +
+      `<div class="kv-grid">
+         <div class="kv-row"><span class="k">Identified product</span><span class="v sans">${esc(D.product.brand)} ${esc(D.product.line)}</span></div>
+         <div class="kv-row"><span class="k">Identification</span><span class="v sans">${esc(D.product.identification)}</span></div>
+         <div class="kv-row"><span class="k">Status</span><span class="v sans">${D.product.discontinued?"Discontinued":"Current"}</span></div>
+       </div>
+       <div class="note-box">${esc(D.product.discontinuedNote)}</div>
+       <div class="note-box info" style="margin-top:8px;">Manufacturer discontinuation notice and closest-match specification sheet are provided in the supporting documentation. [AI-assisted matching narrative — B6.]</div>`)] },
+
+  { letter:"H", title:"Measurement Report", applies:()=>!!D.measurement, render:()=>{ const mm=D.measurement;
+      return [buildPage("Exhibit H", exHead("H","08","Measurement Report","Verifiable roof quantities from recorded field measurements.") +
+      `<p class="micro">Slope Areas</p>
+       <table class="score-table"><thead><tr><th>Slope</th><th class="num">Area (sq ft)</th><th class="num">Squares</th></tr></thead><tbody>
+       ${mm.slopes.map(s=>`<tr><td>${esc(s.label)}</td><td class="num">${s.sqft.toFixed(0)}</td><td class="num">${(s.sqft/100).toFixed(2)}</td></tr>`).join("")}
+       </tbody><tfoot><tr><td>Total</td><td class="num">${mm.totalSqft.toFixed(0)}</td><td class="num">${mm.squares.toFixed(2)}</td></tr></tfoot></table>
+       <p class="micro" style="margin-top:14px;">Linear Measurements</p>
+       <table class="score-table"><thead><tr><th>Type</th><th class="num">Length (lf)</th></tr></thead><tbody>
+       ${mm.linear.map(l=>`<tr><td>${esc(l.type)}</td><td class="num">${l.lf.toFixed(0)}</td></tr>`).join("")}
+       </tbody></table>
+       <p style="margin-top:10px; font-style:italic;">Squares are measured area only; no waste factor is baked in. Waste, starter, and ridge are documented as separate scope line items where applicable.</p>`)]; } },
+
+  { letter:"I", title:"Applicable Codes & Regulations", applies:()=>D.codeCitations.length>0, render:()=>{
+      const cites = D.codeCitations.map(c=>`
+        <div class="exhibit"><div class="exhibit__tab">§</div><div class="exhibit__body">
+          <div class="exhibit__head"><span class="exhibit__title">${esc(c.title)}</span><span class="exhibit__code">${esc(c.cite)}</span></div>
+          <p style="margin-bottom:4px;">${esc(c.body)}</p>
+          <p class="micro" style="margin:0;">Governs scope element: ${esc(c.element)}</p>
+        </div></div>`).join("");
+      return [buildPage("Exhibit I", exHead("I","09","Applicable Codes & Regulations","Code provisions cross-referenced from the scope element each governs.") + cites)]; } },
+
+  { letter:"J", title:"Scope of Work & Pricing Basis", applies:()=>D.scope.lineItems.length>0, render:()=>{ const sc=D.scope, cur=sc.currency;
+      return [buildPage("Exhibit J", exHead("J","10","Scope of Work & Pricing Basis","Fixed per-square incurred cost + documented adders.") +
+      `<div class="kv-grid">
+         <div class="kv-row"><span class="k">Base rate</span><span class="v">${money(sc.basePricePerSquare,cur)} / SQ</span></div>
+         <div class="kv-row"><span class="k">Measured squares</span><span class="v">${sc.squares.toFixed(2)}</span></div>
+       </div>
+       <table class="score-table" style="margin-top:10px;"><thead><tr><th>Item</th><th class="num">Qty</th><th>Unit</th><th class="num">Rate</th><th class="num">Total</th></tr></thead><tbody>
+       ${sc.lineItems.map(li=>`<tr><td>${esc(li.description)}</td><td class="num">${li.qty.toFixed(2)}</td><td>${esc(li.unit)}</td><td class="num">${money(li.rate,cur)}</td><td class="num">${money(li.total,cur)}</td></tr>`).join("")}
+       </tbody><tfoot><tr><td colspan="4">Fixed incurred cost (subtotal)</td><td class="num">${money(sc.subtotal,cur)}</td></tr></tfoot></table>
+       <div class="note-box uppa" style="margin-top:12px;">${esc(sc.basisStatement)}</div>`)]; } },
+
+  { letter:"K", title:"Conditions & Adders", applies:()=>D.scope.lineItems.some(li=>li.isAdder), render:()=>{ const cur=D.scope.currency;
+      const adders = D.scope.lineItems.filter(li=>li.isAdder).map(a=>`
+        <div class="exhibit"><div class="exhibit__tab">+</div><div class="exhibit__body">
+          <div class="exhibit__head"><span class="exhibit__title">${esc(a.description)}</span><span class="exhibit__code">${money(a.total,cur)}</span></div>
+          <div class="kv-grid" style="margin-top:4px;">
+            <div class="kv-row"><span class="k">Triggering condition</span><span class="v sans">${esc(a.trigger||"—")}</span></div>
+            <div class="kv-row"><span class="k">Quantity</span><span class="v">${a.qty.toFixed(2)} ${esc(a.unit)} @ ${money(a.rate,cur)}</span></div>
+            <div class="kv-row"><span class="k">Governing code</span><span class="v sans">${esc((a.codeRefs||[]).join(", ")||"—")}</span></div>
+          </div>
+        </div></div>`).join("");
+      return [buildPage("Exhibit K", exHead("K","11","Conditions & Adders","Each conditional item paired with its documented triggering condition.") +
+        `<p>The items below are conditional adders. Each is included only because the noted condition was documented during the inspection; none is priced by default.</p>${adders}`)]; } },
+
+  { letter:"L", title:"Contract Exhibit", applies:()=>D.scope.subtotal>0, render:()=>{ const cur=D.scope.currency;
+      return [buildPage("Exhibit L", exHead("L","12","Contract Exhibit","Executed fixed-price agreement — evidence of actual incurred cost.") +
+      `<p>The insured has entered a fixed-price agreement with the contractor to restore the property to its pre-loss, code-compliant condition. The agreed price below is the insured's actual incurred cost — the amount the insured is contractually obligated to pay — and is the basis for the documented loss.</p>
+       <div class="kv-grid" style="margin-top:8px;">
+         <div class="kv-row"><span class="k">Insured</span><span class="v sans">${esc(D.insuredName)}</span></div>
+         <div class="kv-row"><span class="k">Contractor</span><span class="v sans">${esc(D.companyLegalName)}</span></div>
+         <div class="kv-row"><span class="k">Agreement type</span><span class="v sans">Fixed-price (incurred cost)</span></div>
+         <div class="kv-row"><span class="k">Agreed price</span><span class="v">${money(D.scope.subtotal,cur)}</span></div>
+       </div>
+       <div class="note-box info" style="margin-top:10px;">The executed, signed fixed-price agreement is on file and incorporated by reference. This exhibit evidences the contractor's and insured's own agreed cost — it is not a carrier estimate and does not state what any carrier owes.</div>`)]; } },
+
+  { letter:"M", title:"Repairability Conclusion", applies:()=>true, render:()=>[buildPage("Exhibit M", exHead("M","13","Repairability Conclusion","Signed, dated professional finding on contractor letterhead.") +
+      `<p>${esc(D.ai.conclusion)}</p>
+       <div class="sig-block">
+         <div><div class="sig-slot" id="concl-sig-slot"><span>SIGNATURE ON FILE</span></div>
+           <div class="sig-line">Signed — <span class="role">${esc(D.inspectorName)}</span></div></div>
+         <div><div class="sig-slot" style="border-style:solid; background:transparent;"></div>
+           <div class="sig-line">Date — ${esc(D.phase2Date)}</div></div>
+       </div>`)] }
+];
+
+// Exhibit E — damage documentation organized by impacted area + a photo index.
+function renderExhibitE(){
+  const pages = [];
+  // 1) per-area component/condition tables
+  const areaTables = impactedAreas().map(area => {
+    const rows = (D.components[area.key]||[]);
+    if (!rows.length) return "";
+    return `<p class="micro" style="margin-top:12px;">${esc(area.name)}</p>
+      <table class="score-table"><thead><tr><th>Component</th><th>Condition Observed</th><th>Repair Method</th><th>Verdict</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td style="font-weight:600;">${esc(r.component)}</td><td>${esc(r.condition)}</td><td>${esc(r.method)}</td><td><span class="verdict ${r.verdict}">${r.verdict}</span></td></tr>`).join("")}
+      </tbody></table>`;
+  }).join("");
+  pages.push(buildPage("Exhibit E", exHead("E","05","Damage Documentation & Photo Index","Documented damage by area, with a photo-to-subject index and content hashes.") + areaTables));
+
+  // 2) photo index table (chain of custody)
+  const idxRows = D.photos.map(p=>`<tr><td>${esc(p.id)}</td><td>${esc(p.stage)}</td><td>${esc(p.subject)}</td><td>${esc(p.desc)}</td><td class="num">${esc(p.sha256.slice(0,12))}…</td></tr>`).join("");
+  pages.push(buildPage("Exhibit E", `<div class="eyebrow">05 — Exhibit E (cont'd)</div><h2 class="section-title">Photo Index — Chain of Custody</h2><div class="section-rule"></div>
+    <p>Each photo is preserved full-resolution and unaltered; the SHA-256 was recorded at capture and verified against the stored bytes at package generation.</p>
+    <table class="score-table"><thead><tr><th>Photo</th><th>Stage</th><th>Documents</th><th>Caption</th><th class="num">SHA-256</th></tr></thead><tbody>${idxRows}</tbody></table>`));
+
+  // 3) photo evidence pages, 2/page (impacted areas only, in document order)
+  const orderedPhotos = impactedAreas().flatMap(a => D.photos.filter(p=>p.area===a.key));
+  chunk(orderedPhotos, 2).forEach((c, ci, all) => {
+    const cells = c.map(p=>`<div class="photo-cell"><div class="photo-frame">
+        <div class="frame-corner tl"></div><div class="frame-corner tr"></div><div class="frame-corner bl"></div><div class="frame-corner br"></div></div>
+        <div class="photo-caption"><span class="id">${esc(p.id)} · ${esc(p.stage)}</span><span class="desc">${esc(p.desc)}</span></div></div>`).join("");
+    pages.push(buildPage("Exhibit E", `<div class="eyebrow">05 — Exhibit E (cont'd)</div><h2 class="section-title">Photographic Evidence</h2><div class="section-rule"></div>
+      <span class="exhibit-ribbon">EXHIBIT E${all.length>1?` · Page ${ci+1} of ${all.length}`:""}</span>
+      <div class="photo-grid">${cells}</div>`));
+  });
+  return pages;
+}
+
+/* ---------- render pipeline ---------- */
+function renderExhibits(){
+  const anchor = document.getElementById("exhibitsAnchor");
+  const present = [];
+  EXHIBIT_DEFS.forEach(def => {
+    if (!def.applies()) return;                 // omit inapplicable — letter stays fixed, never re-shifts
+    def.render().forEach(page => anchor.parentNode.insertBefore(page, anchor));
+    present.push({ letter: def.letter, title: def.title });
+  });
+  anchor.remove();
+  return present;
+}
+function renderExhibitIndex(present){
+  const sheets = Array.from(document.querySelectorAll(".sheet"));
+  const rows = present.map(ex => {
+    const a = document.querySelector(`[data-exhibit-anchor="${ex.letter}"]`);
+    const sheet = a ? a.closest(".sheet") : null;
+    const page = sheet ? sheets.indexOf(sheet)+1 : "—";
+    return `<div class="toc-row"><span class="n">Exhibit ${ex.letter}</span><span class="t">${esc(ex.title)}</span><span class="p">p.${page}</span></div>`;
+  });
+  document.getElementById("exhibitIndexRows").innerHTML = rows.join("");
+}
+function renderLogo(){
+  if (!REPORT_DATA.logoUrl) return;
+  const img = `<img src="${REPORT_DATA.logoUrl}" alt="${esc(REPORT_DATA.companyBrand||"Company")} logo">`;
+  document.querySelectorAll(".logo-slot").forEach(el => el.innerHTML = img);
+  const cover = document.getElementById("logo-slot-cover"); if (cover) cover.innerHTML = img;
+}
+function renderSignatures(){
+  // On-file signature (Brain Exhibit M / F0). Wire REPORT_DATA.signatureUrl when available.
+  if (!REPORT_DATA.signatureUrl) return;
+  const img = `<img src="${REPORT_DATA.signatureUrl}" alt="Inspector signature">`;
+  ["cert-sig-slot","concl-sig-slot"].forEach(id => { const el=document.getElementById(id); if(el) el.innerHTML=img; });
+}
+function renderPageNumbers(){
+  const sheets = document.querySelectorAll(".sheet");
+  sheets.forEach((sheet,i)=>{
+    sheet.querySelectorAll(".page-num").forEach(el=>el.textContent=i+1);
+    sheet.querySelectorAll(".page-total").forEach(el=>el.textContent=sheets.length);
+  });
+}
+
+bindFields(REPORT_DATA);
+const present = renderExhibits();       // must run before index/page numbers
+renderLogo();
+renderSignatures();
+renderExhibitIndex(present);            // resolves page numbers from final layout
+renderPageNumbers();
+</script>
+</body>
+</html>
