@@ -3606,6 +3606,13 @@ components:
           description: >-
             Optional specific code or topic to look up (e.g. "drip edge",
             "IRC R908.3"). Absent means a broad survey of applicable codes.
+        editionYear:
+          type: [integer, "null"]
+          minimum: 1990
+          maximum: 2035
+          description: >-
+            Optional code edition year to research (e.g. 2021 for the 2021
+            IRC/IBC). Absent means the state's currently adopted edition.
         existingKeys:
           type: array
           maxItems: 100

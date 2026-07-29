@@ -366,6 +366,7 @@ function StatePackEditor({
 
   const researchCodes = useResearchCompanyStateCodes();
   const [researchQuery, setResearchQuery] = useState('');
+  const [researchYear, setResearchYear] = useState<number | null>(null);
   const [researchSuggestions, setResearchSuggestions] = useState<CodeCitation[]>([]);
 
   const handleResearch = async () => {
@@ -376,6 +377,7 @@ function StatePackEditor({
         state,
         data: {
           query: researchQuery.trim() || null,
+          editionYear: researchYear,
           existingKeys: citations.map(c => c.key),
         }
       });
@@ -609,6 +611,32 @@ function StatePackEditor({
               value={researchQuery}
               onChangeText={setResearchQuery}
             />
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Code edition year</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {[null, 2015, 2018, 2021, 2024].map(year => {
+                  const selected = researchYear === year;
+                  return (
+                    <Pressable
+                      key={year ?? 'current'}
+                      onPress={() => setResearchYear(year)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : colors.border,
+                        backgroundColor: selected ? colors.primary : colors.background,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: selected ? colors.primaryForeground : colors.foreground }}>
+                        {year ?? 'Current'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
             <Pressable
               onPress={handleResearch}
               disabled={researchCodes.isPending}

@@ -606,7 +606,12 @@ router.post(
       return;
     }
     const query = parsed.data.query?.trim() || null;
+    const editionYear = parsed.data.editionYear ?? null;
     const existingKeys = (parsed.data.existingKeys ?? []).slice(0, 100);
+
+    const editionInstruction = editionYear
+      ? `Research the ${editionYear} code edition specifically (e.g. the ${editionYear} IRC/IBC or the state code based on it). All citations and quoted language must come from that edition; if a requirement does not exist in that edition, omit it.`
+      : `Use the code edition currently adopted by the state where you know it; otherwise use the latest model code edition you are confident about.`;
 
     const prompt = `You are a building-code research assistant for a licensed storm-restoration roofing contractor operating in the U.S. state with postal code "${state}".
 
@@ -617,7 +622,7 @@ ${
 }
 
 Rules:
-- Only include codes you are confident actually exist. Cite the state-adopted code edition where you know it; otherwise cite the model code section (e.g. "IRC R905.2.8.5").
+- Only include codes you are confident actually exist. ${editionInstruction} Include the edition year in "cite" (e.g. "2021 IRC R905.2.8.5").
 - "body" must start with the exact language of the code section, quoted verbatim and wrapped in double quotes, followed by 1-2 plain-text sentences explaining why it matters on a storm claim. If you are not confident of the exact wording, paraphrase closely and do NOT wrap it in quotes.
 - Plain text only. No HTML, no markdown.
 - Do not duplicate these existing citation keys: ${JSON.stringify(existingKeys)}.

@@ -326,6 +326,9 @@ export const ResearchCompanyStateCodesParams = zod.object({
 
 export const researchCompanyStateCodesBodyQueryMax = 500;
 
+export const researchCompanyStateCodesBodyEditionYearMin = 1990;
+export const researchCompanyStateCodesBodyEditionYearMax = 2035;
+
 export const researchCompanyStateCodesBodyExistingKeysItemMax = 60;
 
 export const researchCompanyStateCodesBodyExistingKeysMax = 100;
@@ -334,6 +337,7 @@ export const researchCompanyStateCodesBodyExistingKeysMax = 100;
 
 export const ResearchCompanyStateCodesBody = zod.object({
   "query": zod.string().max(researchCompanyStateCodesBodyQueryMax).nullish().describe('Optional specific code or topic to look up (e.g. \"drip edge\", \"IRC R908.3\"). Absent means a broad survey of applicable codes.'),
+  "editionYear": zod.number().min(researchCompanyStateCodesBodyEditionYearMin).max(researchCompanyStateCodesBodyEditionYearMax).nullish().describe('Optional code edition year to research (e.g. 2021 for the 2021 IRC\/IBC). Absent means the state\'s currently adopted edition.'),
   "existingKeys": zod.array(zod.string().max(researchCompanyStateCodesBodyExistingKeysItemMax)).max(researchCompanyStateCodesBodyExistingKeysMax).optional().describe('Citation keys already in the pack, to avoid duplicates.')
 })
 

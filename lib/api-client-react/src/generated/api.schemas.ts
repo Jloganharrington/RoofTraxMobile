@@ -210,6 +210,13 @@ export interface CodeResearchInput {
      */
   query?: string | null;
   /**
+     * Optional code edition year to research (e.g. 2021 for the 2021 IRC/IBC). Absent means the state's currently adopted edition.
+     * @minimum 1990
+     * @maximum 2035
+     * @nullable
+     */
+  editionYear?: number | null;
+  /**
      * Citation keys already in the pack, to avoid duplicates.
      * @maxItems 100
      * @items.maxLength 60
