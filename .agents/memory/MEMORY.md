@@ -1,5 +1,7 @@
 # Memory Index
 
+- [drizzle push blocks on new unique constraints](drizzle-push-unique-constraint.md) — non-interactive push has an unavoidable TTY prompt; apply the DDL via SQL matching the schema file.
+
 - [Orval zod schema naming](orval-zod-naming.md) — request-body zod consts are always operationId+"Body", regardless of the component schema's ref name.
 - [zod v3 pinned in this workspace](zod-v3-openapi-formats.md) — force `orval.config.ts` zod override `version: 3`; catalog-based package.json breaks auto-detection and leaks v4-only helpers (email/url/looseObject).
 - [react-native-maps has no web renderer](react-native-maps-web.md) — must platform-split map screens; use tsconfig moduleSuffixes for TS to resolve them.

@@ -5220,3 +5220,60 @@ export const GetWeatherEventsResponse = zod.object({
 })
 
 
+/**
+ * Public (no session). The share code is the capability. Returns the inspection summary, evidence photos with fresh short-lived signed URLs, and the list of Proof Package versions. Photos marked archive-only and all agreement/FIPSA content are excluded.
+ * @summary Open the Evidence Portal for a share code
+ */
+
+
+
+export const GetPortalInspectionParams = zod.object({
+  "accessCode": zod.coerce.string().min(1)
+})
+
+export const GetPortalInspectionResponse = zod.object({
+  "inspection": zod.object({
+  "address": zod.string().nullable(),
+  "claimNumber": zod.string().nullable(),
+  "carrierName": zod.string().nullable(),
+  "dateOfLoss": zod.string().nullable(),
+  "inspectorName": zod.string().nullable(),
+  "companyName": zod.string().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('Carrier\/contractor-safe subset of the inspection record shown in the public Evidence Portal. Never includes agreement\/FIPSA content.'),
+  "photos": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string().describe('Fresh short-lived signed URL for the full-resolution photo.'),
+  "capturedAtUtc": zod.coerce.date().nullable(),
+  "stage": zod.string().nullable(),
+  "zone": zod.string().nullable(),
+  "subjectType": zod.string().nullable(),
+  "caption": zod.string().nullable()
+})),
+  "reportVersions": zod.array(zod.object({
+  "versionIndex": zod.number(),
+  "generatedAt": zod.string(),
+  "shareable": zod.boolean().optional().describe('False when this version\'s content lint blocked it — the portal lists it as unavailable rather than serving it.')
+}))
+})
+
+
+/**
+ * Public (no session). Renders the requested compiled Proof Package version with freshly signed photo URLs. Blocked-content versions are not served.
+ * @summary Fetch a Proof Package version as rendered HTML
+ */
+
+export const getPortalReportHtmlPathVersionIndexMin = 0;
+
+
+
+export const GetPortalReportHtmlParams = zod.object({
+  "accessCode": zod.coerce.string().min(1),
+  "versionIndex": zod.coerce.number().min(getPortalReportHtmlPathVersionIndexMin)
+})
+
+export const GetPortalReportHtmlResponse = zod.object({
+  "html": zod.string()
+})
+
+

@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/photo-portal/"
+title = "Evidence Portal"
+version = "1.0.0"
+id = "artifacts/photo-portal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/photo-portal/" ]
+localPort = 24331
+
+[services.development]
+run = "pnpm --filter @workspace/photo-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/photo-portal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/photo-portal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24331"
+BASE_PATH = "/photo-portal/"

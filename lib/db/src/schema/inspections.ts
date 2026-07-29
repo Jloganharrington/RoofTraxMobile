@@ -765,6 +765,14 @@ export const inspectionsTable = pgTable('inspections', {
   // reopen is recorded here (never removed) so a re-submitted package clearly
   // shows it was reopened. Appended via SQL `||`, never read-modify-write.
   unlockLog: jsonb('unlock_log').notNull().default([]).$type<InspectionUnlockEvent[]>(),
+  // Public Evidence Portal share code — the sole capability for contractors
+  // and adjusters to view this inspection's photos and Proof Package versions
+  // without an account. Generated at first Proof Package compile; null until
+  // then. FIPSA/agreement content is NEVER exposed through the portal.
+  portalAccessCode: text('portal_access_code').unique(),
+  // Set when a manager revokes portal access; a non-null value disables the
+  // code without destroying it (audit trail preserved).
+  portalAccessRevokedAt: timestamp('portal_access_revoked_at', { withTimezone: true }),
   // Homeowner contact email captured at scheduling time. Used for appointment
   // notifications and Phase 2 comms; carried forward to the owner record when
   // Phase 2 is completed so reps never have to re-enter it.

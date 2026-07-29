@@ -38,6 +38,11 @@ tags:
       tenant, and stores raw values; no derived/computed logic. Gated by
       the inspection module permission (inspector_canvasser department or
       super_admin role).
+  - name: Portal
+    description: >-
+      Public Evidence Portal — no-account access for contractors and adjusters
+      via an inspection's unique share code. Exposes inspection photos and
+      Proof Package versions only; agreement/FIPSA content is never served.
 paths:
   /healthz:
     get:
@@ -2934,6 +2939,92 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "502":
           description: Weather provider error or not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /portal/{accessCode}:
+    get:
+      operationId: getPortalInspection
+      tags: [Portal]
+      summary: Open the Evidence Portal for a share code
+      description: >-
+        Public (no session). The share code is the capability. Returns the
+        inspection summary, evidence photos with fresh short-lived signed
+        URLs, and the list of Proof Package versions. Photos marked
+        archive-only and all agreement/FIPSA content are excluded.
+      security: []
+      parameters:
+        - name: accessCode
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Portal payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalEnvelope"
+        "404":
+          description: Unknown or revoked share code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many attempts from this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /portal/{accessCode}/reports/{versionIndex}:
+    get:
+      operationId: getPortalReportHtml
+      tags: [Portal]
+      summary: Fetch a Proof Package version as rendered HTML
+      description: >-
+        Public (no session). Renders the requested compiled Proof Package
+        version with freshly signed photo URLs. Blocked-content versions are
+        not served.
+      security: []
+      parameters:
+        - name: accessCode
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: versionIndex
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Rendered report HTML.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalReportHtmlEnvelope"
+        "404":
+          description: Unknown code, revoked access, or unknown version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Version contains blocked content and cannot be shared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many attempts from this address.
           content:
             application/json:
               schema:
@@ -6383,3 +6474,80 @@ components:
           type: [string, "null"]
         cached:
           type: boolean
+
+    PortalInspectionSummary:
+      type: object
+      description: >-
+        Carrier/contractor-safe subset of the inspection record shown in the
+        public Evidence Portal. Never includes agreement/FIPSA content.
+      required:
+        [address, claimNumber, carrierName, dateOfLoss, inspectorName, companyName, completedAt]
+      properties:
+        address:
+          type: [string, "null"]
+        claimNumber:
+          type: [string, "null"]
+        carrierName:
+          type: [string, "null"]
+        dateOfLoss:
+          type: [string, "null"]
+        inspectorName:
+          type: [string, "null"]
+        companyName:
+          type: [string, "null"]
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+    PortalPhoto:
+      type: object
+      required: [id, url, capturedAtUtc, stage, zone, subjectType, caption]
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+          description: Fresh short-lived signed URL for the full-resolution photo.
+        capturedAtUtc:
+          type: [string, "null"]
+          format: date-time
+        stage:
+          type: [string, "null"]
+        zone:
+          type: [string, "null"]
+        subjectType:
+          type: [string, "null"]
+        caption:
+          type: [string, "null"]
+    PortalReportVersion:
+      type: object
+      required: [versionIndex, generatedAt]
+      properties:
+        versionIndex:
+          type: integer
+        generatedAt:
+          type: string
+        shareable:
+          type: boolean
+          description: >-
+            False when this version's content lint blocked it — the portal
+            lists it as unavailable rather than serving it.
+    PortalEnvelope:
+      type: object
+      required: [inspection, photos, reportVersions]
+      properties:
+        inspection:
+          $ref: "#/components/schemas/PortalInspectionSummary"
+        photos:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalPhoto"
+        reportVersions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalReportVersion"
+    PortalReportHtmlEnvelope:
+      type: object
+      required: [html]
+      properties:
+        html:
+          type: string

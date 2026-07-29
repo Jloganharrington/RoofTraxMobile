@@ -2643,6 +2643,59 @@ export interface WeatherCandidatesEnvelope {
 }
 
 /**
+ * Carrier/contractor-safe subset of the inspection record shown in the public Evidence Portal. Never includes agreement/FIPSA content.
+ */
+export interface PortalInspectionSummary {
+  /** @nullable */
+  address: string | null;
+  /** @nullable */
+  claimNumber: string | null;
+  /** @nullable */
+  carrierName: string | null;
+  /** @nullable */
+  dateOfLoss: string | null;
+  /** @nullable */
+  inspectorName: string | null;
+  /** @nullable */
+  companyName: string | null;
+  /** @nullable */
+  completedAt: string | null;
+}
+
+export interface PortalPhoto {
+  id: string;
+  /** Fresh short-lived signed URL for the full-resolution photo. */
+  url: string;
+  /** @nullable */
+  capturedAtUtc: string | null;
+  /** @nullable */
+  stage: string | null;
+  /** @nullable */
+  zone: string | null;
+  /** @nullable */
+  subjectType: string | null;
+  /** @nullable */
+  caption: string | null;
+}
+
+export interface PortalReportVersion {
+  versionIndex: number;
+  generatedAt: string;
+  /** False when this version's content lint blocked it — the portal lists it as unavailable rather than serving it. */
+  shareable?: boolean;
+}
+
+export interface PortalEnvelope {
+  inspection: PortalInspectionSummary;
+  photos: PortalPhoto[];
+  reportVersions: PortalReportVersion[];
+}
+
+export interface PortalReportHtmlEnvelope {
+  html: string;
+}
+
+/**
  * Opaque session token — `Bearer <sid>`.
  */
 export type AuthorizationSessionHeaderParameter = string;

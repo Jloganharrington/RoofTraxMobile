@@ -87,6 +87,8 @@ import type {
   MobileTokenExchangeSuccess,
   PinEnvelope,
   PinListEnvelope,
+  PortalEnvelope,
+  PortalReportHtmlEnvelope,
   PreflightResultEnvelope,
   ProfileEnvelope,
   ReportBrandingEnvelope,
@@ -5890,6 +5892,167 @@ export function useGetWeatherEvents<TData = Awaited<ReturnType<typeof getWeather
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetWeatherEventsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPortalInspectionUrl = (accessCode: string,) => {
+
+
+
+
+  return `/api/portal/${accessCode}`
+}
+
+/**
+ * Public (no session). The share code is the capability. Returns the inspection summary, evidence photos with fresh short-lived signed URLs, and the list of Proof Package versions. Photos marked archive-only and all agreement/FIPSA content are excluded.
+ * @summary Open the Evidence Portal for a share code
+ */
+export const getPortalInspection = async (accessCode: string, options?: RequestInit): Promise<PortalEnvelope> => {
+
+  return customFetch<PortalEnvelope>(getGetPortalInspectionUrl(accessCode),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalInspectionQueryKey = (accessCode: string,) => {
+    return [
+    `/api/portal/${accessCode}`
+    ] as const;
+    }
+
+
+export const getGetPortalInspectionQueryOptions = <TData = Awaited<ReturnType<typeof getPortalInspection>>, TError = ErrorType<ErrorEnvelope>>(accessCode: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalInspection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalInspectionQueryKey(accessCode);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalInspection>>> = ({ signal }) => getPortalInspection(accessCode, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: accessCode !== null && accessCode !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalInspection>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalInspectionQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalInspection>>>
+export type GetPortalInspectionQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Open the Evidence Portal for a share code
+ */
+
+export function useGetPortalInspection<TData = Awaited<ReturnType<typeof getPortalInspection>>, TError = ErrorType<ErrorEnvelope>>(
+ accessCode: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalInspection>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalInspectionQueryOptions(accessCode,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPortalReportHtmlUrl = (accessCode: string,
+    versionIndex: number,) => {
+
+
+
+
+  return `/api/portal/${accessCode}/reports/${versionIndex}`
+}
+
+/**
+ * Public (no session). Renders the requested compiled Proof Package version with freshly signed photo URLs. Blocked-content versions are not served.
+ * @summary Fetch a Proof Package version as rendered HTML
+ */
+export const getPortalReportHtml = async (accessCode: string,
+    versionIndex: number, options?: RequestInit): Promise<PortalReportHtmlEnvelope> => {
+
+  return customFetch<PortalReportHtmlEnvelope>(getGetPortalReportHtmlUrl(accessCode,versionIndex),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalReportHtmlQueryKey = (accessCode: string,
+    versionIndex: number,) => {
+    return [
+    `/api/portal/${accessCode}/reports/${versionIndex}`
+    ] as const;
+    }
+
+
+export const getGetPortalReportHtmlQueryOptions = <TData = Awaited<ReturnType<typeof getPortalReportHtml>>, TError = ErrorType<ErrorEnvelope>>(accessCode: string,
+    versionIndex: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalReportHtml>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalReportHtmlQueryKey(accessCode,versionIndex);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalReportHtml>>> = ({ signal }) => getPortalReportHtml(accessCode,versionIndex, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: accessCode !== null && accessCode !== undefined && versionIndex !== null && versionIndex !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalReportHtml>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalReportHtmlQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalReportHtml>>>
+export type GetPortalReportHtmlQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Fetch a Proof Package version as rendered HTML
+ */
+
+export function useGetPortalReportHtml<TData = Awaited<ReturnType<typeof getPortalReportHtml>>, TError = ErrorType<ErrorEnvelope>>(
+ accessCode: string,
+    versionIndex: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalReportHtml>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalReportHtmlQueryOptions(accessCode,versionIndex,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

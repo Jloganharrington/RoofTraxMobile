@@ -92,6 +92,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
+import { buildPortalAccessFromRequest, generatePortalAccessCode } from '../lib/portalAccess';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
 import {
   DETERMINATION_LABELS,
@@ -4253,6 +4254,23 @@ ${JSON.stringify(photoBrief)}
     })
     .where(eq(inspectionsTable.id, inspectionId));
 
+  // Ensure the inspection has a public Evidence Portal share code so the
+  // rendered package can print portal access details. Generated once at
+  // first compile; retried on the (astronomically unlikely) unique clash.
+  if (!inspection.portalAccessCode) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await db
+          .update(inspectionsTable)
+          .set({ portalAccessCode: generatePortalAccessCode() })
+          .where(and(eq(inspectionsTable.id, inspectionId), isNull(inspectionsTable.portalAccessCode)));
+        break;
+      } catch (err) {
+        if (attempt === 2) req.log.error({ err }, 'Failed to assign portal access code');
+      }
+    }
+  }
+
   res.json({ compiledReportPath, lintStatus: lint.lintStatus, findings: lint.findings });
 });
 
@@ -4292,6 +4310,40 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
     }
     reportPath = versions[idx].path;
   }
+
+  const reviewRequested = req.query.review === '1' || req.query.review === 'true';
+  const rendered = await renderCompiledReportHtml({
+    inspection,
+    reportPath,
+    companyId: actor.companyId,
+    allowBlocked: reviewRequested && isManagerOrAdmin(actor.role),
+    portalAccess: buildPortalAccessFromRequest(req, inspection.portalAccessCode),
+  });
+  if (!rendered.ok) {
+    res.status(409).json({ error: rendered.error, lintStatus: 'blocked', findings: rendered.findings });
+    return;
+  }
+  res.json({ html: rendered.html });
+});
+
+// Shared renderer for a compiled Proof Package blob — used by the
+// authenticated preview route above and the public Evidence Portal route.
+// Loads the stored JSON data blob, signs each photo URL fresh (15-min TTL),
+// and builds the full HTML; the stored blob never embeds expiring URLs.
+export async function renderCompiledReportHtml(opts: {
+  inspection: typeof inspectionsTable.$inferSelect;
+  reportPath: string;
+  companyId: string;
+  /**
+   * Reviewer bypass for blocked-content versions. Callers must gate this on
+   * manager/admin role + explicit review mode; the public portal always
+   * passes false (blocked versions are never served externally).
+   */
+  allowBlocked: boolean;
+  /** Portal URL + access code block printed in the rendered package. */
+  portalAccess?: { url: string; code: string } | null;
+}): Promise<{ ok: true; html: string } | { ok: false; error: string; findings: unknown[] }> {
+  const { inspection, reportPath } = opts;
 
   // Load the stored JSON data blob from object storage.
   const dataFile = await objectStorageService.getObjectEntityFile(reportPath);
@@ -4359,19 +4411,15 @@ router.get('/inspections/:inspectionId/report/preview-url', async (req: Request,
   // still open it with ?review=1 to see what they are resolving.
   if (compiledData.lint?.lintStatus === 'blocked') {
     const resolved = inspection.reportLintResolution?.path === reportPath;
-    // Reviewer bypass is an authorization boundary, not a convention: only
-    // manager/admin roles (the roles that can resolve) may open a blocked
-    // version, and only by explicitly asking for review mode.
-    const reviewMode =
-      (req.query.review === '1' || req.query.review === 'true') && isManagerOrAdmin(actor.role);
-    if (!resolved && !reviewMode) {
-      res.status(409).json({
+    // Reviewer bypass is an authorization boundary, not a convention — the
+    // caller asserts it (manager/admin + explicit review mode only).
+    if (!resolved && !opts.allowBlocked) {
+      return {
+        ok: false,
         error:
           'This report version contains blocked content (insurance-advocacy or legal language) and cannot be exported until a reviewer resolves it.',
-        lintStatus: 'blocked',
         findings: compiledData.lint.findings,
-      });
-      return;
+      };
     }
   }
 
@@ -4620,7 +4668,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
   const [company] = await db
     .select({ reportBranding: companiesTable.reportBranding, logoUrl: companiesTable.logoUrl })
     .from(companiesTable)
-    .where(eq(companiesTable.id, actor.companyId));
+    .where(eq(companiesTable.id, opts.companyId));
 
   // Company logo (when uploaded) is stored as an authenticated
   // /api/storage/objects/... URL — resolve it to a fresh signed URL at
@@ -4647,10 +4695,11 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
     logoUrl: logoSignedUrl,
     evidenceManifestHtml,
     evidenceScopeIndexHtml,
+    portalAccess: opts.portalAccess ?? null,
   });
 
-  res.json({ html });
-});
+  return { ok: true, html };
+}
 
 // GET /inspections/:inspectionId/report/lint
 // Returns the lint status/findings of the latest compiled version plus any

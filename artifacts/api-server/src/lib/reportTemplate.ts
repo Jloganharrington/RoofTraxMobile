@@ -150,6 +150,13 @@ export function buildReportHtml(params: {
   evidenceManifestHtml?: string | null;
   /** Server-built Evidence-to-Scope Index appendix (approved links only). */
   evidenceScopeIndexHtml?: string | null;
+  /**
+   * Public Evidence Portal access block — printed in the package so
+   * carriers/contractors can reach full-resolution photos and package
+   * versions. Resolved at render time (URL derives from the serving origin);
+   * omitted when the inspection has no portal code yet.
+   */
+  portalAccess?: { url: string; code: string } | null;
 }): string {
   const { inspection, inspector, aiSummary } = params;
   const theme = resolveReportTheme(params.theme);
@@ -283,6 +290,20 @@ ${params.evidenceManifestHtml ? `
 <div class="section">
   <div class="section-title">Appendix — Evidence Manifest</div>
   ${params.evidenceManifestHtml}
+</div>` : ''}
+
+${params.portalAccess ? `
+<!-- Evidence Portal access (server-generated) -->
+<div class="section">
+  <div class="section-title">Digital Evidence Portal</div>
+  <p style="font-size:13px;color:#333;margin-bottom:10px">
+    Full-resolution inspection photographs and every version of this Proof Package are
+    available online. Visit the portal below and enter the access code — no account required.
+  </p>
+  <div style="border:1px solid #dde3ea;border-radius:8px;padding:14px 18px;background:#f8fafc;font-size:14px">
+    <div style="margin-bottom:6px"><strong>Portal:</strong> <a href="${escHtml(params.portalAccess.url)}">${escHtml(params.portalAccess.url)}</a></div>
+    <div><strong>Access code:</strong> <span style="font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;letter-spacing:1px">${escHtml(params.portalAccess.code)}</span></div>
+  </div>
 </div>` : ''}
 
 <div class="footer">

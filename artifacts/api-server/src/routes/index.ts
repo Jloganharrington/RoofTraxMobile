@@ -17,6 +17,7 @@ import bugReportsRouter from "./bugReports";
 import priceBookRouter from "./priceBook";
 import discontinuedProductsRouter from "./discontinuedProducts";
 import agreementRouter from "./agreement";
+import portalRouter from "./portal";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(bugReportsRouter);
 router.use(priceBookRouter);
 router.use(discontinuedProductsRouter);
 router.use(agreementRouter);
+router.use(portalRouter);
 
 export default router;
