@@ -4549,17 +4549,30 @@ ${JSON.stringify(photoBrief)}
   // Ensure the inspection has a public Evidence Portal share code so the
   // rendered package can print portal access details. Generated once at
   // first compile; retried on the (astronomically unlikely) unique clash.
+  // Conditional (isNull-guarded) so two concurrent first compiles can never
+  // overwrite each other: exactly one UPDATE takes effect, the loser is a
+  // no-op, and the code is stable across every later compile.
   if (!inspection.portalAccessCode) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let assigned = false;
+    for (let attempt = 0; attempt < 3 && !assigned; attempt++) {
       try {
         await db
           .update(inspectionsTable)
           .set({ portalAccessCode: generatePortalAccessCode() })
           .where(and(eq(inspectionsTable.id, inspectionId), isNull(inspectionsTable.portalAccessCode)));
-        break;
+        assigned = true;
       } catch (err) {
-        if (attempt === 2) req.log.error({ err }, 'Failed to assign portal access code');
+        req.log.warn({ err, inspectionId, attempt }, 'Portal access code assignment attempt failed');
       }
+    }
+    if (!assigned) {
+      // Surfaced loudly (error-level, with the inspection id) — a package
+      // without a portal code prints no portal access details, and the next
+      // compile is the recovery path.
+      req.log.error(
+        { inspectionId },
+        'Failed to assign portal access code after all retries — Proof Package has no portal access details until the next compile',
+      );
     }
   }
 
