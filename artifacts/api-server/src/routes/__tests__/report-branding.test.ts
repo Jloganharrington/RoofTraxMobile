@@ -192,13 +192,12 @@ describe('branding sample preview route', () => {
       const res = await request(app).get(previewPath(a.companyId)).set(auth(a.superSid));
       expect(res.status).toBe(200);
       const html = res.body.html as string;
-      expect(html).toContain(`--report-header-bg: ${VALID.headerColor}`);
-      expect(html).toContain(`--report-accent: ${VALID.accentColor}`);
-      expect(html).toContain('class="cover-logo"');
+      expect(html).toContain(`--navy:${VALID.headerColor}`);
+      expect(html).toContain(`--accent:${VALID.accentColor}`);
       expect(html).toContain('https://signed.example.test/logo.png?sig=fresh');
-      expect(html).toContain('Forensic Inspection &amp; Repairability Report');
+      expect(html).toContain('Forensic Inspection Report &amp; Proof Package');
       // Sample content, not real inspection data.
-      expect(html).toContain('SAMPLE-PREVIEW');
+      expect(html).toContain('SAMPLE01');
     } finally {
       signSpy.mockRestore();
       await db
@@ -213,10 +212,10 @@ describe('branding sample preview route', () => {
       .get(`${previewPath(a.companyId)}?headerColor=%23111111&accentColor=%23FF00AA`)
       .set(auth(a.superSid));
     expect(ok.status).toBe(200);
-    expect(ok.body.html).toContain('--report-header-bg: #111111');
-    expect(ok.body.html).toContain('--report-accent: #ff00aa');
+    expect(ok.body.html).toContain('--navy:#111111');
+    expect(ok.body.html).toContain('--accent:#ff00aa');
     // Non-overridden field falls back to default.
-    expect(ok.body.html).toContain('--report-header-text: #ffffff');
+    expect(ok.body.html).toContain('--cover-text:#ffffff');
 
     for (const bad of ['red', '%23fff', '%23123456%3B%7D']) {
       const res = await request(app)

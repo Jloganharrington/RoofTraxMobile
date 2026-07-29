@@ -17,7 +17,8 @@ import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { ObjectStorageService } from '../lib/objectStorage';
-import { buildSampleReportHtml, isHexColor, resolveReportTheme } from '../lib/reportTemplate';
+import { buildSampleProofPackageHtml } from '../lib/proofPackageTemplate';
+import { isHexColor, resolveReportTheme } from '../lib/reportTemplate';
 
 const objectStorageService = new ObjectStorageService();
 
@@ -635,7 +636,7 @@ router.get(
       ? await objectStorageService.tryGetSignedObjectUrl(company.logoUrl, 900)
       : null;
 
-    const html = buildSampleReportHtml({
+    const html = buildSampleProofPackageHtml({
       theme: { ...stored, ...overrides },
       logoUrl: logoSignedUrl,
       companyName: company.name,

@@ -815,3 +815,190 @@ ${sheetsHtml}
 </body>
 </html>`;
 }
+
+/**
+ * Render a sample Proof Package with placeholder data, styled with the given
+ * theme and (optionally) a freshly-signed company logo URL. Used by the
+ * branding-preview endpoint so a super admin can see their palette + logo on
+ * the real A–M template without compiling a real inspection.
+ *
+ * Reuses buildProofPackageHtml so the preview can never drift from the real
+ * package's markup or styling.
+ */
+export function buildSampleProofPackageHtml(params: {
+  theme?: ReportTheme;
+  logoUrl?: string | null;
+  companyName?: string | null;
+}): string {
+  const company = params.companyName?.trim() || 'Your Company';
+  const data: ProofPackageData = {
+    reportId: 'SAMPLE01',
+    generatedAt: new Date().toISOString(),
+    company: {
+      legalName: company,
+      brand: company,
+      licenses: [{ state: 'IL', number: '000000-SAMPLE', classification: 'Licensed Contractor' }],
+      qualificationsText:
+        'This is a sample Statement of Qualifications. On real Proof Packages this section shows the qualifications text entered under Proof Package Settings.',
+      pricingBasisStatement:
+        'Sample pricing basis statement. Real packages show the statement entered under Proof Package Settings.',
+    },
+    statePack: {
+      jurisdictionLabel: 'State of IL',
+      homeownerRights: {
+        title: 'Homeowner Information & Rights',
+        subtitle: 'Sample state legal pack',
+        preparedByNote: 'Prepared by {{contractor}} ({{license}}).',
+        sections: [
+          {
+            heading: 'About this page',
+            paragraphs: [
+              'This is sample homeowner-rights content. On real Proof Packages this page shows the state legal pack entered under Proof Package Settings for the property\u2019s state.',
+            ],
+          },
+        ],
+        complaintBlock: ['Sample State Department of Insurance', '1-800-000-0000'],
+        closingDisclaimer: '{{contractor}} is a roofing contractor, not a public adjuster.',
+      },
+      uppaDisclaimer:
+        'Sample disclaimer: this report documents physical damage only and does not adjust or negotiate any insurance claim.',
+      uppaStatute: 'Sample Statute § 0.0-000',
+      codeCitations: [
+        {
+          key: 'sample_drip_edge',
+          element: 'Drip edge',
+          title: 'Drip edge required at eaves and rakes',
+          cite: 'IRC R905.2.8.5 (sample)',
+          body: 'Sample code citation body. Real packages show the code citations entered in the state legal pack.',
+        },
+      ],
+    },
+    property: {
+      address: '1234 Maple Street, Springfield, IL 62704',
+      addressShort: '1234 Maple Street',
+      insuredName: 'Jordan Example',
+      carrier: 'Acme Mutual Insurance',
+      policyNumber: 'HO-88213467',
+      claimNumber: 'CLM-2026-004821',
+      dateOfLoss: 'June 14, 2026',
+      phase1Date: 'June 18, 2026',
+      phase2Date: 'July 10, 2026',
+    },
+    inspectorName: 'Sam Inspector',
+    coverPhotoUrl: null,
+    storm: {
+      type: 'Hail',
+      dateLocalTime: 'June 14, 2026',
+      hailSize: '1.50" diameter (sample)',
+      windSpeed: '55 mph (sample)',
+      distance: '0.6 mi from property',
+      coordinates: 'Springfield, IL',
+      source: 'Certified weather data (sample)',
+      narrative: null,
+      note: 'Sample storm verification data.',
+    },
+    methodology: {
+      inspectedAt: 'July 10, 2026',
+      conditions: 'Sky: clear \u00b7 Wind: calm (sample)',
+      equipment: [],
+      capture: { elevations: 4, slopes: 6, testSquares: 4, totalHits: 48, damageInstances: 12, photos: 36 },
+    },
+    areasImpacted: [
+      { key: 'roof', name: 'Roof System', impacted: true },
+      { key: 'siding', name: 'Siding / Exterior', impacted: false },
+      { key: 'collateral', name: 'Collateral', impacted: true },
+      { key: 'interior', name: 'Interior / Attic', impacted: false },
+    ],
+    components: {
+      roof: [
+        {
+          component: 'Front Slope (sample)',
+          condition: 'Hail impact damage \u2014 sample condition summary',
+          method: 'Full replacement',
+          verdict: 'replace',
+        },
+      ],
+    },
+    aiSections: {
+      forensicSummary:
+        'This is a sample Proof Package generated to preview your company branding. The colors and logo shown here are exactly how they will appear on compiled Proof Packages for ' +
+        company +
+        '.\nActual packages include the full AI-generated forensic inspection summary in this section.',
+      repairabilityText:
+        'Sample repairability summary. Actual packages include the AI-generated repairability narrative here.',
+    },
+    measurement: {
+      slopes: [
+        { label: 'Front Slope', sqft: 620 },
+        { label: 'Rear Slope', sqft: 640 },
+      ],
+      linear: [{ type: 'ridge', lf: 40 }],
+      totalSqft: 1260,
+      squares: 12.6,
+    },
+    scope: {
+      lineItems: [
+        {
+          description: 'Remove & replace laminated shingles (sample)',
+          qty: 14,
+          unit: 'SQ',
+          rate: 425,
+          total: 5950,
+          isAdder: false,
+        },
+        {
+          description: 'Ice & water shield at eaves (sample)',
+          qty: 120,
+          unit: 'LF',
+          rate: 3.5,
+          total: 420,
+          isAdder: true,
+          trigger: 'Code-required at eaves (sample)',
+          codeRefs: ['IRC R905.2.8.5'],
+        },
+      ],
+      subtotal: 6370,
+      basePricePerSquare: 425,
+      squares: 14,
+    },
+    product: {
+      name: 'Sample Shingle Product',
+      identification: 'Sample product identification details',
+      discontinued: false,
+      discontinuedNote: null,
+    },
+    photos: [
+      {
+        id: 'sample-photo-1',
+        url: null,
+        stage: 'roof',
+        subject: 'Front Slope',
+        caption: 'Sample photo \u2014 evidence photos from the inspection appear here on real packages.',
+        sha256: null,
+        area: 'roof',
+      },
+      {
+        id: 'sample-photo-2',
+        url: null,
+        stage: 'collateral',
+        subject: 'Downspout',
+        caption: 'Sample collateral photo.',
+        sha256: null,
+        area: 'collateral',
+      },
+    ],
+    attestationHtml:
+      '<p>Sample inspector attestation text. On real packages this section contains the signed inspector attestation.</p>',
+    extras: {
+      propertyDetailsHtml:
+        '<table class="detail-table"><tr><th>Attribute</th><th>Value</th></tr>' +
+        '<tr><td>Roof type</td><td>Asphalt shingle (sample)</td></tr>' +
+        '<tr><td>Stories</td><td>2</td></tr></table>',
+    },
+    portalAccess: null,
+    theme: params.theme,
+    logoUrl: params.logoUrl,
+    signatureUrl: null,
+  };
+  return buildProofPackageHtml(data);
+}
