@@ -72,6 +72,10 @@ const CAUSATION_OPTIONS = [
   'Damage Excluded from Peril',
 ] as const;
 
+// Sentinel for the free-text causation option. The rep's typed text (not the
+// word "Custom") becomes the causation note / photo caption.
+const CUSTOM_CAUSATION = 'Custom';
+
 // Parses the optional `roles` route param (e.g. "wide" for a single overview
 // shot, or "wide,mid,close" for the full damage triad). Defaults to the full
 // triad so existing callers keep their behaviour.
@@ -140,19 +144,24 @@ export default function InspectionPhotoCaptureScreen() {
   // saved (the record is created lazily at that point).
   const isNewDamageCapture = Boolean(params.damageSlopeId && params.damageType);
   const [causation, setCausation] = useState<string | null>(null);
+  const [customCausation, setCustomCausation] = useState('');
   const [damageId, setDamageId] = useState<string | null>(null);
   // Ref mirror of damageId: multi-shot save loops can re-enter queueShot
   // before the state update commits; the ref guarantees every shot in the
   // session reuses the single created damage record.
   const damageIdRef = React.useRef<string | null>(null);
   const causationLocked = damageId !== null;
+  // The value that actually travels as the causation note / caption: the
+  // typed text for the Custom option, otherwise the picked option itself.
+  const effectiveCausation =
+    causation === CUSTOM_CAUSATION ? customCausation.trim() || null : causation;
   // Step labels ("Wide shot" / "Mid shot" / "Close-up") only make sense when
   // a full triad is being captured. Damage evidence shows the causation
   // selection with just the capture buttons below it, and single-shot
   // sessions already name the subject in the header title — the generic
   // "Wide shot" label adds nothing.
   const hideStepLabels = params.subjectType === 'damage_instance' || steps.length === 1;
-  const captureBlocked = isNewDamageCapture && !causation;
+  const captureBlocked = isNewDamageCapture && !effectiveCausation;
 
   const nextStep = useMemo(() => steps.find((step) => !shots[step.role]), [steps, shots]);
   const allCaptured = !nextStep;
@@ -180,8 +189,13 @@ export default function InspectionPhotoCaptureScreen() {
       Alert.alert('Missing context', 'This screen must be opened from an inspection subject.');
       return false;
     }
-    if (isNewDamageCapture && !causation) {
-      Alert.alert('Select a causation', 'Pick the causation before saving the photo.');
+    if (isNewDamageCapture && !effectiveCausation) {
+      Alert.alert(
+        'Select a causation',
+        causation === CUSTOM_CAUSATION
+          ? 'Type the custom causation before saving the photo.'
+          : 'Pick the causation before saving the photo.',
+      );
       return false;
     }
     setUploadingRole(role);
@@ -194,7 +208,7 @@ export default function InspectionPhotoCaptureScreen() {
         subjectId = await createDamageInstance(queryClient, inspectionId, {
           slopeId: params.damageSlopeId,
           damageType: params.damageType as string,
-          causationNote: causation,
+          causationNote: effectiveCausation,
         });
         damageIdRef.current = subjectId;
         setDamageId(subjectId);
@@ -204,7 +218,7 @@ export default function InspectionPhotoCaptureScreen() {
       // travels as the photo caption in the evidence output, alongside any
       // tap annotations.
       const caption =
-        params.caption ?? causation ?? (params.zone ? params.title ?? null : null);
+        params.caption ?? effectiveCausation ?? (params.zone ? params.title ?? null : null);
       const overlayJson = caption
         ? { ...(persisted.overlayJson ?? {}), caption }
         : persisted.overlayJson;
@@ -398,6 +412,49 @@ export default function InspectionPhotoCaptureScreen() {
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => {
+              if (!causationLocked) setCausation(CUSTOM_CAUSATION);
+            }}
+            disabled={causationLocked && causation !== CUSTOM_CAUSATION}
+            style={[
+              styles.causationOption,
+              {
+                borderColor: causation === CUSTOM_CAUSATION ? colors.primary : colors.border,
+                backgroundColor: causation === CUSTOM_CAUSATION ? colors.primary : colors.card,
+                opacity: causationLocked && causation !== CUSTOM_CAUSATION ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color:
+                  causation === CUSTOM_CAUSATION ? colors.primaryForeground : colors.foreground,
+                fontWeight: causation === CUSTOM_CAUSATION ? '700' : '400',
+              }}
+            >
+              Custom
+            </Text>
+          </Pressable>
+          {causation === CUSTOM_CAUSATION && (
+            <TextInput
+              value={customCausation}
+              onChangeText={setCustomCausation}
+              editable={!causationLocked}
+              placeholder="Describe the causation"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus={!causationLocked}
+              style={[
+                styles.input,
+                {
+                  borderColor: colors.border,
+                  color: colors.foreground,
+                  width: PREVIEW_SIZE,
+                  opacity: causationLocked ? 0.6 : 1,
+                },
+              ]}
+            />
+          )}
         </View>
       )}
 
