@@ -237,6 +237,30 @@ export async function pickEvidencePhotoFromLibrary(): Promise<CapturedEvidencePh
 }
 
 /**
+ * Multi-select variant of pickEvidencePhotoFromLibrary — same metadata rules
+ * (EXIF only, never backfill location for library photos). Returns an empty
+ * array if the user cancels.
+ */
+export async function pickEvidencePhotosFromLibrary(): Promise<CapturedEvidencePhoto[]> {
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) {
+    throw new MediaLibraryPermissionDeniedError();
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    quality: 0.8,
+    mediaTypes: ['images'],
+    exif: true,
+    allowsMultipleSelection: true,
+  });
+  if (result.canceled || result.assets.length === 0) return [];
+
+  return Promise.all(
+    result.assets.map((asset) => assetToEvidencePhoto(asset, { allowLiveGpsFallback: false })),
+  );
+}
+
+/**
  * Copies the captured photo out of the camera/picker's cache location into
  * this app's stable document storage, and hashes the exact bytes that get
  * copied. Both steps are local-only (no network), so they succeed offline

@@ -24,6 +24,7 @@ import { appendOptimisticPhotos, createDamageInstance } from '@/lib/inspectionSy
 import {
   captureEvidencePhoto,
   pickEvidencePhotoFromLibrary,
+  pickEvidencePhotosFromLibrary,
   CameraPermissionDeniedError,
   MediaLibraryPermissionDeniedError,
   persistCapturedPhotoForOutbox,
@@ -308,6 +309,100 @@ export default function InspectionPhotoCaptureScreen() {
     }
   }
 
+  // Batch upload for damage evidence: the rep picks several library photos
+  // showing the same damage type; each photo becomes its OWN damage record
+  // (Damage 1, 2, 3…) sharing the selected causation as note + caption, so
+  // damage counts stay accurate. Available only in the new-damage flow
+  // before the single-record path has locked in.
+  const [batchUploading, setBatchUploading] = useState(false);
+  async function handleBatchUpload() {
+    const inspectionId = params.inspectionId;
+    if (!inspectionId || !params.damageSlopeId || !params.damageType) return;
+    if (!effectiveCausation) {
+      Alert.alert(
+        'Select a causation',
+        causation === CUSTOM_CAUSATION
+          ? 'Type the custom causation before uploading photos.'
+          : 'Pick the causation before uploading photos.',
+      );
+      return;
+    }
+    setBatchUploading(true);
+    try {
+      const picked = await pickEvidencePhotosFromLibrary();
+      if (picked.length === 0) return;
+      let saved = 0;
+      for (const photo of picked) {
+        // One damage record per photo, all sharing the same causation.
+        const recordId = await createDamageInstance(queryClient, inspectionId, {
+          slopeId: params.damageSlopeId,
+          damageType: params.damageType as string,
+          causationNote: effectiveCausation,
+        });
+        const persisted = await persistCapturedPhotoForOutbox(photo);
+        const overlayJson = { ...(persisted.overlayJson ?? {}), caption: effectiveCausation };
+        const photoId = Crypto.randomUUID();
+        const payload: InspectionPhotoOutboxPayload = {
+          id: photoId,
+          inspectionId,
+          subjectType: 'damage_instance',
+          subjectId: recordId,
+          stage: params.stage ?? null,
+          triadRole: 'wide',
+          localFilePath: persisted.localFilePath,
+          mimeType: photo.mimeType,
+          sha256: persisted.sha256,
+          exifJson: persisted.exifJson,
+          overlayJson,
+          capturedAtUtc: persisted.capturedAtUtc,
+          latitude: persisted.latitude,
+          longitude: persisted.longitude,
+          zone: params.zone ?? null,
+          sidingRole: null,
+          sidingComponentIndex: null,
+        };
+        await enqueueOutboxItem('inspection.photo', payload);
+        appendOptimisticPhotos(queryClient, inspectionId, [
+          {
+            id: photoId,
+            subjectType: 'damage_instance',
+            subjectId: recordId,
+            stage: params.stage ?? null,
+            triadRole: 'wide',
+            sha256: persisted.sha256,
+            zone: params.zone ?? null,
+            sidingRole: null,
+            sidingComponentIndex: null,
+          },
+        ]);
+        saved++;
+      }
+      drainOutbox();
+      if (saved < picked.length) {
+        Alert.alert(
+          'Partially saved',
+          `${saved} of ${picked.length} photos were saved. You can add the rest as new damage records.`,
+        );
+      }
+      router.back();
+    } catch (err) {
+      if (err instanceof MediaLibraryPermissionDeniedError) {
+        Alert.alert(
+          'Photo access needed',
+          'RoofTrax needs access to your photos to upload images. Enable it for RoofTrax in your device Settings, then try again.',
+        );
+      } else {
+        console.warn('[photo-capture] batch upload failed', err);
+        Alert.alert(
+          'Could not save all photos',
+          'Something went wrong during the batch upload. Check the facet for what was saved and try the rest again.',
+        );
+      }
+    } finally {
+      setBatchUploading(false);
+    }
+  }
+
   const handleCapture = (role: TriadRole) => runPicker(role, captureEvidencePhoto, true);
   const handleUpload = (role: TriadRole) => runPicker(role, pickEvidencePhotoFromLibrary, false);
   // Retake: reshoot with the camera (auto-saves). Replace: pick a different
@@ -454,6 +549,38 @@ export default function InspectionPhotoCaptureScreen() {
                 },
               ]}
             />
+          )}
+          {!causationLocked && (
+            <Pressable
+              onPress={handleBatchUpload}
+              disabled={batchUploading || captureBlocked}
+              style={[
+                styles.causationOption,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.card,
+                  opacity: batchUploading || captureBlocked ? 0.4 : 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                },
+              ]}
+            >
+              {batchUploading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Icon name="upload" size={16} color={colors.foreground} />
+              )}
+              <Text style={{ color: colors.foreground, fontWeight: '600' }}>
+                {batchUploading ? 'Saving photos…' : 'Upload multiple photos'}
+              </Text>
+            </Pressable>
+          )}
+          {!causationLocked && (
+            <Text style={[styles.stepHint, { color: colors.mutedForeground }]}>
+              Have several shots of this damage type? Upload them together — each photo becomes
+              its own damage record with this causation.
+            </Text>
           )}
         </View>
       )}
