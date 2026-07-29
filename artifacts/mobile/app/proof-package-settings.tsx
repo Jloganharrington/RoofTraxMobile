@@ -303,9 +303,9 @@ function StatePacksSection({ companyId, colors }: { companyId: string; colors: R
         />
         <Pressable
           onPress={createPack}
-          style={{ backgroundColor: colors.secondary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }}
+          style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8 }}
         >
-          <Text style={{ color: colors.foreground, fontWeight: '600' }}>Add State Pack</Text>
+          <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>Add State Pack</Text>
         </Pressable>
       </View>
 
