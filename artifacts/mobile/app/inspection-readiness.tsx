@@ -269,7 +269,9 @@ export default function InspectionReadinessScreen() {
           : null;
       const manifest = assembleManifest(inspection, gate, signature);
       await submitInspection(queryClient, id, manifest);
-      router.back();
+      // Land the rep on the Package Status page so they immediately see
+      // processing progress and the submission receipt.
+      router.replace({ pathname: '/inspection-package', params: { id } } as never);
     } finally {
       setSubmitting(false);
     }
