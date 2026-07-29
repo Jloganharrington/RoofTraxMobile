@@ -215,12 +215,17 @@ export class ObjectStorageService {
    * `objectPath` must be in `/objects/...` form (as returned by uploadObjectBuffer).
    */
   async getSignedDownloadUrl(objectPath: string, ttlSec: number = 900): Promise<string> {
+    // Verifies existence and resolves the bucket path.
     const objectFile = await this.getObjectEntityFile(objectPath);
-    const [signedUrl] = await objectFile.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + ttlSec * 1000,
+    // Sign via the Replit sidecar — the external-account credentials used by
+    // the GCS client cannot produce signed URLs themselves (no private key),
+    // so objectFile.getSignedUrl() always throws in this environment.
+    return signObjectURL({
+      bucketName: objectFile.bucket.name,
+      objectName: objectFile.name,
+      method: 'GET',
+      ttlSec,
     });
-    return signedUrl;
   }
 
   /**
