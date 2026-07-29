@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const sessionsTable = pgTable(
@@ -18,6 +27,38 @@ export const sessionsTable = pgTable(
 // (hundreds to low thousands of companies) makes that simple and fast.
 // `founderUserId` is set once, the first time a user ever logs in with this
 // company's ID — that user is auto-promoted to admin.
+// A contractor license shown in the Proof Package's Statement of
+// Qualifications (Exhibit B) — one row per licensing state.
+export type ContractorLicense = {
+  state: string; // "VA"
+  number: string; // "2705-064938A"
+  classification: string; // "VA Class A Contractor"
+};
+
+// One section of the state-specific Homeowner Information page (Exhibit A).
+export type StatePackSection = { heading: string; paragraphs: string[] };
+
+// State-scoped homeowner-rights content. Company tokens ({{contractor}} /
+// {{license}}) are substituted at render time so the pack stays reusable.
+export type HomeownerRightsContent = {
+  title: string;
+  subtitle: string;
+  preparedByNote: string;
+  sections: StatePackSection[];
+  complaintBlock: string[];
+  closingDisclaimer: string;
+};
+
+// A building-code citation for Exhibit I, keyed by the scope element it
+// governs (e.g. "roof_covering", "drip_edge", "decking").
+export type CodeCitation = {
+  key: string;
+  element: string;
+  title: string;
+  cite: string;
+  body: string;
+};
+
 export const companiesTable = pgTable('companies', {
   id: varchar('id').primaryKey(),
   name: varchar('name').notNull(),
@@ -52,6 +93,16 @@ export const companiesTable = pgTable('companies', {
       accentColor: string;
     } | null>()
     .default(null),
+  // ── Proof Package (report) settings — super admin curated ────────────────
+  // Contractor licenses printed in Exhibit B (Statement of Qualifications).
+  contractorLicenses: jsonb('contractor_licenses')
+    .$type<ContractorLicense[] | null>()
+    .default(null),
+  // Narrative "Statement of Qualifications" paragraph for Exhibit B.
+  qualificationsText: varchar('qualifications_text'),
+  // Pricing-basis statement printed under the scope table (Exhibit J).
+  // Null falls back to a neutral default at render time.
+  pricingBasisStatement: varchar('pricing_basis_statement'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -79,6 +130,35 @@ export const usersTable = pgTable('users', {
     .$onUpdate(() => new Date()),
 });
 
+// State legal pack — the state-specific legal content a Proof Package
+// requires: the Homeowner Information page (Exhibit A), the UPPA/public-
+// adjuster disclaimer + governing statute (summary page), and the code
+// citations (Exhibit I). One row per (company, state); the inspection's
+// property state selects the pack at compile time.
+export const companyStatePacksTable = pgTable(
+  'company_state_packs',
+  {
+    id: varchar('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id),
+    // Two-letter state code, stored uppercase ("VA").
+    state: varchar('state', { length: 2 }).notNull(),
+    homeownerRights: jsonb('homeowner_rights').$type<HomeownerRightsContent | null>().default(null),
+    uppaDisclaimer: varchar('uppa_disclaimer'),
+    uppaStatute: varchar('uppa_statute'),
+    codeCitations: jsonb('code_citations').$type<CodeCitation[]>().notNull().default([]),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [uniqueIndex('company_state_packs_company_state_idx').on(table.companyId, table.state)],
+);
+
+export type CompanyStatePack = typeof companyStatePacksTable.$inferSelect;
 export type Company = typeof companiesTable.$inferSelect;
 export type UpsertUser = typeof usersTable.$inferInsert;
 export type User = typeof usersTable.$inferSelect;

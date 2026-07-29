@@ -275,6 +275,171 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/report-settings:
+    get:
+      tags: [Companies]
+      operationId: getCompanyReportSettings
+      summary: Get the company's Proof Package settings
+      description: >-
+        Super admin only. Contractor licenses, Statement of Qualifications,
+        and pricing-basis statement printed in the Proof Package.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current report settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyReportSettingsEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Company not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Companies]
+      operationId: updateCompanyReportSettings
+      summary: Update the company's Proof Package settings
+      description: Super admin only.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCompanyReportSettingsInput"
+      responses:
+        "200":
+          description: Settings updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyReportSettingsEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/state-packs:
+    get:
+      tags: [Companies]
+      operationId: listCompanyStatePacks
+      summary: List the company's state legal packs
+      description: Super admin only.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: All state packs for the company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatePackListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/state-packs/{state}:
+    put:
+      tags: [Companies]
+      operationId: upsertCompanyStatePack
+      summary: Create or replace a state legal pack
+      description: >-
+        Super admin only. `state` is a two-letter code. The pack carries the
+        state's Homeowner Information page, UPPA disclaimer/statute, and code
+        citations printed in the Proof Package.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertStatePackInput"
+      responses:
+        "200":
+          description: Pack stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatePackEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /companies/{companyId}/report-branding:
     get:
       tags: [Companies]
@@ -3176,6 +3341,161 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ReportBranding"
             - type: "null"
+    ContractorLicense:
+      type: object
+      required: [state, number, classification]
+      properties:
+        state:
+          type: string
+          minLength: 2
+          maxLength: 2
+        number:
+          type: string
+          minLength: 1
+          maxLength: 60
+        classification:
+          type: string
+          minLength: 1
+          maxLength: 120
+    CompanyReportSettings:
+      type: object
+      required: [licenses, qualificationsText, pricingBasisStatement]
+      properties:
+        licenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContractorLicense"
+        qualificationsText:
+          type: [string, "null"]
+          maxLength: 4000
+        pricingBasisStatement:
+          type: [string, "null"]
+          maxLength: 2000
+    CompanyReportSettingsEnvelope:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/CompanyReportSettings"
+    UpdateCompanyReportSettingsInput:
+      type: object
+      required: [settings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/CompanyReportSettings"
+    StatePackSection:
+      type: object
+      required: [heading, paragraphs]
+      properties:
+        heading:
+          type: string
+          maxLength: 200
+        paragraphs:
+          type: array
+          items:
+            type: string
+            maxLength: 4000
+    HomeownerRightsContent:
+      type: object
+      required:
+        [title, subtitle, preparedByNote, sections, complaintBlock, closingDisclaimer]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        subtitle:
+          type: string
+          maxLength: 300
+        preparedByNote:
+          type: string
+          maxLength: 500
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatePackSection"
+        complaintBlock:
+          type: array
+          items:
+            type: string
+            maxLength: 300
+        closingDisclaimer:
+          type: string
+          maxLength: 2000
+    CodeCitation:
+      type: object
+      required: [key, element, title, cite, body]
+      properties:
+        key:
+          type: string
+          maxLength: 60
+        element:
+          type: string
+          maxLength: 60
+        title:
+          type: string
+          maxLength: 200
+        cite:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          maxLength: 2000
+    StatePack:
+      type: object
+      required: [state, homeownerRights, uppaDisclaimer, uppaStatute, codeCitations]
+      properties:
+        state:
+          type: string
+        homeownerRights:
+          oneOf:
+            - $ref: "#/components/schemas/HomeownerRightsContent"
+            - type: "null"
+        uppaDisclaimer:
+          type: [string, "null"]
+          maxLength: 2000
+        uppaStatute:
+          type: [string, "null"]
+          maxLength: 300
+        codeCitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeCitation"
+    UpsertStatePackInput:
+      type: object
+      required: [pack]
+      properties:
+        pack:
+          type: object
+          required: [homeownerRights, uppaDisclaimer, uppaStatute, codeCitations]
+          properties:
+            homeownerRights:
+              oneOf:
+                - $ref: "#/components/schemas/HomeownerRightsContent"
+                - type: "null"
+            uppaDisclaimer:
+              type: [string, "null"]
+              maxLength: 2000
+            uppaStatute:
+              type: [string, "null"]
+              maxLength: 300
+            codeCitations:
+              type: array
+              items:
+                $ref: "#/components/schemas/CodeCitation"
+    StatePackEnvelope:
+      type: object
+      required: [pack]
+      properties:
+        pack:
+          $ref: "#/components/schemas/StatePack"
+    StatePackListEnvelope:
+      type: object
+      required: [packs]
+      properties:
+        packs:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatePack"
     MobileTokenExchangeRequest:
       type: object
       required: [code, code_verifier, redirect_uri, state]

@@ -32,6 +32,7 @@ import type {
   CanvassingCurrentEnvelope,
   CanvassingSessionEnvelope,
   CompanyEnvelope,
+  CompanyReportSettingsEnvelope,
   CompileInspectionReport200,
   CreateAttestationInput,
   CreateBugReportInput,
@@ -96,6 +97,8 @@ import type {
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
   SearchAddressParams,
+  StatePackEnvelope,
+  StatePackListEnvelope,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
@@ -103,6 +106,7 @@ import type {
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateBugReportInput,
+  UpdateCompanyReportSettingsInput,
   UpdateFipsaSettingsInput,
   UpdateInspectionComponentInput,
   UpdateInspectionInput,
@@ -117,6 +121,7 @@ import type {
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse,
+  UpsertStatePackInput,
   WeatherCandidatesEnvelope
 } from './api.schemas';
 
@@ -853,6 +858,310 @@ export const useUpdateCompanyFipsaSettings = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getUpdateCompanyFipsaSettingsMutationOptions(options));
+    }
+
+export const getGetCompanyReportSettingsUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/report-settings`
+}
+
+/**
+ * Super admin only. Contractor licenses, Statement of Qualifications, and pricing-basis statement printed in the Proof Package.
+ * @summary Get the company's Proof Package settings
+ */
+export const getCompanyReportSettings = async (companyId: string, options?: RequestInit): Promise<CompanyReportSettingsEnvelope> => {
+
+  return customFetch<CompanyReportSettingsEnvelope>(getGetCompanyReportSettingsUrl(companyId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompanyReportSettingsQueryKey = (companyId: string,) => {
+    return [
+    `/api/companies/${companyId}/report-settings`
+    ] as const;
+    }
+
+
+export const getGetCompanyReportSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getCompanyReportSettings>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompanyReportSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompanyReportSettingsQueryKey(companyId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompanyReportSettings>>> = ({ signal }) => getCompanyReportSettings(companyId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompanyReportSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompanyReportSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getCompanyReportSettings>>>
+export type GetCompanyReportSettingsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the company's Proof Package settings
+ */
+
+export function useGetCompanyReportSettings<TData = Awaited<ReturnType<typeof getCompanyReportSettings>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompanyReportSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompanyReportSettingsQueryOptions(companyId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCompanyReportSettingsUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/report-settings`
+}
+
+/**
+ * Super admin only.
+ * @summary Update the company's Proof Package settings
+ */
+export const updateCompanyReportSettings = async (companyId: string,
+    updateCompanyReportSettingsInput: UpdateCompanyReportSettingsInput, options?: RequestInit): Promise<CompanyReportSettingsEnvelope> => {
+
+  return customFetch<CompanyReportSettingsEnvelope>(getUpdateCompanyReportSettingsUrl(companyId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCompanyReportSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCompanyReportSettingsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyReportSettings>>, TError,{companyId: string;data: BodyType<UpdateCompanyReportSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCompanyReportSettings>>, TError,{companyId: string;data: BodyType<UpdateCompanyReportSettingsInput>}, TContext> => {
+
+const mutationKey = ['updateCompanyReportSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCompanyReportSettings>>, {companyId: string;data: BodyType<UpdateCompanyReportSettingsInput>}> = (props) => {
+          const {companyId,data} = props ?? {};
+
+          return  updateCompanyReportSettings(companyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCompanyReportSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateCompanyReportSettings>>>
+    export type UpdateCompanyReportSettingsMutationBody = BodyType<UpdateCompanyReportSettingsInput>
+    export type UpdateCompanyReportSettingsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update the company's Proof Package settings
+ */
+export const useUpdateCompanyReportSettings = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyReportSettings>>, TError,{companyId: string;data: BodyType<UpdateCompanyReportSettingsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCompanyReportSettings>>,
+        TError,
+        {companyId: string;data: BodyType<UpdateCompanyReportSettingsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCompanyReportSettingsMutationOptions(options));
+    }
+
+export const getListCompanyStatePacksUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/state-packs`
+}
+
+/**
+ * Super admin only.
+ * @summary List the company's state legal packs
+ */
+export const listCompanyStatePacks = async (companyId: string, options?: RequestInit): Promise<StatePackListEnvelope> => {
+
+  return customFetch<StatePackListEnvelope>(getListCompanyStatePacksUrl(companyId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCompanyStatePacksQueryKey = (companyId: string,) => {
+    return [
+    `/api/companies/${companyId}/state-packs`
+    ] as const;
+    }
+
+
+export const getListCompanyStatePacksQueryOptions = <TData = Awaited<ReturnType<typeof listCompanyStatePacks>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyStatePacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCompanyStatePacksQueryKey(companyId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCompanyStatePacks>>> = ({ signal }) => listCompanyStatePacks(companyId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCompanyStatePacks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCompanyStatePacksQueryResult = NonNullable<Awaited<ReturnType<typeof listCompanyStatePacks>>>
+export type ListCompanyStatePacksQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List the company's state legal packs
+ */
+
+export function useListCompanyStatePacks<TData = Awaited<ReturnType<typeof listCompanyStatePacks>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyStatePacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCompanyStatePacksQueryOptions(companyId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertCompanyStatePackUrl = (companyId: string,
+    state: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/state-packs/${state}`
+}
+
+/**
+ * Super admin only. `state` is a two-letter code. The pack carries the state's Homeowner Information page, UPPA disclaimer/statute, and code citations printed in the Proof Package.
+ * @summary Create or replace a state legal pack
+ */
+export const upsertCompanyStatePack = async (companyId: string,
+    state: string,
+    upsertStatePackInput: UpsertStatePackInput, options?: RequestInit): Promise<StatePackEnvelope> => {
+
+  return customFetch<StatePackEnvelope>(getUpsertCompanyStatePackUrl(companyId,state),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(upsertStatePackInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertCompanyStatePackMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyStatePack>>, TError,{companyId: string;state: string;data: BodyType<UpsertStatePackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyStatePack>>, TError,{companyId: string;state: string;data: BodyType<UpsertStatePackInput>}, TContext> => {
+
+const mutationKey = ['upsertCompanyStatePack'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertCompanyStatePack>>, {companyId: string;state: string;data: BodyType<UpsertStatePackInput>}> = (props) => {
+          const {companyId,state,data} = props ?? {};
+
+          return  upsertCompanyStatePack(companyId,state,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertCompanyStatePackMutationResult = NonNullable<Awaited<ReturnType<typeof upsertCompanyStatePack>>>
+    export type UpsertCompanyStatePackMutationBody = BodyType<UpsertStatePackInput>
+    export type UpsertCompanyStatePackMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create or replace a state legal pack
+ */
+export const useUpsertCompanyStatePack = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyStatePack>>, TError,{companyId: string;state: string;data: BodyType<UpsertStatePackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertCompanyStatePack>>,
+        TError,
+        {companyId: string;state: string;data: BodyType<UpsertStatePackInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertCompanyStatePackMutationOptions(options));
     }
 
 export const getGetCompanyReportBrandingUrl = (companyId: string,) => {

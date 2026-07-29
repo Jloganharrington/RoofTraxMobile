@@ -93,6 +93,123 @@ export interface UpdateReportBrandingResult {
   branding: ReportBranding | null;
 }
 
+export interface ContractorLicense {
+  /**
+     * @minLength 2
+     * @maxLength 2
+     */
+  state: string;
+  /**
+     * @minLength 1
+     * @maxLength 60
+     */
+  number: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  classification: string;
+}
+
+export interface CompanyReportSettings {
+  licenses: ContractorLicense[];
+  /**
+     * @maxLength 4000
+     * @nullable
+     */
+  qualificationsText: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  pricingBasisStatement: string | null;
+}
+
+export interface CompanyReportSettingsEnvelope {
+  settings: CompanyReportSettings;
+}
+
+export interface UpdateCompanyReportSettingsInput {
+  settings: CompanyReportSettings;
+}
+
+export interface StatePackSection {
+  /** @maxLength 200 */
+  heading: string;
+  /** @items.maxLength 4000 */
+  paragraphs: string[];
+}
+
+export interface HomeownerRightsContent {
+  /** @maxLength 200 */
+  title: string;
+  /** @maxLength 300 */
+  subtitle: string;
+  /** @maxLength 500 */
+  preparedByNote: string;
+  sections: StatePackSection[];
+  /** @items.maxLength 300 */
+  complaintBlock: string[];
+  /** @maxLength 2000 */
+  closingDisclaimer: string;
+}
+
+export interface CodeCitation {
+  /** @maxLength 60 */
+  key: string;
+  /** @maxLength 60 */
+  element: string;
+  /** @maxLength 200 */
+  title: string;
+  /** @maxLength 200 */
+  cite: string;
+  /** @maxLength 2000 */
+  body: string;
+}
+
+export interface StatePack {
+  state: string;
+  homeownerRights: HomeownerRightsContent | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  uppaDisclaimer: string | null;
+  /**
+     * @maxLength 300
+     * @nullable
+     */
+  uppaStatute: string | null;
+  codeCitations: CodeCitation[];
+}
+
+export type UpsertStatePackInputPack = {
+  homeownerRights: HomeownerRightsContent | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  uppaDisclaimer: string | null;
+  /**
+     * @maxLength 300
+     * @nullable
+     */
+  uppaStatute: string | null;
+  codeCitations: CodeCitation[];
+};
+
+export interface UpsertStatePackInput {
+  pack: UpsertStatePackInputPack;
+}
+
+export interface StatePackEnvelope {
+  pack: StatePack;
+}
+
+export interface StatePackListEnvelope {
+  packs: StatePack[];
+}
+
 export interface MobileTokenExchangeRequest {
   /** @minLength 1 */
   code: string;

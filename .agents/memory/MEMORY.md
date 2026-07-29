@@ -33,4 +33,5 @@
 - [Session lifecycle & orphan sessions](session-lifecycle-orphans.md) — auth must verify user row exists (test cleanup orphans sessions → FK 500s) and slide session expiry on activity.
 - [RAP scorecard mirror](rap-scorecard-mirror.md) — scorecard math + photo-priority order duplicated in mobile screen and api-server rapScorecard lib (VAP too: vapScorecard, photo priority ≠ display order); change both or reports drift.
 - [Archive-only protocol photos](archive-only-protocol-photos.md) — some protocol photos (VAP final archive) must never reach report output; exclusion is a single compile-time filter — new report/export surfaces must reapply it.
+- [Proof Package A–M template](proof-package-template.md) — v6 blobs bake reportData + render via A–M exhibit template; fixed letters, legacy branch for v≤5, compile 422-gates on company/state legal settings.
 - [Estimate price-book snapshot integrity](estimate-price-snapshots.md) — catalog-referencing lines must be server-hydrated (price/desc/unit from DB); advisory steps join all three stage mirrors but get no gate rules.

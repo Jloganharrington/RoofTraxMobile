@@ -581,6 +581,24 @@ export default function ProfileScreen() {
           {role === 'super_admin' && (
             <FipsaSettingsCard companyId={companyId ?? ''} colors={colors} />
           )}
+
+          {/* Proof Package Settings — super admin only */}
+          {role === 'super_admin' && (
+            <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 6 }}>
+              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
+                Proof Package Settings
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                Licenses, qualifications, and state legal content printed in every Proof Package.
+              </Text>
+              <Pressable
+                onPress={() => router.push('/proof-package-settings')}
+                style={[styles.sigButton, { backgroundColor: colors.secondary, marginTop: 4 }]}
+              >
+                <Text style={styles.sigButtonText}>Manage Proof Package</Text>
+              </Pressable>
+            </View>
+          )}
         </AccordionSection>
       )}
 

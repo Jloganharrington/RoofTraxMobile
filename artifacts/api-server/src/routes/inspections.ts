@@ -76,6 +76,7 @@ import {
   testSquareHitsTable,
   testSquaresTable,
   measurementsTable,
+  companyStatePacksTable,
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
@@ -92,6 +93,34 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
+import { buildProofPackageHtml, type ProofPackageData } from '../lib/proofPackageTemplate';
+
+// The reportData snapshot baked into schemaVersion-6 blobs. It reuses the
+// template's input shapes, minus the render-time-only fields (signed URLs,
+// theme, extras) that are resolved fresh on every render.
+type ProofPackageReportData = Pick<
+  ProofPackageData,
+  | 'company'
+  | 'storm'
+  | 'methodology'
+  | 'areasImpacted'
+  | 'components'
+  | 'measurement'
+  | 'scope'
+  | 'product'
+> & {
+  statePack: ProofPackageData['statePack'] & { state: string };
+  phase1Date: string;
+  phase2Date: string;
+  photoMeta: Array<{
+    id: string;
+    area: 'roof' | 'siding' | 'interior' | 'collateral' | 'general';
+    caption: string;
+    sha256: string | null;
+  }>;
+  coverPhotoId: string | null;
+  signaturePath: string | null;
+};
 import { buildPortalAccessFromRequest, generatePortalAccessCode } from '../lib/portalAccess';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
 import {
@@ -4189,8 +4218,271 @@ ${JSON.stringify(photoBrief)}
   ];
   const lint = lintReportFragments(lintFragmentInputs);
 
+  // ── Proof Package content requirements (schemaVersion 6) ───────────────
+  // The A–M template prints company qualifications and state-specific legal
+  // content. Compiling without them would ship a legally incomplete package,
+  // so missing settings block the compile with an actionable error.
+  const [companyRow] = await db
+    .select({
+      name: companiesTable.name,
+      contractorLegalName: companiesTable.contractorLegalName,
+      contractorLicenses: companiesTable.contractorLicenses,
+      qualificationsText: companiesTable.qualificationsText,
+      pricingBasisStatement: companiesTable.pricingBasisStatement,
+    })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, actor.companyId));
+
+  const statePacks = await db
+    .select()
+    .from(companyStatePacksTable)
+    .where(eq(companyStatePacksTable.companyId, actor.companyId));
+
+  // Property state from the address ("… Fairfax, VA 22030"). When it can't
+  // be parsed, a company with exactly one pack unambiguously uses that one.
+  const stateMatch = (inspection.address ?? '').match(/\b([A-Za-z]{2})[,]?\s+\d{5}(?:-\d{4})?\b/);
+  const propertyState =
+    stateMatch?.[1]?.toUpperCase() ?? (statePacks.length === 1 ? statePacks[0]!.state : null);
+  const statePack = propertyState
+    ? (statePacks.find((p) => p.state === propertyState) ?? null)
+    : null;
+
+  const missingSettings: string[] = [];
+  if (!companyRow?.contractorLicenses?.length) missingSettings.push('contractor license(s)');
+  if (!companyRow?.qualificationsText) missingSettings.push('Statement of Qualifications');
+  if (!propertyState) {
+    missingSettings.push(
+      'property state (add a 2-letter state + ZIP to the inspection address, or set up exactly one state pack)',
+    );
+  } else if (!statePack) {
+    missingSettings.push(`state legal pack for ${propertyState}`);
+  }
+  if (missingSettings.length > 0) {
+    res.status(422).json({
+      error: `Proof Package settings incomplete — a super admin must add: ${missingSettings.join('; ')}. These live under Proof Package Settings in the admin profile.`,
+      missingSettings,
+    });
+    return;
+  }
+
+  // Inspector signature path (object path — signed fresh at render time).
+  const signaturePath = inspectorProfile?.signatureUrl ?? null;
+
+  const fmtDate = (d: string | Date | null | undefined): string =>
+    d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not recorded';
+
+  // Photo → report area mapping for exhibit ordering.
+  const photoArea = (p: (typeof curatedPhotos)[number]): 'roof' | 'siding' | 'interior' | 'collateral' | 'general' => {
+    const st = (p.subjectType ?? '').toLowerCase();
+    const zone = (p.zone ?? '').toLowerCase();
+    if (st.includes('slope') || st.includes('test_square') || st.includes('penetration') || zone.includes('roof')) return 'roof';
+    if (st.includes('siding') || st.includes('facet')) return 'siding';
+    if (st.includes('interior') || zone.includes('interior') || zone.includes('attic')) return 'interior';
+    if (st.includes('collateral') || zone.includes('collateral')) return 'collateral';
+    return 'general';
+  };
+  const captionFromOverlay = (overlay: unknown): string | null => {
+    if (overlay && typeof overlay === 'object' && 'caption' in overlay) {
+      const c = (overlay as { caption?: unknown }).caption;
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+    return null;
+  };
+  const photoMeta = curatedPhotos.map((p) => ({
+    id: p.id,
+    area: photoArea(p),
+    caption:
+      captionFromOverlay(p.overlayJson) ??
+      [p.zone, p.triadRole, p.subjectType].filter(Boolean).join(' · ') ??
+      'Evidence photo',
+    sha256: p.sha256 ?? null,
+  }));
+  // Cover photo: prefer a front elevation shot, else the first curated photo.
+  const coverPhotoId =
+    curatedPhotos.find(
+      (p) => (p.subjectType ?? '').toLowerCase().includes('elevation') && (p.zone ?? '').toLowerCase().includes('front'),
+    )?.id ??
+    curatedPhotos.find((p) => (p.subjectType ?? '').toLowerCase().includes('elevation'))?.id ??
+    curatedPhotos[0]?.id ??
+    null;
+
+  // Storm block from the inspector-confirmed storm of record.
+  const storm = inspection.stormConfirmedRef
+    ? {
+        type:
+          inspection.stormConfirmedRef.type === 'hail'
+            ? 'Hail'
+            : inspection.stormConfirmedRef.type === 'wind'
+              ? 'Damaging Wind'
+              : 'Tornado',
+        dateLocalTime: fmtDate(inspection.stormConfirmedRef.date),
+        hailSize:
+          inspection.stormConfirmedRef.hailSize != null
+            ? `${inspection.stormConfirmedRef.hailSize}" diameter`
+            : null,
+        windSpeed:
+          inspection.stormConfirmedRef.windSpeed != null
+            ? `${inspection.stormConfirmedRef.windSpeed} mph`
+            : null,
+        distance:
+          inspection.stormConfirmedRef.distance != null
+            ? `${inspection.stormConfirmedRef.distance} mi from property`
+            : null,
+        coordinates: inspection.stormConfirmedRef.queriedLocation || null,
+        source: 'Certified weather data (Visual Crossing) confirmed by the inspector',
+        narrative: null,
+        note: inspection.stormConfirmedRef.description ?? null,
+      }
+    : null;
+
+  // Methodology: arrival conditions + auto-logged capture counts.
+  const conditionsParts = [
+    arr?.sky ? `Sky: ${arr.sky}` : null,
+    arr?.windCondition ? `Wind: ${arr.windCondition}` : null,
+    (arr as { temp?: string | null } | null)?.temp ? `Temp: ${(arr as { temp?: string | null }).temp}` : null,
+  ].filter(Boolean);
+  const methodology = {
+    inspectedAt: fmtDate(inspection.lockedAt ?? inspection.updatedAt),
+    conditions: conditionsParts.length ? conditionsParts.join(' · ') : 'Not recorded',
+    equipment: [] as string[],
+    capture: {
+      elevations: children.elevations.length,
+      slopes: children.slopes.length,
+      testSquares: children.testSquares.length,
+      totalHits: children.testSquareHits.length,
+      damageInstances: children.damageInstances.length,
+      photos: curatedPhotos.length,
+    },
+  };
+
+  const areasImpacted = [
+    { key: 'roof' as const, name: 'Roof System', impacted: inspection.roofDamageFound === true },
+    { key: 'siding' as const, name: 'Siding / Exterior', impacted: inspection.sidingDamageFound === true },
+    { key: 'collateral' as const, name: 'Collateral (soft metals, screens)', impacted: inspection.collateralDamageFound === true },
+    { key: 'interior' as const, name: 'Interior / Attic', impacted: inspection.interiorDamageFound === true },
+  ];
+
+  // Component condition rows (Exhibit E tables), derived from recorded facts.
+  const componentRows: Record<string, Array<{ component: string; condition: string; method: string; verdict: 'replace' | 'repair' | 'monitor' }>> = {};
+  const roofRows = children.slopes
+    .filter((s) => s.damagePresent)
+    .map((s) => {
+      const instances = children.damageInstances.filter((d) => d.slopeId === s.id).length;
+      return {
+        component: s.label,
+        condition: [s.damageType, instances ? `${instances} documented damage instance${instances === 1 ? '' : 's'}` : null]
+          .filter(Boolean)
+          .join(' — ') || 'Storm damage documented',
+        method: 'Full replacement of affected system',
+        verdict: 'replace' as const,
+      };
+    });
+  if (roofRows.length) componentRows['roof'] = roofRows;
+  const sidingRows = children.sidingFacets
+    .filter((f) => (f as { damagePresent?: boolean }).damagePresent)
+    .map((f) => ({
+      component: (f as { label?: string }).label ?? 'Siding facet',
+      condition: 'Storm damage documented',
+      method: 'See repairability assessment',
+      verdict: 'replace' as const,
+    }));
+  if (sidingRows.length) componentRows['siding'] = sidingRows;
+
+  // Measurement exhibit from recorded slope areas + linear measurements.
+  const slopeAreas = children.slopes
+    .filter((s) => s.areaSqft != null && s.areaSqft > 0)
+    .map((s) => ({ label: s.label, sqft: s.areaSqft as number }));
+  const linearByType = new Map<string, number>();
+  for (const mRow of children.measurements) {
+    if ((mRow.unit ?? '').toLowerCase() === 'lf' || (mRow.unit ?? '').toLowerCase() === 'ft') {
+      linearByType.set(mRow.measurementType, (linearByType.get(mRow.measurementType) ?? 0) + mRow.value);
+    }
+  }
+  const totalSqft = slopeAreas.reduce((sum, s) => sum + s.sqft, 0);
+  const measurement =
+    slopeAreas.length || linearByType.size
+      ? {
+          slopes: slopeAreas,
+          linear: [...linearByType.entries()].map(([type, lf]) => ({ type, lf })),
+          totalSqft,
+          squares: totalSqft / 100,
+        }
+      : null;
+
+  // Scope exhibit from the stored estimate (server-hydrated price snapshot).
+  const codeCiteByKey = new Map((statePack!.codeCitations ?? []).map((c) => [c.key, c.cite]));
+  const scope = estimateForLinks?.lines?.length
+    ? {
+        lineItems: estimateForLinks.lines.map((li) => ({
+          description: li.description,
+          qty: li.quantity,
+          unit: li.unit ?? 'EA',
+          rate: li.unitPriceCents / 100,
+          total: li.totalCents / 100,
+          isAdder: li.isAdder,
+          trigger: null as string | null,
+          codeRefs: codeCiteByKey.has(li.priceBookItemId ?? '')
+            ? [codeCiteByKey.get(li.priceBookItemId ?? '')!]
+            : [],
+        })),
+        subtotal: estimateForLinks.subtotalCents / 100,
+        basePricePerSquare: null as number | null,
+        squares: estimateForLinks.measuredBasis?.wasteAdjustedSquares ?? estimateForLinks.measuredBasis?.roofSquares ?? null,
+      }
+    : null;
+
+  // Product identification (Exhibit G) from the repairability product match.
+  const productMatch = raRaw
+    ? ((raRaw as { roof?: { productMatch?: { name?: string; widthInches?: number | null; exposureInches?: number | null } | null } }).roof?.productMatch ?? null)
+    : null;
+  const product = productMatch?.name
+    ? {
+        name: productMatch.name,
+        identification: [
+          productMatch.widthInches != null ? `${productMatch.widthInches}" width` : null,
+          productMatch.exposureInches != null ? `${productMatch.exposureInches}" exposure` : null,
+        ]
+          .filter(Boolean)
+          .join(', ') || 'Matched against the known-product catalog',
+        discontinued: true,
+        discontinuedNote:
+          'This product was matched against the company\u2019s discontinued-product catalog during the repairability assessment.',
+      }
+    : null;
+
+  const reportData = {
+    company: {
+      legalName: companyRow!.contractorLegalName ?? companyRow!.name,
+      brand: companyRow!.name,
+      licenses: companyRow!.contractorLicenses ?? [],
+      qualificationsText: companyRow!.qualificationsText ?? '',
+      pricingBasisStatement: companyRow!.pricingBasisStatement ?? null,
+    },
+    statePack: {
+      state: statePack!.state,
+      jurisdictionLabel: `State of ${statePack!.state}`,
+      homeownerRights: statePack!.homeownerRights ?? null,
+      uppaDisclaimer: statePack!.uppaDisclaimer ?? null,
+      uppaStatute: statePack!.uppaStatute ?? null,
+      codeCitations: statePack!.codeCitations ?? [],
+    },
+    phase1Date: fmtDate(inspection.preliminaryCompletedAt),
+    phase2Date: fmtDate(inspection.lockedAt ?? inspection.updatedAt),
+    storm,
+    methodology,
+    areasImpacted,
+    components: componentRows,
+    measurement,
+    scope,
+    product,
+    photoMeta,
+    coverPhotoId,
+    signaturePath,
+  };
+
   const compiledData = {
-    schemaVersion: 5,
+    schemaVersion: 6,
+    reportData,
     generatedAt,
     inspector,
     inspectionSnapshot: {
@@ -4677,6 +4969,96 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
   const logoSignedUrl = company?.logoUrl
     ? await tryGetPhotoSignedUrl(objectStorageService, company.logoUrl)
     : null;
+
+  // ── schemaVersion 6+: A–M exhibit Proof Package template ──────────────
+  // The v6 compile bakes a `reportData` snapshot into the blob; older blobs
+  // (v≤5) keep rendering through the legacy template unchanged so previously
+  // compiled versions still open exactly as they did.
+  const rd = (compiledData as { reportData?: ProofPackageReportData }).reportData;
+  if (compiledData.schemaVersion >= 6 && rd) {
+    // Sign the cover photo + inspector signature fresh (never stored signed).
+    const coverEntry = rd.coverPhotoId ? compiledData.photoIndex[rd.coverPhotoId] : null;
+    const [coverPhotoUrl, signatureUrl] = await Promise.all([
+      coverEntry ? tryGetPhotoSignedUrl(objectStorageService, coverEntry.objectPath) : Promise.resolve(null),
+      rd.signaturePath ? tryGetPhotoSignedUrl(objectStorageService, rd.signaturePath) : Promise.resolve(null),
+    ]);
+
+    const photosVisible = carrierVisible('photoGroupings');
+    const photos = photosVisible
+      ? rd.photoMeta
+          .filter((p) => compiledData.photoIndex[p.id])
+          .map((p) => {
+            const entry = compiledData.photoIndex[p.id]!;
+            return {
+              id: p.id,
+              url: freshSignedUrls.get(p.id) ?? null,
+              stage: entry.stage,
+              subject: [entry.zone, entry.subjectType].filter(Boolean).join(' · ') || 'Evidence photo',
+              caption: p.caption,
+              sha256: p.sha256,
+              area: p.area,
+            };
+          })
+      : [];
+
+    const unlockLogHtml = compiledData.unlockLog?.length
+      ? `<p style="font-size:12px;">This record was reopened under manager authorization after its original lock. Each reopen event is disclosed below.</p>
+         <table class="detail-table"><thead><tr><th>Reopened by</th><th>When</th><th>Reason</th><th>Previously locked</th></tr></thead><tbody>
+         ${compiledData.unlockLog
+           .map(
+             (u) =>
+               `<tr><td>${escHtml(u.unlockedByName ?? 'Manager')}</td><td>${escHtml(new Date(u.unlockedAt).toLocaleString())}</td><td>${escHtml(u.reason)}</td><td>${escHtml(new Date(u.previousLockedAt).toLocaleString())}</td></tr>`,
+           )
+           .join('')}
+         </tbody></table>`
+      : null;
+
+    const html = buildProofPackageHtml({
+      reportId: snap.id.slice(0, 8).toUpperCase(),
+      generatedAt: compiledData.generatedAt,
+      company: rd.company,
+      statePack: rd.statePack,
+      property: {
+        address: snap.address ?? 'Address not recorded',
+        addressShort: (snap.address ?? '').split(',')[0] || 'Property',
+        insuredName: snap.insuredName ?? 'Not recorded',
+        carrier: snap.carrierName ?? 'Not recorded',
+        policyNumber: snap.policyNumber ?? 'Not recorded',
+        claimNumber: snap.claimNumber ?? 'Not recorded',
+        dateOfLoss: snap.dateOfLoss ?? 'Not recorded',
+        phase1Date: rd.phase1Date,
+        phase2Date: rd.phase2Date,
+      },
+      inspectorName: compiledData.inspector.name,
+      coverPhotoUrl,
+      storm: rd.storm,
+      methodology: rd.methodology,
+      areasImpacted: rd.areasImpacted,
+      components: rd.components,
+      aiSections: {
+        forensicSummary: carrierVisible('aiSummary.forensicSummary') ? compiledData.aiSummary.forensicSummary : '',
+        repairabilityText: carrierVisible('aiSummary.repairabilityText') ? compiledData.aiSummary.repairabilityText : '',
+      },
+      measurement: rd.measurement,
+      scope: rd.scope,
+      product: rd.product,
+      photos,
+      attestationHtml: carrierVisible('attestationHtml') ? compiledData.attestationHtml : '',
+      extras: {
+        propertyDetailsHtml: carrierVisible('propertyDetailsHtml') ? compiledData.propertyDetailsHtml : null,
+        rapSectionHtml,
+        vapSectionHtml,
+        evidenceScopeIndexHtml,
+        evidenceManifestHtml,
+        unlockLogHtml,
+      },
+      portalAccess: opts.portalAccess ?? null,
+      theme: resolveReportTheme(company?.reportBranding),
+      logoUrl: logoSignedUrl,
+      signatureUrl,
+    });
+    return { ok: true, html };
+  }
 
   const html = buildReportHtml({
     inspection: inspSnap,

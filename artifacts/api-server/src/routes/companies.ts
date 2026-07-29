@@ -5,8 +5,14 @@ import {
   GetCompanyFipsaSettingsResponse,
   UpdateCompanyFipsaSettingsBody,
   UpdateCompanyFipsaSettingsResponse,
+  GetCompanyReportSettingsResponse,
+  UpdateCompanyReportSettingsBody,
+  UpdateCompanyReportSettingsResponse,
+  ListCompanyStatePacksResponse,
+  UpsertCompanyStatePackBody,
+  UpsertCompanyStatePackResponse,
 } from '@workspace/api-zod';
-import { companiesTable, db, userProfilesTable } from '@workspace/db';
+import { companiesTable, companyStatePacksTable, db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -398,6 +404,172 @@ router.patch('/companies/:companyId/report-branding', async (req: Request, res: 
 
   res.json({ ok: true, branding: newBranding });
 });
+
+// ── Proof Package settings (licenses, qualifications, pricing basis) ───────
+
+// GET /companies/:companyId/report-settings — super admin only.
+router.get('/companies/:companyId/report-settings', async (req: Request, res: Response) => {
+  const companyId = await requireSameCompanySuperAdmin(req, res);
+  if (!companyId) return;
+
+  const [company] = await db
+    .select({
+      contractorLicenses: companiesTable.contractorLicenses,
+      qualificationsText: companiesTable.qualificationsText,
+      pricingBasisStatement: companiesTable.pricingBasisStatement,
+    })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+  if (!company) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  res.json(
+    GetCompanyReportSettingsResponse.parse({
+      settings: {
+        licenses: company.contractorLicenses ?? [],
+        qualificationsText: company.qualificationsText ?? null,
+        pricingBasisStatement: company.pricingBasisStatement ?? null,
+      },
+    }),
+  );
+});
+
+// PATCH /companies/:companyId/report-settings — super admin only. These
+// values are embedded into the Proof Package, so they are validated + trimmed.
+router.patch('/companies/:companyId/report-settings', async (req: Request, res: Response) => {
+  const companyId = await requireSameCompanySuperAdmin(req, res);
+  if (!companyId) return;
+
+  const parsed = UpdateCompanyReportSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid report settings payload' });
+    return;
+  }
+  const s = parsed.data.settings;
+
+  const licenses = s.licenses.map((l) => ({
+    state: l.state.trim().toUpperCase(),
+    number: l.number.trim(),
+    classification: l.classification.trim(),
+  }));
+  if (licenses.some((l) => !/^[A-Z]{2}$/.test(l.state) || !l.number || !l.classification)) {
+    res.status(400).json({ error: 'Each license needs a 2-letter state, number, and classification' });
+    return;
+  }
+
+  const [updated] = await db
+    .update(companiesTable)
+    .set({
+      contractorLicenses: licenses,
+      qualificationsText: s.qualificationsText?.trim() || null,
+      pricingBasisStatement: s.pricingBasisStatement?.trim() || null,
+    })
+    .where(eq(companiesTable.id, companyId))
+    .returning({
+      contractorLicenses: companiesTable.contractorLicenses,
+      qualificationsText: companiesTable.qualificationsText,
+      pricingBasisStatement: companiesTable.pricingBasisStatement,
+    });
+  if (!updated) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  res.json(
+    UpdateCompanyReportSettingsResponse.parse({
+      settings: {
+        licenses: updated.contractorLicenses ?? [],
+        qualificationsText: updated.qualificationsText ?? null,
+        pricingBasisStatement: updated.pricingBasisStatement ?? null,
+      },
+    }),
+  );
+});
+
+// ── State legal packs (Exhibit A / UPPA / code citations) ──────────────────
+
+function statePackToWire(pack: {
+  state: string;
+  homeownerRights: unknown;
+  uppaDisclaimer: string | null;
+  uppaStatute: string | null;
+  codeCitations: unknown;
+}) {
+  return {
+    state: pack.state,
+    homeownerRights: pack.homeownerRights ?? null,
+    uppaDisclaimer: pack.uppaDisclaimer ?? null,
+    uppaStatute: pack.uppaStatute ?? null,
+    codeCitations: pack.codeCitations ?? [],
+  };
+}
+
+// GET /companies/:companyId/state-packs — super admin only.
+router.get('/companies/:companyId/state-packs', async (req: Request, res: Response) => {
+  const companyId = await requireSameCompanySuperAdmin(req, res);
+  if (!companyId) return;
+
+  const packs = await db
+    .select()
+    .from(companyStatePacksTable)
+    .where(eq(companyStatePacksTable.companyId, companyId));
+
+  res.json(
+    ListCompanyStatePacksResponse.parse({
+      packs: packs
+        .sort((a, b) => a.state.localeCompare(b.state))
+        .map(statePackToWire),
+    }),
+  );
+});
+
+// PUT /companies/:companyId/state-packs/:state — super admin upsert.
+router.put(
+  '/companies/:companyId/state-packs/:state',
+  async (req: Request, res: Response) => {
+    const companyId = await requireSameCompanySuperAdmin(req, res);
+    if (!companyId) return;
+
+    const state = String(req.params.state ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(state)) {
+      res.status(400).json({ error: 'State must be a 2-letter code' });
+      return;
+    }
+
+    const parsed = UpsertCompanyStatePackBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid state pack payload' });
+      return;
+    }
+    const p = parsed.data.pack;
+
+    const values = {
+      companyId,
+      state,
+      homeownerRights: p.homeownerRights ?? null,
+      uppaDisclaimer: p.uppaDisclaimer?.trim() || null,
+      uppaStatute: p.uppaStatute?.trim() || null,
+      codeCitations: p.codeCitations,
+    };
+    const [saved] = await db
+      .insert(companyStatePacksTable)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [companyStatePacksTable.companyId, companyStatePacksTable.state],
+        set: {
+          homeownerRights: values.homeownerRights,
+          uppaDisclaimer: values.uppaDisclaimer,
+          uppaStatute: values.uppaStatute,
+          codeCitations: values.codeCitations,
+        },
+      })
+      .returning();
+
+    res.json(UpsertCompanyStatePackResponse.parse({ pack: statePackToWire(saved) }));
+  },
+);
 
 // GET /companies/:companyId/report-branding/preview — render a sample report
 // styled with the company's CURRENT branding (palette + freshly-signed logo).

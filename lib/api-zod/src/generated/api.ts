@@ -154,6 +154,290 @@ export const UpdateCompanyFipsaSettingsResponse = zod.object({
 
 
 /**
+ * Super admin only. Contractor licenses, Statement of Qualifications, and pricing-basis statement printed in the Proof Package.
+ * @summary Get the company's Proof Package settings
+ */
+export const GetCompanyReportSettingsParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const getCompanyReportSettingsResponseSettingsLicensesItemStateMin = 2;
+export const getCompanyReportSettingsResponseSettingsLicensesItemStateMax = 2;
+
+export const getCompanyReportSettingsResponseSettingsLicensesItemNumberMax = 60;
+
+export const getCompanyReportSettingsResponseSettingsLicensesItemClassificationMax = 120;
+
+export const getCompanyReportSettingsResponseSettingsQualificationsTextMax = 4000;
+
+export const getCompanyReportSettingsResponseSettingsPricingBasisStatementMax = 2000;
+
+
+
+export const GetCompanyReportSettingsResponse = zod.object({
+  "settings": zod.object({
+  "licenses": zod.array(zod.object({
+  "state": zod.string().min(getCompanyReportSettingsResponseSettingsLicensesItemStateMin).max(getCompanyReportSettingsResponseSettingsLicensesItemStateMax),
+  "number": zod.string().min(1).max(getCompanyReportSettingsResponseSettingsLicensesItemNumberMax),
+  "classification": zod.string().min(1).max(getCompanyReportSettingsResponseSettingsLicensesItemClassificationMax)
+})),
+  "qualificationsText": zod.string().max(getCompanyReportSettingsResponseSettingsQualificationsTextMax).nullable(),
+  "pricingBasisStatement": zod.string().max(getCompanyReportSettingsResponseSettingsPricingBasisStatementMax).nullable()
+})
+})
+
+
+/**
+ * Super admin only.
+ * @summary Update the company's Proof Package settings
+ */
+export const UpdateCompanyReportSettingsParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const updateCompanyReportSettingsBodySettingsLicensesItemStateMin = 2;
+export const updateCompanyReportSettingsBodySettingsLicensesItemStateMax = 2;
+
+export const updateCompanyReportSettingsBodySettingsLicensesItemNumberMax = 60;
+
+export const updateCompanyReportSettingsBodySettingsLicensesItemClassificationMax = 120;
+
+export const updateCompanyReportSettingsBodySettingsQualificationsTextMax = 4000;
+
+export const updateCompanyReportSettingsBodySettingsPricingBasisStatementMax = 2000;
+
+
+
+export const UpdateCompanyReportSettingsBody = zod.object({
+  "settings": zod.object({
+  "licenses": zod.array(zod.object({
+  "state": zod.string().min(updateCompanyReportSettingsBodySettingsLicensesItemStateMin).max(updateCompanyReportSettingsBodySettingsLicensesItemStateMax),
+  "number": zod.string().min(1).max(updateCompanyReportSettingsBodySettingsLicensesItemNumberMax),
+  "classification": zod.string().min(1).max(updateCompanyReportSettingsBodySettingsLicensesItemClassificationMax)
+})),
+  "qualificationsText": zod.string().max(updateCompanyReportSettingsBodySettingsQualificationsTextMax).nullable(),
+  "pricingBasisStatement": zod.string().max(updateCompanyReportSettingsBodySettingsPricingBasisStatementMax).nullable()
+})
+})
+
+export const updateCompanyReportSettingsResponseSettingsLicensesItemStateMin = 2;
+export const updateCompanyReportSettingsResponseSettingsLicensesItemStateMax = 2;
+
+export const updateCompanyReportSettingsResponseSettingsLicensesItemNumberMax = 60;
+
+export const updateCompanyReportSettingsResponseSettingsLicensesItemClassificationMax = 120;
+
+export const updateCompanyReportSettingsResponseSettingsQualificationsTextMax = 4000;
+
+export const updateCompanyReportSettingsResponseSettingsPricingBasisStatementMax = 2000;
+
+
+
+export const UpdateCompanyReportSettingsResponse = zod.object({
+  "settings": zod.object({
+  "licenses": zod.array(zod.object({
+  "state": zod.string().min(updateCompanyReportSettingsResponseSettingsLicensesItemStateMin).max(updateCompanyReportSettingsResponseSettingsLicensesItemStateMax),
+  "number": zod.string().min(1).max(updateCompanyReportSettingsResponseSettingsLicensesItemNumberMax),
+  "classification": zod.string().min(1).max(updateCompanyReportSettingsResponseSettingsLicensesItemClassificationMax)
+})),
+  "qualificationsText": zod.string().max(updateCompanyReportSettingsResponseSettingsQualificationsTextMax).nullable(),
+  "pricingBasisStatement": zod.string().max(updateCompanyReportSettingsResponseSettingsPricingBasisStatementMax).nullable()
+})
+})
+
+
+/**
+ * Super admin only.
+ * @summary List the company's state legal packs
+ */
+export const ListCompanyStatePacksParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneTitleMax = 200;
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneSubtitleMax = 300;
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOnePreparedByNoteMax = 500;
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemHeadingMax = 200;
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemParagraphsItemMax = 4000;
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneComplaintBlockItemMax = 300;
+
+export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneClosingDisclaimerMax = 2000;
+
+export const listCompanyStatePacksResponsePacksItemUppaDisclaimerMax = 2000;
+
+export const listCompanyStatePacksResponsePacksItemUppaStatuteMax = 300;
+
+export const listCompanyStatePacksResponsePacksItemCodeCitationsItemKeyMax = 60;
+
+export const listCompanyStatePacksResponsePacksItemCodeCitationsItemElementMax = 60;
+
+export const listCompanyStatePacksResponsePacksItemCodeCitationsItemTitleMax = 200;
+
+export const listCompanyStatePacksResponsePacksItemCodeCitationsItemCiteMax = 200;
+
+export const listCompanyStatePacksResponsePacksItemCodeCitationsItemBodyMax = 2000;
+
+
+
+export const ListCompanyStatePacksResponse = zod.object({
+  "packs": zod.array(zod.object({
+  "state": zod.string(),
+  "homeownerRights": zod.union([zod.object({
+  "title": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneTitleMax),
+  "subtitle": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneSubtitleMax),
+  "preparedByNote": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOnePreparedByNoteMax),
+  "sections": zod.array(zod.object({
+  "heading": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemHeadingMax),
+  "paragraphs": zod.array(zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemParagraphsItemMax))
+})),
+  "complaintBlock": zod.array(zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneComplaintBlockItemMax)),
+  "closingDisclaimer": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneClosingDisclaimerMax)
+}),zod.null()]),
+  "uppaDisclaimer": zod.string().max(listCompanyStatePacksResponsePacksItemUppaDisclaimerMax).nullable(),
+  "uppaStatute": zod.string().max(listCompanyStatePacksResponsePacksItemUppaStatuteMax).nullable(),
+  "codeCitations": zod.array(zod.object({
+  "key": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemKeyMax),
+  "element": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemElementMax),
+  "title": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemCiteMax),
+  "body": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemBodyMax)
+}))
+}))
+})
+
+
+/**
+ * Super admin only. `state` is a two-letter code. The pack carries the state's Homeowner Information page, UPPA disclaimer/statute, and code citations printed in the Proof Package.
+ * @summary Create or replace a state legal pack
+ */
+export const upsertCompanyStatePackPathStateMin = 2;
+export const upsertCompanyStatePackPathStateMax = 2;
+
+
+
+export const UpsertCompanyStatePackParams = zod.object({
+  "companyId": zod.coerce.string(),
+  "state": zod.coerce.string().min(upsertCompanyStatePackPathStateMin).max(upsertCompanyStatePackPathStateMax)
+})
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOneTitleMax = 200;
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOneSubtitleMax = 300;
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOnePreparedByNoteMax = 500;
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemHeadingMax = 200;
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemParagraphsItemMax = 4000;
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOneComplaintBlockItemMax = 300;
+
+export const upsertCompanyStatePackBodyPackHomeownerRightsOneClosingDisclaimerMax = 2000;
+
+export const upsertCompanyStatePackBodyPackUppaDisclaimerMax = 2000;
+
+export const upsertCompanyStatePackBodyPackUppaStatuteMax = 300;
+
+export const upsertCompanyStatePackBodyPackCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyStatePackBodyPackCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyStatePackBodyPackCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyStatePackBodyPackCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyStatePackBodyPackCodeCitationsItemBodyMax = 2000;
+
+
+
+export const UpsertCompanyStatePackBody = zod.object({
+  "pack": zod.object({
+  "homeownerRights": zod.union([zod.object({
+  "title": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneTitleMax),
+  "subtitle": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneSubtitleMax),
+  "preparedByNote": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOnePreparedByNoteMax),
+  "sections": zod.array(zod.object({
+  "heading": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemHeadingMax),
+  "paragraphs": zod.array(zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemParagraphsItemMax))
+})),
+  "complaintBlock": zod.array(zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneComplaintBlockItemMax)),
+  "closingDisclaimer": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneClosingDisclaimerMax)
+}),zod.null()]),
+  "uppaDisclaimer": zod.string().max(upsertCompanyStatePackBodyPackUppaDisclaimerMax).nullable(),
+  "uppaStatute": zod.string().max(upsertCompanyStatePackBodyPackUppaStatuteMax).nullable(),
+  "codeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemBodyMax)
+}))
+})
+})
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOneTitleMax = 200;
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOneSubtitleMax = 300;
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOnePreparedByNoteMax = 500;
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemHeadingMax = 200;
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemParagraphsItemMax = 4000;
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOneComplaintBlockItemMax = 300;
+
+export const upsertCompanyStatePackResponsePackHomeownerRightsOneClosingDisclaimerMax = 2000;
+
+export const upsertCompanyStatePackResponsePackUppaDisclaimerMax = 2000;
+
+export const upsertCompanyStatePackResponsePackUppaStatuteMax = 300;
+
+export const upsertCompanyStatePackResponsePackCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyStatePackResponsePackCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyStatePackResponsePackCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyStatePackResponsePackCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyStatePackResponsePackCodeCitationsItemBodyMax = 2000;
+
+
+
+export const UpsertCompanyStatePackResponse = zod.object({
+  "pack": zod.object({
+  "state": zod.string(),
+  "homeownerRights": zod.union([zod.object({
+  "title": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneTitleMax),
+  "subtitle": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneSubtitleMax),
+  "preparedByNote": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOnePreparedByNoteMax),
+  "sections": zod.array(zod.object({
+  "heading": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemHeadingMax),
+  "paragraphs": zod.array(zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemParagraphsItemMax))
+})),
+  "complaintBlock": zod.array(zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneComplaintBlockItemMax)),
+  "closingDisclaimer": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneClosingDisclaimerMax)
+}),zod.null()]),
+  "uppaDisclaimer": zod.string().max(upsertCompanyStatePackResponsePackUppaDisclaimerMax).nullable(),
+  "uppaStatute": zod.string().max(upsertCompanyStatePackResponsePackUppaStatuteMax).nullable(),
+  "codeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemBodyMax)
+}))
+})
+})
+
+
+/**
  * Super admin only. A null `branding` means the default palette is in use.
  * @summary Get the company's forensic-report color palette
  */
