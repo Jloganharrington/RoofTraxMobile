@@ -618,12 +618,12 @@ ${
 
 Rules:
 - Only include codes you are confident actually exist. Cite the state-adopted code edition where you know it; otherwise cite the model code section (e.g. "IRC R905.2.8.5").
-- "body" must be a short plain-text paraphrase of the requirement in the contractor's own words (do NOT reproduce long verbatim code text), 1-3 sentences, ending with why it matters on a storm claim.
+- "body" must start with the exact language of the code section, quoted verbatim and wrapped in double quotes, followed by 1-2 plain-text sentences explaining why it matters on a storm claim. If you are not confident of the exact wording, paraphrase closely and do NOT wrap it in quotes.
 - Plain text only. No HTML, no markdown.
 - Do not duplicate these existing citation keys: ${JSON.stringify(existingKeys)}.
 
 Respond with JSON only, in exactly this shape:
-{"suggestions":[{"key":"snake_case_id","element":"Component name e.g. Drip edge","title":"Short requirement title","cite":"Code section reference","body":"Plain-text paraphrase."}]}`;
+{"suggestions":[{"key":"snake_case_id","element":"Component name e.g. Drip edge","title":"Short requirement title","cite":"Code section reference","body":"\\"Exact code language...\\" Why it matters on a storm claim."}]}`;
 
     try {
       const response = await geminiAi.models.generateContent({
