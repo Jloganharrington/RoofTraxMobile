@@ -387,6 +387,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/state-packs/{state}/code-research:
+    post:
+      tags: [Companies]
+      operationId: researchCompanyStateCodes
+      summary: >-
+        AI code-research wizard. Uses Gemini to research building codes that
+        apply to storm-damage roof/siding replacement in the given state and
+        returns suggested code citations for the contractor to confirm.
+        Nothing is saved — the client adds confirmed suggestions to the state
+        pack via the upsert endpoint. Super admin only.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CodeResearchInput"
+      responses:
+        "200":
+          description: Suggested citations (unsaved).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestions]
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CodeCitation"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: AI research failed — retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /companies/{companyId}/state-packs/{state}:
     put:
       tags: [Companies]
@@ -2694,6 +2754,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/report/code-citations:
+    get:
+      tags: [Inspections]
+      operationId: listInspectionReportCodeCitations
+      summary: >-
+        List the code citations from the company state pack that applies to this
+        inspection's property state, so the rep can pick which ones the compiled
+        Proof Package should include. Gated like report compile (assigned
+        inspector or manager+).
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Applicable state and its citations (empty when no pack applies).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [state, citations]
+                properties:
+                  state:
+                    type: [string, "null"]
+                  citations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CodeCitation"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized for this inspection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /inspections/{inspectionId}/report/compile:
     post:
       tags: [Inspections]
@@ -2709,6 +2818,12 @@ paths:
           required: true
           schema:
             type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompileReportInput"
       responses:
         "200":
           description: Report data compiled and stored.
@@ -3482,6 +3597,34 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/CodeCitation"
+    CodeResearchInput:
+      type: object
+      properties:
+        query:
+          type: [string, "null"]
+          maxLength: 500
+          description: >-
+            Optional specific code or topic to look up (e.g. "drip edge",
+            "IRC R908.3"). Absent means a broad survey of applicable codes.
+        existingKeys:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 60
+          description: Citation keys already in the pack, to avoid duplicates.
+    CompileReportInput:
+      type: object
+      properties:
+        codeCitationKeys:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 60
+          description: >-
+            Keys of the state-pack code citations to include in the compiled
+            Proof Package. Omitted/absent means include all.
     StatePackEnvelope:
       type: object
       required: [pack]

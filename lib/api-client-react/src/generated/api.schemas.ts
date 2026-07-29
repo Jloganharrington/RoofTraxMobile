@@ -202,6 +202,30 @@ export interface UpsertStatePackInput {
   pack: UpsertStatePackInputPack;
 }
 
+export interface CodeResearchInput {
+  /**
+     * Optional specific code or topic to look up (e.g. "drip edge", "IRC R908.3"). Absent means a broad survey of applicable codes.
+     * @maxLength 500
+     * @nullable
+     */
+  query?: string | null;
+  /**
+     * Citation keys already in the pack, to avoid duplicates.
+     * @maxItems 100
+     * @items.maxLength 60
+     */
+  existingKeys?: string[];
+}
+
+export interface CompileReportInput {
+  /**
+     * Keys of the state-pack code citations to include in the compiled Proof Package. Omitted/absent means include all.
+     * @maxItems 100
+     * @items.maxLength 60
+     */
+  codeCitationKeys?: string[];
+}
+
 export interface StatePackEnvelope {
   pack: StatePack;
 }
@@ -2838,6 +2862,10 @@ export type LogoutBrowserSessionParams = {
 returnTo?: string;
 };
 
+export type ResearchCompanyStateCodes200 = {
+  suggestions: CodeCitation[];
+};
+
 export type ListPinsParams = {
 /**
  * Managers/admins only — filter to a single rep's pins.
@@ -2863,6 +2891,12 @@ latitude?: number;
  * Optional longitude of the rep's current location.
  */
 longitude?: number;
+};
+
+export type ListInspectionReportCodeCitations200 = {
+  /** @nullable */
+  state: string | null;
+  citations: CodeCitation[];
 };
 
 export type CompileInspectionReport200 = {

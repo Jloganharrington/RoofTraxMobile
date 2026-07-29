@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  Modal,
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import {
@@ -18,6 +19,8 @@ import {
   getGetInspectionStatusQueryKey,
   useGetInspection,
   useGetInspectionStatus,
+  useListInspectionReportCodeCitations,
+  getListInspectionReportCodeCitationsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getApiBaseUrl } from '@/lib/api';
@@ -144,6 +147,14 @@ export default function InspectionPackageScreen() {
   const [unlockReason, setUnlockReason] = useState('');
   const [unlocking, setUnlocking] = useState(false);
 
+  const citationsQuery = useListInspectionReportCodeCitations(id, {
+    query: { enabled: false, queryKey: getListInspectionReportCodeCitationsQueryKey(id) }
+  });
+
+  const [compileModalVisible, setCompileModalVisible] = useState(false);
+  const [compileCitations, setCompileCitations] = useState<{key: string, label: string}[]>([]);
+  const [selectedCitationKeys, setSelectedCitationKeys] = useState<Set<string>>(new Set());
+
   async function handleUnlock() {
     const reason = unlockReason.trim();
     if (!reason) {
@@ -183,7 +194,31 @@ export default function InspectionPackageScreen() {
     }
   }
 
-  async function handleCompileReport() {
+  async function triggerCompileFlow() {
+    if (compiling) return;
+    try {
+      const res = await citationsQuery.refetch();
+      const citations = res.data?.citations || [];
+      if (citations.length > 0) {
+        setCompileCitations(citations.map(c => ({ key: c.key, label: `${c.element} — ${c.cite} — ${c.title}` })));
+        setSelectedCitationKeys(new Set(citations.map(c => c.key)));
+        setCompileModalVisible(true);
+      } else {
+        // No citations to pick — compile with the server's include-all default.
+        handleCompileReport(null);
+      }
+    } catch {
+      // Listing failed — never silently exclude citations; let the server
+      // apply its include-all default.
+      handleCompileReport(null);
+    }
+  }
+
+  // `citationKeys === null` means "no explicit selection" — the server then
+  // includes every state-pack citation. An empty array is a real selection
+  // (compile with none).
+  async function handleCompileReport(citationKeys: string[] | null = null) {
+    setCompileModalVisible(false);
     if (compiling) return;
     setCompiling(true);
     setCompileError(null);
@@ -195,7 +230,7 @@ export default function InspectionPackageScreen() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: '{}',
+        body: JSON.stringify(citationKeys ? { codeCitationKeys: citationKeys } : {}),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -567,18 +602,18 @@ export default function InspectionPackageScreen() {
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
-              onPress={handleCompileReport}
-              disabled={compiling}
+              onPress={triggerCompileFlow}
+              disabled={compiling || citationsQuery.isFetching}
               style={[
                 styles.reportBtn,
                 {
                   backgroundColor: colors.secondary,
-                  opacity: compiling ? 0.6 : 1,
+                  opacity: (compiling || citationsQuery.isFetching) ? 0.6 : 1,
                   flex: inspection?.compiledReportReadyAt ? 1 : undefined,
                 },
               ]}
             >
-              {compiling ? (
+              {compiling || citationsQuery.isFetching ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Icon name="cpu" size={14} color="#fff" />
@@ -847,6 +882,55 @@ export default function InspectionPackageScreen() {
       )}
 
       <View style={{ height: 40 }} />
+
+      {/* Code Citation Selection Modal */}
+      <Modal visible={compileModalVisible} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '80%' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.foreground, marginBottom: 8 }}>Code citations to include</Text>
+            <Text style={{ fontSize: 13, color: colors.mutedForeground, marginBottom: 16 }}>
+              Select which codes apply to this specific property. Unchecked codes will be excluded from the report.
+            </Text>
+            <ScrollView style={{ marginBottom: 20 }}>
+              {compileCitations.map(c => {
+                const isSelected = selectedCitationKeys.has(c.key);
+                return (
+                  <Pressable
+                    key={c.key}
+                    onPress={() => {
+                      const next = new Set(selectedCitationKeys);
+                      if (isSelected) next.delete(c.key);
+                      else next.add(c.key);
+                      setSelectedCitationKeys(next);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                  >
+                    <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 1, borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                      {isSelected && <Icon name="check" size={16} color="#fff" />}
+                    </View>
+                    <Text style={{ flex: 1, fontSize: 14, color: colors.foreground }}>{c.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Pressable
+                onPress={() => setCompileModalVisible(false)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handleCompileReport(Array.from(selectedCitationKeys))}
+                style={{ flex: 2, paddingVertical: 12, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600' }}>Compile Report</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </ScrollView>
     </KeyboardAvoidingView>
   );

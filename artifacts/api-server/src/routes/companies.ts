@@ -11,8 +11,11 @@ import {
   ListCompanyStatePacksResponse,
   UpsertCompanyStatePackBody,
   UpsertCompanyStatePackResponse,
+  ResearchCompanyStateCodesBody,
+  ResearchCompanyStateCodesResponse,
 } from '@workspace/api-zod';
 import { companiesTable, companyStatePacksTable, db, userProfilesTable } from '@workspace/db';
+import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -546,6 +549,14 @@ router.put(
     }
     const p = parsed.data.pack;
 
+    // Citation keys are the selection identity at compile time — duplicates
+    // would make per-compile citation selection ambiguous.
+    const keys = p.codeCitations.map((c) => c.key.trim().toLowerCase());
+    if (new Set(keys).size !== keys.length) {
+      res.status(400).json({ error: 'Code citation keys must be unique within the pack' });
+      return;
+    }
+
     const values = {
       companyId,
       state,
@@ -569,6 +580,80 @@ router.put(
       .returning();
 
     res.json(UpsertCompanyStatePackResponse.parse({ pack: statePackToWire(saved) }));
+  },
+);
+
+// POST /companies/:companyId/state-packs/:state/code-research — AI wizard.
+// Researches building codes applicable to storm-damage roof/siding work in
+// the given state (or looks up a specific code the admin typed) and returns
+// SUGGESTED citations. Nothing is persisted here — the client adds confirmed
+// suggestions to the pack via the upsert endpoint. Super admin only.
+router.post(
+  '/companies/:companyId/state-packs/:state/code-research',
+  async (req: Request, res: Response) => {
+    const companyId = await requireSameCompanySuperAdmin(req, res);
+    if (!companyId) return;
+
+    const state = String(req.params.state ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(state)) {
+      res.status(400).json({ error: 'State must be a 2-letter code' });
+      return;
+    }
+
+    const parsed = ResearchCompanyStateCodesBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid payload' });
+      return;
+    }
+    const query = parsed.data.query?.trim() || null;
+    const existingKeys = (parsed.data.existingKeys ?? []).slice(0, 100);
+
+    const prompt = `You are a building-code research assistant for a licensed storm-restoration roofing contractor operating in the U.S. state with postal code "${state}".
+
+${
+  query
+    ? `The contractor asked you to look up this specific code or topic: "${query}". Return only citations directly responsive to that request (usually 1-3).`
+    : `Survey the building codes that most commonly apply to storm-damage roof and siding replacement in that state (typically the state-adopted edition of the IRC/IBC plus any state amendments). Return the 5-8 most load-bearing citations a carrier would scrutinize (e.g. drip edge, ice barrier, underlayment, flashing, matching/repair limitations, permit triggers).`
+}
+
+Rules:
+- Only include codes you are confident actually exist. Cite the state-adopted code edition where you know it; otherwise cite the model code section (e.g. "IRC R905.2.8.5").
+- "body" must be a short plain-text paraphrase of the requirement in the contractor's own words (do NOT reproduce long verbatim code text), 1-3 sentences, ending with why it matters on a storm claim.
+- Plain text only. No HTML, no markdown.
+- Do not duplicate these existing citation keys: ${JSON.stringify(existingKeys)}.
+
+Respond with JSON only, in exactly this shape:
+{"suggestions":[{"key":"snake_case_id","element":"Component name e.g. Drip edge","title":"Short requirement title","cite":"Code section reference","body":"Plain-text paraphrase."}]}`;
+
+    try {
+      const response = await geminiAi.models.generateContent({
+        model: 'gemini-3.1-pro-preview',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: { responseMimeType: 'application/json', maxOutputTokens: 8192 },
+      });
+      const raw = (response.text ?? '').replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+      const parsedOut = JSON.parse(raw) as { suggestions?: unknown };
+      const candidates = Array.isArray(parsedOut.suggestions) ? parsedOut.suggestions : [];
+      const seen = new Set(existingKeys);
+      const suggestions: Array<{ key: string; element: string; title: string; cite: string; body: string }> = [];
+      for (const c of candidates) {
+        if (typeof c !== 'object' || c === null) continue;
+        const s = c as Record<string, unknown>;
+        const key = String(s.key ?? '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60);
+        const element = String(s.element ?? '').trim().slice(0, 60);
+        const title = String(s.title ?? '').trim().slice(0, 200);
+        const cite = String(s.cite ?? '').trim().slice(0, 200);
+        const body = String(s.body ?? '').trim().slice(0, 2000);
+        if (!key || !element || !title || !cite || !body || seen.has(key)) continue;
+        seen.add(key);
+        suggestions.push({ key, element, title, cite, body });
+      }
+      res.json(ResearchCompanyStateCodesResponse.parse({ suggestions }));
+    } catch (err) {
+      req.log.error({ err }, 'State code research failed');
+      res.status(502).json({ error: 'Code research failed — please try again' });
+      return;
+    }
   },
 );
 

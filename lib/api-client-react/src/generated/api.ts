@@ -31,9 +31,11 @@ import type {
   BulkCreatePinsInput,
   CanvassingCurrentEnvelope,
   CanvassingSessionEnvelope,
+  CodeResearchInput,
   CompanyEnvelope,
   CompanyReportSettingsEnvelope,
   CompileInspectionReport200,
+  CompileReportInput,
   CreateAttestationInput,
   CreateBugReportInput,
   CreateCompanyRequest,
@@ -78,6 +80,7 @@ import type {
   InspectionSlopeEnvelope,
   InspectionStatusEnvelope,
   InteriorObservationEnvelope,
+  ListInspectionReportCodeCitations200,
   ListPinsParams,
   LocationPingBody,
   LocationPingSuccess,
@@ -93,6 +96,7 @@ import type {
   PreflightResultEnvelope,
   ProfileEnvelope,
   ReportBrandingEnvelope,
+  ResearchCompanyStateCodes200,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
@@ -1088,6 +1092,80 @@ export function useListCompanyStatePacks<TData = Awaited<ReturnType<typeof listC
 
 
 
+
+export const getResearchCompanyStateCodesUrl = (companyId: string,
+    state: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/state-packs/${state}/code-research`
+}
+
+/**
+ * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the state pack via the upsert endpoint. Super admin only.
+ */
+export const researchCompanyStateCodes = async (companyId: string,
+    state: string,
+    codeResearchInput?: CodeResearchInput, options?: RequestInit): Promise<ResearchCompanyStateCodes200> => {
+
+  return customFetch<ResearchCompanyStateCodes200>(getResearchCompanyStateCodesUrl(companyId,state),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(codeResearchInput)
+  }
+);}
+
+
+
+
+
+export const getResearchCompanyStateCodesMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof researchCompanyStateCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof researchCompanyStateCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext> => {
+
+const mutationKey = ['researchCompanyStateCodes'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof researchCompanyStateCodes>>, {companyId: string;state: string;data?: BodyType<CodeResearchInput>}> = (props) => {
+          const {companyId,state,data} = props ?? {};
+
+          return  researchCompanyStateCodes(companyId,state,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResearchCompanyStateCodesMutationResult = NonNullable<Awaited<ReturnType<typeof researchCompanyStateCodes>>>
+    export type ResearchCompanyStateCodesMutationBody = BodyType<CodeResearchInput> | undefined
+    export type ResearchCompanyStateCodesMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the state pack via the upsert endpoint. Super admin only.
+ */
+export const useResearchCompanyStateCodes = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof researchCompanyStateCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof researchCompanyStateCodes>>,
+        TError,
+        {companyId: string;state: string;data?: BodyType<CodeResearchInput>},
+        TContext
+      > => {
+      return useMutation(getResearchCompanyStateCodesMutationOptions(options));
+    }
 
 export const getUpsertCompanyStatePackUrl = (companyId: string,
     state: string,) => {
@@ -5302,6 +5380,83 @@ export const useCreateInspectionAddendum = <TError = ErrorType<ErrorEnvelope>,
       return useMutation(getCreateInspectionAddendumMutationOptions(options));
     }
 
+export const getListInspectionReportCodeCitationsUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/report/code-citations`
+}
+
+/**
+ * @summary List the code citations from the company state pack that applies to this inspection's property state, so the rep can pick which ones the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
+ */
+export const listInspectionReportCodeCitations = async (inspectionId: string, options?: RequestInit): Promise<ListInspectionReportCodeCitations200> => {
+
+  return customFetch<ListInspectionReportCodeCitations200>(getListInspectionReportCodeCitationsUrl(inspectionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInspectionReportCodeCitationsQueryKey = (inspectionId: string,) => {
+    return [
+    `/api/inspections/${inspectionId}/report/code-citations`
+    ] as const;
+    }
+
+
+export const getListInspectionReportCodeCitationsQueryOptions = <TData = Awaited<ReturnType<typeof listInspectionReportCodeCitations>>, TError = ErrorType<ErrorEnvelope>>(inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInspectionReportCodeCitations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInspectionReportCodeCitationsQueryKey(inspectionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInspectionReportCodeCitations>>> = ({ signal }) => listInspectionReportCodeCitations(inspectionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: inspectionId !== null && inspectionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInspectionReportCodeCitations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInspectionReportCodeCitationsQueryResult = NonNullable<Awaited<ReturnType<typeof listInspectionReportCodeCitations>>>
+export type ListInspectionReportCodeCitationsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List the code citations from the company state pack that applies to this inspection's property state, so the rep can pick which ones the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
+ */
+
+export function useListInspectionReportCodeCitations<TData = Awaited<ReturnType<typeof listInspectionReportCodeCitations>>, TError = ErrorType<ErrorEnvelope>>(
+ inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInspectionReportCodeCitations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInspectionReportCodeCitationsQueryOptions(inspectionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getCompileInspectionReportUrl = (inspectionId: string,) => {
 
 
@@ -5313,14 +5468,15 @@ export const getCompileInspectionReportUrl = (inspectionId: string,) => {
 /**
  * @summary Compile the Gemini-generated forensic report for this inspection. Gated: assigned inspector or manager+. Allowed post-submission (allowLocked). Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs are resolved fresh at every preview request so the artifact never goes stale.
  */
-export const compileInspectionReport = async (inspectionId: string, options?: RequestInit): Promise<CompileInspectionReport200> => {
+export const compileInspectionReport = async (inspectionId: string,
+    compileReportInput?: CompileReportInput, options?: RequestInit): Promise<CompileInspectionReport200> => {
 
   return customFetch<CompileInspectionReport200>(getCompileInspectionReportUrl(inspectionId),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(compileReportInput)
   }
 );}
 
@@ -5329,8 +5485,8 @@ export const compileInspectionReport = async (inspectionId: string, options?: Re
 
 
 export const getCompileInspectionReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string;data?: BodyType<CompileReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string;data?: BodyType<CompileReportInput>}, TContext> => {
 
 const mutationKey = ['compileInspectionReport'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -5342,10 +5498,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof compileInspectionReport>>, {inspectionId: string}> = (props) => {
-          const {inspectionId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof compileInspectionReport>>, {inspectionId: string;data?: BodyType<CompileReportInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
 
-          return  compileInspectionReport(inspectionId,requestOptions)
+          return  compileInspectionReport(inspectionId,data,requestOptions)
         }
 
 
@@ -5356,18 +5512,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CompileInspectionReportMutationResult = NonNullable<Awaited<ReturnType<typeof compileInspectionReport>>>
-
+    export type CompileInspectionReportMutationBody = BodyType<CompileReportInput> | undefined
     export type CompileInspectionReportMutationError = ErrorType<ErrorEnvelope>
 
     /**
  * @summary Compile the Gemini-generated forensic report for this inspection. Gated: assigned inspector or manager+. Allowed post-submission (allowLocked). Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs are resolved fresh at every preview request so the artifact never goes stale.
  */
 export const useCompileInspectionReport = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof compileInspectionReport>>, TError,{inspectionId: string;data?: BodyType<CompileReportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof compileInspectionReport>>,
         TError,
-        {inspectionId: string},
+        {inspectionId: string;data?: BodyType<CompileReportInput>},
         TContext
       > => {
       return useMutation(getCompileInspectionReportMutationOptions(options));

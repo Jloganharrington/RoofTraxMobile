@@ -312,6 +312,55 @@ export const ListCompanyStatePacksResponse = zod.object({
 
 
 /**
+ * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the state pack via the upsert endpoint. Super admin only.
+ */
+export const researchCompanyStateCodesPathStateMin = 2;
+export const researchCompanyStateCodesPathStateMax = 2;
+
+
+
+export const ResearchCompanyStateCodesParams = zod.object({
+  "companyId": zod.coerce.string(),
+  "state": zod.coerce.string().min(researchCompanyStateCodesPathStateMin).max(researchCompanyStateCodesPathStateMax)
+})
+
+export const researchCompanyStateCodesBodyQueryMax = 500;
+
+export const researchCompanyStateCodesBodyExistingKeysItemMax = 60;
+
+export const researchCompanyStateCodesBodyExistingKeysMax = 100;
+
+
+
+export const ResearchCompanyStateCodesBody = zod.object({
+  "query": zod.string().max(researchCompanyStateCodesBodyQueryMax).nullish().describe('Optional specific code or topic to look up (e.g. \"drip edge\", \"IRC R908.3\"). Absent means a broad survey of applicable codes.'),
+  "existingKeys": zod.array(zod.string().max(researchCompanyStateCodesBodyExistingKeysItemMax)).max(researchCompanyStateCodesBodyExistingKeysMax).optional().describe('Citation keys already in the pack, to avoid duplicates.')
+})
+
+export const researchCompanyStateCodesResponseSuggestionsItemKeyMax = 60;
+
+export const researchCompanyStateCodesResponseSuggestionsItemElementMax = 60;
+
+export const researchCompanyStateCodesResponseSuggestionsItemTitleMax = 200;
+
+export const researchCompanyStateCodesResponseSuggestionsItemCiteMax = 200;
+
+export const researchCompanyStateCodesResponseSuggestionsItemBodyMax = 2000;
+
+
+
+export const ResearchCompanyStateCodesResponse = zod.object({
+  "suggestions": zod.array(zod.object({
+  "key": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemKeyMax),
+  "element": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemElementMax),
+  "title": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemTitleMax),
+  "cite": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemCiteMax),
+  "body": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemBodyMax)
+}))
+})
+
+
+/**
  * Super admin only. `state` is a two-letter code. The pack carries the state's Homeowner Information page, UPPA disclaimer/statute, and code citations printed in the Proof Package.
  * @summary Create or replace a state legal pack
  */
@@ -5221,10 +5270,51 @@ export const CreateInspectionAddendumResponse = zod.object({
 
 
 /**
+ * @summary List the code citations from the company state pack that applies to this inspection's property state, so the rep can pick which ones the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
+ */
+export const ListInspectionReportCodeCitationsParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const listInspectionReportCodeCitationsResponseCitationsItemKeyMax = 60;
+
+export const listInspectionReportCodeCitationsResponseCitationsItemElementMax = 60;
+
+export const listInspectionReportCodeCitationsResponseCitationsItemTitleMax = 200;
+
+export const listInspectionReportCodeCitationsResponseCitationsItemCiteMax = 200;
+
+export const listInspectionReportCodeCitationsResponseCitationsItemBodyMax = 2000;
+
+
+
+export const ListInspectionReportCodeCitationsResponse = zod.object({
+  "state": zod.string().nullable(),
+  "citations": zod.array(zod.object({
+  "key": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemKeyMax),
+  "element": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemElementMax),
+  "title": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemTitleMax),
+  "cite": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemCiteMax),
+  "body": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemBodyMax)
+}))
+})
+
+
+/**
  * @summary Compile the Gemini-generated forensic report for this inspection. Gated: assigned inspector or manager+. Allowed post-submission (allowLocked). Stores a JSON data blob (not a rendered HTML file) in object storage; photo URLs are resolved fresh at every preview request so the artifact never goes stale.
  */
 export const CompileInspectionReportParams = zod.object({
   "inspectionId": zod.coerce.string()
+})
+
+export const compileInspectionReportBodyCodeCitationKeysItemMax = 60;
+
+export const compileInspectionReportBodyCodeCitationKeysMax = 100;
+
+
+
+export const CompileInspectionReportBody = zod.object({
+  "codeCitationKeys": zod.array(zod.string().max(compileInspectionReportBodyCodeCitationKeysItemMax)).max(compileInspectionReportBodyCodeCitationKeysMax).optional().describe('Keys of the state-pack code citations to include in the compiled Proof Package. Omitted\/absent means include all.')
 })
 
 export const CompileInspectionReportResponse = zod.object({

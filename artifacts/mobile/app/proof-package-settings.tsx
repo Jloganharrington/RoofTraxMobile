@@ -18,6 +18,7 @@ import {
   useUpdateCompanyReportSettings,
   useListCompanyStatePacks,
   useUpsertCompanyStatePack,
+  useResearchCompanyStateCodes,
   getGetCompanyReportSettingsQueryKey,
   getListCompanyStatePacksQueryKey,
 } from '@workspace/api-client-react';
@@ -363,6 +364,48 @@ function StatePackEditor({
   // Code Citations
   const [citations, setCitations] = useState<CodeCitation[]>(existingPack?.codeCitations || []);
 
+  const researchCodes = useResearchCompanyStateCodes();
+  const [researchQuery, setResearchQuery] = useState('');
+  const [researchSuggestions, setResearchSuggestions] = useState<CodeCitation[]>([]);
+
+  const handleResearch = async () => {
+    if (researchCodes.isPending) return;
+    try {
+      const resp = await researchCodes.mutateAsync({
+        companyId,
+        state,
+        data: {
+          query: researchQuery.trim() || null,
+          existingKeys: citations.map(c => c.key),
+        }
+      });
+      setResearchSuggestions(resp.suggestions || []);
+      setResearchQuery('');
+    } catch (err: any) {
+      if (err?.status === 502) {
+        Alert.alert('Research unavailable', 'The AI service is temporarily down or timed out. Please try again in a moment.');
+      } else {
+        Alert.alert('Research failed', err instanceof Error ? err.message : 'Check your connection and try again.');
+      }
+    }
+  };
+
+  const addSuggestion = (suggestion: CodeCitation) => {
+    // Generate a unique key if it somehow conflicts
+    let key = suggestion.key;
+    let counter = 1;
+    while (citations.some(c => c.key === key)) {
+      key = `${suggestion.key}_${counter}`;
+      counter++;
+    }
+    setCitations([...citations, { ...suggestion, key }]);
+    setResearchSuggestions(researchSuggestions.filter(s => s.key !== suggestion.key));
+  };
+
+  const dismissSuggestion = (key: string) => {
+    setResearchSuggestions(researchSuggestions.filter(s => s.key !== key));
+  };
+
   const inputStyle = {
     borderWidth: 1,
     borderColor: colors.border,
@@ -550,6 +593,66 @@ function StatePackEditor({
         {/* Code Citations Section */}
         <View style={{ gap: 16 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>Code Citations</Text>
+
+          {/* AI Research Panel */}
+          <View style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, gap: 12 }}>
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>AI Code Research</Text>
+              <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4 }}>
+                Find applicable building codes for roof/siding replacements in {state}.
+              </Text>
+            </View>
+            <TextInput
+              style={inputStyle}
+              placeholder="Optional: specific code or topic, e.g. drip edge or IRC R908.3"
+              placeholderTextColor={colors.mutedForeground}
+              value={researchQuery}
+              onChangeText={setResearchQuery}
+            />
+            <Pressable
+              onPress={handleResearch}
+              disabled={researchCodes.isPending}
+              style={{
+                backgroundColor: colors.secondary,
+                padding: 10,
+                borderRadius: 8,
+                alignItems: 'center',
+                opacity: researchCodes.isPending ? 0.6 : 1,
+              }}
+            >
+              {researchCodes.isPending ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator color={colors.foreground} size="small" />
+                  <Text style={{ color: colors.foreground, fontWeight: '600' }}>Researching applicable codes… (10–20 seconds)</Text>
+                </View>
+              ) : (
+                <Text style={{ color: colors.foreground, fontWeight: '600' }}>Research codes</Text>
+              )}
+            </Pressable>
+          </View>
+
+          {/* AI Suggestions */}
+          {researchSuggestions.length > 0 && (
+            <View style={{ gap: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>Suggestions</Text>
+              {researchSuggestions.map(s => (
+                <View key={s.key} style={{ backgroundColor: colors.background, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, gap: 8 }}>
+                  <Text style={{ fontWeight: '700', color: colors.foreground }}>{s.element} — {s.title}</Text>
+                  <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '600' }}>{s.cite}</Text>
+                  <Text style={{ fontSize: 13, color: colors.foreground }}>{s.body}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4, justifyContent: 'flex-end' }}>
+                    <Pressable onPress={() => dismissSuggestion(s.key)} style={{ paddingVertical: 6, paddingHorizontal: 12 }}>
+                      <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>Dismiss</Text>
+                    </Pressable>
+                    <Pressable onPress={() => addSuggestion(s)} style={{ backgroundColor: colors.primary, paddingVertical: 6, paddingHorizontal: 16, borderRadius: 6 }}>
+                      <Text style={{ color: '#fff', fontWeight: '600' }}>Add</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
           {citations.map((c, i) => (
             <View key={i} style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, gap: 8, borderWidth: 1, borderColor: colors.border }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>

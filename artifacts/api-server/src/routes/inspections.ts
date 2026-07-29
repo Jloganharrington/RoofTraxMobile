@@ -49,6 +49,8 @@ import {
   UpdateInspectionBody,
   UpdateInspectionResponse,
   EmailInspectionReportBody,
+  CompileInspectionReportBody,
+  ListInspectionReportCodeCitationsResponse,
 } from '@workspace/api-zod';
 import nodemailer from 'nodemailer';
 import { anthropic } from '@workspace/integrations-anthropic-ai';
@@ -3877,6 +3879,52 @@ async function tryGetPhotoSignedUrl(
   return objSvc.tryGetSignedObjectUrl(photoUrl, 900); // 15-min TTL
 }
 
+// GET /inspections/:inspectionId/report/code-citations
+// Lists the code citations from the company state pack that applies to this
+// inspection's property state so the rep can pick which ones the compiled
+// Proof Package should include. Gated like compile (inspector or manager+).
+router.get('/inspections/:inspectionId/report/code-citations', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const statePacks = await db
+    .select()
+    .from(companyStatePacksTable)
+    .where(eq(companyStatePacksTable.companyId, actor.companyId));
+
+  // Same state resolution as the compile route: parse from the address,
+  // else a company with exactly one pack unambiguously uses that one.
+  const stateMatch = (inspection.address ?? '').match(/\b([A-Za-z]{2})[,]?\s+\d{5}(?:-\d{4})?\b/);
+  const propertyState =
+    stateMatch?.[1]?.toUpperCase() ?? (statePacks.length === 1 ? statePacks[0]!.state : null);
+  const statePack = propertyState
+    ? (statePacks.find((p) => p.state === propertyState) ?? null)
+    : null;
+
+  res.json(
+    ListInspectionReportCodeCitationsResponse.parse({
+      state: statePack?.state ?? null,
+      citations: dedupeCitationsByKey(statePack?.codeCitations ?? []),
+    }),
+  );
+});
+
+// Defensive dedupe (keep first) — new upserts reject duplicate keys, but a
+// legacy pack with duplicates would make key-based selection ambiguous.
+function dedupeCitationsByKey<T extends { key: string }>(citations: T[]): T[] {
+  const seen = new Set<string>();
+  return citations.filter((c) => {
+    const k = c.key.trim().toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 // POST /inspections/:inspectionId/report/compile
 // Calls Gemini 2.5-flash to arrange inspection data into the HTML report
 // template, uploads the result to object storage, and writes the path back.
@@ -4265,6 +4313,16 @@ ${JSON.stringify(photoBrief)}
     return;
   }
 
+  // Optional per-compile citation selection: the rep can pick which of the
+  // state pack's code citations ship in this Proof Package. Absent/omitted
+  // body means include all. The selection is baked into the versioned blob.
+  const compileBody = CompileInspectionReportBody.safeParse(req.body ?? {});
+  const selectedKeys = compileBody.success ? (compileBody.data.codeCitationKeys ?? null) : null;
+  const allCitations = dedupeCitationsByKey(statePack!.codeCitations ?? []);
+  const selectedCodeCitations = selectedKeys
+    ? allCitations.filter((c) => selectedKeys.includes(c.key))
+    : allCitations;
+
   // Inspector signature path (object path — signed fresh at render time).
   const signaturePath = inspectorProfile?.signatureUrl ?? null;
 
@@ -4410,7 +4468,7 @@ ${JSON.stringify(photoBrief)}
       : null;
 
   // Scope exhibit from the stored estimate (server-hydrated price snapshot).
-  const codeCiteByKey = new Map((statePack!.codeCitations ?? []).map((c) => [c.key, c.cite]));
+  const codeCiteByKey = new Map(selectedCodeCitations.map((c) => [c.key, c.cite]));
   const scope = estimateForLinks?.lines?.length
     ? {
         lineItems: estimateForLinks.lines.map((li) => ({
@@ -4464,7 +4522,7 @@ ${JSON.stringify(photoBrief)}
       homeownerRights: statePack!.homeownerRights ?? null,
       uppaDisclaimer: statePack!.uppaDisclaimer ?? null,
       uppaStatute: statePack!.uppaStatute ?? null,
-      codeCitations: statePack!.codeCitations ?? [],
+      codeCitations: selectedCodeCitations,
     },
     phase1Date: fmtDate(inspection.preliminaryCompletedAt),
     phase2Date: fmtDate(inspection.lockedAt ?? inspection.updatedAt),

@@ -9,5 +9,6 @@ description: How the v6 Proof Package (A–M exhibit) pipeline works and its inv
 - Exhibit letters A–M are FIXED: an inapplicable exhibit is omitted, letters never re-shift. New content goes in as supplemental pages after M, not as new letters.
 - Compile 422-gates on company report settings (licenses, qualifications) and a state pack matching the property state (parsed from the address, case-insensitive; single-pack fallback). Portal/preview routes only render existing blobs, so the gate can't be bypassed.
 - State-pack text supports `{{contractor}}`/`{{license}}` tokens, substituted at render from company settings.
+- Code-citation `key` is the selection identity: upsert rejects duplicate keys, list/compile defensively dedupe, and per-compile selection (`codeCitationKeys`) uses absent = include-all vs `[]` = none — never collapse those two.
 - **Why:** report content is legal collateral per state; company/state settings are super-admin curated (report-settings + state-packs routes, `requireSameCompanySuperAdmin`).
 - **How to apply:** any new report surface must reuse the same reportData snapshot + fresh-signing rule (object paths in blobs, sign at render), and keep carrier-visibility gating (`carrierVisible`) in every render branch.
