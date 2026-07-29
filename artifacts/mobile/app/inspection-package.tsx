@@ -19,6 +19,7 @@ import {
   getGetInspectionStatusQueryKey,
   useGetInspection,
   useGetInspectionStatus,
+  useEmailInspectionReport,
   useListInspectionReportCodeCitations,
   getListInspectionReportCodeCitationsQueryKey,
 } from '@workspace/api-client-react';
@@ -31,6 +32,14 @@ import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useGetAgreement, useEmailAgreement, useVoidAgreement } from '@/lib/agreementApi';
+import {
+  ReportBlockedError,
+  composeProofPackageEmail,
+  fetchProofPackageHtml,
+  generateProofPackagePdf,
+  readProofPackagePdfBase64,
+  shareProofPackagePdf,
+} from '@/lib/proofPackageShare';
 
 // M-F (F3) — Status & package receipt. Polls the server for this inspection's
 // submission status and a clearly-labeled receipt showing what intake
@@ -47,7 +56,8 @@ export default function InspectionPackageScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { role } = useProfile();
+  const { role, profile } = useProfile();
+  const smtpConfigured = profile?.smtpConfigured ?? false;
   const isSuperAdmin = role === 'super_admin';
   const isManagerOrAdmin = role === 'manager' || role === 'admin' || role === 'super_admin';
 
@@ -81,6 +91,12 @@ export default function InspectionPackageScreen() {
   // Report compilation state
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
+
+  // Report share state (download / email the compiled Proof Package)
+  const emailReport = useEmailInspectionReport();
+  const [reportBusy, setReportBusy] = useState<null | 'download' | 'email'>(null);
+  const [showReportEmailInput, setShowReportEmailInput] = useState(false);
+  const [reportEmailRecipient, setReportEmailRecipient] = useState('');
 
   // Content-lint state for the latest compiled version. The server lints
   // every AI fragment against the contractor-lane policy; `blocked` prevents
@@ -253,6 +269,94 @@ export default function InspectionPackageScreen() {
       setCompiling(false);
     }
   }
+
+  async function buildReportPdf(): Promise<string | null> {
+    try {
+      const html = await fetchProofPackageHtml(id);
+      return await generateProofPackagePdf(html, inspection?.address);
+    } catch (err) {
+      if (err instanceof ReportBlockedError) {
+        Alert.alert('Export blocked', err.message);
+      } else {
+        Alert.alert(
+          'Could not prepare the report',
+          err instanceof Error ? err.message : 'Check your connection and try again.',
+        );
+      }
+      return null;
+    }
+  }
+
+  const handleDownloadReport = async () => {
+    if (reportBusy) return;
+    setReportBusy('download');
+    try {
+      const pdfUri = await buildReportPdf();
+      if (!pdfUri) return;
+      const shared = await shareProofPackagePdf(pdfUri);
+      if (!shared) {
+        Alert.alert('Sharing unavailable', 'This device cannot open the share sheet.');
+      }
+    } finally {
+      setReportBusy(null);
+    }
+  };
+
+  const handleEmailReport = async () => {
+    const trimmed = reportEmailRecipient.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    if (reportBusy) return;
+    setReportBusy('email');
+    try {
+      const pdfUri = await buildReportPdf();
+      if (!pdfUri) return;
+
+      if (smtpConfigured) {
+        // Server sends via the rep's own SMTP — works even without a mail app.
+        try {
+          const pdfBase64 = await readProofPackagePdfBase64(pdfUri);
+          // The server email route caps attachments (~10MB PDF as base64).
+          // Oversized packages go straight to the device composer, which has
+          // no such limit.
+          if (pdfBase64.length > 13_000_000) throw new Error('PDF too large for server email');
+          await emailReport.mutateAsync({
+            inspectionId: id,
+            data: {
+              recipient: trimmed,
+              pdfBase64,
+              filename: 'RoofTrax-Proof-Package.pdf',
+              subject: `Forensic Inspection Report & Proof Package — ${inspection?.address ?? 'your property'}`,
+              body: 'Attached is the Forensic Inspection Report & Proof Package for your property.',
+            },
+          });
+          setShowReportEmailInput(false);
+          setReportEmailRecipient('');
+          Alert.alert('Sent', `Proof Package emailed to ${trimmed}.`);
+          return;
+        } catch (err) {
+          // SMTP problem or offline — fall through to the device composer so
+          // the rep is never dead-ended in the field.
+          console.warn('[proof-package] smtp send failed', err);
+        }
+      }
+
+      const composed = await composeProofPackageEmail(pdfUri, inspection?.address, trimmed);
+      if (composed) {
+        setShowReportEmailInput(false);
+        setReportEmailRecipient('');
+      } else {
+        Alert.alert(
+          'Mail unavailable',
+          'No mail account is configured on this device. Set up SMTP in your profile or add a mail account.',
+        );
+      }
+    } finally {
+      setReportBusy(null);
+    }
+  };
 
   const handleEmailAgreement = async () => {
     const trimmed = emailRecipient.trim();
@@ -640,6 +744,98 @@ export default function InspectionPackageScreen() {
               </Pressable>
             ) : null}
           </View>
+
+          {/* Download & email — only once a compiled package exists */}
+          {inspection?.compiledReportReadyAt ? (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  onPress={handleDownloadReport}
+                  disabled={reportBusy !== null}
+                  style={[
+                    styles.reportBtn,
+                    {
+                      backgroundColor: colors.background,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity: reportBusy ? 0.6 : 1,
+                      flex: 1,
+                    },
+                  ]}
+                >
+                  {reportBusy === 'download' ? (
+                    <ActivityIndicator size="small" color={colors.foreground} />
+                  ) : (
+                    <Icon name="file-text" size={14} color={colors.foreground} />
+                  )}
+                  <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
+                    {reportBusy === 'download' ? 'Preparing PDF…' : 'Download PDF'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setShowReportEmailInput((v) => !v)}
+                  disabled={reportBusy !== null}
+                  style={[
+                    styles.reportBtn,
+                    {
+                      backgroundColor: colors.background,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity: reportBusy ? 0.6 : 1,
+                      flex: 1,
+                    },
+                  ]}
+                >
+                  <Icon name="mail" size={14} color={colors.foreground} />
+                  <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
+                    Email Report
+                  </Text>
+                </Pressable>
+              </View>
+
+              {showReportEmailInput ? (
+                <View style={{ gap: 8 }}>
+                  <TextInput
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      fontSize: 14,
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                    }}
+                    placeholder="Recipient email address"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={reportEmailRecipient}
+                    onChangeText={setReportEmailRecipient}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    autoCorrect={false}
+                  />
+                  <Pressable
+                    onPress={handleEmailReport}
+                    disabled={reportBusy !== null}
+                    style={[
+                      styles.reportBtn,
+                      { backgroundColor: colors.primary, opacity: reportBusy ? 0.6 : 1 },
+                    ]}
+                  >
+                    {reportBusy === 'email' ? (
+                      <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    ) : (
+                      <Icon name="send" size={14} color={colors.primaryForeground} />
+                    )}
+                    <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 13 }}>
+                      {reportBusy === 'email' ? 'Sending…' : 'Send Proof Package'}
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       )}
 
