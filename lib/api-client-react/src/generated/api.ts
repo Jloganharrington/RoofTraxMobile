@@ -58,6 +58,7 @@ import type {
   CurateInspectionPhotosRequest,
   CurationResultEnvelope,
   DamageInstanceEnvelope,
+  DeleteCompanyJurisdictionPack200,
   DeleteSuccess,
   EmailReportInput,
   EmailReportResult,
@@ -80,6 +81,8 @@ import type {
   InspectionSlopeEnvelope,
   InspectionStatusEnvelope,
   InteriorObservationEnvelope,
+  JurisdictionPackEnvelope,
+  JurisdictionPackListEnvelope,
   ListInspectionReportCodeCitations200,
   ListPinsParams,
   LocationPingBody,
@@ -96,13 +99,11 @@ import type {
   PreflightResultEnvelope,
   ProfileEnvelope,
   ReportBrandingEnvelope,
-  ResearchCompanyStateCodes200,
+  ResearchJurisdictionCodes200,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
   SearchAddressParams,
-  StatePackEnvelope,
-  StatePackListEnvelope,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
@@ -125,7 +126,7 @@ import type {
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse,
-  UpsertStatePackInput,
+  UpsertJurisdictionPackInput,
   WeatherCandidatesEnvelope
 } from './api.schemas';
 
@@ -1015,21 +1016,21 @@ export const useUpdateCompanyReportSettings = <TError = ErrorType<ErrorEnvelope>
       return useMutation(getUpdateCompanyReportSettingsMutationOptions(options));
     }
 
-export const getListCompanyStatePacksUrl = (companyId: string,) => {
+export const getListCompanyJurisdictionPacksUrl = (companyId: string,) => {
 
 
 
 
-  return `/api/companies/${companyId}/state-packs`
+  return `/api/companies/${companyId}/jurisdiction-packs`
 }
 
 /**
  * Super admin only.
- * @summary List the company's state legal packs
+ * @summary List the company's Building Regulation Jurisdiction Packs
  */
-export const listCompanyStatePacks = async (companyId: string, options?: RequestInit): Promise<StatePackListEnvelope> => {
+export const listCompanyJurisdictionPacks = async (companyId: string, options?: RequestInit): Promise<JurisdictionPackListEnvelope> => {
 
-  return customFetch<StatePackListEnvelope>(getListCompanyStatePacksUrl(companyId),
+  return customFetch<JurisdictionPackListEnvelope>(getListCompanyJurisdictionPacksUrl(companyId),
   {
     ...options,
     method: 'GET'
@@ -1042,45 +1043,45 @@ export const listCompanyStatePacks = async (companyId: string, options?: Request
 
 
 
-export const getListCompanyStatePacksQueryKey = (companyId: string,) => {
+export const getListCompanyJurisdictionPacksQueryKey = (companyId: string,) => {
     return [
-    `/api/companies/${companyId}/state-packs`
+    `/api/companies/${companyId}/jurisdiction-packs`
     ] as const;
     }
 
 
-export const getListCompanyStatePacksQueryOptions = <TData = Awaited<ReturnType<typeof listCompanyStatePacks>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyStatePacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListCompanyJurisdictionPacksQueryOptions = <TData = Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListCompanyStatePacksQueryKey(companyId);
+  const queryKey =  queryOptions?.queryKey ?? getListCompanyJurisdictionPacksQueryKey(companyId);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCompanyStatePacks>>> = ({ signal }) => listCompanyStatePacks(companyId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>> = ({ signal }) => listCompanyJurisdictionPacks(companyId, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCompanyStatePacks>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type ListCompanyStatePacksQueryResult = NonNullable<Awaited<ReturnType<typeof listCompanyStatePacks>>>
-export type ListCompanyStatePacksQueryError = ErrorType<ErrorEnvelope>
+export type ListCompanyJurisdictionPacksQueryResult = NonNullable<Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>>
+export type ListCompanyJurisdictionPacksQueryError = ErrorType<ErrorEnvelope>
 
 
 /**
- * @summary List the company's state legal packs
+ * @summary List the company's Building Regulation Jurisdiction Packs
  */
 
-export function useListCompanyStatePacks<TData = Awaited<ReturnType<typeof listCompanyStatePacks>>, TError = ErrorType<ErrorEnvelope>>(
- companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyStatePacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useListCompanyJurisdictionPacks<TData = Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyJurisdictionPacks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListCompanyStatePacksQueryOptions(companyId,options)
+  const queryOptions = getListCompanyJurisdictionPacksQueryOptions(companyId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1093,23 +1094,23 @@ export function useListCompanyStatePacks<TData = Awaited<ReturnType<typeof listC
 
 
 
-export const getResearchCompanyStateCodesUrl = (companyId: string,
+export const getResearchJurisdictionCodesUrl = (companyId: string,
     state: string,) => {
 
 
 
 
-  return `/api/companies/${companyId}/state-packs/${state}/code-research`
+  return `/api/companies/${companyId}/jurisdiction-packs/${state}/code-research`
 }
 
 /**
- * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the state pack via the upsert endpoint. Super admin only.
+ * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the jurisdiction pack via the upsert endpoint. Super admin only.
  */
-export const researchCompanyStateCodes = async (companyId: string,
+export const researchJurisdictionCodes = async (companyId: string,
     state: string,
-    codeResearchInput?: CodeResearchInput, options?: RequestInit): Promise<ResearchCompanyStateCodes200> => {
+    codeResearchInput?: CodeResearchInput, options?: RequestInit): Promise<ResearchJurisdictionCodes200> => {
 
-  return customFetch<ResearchCompanyStateCodes200>(getResearchCompanyStateCodesUrl(companyId,state),
+  return customFetch<ResearchJurisdictionCodes200>(getResearchJurisdictionCodesUrl(companyId,state),
   {
     ...options,
     method: 'POST',
@@ -1122,11 +1123,11 @@ export const researchCompanyStateCodes = async (companyId: string,
 
 
 
-export const getResearchCompanyStateCodesMutationOptions = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof researchCompanyStateCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof researchCompanyStateCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext> => {
+export const getResearchJurisdictionCodesMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof researchJurisdictionCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof researchJurisdictionCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext> => {
 
-const mutationKey = ['researchCompanyStateCodes'];
+const mutationKey = ['researchJurisdictionCodes'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1136,10 +1137,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof researchCompanyStateCodes>>, {companyId: string;state: string;data?: BodyType<CodeResearchInput>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof researchJurisdictionCodes>>, {companyId: string;state: string;data?: BodyType<CodeResearchInput>}> = (props) => {
           const {companyId,state,data} = props ?? {};
 
-          return  researchCompanyStateCodes(companyId,state,data,requestOptions)
+          return  researchJurisdictionCodes(companyId,state,data,requestOptions)
         }
 
 
@@ -1149,47 +1150,45 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ResearchCompanyStateCodesMutationResult = NonNullable<Awaited<ReturnType<typeof researchCompanyStateCodes>>>
-    export type ResearchCompanyStateCodesMutationBody = BodyType<CodeResearchInput> | undefined
-    export type ResearchCompanyStateCodesMutationError = ErrorType<ErrorEnvelope>
+    export type ResearchJurisdictionCodesMutationResult = NonNullable<Awaited<ReturnType<typeof researchJurisdictionCodes>>>
+    export type ResearchJurisdictionCodesMutationBody = BodyType<CodeResearchInput> | undefined
+    export type ResearchJurisdictionCodesMutationError = ErrorType<ErrorEnvelope>
 
     /**
- * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the state pack via the upsert endpoint. Super admin only.
+ * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the jurisdiction pack via the upsert endpoint. Super admin only.
  */
-export const useResearchCompanyStateCodes = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof researchCompanyStateCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useResearchJurisdictionCodes = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof researchJurisdictionCodes>>, TError,{companyId: string;state: string;data?: BodyType<CodeResearchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof researchCompanyStateCodes>>,
+        Awaited<ReturnType<typeof researchJurisdictionCodes>>,
         TError,
         {companyId: string;state: string;data?: BodyType<CodeResearchInput>},
         TContext
       > => {
-      return useMutation(getResearchCompanyStateCodesMutationOptions(options));
+      return useMutation(getResearchJurisdictionCodesMutationOptions(options));
     }
 
-export const getUpsertCompanyStatePackUrl = (companyId: string,
-    state: string,) => {
+export const getUpsertCompanyJurisdictionPackUrl = (companyId: string,) => {
 
 
 
 
-  return `/api/companies/${companyId}/state-packs/${state}`
+  return `/api/companies/${companyId}/jurisdiction-packs/upsert`
 }
 
 /**
- * Super admin only. `state` is a two-letter code. The pack carries the state's Homeowner Information page, UPPA disclaimer/statute, and code citations printed in the Proof Package.
- * @summary Create or replace a state legal pack
+ * Super admin only. Packs are identified by a free-form jurisdiction name (unique per company) plus a two-letter state code used to match properties at compile time. The pack carries the Proof Package opening statement titles, the UPPA law and statement, and the general / roofing / siding code citations printed in the package. Include `pack.id` to update an existing pack; omit it to create one.
+ * @summary Create or update a Building Regulation Jurisdiction Pack
  */
-export const upsertCompanyStatePack = async (companyId: string,
-    state: string,
-    upsertStatePackInput: UpsertStatePackInput, options?: RequestInit): Promise<StatePackEnvelope> => {
+export const upsertCompanyJurisdictionPack = async (companyId: string,
+    upsertJurisdictionPackInput: UpsertJurisdictionPackInput, options?: RequestInit): Promise<JurisdictionPackEnvelope> => {
 
-  return customFetch<StatePackEnvelope>(getUpsertCompanyStatePackUrl(companyId,state),
+  return customFetch<JurisdictionPackEnvelope>(getUpsertCompanyJurisdictionPackUrl(companyId),
   {
     ...options,
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(upsertStatePackInput)
+    body: JSON.stringify(upsertJurisdictionPackInput)
   }
 );}
 
@@ -1197,11 +1196,11 @@ export const upsertCompanyStatePack = async (companyId: string,
 
 
 
-export const getUpsertCompanyStatePackMutationOptions = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyStatePack>>, TError,{companyId: string;state: string;data: BodyType<UpsertStatePackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyStatePack>>, TError,{companyId: string;state: string;data: BodyType<UpsertStatePackInput>}, TContext> => {
+export const getUpsertCompanyJurisdictionPackMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyJurisdictionPack>>, TError,{companyId: string;data: BodyType<UpsertJurisdictionPackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyJurisdictionPack>>, TError,{companyId: string;data: BodyType<UpsertJurisdictionPackInput>}, TContext> => {
 
-const mutationKey = ['upsertCompanyStatePack'];
+const mutationKey = ['upsertCompanyJurisdictionPack'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -1211,10 +1210,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertCompanyStatePack>>, {companyId: string;state: string;data: BodyType<UpsertStatePackInput>}> = (props) => {
-          const {companyId,state,data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertCompanyJurisdictionPack>>, {companyId: string;data: BodyType<UpsertJurisdictionPackInput>}> = (props) => {
+          const {companyId,data} = props ?? {};
 
-          return  upsertCompanyStatePack(companyId,state,data,requestOptions)
+          return  upsertCompanyJurisdictionPack(companyId,data,requestOptions)
         }
 
 
@@ -1224,22 +1223,96 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type UpsertCompanyStatePackMutationResult = NonNullable<Awaited<ReturnType<typeof upsertCompanyStatePack>>>
-    export type UpsertCompanyStatePackMutationBody = BodyType<UpsertStatePackInput>
-    export type UpsertCompanyStatePackMutationError = ErrorType<ErrorEnvelope>
+    export type UpsertCompanyJurisdictionPackMutationResult = NonNullable<Awaited<ReturnType<typeof upsertCompanyJurisdictionPack>>>
+    export type UpsertCompanyJurisdictionPackMutationBody = BodyType<UpsertJurisdictionPackInput>
+    export type UpsertCompanyJurisdictionPackMutationError = ErrorType<ErrorEnvelope>
 
     /**
- * @summary Create or replace a state legal pack
+ * @summary Create or update a Building Regulation Jurisdiction Pack
  */
-export const useUpsertCompanyStatePack = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyStatePack>>, TError,{companyId: string;state: string;data: BodyType<UpsertStatePackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useUpsertCompanyJurisdictionPack = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertCompanyJurisdictionPack>>, TError,{companyId: string;data: BodyType<UpsertJurisdictionPackInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof upsertCompanyStatePack>>,
+        Awaited<ReturnType<typeof upsertCompanyJurisdictionPack>>,
         TError,
-        {companyId: string;state: string;data: BodyType<UpsertStatePackInput>},
+        {companyId: string;data: BodyType<UpsertJurisdictionPackInput>},
         TContext
       > => {
-      return useMutation(getUpsertCompanyStatePackMutationOptions(options));
+      return useMutation(getUpsertCompanyJurisdictionPackMutationOptions(options));
+    }
+
+export const getDeleteCompanyJurisdictionPackUrl = (companyId: string,
+    packId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/jurisdiction-packs/${packId}`
+}
+
+/**
+ * Super admin only.
+ * @summary Delete a Building Regulation Jurisdiction Pack
+ */
+export const deleteCompanyJurisdictionPack = async (companyId: string,
+    packId: string, options?: RequestInit): Promise<DeleteCompanyJurisdictionPack200> => {
+
+  return customFetch<DeleteCompanyJurisdictionPack200>(getDeleteCompanyJurisdictionPackUrl(companyId,packId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCompanyJurisdictionPackMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCompanyJurisdictionPack>>, TError,{companyId: string;packId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCompanyJurisdictionPack>>, TError,{companyId: string;packId: string}, TContext> => {
+
+const mutationKey = ['deleteCompanyJurisdictionPack'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCompanyJurisdictionPack>>, {companyId: string;packId: string}> = (props) => {
+          const {companyId,packId} = props ?? {};
+
+          return  deleteCompanyJurisdictionPack(companyId,packId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCompanyJurisdictionPackMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCompanyJurisdictionPack>>>
+
+    export type DeleteCompanyJurisdictionPackMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a Building Regulation Jurisdiction Pack
+ */
+export const useDeleteCompanyJurisdictionPack = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCompanyJurisdictionPack>>, TError,{companyId: string;packId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCompanyJurisdictionPack>>,
+        TError,
+        {companyId: string;packId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCompanyJurisdictionPackMutationOptions(options));
     }
 
 export const getGetCompanyReportBrandingUrl = (companyId: string,) => {
@@ -5389,7 +5462,7 @@ export const getListInspectionReportCodeCitationsUrl = (inspectionId: string,) =
 }
 
 /**
- * @summary List the code citations from the company state pack that applies to this inspection's property state, so the rep can pick which ones the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
+ * @summary List the Building Regulation Jurisdiction Packs that match this inspection's property state (with their code citations by section), so the rep can pick the pack and the citations the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
  */
 export const listInspectionReportCodeCitations = async (inspectionId: string, options?: RequestInit): Promise<ListInspectionReportCodeCitations200> => {
 
@@ -5436,7 +5509,7 @@ export type ListInspectionReportCodeCitationsQueryError = ErrorType<ErrorEnvelop
 
 
 /**
- * @summary List the code citations from the company state pack that applies to this inspection's property state, so the rep can pick which ones the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
+ * @summary List the Building Regulation Jurisdiction Packs that match this inspection's property state (with their code citations by section), so the rep can pick the pack and the citations the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
  */
 
 export function useListInspectionReportCodeCitations<TData = Awaited<ReturnType<typeof listInspectionReportCodeCitations>>, TError = ErrorType<ErrorEnvelope>>(

@@ -1,6 +1,6 @@
 import {
   companiesTable,
-  companyStatePacksTable,
+  companyJurisdictionPacksTable,
   db,
   inspectionsTable,
   userProfilesTable,
@@ -125,10 +125,10 @@ beforeAll(async () => {
     contractorLicenses: [{ state: 'VA', number: 'VA-123456' }],
     qualificationsText: 'Licensed Class A contractor.',
   } as typeof companiesTable.$inferInsert);
-  await db.insert(companyStatePacksTable).values({
+  await db.insert(companyJurisdictionPacksTable).values({
     companyId,
+    jurisdiction: 'State of VA',
     state: 'VA',
-    codeCitations: [],
   });
 
   const [user] = await db
@@ -156,7 +156,7 @@ afterAll(async () => {
   if (inspectionIds.length) {
     await db.delete(inspectionsTable).where(inArray(inspectionsTable.id, inspectionIds));
   }
-  await db.delete(companyStatePacksTable).where(eq(companyStatePacksTable.companyId, companyId));
+  await db.delete(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, companyId));
   await db.delete(userProfilesTable).where(eq(userProfilesTable.userId, rep.userId));
   await db.delete(usersTable).where(eq(usersTable.id, rep.userId));
   await db.delete(companiesTable).where(eq(companiesTable.id, companyId));

@@ -1,6 +1,6 @@
 import {
   companiesTable,
-  companyStatePacksTable,
+  companyJurisdictionPacksTable,
   db,
   inspectionsTable,
   userProfilesTable,
@@ -120,7 +120,15 @@ async function seedInspection(): Promise<string> {
   return row.id;
 }
 
-async function compiledBlob(inspectionId: string): Promise<{ schemaVersion: number; reportData: { statePack: { codeCitations: Array<{ key: string }> } } }> {
+async function compiledBlob(inspectionId: string): Promise<{
+  schemaVersion: number;
+  reportData: {
+    statePack: {
+      jurisdictionLabel: string;
+      codeCitationSections: Array<{ label: string; citations: Array<{ key: string }> }>;
+    };
+  };
+}> {
   const [row] = await db
     .select({ compiledReportPath: inspectionsTable.compiledReportPath })
     .from(inspectionsTable)
@@ -136,7 +144,13 @@ beforeAll(async () => {
     contractorLicenses: [{ state: 'VA', number: 'VA-123456' }],
     qualificationsText: 'Licensed Class A contractor.',
   } as typeof companiesTable.$inferInsert);
-  await db.insert(companyStatePacksTable).values({ companyId, state: 'VA', codeCitations: CITATIONS });
+  await db.insert(companyJurisdictionPacksTable).values({
+    companyId,
+    jurisdiction: 'State of VA',
+    state: 'VA',
+    generalCodeCitations: [CITATIONS[0]!],
+    roofingCodeCitations: [CITATIONS[1]!],
+  });
   superAdmin = await seedUser('super_admin');
   rep = await seedUser('field_rep');
 });
@@ -145,7 +159,7 @@ afterAll(async () => {
   if (inspectionIds.length) {
     await db.delete(inspectionsTable).where(inArray(inspectionsTable.id, inspectionIds));
   }
-  await db.delete(companyStatePacksTable).where(eq(companyStatePacksTable.companyId, companyId));
+  await db.delete(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, companyId));
   for (const u of [superAdmin, rep]) {
     await db.delete(userProfilesTable).where(eq(userProfilesTable.userId, u.userId));
     await db.delete(usersTable).where(eq(usersTable.id, u.userId));
@@ -153,8 +167,8 @@ afterAll(async () => {
   await db.delete(companiesTable).where(eq(companiesTable.id, companyId));
 });
 
-describe('POST /companies/:companyId/state-packs/:state/code-research', () => {
-  const path = `/api/companies/${companyId}/state-packs/VA/code-research`;
+describe('POST /companies/:companyId/jurisdiction-packs/:state/code-research', () => {
+  const path = `/api/companies/${companyId}/jurisdiction-packs/VA/code-research`;
 
   it('requires super_admin', async () => {
     const res = await request(app).post(path).set(auth(rep.sid)).send({});
@@ -195,19 +209,24 @@ describe('POST /companies/:companyId/state-packs/:state/code-research', () => {
 });
 
 describe('duplicate citation keys', () => {
-  it('upsert rejects packs with duplicate citation keys', async () => {
+  it('upsert rejects packs with duplicate citation keys across sections', async () => {
     const res = await request(app)
-      .put(`/api/companies/${companyId}/state-packs/VA`)
+      .put(`/api/companies/${companyId}/jurisdiction-packs/upsert`)
       .set(auth(superAdmin.sid))
       .send({
         pack: {
-          homeownerRights: null,
-          uppaDisclaimer: null,
-          uppaStatute: null,
-          codeCitations: [
+          jurisdiction: 'Dup Test, VA',
+          state: 'VA',
+          openingStatements: [],
+          uppaLaw: null,
+          uppaStatement: null,
+          generalCodeCitations: [
             { key: 'drip_edge', element: 'Drip edge', title: 'A', cite: 'X', body: 'B.' },
+          ],
+          roofingCodeCitations: [
             { key: 'Drip_Edge ', element: 'Drip edge', title: 'A2', cite: 'X2', body: 'B2.' },
           ],
+          sidingCodeCitations: [],
         },
       });
     expect(res.status).toBe(400);
@@ -216,34 +235,41 @@ describe('duplicate citation keys', () => {
   it('listing dedupes legacy packs that already contain duplicate keys', async () => {
     // Write duplicates directly (bypassing the API guard) to simulate legacy data.
     await db
-      .update(companyStatePacksTable)
-      .set({ codeCitations: [...CITATIONS, { ...CITATIONS[0]!, title: 'Legacy duplicate' }] })
-      .where(eq(companyStatePacksTable.companyId, companyId));
+      .update(companyJurisdictionPacksTable)
+      .set({ generalCodeCitations: [CITATIONS[0]!, { ...CITATIONS[0]!, title: 'Legacy duplicate' }] })
+      .where(eq(companyJurisdictionPacksTable.companyId, companyId));
     const inspectionId = await seedInspection();
     const res = await request(app)
       .get(`/api/inspections/${inspectionId}/report/code-citations`)
       .set(auth(rep.sid));
     expect(res.status).toBe(200);
-    expect(res.body.citations.map((c: { key: string }) => c.key)).toEqual(['drip_edge', 'ice_barrier']);
+    expect(res.body.packs[0].generalCodeCitations.map((c: { key: string }) => c.key)).toEqual(['drip_edge']);
     // Restore clean citations for the remaining tests.
     await db
-      .update(companyStatePacksTable)
-      .set({ codeCitations: CITATIONS })
-      .where(eq(companyStatePacksTable.companyId, companyId));
+      .update(companyJurisdictionPacksTable)
+      .set({ generalCodeCitations: [CITATIONS[0]!] })
+      .where(eq(companyJurisdictionPacksTable.companyId, companyId));
   });
 });
 
 describe('GET /inspections/:id/report/code-citations', () => {
-  it('lists the applicable state pack citations for the rep', async () => {
+  it('lists the matching jurisdiction packs with sectioned citations', async () => {
     const inspectionId = await seedInspection();
     const res = await request(app)
       .get(`/api/inspections/${inspectionId}/report/code-citations`)
       .set(auth(rep.sid));
     expect(res.status).toBe(200);
     expect(res.body.state).toBe('VA');
-    expect(res.body.citations.map((c: { key: string }) => c.key)).toEqual(['drip_edge', 'ice_barrier']);
+    expect(res.body.packs).toHaveLength(1);
+    expect(res.body.packs[0].jurisdiction).toBe('State of VA');
+    expect(res.body.packs[0].generalCodeCitations.map((c: { key: string }) => c.key)).toEqual(['drip_edge']);
+    expect(res.body.packs[0].roofingCodeCitations.map((c: { key: string }) => c.key)).toEqual(['ice_barrier']);
   });
 });
+
+function bakedKeys(blob: Awaited<ReturnType<typeof compiledBlob>>): string[] {
+  return blob.reportData.statePack.codeCitationSections.flatMap((s) => s.citations.map((c) => c.key));
+}
 
 describe('per-compile citation selection', () => {
   it('bakes only the selected citations into the compiled blob', async () => {
@@ -254,8 +280,8 @@ describe('per-compile citation selection', () => {
       .send({ codeCitationKeys: ['ice_barrier'] });
     expect(res.status).toBe(200);
     const blob = await compiledBlob(inspectionId);
-    expect(blob.schemaVersion).toBeGreaterThanOrEqual(6);
-    expect(blob.reportData.statePack.codeCitations.map((c) => c.key)).toEqual(['ice_barrier']);
+    expect(blob.schemaVersion).toBeGreaterThanOrEqual(7);
+    expect(bakedKeys(blob)).toEqual(['ice_barrier']);
   });
 
   it('includes all citations when no selection is sent', async () => {
@@ -266,6 +292,39 @@ describe('per-compile citation selection', () => {
       .send({});
     expect(res.status).toBe(200);
     const blob = await compiledBlob(inspectionId);
-    expect(blob.reportData.statePack.codeCitations.map((c) => c.key)).toEqual(['drip_edge', 'ice_barrier']);
+    expect(bakedKeys(blob)).toEqual(['drip_edge', 'ice_barrier']);
+    expect(blob.reportData.statePack.jurisdictionLabel).toBe('State of VA');
+  });
+
+  it('rejects a compile against a pack id that does not match the property state', async () => {
+    const inspectionId = await seedInspection();
+    const res = await request(app)
+      .post(`/api/inspections/${inspectionId}/report/compile`)
+      .set(auth(rep.sid))
+      .send({ jurisdictionPackId: 'nonexistent-pack-id' });
+    expect(res.status).toBe(400);
+  });
+
+  it('requires a pack selection when multiple packs match the state', async () => {
+    const [extra] = await db
+      .insert(companyJurisdictionPacksTable)
+      .values({ companyId, jurisdiction: 'Fairfax County, VA', state: 'VA' })
+      .returning();
+    const inspectionId = await seedInspection();
+    const noPick = await request(app)
+      .post(`/api/inspections/${inspectionId}/report/compile`)
+      .set(auth(rep.sid))
+      .send({});
+    expect(noPick.status).toBe(422);
+    const picked = await request(app)
+      .post(`/api/inspections/${inspectionId}/report/compile`)
+      .set(auth(rep.sid))
+      .send({ jurisdictionPackId: extra!.id });
+    expect(picked.status).toBe(200);
+    const blob = await compiledBlob(inspectionId);
+    expect(blob.reportData.statePack.jurisdictionLabel).toBe('Fairfax County, VA');
+    await db
+      .delete(companyJurisdictionPacksTable)
+      .where(eq(companyJurisdictionPacksTable.id, extra!.id));
   });
 });

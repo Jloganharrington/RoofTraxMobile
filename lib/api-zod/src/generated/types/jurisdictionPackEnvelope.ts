@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { StatePack } from './statePack';
+import type { JurisdictionPack } from './jurisdictionPack';
 
-export interface StatePackEnvelope {
-  pack: StatePack;
+export interface JurisdictionPackEnvelope {
+  pack: JurisdictionPack;
 }

@@ -167,8 +167,14 @@ export default function InspectionPackageScreen() {
     query: { enabled: false, queryKey: getListInspectionReportCodeCitationsQueryKey(id) }
   });
 
+  type CompilePack = {
+    id: string;
+    jurisdiction: string;
+    sections: { label: string; citations: { key: string; label: string }[] }[];
+  };
   const [compileModalVisible, setCompileModalVisible] = useState(false);
-  const [compileCitations, setCompileCitations] = useState<{key: string, label: string}[]>([]);
+  const [compilePacks, setCompilePacks] = useState<CompilePack[]>([]);
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [selectedCitationKeys, setSelectedCitationKeys] = useState<Set<string>>(new Set());
 
   async function handleUnlock() {
@@ -214,14 +220,36 @@ export default function InspectionPackageScreen() {
     if (compiling) return;
     try {
       const res = await citationsQuery.refetch();
-      const citations = res.data?.citations || [];
-      if (citations.length > 0) {
-        setCompileCitations(citations.map(c => ({ key: c.key, label: `${c.element} — ${c.cite} — ${c.title}` })));
-        setSelectedCitationKeys(new Set(citations.map(c => c.key)));
+      const rawPacks = res.data?.packs || [];
+      const packs: CompilePack[] = rawPacks.map(p => ({
+        id: p.id,
+        jurisdiction: p.jurisdiction,
+        sections: [
+          { label: 'General', citations: p.generalCodeCitations },
+          { label: 'Roofing', citations: p.roofingCodeCitations },
+          { label: 'Siding', citations: p.sidingCodeCitations },
+        ]
+          .map(s => ({
+            label: s.label,
+            citations: s.citations.map(c => ({ key: c.key, label: `${c.element} — ${c.cite} — ${c.title}` })),
+          }))
+          .filter(s => s.citations.length > 0),
+      }));
+      const totalCitations = packs.reduce(
+        (n, p) => n + p.sections.reduce((m, s) => m + s.citations.length, 0),
+        0,
+      );
+      if (packs.length > 1 || totalCitations > 0) {
+        const first = packs[0] ?? null;
+        setCompilePacks(packs);
+        setSelectedPackId(first?.id ?? null);
+        setSelectedCitationKeys(
+          new Set(first ? first.sections.flatMap(s => s.citations.map(c => c.key)) : []),
+        );
         setCompileModalVisible(true);
       } else {
-        // No citations to pick — compile with the server's include-all default.
-        handleCompileReport(null);
+        // Nothing to pick — compile with the server's defaults.
+        handleCompileReport(null, packs[0]?.id ?? null);
       }
     } catch {
       // Listing failed — never silently exclude citations; let the server
@@ -231,9 +259,10 @@ export default function InspectionPackageScreen() {
   }
 
   // `citationKeys === null` means "no explicit selection" — the server then
-  // includes every state-pack citation. An empty array is a real selection
-  // (compile with none).
-  async function handleCompileReport(citationKeys: string[] | null = null) {
+  // includes every pack citation. An empty array is a real selection
+  // (compile with none). `packId` picks the jurisdiction pack when several
+  // match the property's state.
+  async function handleCompileReport(citationKeys: string[] | null = null, packId: string | null = null) {
     setCompileModalVisible(false);
     if (compiling) return;
     setCompiling(true);
@@ -246,7 +275,10 @@ export default function InspectionPackageScreen() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(citationKeys ? { codeCitationKeys: citationKeys } : {}),
+        body: JSON.stringify({
+          ...(citationKeys ? { codeCitationKeys: citationKeys } : {}),
+          ...(packId ? { jurisdictionPackId: packId } : {}),
+        }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1085,29 +1117,71 @@ export default function InspectionPackageScreen() {
           <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '80%' }}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: colors.foreground, marginBottom: 8 }}>Code citations to include</Text>
             <Text style={{ fontSize: 13, color: colors.mutedForeground, marginBottom: 16 }}>
-              Select which codes apply to this specific property. Unchecked codes will be excluded from the report.
+              {compilePacks.length > 1
+                ? 'Pick the jurisdiction pack for this property, then select which codes apply. Unchecked codes will be excluded from the report.'
+                : 'Select which codes apply to this specific property. Unchecked codes will be excluded from the report.'}
             </Text>
             <ScrollView style={{ marginBottom: 20 }}>
-              {compileCitations.map(c => {
-                const isSelected = selectedCitationKeys.has(c.key);
-                return (
-                  <Pressable
-                    key={c.key}
-                    onPress={() => {
-                      const next = new Set(selectedCitationKeys);
-                      if (isSelected) next.delete(c.key);
-                      else next.add(c.key);
-                      setSelectedCitationKeys(next);
-                    }}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}
-                  >
-                    <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 1, borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                      {isSelected && <Icon name="check" size={16} color="#fff" />}
-                    </View>
-                    <Text style={{ flex: 1, fontSize: 14, color: colors.foreground }}>{c.label}</Text>
-                  </Pressable>
-                );
-              })}
+              {compilePacks.length > 1 && (
+                <View style={{ marginBottom: 16, gap: 8 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.foreground }}>Jurisdiction</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {compilePacks.map(p => {
+                      const selected = selectedPackId === p.id;
+                      return (
+                        <Pressable
+                          key={p.id}
+                          onPress={() => {
+                            setSelectedPackId(p.id);
+                            setSelectedCitationKeys(
+                              new Set(p.sections.flatMap(s => s.citations.map(c => c.key))),
+                            );
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 16,
+                            borderWidth: 1,
+                            borderColor: selected ? colors.primary : colors.border,
+                            backgroundColor: selected ? colors.primary : 'transparent',
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: selected ? '#fff' : colors.foreground }}>
+                            {p.jurisdiction}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+              {(compilePacks.find(p => p.id === selectedPackId)?.sections ?? []).map(section => (
+                <View key={section.label}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.mutedForeground, marginTop: 12, marginBottom: 4 }}>
+                    {section.label}
+                  </Text>
+                  {section.citations.map(c => {
+                    const isSelected = selectedCitationKeys.has(c.key);
+                    return (
+                      <Pressable
+                        key={c.key}
+                        onPress={() => {
+                          const next = new Set(selectedCitationKeys);
+                          if (isSelected) next.delete(c.key);
+                          else next.add(c.key);
+                          setSelectedCitationKeys(next);
+                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                      >
+                        <View style={{ width: 24, height: 24, borderRadius: 4, borderWidth: 1, borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                          {isSelected && <Icon name="check" size={16} color="#fff" />}
+                        </View>
+                        <Text style={{ flex: 1, fontSize: 14, color: colors.foreground }}>{c.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable
@@ -1117,7 +1191,7 @@ export default function InspectionPackageScreen() {
                 <Text style={{ color: colors.foreground, fontWeight: '600' }}>Cancel</Text>
               </Pressable>
               <Pressable
-                onPress={() => handleCompileReport(Array.from(selectedCitationKeys))}
+                onPress={() => handleCompileReport(Array.from(selectedCitationKeys), selectedPackId)}
                 style={{ flex: 2, paddingVertical: 12, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center' }}
               >
                 <Text style={{ color: '#fff', fontWeight: '600' }}>Compile Report</Text>

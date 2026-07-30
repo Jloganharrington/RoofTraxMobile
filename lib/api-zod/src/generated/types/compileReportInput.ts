@@ -8,7 +8,12 @@
 
 export interface CompileReportInput {
   /**
-     * Keys of the state-pack code citations to include in the compiled Proof Package. Omitted/absent means include all.
+     * The jurisdiction pack to compile with. Required when more than one pack matches the property's state; omitted means the single matching pack.
+     * @nullable
+     */
+  jurisdictionPackId?: string | null;
+  /**
+     * Keys of the jurisdiction-pack code citations (across all three sections) to include in the compiled Proof Package. Omitted/absent means include all.
      * @maxItems 100
      * @items.maxLength 60
      */

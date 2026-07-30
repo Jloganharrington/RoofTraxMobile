@@ -248,245 +248,333 @@ export const UpdateCompanyReportSettingsResponse = zod.object({
 
 /**
  * Super admin only.
- * @summary List the company's state legal packs
+ * @summary List the company's Building Regulation Jurisdiction Packs
  */
-export const ListCompanyStatePacksParams = zod.object({
+export const ListCompanyJurisdictionPacksParams = zod.object({
   "companyId": zod.coerce.string()
 })
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneTitleMax = 200;
+export const listCompanyJurisdictionPacksResponsePacksItemJurisdictionMax = 120;
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneSubtitleMax = 300;
+export const listCompanyJurisdictionPacksResponsePacksItemStateMin = 2;
+export const listCompanyJurisdictionPacksResponsePacksItemStateMax = 2;
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOnePreparedByNoteMax = 500;
+export const listCompanyJurisdictionPacksResponsePacksItemOpeningStatementsItemTitleMax = 300;
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemHeadingMax = 200;
+export const listCompanyJurisdictionPacksResponsePacksItemOpeningStatementsItemBodyMax = 4000;
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemParagraphsItemMax = 4000;
+export const listCompanyJurisdictionPacksResponsePacksItemOpeningStatementsMax = 20;
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneComplaintBlockItemMax = 300;
+export const listCompanyJurisdictionPacksResponsePacksItemUppaLawMax = 300;
 
-export const listCompanyStatePacksResponsePacksItemHomeownerRightsOneClosingDisclaimerMax = 2000;
+export const listCompanyJurisdictionPacksResponsePacksItemUppaStatementMax = 2000;
 
-export const listCompanyStatePacksResponsePacksItemUppaDisclaimerMax = 2000;
+export const listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemKeyMax = 60;
 
-export const listCompanyStatePacksResponsePacksItemUppaStatuteMax = 300;
+export const listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemElementMax = 60;
 
-export const listCompanyStatePacksResponsePacksItemCodeCitationsItemKeyMax = 60;
+export const listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemTitleMax = 200;
 
-export const listCompanyStatePacksResponsePacksItemCodeCitationsItemElementMax = 60;
+export const listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemCiteMax = 200;
 
-export const listCompanyStatePacksResponsePacksItemCodeCitationsItemTitleMax = 200;
+export const listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemBodyMax = 2000;
 
-export const listCompanyStatePacksResponsePacksItemCodeCitationsItemCiteMax = 200;
+export const listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemKeyMax = 60;
 
-export const listCompanyStatePacksResponsePacksItemCodeCitationsItemBodyMax = 2000;
+export const listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemElementMax = 60;
+
+export const listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemTitleMax = 200;
+
+export const listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemCiteMax = 200;
+
+export const listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemBodyMax = 2000;
+
+export const listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemKeyMax = 60;
+
+export const listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemElementMax = 60;
+
+export const listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemTitleMax = 200;
+
+export const listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemCiteMax = 200;
+
+export const listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemBodyMax = 2000;
 
 
 
-export const ListCompanyStatePacksResponse = zod.object({
+export const ListCompanyJurisdictionPacksResponse = zod.object({
   "packs": zod.array(zod.object({
-  "state": zod.string(),
-  "homeownerRights": zod.union([zod.object({
-  "title": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneTitleMax),
-  "subtitle": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneSubtitleMax),
-  "preparedByNote": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOnePreparedByNoteMax),
-  "sections": zod.array(zod.object({
-  "heading": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemHeadingMax),
-  "paragraphs": zod.array(zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneSectionsItemParagraphsItemMax))
+  "id": zod.string(),
+  "jurisdiction": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemJurisdictionMax).describe('Free-form jurisdiction name, e.g. \"Dallas County, TX\".'),
+  "state": zod.string().min(listCompanyJurisdictionPacksResponsePacksItemStateMin).max(listCompanyJurisdictionPacksResponsePacksItemStateMax).describe('Two-letter state code used to match a property to packs.'),
+  "openingStatements": zod.array(zod.object({
+  "title": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemOpeningStatementsItemTitleMax).describe('Applicable code book title in effect (opening statement heading).'),
+  "body": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemOpeningStatementsItemBodyMax).describe('Statement text printed under the title.')
+})).max(listCompanyJurisdictionPacksResponsePacksItemOpeningStatementsMax),
+  "uppaLaw": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemUppaLawMax).nullable().describe('UPPA law \/ governing statute reference.'),
+  "uppaStatement": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemUppaStatementMax).nullable().describe('UPPA statement printed in the Proof Package.'),
+  "generalCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemKeyMax),
+  "element": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemElementMax),
+  "title": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemCiteMax),
+  "body": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemGeneralCodeCitationsItemBodyMax)
 })),
-  "complaintBlock": zod.array(zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneComplaintBlockItemMax)),
-  "closingDisclaimer": zod.string().max(listCompanyStatePacksResponsePacksItemHomeownerRightsOneClosingDisclaimerMax)
-}),zod.null()]),
-  "uppaDisclaimer": zod.string().max(listCompanyStatePacksResponsePacksItemUppaDisclaimerMax).nullable(),
-  "uppaStatute": zod.string().max(listCompanyStatePacksResponsePacksItemUppaStatuteMax).nullable(),
-  "codeCitations": zod.array(zod.object({
-  "key": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemKeyMax),
-  "element": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemElementMax),
-  "title": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemTitleMax),
-  "cite": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemCiteMax),
-  "body": zod.string().max(listCompanyStatePacksResponsePacksItemCodeCitationsItemBodyMax)
+  "roofingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemKeyMax),
+  "element": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemElementMax),
+  "title": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemCiteMax),
+  "body": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemRoofingCodeCitationsItemBodyMax)
+})),
+  "sidingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemKeyMax),
+  "element": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemElementMax),
+  "title": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemCiteMax),
+  "body": zod.string().max(listCompanyJurisdictionPacksResponsePacksItemSidingCodeCitationsItemBodyMax)
 }))
 }))
 })
 
 
 /**
- * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the state pack via the upsert endpoint. Super admin only.
+ * @summary AI code-research wizard. Uses Gemini to research building codes that apply to storm-damage roof/siding replacement in the given state and returns suggested code citations for the contractor to confirm. Nothing is saved — the client adds confirmed suggestions to the jurisdiction pack via the upsert endpoint. Super admin only.
  */
-export const researchCompanyStateCodesPathStateMin = 2;
-export const researchCompanyStateCodesPathStateMax = 2;
+export const researchJurisdictionCodesPathStateMin = 2;
+export const researchJurisdictionCodesPathStateMax = 2;
 
 
 
-export const ResearchCompanyStateCodesParams = zod.object({
+export const ResearchJurisdictionCodesParams = zod.object({
   "companyId": zod.coerce.string(),
-  "state": zod.coerce.string().min(researchCompanyStateCodesPathStateMin).max(researchCompanyStateCodesPathStateMax)
+  "state": zod.coerce.string().min(researchJurisdictionCodesPathStateMin).max(researchJurisdictionCodesPathStateMax)
 })
 
-export const researchCompanyStateCodesBodyQueryMax = 500;
+export const researchJurisdictionCodesBodyQueryMax = 500;
 
-export const researchCompanyStateCodesBodyEditionYearMin = 1990;
-export const researchCompanyStateCodesBodyEditionYearMax = 2035;
+export const researchJurisdictionCodesBodyEditionYearMin = 1990;
+export const researchJurisdictionCodesBodyEditionYearMax = 2035;
 
-export const researchCompanyStateCodesBodyExistingKeysItemMax = 60;
+export const researchJurisdictionCodesBodyExistingKeysItemMax = 60;
 
-export const researchCompanyStateCodesBodyExistingKeysMax = 100;
+export const researchJurisdictionCodesBodyExistingKeysMax = 100;
 
 
 
-export const ResearchCompanyStateCodesBody = zod.object({
-  "query": zod.string().max(researchCompanyStateCodesBodyQueryMax).nullish().describe('Optional specific code or topic to look up (e.g. \"drip edge\", \"IRC R908.3\"). Absent means a broad survey of applicable codes.'),
-  "editionYear": zod.number().min(researchCompanyStateCodesBodyEditionYearMin).max(researchCompanyStateCodesBodyEditionYearMax).nullish().describe('Optional code edition year to research (e.g. 2021 for the 2021 IRC\/IBC). Absent means the state\'s currently adopted edition.'),
-  "existingKeys": zod.array(zod.string().max(researchCompanyStateCodesBodyExistingKeysItemMax)).max(researchCompanyStateCodesBodyExistingKeysMax).optional().describe('Citation keys already in the pack, to avoid duplicates.')
+export const ResearchJurisdictionCodesBody = zod.object({
+  "query": zod.string().max(researchJurisdictionCodesBodyQueryMax).nullish().describe('Optional specific code or topic to look up (e.g. \"drip edge\", \"IRC R908.3\"). Absent means a broad survey of applicable codes.'),
+  "editionYear": zod.number().min(researchJurisdictionCodesBodyEditionYearMin).max(researchJurisdictionCodesBodyEditionYearMax).nullish().describe('Optional code edition year to research (e.g. 2021 for the 2021 IRC\/IBC). Absent means the state\'s currently adopted edition.'),
+  "existingKeys": zod.array(zod.string().max(researchJurisdictionCodesBodyExistingKeysItemMax)).max(researchJurisdictionCodesBodyExistingKeysMax).optional().describe('Citation keys already in the pack, to avoid duplicates.'),
+  "category": zod.union([zod.literal('general'),zod.literal('roofing'),zod.literal('siding'),zod.literal(null)]).nullish().describe('Which citation section the research targets. Steers the survey toward general building code, roofing code, or siding code.')
 })
 
-export const researchCompanyStateCodesResponseSuggestionsItemKeyMax = 60;
+export const researchJurisdictionCodesResponseSuggestionsItemKeyMax = 60;
 
-export const researchCompanyStateCodesResponseSuggestionsItemElementMax = 60;
+export const researchJurisdictionCodesResponseSuggestionsItemElementMax = 60;
 
-export const researchCompanyStateCodesResponseSuggestionsItemTitleMax = 200;
+export const researchJurisdictionCodesResponseSuggestionsItemTitleMax = 200;
 
-export const researchCompanyStateCodesResponseSuggestionsItemCiteMax = 200;
+export const researchJurisdictionCodesResponseSuggestionsItemCiteMax = 200;
 
-export const researchCompanyStateCodesResponseSuggestionsItemBodyMax = 2000;
+export const researchJurisdictionCodesResponseSuggestionsItemBodyMax = 2000;
 
 
 
-export const ResearchCompanyStateCodesResponse = zod.object({
+export const ResearchJurisdictionCodesResponse = zod.object({
   "suggestions": zod.array(zod.object({
-  "key": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemKeyMax),
-  "element": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemElementMax),
-  "title": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemTitleMax),
-  "cite": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemCiteMax),
-  "body": zod.string().max(researchCompanyStateCodesResponseSuggestionsItemBodyMax)
+  "key": zod.string().max(researchJurisdictionCodesResponseSuggestionsItemKeyMax),
+  "element": zod.string().max(researchJurisdictionCodesResponseSuggestionsItemElementMax),
+  "title": zod.string().max(researchJurisdictionCodesResponseSuggestionsItemTitleMax),
+  "cite": zod.string().max(researchJurisdictionCodesResponseSuggestionsItemCiteMax),
+  "body": zod.string().max(researchJurisdictionCodesResponseSuggestionsItemBodyMax)
 }))
 })
 
 
 /**
- * Super admin only. `state` is a two-letter code. The pack carries the state's Homeowner Information page, UPPA disclaimer/statute, and code citations printed in the Proof Package.
- * @summary Create or replace a state legal pack
+ * Super admin only. Packs are identified by a free-form jurisdiction name (unique per company) plus a two-letter state code used to match properties at compile time. The pack carries the Proof Package opening statement titles, the UPPA law and statement, and the general / roofing / siding code citations printed in the package. Include `pack.id` to update an existing pack; omit it to create one.
+ * @summary Create or update a Building Regulation Jurisdiction Pack
  */
-export const upsertCompanyStatePackPathStateMin = 2;
-export const upsertCompanyStatePackPathStateMax = 2;
+export const UpsertCompanyJurisdictionPackParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const upsertCompanyJurisdictionPackBodyPackJurisdictionMax = 120;
+
+export const upsertCompanyJurisdictionPackBodyPackStateMin = 2;
+export const upsertCompanyJurisdictionPackBodyPackStateMax = 2;
+
+export const upsertCompanyJurisdictionPackBodyPackOpeningStatementsItemTitleMax = 300;
+
+export const upsertCompanyJurisdictionPackBodyPackOpeningStatementsItemBodyMax = 4000;
+
+export const upsertCompanyJurisdictionPackBodyPackOpeningStatementsMax = 20;
+
+export const upsertCompanyJurisdictionPackBodyPackUppaLawMax = 300;
+
+export const upsertCompanyJurisdictionPackBodyPackUppaStatementMax = 2000;
+
+export const upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemBodyMax = 2000;
+
+export const upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemBodyMax = 2000;
+
+export const upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemBodyMax = 2000;
 
 
 
-export const UpsertCompanyStatePackParams = zod.object({
+export const UpsertCompanyJurisdictionPackBody = zod.object({
+  "pack": zod.object({
+  "id": zod.string().nullish().describe('Existing pack id to update; null\/absent creates a new pack.'),
+  "jurisdiction": zod.string().min(1).max(upsertCompanyJurisdictionPackBodyPackJurisdictionMax),
+  "state": zod.string().min(upsertCompanyJurisdictionPackBodyPackStateMin).max(upsertCompanyJurisdictionPackBodyPackStateMax),
+  "openingStatements": zod.array(zod.object({
+  "title": zod.string().max(upsertCompanyJurisdictionPackBodyPackOpeningStatementsItemTitleMax).describe('Applicable code book title in effect (opening statement heading).'),
+  "body": zod.string().max(upsertCompanyJurisdictionPackBodyPackOpeningStatementsItemBodyMax).describe('Statement text printed under the title.')
+})).max(upsertCompanyJurisdictionPackBodyPackOpeningStatementsMax),
+  "uppaLaw": zod.string().max(upsertCompanyJurisdictionPackBodyPackUppaLawMax).nullable(),
+  "uppaStatement": zod.string().max(upsertCompanyJurisdictionPackBodyPackUppaStatementMax).nullable(),
+  "generalCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyJurisdictionPackBodyPackGeneralCodeCitationsItemBodyMax)
+})),
+  "roofingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyJurisdictionPackBodyPackRoofingCodeCitationsItemBodyMax)
+})),
+  "sidingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyJurisdictionPackBodyPackSidingCodeCitationsItemBodyMax)
+}))
+})
+})
+
+export const upsertCompanyJurisdictionPackResponsePackJurisdictionMax = 120;
+
+export const upsertCompanyJurisdictionPackResponsePackStateMin = 2;
+export const upsertCompanyJurisdictionPackResponsePackStateMax = 2;
+
+export const upsertCompanyJurisdictionPackResponsePackOpeningStatementsItemTitleMax = 300;
+
+export const upsertCompanyJurisdictionPackResponsePackOpeningStatementsItemBodyMax = 4000;
+
+export const upsertCompanyJurisdictionPackResponsePackOpeningStatementsMax = 20;
+
+export const upsertCompanyJurisdictionPackResponsePackUppaLawMax = 300;
+
+export const upsertCompanyJurisdictionPackResponsePackUppaStatementMax = 2000;
+
+export const upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemBodyMax = 2000;
+
+export const upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemBodyMax = 2000;
+
+export const upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemKeyMax = 60;
+
+export const upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemElementMax = 60;
+
+export const upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemTitleMax = 200;
+
+export const upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemCiteMax = 200;
+
+export const upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemBodyMax = 2000;
+
+
+
+export const UpsertCompanyJurisdictionPackResponse = zod.object({
+  "pack": zod.object({
+  "id": zod.string(),
+  "jurisdiction": zod.string().max(upsertCompanyJurisdictionPackResponsePackJurisdictionMax).describe('Free-form jurisdiction name, e.g. \"Dallas County, TX\".'),
+  "state": zod.string().min(upsertCompanyJurisdictionPackResponsePackStateMin).max(upsertCompanyJurisdictionPackResponsePackStateMax).describe('Two-letter state code used to match a property to packs.'),
+  "openingStatements": zod.array(zod.object({
+  "title": zod.string().max(upsertCompanyJurisdictionPackResponsePackOpeningStatementsItemTitleMax).describe('Applicable code book title in effect (opening statement heading).'),
+  "body": zod.string().max(upsertCompanyJurisdictionPackResponsePackOpeningStatementsItemBodyMax).describe('Statement text printed under the title.')
+})).max(upsertCompanyJurisdictionPackResponsePackOpeningStatementsMax),
+  "uppaLaw": zod.string().max(upsertCompanyJurisdictionPackResponsePackUppaLawMax).nullable().describe('UPPA law \/ governing statute reference.'),
+  "uppaStatement": zod.string().max(upsertCompanyJurisdictionPackResponsePackUppaStatementMax).nullable().describe('UPPA statement printed in the Proof Package.'),
+  "generalCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyJurisdictionPackResponsePackGeneralCodeCitationsItemBodyMax)
+})),
+  "roofingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyJurisdictionPackResponsePackRoofingCodeCitationsItemBodyMax)
+})),
+  "sidingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemKeyMax),
+  "element": zod.string().max(upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemElementMax),
+  "title": zod.string().max(upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemCiteMax),
+  "body": zod.string().max(upsertCompanyJurisdictionPackResponsePackSidingCodeCitationsItemBodyMax)
+}))
+})
+})
+
+
+/**
+ * Super admin only.
+ * @summary Delete a Building Regulation Jurisdiction Pack
+ */
+export const DeleteCompanyJurisdictionPackParams = zod.object({
   "companyId": zod.coerce.string(),
-  "state": zod.coerce.string().min(upsertCompanyStatePackPathStateMin).max(upsertCompanyStatePackPathStateMax)
+  "packId": zod.coerce.string()
 })
 
-export const upsertCompanyStatePackBodyPackHomeownerRightsOneTitleMax = 200;
-
-export const upsertCompanyStatePackBodyPackHomeownerRightsOneSubtitleMax = 300;
-
-export const upsertCompanyStatePackBodyPackHomeownerRightsOnePreparedByNoteMax = 500;
-
-export const upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemHeadingMax = 200;
-
-export const upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemParagraphsItemMax = 4000;
-
-export const upsertCompanyStatePackBodyPackHomeownerRightsOneComplaintBlockItemMax = 300;
-
-export const upsertCompanyStatePackBodyPackHomeownerRightsOneClosingDisclaimerMax = 2000;
-
-export const upsertCompanyStatePackBodyPackUppaDisclaimerMax = 2000;
-
-export const upsertCompanyStatePackBodyPackUppaStatuteMax = 300;
-
-export const upsertCompanyStatePackBodyPackCodeCitationsItemKeyMax = 60;
-
-export const upsertCompanyStatePackBodyPackCodeCitationsItemElementMax = 60;
-
-export const upsertCompanyStatePackBodyPackCodeCitationsItemTitleMax = 200;
-
-export const upsertCompanyStatePackBodyPackCodeCitationsItemCiteMax = 200;
-
-export const upsertCompanyStatePackBodyPackCodeCitationsItemBodyMax = 2000;
-
-
-
-export const UpsertCompanyStatePackBody = zod.object({
-  "pack": zod.object({
-  "homeownerRights": zod.union([zod.object({
-  "title": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneTitleMax),
-  "subtitle": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneSubtitleMax),
-  "preparedByNote": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOnePreparedByNoteMax),
-  "sections": zod.array(zod.object({
-  "heading": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemHeadingMax),
-  "paragraphs": zod.array(zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneSectionsItemParagraphsItemMax))
-})),
-  "complaintBlock": zod.array(zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneComplaintBlockItemMax)),
-  "closingDisclaimer": zod.string().max(upsertCompanyStatePackBodyPackHomeownerRightsOneClosingDisclaimerMax)
-}),zod.null()]),
-  "uppaDisclaimer": zod.string().max(upsertCompanyStatePackBodyPackUppaDisclaimerMax).nullable(),
-  "uppaStatute": zod.string().max(upsertCompanyStatePackBodyPackUppaStatuteMax).nullable(),
-  "codeCitations": zod.array(zod.object({
-  "key": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemKeyMax),
-  "element": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemElementMax),
-  "title": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemTitleMax),
-  "cite": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemCiteMax),
-  "body": zod.string().max(upsertCompanyStatePackBodyPackCodeCitationsItemBodyMax)
-}))
-})
-})
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOneTitleMax = 200;
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOneSubtitleMax = 300;
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOnePreparedByNoteMax = 500;
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemHeadingMax = 200;
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemParagraphsItemMax = 4000;
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOneComplaintBlockItemMax = 300;
-
-export const upsertCompanyStatePackResponsePackHomeownerRightsOneClosingDisclaimerMax = 2000;
-
-export const upsertCompanyStatePackResponsePackUppaDisclaimerMax = 2000;
-
-export const upsertCompanyStatePackResponsePackUppaStatuteMax = 300;
-
-export const upsertCompanyStatePackResponsePackCodeCitationsItemKeyMax = 60;
-
-export const upsertCompanyStatePackResponsePackCodeCitationsItemElementMax = 60;
-
-export const upsertCompanyStatePackResponsePackCodeCitationsItemTitleMax = 200;
-
-export const upsertCompanyStatePackResponsePackCodeCitationsItemCiteMax = 200;
-
-export const upsertCompanyStatePackResponsePackCodeCitationsItemBodyMax = 2000;
-
-
-
-export const UpsertCompanyStatePackResponse = zod.object({
-  "pack": zod.object({
-  "state": zod.string(),
-  "homeownerRights": zod.union([zod.object({
-  "title": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneTitleMax),
-  "subtitle": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneSubtitleMax),
-  "preparedByNote": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOnePreparedByNoteMax),
-  "sections": zod.array(zod.object({
-  "heading": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemHeadingMax),
-  "paragraphs": zod.array(zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneSectionsItemParagraphsItemMax))
-})),
-  "complaintBlock": zod.array(zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneComplaintBlockItemMax)),
-  "closingDisclaimer": zod.string().max(upsertCompanyStatePackResponsePackHomeownerRightsOneClosingDisclaimerMax)
-}),zod.null()]),
-  "uppaDisclaimer": zod.string().max(upsertCompanyStatePackResponsePackUppaDisclaimerMax).nullable(),
-  "uppaStatute": zod.string().max(upsertCompanyStatePackResponsePackUppaStatuteMax).nullable(),
-  "codeCitations": zod.array(zod.object({
-  "key": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemKeyMax),
-  "element": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemElementMax),
-  "title": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemTitleMax),
-  "cite": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemCiteMax),
-  "body": zod.string().max(upsertCompanyStatePackResponsePackCodeCitationsItemBodyMax)
-}))
-})
+export const DeleteCompanyJurisdictionPackResponse = zod.object({
+  "deleted": zod.boolean()
 })
 
 
@@ -5274,32 +5362,92 @@ export const CreateInspectionAddendumResponse = zod.object({
 
 
 /**
- * @summary List the code citations from the company state pack that applies to this inspection's property state, so the rep can pick which ones the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
+ * @summary List the Building Regulation Jurisdiction Packs that match this inspection's property state (with their code citations by section), so the rep can pick the pack and the citations the compiled Proof Package should include. Gated like report compile (assigned inspector or manager+).
  */
 export const ListInspectionReportCodeCitationsParams = zod.object({
   "inspectionId": zod.coerce.string()
 })
 
-export const listInspectionReportCodeCitationsResponseCitationsItemKeyMax = 60;
+export const listInspectionReportCodeCitationsResponsePacksItemJurisdictionMax = 120;
 
-export const listInspectionReportCodeCitationsResponseCitationsItemElementMax = 60;
+export const listInspectionReportCodeCitationsResponsePacksItemStateMin = 2;
+export const listInspectionReportCodeCitationsResponsePacksItemStateMax = 2;
 
-export const listInspectionReportCodeCitationsResponseCitationsItemTitleMax = 200;
+export const listInspectionReportCodeCitationsResponsePacksItemOpeningStatementsItemTitleMax = 300;
 
-export const listInspectionReportCodeCitationsResponseCitationsItemCiteMax = 200;
+export const listInspectionReportCodeCitationsResponsePacksItemOpeningStatementsItemBodyMax = 4000;
 
-export const listInspectionReportCodeCitationsResponseCitationsItemBodyMax = 2000;
+export const listInspectionReportCodeCitationsResponsePacksItemOpeningStatementsMax = 20;
+
+export const listInspectionReportCodeCitationsResponsePacksItemUppaLawMax = 300;
+
+export const listInspectionReportCodeCitationsResponsePacksItemUppaStatementMax = 2000;
+
+export const listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemKeyMax = 60;
+
+export const listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemElementMax = 60;
+
+export const listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemTitleMax = 200;
+
+export const listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemCiteMax = 200;
+
+export const listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemBodyMax = 2000;
+
+export const listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemKeyMax = 60;
+
+export const listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemElementMax = 60;
+
+export const listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemTitleMax = 200;
+
+export const listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemCiteMax = 200;
+
+export const listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemBodyMax = 2000;
+
+export const listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemKeyMax = 60;
+
+export const listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemElementMax = 60;
+
+export const listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemTitleMax = 200;
+
+export const listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemCiteMax = 200;
+
+export const listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemBodyMax = 2000;
 
 
 
 export const ListInspectionReportCodeCitationsResponse = zod.object({
   "state": zod.string().nullable(),
-  "citations": zod.array(zod.object({
-  "key": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemKeyMax),
-  "element": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemElementMax),
-  "title": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemTitleMax),
-  "cite": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemCiteMax),
-  "body": zod.string().max(listInspectionReportCodeCitationsResponseCitationsItemBodyMax)
+  "packs": zod.array(zod.object({
+  "id": zod.string(),
+  "jurisdiction": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemJurisdictionMax).describe('Free-form jurisdiction name, e.g. \"Dallas County, TX\".'),
+  "state": zod.string().min(listInspectionReportCodeCitationsResponsePacksItemStateMin).max(listInspectionReportCodeCitationsResponsePacksItemStateMax).describe('Two-letter state code used to match a property to packs.'),
+  "openingStatements": zod.array(zod.object({
+  "title": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemOpeningStatementsItemTitleMax).describe('Applicable code book title in effect (opening statement heading).'),
+  "body": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemOpeningStatementsItemBodyMax).describe('Statement text printed under the title.')
+})).max(listInspectionReportCodeCitationsResponsePacksItemOpeningStatementsMax),
+  "uppaLaw": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemUppaLawMax).nullable().describe('UPPA law \/ governing statute reference.'),
+  "uppaStatement": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemUppaStatementMax).nullable().describe('UPPA statement printed in the Proof Package.'),
+  "generalCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemKeyMax),
+  "element": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemElementMax),
+  "title": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemCiteMax),
+  "body": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemGeneralCodeCitationsItemBodyMax)
+})),
+  "roofingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemKeyMax),
+  "element": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemElementMax),
+  "title": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemCiteMax),
+  "body": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemRoofingCodeCitationsItemBodyMax)
+})),
+  "sidingCodeCitations": zod.array(zod.object({
+  "key": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemKeyMax),
+  "element": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemElementMax),
+  "title": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemTitleMax),
+  "cite": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemCiteMax),
+  "body": zod.string().max(listInspectionReportCodeCitationsResponsePacksItemSidingCodeCitationsItemBodyMax)
+}))
 }))
 })
 
@@ -5318,7 +5466,8 @@ export const compileInspectionReportBodyCodeCitationKeysMax = 100;
 
 
 export const CompileInspectionReportBody = zod.object({
-  "codeCitationKeys": zod.array(zod.string().max(compileInspectionReportBodyCodeCitationKeysItemMax)).max(compileInspectionReportBodyCodeCitationKeysMax).optional().describe('Keys of the state-pack code citations to include in the compiled Proof Package. Omitted\/absent means include all.')
+  "jurisdictionPackId": zod.string().nullish().describe('The jurisdiction pack to compile with. Required when more than one pack matches the property\'s state; omitted means the single matching pack.'),
+  "codeCitationKeys": zod.array(zod.string().max(compileInspectionReportBodyCodeCitationKeysItemMax)).max(compileInspectionReportBodyCodeCitationKeysMax).optional().describe('Keys of the jurisdiction-pack code citations (across all three sections) to include in the compiled Proof Package. Omitted\/absent means include all.')
 })
 
 export const CompileInspectionReportResponse = zod.object({

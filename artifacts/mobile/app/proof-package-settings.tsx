@@ -16,13 +16,14 @@ import { Stack, router } from 'expo-router';
 import {
   useGetCompanyReportSettings,
   useUpdateCompanyReportSettings,
-  useListCompanyStatePacks,
-  useUpsertCompanyStatePack,
-  useResearchCompanyStateCodes,
+  useListCompanyJurisdictionPacks,
+  useUpsertCompanyJurisdictionPack,
+  useDeleteCompanyJurisdictionPack,
+  useResearchJurisdictionCodes,
   getGetCompanyReportSettingsQueryKey,
-  getListCompanyStatePacksQueryKey,
+  getListCompanyJurisdictionPacksQueryKey,
 } from '@workspace/api-client-react';
-import type { ContractorLicense, UpsertStatePackInputPack, CodeCitation, HomeownerRightsContent } from '@workspace/api-client-react';
+import type { ContractorLicense, JurisdictionPack, CodeCitation, OpeningStatement } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { Icon } from '@/components/Icon';
@@ -56,7 +57,7 @@ export default function ProofPackageSettingsScreen() {
       <Stack.Screen options={{ title: 'Proof Package Settings' }} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 24 }}>
         <CompanyReportSettingsSection companyId={companyId} colors={colors} />
-        <StatePacksSection companyId={companyId} colors={colors} />
+        <JurisdictionPacksSection companyId={companyId} colors={colors} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -236,39 +237,44 @@ function CompanyReportSettingsSection({ companyId, colors }: { companyId: string
   );
 }
 
-function StatePacksSection({ companyId, colors }: { companyId: string; colors: ReturnType<typeof useColors> }) {
-  const packsQuery = useListCompanyStatePacks(companyId, {
-    query: { enabled: !!companyId, queryKey: getListCompanyStatePacksQueryKey(companyId) }
+function JurisdictionPacksSection({ companyId, colors }: { companyId: string; colors: ReturnType<typeof useColors> }) {
+  const queryClient = useQueryClient();
+  const packsQuery = useListCompanyJurisdictionPacks(companyId, {
+    query: { enabled: !!companyId, queryKey: getListCompanyJurisdictionPacksQueryKey(companyId) }
   });
+  const deletePack = useDeleteCompanyJurisdictionPack();
 
   const packs = packsQuery.data?.packs || [];
-  const [newStateCode, setNewStateCode] = useState('');
-  const [editingPackState, setEditingPackState] = useState<string | null>(null);
+  const [editorState, setEditorState] = useState<{ pack: JurisdictionPack | null } | null>(null);
 
-  const startEdit = (state: string) => {
-    setEditingPackState(state);
-  };
-
-  const createPack = () => {
-    const code = newStateCode.trim().toUpperCase();
-    if (code.length !== 2) {
-      Alert.alert('Invalid State', 'Must be a 2-letter state code.');
-      return;
-    }
-    if (packs.some(p => p.state === code)) {
-      Alert.alert('Exists', 'A pack for this state already exists. Edit it instead.');
-      return;
-    }
-    setEditingPackState(code);
-    setNewStateCode('');
+  const confirmDelete = (pack: JurisdictionPack) => {
+    Alert.alert(
+      'Delete pack?',
+      `"${pack.jurisdiction}" will be removed. Already-compiled Proof Packages are not affected.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deletePack.mutateAsync({ companyId, packId: pack.id });
+              queryClient.invalidateQueries({ queryKey: getListCompanyJurisdictionPacksQueryKey(companyId) });
+            } catch (err) {
+              Alert.alert('Delete failed', err instanceof Error ? err.message : 'Check your connection and try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
     <View style={{ gap: 16, marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
       <View>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.foreground }}>State Legal Packs</Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.foreground }}>Building Regulation Jurisdiction Packs</Text>
         <Text style={{ fontSize: 13, color: colors.mutedForeground, marginTop: 4 }}>
-          State-specific homeowner rights, UPPA disclaimers, and code citations.
+          Per-jurisdiction opening statements, UPPA law, and general / roofing / siding code citations for Proof Packages. You can create several packs per state.
         </Text>
       </View>
 
@@ -277,46 +283,42 @@ function StatePacksSection({ companyId, colors }: { companyId: string; colors: R
       ) : (
         <View style={{ gap: 8 }}>
           {packs.length === 0 ? (
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>No state packs defined.</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>No jurisdiction packs yet.</Text>
           ) : (
             packs.map(p => (
-              <View key={p.state} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.card, padding: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.foreground }}>{p.state}</Text>
-                <Pressable onPress={() => startEdit(p.state)}>
-                  <Text style={{ color: colors.primary, fontWeight: '600' }}>Edit</Text>
-                </Pressable>
+              <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.card, padding: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.foreground }}>{p.jurisdiction}</Text>
+                  <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 2 }}>{p.state}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
+                  <Pressable onPress={() => setEditorState({ pack: p })}>
+                    <Text style={{ color: colors.primary, fontWeight: '600' }}>Edit</Text>
+                  </Pressable>
+                  <Pressable onPress={() => confirmDelete(p)}>
+                    <Icon name="x" size={18} color={colors.destructive} />
+                  </Pressable>
+                </View>
               </View>
             ))
           )}
         </View>
       )}
 
-      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 8 }}>
-        <TextInput
-          style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.foreground, backgroundColor: colors.background, width: 80 }}
-          placeholder="State"
-          placeholderTextColor={colors.mutedForeground}
-          value={newStateCode}
-          onChangeText={setNewStateCode}
-          maxLength={2}
-          autoCapitalize="characters"
-        />
-        <Pressable
-          onPress={createPack}
-          style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8 }}
-        >
-          <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>Add State Pack</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        onPress={() => setEditorState({ pack: null })}
+        style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8, alignSelf: 'flex-start' }}
+      >
+        <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>Add Jurisdiction Pack</Text>
+      </Pressable>
 
-      {editingPackState && (
+      {editorState && (
         <Modal visible animationType="slide" presentationStyle="pageSheet">
-          <StatePackEditor
+          <JurisdictionPackEditor
             companyId={companyId}
-            state={editingPackState}
             colors={colors}
-            onClose={() => setEditingPackState(null)}
-            existingPack={packs.find(p => p.state === editingPackState) || null}
+            onClose={() => setEditorState(null)}
+            existingPack={editorState.pack}
           />
         </Modal>
       )}
@@ -325,60 +327,72 @@ function StatePacksSection({ companyId, colors }: { companyId: string; colors: R
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STATE PACK EDITOR
+// JURISDICTION PACK EDITOR
 // ─────────────────────────────────────────────────────────────────────────────
-function StatePackEditor({
+type CitationCategory = 'general' | 'roofing' | 'siding';
+const CATEGORY_LABELS: Record<CitationCategory, string> = {
+  general: 'General Code Citations',
+  roofing: 'Roofing Code Citations',
+  siding: 'Siding Code Citations',
+};
+
+function JurisdictionPackEditor({
   companyId,
-  state,
   colors,
   onClose,
   existingPack
 }: {
   companyId: string;
-  state: string;
   colors: ReturnType<typeof useColors>;
   onClose: () => void;
-  existingPack: any;
+  existingPack: JurisdictionPack | null;
 }) {
   const queryClient = useQueryClient();
-  const upsertPack = useUpsertCompanyStatePack();
+  const upsertPack = useUpsertCompanyJurisdictionPack();
 
-  // Homeowner Rights
-  const [hoEnabled, setHoEnabled] = useState(!!existingPack?.homeownerRights);
-  const [hoTitle, setHoTitle] = useState(existingPack?.homeownerRights?.title || '');
-  const [hoSubtitle, setHoSubtitle] = useState(existingPack?.homeownerRights?.subtitle || '');
-  const [hoPreparedBy, setHoPreparedBy] = useState(existingPack?.homeownerRights?.preparedByNote || '');
-  const [hoSections, setHoSections] = useState<{heading: string, paragraphsText: string}[]>(
-    (existingPack?.homeownerRights?.sections || []).map((s: any) => ({
-      heading: s.heading,
-      paragraphsText: (s.paragraphs || []).join('\n\n')
-    }))
+  const [jurisdiction, setJurisdiction] = useState(existingPack?.jurisdiction || '');
+  const [state, setState] = useState(existingPack?.state || '');
+
+  // Opening statements (applicable code book titles in effect).
+  const [openingStatements, setOpeningStatements] = useState<OpeningStatement[]>(
+    existingPack?.openingStatements || []
   );
-  const [hoComplaintBlock, setHoComplaintBlock] = useState((existingPack?.homeownerRights?.complaintBlock || []).join('\n'));
-  const [hoClosingDisclaimer, setHoClosingDisclaimer] = useState(existingPack?.homeownerRights?.closingDisclaimer || '');
 
   // UPPA
-  const [uppaDisclaimer, setUppaDisclaimer] = useState(existingPack?.uppaDisclaimer || '');
-  const [uppaStatute, setUppaStatute] = useState(existingPack?.uppaStatute || '');
+  const [uppaLaw, setUppaLaw] = useState(existingPack?.uppaLaw || '');
+  const [uppaStatement, setUppaStatement] = useState(existingPack?.uppaStatement || '');
 
-  // Code Citations
-  const [citations, setCitations] = useState<CodeCitation[]>(existingPack?.codeCitations || []);
+  // Code citations, per category.
+  const [citations, setCitations] = useState<Record<CitationCategory, CodeCitation[]>>({
+    general: existingPack?.generalCodeCitations || [],
+    roofing: existingPack?.roofingCodeCitations || [],
+    siding: existingPack?.sidingCodeCitations || [],
+  });
 
-  const researchCodes = useResearchCompanyStateCodes();
+  const allCitations = [...citations.general, ...citations.roofing, ...citations.siding];
+
+  const researchCodes = useResearchJurisdictionCodes();
   const [researchQuery, setResearchQuery] = useState('');
   const [researchYear, setResearchYear] = useState<number | null>(null);
+  const [researchCategory, setResearchCategory] = useState<CitationCategory>('general');
   const [researchSuggestions, setResearchSuggestions] = useState<CodeCitation[]>([]);
 
   const handleResearch = async () => {
     if (researchCodes.isPending) return;
+    const stateCode = state.trim().toUpperCase();
+    if (stateCode.length !== 2) {
+      Alert.alert('State needed', 'Enter the pack\u2019s 2-letter state code before researching codes.');
+      return;
+    }
     try {
       const resp = await researchCodes.mutateAsync({
         companyId,
-        state,
+        state: stateCode,
         data: {
           query: researchQuery.trim() || null,
           editionYear: researchYear,
-          existingKeys: citations.map(c => c.key),
+          existingKeys: allCitations.map(c => c.key),
+          category: researchCategory,
         }
       });
       setResearchSuggestions(resp.suggestions || []);
@@ -393,19 +407,28 @@ function StatePackEditor({
   };
 
   const addSuggestion = (suggestion: CodeCitation) => {
-    // Generate a unique key if it somehow conflicts
+    // Generate a unique key if it somehow conflicts (uniqueness is across all
+    // three sections — keys are the compile-time selection identity).
     let key = suggestion.key;
     let counter = 1;
-    while (citations.some(c => c.key === key)) {
+    while (allCitations.some(c => c.key === key)) {
       key = `${suggestion.key}_${counter}`;
       counter++;
     }
-    setCitations([...citations, { ...suggestion, key }]);
+    setCitations(prev => ({ ...prev, [researchCategory]: [...prev[researchCategory], { ...suggestion, key }] }));
     setResearchSuggestions(researchSuggestions.filter(s => s.key !== suggestion.key));
   };
 
   const dismissSuggestion = (key: string) => {
     setResearchSuggestions(researchSuggestions.filter(s => s.key !== key));
+  };
+
+  const updateCitation = (cat: CitationCategory, index: number, field: keyof CodeCitation, value: string) => {
+    setCitations(prev => {
+      const list = [...prev[cat]];
+      list[index] = { ...list[index], [field]: value };
+      return { ...prev, [cat]: list };
+    });
   };
 
   const inputStyle = {
@@ -422,55 +445,69 @@ function StatePackEditor({
   const save = async () => {
     if (upsertPack.isPending) return;
 
-    let homeownerRights: HomeownerRightsContent | null = null;
-    if (hoEnabled) {
-      if (!hoTitle.trim() || !hoSubtitle.trim()) {
-        Alert.alert('Incomplete', 'Title and Subtitle are required if Homeowner Information is enabled.');
-        return;
-      }
-      homeownerRights = {
-        title: hoTitle.trim(),
-        subtitle: hoSubtitle.trim(),
-        preparedByNote: hoPreparedBy.trim() || '',
-        sections: hoSections.map(s => ({
-          heading: s.heading.trim(),
-          paragraphs: s.paragraphsText.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
-        })),
-        complaintBlock: hoComplaintBlock.split('\n').map((l: string) => l.trim()).filter(Boolean),
-        closingDisclaimer: hoClosingDisclaimer.trim() || '',
-      };
+    const name = jurisdiction.trim();
+    if (!name) {
+      Alert.alert('Jurisdiction needed', 'Give the pack a jurisdiction name, e.g. "Dallas County, TX".');
+      return;
+    }
+    const stateCode = state.trim().toUpperCase();
+    if (stateCode.length !== 2) {
+      Alert.alert('Invalid State', 'State must be a 2-letter code, e.g. TX.');
+      return;
     }
 
-    const citationsClean = citations.map(c => ({
+    const statementsClean = openingStatements.map(s => ({ title: s.title.trim(), body: s.body.trim() }));
+    for (const s of statementsClean) {
+      if (!s.title || !s.body) {
+        Alert.alert('Incomplete Opening Statement', 'Each opening statement needs a title and statement text, or remove empty ones.');
+        return;
+      }
+    }
+
+    const cleanList = (list: CodeCitation[]) => list.map(c => ({
       key: c.key.trim(),
       element: c.element.trim(),
       title: c.title.trim(),
       cite: c.cite.trim(),
       body: c.body.trim(),
     }));
-
-    for (const c of citationsClean) {
+    const cleaned: Record<CitationCategory, CodeCitation[]> = {
+      general: cleanList(citations.general),
+      roofing: cleanList(citations.roofing),
+      siding: cleanList(citations.siding),
+    };
+    const flat = [...cleaned.general, ...cleaned.roofing, ...cleaned.siding];
+    for (const c of flat) {
       if (!c.key || !c.element || !c.title || !c.cite || !c.body) {
         Alert.alert('Incomplete Citation', 'All fields in each code citation must be filled.');
         return;
       }
     }
+    const keys = flat.map(c => c.key.toLowerCase());
+    if (new Set(keys).size !== keys.length) {
+      Alert.alert('Duplicate keys', 'Citation keys must be unique across the General, Roofing, and Siding lists.');
+      return;
+    }
 
     try {
       await upsertPack.mutateAsync({
         companyId,
-        state,
         data: {
           pack: {
-            homeownerRights,
-            uppaDisclaimer: uppaDisclaimer.trim() || null,
-            uppaStatute: uppaStatute.trim() || null,
-            codeCitations: citationsClean,
+            id: existingPack?.id ?? null,
+            jurisdiction: name,
+            state: stateCode,
+            openingStatements: statementsClean,
+            uppaLaw: uppaLaw.trim() || null,
+            uppaStatement: uppaStatement.trim() || null,
+            generalCodeCitations: cleaned.general,
+            roofingCodeCitations: cleaned.roofing,
+            sidingCodeCitations: cleaned.siding,
           }
         }
       });
-      Alert.alert('Saved', `State pack for ${state} saved successfully.`);
-      queryClient.invalidateQueries({ queryKey: getListCompanyStatePacksQueryKey(companyId) });
+      Alert.alert('Saved', `"${name}" saved successfully.`);
+      queryClient.invalidateQueries({ queryKey: getListCompanyJurisdictionPacksQueryKey(companyId) });
       onClose();
     } catch (err) {
       Alert.alert('Save failed', err instanceof Error ? err.message : 'Check your connection and try again.');
@@ -480,33 +517,100 @@ function StatePackEditor({
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.foreground }}>Edit {state} Legal Pack</Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.foreground }}>
+          {existingPack ? 'Edit Jurisdiction Pack' : 'New Jurisdiction Pack'}
+        </Text>
         <Pressable onPress={onClose} style={{ padding: 8 }}>
           <Text style={{ color: colors.primary, fontWeight: '600' }}>Cancel</Text>
         </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, gap: 32 }}>
-        
-        {/* UPPA Section */}
+
+        {/* Identity */}
         <View style={{ gap: 16 }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>UPPA Disclaimer</Text>
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Statute Reference (e.g. Texas Insurance Code § 4102.163)</Text>
+            <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Jurisdiction name * (e.g. Dallas County, TX)</Text>
             <TextInput
               style={inputStyle}
-              value={uppaStatute}
-              onChangeText={setUppaStatute}
-              placeholder="Statute"
+              value={jurisdiction}
+              onChangeText={setJurisdiction}
+              placeholder="Jurisdiction"
               placeholderTextColor={colors.mutedForeground}
             />
           </View>
           <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Disclaimer Text</Text>
+            <Text style={{ fontSize: 13, color: colors.mutedForeground }}>State * (2 letters — used to match the property address)</Text>
+            <TextInput
+              style={[inputStyle, { width: 100 }]}
+              value={state}
+              onChangeText={setState}
+              placeholder="TX"
+              placeholderTextColor={colors.mutedForeground}
+              maxLength={2}
+              autoCapitalize="characters"
+            />
+          </View>
+        </View>
+
+        <View style={{ height: 1, backgroundColor: colors.border }} />
+
+        {/* Opening statements */}
+        <View style={{ gap: 16 }}>
+          <View>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>Proof Package Opening Statement Titles</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4 }}>
+              The applicable code book titles in effect for this jurisdiction, each with its statement text. Printed at the front of the Proof Package.
+            </Text>
+          </View>
+          {openingStatements.map((s, i) => (
+            <View key={i} style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, gap: 8, borderWidth: 1, borderColor: colors.border }}>
+              <TextInput
+                style={[inputStyle, { fontWeight: '600' }]}
+                placeholder="Title (e.g. 2021 International Residential Code)"
+                placeholderTextColor={colors.mutedForeground}
+                value={s.title}
+                onChangeText={v => { const n = [...openingStatements]; n[i] = { ...n[i], title: v }; setOpeningStatements(n); }}
+              />
+              <TextInput
+                style={[inputStyle, { minHeight: 80, textAlignVertical: 'top' }]}
+                placeholder="Statement text"
+                placeholderTextColor={colors.mutedForeground}
+                value={s.body}
+                onChangeText={v => { const n = [...openingStatements]; n[i] = { ...n[i], body: v }; setOpeningStatements(n); }}
+                multiline
+              />
+              <Pressable onPress={() => setOpeningStatements(openingStatements.filter((_, idx) => idx !== i))} style={{ alignSelf: 'flex-end' }}>
+                <Text style={{ color: colors.destructive, fontSize: 13, fontWeight: '600' }}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
+          <Pressable onPress={() => setOpeningStatements([...openingStatements, { title: '', body: '' }])}>
+            <Text style={{ color: colors.primary, fontWeight: '600' }}>+ Add Opening Statement</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ height: 1, backgroundColor: colors.border }} />
+
+        {/* UPPA Section */}
+        <View style={{ gap: 16 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>UPPA Law and Statement</Text>
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 13, color: colors.mutedForeground }}>UPPA Law (e.g. Texas Insurance Code § 4102.163)</Text>
+            <TextInput
+              style={inputStyle}
+              value={uppaLaw}
+              onChangeText={setUppaLaw}
+              placeholder="Law / statute reference"
+              placeholderTextColor={colors.mutedForeground}
+            />
+          </View>
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 13, color: colors.mutedForeground }}>UPPA Statement</Text>
             <TextInput
               style={[inputStyle, { minHeight: 100, textAlignVertical: 'top' }]}
-              value={uppaDisclaimer}
-              onChangeText={setUppaDisclaimer}
+              value={uppaStatement}
+              onChangeText={setUppaStatement}
               placeholder="We are not public adjusters..."
               placeholderTextColor={colors.mutedForeground}
               multiline
@@ -516,83 +620,7 @@ function StatePackEditor({
 
         <View style={{ height: 1, backgroundColor: colors.border }} />
 
-        {/* Homeowner Information Section */}
-        <View style={{ gap: 16 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>Homeowner Rights Page</Text>
-              <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4 }}>
-                Tokens {`{{contractor}}`} and {`{{license}}`} will be replaced automatically.
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => setHoEnabled(!hoEnabled)}
-              style={{ backgroundColor: hoEnabled ? colors.primary : colors.muted, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
-            >
-              <Text style={{ color: hoEnabled ? '#fff' : colors.foreground, fontSize: 12, fontWeight: '600' }}>
-                {hoEnabled ? 'Enabled' : 'Disabled'}
-              </Text>
-            </Pressable>
-          </View>
-
-          {hoEnabled && (
-            <View style={{ gap: 16 }}>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Title *</Text>
-                <TextInput style={inputStyle} value={hoTitle} onChangeText={setHoTitle} placeholder="Important Information for Homeowners" placeholderTextColor={colors.mutedForeground} />
-              </View>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Subtitle *</Text>
-                <TextInput style={inputStyle} value={hoSubtitle} onChangeText={setHoSubtitle} placeholder="Subtitle" placeholderTextColor={colors.mutedForeground} />
-              </View>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Prepared By Note</Text>
-                <TextInput style={inputStyle} value={hoPreparedBy} onChangeText={setHoPreparedBy} placeholder="Prepared by {{contractor}}..." placeholderTextColor={colors.mutedForeground} />
-              </View>
-
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground, marginTop: 8 }}>Sections</Text>
-              {hoSections.map((sec, i) => (
-                <View key={i} style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, gap: 8, borderWidth: 1, borderColor: colors.border }}>
-                  <TextInput
-                    style={[inputStyle, { fontWeight: '600' }]}
-                    placeholder="Section Heading"
-                    placeholderTextColor={colors.mutedForeground}
-                    value={sec.heading}
-                    onChangeText={v => { const n = [...hoSections]; n[i].heading = v; setHoSections(n); }}
-                  />
-                  <TextInput
-                    style={[inputStyle, { minHeight: 80, textAlignVertical: 'top' }]}
-                    placeholder="Paragraphs (separated by blank lines)"
-                    placeholderTextColor={colors.mutedForeground}
-                    value={sec.paragraphsText}
-                    onChangeText={v => { const n = [...hoSections]; n[i].paragraphsText = v; setHoSections(n); }}
-                    multiline
-                  />
-                  <Pressable onPress={() => setHoSections(hoSections.filter((_, idx) => idx !== i))} style={{ alignSelf: 'flex-end' }}>
-                    <Text style={{ color: colors.destructive, fontSize: 13, fontWeight: '600' }}>Remove Section</Text>
-                  </Pressable>
-                </View>
-              ))}
-              <Pressable onPress={() => setHoSections([...hoSections, { heading: '', paragraphsText: '' }])}>
-                <Text style={{ color: colors.primary, fontWeight: '600' }}>+ Add Section</Text>
-              </Pressable>
-
-              <View style={{ gap: 8, marginTop: 8 }}>
-                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Complaint Block (one line per entry)</Text>
-                <TextInput style={[inputStyle, { minHeight: 80, textAlignVertical: 'top' }]} value={hoComplaintBlock} onChangeText={setHoComplaintBlock} multiline placeholder="State Dept of Insurance: 1-800..." placeholderTextColor={colors.mutedForeground} />
-              </View>
-
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>Closing Disclaimer</Text>
-                <TextInput style={[inputStyle, { minHeight: 80, textAlignVertical: 'top' }]} value={hoClosingDisclaimer} onChangeText={setHoClosingDisclaimer} multiline placeholder="This document is provided for informational purposes..." placeholderTextColor={colors.mutedForeground} />
-              </View>
-            </View>
-          )}
-        </View>
-
-        <View style={{ height: 1, backgroundColor: colors.border }} />
-
-        {/* Code Citations Section */}
+        {/* Code Citations */}
         <View style={{ gap: 16 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>Code Citations</Text>
 
@@ -601,7 +629,7 @@ function StatePackEditor({
             <View>
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>AI Code Research</Text>
               <Text style={{ fontSize: 12, color: colors.mutedForeground, marginTop: 4 }}>
-                Find applicable building codes for roof/siding replacements in {state}.
+                Find applicable building codes for roof/siding replacements{state.trim().length === 2 ? ` in ${state.trim().toUpperCase()}` : ''}. Suggestions you add go to the selected list.
               </Text>
             </View>
             <TextInput
@@ -611,6 +639,32 @@ function StatePackEditor({
               value={researchQuery}
               onChangeText={setResearchQuery}
             />
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Add results to</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {(['general', 'roofing', 'siding'] as CitationCategory[]).map(cat => {
+                  const selected = researchCategory === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      onPress={() => setResearchCategory(cat)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : colors.border,
+                        backgroundColor: selected ? colors.primary : colors.background,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: selected ? colors.primaryForeground : colors.foreground }}>
+                        {cat === 'general' ? 'General' : cat === 'roofing' ? 'Roofing' : 'Siding'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
             <View style={{ gap: 6 }}>
               <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Code edition year</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -662,7 +716,9 @@ function StatePackEditor({
           {/* AI Suggestions */}
           {researchSuggestions.length > 0 && (
             <View style={{ gap: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>Suggestions</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>
+                Suggestions → {CATEGORY_LABELS[researchCategory]}
+              </Text>
               {researchSuggestions.map(s => (
                 <View key={s.key} style={{ backgroundColor: colors.background, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, gap: 8 }}>
                   <Text style={{ fontWeight: '700', color: colors.foreground }}>{s.element} — {s.title}</Text>
@@ -681,23 +737,31 @@ function StatePackEditor({
             </View>
           )}
 
-          {citations.map((c, i) => (
-            <View key={i} style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, gap: 8, borderWidth: 1, borderColor: colors.border }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput style={[inputStyle, { flex: 1 }]} placeholder="Key (e.g. drip_edge)" placeholderTextColor={colors.mutedForeground} value={c.key} onChangeText={v => { const n = [...citations]; n[i].key = v; setCitations(n); }} />
-                <TextInput style={[inputStyle, { flex: 1 }]} placeholder="Element" placeholderTextColor={colors.mutedForeground} value={c.element} onChangeText={v => { const n = [...citations]; n[i].element = v; setCitations(n); }} />
-              </View>
-              <TextInput style={inputStyle} placeholder="Title (e.g. IRC 2018)" placeholderTextColor={colors.mutedForeground} value={c.title} onChangeText={v => { const n = [...citations]; n[i].title = v; setCitations(n); }} />
-              <TextInput style={inputStyle} placeholder="Citation (e.g. R905.2.8.5)" placeholderTextColor={colors.mutedForeground} value={c.cite} onChangeText={v => { const n = [...citations]; n[i].cite = v; setCitations(n); }} />
-              <TextInput style={[inputStyle, { minHeight: 80, textAlignVertical: 'top' }]} placeholder="Body text" placeholderTextColor={colors.mutedForeground} value={c.body} onChangeText={v => { const n = [...citations]; n[i].body = v; setCitations(n); }} multiline />
-              <Pressable onPress={() => setCitations(citations.filter((_, idx) => idx !== i))} style={{ alignSelf: 'flex-end' }}>
-                <Text style={{ color: colors.destructive, fontSize: 13, fontWeight: '600' }}>Remove Citation</Text>
+          {(['general', 'roofing', 'siding'] as CitationCategory[]).map(cat => (
+            <View key={cat} style={{ gap: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.foreground }}>{CATEGORY_LABELS[cat]}</Text>
+              {citations[cat].length === 0 && (
+                <Text style={{ fontSize: 12, color: colors.mutedForeground }}>None yet.</Text>
+              )}
+              {citations[cat].map((c, i) => (
+                <View key={i} style={{ backgroundColor: colors.card, padding: 12, borderRadius: 8, gap: 8, borderWidth: 1, borderColor: colors.border }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TextInput style={[inputStyle, { flex: 1 }]} placeholder="Key (e.g. drip_edge)" placeholderTextColor={colors.mutedForeground} value={c.key} onChangeText={v => updateCitation(cat, i, 'key', v)} />
+                    <TextInput style={[inputStyle, { flex: 1 }]} placeholder="Element" placeholderTextColor={colors.mutedForeground} value={c.element} onChangeText={v => updateCitation(cat, i, 'element', v)} />
+                  </View>
+                  <TextInput style={inputStyle} placeholder="Title (e.g. IRC 2018)" placeholderTextColor={colors.mutedForeground} value={c.title} onChangeText={v => updateCitation(cat, i, 'title', v)} />
+                  <TextInput style={inputStyle} placeholder="Citation (e.g. R905.2.8.5)" placeholderTextColor={colors.mutedForeground} value={c.cite} onChangeText={v => updateCitation(cat, i, 'cite', v)} />
+                  <TextInput style={[inputStyle, { minHeight: 80, textAlignVertical: 'top' }]} placeholder="Body text" placeholderTextColor={colors.mutedForeground} value={c.body} onChangeText={v => updateCitation(cat, i, 'body', v)} multiline />
+                  <Pressable onPress={() => setCitations(prev => ({ ...prev, [cat]: prev[cat].filter((_, idx) => idx !== i) }))} style={{ alignSelf: 'flex-end' }}>
+                    <Text style={{ color: colors.destructive, fontSize: 13, fontWeight: '600' }}>Remove Citation</Text>
+                  </Pressable>
+                </View>
+              ))}
+              <Pressable onPress={() => setCitations(prev => ({ ...prev, [cat]: [...prev[cat], { key: '', element: '', title: '', cite: '', body: '' }] }))}>
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>+ Add Citation</Text>
               </Pressable>
             </View>
           ))}
-          <Pressable onPress={() => setCitations([...citations, { key: '', element: '', title: '', cite: '', body: '' }])}>
-            <Text style={{ color: colors.primary, fontWeight: '600' }}>+ Add Citation</Text>
-          </Pressable>
         </View>
 
         <View style={{ height: 40 }} />
@@ -715,7 +779,7 @@ function StatePackEditor({
             opacity: upsertPack.isPending ? 0.6 : 1,
           }}
         >
-          {upsertPack.isPending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '600' }}>Save {state} Pack</Text>}
+          {upsertPack.isPending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '600' }}>Save Pack</Text>}
         </Pressable>
       </View>
     </KeyboardAvoidingView>

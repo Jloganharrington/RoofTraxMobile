@@ -7,8 +7,6 @@
  */
 import type { JurisdictionPack } from './jurisdictionPack';
 
-export type ListInspectionReportCodeCitations200 = {
-  /** @nullable */
-  state: string | null;
+export interface JurisdictionPackListEnvelope {
   packs: JurisdictionPack[];
-};
+}

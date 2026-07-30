@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CodeResearchInputCategory } from './codeResearchInputCategory';
 
 export interface CodeResearchInput {
   /**
@@ -26,4 +27,9 @@ export interface CodeResearchInput {
      * @items.maxLength 60
      */
   existingKeys?: string[];
+  /**
+     * Which citation section the research targets. Steers the survey toward general building code, roofing code, or siding code.
+     * @nullable
+     */
+  category?: CodeResearchInputCategory;
 }

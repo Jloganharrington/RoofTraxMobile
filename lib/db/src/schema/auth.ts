@@ -35,19 +35,9 @@ export type ContractorLicense = {
   classification: string; // "VA Class A Contractor"
 };
 
-// One section of the state-specific Homeowner Information page (Exhibit A).
-export type StatePackSection = { heading: string; paragraphs: string[] };
-
-// State-scoped homeowner-rights content. Company tokens ({{contractor}} /
-// {{license}}) are substituted at render time so the pack stays reusable.
-export type HomeownerRightsContent = {
-  title: string;
-  subtitle: string;
-  preparedByNote: string;
-  sections: StatePackSection[];
-  complaintBlock: string[];
-  closingDisclaimer: string;
-};
+// One Proof Package opening statement — an applicable code book title in
+// effect for the jurisdiction, with its statement text.
+export type OpeningStatement = { title: string; body: string };
 
 // A building-code citation for Exhibit I, keyed by the scope element it
 // governs (e.g. "roof_covering", "drip_edge", "decking").
@@ -130,13 +120,15 @@ export const usersTable = pgTable('users', {
     .$onUpdate(() => new Date()),
 });
 
-// State legal pack — the state-specific legal content a Proof Package
-// requires: the Homeowner Information page (Exhibit A), the UPPA/public-
-// adjuster disclaimer + governing statute (summary page), and the code
-// citations (Exhibit I). One row per (company, state); the inspection's
-// property state selects the pack at compile time.
-export const companyStatePacksTable = pgTable(
-  'company_state_packs',
+// Building Regulation Jurisdiction Pack — the jurisdiction-specific legal
+// content a Proof Package requires: the opening statement titles (applicable
+// code book titles in effect), the UPPA law + statement (summary page), and
+// the general/roofing/siding code citations (Exhibit I). Packs are named
+// free-form (e.g. "Dallas County, TX") and carry a two-letter state code so
+// the inspection's property state can match candidate packs at compile time;
+// a state can have several packs.
+export const companyJurisdictionPacksTable = pgTable(
+  'company_jurisdiction_packs',
   {
     id: varchar('id')
       .primaryKey()
@@ -144,21 +136,35 @@ export const companyStatePacksTable = pgTable(
     companyId: varchar('company_id')
       .notNull()
       .references(() => companiesTable.id),
-    // Two-letter state code, stored uppercase ("VA").
+    // Free-form jurisdiction name, unique per company.
+    jurisdiction: varchar('jurisdiction', { length: 120 }).notNull(),
+    // Two-letter state code, stored uppercase ("VA") — compile-time matching.
     state: varchar('state', { length: 2 }).notNull(),
-    homeownerRights: jsonb('homeowner_rights').$type<HomeownerRightsContent | null>().default(null),
-    uppaDisclaimer: varchar('uppa_disclaimer'),
-    uppaStatute: varchar('uppa_statute'),
-    codeCitations: jsonb('code_citations').$type<CodeCitation[]>().notNull().default([]),
+    openingStatements: jsonb('opening_statements')
+      .$type<OpeningStatement[]>()
+      .notNull()
+      .default([]),
+    // UPPA law / governing statute reference.
+    uppaLaw: varchar('uppa_law'),
+    // UPPA statement printed in the Proof Package summary.
+    uppaStatement: varchar('uppa_statement'),
+    generalCodeCitations: jsonb('general_code_citations').$type<CodeCitation[]>().notNull().default([]),
+    roofingCodeCitations: jsonb('roofing_code_citations').$type<CodeCitation[]>().notNull().default([]),
+    sidingCodeCitations: jsonb('siding_code_citations').$type<CodeCitation[]>().notNull().default([]),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (table) => [uniqueIndex('company_state_packs_company_state_idx').on(table.companyId, table.state)],
+  (table) => [
+    uniqueIndex('company_jurisdiction_packs_company_jurisdiction_idx').on(
+      table.companyId,
+      table.jurisdiction,
+    ),
+  ],
 );
 
-export type CompanyStatePack = typeof companyStatePacksTable.$inferSelect;
+export type CompanyJurisdictionPack = typeof companyJurisdictionPacksTable.$inferSelect;
 export type Company = typeof companiesTable.$inferSelect;
 export type UpsertUser = typeof usersTable.$inferInsert;
 export type User = typeof usersTable.$inferSelect;

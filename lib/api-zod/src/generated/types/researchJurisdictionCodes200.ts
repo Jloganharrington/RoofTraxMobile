@@ -7,6 +7,6 @@
  */
 import type { CodeCitation } from './codeCitation';
 
-export type ResearchCompanyStateCodes200 = {
+export type ResearchJurisdictionCodes200 = {
   suggestions: CodeCitation[];
 };

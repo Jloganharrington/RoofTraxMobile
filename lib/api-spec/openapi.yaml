@@ -356,11 +356,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-  /companies/{companyId}/state-packs:
+  /companies/{companyId}/jurisdiction-packs:
     get:
       tags: [Companies]
-      operationId: listCompanyStatePacks
-      summary: List the company's state legal packs
+      operationId: listCompanyJurisdictionPacks
+      summary: List the company's Building Regulation Jurisdiction Packs
       description: Super admin only.
       parameters:
         - name: companyId
@@ -370,11 +370,11 @@ paths:
             type: string
       responses:
         "200":
-          description: All state packs for the company.
+          description: All jurisdiction packs for the company.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatePackListEnvelope"
+                $ref: "#/components/schemas/JurisdictionPackListEnvelope"
         "401":
           description: Not authenticated.
           content:
@@ -387,16 +387,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-  /companies/{companyId}/state-packs/{state}/code-research:
+  /companies/{companyId}/jurisdiction-packs/{state}/code-research:
     post:
       tags: [Companies]
-      operationId: researchCompanyStateCodes
+      operationId: researchJurisdictionCodes
       summary: >-
         AI code-research wizard. Uses Gemini to research building codes that
         apply to storm-damage roof/siding replacement in the given state and
         returns suggested code citations for the contractor to confirm.
-        Nothing is saved — the client adds confirmed suggestions to the state
-        pack via the upsert endpoint. Super admin only.
+        Nothing is saved — the client adds confirmed suggestions to the
+        jurisdiction pack via the upsert endpoint. Super admin only.
       parameters:
         - name: companyId
           in: path
@@ -447,41 +447,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-  /companies/{companyId}/state-packs/{state}:
+  /companies/{companyId}/jurisdiction-packs/upsert:
     put:
       tags: [Companies]
-      operationId: upsertCompanyStatePack
-      summary: Create or replace a state legal pack
+      operationId: upsertCompanyJurisdictionPack
+      summary: Create or update a Building Regulation Jurisdiction Pack
       description: >-
-        Super admin only. `state` is a two-letter code. The pack carries the
-        state's Homeowner Information page, UPPA disclaimer/statute, and code
-        citations printed in the Proof Package.
+        Super admin only. Packs are identified by a free-form jurisdiction
+        name (unique per company) plus a two-letter state code used to match
+        properties at compile time. The pack carries the Proof Package
+        opening statement titles, the UPPA law and statement, and the
+        general / roofing / siding code citations printed in the package.
+        Include `pack.id` to update an existing pack; omit it to create one.
       parameters:
         - name: companyId
           in: path
           required: true
           schema:
             type: string
-        - name: state
-          in: path
-          required: true
-          schema:
-            type: string
-            minLength: 2
-            maxLength: 2
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpsertStatePackInput"
+              $ref: "#/components/schemas/UpsertJurisdictionPackInput"
       responses:
         "200":
           description: Pack stored.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatePackEnvelope"
+                $ref: "#/components/schemas/JurisdictionPackEnvelope"
         "400":
           description: Invalid payload.
           content:
@@ -496,6 +492,52 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/jurisdiction-packs/{packId}:
+    delete:
+      tags: [Companies]
+      operationId: deleteCompanyJurisdictionPack
+      summary: Delete a Building Regulation Jurisdiction Pack
+      description: Super admin only.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: packId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pack deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a super admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pack not found.
           content:
             application/json:
               schema:
@@ -2759,9 +2801,10 @@ paths:
       tags: [Inspections]
       operationId: listInspectionReportCodeCitations
       summary: >-
-        List the code citations from the company state pack that applies to this
-        inspection's property state, so the rep can pick which ones the compiled
-        Proof Package should include. Gated like report compile (assigned
+        List the Building Regulation Jurisdiction Packs that match this
+        inspection's property state (with their code citations by section),
+        so the rep can pick the pack and the citations the compiled Proof
+        Package should include. Gated like report compile (assigned
         inspector or manager+).
       parameters:
         - name: inspectionId
@@ -2771,19 +2814,21 @@ paths:
             type: string
       responses:
         "200":
-          description: Applicable state and its citations (empty when no pack applies).
+          description: >-
+            Property state and the matching jurisdiction packs (empty when no
+            pack applies).
           content:
             application/json:
               schema:
                 type: object
-                required: [state, citations]
+                required: [state, packs]
                 properties:
                   state:
                     type: [string, "null"]
-                  citations:
+                  packs:
                     type: array
                     items:
-                      $ref: "#/components/schemas/CodeCitation"
+                      $ref: "#/components/schemas/JurisdictionPack"
         "401":
           description: Not authenticated.
           content:
@@ -3498,44 +3543,18 @@ components:
       properties:
         settings:
           $ref: "#/components/schemas/CompanyReportSettings"
-    StatePackSection:
+    OpeningStatement:
       type: object
-      required: [heading, paragraphs]
-      properties:
-        heading:
-          type: string
-          maxLength: 200
-        paragraphs:
-          type: array
-          items:
-            type: string
-            maxLength: 4000
-    HomeownerRightsContent:
-      type: object
-      required:
-        [title, subtitle, preparedByNote, sections, complaintBlock, closingDisclaimer]
+      required: [title, body]
       properties:
         title:
           type: string
-          maxLength: 200
-        subtitle:
-          type: string
           maxLength: 300
-        preparedByNote:
+          description: Applicable code book title in effect (opening statement heading).
+        body:
           type: string
-          maxLength: 500
-        sections:
-          type: array
-          items:
-            $ref: "#/components/schemas/StatePackSection"
-        complaintBlock:
-          type: array
-          items:
-            type: string
-            maxLength: 300
-        closingDisclaimer:
-          type: string
-          maxLength: 2000
+          maxLength: 4000
+          description: Statement text printed under the title.
     CodeCitation:
       type: object
       required: [key, element, title, cite, body]
@@ -3555,45 +3574,89 @@ components:
         body:
           type: string
           maxLength: 2000
-    StatePack:
+    JurisdictionPack:
       type: object
-      required: [state, homeownerRights, uppaDisclaimer, uppaStatute, codeCitations]
+      required:
+        [id, jurisdiction, state, openingStatements, uppaLaw, uppaStatement,
+         generalCodeCitations, roofingCodeCitations, sidingCodeCitations]
       properties:
+        id:
+          type: string
+        jurisdiction:
+          type: string
+          maxLength: 120
+          description: Free-form jurisdiction name, e.g. "Dallas County, TX".
         state:
           type: string
-        homeownerRights:
-          oneOf:
-            - $ref: "#/components/schemas/HomeownerRightsContent"
-            - type: "null"
-        uppaDisclaimer:
-          type: [string, "null"]
-          maxLength: 2000
-        uppaStatute:
+          minLength: 2
+          maxLength: 2
+          description: Two-letter state code used to match a property to packs.
+        openingStatements:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/OpeningStatement"
+        uppaLaw:
           type: [string, "null"]
           maxLength: 300
-        codeCitations:
+          description: UPPA law / governing statute reference.
+        uppaStatement:
+          type: [string, "null"]
+          maxLength: 2000
+          description: UPPA statement printed in the Proof Package.
+        generalCodeCitations:
           type: array
           items:
             $ref: "#/components/schemas/CodeCitation"
-    UpsertStatePackInput:
+        roofingCodeCitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeCitation"
+        sidingCodeCitations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CodeCitation"
+    UpsertJurisdictionPackInput:
       type: object
       required: [pack]
       properties:
         pack:
           type: object
-          required: [homeownerRights, uppaDisclaimer, uppaStatute, codeCitations]
+          required:
+            [jurisdiction, state, openingStatements, uppaLaw, uppaStatement,
+             generalCodeCitations, roofingCodeCitations, sidingCodeCitations]
           properties:
-            homeownerRights:
-              oneOf:
-                - $ref: "#/components/schemas/HomeownerRightsContent"
-                - type: "null"
-            uppaDisclaimer:
+            id:
               type: [string, "null"]
-              maxLength: 2000
-            uppaStatute:
+              description: Existing pack id to update; null/absent creates a new pack.
+            jurisdiction:
+              type: string
+              minLength: 1
+              maxLength: 120
+            state:
+              type: string
+              minLength: 2
+              maxLength: 2
+            openingStatements:
+              type: array
+              maxItems: 20
+              items:
+                $ref: "#/components/schemas/OpeningStatement"
+            uppaLaw:
               type: [string, "null"]
               maxLength: 300
-            codeCitations:
+            uppaStatement:
+              type: [string, "null"]
+              maxLength: 2000
+            generalCodeCitations:
+              type: array
+              items:
+                $ref: "#/components/schemas/CodeCitation"
+            roofingCodeCitations:
+              type: array
+              items:
+                $ref: "#/components/schemas/CodeCitation"
+            sidingCodeCitations:
               type: array
               items:
                 $ref: "#/components/schemas/CodeCitation"
@@ -3620,9 +3683,21 @@ components:
             type: string
             maxLength: 60
           description: Citation keys already in the pack, to avoid duplicates.
+        category:
+          type: [string, "null"]
+          enum: [general, roofing, siding, null]
+          description: >-
+            Which citation section the research targets. Steers the survey
+            toward general building code, roofing code, or siding code.
     CompileReportInput:
       type: object
       properties:
+        jurisdictionPackId:
+          type: [string, "null"]
+          description: >-
+            The jurisdiction pack to compile with. Required when more than one
+            pack matches the property's state; omitted means the single
+            matching pack.
         codeCitationKeys:
           type: array
           maxItems: 100
@@ -3630,22 +3705,23 @@ components:
             type: string
             maxLength: 60
           description: >-
-            Keys of the state-pack code citations to include in the compiled
-            Proof Package. Omitted/absent means include all.
-    StatePackEnvelope:
+            Keys of the jurisdiction-pack code citations (across all three
+            sections) to include in the compiled Proof Package.
+            Omitted/absent means include all.
+    JurisdictionPackEnvelope:
       type: object
       required: [pack]
       properties:
         pack:
-          $ref: "#/components/schemas/StatePack"
-    StatePackListEnvelope:
+          $ref: "#/components/schemas/JurisdictionPack"
+    JurisdictionPackListEnvelope:
       type: object
       required: [packs]
       properties:
         packs:
           type: array
           items:
-            $ref: "#/components/schemas/StatePack"
+            $ref: "#/components/schemas/JurisdictionPack"
     MobileTokenExchangeRequest:
       type: object
       required: [code, code_verifier, redirect_uri, state]

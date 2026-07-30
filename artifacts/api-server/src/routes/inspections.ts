@@ -78,7 +78,8 @@ import {
   testSquareHitsTable,
   testSquaresTable,
   measurementsTable,
-  companyStatePacksTable,
+  companyJurisdictionPacksTable,
+  type CodeCitation as CodeCitationRow,
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
@@ -3891,24 +3892,34 @@ router.get('/inspections/:inspectionId/report/code-citations', async (req: Reque
   const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
   if (!inspection) return;
 
-  const statePacks = await db
+  const allPacks = await db
     .select()
-    .from(companyStatePacksTable)
-    .where(eq(companyStatePacksTable.companyId, actor.companyId));
+    .from(companyJurisdictionPacksTable)
+    .where(eq(companyJurisdictionPacksTable.companyId, actor.companyId));
 
   // Same state resolution as the compile route: parse from the address,
   // else a company with exactly one pack unambiguously uses that one.
   const stateMatch = (inspection.address ?? '').match(/\b([A-Za-z]{2})[,]?\s+\d{5}(?:-\d{4})?\b/);
   const propertyState =
-    stateMatch?.[1]?.toUpperCase() ?? (statePacks.length === 1 ? statePacks[0]!.state : null);
-  const statePack = propertyState
-    ? (statePacks.find((p) => p.state === propertyState) ?? null)
-    : null;
+    stateMatch?.[1]?.toUpperCase() ?? (allPacks.length === 1 ? allPacks[0]!.state : null);
+  const matching = propertyState ? allPacks.filter((p) => p.state === propertyState) : [];
 
   res.json(
     ListInspectionReportCodeCitationsResponse.parse({
-      state: statePack?.state ?? null,
-      citations: dedupeCitationsByKey(statePack?.codeCitations ?? []),
+      state: propertyState,
+      packs: matching
+        .sort((a, b) => a.jurisdiction.localeCompare(b.jurisdiction))
+        .map((p) => ({
+          id: p.id,
+          jurisdiction: p.jurisdiction,
+          state: p.state,
+          openingStatements: p.openingStatements ?? [],
+          uppaLaw: p.uppaLaw ?? null,
+          uppaStatement: p.uppaStatement ?? null,
+          generalCodeCitations: dedupeCitationsByKey(p.generalCodeCitations ?? []),
+          roofingCodeCitations: dedupeCitationsByKey(p.roofingCodeCitations ?? []),
+          sidingCodeCitations: dedupeCitationsByKey(p.sidingCodeCitations ?? []),
+        })),
     }),
   );
 });
@@ -4281,29 +4292,50 @@ ${JSON.stringify(photoBrief)}
     .from(companiesTable)
     .where(eq(companiesTable.id, actor.companyId));
 
-  const statePacks = await db
+  const allPacks = await db
     .select()
-    .from(companyStatePacksTable)
-    .where(eq(companyStatePacksTable.companyId, actor.companyId));
+    .from(companyJurisdictionPacksTable)
+    .where(eq(companyJurisdictionPacksTable.companyId, actor.companyId));
 
   // Property state from the address ("… Fairfax, VA 22030"). When it can't
   // be parsed, a company with exactly one pack unambiguously uses that one.
   const stateMatch = (inspection.address ?? '').match(/\b([A-Za-z]{2})[,]?\s+\d{5}(?:-\d{4})?\b/);
   const propertyState =
-    stateMatch?.[1]?.toUpperCase() ?? (statePacks.length === 1 ? statePacks[0]!.state : null);
-  const statePack = propertyState
-    ? (statePacks.find((p) => p.state === propertyState) ?? null)
-    : null;
+    stateMatch?.[1]?.toUpperCase() ?? (allPacks.length === 1 ? allPacks[0]!.state : null);
+  const matchingPacks = propertyState ? allPacks.filter((p) => p.state === propertyState) : [];
+
+  // Pack selection: the rep's explicit pick wins (it must belong to this
+  // company AND match the property state — a stale/foreign id is an error,
+  // not a silent fallback); otherwise a single matching pack is unambiguous.
+  const compileBody = CompileInspectionReportBody.safeParse(req.body ?? {});
+  const requestedPackId = compileBody.success ? (compileBody.data.jurisdictionPackId ?? null) : null;
+  let jurisdictionPack: (typeof allPacks)[number] | null = null;
+  if (requestedPackId) {
+    jurisdictionPack = matchingPacks.find((p) => p.id === requestedPackId) ?? null;
+    if (!jurisdictionPack) {
+      res.status(400).json({ error: 'Selected jurisdiction pack not found for this property\u2019s state' });
+      return;
+    }
+  } else if (matchingPacks.length === 1) {
+    jurisdictionPack = matchingPacks[0]!;
+  }
 
   const missingSettings: string[] = [];
   if (!companyRow?.contractorLicenses?.length) missingSettings.push('contractor license(s)');
   if (!companyRow?.qualificationsText) missingSettings.push('Statement of Qualifications');
   if (!propertyState) {
     missingSettings.push(
-      'property state (add a 2-letter state + ZIP to the inspection address, or set up exactly one state pack)',
+      'property state (add a 2-letter state + ZIP to the inspection address, or set up exactly one jurisdiction pack)',
     );
-  } else if (!statePack) {
-    missingSettings.push(`state legal pack for ${propertyState}`);
+  } else if (matchingPacks.length === 0) {
+    missingSettings.push(`a Building Regulation Jurisdiction Pack for ${propertyState}`);
+  } else if (!jurisdictionPack) {
+    // Multiple candidate packs and no explicit selection — the rep must pick.
+    res.status(422).json({
+      error: `Multiple jurisdiction packs match ${propertyState} — pick one when compiling.`,
+      missingSettings: ['jurisdiction pack selection'],
+    });
+    return;
   }
   if (missingSettings.length > 0) {
     res.status(422).json({
@@ -4314,14 +4346,16 @@ ${JSON.stringify(photoBrief)}
   }
 
   // Optional per-compile citation selection: the rep can pick which of the
-  // state pack's code citations ship in this Proof Package. Absent/omitted
-  // body means include all. The selection is baked into the versioned blob.
-  const compileBody = CompileInspectionReportBody.safeParse(req.body ?? {});
+  // pack's code citations (across all three sections) ship in this Proof
+  // Package. Absent/omitted means include all. Baked into the versioned blob.
   const selectedKeys = compileBody.success ? (compileBody.data.codeCitationKeys ?? null) : null;
-  const allCitations = dedupeCitationsByKey(statePack!.codeCitations ?? []);
-  const selectedCodeCitations = selectedKeys
-    ? allCitations.filter((c) => selectedKeys.includes(c.key))
-    : allCitations;
+  const filterSection = (citations: CodeCitationRow[]): CodeCitationRow[] => {
+    const deduped = dedupeCitationsByKey(citations);
+    return selectedKeys ? deduped.filter((c) => selectedKeys.includes(c.key)) : deduped;
+  };
+  const selectedGeneral = filterSection(jurisdictionPack!.generalCodeCitations ?? []);
+  const selectedRoofing = filterSection(jurisdictionPack!.roofingCodeCitations ?? []);
+  const selectedSiding = filterSection(jurisdictionPack!.sidingCodeCitations ?? []);
 
   // Inspector signature path (object path — signed fresh at render time).
   const signaturePath = inspectorProfile?.signatureUrl ?? null;
@@ -4468,7 +4502,9 @@ ${JSON.stringify(photoBrief)}
       : null;
 
   // Scope exhibit from the stored estimate (server-hydrated price snapshot).
-  const codeCiteByKey = new Map(selectedCodeCitations.map((c) => [c.key, c.cite]));
+  const codeCiteByKey = new Map(
+    [...selectedGeneral, ...selectedRoofing, ...selectedSiding].map((c) => [c.key, c.cite]),
+  );
   const scope = estimateForLinks?.lines?.length
     ? {
         lineItems: estimateForLinks.lines.map((li) => ({
@@ -4516,13 +4552,19 @@ ${JSON.stringify(photoBrief)}
       qualificationsText: companyRow!.qualificationsText ?? '',
       pricingBasisStatement: companyRow!.pricingBasisStatement ?? null,
     },
+    // schemaVersion 7: Building Regulation Jurisdiction Pack snapshot. Kept
+    // under the legacy `statePack` key so the render path stays uniform.
     statePack: {
-      state: statePack!.state,
-      jurisdictionLabel: `State of ${statePack!.state}`,
-      homeownerRights: statePack!.homeownerRights ?? null,
-      uppaDisclaimer: statePack!.uppaDisclaimer ?? null,
-      uppaStatute: statePack!.uppaStatute ?? null,
-      codeCitations: selectedCodeCitations,
+      state: jurisdictionPack!.state,
+      jurisdictionLabel: jurisdictionPack!.jurisdiction,
+      openingStatements: jurisdictionPack!.openingStatements ?? [],
+      uppaLaw: jurisdictionPack!.uppaLaw ?? null,
+      uppaStatement: jurisdictionPack!.uppaStatement ?? null,
+      codeCitationSections: [
+        { label: 'General Code Citations', citations: selectedGeneral },
+        { label: 'Roofing Code Citations', citations: selectedRoofing },
+        { label: 'Siding Code Citations', citations: selectedSiding },
+      ],
     },
     phase1Date: fmtDate(inspection.preliminaryCompletedAt),
     phase2Date: fmtDate(inspection.lockedAt ?? inspection.updatedAt),
@@ -4539,7 +4581,7 @@ ${JSON.stringify(photoBrief)}
   };
 
   const compiledData = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     reportData,
     generatedAt,
     inspector,

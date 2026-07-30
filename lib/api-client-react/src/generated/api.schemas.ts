@@ -133,25 +133,17 @@ export interface UpdateCompanyReportSettingsInput {
   settings: CompanyReportSettings;
 }
 
-export interface StatePackSection {
-  /** @maxLength 200 */
-  heading: string;
-  /** @items.maxLength 4000 */
-  paragraphs: string[];
-}
-
-export interface HomeownerRightsContent {
-  /** @maxLength 200 */
+export interface OpeningStatement {
+  /**
+     * Applicable code book title in effect (opening statement heading).
+     * @maxLength 300
+     */
   title: string;
-  /** @maxLength 300 */
-  subtitle: string;
-  /** @maxLength 500 */
-  preparedByNote: string;
-  sections: StatePackSection[];
-  /** @items.maxLength 300 */
-  complaintBlock: string[];
-  /** @maxLength 2000 */
-  closingDisclaimer: string;
+  /**
+     * Statement text printed under the title.
+     * @maxLength 4000
+     */
+  body: string;
 }
 
 export interface CodeCitation {
@@ -167,40 +159,87 @@ export interface CodeCitation {
   body: string;
 }
 
-export interface StatePack {
-  state: string;
-  homeownerRights: HomeownerRightsContent | null;
+export interface JurisdictionPack {
+  id: string;
   /**
-     * @maxLength 2000
-     * @nullable
+     * Free-form jurisdiction name, e.g. "Dallas County, TX".
+     * @maxLength 120
      */
-  uppaDisclaimer: string | null;
+  jurisdiction: string;
   /**
+     * Two-letter state code used to match a property to packs.
+     * @minLength 2
+     * @maxLength 2
+     */
+  state: string;
+  /** @maxItems 20 */
+  openingStatements: OpeningStatement[];
+  /**
+     * UPPA law / governing statute reference.
      * @maxLength 300
      * @nullable
      */
-  uppaStatute: string | null;
-  codeCitations: CodeCitation[];
+  uppaLaw: string | null;
+  /**
+     * UPPA statement printed in the Proof Package.
+     * @maxLength 2000
+     * @nullable
+     */
+  uppaStatement: string | null;
+  generalCodeCitations: CodeCitation[];
+  roofingCodeCitations: CodeCitation[];
+  sidingCodeCitations: CodeCitation[];
 }
 
-export type UpsertStatePackInputPack = {
-  homeownerRights: HomeownerRightsContent | null;
+export type UpsertJurisdictionPackInputPack = {
   /**
-     * @maxLength 2000
+     * Existing pack id to update; null/absent creates a new pack.
      * @nullable
      */
-  uppaDisclaimer: string | null;
+  id?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  jurisdiction: string;
+  /**
+     * @minLength 2
+     * @maxLength 2
+     */
+  state: string;
+  /** @maxItems 20 */
+  openingStatements: OpeningStatement[];
   /**
      * @maxLength 300
      * @nullable
      */
-  uppaStatute: string | null;
-  codeCitations: CodeCitation[];
+  uppaLaw: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  uppaStatement: string | null;
+  generalCodeCitations: CodeCitation[];
+  roofingCodeCitations: CodeCitation[];
+  sidingCodeCitations: CodeCitation[];
 };
 
-export interface UpsertStatePackInput {
-  pack: UpsertStatePackInputPack;
+export interface UpsertJurisdictionPackInput {
+  pack: UpsertJurisdictionPackInputPack;
 }
+
+/**
+ * Which citation section the research targets. Steers the survey toward general building code, roofing code, or siding code.
+ * @nullable
+ */
+export type CodeResearchInputCategory = typeof CodeResearchInputCategory[keyof typeof CodeResearchInputCategory] | null;
+
+
+export const CodeResearchInputCategory = {
+  general: 'general',
+  roofing: 'roofing',
+  siding: 'siding',
+} as const;
 
 export interface CodeResearchInput {
   /**
@@ -222,23 +261,33 @@ export interface CodeResearchInput {
      * @items.maxLength 60
      */
   existingKeys?: string[];
+  /**
+     * Which citation section the research targets. Steers the survey toward general building code, roofing code, or siding code.
+     * @nullable
+     */
+  category?: CodeResearchInputCategory;
 }
 
 export interface CompileReportInput {
   /**
-     * Keys of the state-pack code citations to include in the compiled Proof Package. Omitted/absent means include all.
+     * The jurisdiction pack to compile with. Required when more than one pack matches the property's state; omitted means the single matching pack.
+     * @nullable
+     */
+  jurisdictionPackId?: string | null;
+  /**
+     * Keys of the jurisdiction-pack code citations (across all three sections) to include in the compiled Proof Package. Omitted/absent means include all.
      * @maxItems 100
      * @items.maxLength 60
      */
   codeCitationKeys?: string[];
 }
 
-export interface StatePackEnvelope {
-  pack: StatePack;
+export interface JurisdictionPackEnvelope {
+  pack: JurisdictionPack;
 }
 
-export interface StatePackListEnvelope {
-  packs: StatePack[];
+export interface JurisdictionPackListEnvelope {
+  packs: JurisdictionPack[];
 }
 
 export interface MobileTokenExchangeRequest {
@@ -2869,8 +2918,12 @@ export type LogoutBrowserSessionParams = {
 returnTo?: string;
 };
 
-export type ResearchCompanyStateCodes200 = {
+export type ResearchJurisdictionCodes200 = {
   suggestions: CodeCitation[];
+};
+
+export type DeleteCompanyJurisdictionPack200 = {
+  deleted: boolean;
 };
 
 export type ListPinsParams = {
@@ -2903,7 +2956,7 @@ longitude?: number;
 export type ListInspectionReportCodeCitations200 = {
   /** @nullable */
   state: string | null;
-  citations: CodeCitation[];
+  packs: JurisdictionPack[];
 };
 
 export type CompileInspectionReport200 = {

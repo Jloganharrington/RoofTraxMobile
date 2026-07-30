@@ -1,8 +1,19 @@
 import type {
   CodeCitation,
   ContractorLicense,
-  HomeownerRightsContent,
+  OpeningStatement,
 } from '@workspace/db';
+
+// Legacy (schemaVersion ≤ 6) homeowner-rights shape — no longer editable or
+// stored in packs, but old compiled blobs still carry it and must render.
+type LegacyHomeownerRightsContent = {
+  title: string;
+  subtitle: string;
+  preparedByNote: string;
+  sections: Array<{ heading: string; paragraphs: string[] }>;
+  complaintBlock: string[];
+  closingDisclaimer: string;
+};
 
 import { escHtml, type ReportTheme, resolveReportTheme } from './reportTemplate';
 
@@ -51,12 +62,25 @@ export type ProofPackageData = {
     qualificationsText: string;
     pricingBasisStatement: string | null;
   };
+  /**
+   * Jurisdiction legal content. schemaVersion 7+ blobs carry the Building
+   * Regulation Jurisdiction Pack fields (openingStatements, uppaLaw /
+   * uppaStatement, per-section citations); legacy v6 blobs carry the old
+   * state-pack fields (homeownerRights, uppaDisclaimer / uppaStatute, flat
+   * codeCitations). The renderer accepts both so old versions still open.
+   */
   statePack: {
     jurisdictionLabel: string;
-    homeownerRights: HomeownerRightsContent | null;
-    uppaDisclaimer: string | null;
-    uppaStatute: string | null;
-    codeCitations: CodeCitation[];
+    // ── v7 (jurisdiction pack) ──
+    openingStatements?: OpeningStatement[];
+    uppaLaw?: string | null;
+    uppaStatement?: string | null;
+    codeCitationSections?: Array<{ label: string; citations: CodeCitation[] }>;
+    // ── legacy v6 (state pack) ──
+    homeownerRights?: LegacyHomeownerRightsContent | null;
+    uppaDisclaimer?: string | null;
+    uppaStatute?: string | null;
+    codeCitations?: CodeCitation[];
   };
   property: {
     address: string;
@@ -404,15 +428,24 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
   }
 
   // ── Exhibit I — Applicable Codes & Regulations ────────────────────────
-  if (data.statePack.codeCitations.length > 0) {
-    const cites = data.statePack.codeCitations
-      .map(
-        (c) => `
+  // v7 blobs carry citations grouped into sections (General / Roofing /
+  // Siding); legacy v6 blobs carry a single flat list.
+  const citationSections = (
+    data.statePack.codeCitationSections ??
+    [{ label: '', citations: data.statePack.codeCitations ?? [] }]
+  ).filter((s) => s.citations.length > 0);
+  if (citationSections.length > 0) {
+    const citeHtml = (c: CodeCitation) => `
         <div class="exhibit"><div class="exhibit__tab">§</div><div class="exhibit__body">
           <div class="exhibit__head"><span class="exhibit__title">${esc(c.title)}</span><span class="exhibit__code">${esc(c.cite)}</span></div>
           <p style="margin-bottom:4px;">${esc(c.body)}</p>
           <p class="micro" style="margin:0;">Governs scope element: ${esc(c.element)}</p>
-        </div></div>`,
+        </div></div>`;
+    const cites = citationSections
+      .map(
+        (s) =>
+          (s.label ? `<p class="micro" style="margin-top:12px;">${esc(s.label)}</p>` : '') +
+          s.citations.map(citeHtml).join(''),
       )
       .join('');
     addExhibit('I', 'Applicable Codes & Regulations', [
@@ -596,16 +629,41 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
       </div>
       <p class="micro" style="margin-top:16px;">Contents</p>
       ${tocRows}
-      ${
-        data.statePack.uppaDisclaimer
+      ${(() => {
+        // v7 uses uppaStatement/uppaLaw; legacy v6 uppaDisclaimer/uppaStatute.
+        const statement = data.statePack.uppaStatement ?? data.statePack.uppaDisclaimer ?? null;
+        const law = data.statePack.uppaLaw ?? data.statePack.uppaStatute ?? null;
+        return statement
           ? `<div class="note-box uppa" style="margin-top:16px;">
               <b>${esc(data.company.brand)}</b> is a licensed contractor, not a public adjuster.
-              ${esc(data.statePack.uppaDisclaimer)}
-              ${data.statePack.uppaStatute ? `<br><span class="micro" style="display:inline-block; margin-top:6px;">Governing statute: ${esc(data.statePack.uppaStatute)}</span>` : ''}
+              ${esc(statement)}
+              ${law ? `<br><span class="micro" style="display:inline-block; margin-top:6px;">Governing law: ${esc(law)}</span>` : ''}
             </div>`
-          : ''
-      }`,
+          : '';
+      })()}`,
   };
+
+  // ── Opening Statement pages (v7 jurisdiction packs) ───────────────────
+  // The applicable code book titles in effect for the jurisdiction, each
+  // with its statement text. Rendered as front matter right after the
+  // Summary & Contents page, before the lettered exhibits.
+  const openingStatements = data.statePack.openingStatements ?? [];
+  const openingSheets: Sheet[] = openingStatements.length
+    ? chunk(openingStatements, 3).map((group, i, all) => ({
+        runheadTitle: 'Opening Statement',
+        bodyHtml:
+          `<div class="eyebrow">00 — Opening Statement${all.length > 1 ? ` (${i + 1}/${all.length})` : ''}</div>
+           <h2 class="section-title">Proof Package Opening Statement</h2><div class="section-rule"></div>
+           ${i === 0 ? `<p class="micro" style="margin-bottom:10px;">Applicable code book titles in effect — ${esc(data.statePack.jurisdictionLabel)}</p>` : ''}` +
+          group
+            .map(
+              (s) =>
+                `<p class="micro" style="margin-top:12px; font-size:13px;">${esc(s.title)}</p>
+                 <p style="font-size:12px;">${esc(s.body)}</p>`,
+            )
+            .join(''),
+      }))
+    : [];
 
   // ── Cover page (rendered separately — dark navy layout) ───────────────
   const coverHtml = `
@@ -633,7 +691,7 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
   </div>
 </div>`;
 
-  const allSheets = [summarySheet, ...sheets, ...supplementalSheets, certificationSheet];
+  const allSheets = [summarySheet, ...openingSheets, ...sheets, ...supplementalSheets, certificationSheet];
   const sheetsHtml = allSheets
     .map(
       (s) => `
@@ -844,32 +902,28 @@ export function buildSampleProofPackageHtml(params: {
         'Sample pricing basis statement. Real packages show the statement entered under Proof Package Settings.',
     },
     statePack: {
-      jurisdictionLabel: 'State of IL',
-      homeownerRights: {
-        title: 'Homeowner Information & Rights',
-        subtitle: 'Sample state legal pack',
-        preparedByNote: 'Prepared by {{contractor}} ({{license}}).',
-        sections: [
-          {
-            heading: 'About this page',
-            paragraphs: [
-              'This is sample homeowner-rights content. On real Proof Packages this page shows the state legal pack entered under Proof Package Settings for the property\u2019s state.',
-            ],
-          },
-        ],
-        complaintBlock: ['Sample State Department of Insurance', '1-800-000-0000'],
-        closingDisclaimer: '{{contractor}} is a roofing contractor, not a public adjuster.',
-      },
-      uppaDisclaimer:
-        'Sample disclaimer: this report documents physical damage only and does not adjust or negotiate any insurance claim.',
-      uppaStatute: 'Sample Statute § 0.0-000',
-      codeCitations: [
+      jurisdictionLabel: 'Sample Jurisdiction, IL',
+      openingStatements: [
         {
-          key: 'sample_drip_edge',
-          element: 'Drip edge',
-          title: 'Drip edge required at eaves and rakes',
-          cite: 'IRC R905.2.8.5 (sample)',
-          body: 'Sample code citation body. Real packages show the code citations entered in the state legal pack.',
+          title: '2021 International Residential Code (sample)',
+          body: 'Sample opening statement. Real packages show the applicable code book titles in effect entered in the Building Regulation Jurisdiction Pack.',
+        },
+      ],
+      uppaStatement:
+        'Sample statement: this report documents physical damage only and does not adjust or negotiate any insurance claim.',
+      uppaLaw: 'Sample Statute § 0.0-000',
+      codeCitationSections: [
+        {
+          label: 'Roofing Code Citations',
+          citations: [
+            {
+              key: 'sample_drip_edge',
+              element: 'Drip edge',
+              title: 'Drip edge required at eaves and rakes',
+              cite: 'IRC R905.2.8.5 (sample)',
+              body: 'Sample code citation body. Real packages show the code citations entered in the Building Regulation Jurisdiction Pack.',
+            },
+          ],
         },
       ],
     },

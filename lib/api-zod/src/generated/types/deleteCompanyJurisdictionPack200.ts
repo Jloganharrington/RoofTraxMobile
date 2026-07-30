@@ -5,8 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { StatePack } from './statePack';
 
-export interface StatePackListEnvelope {
-  packs: StatePack[];
-}
+export type DeleteCompanyJurisdictionPack200 = {
+  deleted: boolean;
+};

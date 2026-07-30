@@ -8,15 +8,15 @@ import {
   GetCompanyReportSettingsResponse,
   UpdateCompanyReportSettingsBody,
   UpdateCompanyReportSettingsResponse,
-  ListCompanyStatePacksResponse,
-  UpsertCompanyStatePackBody,
-  UpsertCompanyStatePackResponse,
-  ResearchCompanyStateCodesBody,
-  ResearchCompanyStateCodesResponse,
+  ListCompanyJurisdictionPacksResponse,
+  UpsertCompanyJurisdictionPackBody,
+  UpsertCompanyJurisdictionPackResponse,
+  ResearchJurisdictionCodesBody,
+  ResearchJurisdictionCodesResponse,
 } from '@workspace/api-zod';
-import { companiesTable, companyStatePacksTable, db, userProfilesTable } from '@workspace/db';
+import { companiesTable, companyJurisdictionPacksTable, db, userProfilesTable } from '@workspace/db';
 import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { ObjectStorageService } from '../lib/objectStorage';
@@ -492,66 +492,82 @@ router.patch('/companies/:companyId/report-settings', async (req: Request, res: 
   );
 });
 
-// ── State legal packs (Exhibit A / UPPA / code citations) ──────────────────
+// ── Building Regulation Jurisdiction Packs (opening statements / UPPA /
+// general+roofing+siding code citations) ────────────────────────────────────
 
-function statePackToWire(pack: {
+function jurisdictionPackToWire(pack: {
+  id: string;
+  jurisdiction: string;
   state: string;
-  homeownerRights: unknown;
-  uppaDisclaimer: string | null;
-  uppaStatute: string | null;
-  codeCitations: unknown;
+  openingStatements: unknown;
+  uppaLaw: string | null;
+  uppaStatement: string | null;
+  generalCodeCitations: unknown;
+  roofingCodeCitations: unknown;
+  sidingCodeCitations: unknown;
 }) {
   return {
+    id: pack.id,
+    jurisdiction: pack.jurisdiction,
     state: pack.state,
-    homeownerRights: pack.homeownerRights ?? null,
-    uppaDisclaimer: pack.uppaDisclaimer ?? null,
-    uppaStatute: pack.uppaStatute ?? null,
-    codeCitations: pack.codeCitations ?? [],
+    openingStatements: pack.openingStatements ?? [],
+    uppaLaw: pack.uppaLaw ?? null,
+    uppaStatement: pack.uppaStatement ?? null,
+    generalCodeCitations: pack.generalCodeCitations ?? [],
+    roofingCodeCitations: pack.roofingCodeCitations ?? [],
+    sidingCodeCitations: pack.sidingCodeCitations ?? [],
   };
 }
 
-// GET /companies/:companyId/state-packs — super admin only.
-router.get('/companies/:companyId/state-packs', async (req: Request, res: Response) => {
+// GET /companies/:companyId/jurisdiction-packs — super admin only.
+router.get('/companies/:companyId/jurisdiction-packs', async (req: Request, res: Response) => {
   const companyId = await requireSameCompanySuperAdmin(req, res);
   if (!companyId) return;
 
   const packs = await db
     .select()
-    .from(companyStatePacksTable)
-    .where(eq(companyStatePacksTable.companyId, companyId));
+    .from(companyJurisdictionPacksTable)
+    .where(eq(companyJurisdictionPacksTable.companyId, companyId));
 
   res.json(
-    ListCompanyStatePacksResponse.parse({
+    ListCompanyJurisdictionPacksResponse.parse({
       packs: packs
-        .sort((a, b) => a.state.localeCompare(b.state))
-        .map(statePackToWire),
+        .sort((a, b) => a.jurisdiction.localeCompare(b.jurisdiction))
+        .map(jurisdictionPackToWire),
     }),
   );
 });
 
-// PUT /companies/:companyId/state-packs/:state — super admin upsert.
+// PUT /companies/:companyId/jurisdiction-packs/upsert — super admin.
+// pack.id present = update that pack; absent = create a new pack.
 router.put(
-  '/companies/:companyId/state-packs/:state',
+  '/companies/:companyId/jurisdiction-packs/upsert',
   async (req: Request, res: Response) => {
     const companyId = await requireSameCompanySuperAdmin(req, res);
     if (!companyId) return;
 
-    const state = String(req.params.state ?? '').trim().toUpperCase();
+    const parsed = UpsertCompanyJurisdictionPackBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid jurisdiction pack payload' });
+      return;
+    }
+    const p = parsed.data.pack;
+
+    const jurisdiction = p.jurisdiction.trim();
+    if (!jurisdiction) {
+      res.status(400).json({ error: 'Jurisdiction name is required' });
+      return;
+    }
+    const state = p.state.trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(state)) {
       res.status(400).json({ error: 'State must be a 2-letter code' });
       return;
     }
 
-    const parsed = UpsertCompanyStatePackBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid state pack payload' });
-      return;
-    }
-    const p = parsed.data.pack;
-
     // Citation keys are the selection identity at compile time — duplicates
-    // would make per-compile citation selection ambiguous.
-    const keys = p.codeCitations.map((c) => c.key.trim().toLowerCase());
+    // ACROSS all three sections would make per-compile selection ambiguous.
+    const keys = [...p.generalCodeCitations, ...p.roofingCodeCitations, ...p.sidingCodeCitations]
+      .map((c) => c.key.trim().toLowerCase());
     if (new Set(keys).size !== keys.length) {
       res.status(400).json({ error: 'Code citation keys must be unique within the pack' });
       return;
@@ -559,37 +575,83 @@ router.put(
 
     const values = {
       companyId,
+      jurisdiction,
       state,
-      homeownerRights: p.homeownerRights ?? null,
-      uppaDisclaimer: p.uppaDisclaimer?.trim() || null,
-      uppaStatute: p.uppaStatute?.trim() || null,
-      codeCitations: p.codeCitations,
+      openingStatements: p.openingStatements,
+      uppaLaw: p.uppaLaw?.trim() || null,
+      uppaStatement: p.uppaStatement?.trim() || null,
+      generalCodeCitations: p.generalCodeCitations,
+      roofingCodeCitations: p.roofingCodeCitations,
+      sidingCodeCitations: p.sidingCodeCitations,
     };
-    const [saved] = await db
-      .insert(companyStatePacksTable)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [companyStatePacksTable.companyId, companyStatePacksTable.state],
-        set: {
-          homeownerRights: values.homeownerRights,
-          uppaDisclaimer: values.uppaDisclaimer,
-          uppaStatute: values.uppaStatute,
-          codeCitations: values.codeCitations,
-        },
-      })
-      .returning();
 
-    res.json(UpsertCompanyStatePackResponse.parse({ pack: statePackToWire(saved) }));
+    let saved: typeof companyJurisdictionPacksTable.$inferSelect | undefined;
+    try {
+      if (p.id) {
+        [saved] = await db
+          .update(companyJurisdictionPacksTable)
+          .set(values)
+          .where(
+            and(
+              eq(companyJurisdictionPacksTable.id, p.id),
+              eq(companyJurisdictionPacksTable.companyId, companyId),
+            ),
+          )
+          .returning();
+        if (!saved) {
+          res.status(404).json({ error: 'Jurisdiction pack not found' });
+          return;
+        }
+      } else {
+        [saved] = await db.insert(companyJurisdictionPacksTable).values(values).returning();
+      }
+    } catch (err) {
+      // Unique (companyId, jurisdiction) violation → duplicate name.
+      if ((err as { code?: string }).code === '23505') {
+        res.status(400).json({ error: `A pack named "${jurisdiction}" already exists` });
+        return;
+      }
+      throw err;
+    }
+
+    res.json(
+      UpsertCompanyJurisdictionPackResponse.parse({ pack: jurisdictionPackToWire(saved!) }),
+    );
   },
 );
 
-// POST /companies/:companyId/state-packs/:state/code-research — AI wizard.
+// DELETE /companies/:companyId/jurisdiction-packs/:packId — super admin.
+router.delete(
+  '/companies/:companyId/jurisdiction-packs/:packId',
+  async (req: Request, res: Response) => {
+    const companyId = await requireSameCompanySuperAdmin(req, res);
+    if (!companyId) return;
+
+    const [deleted] = await db
+      .delete(companyJurisdictionPacksTable)
+      .where(
+        and(
+          eq(companyJurisdictionPacksTable.id, String(req.params.packId)),
+          eq(companyJurisdictionPacksTable.companyId, companyId),
+        ),
+      )
+      .returning({ id: companyJurisdictionPacksTable.id });
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Jurisdiction pack not found' });
+      return;
+    }
+    res.json({ deleted: true });
+  },
+);
+
+// POST /companies/:companyId/jurisdiction-packs/:state/code-research — AI wizard.
 // Researches building codes applicable to storm-damage roof/siding work in
 // the given state (or looks up a specific code the admin typed) and returns
 // SUGGESTED citations. Nothing is persisted here — the client adds confirmed
 // suggestions to the pack via the upsert endpoint. Super admin only.
 router.post(
-  '/companies/:companyId/state-packs/:state/code-research',
+  '/companies/:companyId/jurisdiction-packs/:state/code-research',
   async (req: Request, res: Response) => {
     const companyId = await requireSameCompanySuperAdmin(req, res);
     if (!companyId) return;
@@ -600,7 +662,7 @@ router.post(
       return;
     }
 
-    const parsed = ResearchCompanyStateCodesBody.safeParse(req.body ?? {});
+    const parsed = ResearchJurisdictionCodesBody.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: 'Invalid payload' });
       return;
@@ -608,10 +670,20 @@ router.post(
     const query = parsed.data.query?.trim() || null;
     const editionYear = parsed.data.editionYear ?? null;
     const existingKeys = (parsed.data.existingKeys ?? []).slice(0, 100);
+    const category = parsed.data.category ?? null;
 
     const editionInstruction = editionYear
       ? `Research the ${editionYear} code edition specifically (e.g. the ${editionYear} IRC/IBC or the state code based on it). All citations and quoted language must come from that edition; if a requirement does not exist in that edition, omit it.`
       : `Use the code edition currently adopted by the state where you know it; otherwise use the latest model code edition you are confident about.`;
+
+    const categoryInstruction =
+      category === 'roofing'
+        ? 'Focus on ROOFING code requirements (roof coverings, underlayment, drip edge, ice barrier, flashing, decking, ventilation, roof repair/replacement triggers).'
+        : category === 'siding'
+          ? 'Focus on SIDING / exterior wall covering code requirements (siding attachment, weather-resistive barriers, flashing at openings, matching/repair limitations for wall coverings).'
+          : category === 'general'
+            ? 'Focus on GENERAL building code requirements that frame the work (permits, adopted code editions, existing-building/alteration provisions, workmanship and material standards).'
+            : '';
 
     const prompt = `You are a building-code research assistant for a licensed storm-restoration roofing contractor operating in the U.S. state with postal code "${state}".
 
@@ -620,6 +692,7 @@ ${
     ? `The contractor asked you to look up this specific code or topic: "${query}". Return only citations directly responsive to that request (usually 1-3).`
     : `Survey the building codes that most commonly apply to storm-damage roof and siding replacement in that state (typically the state-adopted edition of the IRC/IBC plus any state amendments). Return the 5-8 most load-bearing citations a carrier would scrutinize (e.g. drip edge, ice barrier, underlayment, flashing, matching/repair limitations, permit triggers).`
 }
+${categoryInstruction}
 
 Rules:
 - Only include codes you are confident actually exist. ${editionInstruction} Include the edition year in "cite" (e.g. "2021 IRC R905.2.8.5").
@@ -653,7 +726,7 @@ Respond with JSON only, in exactly this shape:
         seen.add(key);
         suggestions.push({ key, element, title, cite, body });
       }
-      res.json(ResearchCompanyStateCodesResponse.parse({ suggestions }));
+      res.json(ResearchJurisdictionCodesResponse.parse({ suggestions }));
     } catch (err) {
       req.log.error({ err }, 'State code research failed');
       res.status(502).json({ error: 'Code research failed — please try again' });
