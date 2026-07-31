@@ -2,7 +2,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -32,30 +31,7 @@ const PROPERTY_TYPES = [
   { value: 'commercial', label: 'Commercial' },
 ];
 const STORIES = ['1', '1.5', '2', '2.5', '3+'];
-const ROOF_AGE_BASES = [
-  { value: 'homeowner_reported', label: 'Homeowner reported' },
-  { value: 'permit_record', label: 'Permit record' },
-  { value: 'product_date_code', label: 'Product date code' },
-  { value: 'estimated', label: 'Estimated' },
-];
-const ROOFING_MATERIALS = [
-  '3-Tab Asphalt Shingles',
-  'Laminated Asphalt Shingles',
-  'Standing Seam Metal',
-  'Cedar Shake',
-];
 const ROOF_GEOMETRIES = ['gable', 'hip', 'mansard', 'gambrel', 'flat', 'complex'];
-const DECK_TYPES = [
-  { value: 'plywood', label: 'Plywood' },
-  { value: 'osb', label: 'OSB' },
-  { value: 'plank', label: 'Plank' },
-  { value: 'skip_sheathing', label: 'Skip sheathing' },
-  { value: 'unknown', label: 'Unknown' },
-];
-const ATTACHMENT = [
-  { value: 'detached', label: 'Detached' },
-  { value: 'attached', label: 'Attached' },
-];
 
 export default function InspectionPropertyProfileScreen() {
   const colors = useColors();
@@ -71,15 +47,8 @@ export default function InspectionPropertyProfileScreen() {
 
   const [propertyType, setPropertyType] = React.useState<string | null>(null);
   const [stories, setStories] = React.useState<string | null>(null);
-  const [roofType, setRoofType] = React.useState<string | null>(null);
-  const [roofAge, setRoofAge] = React.useState('');
-  const [roofAgeBasis, setRoofAgeBasis] = React.useState<string | null>(null);
   const [accessibilityNotes, setAccessibilityNotes] = React.useState('');
-  const [buildingType, setBuildingType] = React.useState('');
-  const [attachedOrDetached, setAttachedOrDetached] = React.useState<string | null>(null);
   const [roofGeometry, setRoofGeometry] = React.useState<string[]>([]);
-  const [deckType, setDeckType] = React.useState<string | null>(null);
-  const [framingNotes, setFramingNotes] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
@@ -90,18 +59,8 @@ export default function InspectionPropertyProfileScreen() {
     if (existing && !hydrated) {
       setPropertyType(existing.propertyType ?? null);
       setStories(existing.stories ?? null);
-      // Restore a previously saved material; keep null if not one of the known options
-      // so legacy free-text values don't show as a broken selection.
-      const savedMaterial = existing.roofType ?? null;
-      setRoofType(savedMaterial && ROOFING_MATERIALS.includes(savedMaterial) ? savedMaterial : null);
-      setRoofAge(existing.roofAgeYears != null ? String(existing.roofAgeYears) : '');
-      setRoofAgeBasis(existing.roofAgeBasis ?? null);
       setAccessibilityNotes(existing.accessibilityNotes ?? '');
-      setBuildingType(existing.buildingType ?? '');
-      setAttachedOrDetached(existing.attachedOrDetached ?? null);
       setRoofGeometry(existing.roofGeometry ?? []);
-      setDeckType(existing.deckType ?? null);
-      setFramingNotes(existing.framingConditionNotes ?? '');
       setHydrated(true);
     }
   }, [existing, hydrated]);
@@ -124,26 +83,16 @@ export default function InspectionPropertyProfileScreen() {
     );
   }
 
-  // Auto-save on back — skips if roof age validation would fail.
+  // Auto-save on back.
   const autoSaveRef = React.useRef<() => void>(() => {});
   autoSaveRef.current = () => {
     if (saving) return;
-    const roofAgeYears = roofAge.trim() === '' ? null : Number(roofAge.trim());
-    if (roofAgeYears != null && (!Number.isFinite(roofAgeYears) || roofAgeYears < 0)) return;
-    if (roofAgeYears != null && !roofAgeBasis) return;
     void patchInspection(queryClient, id, {
       propertyProfile: {
         propertyType: (propertyType as never) ?? null,
         stories: (stories as never) ?? null,
-        roofType: roofType ?? null,
-        roofAgeYears,
-        roofAgeBasis: (roofAgeBasis as never) ?? null,
         accessibilityNotes: accessibilityNotes.trim() || null,
-        buildingType: buildingType.trim() || null,
-        attachedOrDetached: (attachedOrDetached as never) ?? null,
         roofGeometry: roofGeometry as never,
-        deckType: (deckType as never) ?? null,
-        framingConditionNotes: framingNotes.trim() || null,
         recordedAtUtc: new Date().toISOString(),
       },
     }).catch(() => {});
@@ -155,31 +104,14 @@ export default function InspectionPropertyProfileScreen() {
   async function save() {
     if (saving) return;
     setError(null);
-    const roofAgeYears = roofAge.trim() === '' ? null : Number(roofAge.trim());
-    if (roofAgeYears != null && (!Number.isFinite(roofAgeYears) || roofAgeYears < 0)) {
-      setError('Roof age must be a number of years.');
-      return;
-    }
-    // An unsourced roof age is attackable — require the basis with the value.
-    if (roofAgeYears != null && !roofAgeBasis) {
-      setError('Select how the roof age was determined.');
-      return;
-    }
     setSaving(true);
     try {
       await patchInspection(queryClient, id, {
         propertyProfile: {
           propertyType: (propertyType as never) ?? null,
           stories: (stories as never) ?? null,
-          roofType: roofType ?? null,
-          roofAgeYears,
-          roofAgeBasis: (roofAgeBasis as never) ?? null,
           accessibilityNotes: accessibilityNotes.trim() || null,
-          buildingType: buildingType.trim() || null,
-          attachedOrDetached: (attachedOrDetached as never) ?? null,
           roofGeometry: roofGeometry as never,
-          deckType: (deckType as never) ?? null,
-          framingConditionNotes: framingNotes.trim() || null,
           recordedAtUtc: new Date().toISOString(),
         },
       });
@@ -218,32 +150,6 @@ export default function InspectionPropertyProfileScreen() {
           colors={colors}
         />
 
-        <DropdownPicker
-          label="Roofing material"
-          options={ROOFING_MATERIALS}
-          value={roofType}
-          onChange={setRoofType}
-          placeholder="Select roofing material"
-          colors={colors}
-        />
-
-        <Field
-          label="Roof age (years)"
-          value={roofAge}
-          onChange={setRoofAge}
-          placeholder="e.g. 12"
-          keyboardType="numeric"
-          colors={colors}
-        />
-        {roofAge.trim() !== '' ? (
-          <ChipGroup
-            label="How was the age determined? (required with an age)"
-            options={ROOF_AGE_BASES}
-            value={roofAgeBasis}
-            onChange={setRoofAgeBasis}
-            colors={colors}
-          />
-        ) : null}
         <Field
           label="Accessibility notes"
           value={accessibilityNotes}
@@ -254,8 +160,6 @@ export default function InspectionPropertyProfileScreen() {
         />
 
         <Text style={[styles.section, { color: colors.foreground }]}>Construction description</Text>
-        <Field label="Building type" value={buildingType} onChange={setBuildingType} placeholder="e.g. Wood-frame two story" colors={colors} />
-        <ChipGroup label="Attached or detached" options={ATTACHMENT} value={attachedOrDetached} onChange={setAttachedOrDetached} colors={colors} />
 
         <Text style={[styles.label, { color: colors.mutedForeground }]}>Roof geometry (select all that apply)</Text>
         <View style={styles.chipWrap}>
@@ -283,16 +187,6 @@ export default function InspectionPropertyProfileScreen() {
           })}
         </View>
 
-        <ChipGroup label="Deck type" options={DECK_TYPES} value={deckType} onChange={setDeckType} colors={colors} />
-        <Field
-          label="Framing condition notes"
-          value={framingNotes}
-          onChange={setFramingNotes}
-          placeholder="e.g. Trusses sound, no visible deflection"
-          multiline
-          colors={colors}
-        />
-
         {error ? <Text style={{ color: colors.destructive, fontSize: 13 }}>{error}</Text> : null}
 
         <Pressable
@@ -312,102 +206,6 @@ export default function InspectionPropertyProfileScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-// ─── Dropdown picker ──────────────────────────────────────────────────────────
-
-function DropdownPicker({
-  label,
-  options,
-  value,
-  onChange,
-  placeholder,
-  colors,
-}: {
-  label: string;
-  options: string[];
-  value: string | null;
-  onChange: (v: string | null) => void;
-  placeholder: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  const [open, setOpen] = React.useState(false);
-
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
-
-      <Pressable
-        onPress={() => setOpen(true)}
-        style={[
-          styles.dropdownTrigger,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
-        <Text
-          style={{
-            flex: 1,
-            fontSize: 15,
-            color: value ? colors.foreground : colors.mutedForeground,
-          }}
-          numberOfLines={1}
-        >
-          {value ?? placeholder}
-        </Text>
-        <Icon name="chevron-down" size={18} color={colors.mutedForeground} />
-      </Pressable>
-
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setOpen(false)}>
-          <Pressable
-            style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => {/* absorb touches so backdrop doesn't fire */}}
-          >
-            <Text style={[styles.modalTitle, { color: colors.foreground }]}>{label}</Text>
-
-            {options.map((opt) => {
-              const selected = value === opt;
-              return (
-                <Pressable
-                  key={opt}
-                  onPress={() => {
-                    onChange(opt);
-                    setOpen(false);
-                  }}
-                  style={[
-                    styles.modalOption,
-                    { borderColor: colors.border },
-                    selected && { backgroundColor: colors.primary + '18' },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      flex: 1,
-                      fontSize: 15,
-                      color: selected ? colors.primary : colors.foreground,
-                      fontWeight: selected ? '700' : '400',
-                    }}
-                  >
-                    {opt}
-                  </Text>
-                  {selected && <Icon name="check" size={18} color={colors.primary} />}
-                </Pressable>
-              );
-            })}
-
-            <Pressable
-              onPress={() => setOpen(false)}
-              style={[styles.modalCancel, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.mutedForeground, fontSize: 15, fontWeight: '600' }}>
-                Cancel
-              </Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </View>
   );
 }
 
@@ -508,51 +306,4 @@ const styles = StyleSheet.create({
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   saveBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 6 },
-  // Dropdown
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    paddingTop: 20,
-    paddingBottom: 36,
-    paddingHorizontal: 16,
-    gap: 4,
-  },
-  modalTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    paddingHorizontal: 4,
-  },
-  modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    gap: 12,
-  },
-  modalCancel: {
-    marginTop: 8,
-    borderTopWidth: 1,
-    paddingTop: 16,
-    alignItems: 'center',
-  },
 });
