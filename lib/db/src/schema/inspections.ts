@@ -131,7 +131,7 @@ export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
 // Zone-based component capture (Step 5). One shared zone photo evidences
 // every component documented in that zone.
-export const COMPONENT_ZONES = ['eave_edge', 'ridge_hip'] as const;
+export const COMPONENT_ZONES = ['eave_edge', 'ridge_hip', 'shingle_gauge'] as const;
 export type ComponentZone = (typeof COMPONENT_ZONES)[number];
 
 export const COMPONENT_STATUSES = ['present', 'absent', 'not_determined'] as const;
@@ -693,6 +693,7 @@ export const inspectionsTable = pgTable('inspections', {
   // v2.1 — optional siding measurement report reference (the client id of the
   // uploaded report photo). Nullable; absence is a soft flag, never a block.
   sidingMeasurementReportRef: text('siding_measurement_report_ref'),
+  measurementsReportUrl: text('measurements_report_url'),
   // REPORT_DATA v2 capture blocks — all nullable; null means "not captured"
   // and the corresponding report section omits.
   propertyProfile: jsonb('property_profile').$type<PropertyProfile | null>(),

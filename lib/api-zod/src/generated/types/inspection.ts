@@ -129,6 +129,11 @@ export interface Inspection {
      * @nullable
      */
   sidingMeasurementReportRef: string | null;
+  /**
+     * Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (/objects/…) served through the storage proxy.
+     * @nullable
+     */
+  measurementsReportUrl?: string | null;
   propertyProfile?: PropertyProfile | null;
   repairabilityAssessment?: RepairabilityAssessment | null;
   existingOrUnrelatedConditions?: ExistingCondition[] | null;

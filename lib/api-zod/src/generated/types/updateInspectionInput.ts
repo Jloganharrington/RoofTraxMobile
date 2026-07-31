@@ -70,6 +70,8 @@ export interface UpdateInspectionInput {
   sidingWrbPresent?: boolean | null;
   /** @nullable */
   sidingMeasurementReportRef?: string | null;
+  /** @nullable */
+  measurementsReportUrl?: string | null;
   propertyProfile?: PropertyProfile | null;
   repairabilityAssessment?: RepairabilityAssessmentInput | null;
   existingOrUnrelatedConditions?: ExistingCondition[] | null;

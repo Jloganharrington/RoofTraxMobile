@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -8,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,7 +18,8 @@ import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { PreliminaryHub } from '@/components/PreliminaryHub';
-import { attestInspection } from '@/lib/inspectionSync';
+import { attestInspection, patchInspection } from '@/lib/inspectionSync';
+import { uploadFile, UploadError } from '@/lib/upload';
 import { addBusinessDays } from '@/lib/fipsaTemplate';
 import {
   buildProtocolState,
@@ -79,6 +82,7 @@ export default function InspectionDetailScreen() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [equipmentDone, setEquipmentDone] = useState(false);
   const [savingEquipment, setSavingEquipment] = useState(false);
+  const [uploadingReport, setUploadingReport] = useState(false);
 
   // FTC cooling-off gate — shown once per hub visit when the FIPSA was signed
   // fewer than 3 business days ago. The rep can still proceed, but must
@@ -92,6 +96,29 @@ export default function InspectionDetailScreen() {
   const [coolingOffDismissed, setCoolingOffDismissed] = useState(false);
 
   const allChecked = EQUIPMENT_ITEMS.every((item) => checked[item]);
+
+  async function uploadMeasurementsReport() {
+    if (uploadingReport) return;
+    setUploadingReport(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0]!;
+      const objectPath = await uploadFile(asset.uri, 'application/pdf');
+      await patchInspection(queryClient, id, { measurementsReportUrl: objectPath });
+    } catch (err) {
+      const msg =
+        err instanceof UploadError
+          ? 'The file could not be uploaded. Check your connection and try again.'
+          : 'Could not attach the measurements report. Try again.';
+      Alert.alert('Upload failed', msg);
+    } finally {
+      setUploadingReport(false);
+    }
+  }
 
   async function confirmEquipment() {
     setSavingEquipment(true);
@@ -493,6 +520,40 @@ export default function InspectionDetailScreen() {
         ) : null}
       </View>
 
+      {/* Measurements report PDF upload */}
+      <Text style={[styles.section, { color: colors.foreground }]}>Measurements Report</Text>
+      <Pressable
+        onPress={() => void uploadMeasurementsReport()}
+        disabled={uploadingReport}
+        style={[
+          styles.reportRow,
+          {
+            backgroundColor: colors.card,
+            borderColor: inspection.measurementsReportUrl ? colors.success : colors.border,
+            opacity: uploadingReport ? 0.6 : 1,
+          },
+        ]}
+      >
+        {uploadingReport ? (
+          <ActivityIndicator color={colors.primary} />
+        ) : (
+          <Icon
+            name={inspection.measurementsReportUrl ? 'check' : 'upload'}
+            size={20}
+            color={inspection.measurementsReportUrl ? colors.success : colors.mutedForeground}
+          />
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.foreground, fontWeight: '600' }}>
+            {inspection.measurementsReportUrl ? 'Measurements report uploaded' : 'Upload measurements report PDF'}
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {inspection.measurementsReportUrl ? 'Tap to replace' : 'Optional — attach a PDF from your device'}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+      </Pressable>
+
       {/* Pre-inspection equipment attestation (not a protocol step). */}
       <Text style={[styles.section, { color: colors.foreground }]}>Equipment check</Text>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -658,6 +719,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   confirmBtn: { paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 6 },
   confirmText: { fontSize: 15, fontWeight: '700' },

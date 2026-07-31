@@ -4951,6 +4951,11 @@ components:
           description: >-
             v2.1 optional siding measurement report reference (client id of
             the uploaded report photo).
+        measurementsReportUrl:
+          type: [string, "null"]
+          description: >-
+            Optional measurements report PDF uploaded at arrival. Stored as
+            an object-storage path (/objects/…) served through the storage proxy.
         # REPORT_DATA v2 capture blocks — null means "not captured" and the
         # corresponding report section omits.
         propertyProfile:
@@ -5271,6 +5276,8 @@ components:
         sidingWrbPresent:
           type: [boolean, "null"]
         sidingMeasurementReportRef:
+          type: [string, "null"]
+        measurementsReportUrl:
           type: [string, "null"]
         propertyProfile:
           oneOf:

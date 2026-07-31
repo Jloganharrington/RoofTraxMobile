@@ -45,6 +45,7 @@ export interface HydratedInspectionChildren {
   // alongside the hydrated child collections.
   damageFlags: DamageFlags;
   sidingMeasurementReportRef: string | null;
+  measurementsReportUrl: string | null;
   // From the inspection row's propertyProfile jsonb — townhomes share side
   // walls, so right/left elevations are exempt from the gate.
   propertyType: string | null;

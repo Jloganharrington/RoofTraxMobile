@@ -303,7 +303,7 @@ async function hydrateInspectionChildren(
 ): Promise<
   Omit<
     HydratedInspectionChildren,
-    'arrivalConditions' | 'damageFlags' | 'sidingMeasurementReportRef' | 'propertyType'
+    'arrivalConditions' | 'damageFlags' | 'sidingMeasurementReportRef' | 'measurementsReportUrl' | 'propertyType'
   > & { testSquareHits: typeof testSquareHitsTable.$inferSelect[] }
 > {
   const [
@@ -1131,6 +1131,9 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       }),
       ...(parsed.data.sidingMeasurementReportRef !== undefined && {
         sidingMeasurementReportRef: parsed.data.sidingMeasurementReportRef,
+      }),
+      ...(parsed.data.measurementsReportUrl !== undefined && {
+        measurementsReportUrl: parsed.data.measurementsReportUrl,
       }),
       // REPORT_DATA v2 capture blocks. Whole-object replace (no partial
       // merge) — the client always sends the full block.
@@ -2564,6 +2567,7 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
       interiorDamageFound: inspection.interiorDamageFound,
     },
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
+    measurementsReportUrl: inspection.measurementsReportUrl ?? null,
     propertyType: inspection.propertyProfile?.propertyType ?? null,
   });
   if (evaluation.deficiencies.length > 0) {
@@ -2709,6 +2713,7 @@ router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Re
       interiorDamageFound: inspection.interiorDamageFound,
     },
     sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
+    measurementsReportUrl: inspection.measurementsReportUrl ?? null,
     propertyType: inspection.propertyProfile?.propertyType ?? null,
   });
 

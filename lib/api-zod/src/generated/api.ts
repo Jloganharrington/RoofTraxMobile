@@ -1556,6 +1556,7 @@ export const ListInspectionsResponse = zod.object({
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
   "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
   "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
@@ -2149,6 +2150,7 @@ export const CreateInspectionResponse = zod.object({
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
   "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
   "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
@@ -2724,6 +2726,7 @@ export const GetInspectionResponse = zod.object({
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
   "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
   "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
@@ -3138,6 +3141,7 @@ export const UpdateInspectionBody = zod.object({
   "interiorDamageFound": zod.boolean().optional(),
   "sidingWrbPresent": zod.boolean().nullish(),
   "sidingMeasurementReportRef": zod.string().nullish(),
+  "measurementsReportUrl": zod.string().nullish(),
   "propertyProfile": zod.union([zod.object({
   "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
   "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
@@ -3612,6 +3616,7 @@ export const UpdateInspectionResponse = zod.object({
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
   "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
   "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
@@ -4873,6 +4878,7 @@ export const SubmitInspectionResponse = zod.object({
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
   "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
+  "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
   "propertyType": zod.union([zod.enum(['single_family', 'townhome', 'condo', 'multi_family', 'commercial']),zod.null()]).optional(),
   "stories": zod.union([zod.enum(['1', '1.5', '2', '2.5', '3+']),zod.null()]).optional(),
