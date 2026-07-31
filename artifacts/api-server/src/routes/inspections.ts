@@ -1358,6 +1358,7 @@ router.post('/inspections/:inspectionId/siding-facets', async (req: Request, res
     isolated: parsed.data.isolated ?? undefined,
     components: parsed.data.components ?? undefined,
     notes: parsed.data.notes ?? undefined,
+    preExistingConditions: parsed.data.preExistingConditions ?? undefined,
   };
 
   if (parsed.data.id) {
@@ -1422,6 +1423,7 @@ router.patch(
       ...(parsed.data.isolated !== undefined && { isolated: parsed.data.isolated }),
       ...(parsed.data.components !== undefined && { components: parsed.data.components }),
       ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
+      ...(parsed.data.preExistingConditions !== undefined && { preExistingConditions: parsed.data.preExistingConditions }),
     };
     const facetWhere = and(
       eq(inspectionSidingFacetsTable.id, req.params.sidingFacetId as string),

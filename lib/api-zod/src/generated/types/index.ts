@@ -239,6 +239,7 @@ export * from './searchAddressParams';
 export * from './sidingComponentAction';
 export * from './sidingDamageType';
 export * from './sidingFacetComponent';
+export * from './sidingPreExistingCondition';
 export * from './sidingPhotoRole';
 export * from './signatureOnFileRef';
 export * from './stormConfirmedRef';

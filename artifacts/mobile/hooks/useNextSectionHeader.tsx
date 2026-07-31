@@ -34,6 +34,7 @@ export const STEP_ROUTES: Record<StepKey, string> = {
 // appear as separate navigation stops (hub cards or Next-button hops).
 // Steps embedded in a parent screen — hidden from hub cards and Next-button hops.
 export const STEPS_MERGED_INTO_ROOF = new Set<StepKey>([
+  'existing_conditions',
   'test_squares', 'components', 'product', // merged into Roof Inspection
   'homeowner',                              // merged into Arrival Log
 ]);

@@ -7,6 +7,7 @@
  */
 import type { SidingDamageType } from './sidingDamageType';
 import type { SidingFacetComponent } from './sidingFacetComponent';
+import type { SidingPreExistingCondition } from './sidingPreExistingCondition';
 
 export interface CreateInspectionSidingFacetInput {
   /** Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert), so a queued offline capture can be safely retried and referenced by child photos before it has synced. */
@@ -22,4 +23,5 @@ export interface CreateInspectionSidingFacetInput {
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
+  preExistingConditions?: SidingPreExistingCondition[];
 }

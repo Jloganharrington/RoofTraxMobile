@@ -7,6 +7,7 @@
  */
 import type { SidingDamageType } from './sidingDamageType';
 import type { SidingFacetComponent } from './sidingFacetComponent';
+import type { SidingPreExistingCondition } from './sidingPreExistingCondition';
 
 /**
  * Partial siding-facet update — only supplied fields change.
@@ -23,4 +24,5 @@ export interface UpdateInspectionSidingFacetInput {
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
+  preExistingConditions?: SidingPreExistingCondition[];
 }

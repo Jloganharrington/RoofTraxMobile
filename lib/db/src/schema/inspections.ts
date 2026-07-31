@@ -252,10 +252,27 @@ export interface ArrivalConditions {
 export interface HomeownerFacts {
   // Whether the homeowner is aware of / can corroborate the date of loss.
   awareOfDateOfLoss: boolean | null;
-  // Free-text factual notes on prior repairs and prior claims.
-  priorRepairs: string | null;
-  priorClaims: string | null;
   recordedAtUtc: string;
+  // Legacy free-text fields (superseded by previousRepairs / previousClaimsOpened).
+  priorRepairs?: string | null;
+  priorClaims?: string | null;
+  // Policy Review
+  policyActiveAtLoss?: boolean | null;
+  replacementCostCoverage?: boolean | null;
+  olCoverage?: boolean | null;
+  specialExclusions?: string | null;
+  // Property facts reported by homeowner
+  lengthOfOwnership?: string | null;
+  knownRoofAge?: string | null;
+  knownSidingAge?: string | null;
+  // Event facts
+  homeAtTimeOfEvent?: boolean | null;
+  mitigationStepsPrior?: string | null;
+  // Claim & repair history
+  previousClaimsOpened?: string | null;
+  currentClaimsOpened?: string | null;
+  previousRepairs?: string | null;
+  previousUnrepairedDamage?: string | null;
 }
 
 // ── Contractor-lane content lint (Phase 2 forensic report) ────────────────
@@ -984,6 +1001,11 @@ export const inspectionSidingFacetsTable = pgTable('inspection_siding_facets', {
     .notNull()
     .default([]),
   notes: text('notes'),
+  // Pre-existing or excluded conditions on this facet — anything not being
+  // claimed, documented to make the rest of the claim credible.
+  preExistingConditions: jsonb('pre_existing_conditions')
+    .$type<Array<{ note: string }>>()
+    .default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

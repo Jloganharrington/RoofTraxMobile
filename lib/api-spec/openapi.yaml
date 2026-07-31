@@ -4812,16 +4812,42 @@ components:
       description: >-
         Structured homeowner facts (E3). Plain factual intake only — no
         coverage, settlement, or advice language ever appears here.
-      required: [awareOfDateOfLoss, priorRepairs, priorClaims, recordedAtUtc]
+      required: [awareOfDateOfLoss, recordedAtUtc]
       properties:
         awareOfDateOfLoss:
           type: [boolean, "null"]
+        recordedAtUtc:
+          type: string
         priorRepairs:
           type: [string, "null"]
         priorClaims:
           type: [string, "null"]
-        recordedAtUtc:
-          type: string
+        policyActiveAtLoss:
+          type: [boolean, "null"]
+        replacementCostCoverage:
+          type: [boolean, "null"]
+        olCoverage:
+          type: [boolean, "null"]
+        specialExclusions:
+          type: [string, "null"]
+        lengthOfOwnership:
+          type: [string, "null"]
+        knownRoofAge:
+          type: [string, "null"]
+        knownSidingAge:
+          type: [string, "null"]
+        homeAtTimeOfEvent:
+          type: [boolean, "null"]
+        mitigationStepsPrior:
+          type: [string, "null"]
+        previousClaimsOpened:
+          type: [string, "null"]
+        currentClaimsOpened:
+          type: [string, "null"]
+        previousRepairs:
+          type: [string, "null"]
+        previousUnrepairedDamage:
+          type: [string, "null"]
     GateFinding:
       type: object
       description: A single gate-engine finding (deficiency or soft flag).
@@ -6090,6 +6116,10 @@ components:
             $ref: "#/components/schemas/SidingFacetComponent"
         notes:
           type: [string, "null"]
+        preExistingConditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidingPreExistingCondition"
         createdAt:
           type: string
           format: date-time
@@ -6123,6 +6153,10 @@ components:
             $ref: "#/components/schemas/SidingFacetComponent"
         notes:
           type: [string, "null"]
+        preExistingConditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidingPreExistingCondition"
     UpdateInspectionSidingFacetInput:
       type: object
       description: Partial siding-facet update — only supplied fields change.
@@ -6146,6 +6180,19 @@ components:
             $ref: "#/components/schemas/SidingFacetComponent"
         notes:
           type: [string, "null"]
+        preExistingConditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidingPreExistingCondition"
+    SidingPreExistingCondition:
+      type: object
+      description: >-
+        One pre-existing or excluded condition on a siding facet — anything
+        not being claimed, documented to make the rest of the claim credible.
+      required: [note]
+      properties:
+        note:
+          type: string
     SidingFacetComponent:
       type: object
       description: >-

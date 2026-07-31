@@ -1379,9 +1379,22 @@ export const ListInspectionsResponse = zod.object({
 }).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
-  "priorRepairs": zod.string().nullable(),
-  "priorClaims": zod.string().nullable(),
-  "recordedAtUtc": zod.string()
+  "recordedAtUtc": zod.string(),
+  "priorRepairs": zod.string().nullable().optional(),
+  "priorClaims": zod.string().nullable().optional(),
+  "policyActiveAtLoss": zod.boolean().nullable().optional(),
+  "replacementCostCoverage": zod.boolean().nullable().optional(),
+  "olCoverage": zod.boolean().nullable().optional(),
+  "specialExclusions": zod.string().nullable().optional(),
+  "lengthOfOwnership": zod.string().nullable().optional(),
+  "knownRoofAge": zod.string().nullable().optional(),
+  "knownSidingAge": zod.string().nullable().optional(),
+  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
+  "mitigationStepsPrior": zod.string().nullable().optional(),
+  "previousClaimsOpened": zod.string().nullable().optional(),
+  "currentClaimsOpened": zod.string().nullable().optional(),
+  "previousRepairs": zod.string().nullable().optional(),
+  "previousUnrepairedDamage": zod.string().nullable().optional()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -1973,9 +1986,22 @@ export const CreateInspectionResponse = zod.object({
 }).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
-  "priorRepairs": zod.string().nullable(),
-  "priorClaims": zod.string().nullable(),
-  "recordedAtUtc": zod.string()
+  "recordedAtUtc": zod.string(),
+  "priorRepairs": zod.string().nullable().optional(),
+  "priorClaims": zod.string().nullable().optional(),
+  "policyActiveAtLoss": zod.boolean().nullable().optional(),
+  "replacementCostCoverage": zod.boolean().nullable().optional(),
+  "olCoverage": zod.boolean().nullable().optional(),
+  "specialExclusions": zod.string().nullable().optional(),
+  "lengthOfOwnership": zod.string().nullable().optional(),
+  "knownRoofAge": zod.string().nullable().optional(),
+  "knownSidingAge": zod.string().nullable().optional(),
+  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
+  "mitigationStepsPrior": zod.string().nullable().optional(),
+  "previousClaimsOpened": zod.string().nullable().optional(),
+  "currentClaimsOpened": zod.string().nullable().optional(),
+  "previousRepairs": zod.string().nullable().optional(),
+  "previousUnrepairedDamage": zod.string().nullable().optional()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -2549,9 +2575,22 @@ export const GetInspectionResponse = zod.object({
 }).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
-  "priorRepairs": zod.string().nullable(),
-  "priorClaims": zod.string().nullable(),
-  "recordedAtUtc": zod.string()
+  "recordedAtUtc": zod.string(),
+  "priorRepairs": zod.string().nullable().optional(),
+  "priorClaims": zod.string().nullable().optional(),
+  "policyActiveAtLoss": zod.boolean().nullable().optional(),
+  "replacementCostCoverage": zod.boolean().nullable().optional(),
+  "olCoverage": zod.boolean().nullable().optional(),
+  "specialExclusions": zod.string().nullable().optional(),
+  "lengthOfOwnership": zod.string().nullable().optional(),
+  "knownRoofAge": zod.string().nullable().optional(),
+  "knownSidingAge": zod.string().nullable().optional(),
+  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
+  "mitigationStepsPrior": zod.string().nullable().optional(),
+  "previousClaimsOpened": zod.string().nullable().optional(),
+  "currentClaimsOpened": zod.string().nullable().optional(),
+  "previousRepairs": zod.string().nullable().optional(),
+  "previousUnrepairedDamage": zod.string().nullable().optional()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -3439,9 +3478,22 @@ export const UpdateInspectionResponse = zod.object({
 }).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
-  "priorRepairs": zod.string().nullable(),
-  "priorClaims": zod.string().nullable(),
-  "recordedAtUtc": zod.string()
+  "recordedAtUtc": zod.string(),
+  "priorRepairs": zod.string().nullable().optional(),
+  "priorClaims": zod.string().nullable().optional(),
+  "policyActiveAtLoss": zod.boolean().nullable().optional(),
+  "replacementCostCoverage": zod.boolean().nullable().optional(),
+  "olCoverage": zod.boolean().nullable().optional(),
+  "specialExclusions": zod.string().nullable().optional(),
+  "lengthOfOwnership": zod.string().nullable().optional(),
+  "knownRoofAge": zod.string().nullable().optional(),
+  "knownSidingAge": zod.string().nullable().optional(),
+  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
+  "mitigationStepsPrior": zod.string().nullable().optional(),
+  "previousClaimsOpened": zod.string().nullable().optional(),
+  "currentClaimsOpened": zod.string().nullable().optional(),
+  "previousRepairs": zod.string().nullable().optional(),
+  "previousUnrepairedDamage": zod.string().nullable().optional()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -4007,7 +4059,10 @@ export const CreateInspectionSidingFacetBody = zod.object({
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).optional(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+})).optional()
 })
 
 export const CreateInspectionSidingFacetResponse = zod.object({
@@ -4024,6 +4079,9 @@ export const CreateInspectionSidingFacetResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+})).optional(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -4049,7 +4107,10 @@ export const UpdateInspectionSidingFacetBody = zod.object({
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).optional(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+})).optional()
 }).describe('Partial siding-facet update — only supplied fields change.')
 
 export const UpdateInspectionSidingFacetResponse = zod.object({
@@ -4066,6 +4127,9 @@ export const UpdateInspectionSidingFacetResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+})).optional(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -4701,9 +4765,22 @@ export const SubmitInspectionResponse = zod.object({
 }).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
-  "priorRepairs": zod.string().nullable(),
-  "priorClaims": zod.string().nullable(),
-  "recordedAtUtc": zod.string()
+  "recordedAtUtc": zod.string(),
+  "priorRepairs": zod.string().nullable().optional(),
+  "priorClaims": zod.string().nullable().optional(),
+  "policyActiveAtLoss": zod.boolean().nullable().optional(),
+  "replacementCostCoverage": zod.boolean().nullable().optional(),
+  "olCoverage": zod.boolean().nullable().optional(),
+  "specialExclusions": zod.string().nullable().optional(),
+  "lengthOfOwnership": zod.string().nullable().optional(),
+  "knownRoofAge": zod.string().nullable().optional(),
+  "knownSidingAge": zod.string().nullable().optional(),
+  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
+  "mitigationStepsPrior": zod.string().nullable().optional(),
+  "previousClaimsOpened": zod.string().nullable().optional(),
+  "currentClaimsOpened": zod.string().nullable().optional(),
+  "previousRepairs": zod.string().nullable().optional(),
+  "previousUnrepairedDamage": zod.string().nullable().optional()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),

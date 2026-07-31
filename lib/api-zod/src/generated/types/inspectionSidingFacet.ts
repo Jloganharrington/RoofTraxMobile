@@ -7,6 +7,7 @@
  */
 import type { SidingDamageType } from './sidingDamageType';
 import type { SidingFacetComponent } from './sidingFacetComponent';
+import type { SidingPreExistingCondition } from './sidingPreExistingCondition';
 
 export interface InspectionSidingFacet {
   id: string;
@@ -29,5 +30,6 @@ export interface InspectionSidingFacet {
   components: SidingFacetComponent[];
   /** @nullable */
   notes: string | null;
+  preExistingConditions?: SidingPreExistingCondition[];
   createdAt: Date;
 }

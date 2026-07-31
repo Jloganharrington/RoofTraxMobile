@@ -413,14 +413,6 @@ export default function InspectionDetailScreen() {
                 : 'No temporary repairs performed'
               : 'Emergency tarping / mitigation (optional)',
         };
-      case 'existing_conditions':
-        return {
-          done: inspection!.existingOrUnrelatedConditions != null,
-          subtitle:
-            inspection!.existingOrUnrelatedConditions != null
-              ? `${inspection!.existingOrUnrelatedConditions.length} condition${inspection!.existingOrUnrelatedConditions.length === 1 ? '' : 's'} excluded from claim`
-              : 'Pre-existing conditions excluded from the claim (optional)',
-        };
       case 'homeowner':
         return {
           done: inspection!.homeownerFacts != null,

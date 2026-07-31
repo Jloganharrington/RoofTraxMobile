@@ -2,10 +2,13 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -60,6 +63,19 @@ export default function InspectionSidingFacetScreen() {
 
   const [removing, setRemoving] = React.useState(false);
   const [componentBusy, setComponentBusy] = React.useState(false);
+
+  // Pre-existing / excluded conditions local state — hydrated from the facet
+  // row once, then kept in sync via immediate saves on add/remove.
+  const [preExistingConditions, setPreExistingConditions] = React.useState<string[]>([]);
+  const [preExistingHydrated, setPreExistingHydrated] = React.useState(false);
+
+  React.useEffect(() => {
+    if (facet && !preExistingHydrated) {
+      const existing = (facet.preExistingConditions ?? []) as Array<{ note: string }>;
+      setPreExistingConditions(existing.map((c) => c.note));
+      setPreExistingHydrated(true);
+    }
+  }, [facet, preExistingHydrated]);
 
   if ((inspectionQuery.isLoading || inspectionQuery.isFetching) && !facet) {
     return (
@@ -121,6 +137,28 @@ export default function InspectionSidingFacetScreen() {
   async function setComponentAction(index: number, action: SidingComponentAction) {
     const next = components.map((c, i) => (i === index ? { ...c, action } : c));
     await setComponents(next);
+  }
+
+  // Pre-existing conditions helpers
+  function addCondition() {
+    setPreExistingConditions((prev) => [...prev, '']);
+  }
+
+  function updateConditionText(index: number, text: string) {
+    setPreExistingConditions((prev) => prev.map((n, i) => (i === index ? text : n)));
+  }
+
+  async function saveConditionsArray(notes: string[]) {
+    const cleaned = notes.map((n) => n.trim()).filter((n) => n !== '');
+    await updateSidingFacet(queryClient, id, sidingFacetId, {
+      preExistingConditions: cleaned.map((note) => ({ note })),
+    });
+  }
+
+  async function removeCondition(index: number) {
+    const next = preExistingConditions.filter((_, i) => i !== index);
+    setPreExistingConditions(next);
+    await saveConditionsArray(next);
   }
 
   function capture(
@@ -200,9 +238,14 @@ export default function InspectionSidingFacetScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
     >
       <Text style={[styles.heading, { color: colors.foreground }]}>{facet.label}</Text>
 
@@ -386,6 +429,48 @@ export default function InspectionSidingFacetScreen() {
         );
       })}
 
+      {/* Pre-existing / Excluded Conditions */}
+      <Text style={[styles.section, { color: colors.foreground }]}>
+        Pre-existing / Excluded Conditions
+      </Text>
+      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+        Document anything on this facet you are NOT claiming — granule loss, old caulking, prior
+        repairs. Showing what's excluded is what makes the rest of the claim credible.
+      </Text>
+
+      {preExistingConditions.map((note, i) => (
+        <View key={i} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
+              {`Condition ${i + 1}`}
+            </Text>
+            <Pressable onPress={() => void removeCondition(i)} hitSlop={8}>
+              <Icon name="trash-2" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+          <TextInput
+            value={note}
+            onChangeText={(v) => updateConditionText(i, v)}
+            onBlur={() => void saveConditionsArray(preExistingConditions)}
+            placeholder="e.g. Granule loss near ridge — thermal, not impact"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            style={[
+              styles.conditionInput,
+              { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground },
+            ]}
+          />
+        </View>
+      ))}
+
+      <Pressable
+        onPress={addCondition}
+        style={[styles.addConditionBtn, { borderColor: colors.border }]}
+      >
+        <Icon name="plus" size={16} color={colors.primary} />
+        <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Add condition</Text>
+      </Pressable>
+
       {/* Remove */}
       <Pressable
         onPress={confirmRemove}
@@ -404,6 +489,7 @@ export default function InspectionSidingFacetScreen() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -430,4 +516,23 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   stepCount: { fontSize: 17, fontWeight: '800', minWidth: 24, textAlign: 'center' },
+  conditionInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    minHeight: 68,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: 'top',
+  },
+  addConditionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
 });

@@ -67,8 +67,19 @@ export default function InspectionArrivalScreen() {
 
   // Homeowner Interview — shown when "Homeowner" is selected in Personnel.
   const [awareOfDateOfLoss, setAwareOfDateOfLoss] = useState<boolean | null>(null);
-  const [priorRepairs, setPriorRepairs] = useState('');
-  const [priorClaims, setPriorClaims] = useState('');
+  const [policyActiveAtLoss, setPolicyActiveAtLoss] = useState(false);
+  const [replacementCostCoverage, setReplacementCostCoverage] = useState(false);
+  const [olCoverage, setOlCoverage] = useState(false);
+  const [specialExclusions, setSpecialExclusions] = useState('');
+  const [lengthOfOwnership, setLengthOfOwnership] = useState('');
+  const [knownRoofAge, setKnownRoofAge] = useState('');
+  const [knownSidingAge, setKnownSidingAge] = useState('');
+  const [homeAtTimeOfEvent, setHomeAtTimeOfEvent] = useState<boolean | null>(null);
+  const [mitigationStepsPrior, setMitigationStepsPrior] = useState('');
+  const [previousClaimsOpened, setPreviousClaimsOpened] = useState('');
+  const [currentClaimsOpened, setCurrentClaimsOpened] = useState('');
+  const [previousRepairs, setPreviousRepairs] = useState('');
+  const [previousUnrepairedDamage, setPreviousUnrepairedDamage] = useState('');
 
   const navigation = useNavigation();
 
@@ -147,9 +158,20 @@ export default function InspectionArrivalScreen() {
         if (personnelSelected.includes('Homeowner')) {
           await updateHomeownerFacts(queryClient, id, {
             awareOfDateOfLoss,
-            priorRepairs: priorRepairs.trim() || null,
-            priorClaims: priorClaims.trim() || null,
             recordedAtUtc: now.toISOString(),
+            policyActiveAtLoss: policyActiveAtLoss || null,
+            replacementCostCoverage: replacementCostCoverage || null,
+            olCoverage: olCoverage || null,
+            specialExclusions: specialExclusions.trim() || null,
+            lengthOfOwnership: lengthOfOwnership.trim() || null,
+            knownRoofAge: knownRoofAge.trim() || null,
+            knownSidingAge: knownSidingAge.trim() || null,
+            homeAtTimeOfEvent,
+            mitigationStepsPrior: mitigationStepsPrior.trim() || null,
+            previousClaimsOpened: previousClaimsOpened.trim() || null,
+            currentClaimsOpened: currentClaimsOpened.trim() || null,
+            previousRepairs: previousRepairs.trim() || null,
+            previousUnrepairedDamage: previousUnrepairedDamage.trim() || null,
           });
         }
       } catch { /* outbox will retry */ }
@@ -189,9 +211,20 @@ export default function InspectionArrivalScreen() {
       if (personnelSelected.includes('Homeowner')) {
         await updateHomeownerFacts(queryClient, id, {
           awareOfDateOfLoss,
-          priorRepairs: priorRepairs.trim() || null,
-          priorClaims: priorClaims.trim() || null,
           recordedAtUtc: now.toISOString(),
+          policyActiveAtLoss: policyActiveAtLoss || null,
+          replacementCostCoverage: replacementCostCoverage || null,
+          olCoverage: olCoverage || null,
+          specialExclusions: specialExclusions.trim() || null,
+          lengthOfOwnership: lengthOfOwnership.trim() || null,
+          knownRoofAge: knownRoofAge.trim() || null,
+          knownSidingAge: knownSidingAge.trim() || null,
+          homeAtTimeOfEvent,
+          mitigationStepsPrior: mitigationStepsPrior.trim() || null,
+          previousClaimsOpened: previousClaimsOpened.trim() || null,
+          currentClaimsOpened: currentClaimsOpened.trim() || null,
+          previousRepairs: previousRepairs.trim() || null,
+          previousUnrepairedDamage: previousUnrepairedDamage.trim() || null,
         });
       }
       router.back();
@@ -316,6 +349,19 @@ export default function InspectionArrivalScreen() {
               Record what the homeowner reported — facts for the package, not conclusions.
             </Text>
 
+            {/* Policy Review */}
+            <Text style={[styles.subSection, { color: colors.foreground }]}>Policy Review</Text>
+            <CheckRow label="Policy active during loss" value={policyActiveAtLoss} onChange={setPolicyActiveAtLoss} colors={colors} />
+            <CheckRow label="Replacement cost coverage" value={replacementCostCoverage} onChange={setReplacementCostCoverage} colors={colors} />
+            <CheckRow label="O&L coverage" value={olCoverage} onChange={setOlCoverage} colors={colors} />
+            <Field label="Special exclusions that may apply" value={specialExclusions} onChange={setSpecialExclusions} placeholder="e.g. Wind deductible — 2% ACV" multiline colors={colors} />
+
+            {/* Property facts */}
+            <Field label="Length of ownership" value={lengthOfOwnership} onChange={setLengthOfOwnership} placeholder="e.g. 7 years" colors={colors} />
+            <Field label="Age of roof (if known)" value={knownRoofAge} onChange={setKnownRoofAge} placeholder="e.g. 12 years" colors={colors} />
+            <Field label="Age of siding (if known)" value={knownSidingAge} onChange={setKnownSidingAge} placeholder="e.g. 15 years" colors={colors} />
+
+            {/* Event facts */}
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
               Is the homeowner aware of the date of loss?
             </Text>
@@ -326,13 +372,7 @@ export default function InspectionArrivalScreen() {
                   <Pressable
                     key={option.label}
                     onPress={() => setAwareOfDateOfLoss(option.value)}
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor: on ? colors.primary : colors.card,
-                        borderColor: on ? colors.primary : colors.border,
-                      },
-                    ]}
+                    style={[styles.chip, { backgroundColor: on ? colors.primary : colors.card, borderColor: on ? colors.primary : colors.border }]}
                   >
                     <Text style={{ color: on ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
                       {option.label}
@@ -342,22 +382,34 @@ export default function InspectionArrivalScreen() {
               })}
             </View>
 
-            <Field
-              label="Prior repairs reported"
-              value={priorRepairs}
-              onChange={setPriorRepairs}
-              placeholder="e.g. Roof patched near chimney in 2019"
-              multiline
-              colors={colors}
-            />
-            <Field
-              label="Prior claims reported"
-              value={priorClaims}
-              onChange={setPriorClaims}
-              placeholder="e.g. Wind claim in 2021, approved"
-              multiline
-              colors={colors}
-            />
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>
+              Home when the event happened?
+            </Text>
+            <View style={styles.chipRow}>
+              {([{ label: 'Yes', value: true }, { label: 'No', value: false }] as const).map((option) => {
+                const on = homeAtTimeOfEvent === option.value;
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => setHomeAtTimeOfEvent(on ? null : option.value)}
+                    style={[styles.chip, { backgroundColor: on ? colors.primary : colors.card, borderColor: on ? colors.primary : colors.border }]}
+                  >
+                    <Text style={{ color: on ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Field label="Mitigation steps prior to our arrival" value={mitigationStepsPrior} onChange={setMitigationStepsPrior} placeholder="e.g. Tarped roof, moved items from basement" multiline colors={colors} />
+
+            {/* Claim & repair history */}
+            <Text style={[styles.subSection, { color: colors.foreground }]}>Claim & Repair History</Text>
+            <Field label="Previous claims opened?" value={previousClaimsOpened} onChange={setPreviousClaimsOpened} placeholder="Claim type, year, outcome…" multiline colors={colors} />
+            <Field label="Current claims opened?" value={currentClaimsOpened} onChange={setCurrentClaimsOpened} placeholder="Claim type, status…" multiline colors={colors} />
+            <Field label="Previous repairs?" value={previousRepairs} onChange={setPreviousRepairs} placeholder="What was repaired, when, by whom…" multiline colors={colors} />
+            <Field label="Previous damages not repaired?" value={previousUnrepairedDamage} onChange={setPreviousUnrepairedDamage} placeholder="Known existing damage not addressed…" multiline colors={colors} />
           </>
         ) : null}
 
@@ -375,6 +427,38 @@ export default function InspectionArrivalScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function CheckRow({
+  label,
+  value,
+  onChange,
+  colors,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      style={styles.checkRow}
+    >
+      <View
+        style={[
+          styles.checkbox,
+          {
+            borderColor: value ? colors.primary : colors.border,
+            backgroundColor: value ? colors.primary : 'transparent',
+          },
+        ]}
+      >
+        {value ? <Icon name="check" size={13} color={colors.primaryForeground} /> : null}
+      </View>
+      <Text style={{ color: colors.foreground, fontSize: 15, flex: 1 }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -423,6 +507,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   section: { fontSize: 16, fontWeight: '700', marginTop: 6 },
+  subSection: { fontSize: 14, fontWeight: '700', marginTop: 4 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 14,

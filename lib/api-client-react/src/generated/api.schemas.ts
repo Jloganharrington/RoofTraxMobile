@@ -1113,11 +1113,24 @@ export interface ArrivalConditions {
 export interface HomeownerFacts {
   /** @nullable */
   awareOfDateOfLoss: boolean | null;
-  /** @nullable */
-  priorRepairs: string | null;
-  /** @nullable */
-  priorClaims: string | null;
   recordedAtUtc: string;
+  /** @nullable */
+  priorRepairs?: string | null;
+  /** @nullable */
+  priorClaims?: string | null;
+  policyActiveAtLoss?: boolean | null;
+  replacementCostCoverage?: boolean | null;
+  olCoverage?: boolean | null;
+  specialExclusions?: string | null;
+  lengthOfOwnership?: string | null;
+  knownRoofAge?: string | null;
+  knownSidingAge?: string | null;
+  homeAtTimeOfEvent?: boolean | null;
+  mitigationStepsPrior?: string | null;
+  previousClaimsOpened?: string | null;
+  currentClaimsOpened?: string | null;
+  previousRepairs?: string | null;
+  previousUnrepairedDamage?: string | null;
 }
 
 /**
@@ -2050,6 +2063,13 @@ export interface SidingFacetComponent {
   action: SidingComponentAction | null;
 }
 
+/**
+ * One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.
+ */
+export interface SidingPreExistingCondition {
+  note: string;
+}
+
 export interface InspectionSidingFacet {
   id: string;
   companyId: string;
@@ -2071,6 +2091,7 @@ export interface InspectionSidingFacet {
   components: SidingFacetComponent[];
   /** @nullable */
   notes: string | null;
+  preExistingConditions?: SidingPreExistingCondition[];
   createdAt: string;
 }
 
@@ -2404,6 +2425,7 @@ export interface CreateInspectionSidingFacetInput {
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
+  preExistingConditions?: SidingPreExistingCondition[];
 }
 
 /**
@@ -2421,6 +2443,7 @@ export interface UpdateInspectionSidingFacetInput {
   components?: SidingFacetComponent[];
   /** @nullable */
   notes?: string | null;
+  preExistingConditions?: SidingPreExistingCondition[];
 }
 
 export interface InspectionSidingFacetEnvelope {
