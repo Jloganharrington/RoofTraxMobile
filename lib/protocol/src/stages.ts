@@ -85,7 +85,7 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
   {
     key: 'facets',
     order: 4,
-    name: 'Roof Facets & Measurements',
+    name: 'Roof Inspection',
     description:
       'Every roof facet with area, material, pitch and damage documentation, plus whole-roof linears.',
     appliesWhen: whenRoof,
