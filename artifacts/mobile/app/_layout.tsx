@@ -80,7 +80,7 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection-storm" options={{ title: 'Confirm Storm' }} />
       <Stack.Screen name="inspection-arrival" options={{ title: 'Log Arrival' }} />
       <Stack.Screen name="inspection-elevations" options={{ title: 'Elevations & Access' }} />
-      <Stack.Screen name="inspection-roof" options={{ title: 'Roof Facets' }} />
+      <Stack.Screen name="inspection-roof" options={{ title: 'Roof Inspection' }} />
       <Stack.Screen name="inspection-test-squares" options={{ title: 'Test Squares' }} />
       <Stack.Screen name="inspection-collateral" options={{ title: 'Collateral & Ground' }} />
       <Stack.Screen name="inspection-components" options={{ title: 'Components' }} />

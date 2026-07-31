@@ -149,6 +149,12 @@ export default function InspectionRoofScreen() {
   const photos = inspection.photos ?? [];
   const eaveZoneCaptured = photos.some((p) => p.subjectType === 'component' && p.zone === 'eave_edge');
 
+  // Gate: all eave/edge items must be answered before facets are accessible.
+  const allStatusAnswered = EAVE_STATUS_ITEMS.every((item) => checklistRecords.has(item.type));
+  const deckingAnswered = deckingRecord !== null || deckingDeterminable === 'no';
+  const layerAnswered = layerRecord !== null || layerDeterminable === 'no';
+  const eaveEdgeComplete = eaveZoneCaptured && allStatusAnswered && deckingAnswered && layerAnswered;
+
   // ── Facet helpers ─────────────────────────────────────────────────────────
   function nextFacetLabel(offset = 0): string {
     const max = facets.reduce((acc, facet) => {
@@ -589,7 +595,19 @@ export default function InspectionRoofScreen() {
         {/* ── Facets ─────────────────────────────────────────────────────── */}
         <Text style={[styles.section, { color: colors.foreground }]}>Facets</Text>
 
-        {facets.length === 0 ? (
+        {!eaveEdgeComplete ? (
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.cardHead}>
+              <Icon name="slash" size={18} color={colors.mutedForeground} />
+              <Text style={[styles.rowTitle, { color: colors.mutedForeground, flex: 1, marginLeft: 8 }]}>
+                Complete Eave / Edge first
+              </Text>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 2 }}>
+              Photograph the eave/edge zone, answer all component status items, decking, and layer count before moving on to facets.
+            </Text>
+          </View>
+        ) : facets.length === 0 ? (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.rowTitle, { color: colors.foreground }]}>
               How many facets does this roof have?
