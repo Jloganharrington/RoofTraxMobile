@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -32,6 +33,7 @@ import {
 } from '@/lib/inspectionSync';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
+import { storagePhotoUri, useStorageAuthHeaders } from '@/components/DiscontinuedProductsModal';
 
 // Step 3 · Roof Facets (protocol v2). The Eave/Edge component zone is
 // documented here first (merged from Components), then the inspector counts
@@ -108,6 +110,7 @@ export default function InspectionRoofScreen() {
   // Gate: "Can shingle layer count be determined at this time?" null=unanswered, yes/no
   const [layerDeterminable, setLayerDeterminable] = React.useState<'yes' | 'no' | null>(null);
   const [savingLayer, setSavingLayer] = React.useState(false);
+  const authHeaders = useStorageAuthHeaders();
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -147,8 +150,10 @@ export default function InspectionRoofScreen() {
   const layerRecord = components.find((c) => c.componentType === ComponentType.layer_count) ?? null;
   const deckingRecord = checklistRecords.get(ComponentType.decking) ?? null;
   const photos = inspection.photos ?? [];
-  const eaveZoneCaptured = photos.some((p) => p.subjectType === 'component' && p.zone === 'eave_edge');
-  const shingleGaugeCaptured = photos.some((p) => p.subjectType === 'component' && p.zone === 'shingle_gauge');
+  const eaveZonePhotos = photos.filter((p) => p.subjectType === 'component' && p.zone === 'eave_edge');
+  const shingleGaugePhotos = photos.filter((p) => p.subjectType === 'component' && p.zone === 'shingle_gauge');
+  const eaveZoneCaptured = eaveZonePhotos.length > 0;
+  const shingleGaugeCaptured = shingleGaugePhotos.length > 0;
 
   // Gate: all eave/edge items must be answered before facets are accessible.
   const allStatusAnswered = EAVE_STATUS_ITEMS.every((item) => checklistRecords.has(item.type));
@@ -593,27 +598,61 @@ export default function InspectionRoofScreen() {
           One eave shot evidences every edge component and the layer count.
         </Text>
 
-        <Pressable
-          onPress={captureEaveZonePhoto}
-          style={[styles.addRow, { borderColor: eaveZoneCaptured ? colors.border : colors.primary }]}
-        >
-          <Icon name="camera" size={18} color={colors.primary} />
-          <Text style={{ color: colors.primary, fontWeight: '600' }}>
-            {eaveZoneCaptured ? 'Add another eave/edge photo' : 'Photograph eave / edge zone'}
-          </Text>
-          {eaveZoneCaptured ? <Icon name="check" size={16} color={colors.success} /> : null}
-        </Pressable>
+        {/* Eave / edge zone photo */}
+        <View style={[styles.photoCapture, { borderColor: eaveZoneCaptured ? colors.success : colors.primary, backgroundColor: colors.card }]}>
+          <Pressable onPress={captureEaveZonePhoto} style={styles.photoCaptureBtn}>
+            <Icon name="camera" size={18} color={eaveZoneCaptured ? colors.success : colors.primary} />
+            <Text style={{ color: eaveZoneCaptured ? colors.success : colors.primary, fontWeight: '600', flex: 1 }}>
+              {eaveZoneCaptured ? 'Eave / edge zone' : 'Photograph eave / edge zone'}
+            </Text>
+            {eaveZoneCaptured
+              ? <Icon name="check" size={16} color={colors.success} />
+              : <Icon name="chevron-right" size={16} color={colors.primary} />}
+          </Pressable>
+          {eaveZonePhotos.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={styles.thumbContent}>
+              {eaveZonePhotos.map((p) => (
+                <Image
+                  key={p.id}
+                  source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
+                  style={styles.thumb}
+                  resizeMode="cover"
+                />
+              ))}
+              <Pressable onPress={captureEaveZonePhoto} style={[styles.thumbAdd, { borderColor: colors.border }]}>
+                <Icon name="plus" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </ScrollView>
+          )}
+        </View>
 
-        <Pressable
-          onPress={captureShingleGaugePhoto}
-          style={[styles.addRow, { borderColor: shingleGaugeCaptured ? colors.border : colors.primary }]}
-        >
-          <Icon name="camera" size={18} color={colors.primary} />
-          <Text style={{ color: colors.primary, fontWeight: '600' }}>
-            {shingleGaugeCaptured ? 'Add another shingle gauge photo' : 'Shingle Gauge'}
-          </Text>
-          {shingleGaugeCaptured ? <Icon name="check" size={16} color={colors.success} /> : null}
-        </Pressable>
+        {/* Shingle gauge photo */}
+        <View style={[styles.photoCapture, { borderColor: shingleGaugeCaptured ? colors.success : colors.primary, backgroundColor: colors.card }]}>
+          <Pressable onPress={captureShingleGaugePhoto} style={styles.photoCaptureBtn}>
+            <Icon name="camera" size={18} color={shingleGaugeCaptured ? colors.success : colors.primary} />
+            <Text style={{ color: shingleGaugeCaptured ? colors.success : colors.primary, fontWeight: '600', flex: 1 }}>
+              {shingleGaugeCaptured ? 'Shingle Gauge' : 'Shingle Gauge — capture photo'}
+            </Text>
+            {shingleGaugeCaptured
+              ? <Icon name="check" size={16} color={colors.success} />
+              : <Icon name="chevron-right" size={16} color={colors.primary} />}
+          </Pressable>
+          {shingleGaugePhotos.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={styles.thumbContent}>
+              {shingleGaugePhotos.map((p) => (
+                <Image
+                  key={p.id}
+                  source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
+                  style={styles.thumb}
+                  resizeMode="cover"
+                />
+              ))}
+              <Pressable onPress={captureShingleGaugePhoto} style={[styles.thumbAdd, { borderColor: colors.border }]}>
+                <Icon name="plus" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </ScrollView>
+          )}
+        </View>
 
         {EAVE_STATUS_ITEMS.map((item) => renderStatusItem(item))}
         {renderDecking()}
@@ -801,4 +840,10 @@ const styles = StyleSheet.create({
   linearRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
   linearInput: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15 },
   linearSave: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
+  photoCapture: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
+  photoCaptureBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14 },
+  thumbStrip: { borderTopWidth: StyleSheet.hairlineWidth },
+  thumbContent: { padding: 10, gap: 8, flexDirection: 'row' },
+  thumb: { width: 80, height: 80, borderRadius: 8 },
+  thumbAdd: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
 });
