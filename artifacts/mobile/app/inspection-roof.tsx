@@ -60,7 +60,7 @@ const EAVE_STATUS_ITEMS: Array<{
   hint: string;
 }> = [
   { type: ComponentType.gutter_apron, label: 'Gutter apron', hint: 'Metal edge at the eaves over the gutter' },
-  { type: ComponentType.drip_edge, label: 'Drip edge', hint: 'Metal edge at eaves & rakes' },
+  { type: ComponentType.drip_edge, label: 'Drip edge', hint: 'Metal edge on Rakes' },
   { type: ComponentType.starter, label: 'Starter', hint: 'Starter strip at eaves & rakes' },
   { type: ComponentType.ice_and_water_shield, label: 'Ice & water shield', hint: 'Peel-and-stick membrane at eaves/valleys' },
   { type: ComponentType.underlayment, label: 'Underlayment', hint: 'Felt / synthetic beneath shingles' },
