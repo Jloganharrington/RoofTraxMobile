@@ -6,4 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type AnalyzeMeasurementsReport200Parsed = { [key: string]: unknown };
+export interface ParsedSidingFacet {
+  label: string;
+  /** @nullable */
+  areaSqft?: number | null;
+}

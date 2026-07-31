@@ -3,3 +3,4 @@ export * from './indicators';
 export * from './types';
 export * from './rules';
 export * from './geoTolerance';
+export * from './measurements';

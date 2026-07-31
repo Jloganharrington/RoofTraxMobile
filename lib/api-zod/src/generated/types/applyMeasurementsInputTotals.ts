@@ -6,8 +6,4 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type AnalyzeMeasurementsReport200Applied = {
-  slopes: number;
-  measurements: number;
-  sidingFacets: number;
-};
+export type ApplyMeasurementsInputTotals = {[key: string]: number | null};

@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  real,
   text,
   timestamp,
   varchar,
@@ -968,6 +969,7 @@ export const inspectionSidingFacetsTable = pgTable('inspection_siding_facets', {
     .notNull()
     .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
   label: text('label').notNull(),
+  areaSqft: real('area_sqft'),
   damaged: boolean('damaged').notNull().default(false),
   damageType: varchar('damage_type', { enum: SIDING_DAMAGE_TYPES }),
   // Water-resistive barrier present? Null until the inspector answers; new

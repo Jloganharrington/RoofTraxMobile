@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +21,9 @@ import { useColors } from '@/hooks/useColors';
 import { PreliminaryHub } from '@/components/PreliminaryHub';
 import { attestInspection, patchInspection } from '@/lib/inspectionSync';
 import { uploadFile, UploadError } from '@/lib/upload';
+import { getApiBaseUrl } from '@/lib/api';
+import { getToken } from '@/lib/tokenStorage';
+import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
 import { addBusinessDays } from '@/lib/fipsaTemplate';
 import {
   buildProtocolState,
@@ -84,7 +88,12 @@ export default function InspectionDetailScreen() {
   const [savingEquipment, setSavingEquipment] = useState(false);
   const [uploadingReport, setUploadingReport] = useState(false);
   const [analyzingReport, setAnalyzingReport] = useState(false);
-  const [analyzeResult, setAnalyzeResult] = useState<{ slopes: number; measurements: number; sidingFacets: number; confidence: string | null } | null>(null);
+  const [analyzePending, setAnalyzePending] = useState(() => getPendingMeasurements() !== null);
+
+  // Keep analyze-pending badge in sync when returning from the confirm screen.
+  useFocusEffect(useCallback(() => {
+    setAnalyzePending(getPendingMeasurements() !== null);
+  }, []));
 
   // FTC cooling-off gate — shown once per hub visit when the FIPSA was signed
   // fewer than 3 business days ago. The rep can still proceed, but must
@@ -102,10 +111,9 @@ export default function InspectionDetailScreen() {
   async function analyzeMeasurements() {
     if (analyzingReport) return;
     setAnalyzingReport(true);
-    setAnalyzeResult(null);
     try {
-      const apiBase = (await import('@/lib/api')).getApiBaseUrl();
-      const token = await (await import('@/lib/tokenStorage')).getToken('auth_session_token');
+      const apiBase = getApiBaseUrl();
+      const token   = await getToken('auth_session_token');
       const res = await fetch(`${apiBase}/inspections/${id}/analyze-measurements`, {
         method: 'POST',
         headers: {
@@ -118,13 +126,10 @@ export default function InspectionDetailScreen() {
         Alert.alert('Analysis failed', body.error ?? 'Something went wrong. Please try again.');
         return;
       }
-      const data = await res.json() as {
-        applied: { slopes: number; measurements: number; sidingFacets: number };
-        confidence: string | null;
-      };
-      setAnalyzeResult({ ...data.applied, confidence: data.confidence });
-      // Refresh the inspection so new facets/linears appear immediately.
-      await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
+      const data = await res.json() as { parsed: import('@workspace/protocol').ParsedMeasurements };
+      setPendingMeasurements(data.parsed);
+      setAnalyzePending(true);
+      router.push({ pathname: '/inspection-measurements-confirm', params: { id } });
     } catch {
       Alert.alert('Analysis failed', 'Could not connect to the server. Please try again.');
     } finally {
@@ -589,29 +594,27 @@ export default function InspectionDetailScreen() {
         <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
       </Pressable>
 
-      {/* AI analysis button — only when a report is uploaded */}
+      {/* AI analysis — only shown when a report PDF is uploaded */}
       {inspection.measurementsReportUrl ? (
-        analyzeResult ? (
-          <View style={[styles.analyzeResult, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
-            <Icon name="zap" size={18} color={colors.success} />
+        analyzePending ? (
+          /* Pending: rep can tap to resume the review screen */
+          <Pressable
+            onPress={() => router.push({ pathname: '/inspection-measurements-confirm', params: { id } })}
+            style={[styles.analyzeResult, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}
+          >
+            <Icon name="zap" size={18} color="#f59e0b" />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
-                AI analysis complete
-                {analyzeResult.confidence ? ` · ${analyzeResult.confidence} confidence` : ''}
+                Measurements ready to review
               </Text>
               <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                {[
-                  analyzeResult.slopes > 0 && `${analyzeResult.slopes} facet${analyzeResult.slopes === 1 ? '' : 's'}`,
-                  analyzeResult.measurements > 0 && `${analyzeResult.measurements} linear${analyzeResult.measurements === 1 ? '' : 's'}`,
-                  analyzeResult.sidingFacets > 0 && `${analyzeResult.sidingFacets} siding facet${analyzeResult.sidingFacets === 1 ? '' : 's'}`,
-                ].filter(Boolean).join(' · ') || 'No new records — all already existed'}
+                Tap to confirm and apply AI-parsed values
               </Text>
             </View>
-            <Pressable onPress={() => { setAnalyzeResult(null); void analyzeMeasurements(); }} hitSlop={8}>
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>Re-run</Text>
-            </Pressable>
-          </View>
+            <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
         ) : (
+          /* Idle or analyzing */
           <Pressable
             onPress={() => void analyzeMeasurements()}
             disabled={analyzingReport}

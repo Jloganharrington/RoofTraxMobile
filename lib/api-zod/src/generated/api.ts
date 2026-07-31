@@ -5494,22 +5494,64 @@ export const GetInspectionReportPreviewUrlResponse = zod.object({
 
 
 /**
- * @summary Use Claude Opus to parse the uploaded measurements report PDF and auto-fill roof slopes, whole-roof linears, and siding facets. Skips records that already exist. Returns a summary of what was applied.
+ * @summary Use Claude Opus to parse the uploaded measurements report PDF. Returns structured parsed measurements for review — does NOT write to the database. Call apply-measurements to commit confirmed values.
  */
 export const AnalyzeMeasurementsReportParams = zod.object({
   "inspectionId": zod.coerce.string()
 })
 
 export const AnalyzeMeasurementsReportResponse = zod.object({
+  "parsed": zod.object({
+  "slopes": zod.array(zod.object({
+  "label": zod.string(),
+  "areaSqft": zod.number().nullish(),
+  "pitchRise": zod.number().nullish(),
+  "pitchRun": zod.number().nullish(),
+  "materialType": zod.string().nullish()
+})),
+  "linears": zod.record(zod.string(), zod.number().nullable()),
+  "totals": zod.record(zod.string(), zod.number().nullable()),
+  "accessories": zod.record(zod.string(), zod.number().nullable()),
+  "sidingFacets": zod.array(zod.object({
+  "label": zod.string(),
+  "areaSqft": zod.number().nullish()
+})),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "notes": zod.string().nullish()
+})
+})
+
+
+/**
+ * @summary Commit a confirmed set of measurements (slopes, linears, totals, accessories, siding facets) returned by analyze-measurements. Records whose label / measurementType already exist are skipped.
+ */
+export const ApplyMeasurementsParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const ApplyMeasurementsBody = zod.object({
+  "slopes": zod.array(zod.object({
+  "label": zod.string(),
+  "areaSqft": zod.number().nullish(),
+  "pitchRise": zod.number().nullish(),
+  "pitchRun": zod.number().nullish(),
+  "materialType": zod.string().nullish()
+})).optional(),
+  "linears": zod.record(zod.string(), zod.number().nullable()).optional(),
+  "totals": zod.record(zod.string(), zod.number().nullable()).optional(),
+  "accessories": zod.record(zod.string(), zod.number().nullable()).optional(),
+  "sidingFacets": zod.array(zod.object({
+  "label": zod.string(),
+  "areaSqft": zod.number().nullish()
+})).optional()
+})
+
+export const ApplyMeasurementsResponse = zod.object({
   "applied": zod.object({
   "slopes": zod.number(),
   "measurements": zod.number(),
   "sidingFacets": zod.number()
-}),
-  "confidence": zod.string().nullable(),
-  "parsed": zod.object({
-
-}).passthrough().optional()
+})
 })
 
 

@@ -2950,9 +2950,9 @@ paths:
       tags: [Inspections]
       operationId: analyzeMeasurementsReport
       summary: >-
-        Use Claude Opus to parse the uploaded measurements report PDF and
-        auto-fill roof slopes, whole-roof linears, and siding facets.
-        Skips records that already exist. Returns a summary of what was applied.
+        Use Claude Opus to parse the uploaded measurements report PDF.
+        Returns structured parsed measurements for review — does NOT write to
+        the database. Call apply-measurements to commit confirmed values.
       parameters:
         - name: inspectionId
           in: path
@@ -2961,27 +2961,11 @@ paths:
             type: string
       responses:
         "200":
-          description: Analysis complete.
+          description: Parsing complete. Inspect `parsed` and call apply-measurements to commit.
           content:
             application/json:
               schema:
-                type: object
-                required: [applied, confidence]
-                properties:
-                  applied:
-                    type: object
-                    required: [slopes, measurements, sidingFacets]
-                    properties:
-                      slopes:
-                        type: integer
-                      measurements:
-                        type: integer
-                      sidingFacets:
-                        type: integer
-                  confidence:
-                    type: [string, "null"]
-                  parsed:
-                    type: object
+                $ref: "#/components/schemas/MeasurementsAnalysisResult"
         "401":
           description: Not authenticated.
           content:
@@ -2996,6 +2980,58 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "502":
           description: AI analysis failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /inspections/{inspectionId}/apply-measurements:
+    post:
+      tags: [Inspections]
+      operationId: applyMeasurements
+      summary: >-
+        Commit a confirmed set of measurements (slopes, linears, totals,
+        accessories, siding facets) returned by analyze-measurements.
+        Records whose label / measurementType already exist are skipped.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyMeasurementsInput"
+      responses:
+        "200":
+          description: Measurements applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [applied]
+                properties:
+                  applied:
+                    type: object
+                    required: [slopes, measurements, sidingFacets]
+                    properties:
+                      slopes:
+                        type: integer
+                      measurements:
+                        type: integer
+                      sidingFacets:
+                        type: integer
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
           content:
             application/json:
               schema:
@@ -3429,6 +3465,88 @@ components:
         type: string
 
   schemas:
+    ParsedSlope:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+        areaSqft:
+          type: [number, "null"]
+        pitchRise:
+          type: [integer, "null"]
+        pitchRun:
+          type: [integer, "null"]
+        materialType:
+          type: [string, "null"]
+
+    ParsedSidingFacet:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+        areaSqft:
+          type: [number, "null"]
+
+    MeasurementsAnalysisResult:
+      type: object
+      required: [parsed]
+      properties:
+        parsed:
+          type: object
+          required: [slopes, linears, totals, accessories, sidingFacets, confidence]
+          properties:
+            slopes:
+              type: array
+              items:
+                $ref: "#/components/schemas/ParsedSlope"
+            linears:
+              type: object
+              additionalProperties:
+                type: [number, "null"]
+            totals:
+              type: object
+              additionalProperties:
+                type: [number, "null"]
+            accessories:
+              type: object
+              additionalProperties:
+                type: [number, "null"]
+            sidingFacets:
+              type: array
+              items:
+                $ref: "#/components/schemas/ParsedSidingFacet"
+            confidence:
+              type: string
+              enum: [high, medium, low]
+            notes:
+              type: [string, "null"]
+
+    ApplyMeasurementsInput:
+      type: object
+      properties:
+        slopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParsedSlope"
+        linears:
+          type: object
+          additionalProperties:
+            type: [number, "null"]
+        totals:
+          type: object
+          additionalProperties:
+            type: [number, "null"]
+        accessories:
+          type: object
+          additionalProperties:
+            type: [number, "null"]
+        sidingFacets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParsedSidingFacet"
+
     HealthStatus:
       type: object
       properties:

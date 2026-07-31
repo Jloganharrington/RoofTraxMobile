@@ -23,7 +23,8 @@ import type {
   ActivityStatsEnvelope,
   AddressSearchResults,
   AdminStatsEnvelope,
-  AnalyzeMeasurementsReport200,
+  ApplyMeasurements200,
+  ApplyMeasurementsInput,
   AttestationEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
@@ -91,6 +92,7 @@ import type {
   LogoutBrowserSessionParams,
   LogoutSuccess,
   MeasurementEnvelope,
+  MeasurementsAnalysisResult,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
   PinEnvelope,
@@ -5689,11 +5691,11 @@ export const getAnalyzeMeasurementsReportUrl = (inspectionId: string,) => {
 }
 
 /**
- * @summary Use Claude Opus to parse the uploaded measurements report PDF and auto-fill roof slopes, whole-roof linears, and siding facets. Skips records that already exist. Returns a summary of what was applied.
+ * @summary Use Claude Opus to parse the uploaded measurements report PDF. Returns structured parsed measurements for review — does NOT write to the database. Call apply-measurements to commit confirmed values.
  */
-export const analyzeMeasurementsReport = async (inspectionId: string, options?: RequestInit): Promise<AnalyzeMeasurementsReport200> => {
+export const analyzeMeasurementsReport = async (inspectionId: string, options?: RequestInit): Promise<MeasurementsAnalysisResult> => {
 
-  return customFetch<AnalyzeMeasurementsReport200>(getAnalyzeMeasurementsReportUrl(inspectionId),
+  return customFetch<MeasurementsAnalysisResult>(getAnalyzeMeasurementsReportUrl(inspectionId),
   {
     ...options,
     method: 'POST'
@@ -5738,7 +5740,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AnalyzeMeasurementsReportMutationError = ErrorType<ErrorEnvelope>
 
     /**
- * @summary Use Claude Opus to parse the uploaded measurements report PDF and auto-fill roof slopes, whole-roof linears, and siding facets. Skips records that already exist. Returns a summary of what was applied.
+ * @summary Use Claude Opus to parse the uploaded measurements report PDF. Returns structured parsed measurements for review — does NOT write to the database. Call apply-measurements to commit confirmed values.
  */
 export const useAnalyzeMeasurementsReport = <TError = ErrorType<ErrorEnvelope>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeMeasurementsReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -5749,6 +5751,78 @@ export const useAnalyzeMeasurementsReport = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getAnalyzeMeasurementsReportMutationOptions(options));
+    }
+
+export const getApplyMeasurementsUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/apply-measurements`
+}
+
+/**
+ * @summary Commit a confirmed set of measurements (slopes, linears, totals, accessories, siding facets) returned by analyze-measurements. Records whose label / measurementType already exist are skipped.
+ */
+export const applyMeasurements = async (inspectionId: string,
+    applyMeasurementsInput: ApplyMeasurementsInput, options?: RequestInit): Promise<ApplyMeasurements200> => {
+
+  return customFetch<ApplyMeasurements200>(getApplyMeasurementsUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(applyMeasurementsInput)
+  }
+);}
+
+
+
+
+
+export const getApplyMeasurementsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyMeasurements>>, TError,{inspectionId: string;data: BodyType<ApplyMeasurementsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyMeasurements>>, TError,{inspectionId: string;data: BodyType<ApplyMeasurementsInput>}, TContext> => {
+
+const mutationKey = ['applyMeasurements'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyMeasurements>>, {inspectionId: string;data: BodyType<ApplyMeasurementsInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  applyMeasurements(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyMeasurementsMutationResult = NonNullable<Awaited<ReturnType<typeof applyMeasurements>>>
+    export type ApplyMeasurementsMutationBody = BodyType<ApplyMeasurementsInput>
+    export type ApplyMeasurementsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Commit a confirmed set of measurements (slopes, linears, totals, accessories, siding facets) returned by analyze-measurements. Records whose label / measurementType already exist are skipped.
+ */
+export const useApplyMeasurements = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyMeasurements>>, TError,{inspectionId: string;data: BodyType<ApplyMeasurementsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyMeasurements>>,
+        TError,
+        {inspectionId: string;data: BodyType<ApplyMeasurementsInput>},
+        TContext
+      > => {
+      return useMutation(getApplyMeasurementsMutationOptions(options));
     }
 
 export const getCreateBugReportUrl = () => {

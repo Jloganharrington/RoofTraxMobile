@@ -86,6 +86,7 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection-components" options={{ title: 'Components' }} />
       <Stack.Screen name="inspection-product" options={{ title: 'Product ID' }} />
       <Stack.Screen name="inspection-facet" options={{ title: 'Facet Detail' }} />
+      <Stack.Screen name="inspection-measurements-confirm" options={{ title: 'Review Measurements' }} />
       <Stack.Screen name="inspection-siding" options={{ title: 'Siding Inspection' }} />
       <Stack.Screen name="inspection-siding-facet" options={{ title: 'Siding Facet' }} />
       <Stack.Screen name="inspection-interior" options={{ title: 'Interior / Attic' }} />

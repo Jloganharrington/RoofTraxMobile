@@ -5,6 +5,68 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface ParsedSlope {
+  label: string;
+  /** @nullable */
+  areaSqft?: number | null;
+  /** @nullable */
+  pitchRise?: number | null;
+  /** @nullable */
+  pitchRun?: number | null;
+  /** @nullable */
+  materialType?: string | null;
+}
+
+export interface ParsedSidingFacet {
+  label: string;
+  /** @nullable */
+  areaSqft?: number | null;
+}
+
+export type MeasurementsAnalysisResultParsedLinears = {[key: string]: number | null};
+
+export type MeasurementsAnalysisResultParsedTotals = {[key: string]: number | null};
+
+export type MeasurementsAnalysisResultParsedAccessories = {[key: string]: number | null};
+
+export type MeasurementsAnalysisResultParsedConfidence = typeof MeasurementsAnalysisResultParsedConfidence[keyof typeof MeasurementsAnalysisResultParsedConfidence];
+
+
+export const MeasurementsAnalysisResultParsedConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type MeasurementsAnalysisResultParsed = {
+  slopes: ParsedSlope[];
+  linears: MeasurementsAnalysisResultParsedLinears;
+  totals: MeasurementsAnalysisResultParsedTotals;
+  accessories: MeasurementsAnalysisResultParsedAccessories;
+  sidingFacets: ParsedSidingFacet[];
+  confidence: MeasurementsAnalysisResultParsedConfidence;
+  /** @nullable */
+  notes?: string | null;
+};
+
+export interface MeasurementsAnalysisResult {
+  parsed: MeasurementsAnalysisResultParsed;
+}
+
+export type ApplyMeasurementsInputLinears = {[key: string]: number | null};
+
+export type ApplyMeasurementsInputTotals = {[key: string]: number | null};
+
+export type ApplyMeasurementsInputAccessories = {[key: string]: number | null};
+
+export interface ApplyMeasurementsInput {
+  slopes?: ParsedSlope[];
+  linears?: ApplyMeasurementsInputLinears;
+  totals?: ApplyMeasurementsInputTotals;
+  accessories?: ApplyMeasurementsInputAccessories;
+  sidingFacets?: ParsedSidingFacet[];
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -2975,19 +3037,14 @@ export type GetInspectionReportPreviewUrl200 = {
   html: string;
 };
 
-export type AnalyzeMeasurementsReport200Applied = {
+export type ApplyMeasurements200Applied = {
   slopes: number;
   measurements: number;
   sidingFacets: number;
 };
 
-export type AnalyzeMeasurementsReport200Parsed = { [key: string]: unknown };
-
-export type AnalyzeMeasurementsReport200 = {
-  applied: AnalyzeMeasurementsReport200Applied;
-  /** @nullable */
-  confidence: string | null;
-  parsed?: AnalyzeMeasurementsReport200Parsed;
+export type ApplyMeasurements200 = {
+  applied: ApplyMeasurements200Applied;
 };
 
 export type GetActivityStatsParams = {
