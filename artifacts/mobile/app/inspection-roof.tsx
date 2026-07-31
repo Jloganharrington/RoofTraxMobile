@@ -148,6 +148,7 @@ export default function InspectionRoofScreen() {
   const deckingRecord = checklistRecords.get(ComponentType.decking) ?? null;
   const photos = inspection.photos ?? [];
   const eaveZoneCaptured = photos.some((p) => p.subjectType === 'component' && p.zone === 'eave_edge');
+  const shingleGaugeCaptured = photos.some((p) => p.subjectType === 'component' && p.zone === 'shingle_gauge');
 
   // Gate: all eave/edge items must be answered before facets are accessible.
   const allStatusAnswered = EAVE_STATUS_ITEMS.every((item) => checklistRecords.has(item.type));
@@ -306,6 +307,21 @@ export default function InspectionRoofScreen() {
         stage: 'components',
         title: 'Eave/Edge — components',
         zone: 'eave_edge',
+      },
+    });
+  }
+
+  function captureShingleGaugePhoto() {
+    router.push({
+      pathname: '/inspection-photo-capture',
+      params: {
+        inspectionId: id,
+        subjectType: 'component',
+        roles: 'close',
+        stage: 'components',
+        title: 'Shingle Gauge',
+        zone: 'shingle_gauge',
+        caption: 'Place shingle gauge on a shingle and capture photo',
       },
     });
   }
@@ -586,6 +602,17 @@ export default function InspectionRoofScreen() {
             {eaveZoneCaptured ? 'Add another eave/edge photo' : 'Photograph eave / edge zone'}
           </Text>
           {eaveZoneCaptured ? <Icon name="check" size={16} color={colors.success} /> : null}
+        </Pressable>
+
+        <Pressable
+          onPress={captureShingleGaugePhoto}
+          style={[styles.addRow, { borderColor: shingleGaugeCaptured ? colors.border : colors.primary }]}
+        >
+          <Icon name="camera" size={18} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontWeight: '600' }}>
+            {shingleGaugeCaptured ? 'Add another shingle gauge photo' : 'Shingle Gauge'}
+          </Text>
+          {shingleGaugeCaptured ? <Icon name="check" size={16} color={colors.success} /> : null}
         </Pressable>
 
         {EAVE_STATUS_ITEMS.map((item) => renderStatusItem(item))}

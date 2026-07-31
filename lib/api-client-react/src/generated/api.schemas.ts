@@ -1076,6 +1076,7 @@ export type ComponentZone = typeof ComponentZone[keyof typeof ComponentZone];
 export const ComponentZone = {
   eave_edge: 'eave_edge',
   ridge_hip: 'ridge_hip',
+  shingle_gauge: 'shingle_gauge',
 } as const;
 
 export interface SubmissionPhotoHash {

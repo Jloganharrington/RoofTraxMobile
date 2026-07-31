@@ -6099,7 +6099,7 @@ components:
         Zone-based component capture (Step 5). One shared zone photo evidences
         every component documented in that zone; the Brain groups component
         evidence photos by this value.
-      enum: [eave_edge, ridge_hip]
+      enum: [eave_edge, ridge_hip, shingle_gauge]
     InspectionComponent:
       type: object
       required:

@@ -1390,7 +1390,7 @@ export const ListInspectionsResponse = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -1480,7 +1480,7 @@ export const ListInspectionsResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
@@ -1983,7 +1983,7 @@ export const CreateInspectionResponse = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -2073,7 +2073,7 @@ export const CreateInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
@@ -2558,7 +2558,7 @@ export const GetInspectionResponse = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -2648,7 +2648,7 @@ export const GetInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
@@ -3446,7 +3446,7 @@ export const UpdateInspectionResponse = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -3536,7 +3536,7 @@ export const UpdateInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
@@ -4463,7 +4463,7 @@ export const CreateInspectionPhotoBody = zod.object({
   "capturedAtUtc": zod.coerce.date().nullish(),
   "latitude": zod.number().nullish(),
   "longitude": zod.number().nullish(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional(),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional(),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]).optional(),
   "sidingComponentIndex": zod.number().min(1).nullish()
 })
@@ -4490,7 +4490,7 @@ export const CreateInspectionPhotoResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
@@ -4610,7 +4610,7 @@ export const SubmitInspectionBody = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -4707,7 +4707,7 @@ export const SubmitInspectionResponse = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
@@ -4797,7 +4797,7 @@ export const SubmitInspectionResponse = zod.object({
   "capturedAtUtc": zod.coerce.date().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]),
   "sidingRole": zod.union([zod.enum(['damage', 'facet', 'component']).describe('v2.1 — which role a siding-facet photo plays (damage close-up, whole- facet shot, or one declared component\'s photo). Set only on subjectType \'siding_facet\' photos.'),zod.null()]),
   "sidingComponentIndex": zod.number().nullable().describe('1-based component slot (S{n}C{k}) this photo evidences. Set only when sidingRole is \'component\'.'),
   "includeInProofPackage": zod.boolean().describe('Pre-submission curation flag. When false the photo remains stored evidence but is omitted from Proof Package generation.'),
@@ -5292,7 +5292,7 @@ export const GetInspectionStatusResponse = zod.object({
   "photoHashes": zod.array(zod.object({
   "photoId": zod.string(),
   "sha256": zod.string(),
-  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
+  "zone": zod.union([zod.enum(['eave_edge', 'ridge_hip', 'shingle_gauge']).describe('Zone-based component capture (Step 5). One shared zone photo evidences every component documented in that zone; the Brain groups component evidence photos by this value.'),zod.null()]).optional()
 })),
   "gateResults": zod.object({
   "deficiencies": zod.array(zod.object({
