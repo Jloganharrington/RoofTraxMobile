@@ -17,6 +17,7 @@ import {
 import * as Crypto from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
+import { getGetInspectionQueryKey } from '@workspace/api-client-react';
 import type { CaptureStage, InspectionSubjectType, SidingPhotoRole } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
@@ -262,7 +263,14 @@ export default function InspectionPhotoCaptureScreen() {
         },
       ]);
       setSavedRoles((prev) => new Set(prev).add(role));
-      drainOutbox();
+      // Drain is intentionally not awaited so navigation can happen immediately.
+      // Once the drain completes, invalidate the inspection query so the 304
+      // HTTP-cache response is bypassed and the newly saved photo appears.
+      drainOutbox().then(({ synced }) => {
+        if (synced > 0) {
+          void queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(inspectionId) });
+        }
+      });
       return true;
     } catch {
       Alert.alert('Could not save photo', 'Something went wrong saving the photo locally. Try again.');
