@@ -842,8 +842,8 @@ const styles = StyleSheet.create({
   linearSave: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10 },
   photoCapture: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
   photoCaptureBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14 },
-  thumbStrip: { borderTopWidth: StyleSheet.hairlineWidth },
-  thumbContent: { padding: 10, gap: 8, flexDirection: 'row' },
+  thumbStrip: { height: 100, borderTopWidth: StyleSheet.hairlineWidth },
+  thumbContent: { paddingHorizontal: 10, paddingVertical: 10, gap: 8, flexDirection: 'row', alignItems: 'center' },
   thumb: { width: 80, height: 80, borderRadius: 8 },
   thumbAdd: { width: 80, height: 80, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
 });
