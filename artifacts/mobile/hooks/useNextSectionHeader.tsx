@@ -16,11 +16,12 @@ export const STEP_ROUTES: Record<StepKey, string> = {
   existing_conditions: '/inspection-existing-conditions',
   elevation_access: '/inspection-elevations',
   facets: '/inspection-roof',
-  test_squares: '/inspection-test-squares',
-  components: '/inspection-components',
+  // Merged into Roof Inspection — redirect stubs remain for deep links.
+  test_squares: '/inspection-roof',
+  components: '/inspection-roof',
+  product: '/inspection-roof',
   siding: '/inspection-siding',
   collateral: '/inspection-collateral',
-  product: '/inspection-product',
   interior: '/inspection-interior',
   homeowner: '/inspection-homeowner',
   declaration: '/inspection-declaration',
@@ -28,6 +29,10 @@ export const STEP_ROUTES: Record<StepKey, string> = {
   estimate: '/inspection-estimate',
   submit: '/inspection-readiness',
 };
+
+// Steps that have been merged into the Roof Inspection screen and should not
+// appear as separate navigation stops (hub cards or Next-button hops).
+export const STEPS_MERGED_INTO_ROOF = new Set<StepKey>(['test_squares', 'components', 'product']);
 
 /**
  * Puts a "Next" button in the header (opposite Back) that navigates to the
@@ -54,7 +59,7 @@ export function useNextSectionHeader(id: string, current: StepKey): void {
         sidingDamageFound: Boolean(inspection.sidingDamageFound),
         collateralDamageFound: Boolean(inspection.collateralDamageFound),
         interiorDamageFound: Boolean(inspection.interiorDamageFound),
-      })
+      }).filter((s) => !STEPS_MERGED_INTO_ROOF.has(s.key))
     : [];
   const index = steps.findIndex((s) => s.key === current);
   const next = index >= 0 ? (steps[index + 1] ?? null) : null;

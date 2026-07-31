@@ -71,7 +71,7 @@ const STEP_ICONS: Record<StepKey, IconName> = {
 };
 
 // Shared with the header "Next" button so hub cards and Next never drift.
-import { STEP_ROUTES } from '@/hooks/useNextSectionHeader';
+import { STEP_ROUTES, STEPS_MERGED_INTO_ROOF } from '@/hooks/useNextSectionHeader';
 
 export default function InspectionDetailScreen() {
   const colors = useColors();
@@ -706,7 +706,7 @@ export default function InspectionDetailScreen() {
         </View>
       )}
 
-      {applicableSteps(state.damageFlags).map((step) => {
+      {applicableSteps(state.damageFlags).filter((step) => !STEPS_MERGED_INTO_ROOF.has(step.key)).map((step) => {
         const { done, subtitle } = stepStatus(step.key);
         const params: Record<string, string> =
           step.key === 'arrival'
