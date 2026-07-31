@@ -237,23 +237,47 @@ export default function InspectionSidingFacetScreen() {
               );
             })}
           </View>
-          <Pressable
-            onPress={() => capture('damage', `${facet.label} Damage`, `${facet.label} damage photo`)}
-            style={[styles.row, { backgroundColor: colors.card, borderColor: damagePhotoCount > 0 ? colors.success : colors.border }]}
-          >
-            <View style={[styles.badge, { backgroundColor: damagePhotoCount > 0 ? colors.success : colors.accent }]}>
-              <Icon name={damagePhotoCount > 0 ? 'check' : 'camera'} size={18} color={damagePhotoCount > 0 ? '#fff' : colors.secondary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowTitle, { color: colors.foreground }]}>Damage photos</Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                {damagePhotoCount > 0
-                  ? `${damagePhotoCount} captured — tap to add more`
-                  : 'At least one damage close-up required'}
+          {/* Damage photos — multi-photo strip */}
+          <View style={styles.photoSectionHeader}>
+            <Text style={[styles.subLabel, { color: colors.mutedForeground, marginTop: 0 }]}>
+              {`Damage photos${damagePhotoCount > 0 ? ` (${damagePhotoCount})` : ''}`}
+            </Text>
+            {damagePhotoCount === 0 && (
+              <Text style={{ color: colors.destructive, fontSize: 12, fontWeight: '600' }}>Required</Text>
+            )}
+          </View>
+          <View style={styles.photoStrip}>
+            {Array.from({ length: damagePhotoCount }, (_, i) => (
+              <View
+                key={i}
+                style={[styles.photoChip, { backgroundColor: colors.success, borderColor: colors.success }]}
+              >
+                <Icon name="check" size={13} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                  {`Photo ${i + 1}`}
+                </Text>
+              </View>
+            ))}
+            <Pressable
+              onPress={() => capture('damage', `${facet.label} Damage`, `${facet.label} damage photo ${damagePhotoCount + 1}`)}
+              style={[
+                styles.photoChip,
+                styles.photoChipAdd,
+                { borderColor: damagePhotoCount === 0 ? colors.destructive : colors.primary },
+              ]}
+            >
+              <Icon name="camera" size={13} color={damagePhotoCount === 0 ? colors.destructive : colors.primary} />
+              <Text
+                style={{
+                  color: damagePhotoCount === 0 ? colors.destructive : colors.primary,
+                  fontSize: 12,
+                  fontWeight: '700',
+                }}
+              >
+                {damagePhotoCount === 0 ? 'Add photo' : 'Add another'}
               </Text>
-            </View>
-            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-          </Pressable>
+            </Pressable>
+          </View>
         </>
       ) : null}
 
@@ -399,6 +423,10 @@ const styles = StyleSheet.create({
   chip: { borderWidth: 1, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16 },
   yesNo: { borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  photoSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  photoStrip: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1.5 },
+  photoChipAdd: { borderStyle: 'dashed' },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   stepCount: { fontSize: 17, fontWeight: '800', minWidth: 24, textAlign: 'center' },

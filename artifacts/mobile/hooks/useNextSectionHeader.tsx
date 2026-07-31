@@ -23,7 +23,7 @@ export const STEP_ROUTES: Record<StepKey, string> = {
   siding: '/inspection-siding',
   collateral: '/inspection-collateral',
   interior: '/inspection-interior',
-  homeowner: '/inspection-homeowner',
+  homeowner: '/inspection-arrival',
   declaration: '/inspection-declaration',
   summary: '/inspection-summary',
   estimate: '/inspection-estimate',
@@ -32,7 +32,11 @@ export const STEP_ROUTES: Record<StepKey, string> = {
 
 // Steps that have been merged into the Roof Inspection screen and should not
 // appear as separate navigation stops (hub cards or Next-button hops).
-export const STEPS_MERGED_INTO_ROOF = new Set<StepKey>(['test_squares', 'components', 'product']);
+// Steps embedded in a parent screen — hidden from hub cards and Next-button hops.
+export const STEPS_MERGED_INTO_ROOF = new Set<StepKey>([
+  'test_squares', 'components', 'product', // merged into Roof Inspection
+  'homeowner',                              // merged into Arrival Log
+]);
 
 /**
  * Puts a "Next" button in the header (opposite Back) that navigates to the

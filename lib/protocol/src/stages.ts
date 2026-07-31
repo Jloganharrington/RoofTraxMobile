@@ -7,18 +7,18 @@
 // "Step N" prefixes — steps are named only.
 export const STAGES = [
   'arrival',
+  'homeowner',
   'property_profile',
   'elevation_access',
   'facets',
+  'repairability',
   'test_squares',
   'components',
   'product',
   'siding',
   'collateral',
   'interior',
-  'repairability',
   'mitigation',
-  'homeowner',
   'existing_conditions',
   'declaration',
   'summary',
@@ -69,51 +69,65 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
     description: 'On-site conditions (sky, wind, temp), personnel present, GPS + time.',
   },
   {
-    key: 'property_profile',
+    key: 'homeowner',
     order: 2,
+    name: 'Homeowner Interview',
+    description: 'Homeowner-reported facts — date-of-loss awareness, prior repairs, prior claims. Captured within the Arrival Log when the homeowner is present.',
+  },
+  {
+    key: 'property_profile',
+    order: 3,
     name: 'Property Profile',
     description:
       'Property & construction description — type, stories, roof age with basis, deck type. Prefilled from the lead where available.',
   },
   {
     key: 'elevation_access',
-    order: 3,
+    order: 4,
     name: 'Elevation Walk',
     description:
       'A wide photo of each of the four elevations, plus the three damage-found flags.',
   },
   {
     key: 'facets',
-    order: 4,
+    order: 5,
     name: 'Roof Inspection',
     description:
       'Every roof facet with area, material, pitch and damage documentation, plus whole-roof linears.',
     appliesWhen: whenRoof,
   },
   {
+    key: 'repairability',
+    order: 6,
+    name: 'Repairability Assessment',
+    description:
+      'Explicit repair-vs-replace field determination — never defaulted. Skipping leaves the record null and the report section omits.',
+    appliesWhen: whenRoofOrSiding,
+  },
+  {
     key: 'test_squares',
-    order: 5,
+    order: 7,
     name: 'Test Squares',
     description: 'A test-square photo on every facet that carries hail damage.',
     appliesWhen: whenRoof,
   },
   {
     key: 'components',
-    order: 6,
+    order: 8,
     name: 'Roof Components & Penetrations',
     description: 'Existing components and roof penetrations, each with a photo.',
     appliesWhen: whenRoof,
   },
   {
     key: 'product',
-    order: 7,
+    order: 9,
     name: 'Roofing Product ID',
     description: 'At least one roofing-product identification record.',
     appliesWhen: whenRoof,
   },
   {
     key: 'siding',
-    order: 8,
+    order: 10,
     name: 'Siding Inspection',
     description:
       'Siding facets S1…S{n}: damage classification, facet photo, and per-component photos.',
@@ -121,38 +135,24 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
   },
   {
     key: 'collateral',
-    order: 9,
+    order: 11,
     name: 'Collateral Sweep',
     description: 'Labeled collateral photos, roof-level then ground-level.',
     appliesWhen: whenCollateral,
   },
   {
     key: 'interior',
-    order: 10,
+    order: 12,
     name: 'Interior / Attic',
     description: 'Interior/attic evidence, or an explicit no-interior-claim waiver.',
     appliesWhen: whenInterior,
   },
   {
-    key: 'repairability',
-    order: 11,
-    name: 'Repairability Assessment',
-    description:
-      'Explicit repair-vs-replace field determination — never defaulted. Skipping leaves the record null and the report section omits.',
-    appliesWhen: whenRoofOrSiding,
-  },
-  {
     key: 'mitigation',
-    order: 12,
+    order: 13,
     name: 'Temporary Repairs & Mitigation',
     description:
       'Emergency tarping / mitigation performed, with before & after photos. Carried forward from Phase 1.',
-  },
-  {
-    key: 'homeowner',
-    order: 13,
-    name: 'Homeowner',
-    description: 'Factual homeowner intake (prior repairs, prior claims).',
   },
   {
     key: 'existing_conditions',

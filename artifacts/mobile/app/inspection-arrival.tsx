@@ -21,7 +21,7 @@ import {
 } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { attestInspection, patchInspection } from '@/lib/inspectionSync';
+import { attestInspection, patchInspection, updateHomeownerFacts } from '@/lib/inspectionSync';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
 // Step 1 · Arrival Log (protocol v2). Data-only — no photos here. Records sky
@@ -64,6 +64,11 @@ export default function InspectionArrivalScreen() {
   const [personnel, setPersonnel] = useState<Record<string, boolean>>({});
   const [overrideReason, setOverrideReason] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Homeowner Interview — shown when "Homeowner" is selected in Personnel.
+  const [awareOfDateOfLoss, setAwareOfDateOfLoss] = useState<boolean | null>(null);
+  const [priorRepairs, setPriorRepairs] = useState('');
+  const [priorClaims, setPriorClaims] = useState('');
 
   const navigation = useNavigation();
 
@@ -139,6 +144,14 @@ export default function InspectionArrivalScreen() {
             recordedAtUtc: now.toISOString(),
           },
         });
+        if (personnelSelected.includes('Homeowner')) {
+          await updateHomeownerFacts(queryClient, id, {
+            awareOfDateOfLoss,
+            priorRepairs: priorRepairs.trim() || null,
+            priorClaims: priorClaims.trim() || null,
+            recordedAtUtc: now.toISOString(),
+          });
+        }
       } catch { /* outbox will retry */ }
     })();
   };
@@ -173,6 +186,14 @@ export default function InspectionArrivalScreen() {
           recordedAtUtc: now.toISOString(),
         },
       });
+      if (personnelSelected.includes('Homeowner')) {
+        await updateHomeownerFacts(queryClient, id, {
+          awareOfDateOfLoss,
+          priorRepairs: priorRepairs.trim() || null,
+          priorClaims: priorClaims.trim() || null,
+          recordedAtUtc: now.toISOString(),
+        });
+      }
       router.back();
     } finally {
       setSaving(false);
@@ -287,6 +308,59 @@ export default function InspectionArrivalScreen() {
           })}
         </View>
 
+        {/* Homeowner Interview — appears when Homeowner is in the personnel list */}
+        {personnel['Homeowner'] ? (
+          <>
+            <Text style={[styles.section, { color: colors.foreground }]}>Homeowner Interview</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: -6 }}>
+              Record what the homeowner reported — facts for the package, not conclusions.
+            </Text>
+
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>
+              Is the homeowner aware of the date of loss?
+            </Text>
+            <View style={styles.chipRow}>
+              {([{ label: 'Yes', value: true }, { label: 'No', value: false }, { label: 'Unsure', value: null }] as const).map((option) => {
+                const on = awareOfDateOfLoss === option.value;
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => setAwareOfDateOfLoss(option.value)}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: on ? colors.primary : colors.card,
+                        borderColor: on ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: on ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Field
+              label="Prior repairs reported"
+              value={priorRepairs}
+              onChange={setPriorRepairs}
+              placeholder="e.g. Roof patched near chimney in 2019"
+              multiline
+              colors={colors}
+            />
+            <Field
+              label="Prior claims reported"
+              value={priorClaims}
+              onChange={setPriorClaims}
+              placeholder="e.g. Wind claim in 2021, approved"
+              multiline
+              colors={colors}
+            />
+          </>
+        ) : null}
+
         <Pressable
           onPress={handleConfirm}
           disabled={!canSave}
@@ -309,12 +383,14 @@ function Field({
   value,
   onChange,
   placeholder,
+  multiline,
   colors,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  multiline?: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
   return (
@@ -325,7 +401,12 @@ function Field({
         onChangeText={onChange}
         placeholder={placeholder}
         placeholderTextColor={colors.mutedForeground}
-        style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+        multiline={multiline}
+        style={[
+          styles.input,
+          multiline ? styles.inputMultiline : null,
+          { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground },
+        ]}
       />
     </View>
   );
@@ -360,4 +441,5 @@ const styles = StyleSheet.create({
   },
   submit: { paddingVertical: 15, borderRadius: 14, alignItems: 'center', marginTop: 8 },
   submitText: { fontSize: 16, fontWeight: '700' },
+  inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
 });

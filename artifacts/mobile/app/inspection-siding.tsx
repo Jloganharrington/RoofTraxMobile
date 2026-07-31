@@ -65,7 +65,8 @@ export default function InspectionSidingScreen() {
 
   const [addingFacet, setAddingFacet] = React.useState(false);
   const [removing, setRemoving] = React.useState(false);
-  const [uploadingReport, setUploadingReport] = React.useState(false);
+  const [capturingWrbPhoto, setCapturingWrbPhoto] = React.useState(false);
+  const [wrbPhotoCaptured, setWrbPhotoCaptured] = React.useState(false);
 
   // S1 always exists: seed it exactly once when the screen first sees an
   // inspection with no siding facets. The ref guards against re-entry while
@@ -99,14 +100,76 @@ export default function InspectionSidingScreen() {
   const facets = inspection.sidingFacets ?? [];
   const facetById = new Map(state.sidingFacets.map((f) => [f.id, f]));
   const remaining = stageDeficiencies(inspection, 'siding').length;
-  const reportUploaded = state.sidingMeasurementReportUploaded;
   // v2.2 — inspection-level WRB question, shown once any facet has damage.
   const anyFacetDamaged = (inspection.sidingFacets ?? []).some((f) => Boolean(f.damaged));
   const wrbPresent = (inspection.sidingWrbPresent as boolean | null) ?? null;
 
   async function setWrbPresent(value: boolean) {
     if (wrbPresent === value) return;
+    // Switching back to Yes/null clears the captured indicator.
+    if (value) setWrbPhotoCaptured(false);
     await patchInspection(queryClient, id, { sidingWrbPresent: value });
+  }
+
+  async function captureWrbPhoto(source: 'camera' | 'library') {
+    if (capturingWrbPhoto) return;
+    setCapturingWrbPhoto(true);
+    try {
+      const shot =
+        source === 'camera'
+          ? await captureEvidencePhoto()
+          : await pickEvidencePhotoFromLibrary();
+      if (!shot) return;
+      const persisted = await persistCapturedPhotoForOutbox(shot);
+      const photoId = Crypto.randomUUID();
+      const payload: InspectionPhotoOutboxPayload = {
+        id: photoId,
+        inspectionId: id,
+        subjectType: 'inspection',
+        subjectId: null,
+        stage: 'siding',
+        triadRole: 'wide',
+        localFilePath: persisted.localFilePath,
+        mimeType: shot.mimeType,
+        sha256: persisted.sha256,
+        exifJson: persisted.exifJson,
+        overlayJson: { ...(persisted.overlayJson ?? {}), caption: 'No WRB Present' },
+        capturedAtUtc: persisted.capturedAtUtc,
+        latitude: persisted.latitude,
+        longitude: persisted.longitude,
+      };
+      await enqueueOutboxItem('inspection.photo', payload);
+      appendOptimisticPhotos(queryClient, id, [
+        {
+          id: photoId,
+          subjectType: 'inspection',
+          subjectId: null,
+          stage: 'siding',
+          triadRole: 'wide',
+          sha256: persisted.sha256,
+        },
+      ]);
+      drainOutbox();
+      setWrbPhotoCaptured(true);
+    } catch (err) {
+      if (err instanceof CameraPermissionDeniedError) {
+        Alert.alert('Camera access needed', 'RoofTrax needs camera access. Enable it in Settings, then try again.');
+      } else if (err instanceof MediaLibraryPermissionDeniedError) {
+        Alert.alert('Photo access needed', 'RoofTrax needs photo access. Enable it in Settings, then try again.');
+      } else {
+        Alert.alert('Capture failed', 'Could not save the photo. Try again.');
+      }
+    } finally {
+      setCapturingWrbPhoto(false);
+    }
+  }
+
+  function promptWrbPhotoSource() {
+    Alert.alert('No WRB — capture evidence', undefined, [
+      { text: 'Take photo', onPress: () => void captureWrbPhoto('camera') },
+      { text: 'Choose from library', onPress: () => void captureWrbPhoto('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   // Next facet label: S{n} past the highest existing S-number.
@@ -145,77 +208,6 @@ export default function InspectionSidingScreen() {
     } finally {
       setRemoving(false);
     }
-  }
-
-  // Optional measurement report: captured through the same evidence-photo
-  // pipeline (subjectType 'inspection', stage 'siding'), then referenced on
-  // the inspection by the photo's durable client id. Missing report is only
-  // a soft flag — never a hard gate.
-  async function attachReport(source: 'camera' | 'library') {
-    if (uploadingReport) return;
-    setUploadingReport(true);
-    try {
-      const shot =
-        source === 'camera'
-          ? await captureEvidencePhoto()
-          : await pickEvidencePhotoFromLibrary();
-      if (!shot) return;
-      const persisted = await persistCapturedPhotoForOutbox(shot);
-      const photoId = Crypto.randomUUID();
-      const payload: InspectionPhotoOutboxPayload = {
-        id: photoId,
-        inspectionId: id,
-        subjectType: 'inspection',
-        subjectId: null,
-        stage: 'siding',
-        triadRole: 'wide',
-        localFilePath: persisted.localFilePath,
-        mimeType: shot.mimeType,
-        sha256: persisted.sha256,
-        exifJson: persisted.exifJson,
-        overlayJson: { ...(persisted.overlayJson ?? {}), caption: 'Siding Measurement Report' },
-        capturedAtUtc: persisted.capturedAtUtc,
-        latitude: persisted.latitude,
-        longitude: persisted.longitude,
-      };
-      await enqueueOutboxItem('inspection.photo', payload);
-      appendOptimisticPhotos(queryClient, id, [
-        {
-          id: photoId,
-          subjectType: 'inspection',
-          subjectId: null,
-          stage: 'siding',
-          triadRole: 'wide',
-          sha256: persisted.sha256,
-        },
-      ]);
-      await patchInspection(queryClient, id, { sidingMeasurementReportRef: photoId });
-      drainOutbox();
-    } catch (err) {
-      if (err instanceof CameraPermissionDeniedError) {
-        Alert.alert(
-          'Camera access needed',
-          'RoofTrax needs camera access to capture the report. Enable it in Settings, then try again.',
-        );
-      } else if (err instanceof MediaLibraryPermissionDeniedError) {
-        Alert.alert(
-          'Photo access needed',
-          'RoofTrax needs photo access to upload the report. Enable it in Settings, then try again.',
-        );
-      } else {
-        Alert.alert('Upload failed', 'Could not attach the measurement report. Try again.');
-      }
-    } finally {
-      setUploadingReport(false);
-    }
-  }
-
-  function promptReportSource() {
-    Alert.alert('Attach measurement report', undefined, [
-      { text: 'Take photo', onPress: () => void attachReport('camera') },
-      { text: 'Choose from library', onPress: () => void attachReport('library') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
   }
 
   const facetComplete = (facetId: string): boolean => {
@@ -348,39 +340,52 @@ export default function InspectionSidingScreen() {
                     );
                   })}
                 </View>
+
+                {wrbPresent === false && (
+                  <Pressable
+                    onPress={wrbPhotoCaptured ? undefined : promptWrbPhotoSource}
+                    disabled={capturingWrbPhoto}
+                    style={[
+                      styles.row,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: wrbPhotoCaptured ? colors.success : colors.border,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.badge,
+                        { backgroundColor: wrbPhotoCaptured ? colors.success : colors.accent },
+                      ]}
+                    >
+                      {capturingWrbPhoto ? (
+                        <ActivityIndicator color={colors.secondary} />
+                      ) : (
+                        <Icon
+                          name={wrbPhotoCaptured ? 'check' : 'camera'}
+                          size={18}
+                          color={wrbPhotoCaptured ? '#fff' : colors.secondary}
+                        />
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                        {wrbPhotoCaptured ? 'No-WRB photo captured' : 'Capture photo showing no WRB'}
+                      </Text>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                        {wrbPhotoCaptured
+                          ? 'Saved to evidence — tap to recapture'
+                          : 'Document that no barrier is present'}
+                      </Text>
+                    </View>
+                    {!wrbPhotoCaptured && (
+                      <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+                    )}
+                  </Pressable>
+                )}
               </>
             )}
-            {/* Optional measurement report — soft flag only when missing. */}
-            <Text style={[styles.section, { color: colors.foreground }]}>Measurement report (optional)</Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              Attach a siding measurement report if one exists. Skipping this only flags the
-              package for reviewer attention — it never blocks submission.
-            </Text>
-            <Pressable
-              onPress={reportUploaded ? undefined : promptReportSource}
-              disabled={uploadingReport}
-              style={[styles.row, { backgroundColor: colors.card, borderColor: reportUploaded ? colors.success : colors.border }]}
-            >
-              <View style={[styles.badge, { backgroundColor: reportUploaded ? colors.success : colors.accent }]}>
-                {uploadingReport ? (
-                  <ActivityIndicator color={colors.secondary} />
-                ) : (
-                  <Icon name={reportUploaded ? 'check' : 'upload'} size={18} color={reportUploaded ? '#fff' : colors.secondary} />
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                  {reportUploaded ? 'Measurement report attached' : 'Attach measurement report'}
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  {reportUploaded ? 'On file with this inspection' : 'Photo or scan of the report'}
-                </Text>
-              </View>
-              {!reportUploaded && (
-                <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
-              )}
-            </Pressable>
-
             <Text style={{ color: remaining === 0 ? colors.success : colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
               {remaining === 0
                 ? 'Siding documentation complete.'

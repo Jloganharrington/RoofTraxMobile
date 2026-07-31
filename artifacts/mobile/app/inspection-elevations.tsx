@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ActivityIndicator,
   Pressable,
@@ -16,13 +17,22 @@ import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-clien
 import { ELEVATION_DIRECTIONS, type ElevationDirection } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { createElevation, patchInspection, patchPhotoCaption } from '@/lib/inspectionSync';
+import { useAuth } from '@/lib/auth';
+import {
+  createElevation,
+  markNoCollateralDamage,
+  patchInspection,
+  patchPhotoCaption,
+} from '@/lib/inspectionSync';
 import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
 import {
   elevationWideCaptured,
+  isCollateralWaived,
   stageDeficiencies,
 } from '@/lib/inspectionProtocolState';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
+
+const GROUND_SUGGESTIONS = ['Window screens', 'Siding', 'AC condenser fins', 'Mailbox', 'Fence'];
 
 // Elevation Walk (protocol v2.1). Walks the inspector around the structure in
 // a fixed front -> right -> rear -> left order, capturing one wide overview
@@ -48,8 +58,13 @@ export default function InspectionElevationsScreen() {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
+  const { user } = useAuth();
   const [busy, setBusy] = React.useState<ElevationDirection | null>(null);
   const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
+  const [waiving, setWaiving] = React.useState(false);
+  const [groundLabelOpen, setGroundLabelOpen] = React.useState(false);
+  const [groundLabel, setGroundLabel] = React.useState('');
+  const [savingCollateralCaption, setSavingCollateralCaption] = React.useState<string | null>(null);
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -69,6 +84,8 @@ export default function InspectionElevationsScreen() {
 
   const captured = elevationWideCaptured(inspection);
   const remaining = stageDeficiencies(inspection, 'elevation_access').length;
+  const collateralPhotos = (inspection.photos ?? []).filter((p) => p.stage === 'collateral');
+  const collateralWaived = isCollateralWaived(inspection);
   // Townhomes share side walls with the neighboring units — right/left
   // elevations are optional (the gate engine exempts them too).
   const isTownhome = inspection.propertyProfile?.propertyType === 'townhome';
@@ -89,6 +106,42 @@ export default function InspectionElevationsScreen() {
     } finally {
       setSavingCaption(null);
     }
+  }
+
+  async function handleCollateralCaptionChange(photoId: string, caption: string | null) {
+    setSavingCollateralCaption(photoId);
+    try {
+      await patchPhotoCaption(queryClient, id, photoId, caption);
+    } catch {
+      // no-op
+    } finally {
+      setSavingCollateralCaption(null);
+    }
+  }
+
+  async function markNoDamage() {
+    if (!user || waiving) return;
+    setWaiving(true);
+    try {
+      await markNoCollateralDamage(queryClient, id, user.id);
+    } finally {
+      setWaiving(false);
+    }
+  }
+
+  function captureGround(photoLabel: string) {
+    setGroundLabelOpen(false);
+    setGroundLabel('');
+    router.push({
+      pathname: '/inspection-photo-capture',
+      params: {
+        inspectionId: id,
+        subjectType: 'inspection',
+        roles: 'wide',
+        stage: 'collateral',
+        title: `Ground-level · ${photoLabel}`,
+      },
+    });
   }
 
   async function walk(direction: ElevationDirection) {
@@ -279,7 +332,128 @@ export default function InspectionElevationsScreen() {
         );
       })}
 
+      {/* ── Ground-Level Collateral ─────────────────────────────────────── */}
+      <Text style={[styles.summaryTitle, { color: colors.foreground, marginTop: 8 }]}>
+        Ground-level collateral evidence
+      </Text>
+      <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: -6 }}>
+        Photograph any ground-level items showing storm damage — screens, siding, AC fins, mailbox, fence.
+      </Text>
+
+      {/* Captured collateral photos with caption editing */}
+      {collateralPhotos.map((photo, index) => {
+        const caption = photo.overlayJson
+          ? ((photo.overlayJson as Record<string, unknown>).caption as string | null) ?? null
+          : null;
+        return (
+          <View
+            key={photo.id}
+            style={[styles.photoRow, { backgroundColor: colors.card, borderColor: caption ? colors.success : colors.border }]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }}>
+              <Icon name="image" size={18} color={colors.mutedForeground} />
+              <Text style={{ color: colors.foreground, fontWeight: '600', flex: 1 }}>
+                {`Ground-level photo ${index + 1}`}
+              </Text>
+              {caption ? (
+                <View style={[styles.captionBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={{ color: colors.primaryForeground, fontSize: 10, fontWeight: '700' }}>
+                    {caption.split(' – ')[1] ?? caption}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+              <DamageCaptionChips
+                value={caption}
+                saving={savingCollateralCaption === photo.id}
+                onChange={(c) => handleCollateralCaptionChange(photo.id, c)}
+              />
+            </View>
+          </View>
+        );
+      })}
+
+      {/* Quick-pick suggestions */}
+      <View style={styles.chipRow}>
+        {GROUND_SUGGESTIONS.map((s) => (
+          <Pressable
+            key={s}
+            onPress={() => captureGround(s)}
+            style={[styles.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Icon name="camera" size={14} color={colors.primary} />
+            <Text style={{ color: colors.foreground, fontWeight: '600' }}>{s}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Custom label */}
+      <Pressable
+        onPress={() => { setGroundLabel(''); setGroundLabelOpen(true); }}
+        style={[styles.addRow, { borderColor: colors.border }]}
+      >
+        <Icon name="plus" size={18} color={colors.primary} />
+        <Text style={{ color: colors.primary, fontWeight: '600' }}>Add additional ground-level photo</Text>
+      </Pressable>
+
+      {/* No-damage waive */}
+      {!collateralWaived && collateralPhotos.length === 0 && (
+        <Pressable
+          onPress={markNoDamage}
+          disabled={waiving}
+          style={[styles.waiveBtn, { borderColor: colors.border, opacity: waiving ? 0.6 : 1 }]}
+        >
+          {waiving
+            ? <ActivityIndicator color={colors.mutedForeground} />
+            : <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>No Collateral Damage Found</Text>}
+        </Pressable>
+      )}
+      {collateralWaived && (
+        <View style={[styles.row, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
+          <Icon name="check" size={18} color={colors.success} />
+          <Text style={{ color: colors.foreground, fontWeight: '600' }}>No collateral damage — on file</Text>
+        </View>
+      )}
+
       <View style={{ height: 40 }} />
+
+      {/* Custom ground-level label modal */}
+      <Modal visible={groundLabelOpen} transparent animationType="fade">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
+            <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
+              Label this ground-level photo
+            </Text>
+            <TextInput
+              value={groundLabel}
+              onChangeText={setGroundLabel}
+              placeholder="e.g. Dented AC fin"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setGroundLabelOpen(false)}
+                style={[styles.secondaryBtn, { borderColor: colors.border }]}
+              >
+                <Text style={{ color: colors.foreground }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => groundLabel.trim() && captureGround(groundLabel.trim())}
+                disabled={!groundLabel.trim()}
+                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: groundLabel.trim() ? 1 : 0.5 }]}
+              >
+                <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Capture</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -303,7 +477,20 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
     borderRadius: 14,
+    borderWidth: 1,
   },
   badge: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  photoRow: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  captionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, borderWidth: 1 },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed' },
+  waiveBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, marginTop: 4 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  modalCard: { width: '100%', borderRadius: 16, padding: 20, gap: 12 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
+  secondaryBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16 },
+  primaryBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16 },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
 });

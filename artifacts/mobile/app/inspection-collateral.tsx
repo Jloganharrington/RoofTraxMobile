@@ -3,53 +3,36 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { useAuth } from '@/lib/auth';
-import { markNoCollateralDamage, patchPhotoCaption } from '@/lib/inspectionSync';
-import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
+import { patchPhotoCaption } from '@/lib/inspectionSync';
+import { DamageCaptionChips } from '@/components/DamageCaptionChips';
 import { isCollateralWaived } from '@/lib/inspectionProtocolState';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
-// Step 7 · Collateral & Ground Evidence (protocol v2). A simple labeled-photo
-// pass with no hard gate: the inspector shoots roof-level collateral first
-// (vents, flashing, gutters seen from the roof), then ground-level evidence
-// (screens, siding, AC fins, mailbox). Each shot gets a short label typed
-// before capture; "Add Additional Collateral" keeps the list open-ended.
-// Photos attach to the inspection itself under the `collateral` stage.
-
-const SUGGESTIONS: Record<'roof' | 'ground', string[]> = {
-  roof: ['Vents', 'Flashing', 'Gutters', 'Skylight', 'Satellite mount'],
-  ground: ['Window screens', 'Siding', 'AC condenser fins', 'Mailbox', 'Fence'],
-};
+// Collateral review (protocol v2). Ground-level evidence is now captured
+// during the Elevation Walk. This screen shows all captured collateral photos
+// for caption review, and lets the rep mark no collateral damage found.
 
 export default function InspectionCollateralScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   useNextSectionHeader(id, 'collateral');
-  const [waiving, setWaiving] = React.useState(false);
   const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
   });
   const inspection = inspectionQuery.data?.inspection;
-
-  const [labelTarget, setLabelTarget] = React.useState<'roof' | 'ground' | null>(null);
-  const [label, setLabel] = React.useState('');
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -73,16 +56,6 @@ export default function InspectionCollateralScreen() {
   const waived = isCollateralWaived(inspection);
   const addressed = collateralPhotos.length > 0 || waived;
 
-  async function markNoDamage() {
-    if (!user || waiving) return;
-    setWaiving(true);
-    try {
-      await markNoCollateralDamage(queryClient, id, user.id);
-    } finally {
-      setWaiving(false);
-    }
-  }
-
   async function handleCaptionChange(photoId: string, caption: string | null) {
     setSavingCaption(photoId);
     try {
@@ -92,21 +65,6 @@ export default function InspectionCollateralScreen() {
     } finally {
       setSavingCaption(null);
     }
-  }
-
-  function capture(section: 'roof' | 'ground', photoLabel: string) {
-    setLabelTarget(null);
-    setLabel('');
-    router.push({
-      pathname: '/inspection-photo-capture',
-      params: {
-        inspectionId: id,
-        subjectType: 'inspection',
-        roles: 'wide',
-        stage: 'collateral',
-        title: `${section === 'roof' ? 'Roof-level' : 'Ground-level'} · ${photoLabel}`,
-      },
-    });
   }
 
   return (
@@ -140,7 +98,7 @@ export default function InspectionCollateralScreen() {
                 : 'No collateral photos yet'}
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            Optional but powerful corroborating evidence. Label each shot, then capture it.
+            Ground-level evidence captured during the elevation walk. Label each photo below.
           </Text>
         </View>
       </View>
@@ -187,89 +145,7 @@ export default function InspectionCollateralScreen() {
         </View>
       )}
 
-      {(['roof', 'ground'] as const).map((section) => (
-        <View key={section} style={{ gap: 8 }}>
-          <Text style={[styles.section, { color: colors.foreground }]}>
-            {section === 'roof' ? '1. Roof-level collateral' : '2. Ground-level evidence'}
-          </Text>
-          <View style={styles.chipRow}>
-            {SUGGESTIONS[section].map((s) => (
-              <Pressable
-                key={s}
-                onPress={() => capture(section, s)}
-                style={[styles.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <Icon name="camera" size={14} color={colors.primary} />
-                <Text style={{ color: colors.foreground, fontWeight: '600' }}>{s}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable
-            onPress={() => {
-              setLabel('');
-              setLabelTarget(section);
-            }}
-            style={[styles.addRow, { borderColor: colors.border }]}
-          >
-            <Icon name="plus" size={18} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontWeight: '600' }}>Add additional collateral</Text>
-          </Pressable>
-        </View>
-      ))}
-
-      {!waived && collateralPhotos.length === 0 ? (
-        <Pressable
-          onPress={markNoDamage}
-          disabled={waiving}
-          style={[styles.waiveBtn, { borderColor: colors.border, opacity: waiving ? 0.6 : 1 }]}
-        >
-          {waiving ? (
-            <ActivityIndicator color={colors.mutedForeground} />
-          ) : (
-            <Text style={{ color: colors.mutedForeground, fontWeight: '600' }}>
-              No Collateral Damage Found
-            </Text>
-          )}
-        </Pressable>
-      ) : null}
-
       <View style={{ height: 40 }} />
-
-      {/* Custom-label entry before capture. */}
-      <Modal visible={labelTarget !== null} transparent animationType="fade">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View style={[styles.modalCard, { backgroundColor: colors.background }]}>
-            <Text style={[styles.summaryTitle, { color: colors.foreground }]}>
-              Label this {labelTarget === 'roof' ? 'roof-level' : 'ground-level'} photo
-            </Text>
-            <TextInput
-              value={label}
-              onChangeText={setLabel}
-              placeholder="e.g. Dented chimney cap"
-              placeholderTextColor={colors.mutedForeground}
-              style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.foreground }]}
-            />
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setLabelTarget(null)}
-                style={[styles.secondaryBtn, { borderColor: colors.border }]}
-              >
-                <Text style={{ color: colors.foreground }}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => labelTarget && label.trim() && capture(labelTarget, label.trim())}
-                disabled={!label.trim()}
-                style={[styles.primaryBtn, { backgroundColor: colors.primary, opacity: label.trim() ? 1 : 0.5 }]}
-              >
-                <Text style={{ color: colors.primaryForeground, fontWeight: '700' }}>Capture</Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -281,40 +157,6 @@ const styles = StyleSheet.create({
   summary: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
   summaryTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   section: { fontSize: 16, fontWeight: '700', marginTop: 6 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-  },
-  waiveBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   photoRow: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   captionBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  modalCard: { width: '100%', borderRadius: 16, padding: 20, gap: 12 },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
-  secondaryBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16 },
-  primaryBtn: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16 },
 });
