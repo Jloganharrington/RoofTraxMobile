@@ -110,6 +110,7 @@ export default function InspectionRoofScreen() {
   // Gate: "Can shingle layer count be determined at this time?" null=unanswered, yes/no
   const [layerDeterminable, setLayerDeterminable] = React.useState<'yes' | 'no' | null>(null);
   const [savingLayer, setSavingLayer] = React.useState(false);
+  const [eaveEdgeSaved, setEaveEdgeSaved] = React.useState(false);
   const authHeaders = useStorageAuthHeaders();
 
   if (inspectionQuery.isLoading && !inspection) {
@@ -592,71 +593,104 @@ export default function InspectionRoofScreen() {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
-        {/* ── Eave / Edge zone (merged from Components) ───────────────────── */}
+        {/* ── Eave / Edge ─────────────────────────────────────────────────── */}
         <Text style={[styles.section, { color: colors.foreground, marginTop: 0 }]}>Eave / Edge</Text>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13, marginBottom: 2 }}>
-          One eave shot evidences every edge component and the layer count.
-        </Text>
 
-        {/* Eave / edge zone photo */}
-        <View style={[styles.photoCapture, { borderColor: eaveZoneCaptured ? colors.success : colors.primary, backgroundColor: colors.card }]}>
-          <Pressable onPress={captureEaveZonePhoto} style={styles.photoCaptureBtn}>
-            <Icon name="camera" size={18} color={eaveZoneCaptured ? colors.success : colors.primary} />
-            <Text style={{ color: eaveZoneCaptured ? colors.success : colors.primary, fontWeight: '600', flex: 1 }}>
-              {eaveZoneCaptured ? 'Eave / edge zone' : 'Photograph eave / edge zone'}
-            </Text>
-            {eaveZoneCaptured
-              ? <Icon name="check" size={16} color={colors.success} />
-              : <Icon name="chevron-right" size={16} color={colors.primary} />}
+        {eaveEdgeSaved ? (
+          /* ── Collapsed summary ── */
+          <Pressable
+            onPress={() => setEaveEdgeSaved(false)}
+            style={[styles.row, { backgroundColor: colors.card, borderColor: colors.success }]}
+          >
+            <View style={[styles.badge, { backgroundColor: colors.success }]}>
+              <Icon name="check" size={18} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>Eave / Edge — Complete</Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                {eaveZonePhotos.length} eave photo{eaveZonePhotos.length === 1 ? '' : 's'} · {shingleGaugePhotos.length} gauge photo{shingleGaugePhotos.length === 1 ? '' : 's'} · all items answered
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
           </Pressable>
-          {eaveZonePhotos.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={styles.thumbContent}>
-              {eaveZonePhotos.map((p) => (
-                <Image
-                  key={p.id}
-                  source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
-                  style={styles.thumb}
-                  resizeMode="cover"
-                />
-              ))}
-              <Pressable onPress={captureEaveZonePhoto} style={[styles.thumbAdd, { borderColor: colors.border }]}>
-                <Icon name="plus" size={20} color={colors.mutedForeground} />
-              </Pressable>
-            </ScrollView>
-          )}
-        </View>
-
-        {/* Shingle gauge photo */}
-        <View style={[styles.photoCapture, { borderColor: shingleGaugeCaptured ? colors.success : colors.primary, backgroundColor: colors.card }]}>
-          <Pressable onPress={captureShingleGaugePhoto} style={styles.photoCaptureBtn}>
-            <Icon name="camera" size={18} color={shingleGaugeCaptured ? colors.success : colors.primary} />
-            <Text style={{ color: shingleGaugeCaptured ? colors.success : colors.primary, fontWeight: '600', flex: 1 }}>
-              {shingleGaugeCaptured ? 'Shingle Gauge' : 'Shingle Gauge — capture photo'}
+        ) : (
+          /* ── Expanded form ── */
+          <>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, marginBottom: 2 }}>
+              One eave shot evidences every edge component and the layer count.
             </Text>
-            {shingleGaugeCaptured
-              ? <Icon name="check" size={16} color={colors.success} />
-              : <Icon name="chevron-right" size={16} color={colors.primary} />}
-          </Pressable>
-          {shingleGaugePhotos.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={styles.thumbContent}>
-              {shingleGaugePhotos.map((p) => (
-                <Image
-                  key={p.id}
-                  source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
-                  style={styles.thumb}
-                  resizeMode="cover"
-                />
-              ))}
-              <Pressable onPress={captureShingleGaugePhoto} style={[styles.thumbAdd, { borderColor: colors.border }]}>
-                <Icon name="plus" size={20} color={colors.mutedForeground} />
-              </Pressable>
-            </ScrollView>
-          )}
-        </View>
 
-        {EAVE_STATUS_ITEMS.map((item) => renderStatusItem(item))}
-        {renderDecking()}
-        {renderLayerCount()}
+            {/* Eave / edge zone photo */}
+            <View style={[styles.photoCapture, { borderColor: eaveZoneCaptured ? colors.success : colors.primary, backgroundColor: colors.card }]}>
+              <Pressable onPress={captureEaveZonePhoto} style={styles.photoCaptureBtn}>
+                <Icon name="camera" size={18} color={eaveZoneCaptured ? colors.success : colors.primary} />
+                <Text style={{ color: eaveZoneCaptured ? colors.success : colors.primary, fontWeight: '600', flex: 1 }}>
+                  {eaveZoneCaptured ? 'Eave / edge zone' : 'Photograph eave / edge zone'}
+                </Text>
+                {eaveZoneCaptured
+                  ? <Icon name="check" size={16} color={colors.success} />
+                  : <Icon name="chevron-right" size={16} color={colors.primary} />}
+              </Pressable>
+              {eaveZonePhotos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={styles.thumbContent}>
+                  {eaveZonePhotos.map((p) => (
+                    <Image
+                      key={p.id}
+                      source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
+                      style={styles.thumb}
+                      resizeMode="cover"
+                    />
+                  ))}
+                  <Pressable onPress={captureEaveZonePhoto} style={[styles.thumbAdd, { borderColor: colors.border }]}>
+                    <Icon name="plus" size={20} color={colors.mutedForeground} />
+                  </Pressable>
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Shingle gauge photo */}
+            <View style={[styles.photoCapture, { borderColor: shingleGaugeCaptured ? colors.success : colors.primary, backgroundColor: colors.card }]}>
+              <Pressable onPress={captureShingleGaugePhoto} style={styles.photoCaptureBtn}>
+                <Icon name="camera" size={18} color={shingleGaugeCaptured ? colors.success : colors.primary} />
+                <Text style={{ color: shingleGaugeCaptured ? colors.success : colors.primary, fontWeight: '600', flex: 1 }}>
+                  {shingleGaugeCaptured ? 'Shingle Gauge' : 'Shingle Gauge — capture photo'}
+                </Text>
+                {shingleGaugeCaptured
+                  ? <Icon name="check" size={16} color={colors.success} />
+                  : <Icon name="chevron-right" size={16} color={colors.primary} />}
+              </Pressable>
+              {shingleGaugePhotos.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip} contentContainerStyle={styles.thumbContent}>
+                  {shingleGaugePhotos.map((p) => (
+                    <Image
+                      key={p.id}
+                      source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
+                      style={styles.thumb}
+                      resizeMode="cover"
+                    />
+                  ))}
+                  <Pressable onPress={captureShingleGaugePhoto} style={[styles.thumbAdd, { borderColor: colors.border }]}>
+                    <Icon name="plus" size={20} color={colors.mutedForeground} />
+                  </Pressable>
+                </ScrollView>
+              )}
+            </View>
+
+            {EAVE_STATUS_ITEMS.map((item) => renderStatusItem(item))}
+            {renderDecking()}
+            {renderLayerCount()}
+
+            {/* Save button — only shown when section is complete */}
+            {eaveEdgeComplete && (
+              <Pressable
+                onPress={() => setEaveEdgeSaved(true)}
+                style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[styles.addText, { color: colors.primaryForeground }]}>Save Eave / Edge</Text>
+              </Pressable>
+            )}
+          </>
+        )}
 
         {/* ── Facets ─────────────────────────────────────────────────────── */}
         <Text style={[styles.section, { color: colors.foreground }]}>Facets</Text>
