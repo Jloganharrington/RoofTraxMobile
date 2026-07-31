@@ -13,19 +13,31 @@ import {
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
-import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
+import {
+  ComponentStatus,
+  ComponentType,
+  getGetInspectionQueryKey,
+  useGetInspection,
+} from '@workspace/api-client-react';
+import type { ComponentStatus as ComponentStatusValue } from '@workspace/api-client-react';
 import { WHOLE_ROOF_LINEAR_TYPES } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
-import { createMeasurement, createSlope } from '@/lib/inspectionSync';
+import {
+  createComponent,
+  createMeasurement,
+  createSlope,
+  deleteComponent,
+  updateComponent,
+} from '@/lib/inspectionSync';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
-// Step 3 · Roof Facets (protocol v2). Facet-first: the inspector answers
-// "How many facets does this roof have?" once, which seeds an editable
-// F1..FXX facet list. Each facet row opens the facet detail screen (area,
-// material, pitch, damage documentation). Whole-roof linears (ridge / hip /
-// valley / eave / rake LF) are recorded here against the inspection itself.
+// Step 3 · Roof Facets (protocol v2). The Eave/Edge component zone is
+// documented here first (merged from Components), then the inspector counts
+// facets and documents each plane. Whole-roof linears follow the facet list.
+
+type ComponentTypeValue = (typeof ComponentType)[keyof typeof ComponentType];
 
 const LINEAR_LABELS: Record<(typeof WHOLE_ROOF_LINEAR_TYPES)[number], string> = {
   ridge_lf: 'Ridge',
@@ -35,11 +47,34 @@ const LINEAR_LABELS: Record<(typeof WHOLE_ROOF_LINEAR_TYPES)[number], string> = 
   rake_lf: 'Rake',
 };
 
+const STATUS_LABELS: Record<ComponentStatusValue, string> = {
+  present: 'Present',
+  absent: 'Absent',
+  not_determined: 'Not determined',
+};
+
+// Eave/Edge checklist items (status observations).
+const EAVE_STATUS_ITEMS: Array<{
+  type: ComponentTypeValue;
+  label: string;
+  hint: string;
+}> = [
+  { type: ComponentType.gutter_apron, label: 'Gutter apron', hint: 'Metal edge at the eaves over the gutter' },
+  { type: ComponentType.drip_edge, label: 'Drip edge', hint: 'Metal edge at eaves & rakes' },
+  { type: ComponentType.starter, label: 'Starter', hint: 'Starter strip at eaves & rakes' },
+  { type: ComponentType.ice_and_water_shield, label: 'Ice & water shield', hint: 'Peel-and-stick membrane at eaves/valleys' },
+  { type: ComponentType.underlayment, label: 'Underlayment', hint: 'Felt / synthetic beneath shingles' },
+];
+
+// Decking type+thickness options (all map to present status).
+const DECKING_OPTIONS: Array<{ label: string; status: ComponentStatusValue }> = [
+  { label: 'Plywood 3/8"', status: ComponentStatus.present },
+  { label: 'Plywood 1/2"+', status: ComponentStatus.present },
+  { label: 'Spaced Decking', status: ComponentStatus.present },
+];
+
 export default function InspectionRoofScreen() {
   const colors = useColors();
-  // Approximate the native-stack header height (status bar inset + 44pt bar
-  // on iOS) — @react-navigation/elements' useHeaderHeight can't be imported
-  // directly without breaking Metro's resolution of the tab bar package.
   const insets = useSafeAreaInsets();
   const headerHeight = insets.top + 44;
   const queryClient = useQueryClient();
@@ -51,8 +86,6 @@ export default function InspectionRoofScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
 
-  // Returning from the facet detail screen must always show the current
-  // facet list — refetch on focus so the list can never render stale.
   const refetch = inspectionQuery.refetch;
   useFocusEffect(
     React.useCallback(() => {
@@ -60,11 +93,21 @@ export default function InspectionRoofScreen() {
     }, [refetch]),
   );
 
+  // Facet list state
   const [facetCount, setFacetCount] = React.useState('');
   const [seeding, setSeeding] = React.useState(false);
   const [addingFacet, setAddingFacet] = React.useState(false);
   const [linearDrafts, setLinearDrafts] = React.useState<Record<string, string>>({});
   const [savingLinear, setSavingLinear] = React.useState<string | null>(null);
+
+  // Eave/Edge component state
+  const [savingComponentType, setSavingComponentType] = React.useState<ComponentTypeValue | null>(null);
+  const inFlightTypes = React.useRef<Set<ComponentTypeValue>>(new Set());
+  // Gate: "Can decking be determined at this time?" null=unanswered, yes/no
+  const [deckingDeterminable, setDeckingDeterminable] = React.useState<'yes' | 'no' | null>(null);
+  // Gate: "Can shingle layer count be determined at this time?" null=unanswered, yes/no
+  const [layerDeterminable, setLayerDeterminable] = React.useState<'yes' | 'no' | null>(null);
+  const [savingLayer, setSavingLayer] = React.useState(false);
 
   if (inspectionQuery.isLoading && !inspection) {
     return (
@@ -82,6 +125,7 @@ export default function InspectionRoofScreen() {
     );
   }
 
+  // ── Derived: facets ──────────────────────────────────────────────────────────
   const state = buildProtocolState(inspection);
   const facets = inspection.slopes ?? [];
   const facetById = new Map(state.facets.map((f) => [f.id, f]));
@@ -93,7 +137,19 @@ export default function InspectionRoofScreen() {
       .map((m) => [m.measurementType, m.value] as const),
   );
 
-  // Next facet label: F{n} past the highest existing F-number.
+  // ── Derived: eave/edge components ───────────────────────────────────────────
+  const components = inspection.components ?? [];
+  const checklistRecords = new Map(
+    components
+      .filter((c) => c.componentType !== ComponentType.layer_count)
+      .map((c) => [c.componentType, c]),
+  );
+  const layerRecord = components.find((c) => c.componentType === ComponentType.layer_count) ?? null;
+  const deckingRecord = checklistRecords.get(ComponentType.decking) ?? null;
+  const photos = inspection.photos ?? [];
+  const eaveZoneCaptured = photos.some((p) => p.subjectType === 'component' && p.zone === 'eave_edge');
+
+  // ── Facet helpers ─────────────────────────────────────────────────────────
   function nextFacetLabel(offset = 0): string {
     const max = facets.reduce((acc, facet) => {
       const match = /^F(\d+)$/.exec(facet.label);
@@ -108,7 +164,6 @@ export default function InspectionRoofScreen() {
     setSeeding(true);
     try {
       for (let i = 0; i < count; i += 1) {
-        // Sequential (not parallel) so F-numbers assign deterministically.
         // eslint-disable-next-line no-await-in-loop
         await createSlope(queryClient, id, { label: `F${i + 1}` });
       }
@@ -132,8 +187,6 @@ export default function InspectionRoofScreen() {
   async function saveLinear(type: string) {
     const raw = (linearDrafts[type] ?? '').trim();
     const value = Number(raw);
-    // 0 is a legitimate whole-roof linear (e.g. a roof with no valleys) —
-    // only empty, non-numeric, or negative entries are rejected.
     if (!raw || Number.isNaN(value) || value < 0 || savingLinear) return;
     setSavingLinear(type);
     try {
@@ -159,16 +212,383 @@ export default function InspectionRoofScreen() {
     return records.length > 0 && records.every((d) => d.photoCaptured);
   };
 
+  // ── Eave/Edge component helpers ────────────────────────────────────────────
+
+  async function tapStatus(type: ComponentTypeValue, status: ComponentStatusValue) {
+    if (inFlightTypes.current.has(type)) return;
+    inFlightTypes.current.add(type);
+    const record = checklistRecords.get(type);
+    setSavingComponentType(type);
+    try {
+      if (!record) {
+        await createComponent(queryClient, id, { componentType: type, status });
+      } else if (record.status === status) {
+        await deleteComponent(queryClient, id, record.id);
+      } else {
+        await updateComponent(queryClient, id, record.id, { status });
+      }
+    } finally {
+      inFlightTypes.current.delete(type);
+      setSavingComponentType(null);
+    }
+  }
+
+  async function tapOption(
+    type: ComponentTypeValue,
+    option: { label: string; status: ComponentStatusValue },
+  ) {
+    if (inFlightTypes.current.has(type)) return;
+    inFlightTypes.current.add(type);
+    const record = checklistRecords.get(type);
+    setSavingComponentType(type);
+    try {
+      if (!record) {
+        await createComponent(queryClient, id, {
+          componentType: type,
+          status: option.status,
+          notes: option.label,
+        });
+      } else if (record.notes === option.label) {
+        await deleteComponent(queryClient, id, record.id);
+      } else {
+        await updateComponent(queryClient, id, record.id, {
+          status: option.status,
+          notes: option.label,
+        });
+      }
+    } finally {
+      inFlightTypes.current.delete(type);
+      setSavingComponentType(null);
+    }
+  }
+
+  async function recordLayerCount(count: 1 | 2) {
+    if (savingLayer || layerRecord) return;
+    setSavingLayer(true);
+    try {
+      await createComponent(queryClient, id, {
+        componentType: ComponentType.layer_count,
+        layerCount: count,
+      });
+      if (count === 2) {
+        // 2+ layers — capture photo evidence with an auto-set caption.
+        router.push({
+          pathname: '/inspection-photo-capture',
+          params: {
+            inspectionId: id,
+            subjectType: 'component',
+            roles: 'wide',
+            stage: 'components',
+            title: 'Shingle layer count — 2+',
+            zone: 'eave_edge',
+            caption: 'More than one layer of roofing surface identified',
+          },
+        });
+      }
+    } finally {
+      setSavingLayer(false);
+    }
+  }
+
+  function captureEaveZonePhoto() {
+    router.push({
+      pathname: '/inspection-photo-capture',
+      params: {
+        inspectionId: id,
+        subjectType: 'component',
+        roles: 'wide',
+        stage: 'components',
+        title: 'Eave/Edge — components',
+        zone: 'eave_edge',
+      },
+    });
+  }
+
+  // ── Render helpers ─────────────────────────────────────────────────────────
+
+  function renderStatusItem(item: { type: ComponentTypeValue; label: string; hint: string }) {
+    const record = checklistRecords.get(item.type);
+    return (
+      <View
+        key={item.type}
+        style={[styles.card, { backgroundColor: colors.card, borderColor: record ? colors.success : colors.border }]}
+      >
+        <View style={styles.cardHead}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>{item.label}</Text>
+          {record ? <Icon name="check" size={18} color={colors.success} /> : null}
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>{item.hint}</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(STATUS_LABELS) as ComponentStatusValue[]).map((status) => {
+            const active = record?.status === status;
+            return (
+              <Pressable
+                key={status}
+                onPress={() => tapStatus(item.type, status)}
+                disabled={savingComponentType === item.type}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: active ? colors.primary : 'transparent',
+                    borderColor: active ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={{ color: active ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                  {STATUS_LABELS[status]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function renderDecking() {
+    // Already has a record — show it in its settled state; tapping reopens options.
+    if (deckingRecord) {
+      return (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.success }]}>
+          <View style={styles.cardHead}>
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>Decking</Text>
+            <Icon name="check" size={18} color={colors.success} />
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>
+            {deckingRecord.notes ?? deckingRecord.status}
+          </Text>
+          <View style={styles.chipRow}>
+            {DECKING_OPTIONS.map((opt) => {
+              const active = deckingRecord.notes === opt.label;
+              return (
+                <Pressable
+                  key={opt.label}
+                  onPress={() => tapOption(ComponentType.decking, opt)}
+                  disabled={savingComponentType === ComponentType.decking}
+                  style={[styles.chip, { backgroundColor: active ? colors.primary : 'transparent', borderColor: active ? colors.primary : colors.border }]}
+                >
+                  <Text style={{ color: active ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      );
+    }
+
+    // Gate question
+    if (deckingDeterminable === null) {
+      return (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>Decking</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>
+            Can decking type and thickness be determined at this time?
+          </Text>
+          <View style={styles.chipRow}>
+            <Pressable
+              onPress={() => setDeckingDeterminable('yes')}
+              style={[styles.chip, { backgroundColor: 'transparent', borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>Yes</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setDeckingDeterminable('no')}
+              style={[styles.chip, { backgroundColor: 'transparent', borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>No</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    if (deckingDeterminable === 'no') {
+      return (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHead}>
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>Decking</Text>
+            <Pressable onPress={() => setDeckingDeterminable(null)} hitSlop={8}>
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>Change</Text>
+            </Pressable>
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            Not determinable at this time.
+          </Text>
+        </View>
+      );
+    }
+
+    // deckingDeterminable === 'yes' — show options
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.cardHead}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>Decking</Text>
+          <Pressable onPress={() => setDeckingDeterminable(null)} hitSlop={8}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Not determinable</Text>
+          </Pressable>
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>
+          Sheathing beneath the covering
+        </Text>
+        <View style={styles.chipRow}>
+          {DECKING_OPTIONS.map((opt) => {
+            const record = checklistRecords.get(ComponentType.decking);
+            const active = record?.notes === opt.label;
+            return (
+              <Pressable
+                key={opt.label}
+                onPress={() => tapOption(ComponentType.decking, opt)}
+                disabled={savingComponentType === ComponentType.decking}
+                style={[styles.chip, { backgroundColor: active ? colors.primary : 'transparent', borderColor: active ? colors.primary : colors.border }]}
+              >
+                <Text style={{ color: active ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  function renderLayerCount() {
+    // Already recorded — show settled state
+    if (layerRecord) {
+      const display = layerRecord.layerCount != null && layerRecord.layerCount >= 2 ? '2+' : '1';
+      return (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.success }]}>
+          <View style={styles.cardHead}>
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+              Shingle layer count — {display}
+            </Text>
+            <Icon name="check" size={18} color={colors.success} />
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            {display === '2+' ? 'Photo evidence required — check Evidence Photos.' : 'Evidenced by the Eave/Edge zone photo.'}
+          </Text>
+        </View>
+      );
+    }
+
+    // Gate question
+    if (layerDeterminable === null) {
+      return (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>Shingle layer count</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>
+            Can shingle layer count be determined at this time?
+          </Text>
+          <View style={styles.chipRow}>
+            <Pressable
+              onPress={() => setLayerDeterminable('yes')}
+              style={[styles.chip, { backgroundColor: 'transparent', borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>Yes</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setLayerDeterminable('no')}
+              style={[styles.chip, { backgroundColor: 'transparent', borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>No</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    }
+
+    if (layerDeterminable === 'no') {
+      return (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.cardHead}>
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>Shingle layer count</Text>
+            <Pressable onPress={() => setLayerDeterminable(null)} hitSlop={8}>
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>Change</Text>
+            </Pressable>
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+            Not determinable at this time.
+          </Text>
+        </View>
+      );
+    }
+
+    // layerDeterminable === 'yes' — show 1 / 2+ chips
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.cardHead}>
+          <Text style={[styles.rowTitle, { color: colors.foreground }]}>Shingle layer count</Text>
+          <Pressable onPress={() => setLayerDeterminable(null)} hitSlop={8}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Not determinable</Text>
+          </Pressable>
+        </View>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 8 }}>
+          Count layers at an exposed eave or rake edge.
+        </Text>
+        <View style={styles.chipRow}>
+          <Pressable
+            onPress={() => recordLayerCount(1)}
+            disabled={savingLayer}
+            style={[styles.chip, { backgroundColor: 'transparent', borderColor: colors.border, opacity: savingLayer ? 0.5 : 1 }]}
+          >
+            {savingLayer ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>1</Text>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => recordLayerCount(2)}
+            disabled={savingLayer}
+            style={[styles.chip, { backgroundColor: 'transparent', borderColor: colors.border, opacity: savingLayer ? 0.5 : 1 }]}
+          >
+            {savingLayer ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>2+</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Main render ────────────────────────────────────────────────────────────
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      // Without this offset the avoiding view thinks the screen starts at the
-      // very top of the display, so it under-shifts by exactly the height of
-      // the navigation header and the focused input stays behind the keyboard.
       keyboardVerticalOffset={headerHeight}
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+
+        {/* ── Eave / Edge zone (merged from Components) ───────────────────── */}
+        <Text style={[styles.section, { color: colors.foreground, marginTop: 0 }]}>Eave / Edge</Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 13, marginBottom: 2 }}>
+          One eave shot evidences every edge component and the layer count.
+        </Text>
+
+        <Pressable
+          onPress={captureEaveZonePhoto}
+          style={[styles.addRow, { borderColor: eaveZoneCaptured ? colors.border : colors.primary }]}
+        >
+          <Icon name="camera" size={18} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontWeight: '600' }}>
+            {eaveZoneCaptured ? 'Add another eave/edge photo' : 'Photograph eave / edge zone'}
+          </Text>
+          {eaveZoneCaptured ? <Icon name="check" size={16} color={colors.success} /> : null}
+        </Pressable>
+
+        {EAVE_STATUS_ITEMS.map((item) => renderStatusItem(item))}
+        {renderDecking()}
+        {renderLayerCount()}
+
+        {/* ── Facets ─────────────────────────────────────────────────────── */}
+        <Text style={[styles.section, { color: colors.foreground }]}>Facets</Text>
+
         {facets.length === 0 ? (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.rowTitle, { color: colors.foreground }]}>
@@ -200,9 +620,6 @@ export default function InspectionRoofScreen() {
           </View>
         ) : (
           <>
-            <Text style={[styles.section, { color: colors.foreground }]}>
-              Facets ({facets.length})
-            </Text>
             {facets.map((facet) => {
               const done = facetComplete(facet.id);
               const info = facetById.get(facet.id);
@@ -316,11 +733,24 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 10 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   section: { fontSize: 16, fontWeight: '700', marginTop: 8 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 4 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1 },
   badge: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10, marginTop: 6 },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 2 },
+  chip: { borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12 },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, marginTop: 4 },
   addBtn: { paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 4 },
   addText: { fontSize: 15, fontWeight: '700' },
   linearRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
