@@ -2975,6 +2975,21 @@ export type GetInspectionReportPreviewUrl200 = {
   html: string;
 };
 
+export type AnalyzeMeasurementsReport200Applied = {
+  slopes: number;
+  measurements: number;
+  sidingFacets: number;
+};
+
+export type AnalyzeMeasurementsReport200Parsed = { [key: string]: unknown };
+
+export type AnalyzeMeasurementsReport200 = {
+  applied: AnalyzeMeasurementsReport200Applied;
+  /** @nullable */
+  confidence: string | null;
+  parsed?: AnalyzeMeasurementsReport200Parsed;
+};
+
 export type GetActivityStatsParams = {
 scope?: ActivityScope;
 /**

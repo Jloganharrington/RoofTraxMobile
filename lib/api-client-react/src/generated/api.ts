@@ -23,6 +23,7 @@ import type {
   ActivityStatsEnvelope,
   AddressSearchResults,
   AdminStatsEnvelope,
+  AnalyzeMeasurementsReport200,
   AttestationEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
@@ -5678,6 +5679,77 @@ export function useGetInspectionReportPreviewUrl<TData = Awaited<ReturnType<type
 
 
 
+
+export const getAnalyzeMeasurementsReportUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/analyze-measurements`
+}
+
+/**
+ * @summary Use Claude Opus to parse the uploaded measurements report PDF and auto-fill roof slopes, whole-roof linears, and siding facets. Skips records that already exist. Returns a summary of what was applied.
+ */
+export const analyzeMeasurementsReport = async (inspectionId: string, options?: RequestInit): Promise<AnalyzeMeasurementsReport200> => {
+
+  return customFetch<AnalyzeMeasurementsReport200>(getAnalyzeMeasurementsReportUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAnalyzeMeasurementsReportMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeMeasurementsReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeMeasurementsReport>>, TError,{inspectionId: string}, TContext> => {
+
+const mutationKey = ['analyzeMeasurementsReport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeMeasurementsReport>>, {inspectionId: string}> = (props) => {
+          const {inspectionId} = props ?? {};
+
+          return  analyzeMeasurementsReport(inspectionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeMeasurementsReportMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeMeasurementsReport>>>
+
+    export type AnalyzeMeasurementsReportMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Use Claude Opus to parse the uploaded measurements report PDF and auto-fill roof slopes, whole-roof linears, and siding facets. Skips records that already exist. Returns a summary of what was applied.
+ */
+export const useAnalyzeMeasurementsReport = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeMeasurementsReport>>, TError,{inspectionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeMeasurementsReport>>,
+        TError,
+        {inspectionId: string},
+        TContext
+      > => {
+      return useMutation(getAnalyzeMeasurementsReportMutationOptions(options));
+    }
 
 export const getCreateBugReportUrl = () => {
 

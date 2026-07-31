@@ -3689,6 +3689,169 @@ router.get('/inspections/:inspectionId/summary', async (req: Request, res: Respo
 // Uses the same write-authorization path as all other inspection mutations:
 // only the assigned inspector or a manager/admin may trigger or overwrite the
 // AI summary (allowLocked: true so it can be regenerated post-submission too).
+// POST /inspections/:inspectionId/analyze-measurements — Claude Opus reads the
+// uploaded measurements report PDF and auto-fills roof slopes, whole-roof
+// linears, and siding facets. Records whose label / measurementType already
+// exist are skipped so the call is safe to retry.
+router.post('/inspections/:inspectionId/analyze-measurements', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  if (!inspection.measurementsReportUrl) {
+    res.status(422).json({ error: 'No measurements report has been uploaded for this inspection.' });
+    return;
+  }
+
+  // ── Fetch the PDF from GCS and base64-encode for Claude ────────────────────
+  let pdfBase64: string;
+  try {
+    const file = await objectStorageService.getObjectEntityFile(inspection.measurementsReportUrl);
+    const [buf] = await file.download();
+    pdfBase64 = buf.toString('base64');
+  } catch (err) {
+    req.log.error({ err }, 'Failed to read measurements report from storage');
+    res.status(422).json({ error: 'Could not read the measurements report from storage.' });
+    return;
+  }
+
+  const PARSE_PROMPT = `You are a roofing measurements expert. The attached PDF is a roofing measurements report (e.g. EagleView, GAF QuickMeasure, Hover, or similar).
+
+Extract all measurements and return ONLY a valid JSON object — no explanation, no markdown fences — with this exact shape:
+
+{
+  "slopes": [
+    { "label": "F1", "areaSqft": 245.5, "pitchRise": 4, "pitchRun": 12, "materialType": "asphalt_shingle" }
+  ],
+  "linears": {
+    "ridge_lf": 32,
+    "hip_lf": 18,
+    "valley_lf": 12,
+    "eave_lf": 64,
+    "rake_lf": 28
+  },
+  "sidingFacets": [
+    { "label": "S1", "areaSqft": 180.0 }
+  ],
+  "confidence": "high"
+}
+
+Rules:
+- Label each roof plane sequentially F1, F2, F3… in the order they appear in the report.
+- pitchRise and pitchRun are integers (e.g. 4/12 pitch → pitchRise: 4, pitchRun: 12).
+- materialType must be one of: asphalt_shingle, cedar_shake, standing_seam_metal — or null if not stated.
+- Include a linear key (ridge_lf, hip_lf, valley_lf, eave_lf, rake_lf) only when the report explicitly states it; omit the key if the value is absent.
+- sidingFacets is optional — include only when the report contains siding or wall measurements.
+- confidence: "high" = values are clearly stated; "medium" = some values estimated; "low" = document unclear.
+- Set any numeric field to null if you cannot determine it with confidence.`;
+
+  type ParsedMeasurements = {
+    slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null }>;
+    linears?: Record<string, number | null>;
+    sidingFacets?: Array<{ label: string; areaSqft?: number | null }>;
+    confidence?: string;
+  };
+
+  let parsed: ParsedMeasurements;
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-4-7',
+      max_tokens: 8192,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 },
+          } as never,
+          { type: 'text', text: PARSE_PROMPT },
+        ],
+      }],
+    });
+
+    const rawText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+    parsed = JSON.parse(cleaned) as ParsedMeasurements;
+  } catch (err) {
+    req.log.error({ err }, 'Claude measurements analysis failed');
+    res.status(502).json({ error: 'AI analysis failed. Please try again.' });
+    return;
+  }
+
+  // ── Load existing records to skip duplicates ────────────────────────────────
+  const [existingSlopes, existingMeasurements, existingSiding] = await Promise.all([
+    db.select({ label: inspectionSlopesTable.label })
+      .from(inspectionSlopesTable)
+      .where(and(eq(inspectionSlopesTable.inspectionId, inspectionId), eq(inspectionSlopesTable.companyId, actor.companyId))),
+    db.select({ measurementType: measurementsTable.measurementType })
+      .from(measurementsTable)
+      .where(and(
+        eq(measurementsTable.inspectionId, inspectionId),
+        eq(measurementsTable.companyId, actor.companyId),
+        eq(measurementsTable.subjectType, 'inspection'),
+      )),
+    db.select({ label: inspectionSidingFacetsTable.label })
+      .from(inspectionSidingFacetsTable)
+      .where(and(eq(inspectionSidingFacetsTable.inspectionId, inspectionId), eq(inspectionSidingFacetsTable.companyId, actor.companyId))),
+  ]);
+
+  const existingSlopeLabels = new Set(existingSlopes.map(s => s.label));
+  const existingMeasurementTypes = new Set(existingMeasurements.map(m => m.measurementType));
+  const existingSidingLabels = new Set(existingSiding.map(s => s.label));
+  const LINEAR_TYPES = new Set(['ridge_lf', 'hip_lf', 'valley_lf', 'eave_lf', 'rake_lf']);
+
+  let slopesCreated = 0;
+  let measurementsCreated = 0;
+  let sidingFacetsCreated = 0;
+
+  for (const slope of parsed.slopes ?? []) {
+    if (!slope.label || existingSlopeLabels.has(slope.label)) continue;
+    await db.insert(inspectionSlopesTable).values({
+      companyId: actor.companyId,
+      inspectionId,
+      label: slope.label,
+      ...(slope.areaSqft != null && { areaSqft: slope.areaSqft }),
+      ...(slope.pitchRise != null && { pitchRise: slope.pitchRise }),
+      ...(slope.pitchRun != null && { pitchRun: slope.pitchRun }),
+      ...(slope.materialType != null && { materialType: slope.materialType }),
+    });
+    slopesCreated++;
+  }
+
+  for (const [type, value] of Object.entries(parsed.linears ?? {})) {
+    if (!LINEAR_TYPES.has(type) || value == null || existingMeasurementTypes.has(type)) continue;
+    await db.insert(measurementsTable).values({
+      companyId: actor.companyId,
+      inspectionId,
+      subjectType: 'inspection',
+      subjectId: null,
+      measurementType: type,
+      value: Number(value),
+      unit: 'lf',
+    });
+    measurementsCreated++;
+  }
+
+  for (const facet of parsed.sidingFacets ?? []) {
+    if (!facet.label || existingSidingLabels.has(facet.label)) continue;
+    await db.insert(inspectionSidingFacetsTable).values({
+      companyId: actor.companyId,
+      inspectionId,
+      label: facet.label,
+    });
+    sidingFacetsCreated++;
+  }
+
+  res.json({
+    applied: { slopes: slopesCreated, measurements: measurementsCreated, sidingFacets: sidingFacetsCreated },
+    confidence: parsed.confidence ?? null,
+    parsed,
+  });
+});
+
 router.post('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;

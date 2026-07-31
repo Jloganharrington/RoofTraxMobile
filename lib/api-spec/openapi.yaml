@@ -2945,6 +2945,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /inspections/{inspectionId}/analyze-measurements:
+    post:
+      tags: [Inspections]
+      operationId: analyzeMeasurementsReport
+      summary: >-
+        Use Claude Opus to parse the uploaded measurements report PDF and
+        auto-fill roof slopes, whole-roof linears, and siding facets.
+        Skips records that already exist. Returns a summary of what was applied.
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analysis complete.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [applied, confidence]
+                properties:
+                  applied:
+                    type: object
+                    required: [slopes, measurements, sidingFacets]
+                    properties:
+                      slopes:
+                        type: integer
+                      measurements:
+                        type: integer
+                      sidingFacets:
+                        type: integer
+                  confidence:
+                    type: [string, "null"]
+                  parsed:
+                    type: object
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: No report uploaded or file unreadable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: AI analysis failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /bug-reports:
     post:
       tags: [BugReports]

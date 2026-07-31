@@ -83,6 +83,8 @@ export default function InspectionDetailScreen() {
   const [equipmentDone, setEquipmentDone] = useState(false);
   const [savingEquipment, setSavingEquipment] = useState(false);
   const [uploadingReport, setUploadingReport] = useState(false);
+  const [analyzingReport, setAnalyzingReport] = useState(false);
+  const [analyzeResult, setAnalyzeResult] = useState<{ slopes: number; measurements: number; sidingFacets: number; confidence: string | null } | null>(null);
 
   // FTC cooling-off gate — shown once per hub visit when the FIPSA was signed
   // fewer than 3 business days ago. The rep can still proceed, but must
@@ -96,6 +98,39 @@ export default function InspectionDetailScreen() {
   const [coolingOffDismissed, setCoolingOffDismissed] = useState(false);
 
   const allChecked = EQUIPMENT_ITEMS.every((item) => checked[item]);
+
+  async function analyzeMeasurements() {
+    if (analyzingReport) return;
+    setAnalyzingReport(true);
+    setAnalyzeResult(null);
+    try {
+      const apiBase = (await import('@/lib/api')).getApiBaseUrl();
+      const token = await (await import('@/lib/tokenStorage')).getToken('auth_session_token');
+      const res = await fetch(`${apiBase}/inspections/${id}/analyze-measurements`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        Alert.alert('Analysis failed', body.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+      const data = await res.json() as {
+        applied: { slopes: number; measurements: number; sidingFacets: number };
+        confidence: string | null;
+      };
+      setAnalyzeResult({ ...data.applied, confidence: data.confidence });
+      // Refresh the inspection so new facets/linears appear immediately.
+      await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
+    } catch {
+      Alert.alert('Analysis failed', 'Could not connect to the server. Please try again.');
+    } finally {
+      setAnalyzingReport(false);
+    }
+  }
 
   async function uploadMeasurementsReport() {
     if (uploadingReport) return;
@@ -554,6 +589,49 @@ export default function InspectionDetailScreen() {
         <Icon name="chevron-right" size={18} color={colors.mutedForeground} />
       </Pressable>
 
+      {/* AI analysis button — only when a report is uploaded */}
+      {inspection.measurementsReportUrl ? (
+        analyzeResult ? (
+          <View style={[styles.analyzeResult, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
+            <Icon name="zap" size={18} color={colors.success} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
+                AI analysis complete
+                {analyzeResult.confidence ? ` · ${analyzeResult.confidence} confidence` : ''}
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                {[
+                  analyzeResult.slopes > 0 && `${analyzeResult.slopes} facet${analyzeResult.slopes === 1 ? '' : 's'}`,
+                  analyzeResult.measurements > 0 && `${analyzeResult.measurements} linear${analyzeResult.measurements === 1 ? '' : 's'}`,
+                  analyzeResult.sidingFacets > 0 && `${analyzeResult.sidingFacets} siding facet${analyzeResult.sidingFacets === 1 ? '' : 's'}`,
+                ].filter(Boolean).join(' · ') || 'No new records — all already existed'}
+              </Text>
+            </View>
+            <Pressable onPress={() => { setAnalyzeResult(null); void analyzeMeasurements(); }} hitSlop={8}>
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>Re-run</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => void analyzeMeasurements()}
+            disabled={analyzingReport}
+            style={[styles.analyzeBtn, { backgroundColor: colors.secondary, opacity: analyzingReport ? 0.6 : 1 }]}
+          >
+            {analyzingReport ? (
+              <>
+                <ActivityIndicator color={colors.primaryForeground} size="small" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Analyzing with Claude Opus…</Text>
+              </>
+            ) : (
+              <>
+                <Icon name="zap" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Analyze with AI — auto-fill measurements</Text>
+              </>
+            )}
+          </Pressable>
+        )
+      ) : null}
+
       {/* Pre-inspection equipment attestation (not a protocol step). */}
       <Text style={[styles.section, { color: colors.foreground }]}>Equipment check</Text>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -721,6 +799,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  analyzeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+  },
+  analyzeResult: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,

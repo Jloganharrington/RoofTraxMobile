@@ -5494,6 +5494,26 @@ export const GetInspectionReportPreviewUrlResponse = zod.object({
 
 
 /**
+ * @summary Use Claude Opus to parse the uploaded measurements report PDF and auto-fill roof slopes, whole-roof linears, and siding facets. Skips records that already exist. Returns a summary of what was applied.
+ */
+export const AnalyzeMeasurementsReportParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const AnalyzeMeasurementsReportResponse = zod.object({
+  "applied": zod.object({
+  "slopes": zod.number(),
+  "measurements": zod.number(),
+  "sidingFacets": zod.number()
+}),
+  "confidence": zod.string().nullable(),
+  "parsed": zod.object({
+
+}).passthrough().optional()
+})
+
+
+/**
  * @summary File a beta bug report (offline-replayable; idempotent by client id)
  */
 export const createBugReportBodyIdMin = 8;
