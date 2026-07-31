@@ -230,11 +230,214 @@ export default function InspectionMitigationScreen() {
         )}
       </Pressable>
 
+      {/* REPORT_DATA v2 §5 — Specialized property protection. Moved here from
+          the elevation walk so all protection/mitigation decisions live in one
+          place. Explicit flag — never inferred. */}
+      <ProtectionPlanSection inspection={inspection} inspectionId={id} colors={colors} />
+
       <View style={{ height: 40 }} />
     </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+// ─── Specialized protection ───────────────────────────────────────────────────
+
+const PROTECTED_FEATURES = [
+  { value: 'pool_spa', label: 'Pool / spa' },
+  { value: 'solar_panels', label: 'Solar panels' },
+  { value: 'skylights', label: 'Skylights' },
+  { value: 'hvac', label: 'HVAC' },
+  { value: 'satellite', label: 'Satellite' },
+  { value: 'specimen_landscaping', label: 'Landscaping' },
+  { value: 'detached_structure', label: 'Detached structure' },
+  { value: 'driveway_hardscape', label: 'Driveway / hardscape' },
+  { value: 'septic_field', label: 'Septic field' },
+];
+
+function ProtectionPlanSection({
+  inspection,
+  inspectionId,
+  colors,
+}: {
+  inspection: { propertyProtectionPlan?: { specializedRequired: boolean; featureProtected?: string | null; whyOrdinaryTarpingInsufficient?: string | null; proposedEquipment?: string | null; setupMethod?: string | null } | null };
+  inspectionId: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const queryClient = useQueryClient();
+  const existing = inspection.propertyProtectionPlan ?? null;
+  const [specializedRequired, setSpecializedRequired] = React.useState(false);
+  const [featureProtected, setFeatureProtected] = React.useState<string | null>(null);
+  const [why, setWhy] = React.useState('');
+  const [equipment, setEquipment] = React.useState('');
+  const [setupMethod, setSetupMethod] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [hydrated, setHydrated] = React.useState(false);
+
+  React.useEffect(() => {
+    if (existing && !hydrated) {
+      setSpecializedRequired(existing.specializedRequired);
+      setFeatureProtected(existing.featureProtected ?? null);
+      setWhy(existing.whyOrdinaryTarpingInsufficient ?? '');
+      setEquipment(existing.proposedEquipment ?? '');
+      setSetupMethod(existing.setupMethod ?? '');
+      setHydrated(true);
+    }
+  }, [existing, hydrated]);
+
+  async function save() {
+    if (saving) return;
+    setError(null);
+    if (specializedRequired && !why.trim()) {
+      setError('Explain why ordinary tarping is insufficient — required when flagged.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await patchInspection(queryClient, inspectionId, {
+        propertyProtectionPlan: {
+          specializedRequired,
+          featureProtected: (featureProtected as never) ?? null,
+          whyOrdinaryTarpingInsufficient: why.trim() || null,
+          proposedEquipment: equipment.trim() || null,
+          setupMethod: setupMethod.trim() || null,
+          photoIds: [],
+          recordedAtUtc: new Date().toISOString(),
+        },
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={{ gap: 12 }}>
+      <Text style={[styles.label, { color: colors.foreground, fontSize: 15, fontWeight: '700', marginTop: 8 }]}>
+        Specialized property protection
+      </Text>
+      <Pressable
+        onPress={() => setSpecializedRequired((v) => !v)}
+        style={[
+          styles.saveBtn,
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            padding: 14,
+            paddingVertical: 14,
+            backgroundColor: colors.card,
+            borderColor: specializedRequired ? colors.primary : colors.border,
+            borderWidth: specializedRequired ? 2 : 1,
+            borderRadius: 14,
+          },
+        ]}
+      >
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: specializedRequired ? colors.primary : colors.accent,
+          }}
+        >
+          <Icon
+            name={specializedRequired ? 'check' : 'shield'}
+            size={18}
+            color={specializedRequired ? '#fff' : colors.secondary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700', marginBottom: 2 }}>
+            Specialized protection required
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {specializedRequired
+              ? "Flagged - describe the feature and why tarping isn't enough"
+              : 'Beyond ordinary tarping (scaffold, pool cover, panel protection...)'}
+          </Text>
+        </View>
+      </Pressable>
+
+      {specializedRequired ? (
+        <>
+          <Text style={[styles.label, { color: colors.mutedForeground }]}>
+            Feature being protected
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PROTECTED_FEATURES.map((feature) => {
+              const on = featureProtected === feature.value;
+              return (
+                <Pressable
+                  key={feature.value}
+                  onPress={() => setFeatureProtected(on ? null : feature.value)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    backgroundColor: on ? colors.primary : colors.card,
+                    borderColor: on ? colors.primary : colors.border,
+                  }}
+                >
+                  <Text style={{ color: on ? colors.primaryForeground : colors.foreground, fontWeight: '600' }}>
+                    {feature.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Field
+            label="Why ordinary tarping is insufficient (required)"
+            value={why}
+            onChange={setWhy}
+            placeholder="e.g. Solar array can't bear tarp anchors; wind uplift risk"
+            multiline
+            colors={colors}
+          />
+          <Field
+            label="Proposed equipment"
+            value={equipment}
+            onChange={setEquipment}
+            placeholder="e.g. Scaffold with debris netting"
+            multiline
+            colors={colors}
+          />
+          <Field
+            label="Setup method"
+            value={setupMethod}
+            onChange={setSetupMethod}
+            placeholder="e.g. Freestanding, no roof penetrations"
+            multiline
+            colors={colors}
+          />
+        </>
+      ) : null}
+
+      {error ? <Text style={{ color: colors.destructive, fontSize: 13 }}>{error}</Text> : null}
+
+      {(specializedRequired || existing != null) && (
+        <Pressable
+          onPress={save}
+          disabled={saving}
+          style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
+        >
+          {saving ? (
+            <ActivityIndicator color={colors.primaryForeground} />
+          ) : (
+            <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 15 }}>
+              Save protection plan
+            </Text>
+          )}
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+// ─── Text field ───────────────────────────────────────────────────────────────
 
 function Field({
   label,
