@@ -56,10 +56,12 @@ function buildAttestation(opts: {
     `I attest that the inspection of the property at ${addr} on ${inspDate} ` +
     `was performed by me under ${company}'s Uniform Inspection Procedure; ` +
     `that the photographs, measurements, and observations in this inspection ` +
-    `record were captured by me at the property on that date; that conditions ` +
-    `I observed to be pre-existing or unrelated to the reported event are ` +
-    `identified as such in the record; and that the findings recorded here are ` +
-    `stated to my professional judgment within a reasonable degree of certainty.`;
+    `record were captured or personally verified by me at the property on that ` +
+    `date; and that observed pre-existing conditions, limitations, and conditions ` +
+    `documented as unrelated to the reported event are identified in the record ` +
+    `where applicable. The field findings recorded here reflect my professional ` +
+    `judgment based on the observed conditions and are stated within a reasonable ` +
+    `degree of certainty.`;
 
   const licPart = opts.licenseLine ? ` — ${opts.licenseLine}` : '';
   const footer =
