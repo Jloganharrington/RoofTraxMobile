@@ -35,7 +35,6 @@ import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/a
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
-import { PriceBookModal } from '@/components/PriceBookModal';
 import { DiscontinuedProductsModal } from '@/components/DiscontinuedProductsModal';
 import { saveSignatureFromDataUrl } from '@/lib/profileSignature';
 import { uploadFile } from '@/lib/upload';
@@ -243,7 +242,6 @@ export default function ProfileScreen() {
     }
   }
   const [smtpOpen, setSmtpOpen] = React.useState(false);
-  const [priceBookOpen, setPriceBookOpen] = React.useState(false);
   const [productCatalogOpen, setProductCatalogOpen] = React.useState(false);
   const canManagePriceBook = role === 'admin' || role === 'super_admin';
   const [smtpSaving, setSmtpSaving] = React.useState(false);
@@ -539,21 +537,6 @@ export default function ProfileScreen() {
           {canManagePriceBook && (
             <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <View style={styles.sigHeader}>
-                <Icon name="book-open" size={16} color={colors.foreground} />
-                <Text style={[styles.sigTitle, { color: colors.foreground }]}>Price Book</Text>
-              </View>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                Manage line items and packages. Set inspection conditions so the right package is suggested automatically.
-              </Text>
-              <Pressable onPress={() => setPriceBookOpen(true)} style={[styles.sigButton, { backgroundColor: colors.secondary }]}>
-                <Text style={styles.sigButtonText}>Manage Price Book</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {canManagePriceBook && (
-            <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <View style={styles.sigHeader}>
                 <Icon name="archive" size={16} color={colors.foreground} />
                 <Text style={[styles.sigTitle, { color: colors.foreground }]}>Known Product Catalog</Text>
               </View>
@@ -567,11 +550,6 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* AI Summary Settings — manager+ only */}
-          {canManageLogo && (
-            <AiSettingsCard companyId={companyId ?? ''} colors={colors} />
-          )}
-
           {/* Report Branding — super admin only */}
           {role === 'super_admin' && (
             <ReportBrandingCard companyId={companyId ?? ''} colors={colors} />
@@ -582,23 +560,6 @@ export default function ProfileScreen() {
             <FipsaSettingsCard companyId={companyId ?? ''} colors={colors} />
           )}
 
-          {/* Proof Package Settings — super admin only */}
-          {role === 'super_admin' && (
-            <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14, marginTop: 6 }}>
-              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>
-                Proof Package Settings
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                Licenses, qualifications, and state legal content printed in every Proof Package.
-              </Text>
-              <Pressable
-                onPress={() => router.push('/proof-package-settings')}
-                style={[styles.sigButton, { backgroundColor: colors.secondary, marginTop: 4 }]}
-              >
-                <Text style={styles.sigButtonText}>Manage Proof Package</Text>
-              </Pressable>
-            </View>
-          )}
         </AccordionSection>
       )}
 
@@ -675,7 +636,6 @@ export default function ProfileScreen() {
       </AccordionSection>
 
       {/* ── Modals (unchanged) ───────────────────────────────────────────────── */}
-      <PriceBookModal visible={priceBookOpen} onClose={() => setPriceBookOpen(false)} />
       <DiscontinuedProductsModal visible={productCatalogOpen} onClose={() => setProductCatalogOpen(false)} />
 
       <Modal
@@ -755,144 +715,6 @@ export default function ProfileScreen() {
 
 type BadgeVariant = 'success' | 'warn' | 'muted';
 
-// Manager-only card for configuring the AI summary system prompt.
-function AiSettingsCard({
-  companyId,
-  colors,
-}: {
-  companyId: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  const [loaded, setLoaded] = React.useState(false);
-  const [systemPrompt, setSystemPrompt] = React.useState('');
-  const [editing, setEditing] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-
-  // Load the current setting once on mount (when companyId is known).
-  React.useEffect(() => {
-    if (!companyId) return;
-    let active = true;
-    (async () => {
-      try {
-        const token = await getToken('auth_session_token');
-        const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/ai-settings`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!active || !resp.ok) return;
-        const data = (await resp.json()) as { settings: { systemPrompt: string | null } };
-        if (active) setSystemPrompt(data.settings.systemPrompt ?? '');
-      } catch { /* non-critical */ } finally {
-        if (active) setLoaded(true);
-      }
-    })();
-    return () => { active = false; };
-  }, [companyId]);
-
-  async function save() {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const token = await getToken('auth_session_token');
-      const resp = await fetch(`${getApiBaseUrl()}/companies/${companyId}/ai-settings`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ systemPrompt: systemPrompt.trim() || null }),
-      });
-      if (!resp.ok) throw new Error('Server error');
-      setEditing(false);
-      Alert.alert('Saved', 'AI summary settings updated.');
-    } catch {
-      Alert.alert('Save failed', 'Check your connection and try again.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const hasCustomPrompt = systemPrompt.trim().length > 0;
-
-  return (
-    <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-      <View style={styles.sigHeader}>
-        <Icon name="zap" size={16} color={colors.foreground} />
-        <Text style={[styles.sigTitle, { color: colors.foreground }]}>AI Summary Settings</Text>
-        <View
-          style={[
-            styles.sigBadge,
-            { backgroundColor: hasCustomPrompt ? '#ecfdf5' : colors.muted },
-          ]}
-        >
-          <Text
-            style={[
-              styles.sigBadgeText,
-              { color: hasCustomPrompt ? colors.success : colors.mutedForeground },
-            ]}
-          >
-            {hasCustomPrompt ? 'Custom additions' : 'Baseline only'}
-          </Text>
-        </View>
-      </View>
-      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-        {hasCustomPrompt
-          ? 'Additional instructions are active. They are layered on top of the standard baseline prompt when generating inspection summaries.'
-          : 'Using the standard baseline prompt. Add company instructions to tailor the AI narrative style — they are applied on top of the baseline, never in place of it.'}
-      </Text>
-      {!editing ? (
-        <Pressable
-          onPress={() => { setEditing(true); }}
-          style={[styles.sigButton, { backgroundColor: colors.secondary }]}
-        >
-          <Text style={styles.sigButtonText}>
-            {loaded ? (hasCustomPrompt ? 'Edit additional instructions' : 'Add company instructions') : 'Loading…'}
-          </Text>
-        </Pressable>
-      ) : (
-        <>
-          <TextInput
-            style={[
-              styles.smtpInput,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.card,
-                minHeight: 120,
-                textAlignVertical: 'top',
-              },
-            ]}
-            value={systemPrompt}
-            onChangeText={setSystemPrompt}
-            placeholder="Company instructions added on top of the standard baseline prompt (leave blank to use the baseline only)…"
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            numberOfLines={5}
-          />
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              onPress={() => setEditing(false)}
-              style={[
-                styles.sigButton,
-                { flex: 1, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
-              ]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 14 }}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={save}
-              disabled={saving}
-              style={[styles.sigButton, { flex: 1, backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}
-            >
-              <Text style={[styles.sigButtonText, { color: colors.primaryForeground }]}>
-                {saving ? 'Saving…' : 'Save'}
-              </Text>
-            </Pressable>
-          </View>
-        </>
-      )}
-    </View>
-  );
-}
 
 // ── Report Branding (super admin only) ─────────────────────────────────────
 // Company-wide color palette for the compiled forensic report. Applied at
