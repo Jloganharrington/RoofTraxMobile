@@ -1,8 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,11 +11,9 @@ import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetInspectionQueryKey,
-  useCurateInspectionPhotos,
   useGetInspection,
   usePreflightInspection,
 } from '@workspace/api-client-react';
-import { storagePhotoUri, useStorageAuthHeaders } from '@/components/DiscontinuedProductsModal';
 import type {
   Inspection,
   PreflightResult,
@@ -119,60 +115,6 @@ export default function InspectionReadinessScreen() {
   const [confirming, setConfirming] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [pendingWrites, setPendingWrites] = React.useState<number | null>(null);
-
-  // ---- Proof Package curation ----
-  // Local include/exclude flags per photo, seeded from the server's stored
-  // curation. "Save Curation" persists them and reveals the pre-submission
-  // check + submit controls.
-  const authHeaders = useStorageAuthHeaders();
-  const curate = useCurateInspectionPhotos();
-  const [includeMap, setIncludeMap] = React.useState<Record<string, boolean> | null>(null);
-  const [curationSaved, setCurationSaved] = React.useState(false);
-  const [curationError, setCurationError] = React.useState<string | null>(null);
-  const [viewerPhotoId, setViewerPhotoId] = React.useState<string | null>(null);
-
-  const photos = React.useMemo(() => inspection?.photos ?? [], [inspection?.photos]);
-
-  // Seed once when the photo list first arrives; keep local edits afterwards.
-  // The server-stored curation IS the saved state, so seeding counts as saved
-  // — an offline rep with unchanged curation can still proceed to submit.
-  React.useEffect(() => {
-    if (includeMap === null && photos.length > 0) {
-      setIncludeMap(
-        Object.fromEntries(photos.map((p) => [p.id, p.includeInProofPackage !== false])),
-      );
-      setCurationSaved(true);
-    }
-  }, [photos, includeMap]);
-
-  const includedCount = includeMap
-    ? photos.filter((p) => includeMap[p.id] !== false).length
-    : photos.length;
-
-  function toggleInclude(photoId: string) {
-    setCurationSaved(false);
-    setIncludeMap((m) => ({ ...(m ?? {}), [photoId]: !((m ?? {})[photoId] !== false) }));
-  }
-
-  async function onSaveCuration() {
-    if (curate.isPending || !includeMap) return;
-    setCurationError(null);
-    try {
-      await curate.mutateAsync({
-        inspectionId: id,
-        data: {
-          curation: photos.map((p) => ({
-            photoId: p.id,
-            include: includeMap[p.id] !== false,
-          })),
-        },
-      });
-      await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
-      setCurationSaved(true);
-    } catch {
-      setCurationError('Could not save the curation. Check your connection and try again.');
-    }
-  }
 
   // M-F (F1) — on-site pre-flight. Runs the server's authoritative gate re-run
   // so the inspector can catch a deficiency the client might have missed BEFORE
@@ -388,126 +330,7 @@ export default function InspectionReadinessScreen() {
         </>
       ) : null}
 
-      {!submitted && photos.length > 0 ? (
-        <>
-          <Text style={[styles.section, { color: colors.foreground }]}>
-            Proof Package Curation
-          </Text>
-          <View style={[styles.finalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.finalStep}>
-              <Icon name="image" size={18} color={colors.primary} />
-              <Text style={{ color: colors.foreground, flex: 1, fontSize: 15, fontWeight: '800' }}>
-                Proof Package Photo Count: {includedCount}
-              </Text>
-            </View>
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              Every checked photo below is pushed to the Proof Package. Tap a photo to view it
-              full-screen. Unchecked photos stay stored as evidence but are left out of the
-              package.
-            </Text>
-
-            {photos.map((p) => {
-              const included = (includeMap ?? {})[p.id] !== false;
-              return (
-                <View
-                  key={p.id}
-                  style={[styles.curationRow, { borderColor: colors.border }]}
-                >
-                  <Pressable onPress={() => setViewerPhotoId(p.id)}>
-                    <Image
-                      source={{ uri: storagePhotoUri(p.url), headers: authHeaders ?? undefined }}
-                      style={styles.curationThumb}
-                    />
-                  </Pressable>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
-                      {p.stage ?? p.preliminaryRole ?? p.subjectType ?? 'photo'}
-                      {p.triadRole ? ` — ${p.triadRole}` : ''}
-                      {p.sidingRole ? ` — ${p.sidingRole}` : ''}
-                    </Text>
-                    {p.capturedAtUtc ? (
-                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                        {new Date(p.capturedAtUtc).toLocaleString()}
-                      </Text>
-                    ) : null}
-                    <Pressable
-                      onPress={() => toggleInclude(p.id)}
-                      style={styles.checkRow}
-                      hitSlop={8}
-                    >
-                      <View
-                        style={[
-                          styles.checkbox,
-                          {
-                            borderColor: included ? colors.primary : colors.border,
-                            backgroundColor: included ? colors.primary : 'transparent',
-                          },
-                        ]}
-                      >
-                        {included ? <Icon name="check" size={14} color={colors.primaryForeground} /> : null}
-                      </View>
-                      <Text style={{ color: colors.foreground, fontSize: 13 }}>
-                        Include in Proof Package
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            })}
-
-            {curationError ? (
-              <Text style={{ color: colors.destructive, fontSize: 13 }}>{curationError}</Text>
-            ) : null}
-            <Pressable
-              onPress={onSaveCuration}
-              disabled={curate.isPending || !includeMap}
-              style={[
-                styles.actionBtn,
-                { backgroundColor: colors.secondary, opacity: curate.isPending ? 0.6 : 1 },
-              ]}
-            >
-              {curate.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.actionText}>
-                  {curationSaved ? 'Curation saved ✓' : 'Save Curation'}
-                </Text>
-              )}
-            </Pressable>
-            {!curationSaved ? (
-              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                Save the curation to open the pre-submission check and submit.
-              </Text>
-            ) : null}
-          </View>
-
-          {/* Full-screen photo viewer */}
-          <Modal
-            visible={viewerPhotoId !== null}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setViewerPhotoId(null)}
-          >
-            <Pressable style={styles.viewerBackdrop} onPress={() => setViewerPhotoId(null)}>
-              {viewerPhotoId ? (
-                <Image
-                  source={{
-                    uri: storagePhotoUri(photos.find((p) => p.id === viewerPhotoId)?.url ?? ''),
-                    headers: authHeaders ?? undefined,
-                  }}
-                  style={styles.viewerImage}
-                  resizeMode="contain"
-                />
-              ) : null}
-              <View style={styles.viewerClose}>
-                <Icon name="x" size={26} color="#fff" />
-              </View>
-            </Pressable>
-          </Modal>
-        </>
-      ) : null}
-
-      {!submitted && (curationSaved || photos.length === 0) ? (
+      {!submitted ? (
         <>
           <Text style={[styles.section, { color: colors.foreground }]}>Pre-Submission Check</Text>
           <View style={[styles.finalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -656,31 +479,6 @@ const styles = StyleSheet.create({
   stageTag: { fontSize: 13, fontWeight: '800', color: '#b45309' },
   rowTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   finalCard: { borderRadius: 14, borderWidth: 1, padding: 16, gap: 12 },
-  curationRow: {
-    flexDirection: 'row',
-    gap: 12,
-    borderTopWidth: 1,
-    paddingTop: 12,
-    alignItems: 'flex-start',
-  },
-  curationThumb: { width: 84, height: 84, borderRadius: 10, backgroundColor: '#00000010' },
-  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerImage: { width: '100%', height: '80%' },
-  viewerClose: { position: 'absolute', top: 60, right: 24 },
   finalStep: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   actionBtn: { paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   actionText: { fontSize: 15, fontWeight: '700', color: '#fff' },

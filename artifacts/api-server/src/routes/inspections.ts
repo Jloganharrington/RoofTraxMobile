@@ -4248,18 +4248,13 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
     damageById: new Map(children.damageInstances.map((d) => [d.id, d])),
     slopeById: new Map(children.slopes.map((s) => [s.id, s])),
   };
-  // Pre-submission curation: photos flagged includeInProofPackage=false stay
-  // stored evidence but are omitted from the package — the AI grouping brief
-  // and the evidence manifest both draw only from curated photos. The
-  // photoIndex above intentionally stays complete so explicitly referenced
-  // protocol photos (e.g. RAP1) always resolve at render time.
   // The VAP final archive photo is archive-only by product rule: it stays
   // stored evidence but must never enter the report output (photo brief,
   // photo groupings, or evidence manifest) — enforced here, not on mobile.
+  // The photoIndex above intentionally stays complete so explicitly referenced
+  // protocol photos (e.g. RAP1) always resolve at render time.
   const curatedPhotos = children.photos.filter(
-    (p) =>
-      p.includeInProofPackage !== false &&
-      !isVapArchiveOnlyPhoto(inspection.repairabilityAssessment, p.id),
+    (p) => !isVapArchiveOnlyPhoto(inspection.repairabilityAssessment, p.id),
   );
   const evidenceManifestEntries = curatedPhotos
     .map((p) => ({
@@ -4472,9 +4467,9 @@ ${JSON.stringify(photoBrief)}
     return;
   }
 
-  // Curation boundary: groupings may only reference curated photos. Gemini
-  // only ever sees the curated brief, but its output is untrusted — drop any
-  // rogue/non-curated id before render, and prune groups that empty out.
+  // Safety boundary: groupings may only reference report-eligible photos.
+  // Gemini only ever sees the eligible brief, but its output is untrusted —
+  // drop any rogue id before render and prune groups that empty out.
   const curatedIds = new Set(curatedPhotos.map((p) => p.id));
   photoGroupings = photoGroupings
     .map((g) => ({ ...g, photoIds: g.photoIds.filter((pid) => curatedIds.has(pid)) }))

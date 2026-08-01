@@ -101,12 +101,10 @@ router.get('/portal/:accessCode', async (req: Request, res: Response) => {
       .orderBy(asc(inspectionPhotosTable.createdAt)),
   ]);
 
-  // Exclusions mirror Proof Package generation: curation flag OFF photos and
-  // archive-only protocol photos never leave the system through this surface.
+  // Archive-only protocol photos (e.g. VAP final archive) must never leave
+  // the system through this surface.
   const visible = photoRows.filter(
-    (p) =>
-      p.includeInProofPackage !== false &&
-      !isVapArchiveOnlyPhoto(inspection.repairabilityAssessment, p.id),
+    (p) => !isVapArchiveOnlyPhoto(inspection.repairabilityAssessment, p.id),
   );
 
   const photos = (
