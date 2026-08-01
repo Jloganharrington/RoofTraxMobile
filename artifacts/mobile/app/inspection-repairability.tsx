@@ -191,8 +191,7 @@ const VAP_PROCEDURE_STEPS = [
 ];
 
 const MARKING_STEPS = [
-  'Identify an already damaged field shingle to be pulled',
-  'Mark the damaged shingle with an "X"',
+  'Mark the selected target shingle with an "X"',
   'Mark the shingles directly below "X" as 1 & 2',
   'Mark the shingles left and right as 3 & 4',
   'Mark the two shingles above "X" as 5 & 6',
@@ -210,6 +209,27 @@ const RESET_STEPS = [
   'Without overlifting the shingles, properly re-nail all fasteners removed in new hole locations (straight and flush)',
   'Tap the surface of all manipulated shingles every 6 inches with your hand (Do not use any tool)',
 ];
+
+// ── RAP target-shingle selection confirmations ───────────────────────────────
+interface RapSelection {
+  targetShingle: 'damaged' | 'fallback' | null;
+  fallbackNote: string;
+  fullLength: boolean;
+  twoCourses: boolean;
+  oneLength: boolean;
+  noPenetrations: boolean;
+  representative: boolean;
+}
+
+const emptyRapSelection = (): RapSelection => ({
+  targetShingle: 'damaged',
+  fallbackNote: '',
+  fullLength: false,
+  twoCourses: false,
+  oneLength: false,
+  noPenetrations: false,
+  representative: false,
+});
 
 export default function InspectionRepairabilityScreen() {
   const colors = useColors();
@@ -236,6 +256,7 @@ export default function InspectionRepairabilityScreen() {
   const [hydrated, setHydrated] = React.useState(false);
 
   // Repairability Assessment Protocol state — asphalt shingle.
+  const [rapSelection, setRapSelection] = React.useState<RapSelection>(emptyRapSelection);
   // Supplies the "Manipulated shingles" scorecard count.
   const [manipulatedCount, setManipulatedCount] = React.useState<6 | 7 | 8 | null>(null);
   const [rap1Photo, setRap1Photo] = React.useState<PhotoSlot>(emptyPhotoSlot());
@@ -301,6 +322,15 @@ export default function InspectionRepairabilityScreen() {
           >;
         } | null;
         rap?: {
+          selection?: {
+            targetShingle?: 'damaged' | 'fallback' | null;
+            fallbackNote?: string | null;
+            fullLength?: boolean;
+            twoCourses?: boolean;
+            oneLength?: boolean;
+            noPenetrations?: boolean;
+            representative?: boolean;
+          } | null;
           manipulatedCount?: 6 | 7 | 8 | null;
           rap1PhotoId?: string | null;
           matTransfer?: { shingle1?: YesNo | null; shingle2?: YesNo | null };
@@ -344,6 +374,18 @@ export default function InspectionRepairabilityScreen() {
         }
         const rap = ex.rap;
         if (rap) {
+          if (rap.selection) {
+            const s = rap.selection;
+            setRapSelection({
+              targetShingle: s.targetShingle ?? 'damaged',
+              fallbackNote: s.fallbackNote ?? '',
+              fullLength: s.fullLength ?? false,
+              twoCourses: s.twoCourses ?? false,
+              oneLength: s.oneLength ?? false,
+              noPenetrations: s.noPenetrations ?? false,
+              representative: s.representative ?? false,
+            });
+          }
           setManipulatedCount(rap.manipulatedCount ?? null);
           setRap1Photo({ local: null, photoId: rap.rap1PhotoId ?? null });
           setMatTransfer({
@@ -522,6 +564,18 @@ export default function InspectionRepairabilityScreen() {
 
   const showRap = warranted === 'yes' && systems.includes('roof') && roofType === 'asphalt_shingle';
   const showVap = warranted === 'yes' && systems.includes('siding') && sidingType === 'vinyl';
+
+  // All six selection items must be confirmed before the Marking section unlocks.
+  const selectionComplete =
+    showRap &&
+    (rapSelection.targetShingle === 'damaged' ||
+      (rapSelection.targetShingle === 'fallback' &&
+        rapSelection.fallbackNote.trim().length > 0)) &&
+    rapSelection.fullLength &&
+    rapSelection.twoCourses &&
+    rapSelection.oneLength &&
+    rapSelection.noPenetrations &&
+    rapSelection.representative;
   const showAluminumRoute =
     warranted === 'yes' && systems.includes('siding') && sidingType === 'aluminum';
 
@@ -668,6 +722,18 @@ export default function InspectionRepairabilityScreen() {
                 : null,
               rap: rapIncluded
                 ? {
+                    selection: {
+                      targetShingle: rapSelection.targetShingle,
+                      fallbackNote:
+                        rapSelection.targetShingle === 'fallback'
+                          ? rapSelection.fallbackNote.trim() || null
+                          : null,
+                      fullLength: rapSelection.fullLength,
+                      twoCourses: rapSelection.twoCourses,
+                      oneLength: rapSelection.oneLength,
+                      noPenetrations: rapSelection.noPenetrations,
+                      representative: rapSelection.representative,
+                    },
                     manipulatedCount,
                     rap1PhotoId,
                     matTransfer: { shingle1: matTransfer[1], shingle2: matTransfer[2] },
@@ -830,170 +896,325 @@ export default function InspectionRepairabilityScreen() {
             Repairability Assessment Protocol
           </Text>
 
-          {renderInstructionCard('Instructions — Marking', MARKING_STEPS)}
+          {/* ── Instructions — Selection ───────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Instructions — Selection
+            </Text>
 
-          <Text style={[styles.qLabel, { color: colors.foreground }]}>
-            How many shingles require manipulation to complete the protocol?
-          </Text>
-          <View style={styles.chipWrap}>
-            {([6, 7, 8] as const).map((n) => {
-              const on = manipulatedCount === n;
+            {/* 1. Target shingle (radio) */}
+            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '700', marginTop: 2 }}>
+              1. Target shingle
+            </Text>
+            {(
+              [
+                {
+                  value: 'damaged' as const,
+                  label:
+                    'Target shingle has documented damage attributed to the reported event',
+                },
+                {
+                  value: 'fallback' as const,
+                  label:
+                    'No damaged shingle usable — assessment performed on a slope with identified damage',
+                },
+              ]
+            ).map((opt) => {
+              const on = rapSelection.targetShingle === opt.value;
               return (
                 <Pressable
-                  key={n}
-                  onPress={() => setManipulatedCount(on ? null : n)}
-                  style={chipStyle(on)}
+                  key={opt.value}
+                  onPress={() => setRapSelection((s) => ({ ...s, targetShingle: opt.value }))}
+                  style={[
+                    styles.selectionRadio,
+                    {
+                      borderColor: on ? colors.primary : colors.border,
+                      backgroundColor: on ? colors.primary + '18' : 'transparent',
+                    },
+                  ]}
+                  hitSlop={4}
                 >
-                  <Text style={chipText(on)}>{n}</Text>
+                  <View
+                    style={[styles.radioCircle, { borderColor: on ? colors.primary : colors.border }]}
+                  >
+                    {on ? (
+                      <View style={[styles.radioDot, { backgroundColor: colors.primary }]} />
+                    ) : null}
+                  </View>
+                  <Text style={{ color: colors.foreground, flex: 1, fontSize: 13, lineHeight: 18 }}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {rapSelection.targetShingle === 'fallback' ? (
+              <TextInput
+                value={rapSelection.fallbackNote}
+                onChangeText={(t) => setRapSelection((s) => ({ ...s, fallbackNote: t }))}
+                placeholder="Describe the slope and the identified damage basis…"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                style={[
+                  styles.noteInput,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              />
+            ) : null}
+
+            {/* 2–6: confirmation checkboxes */}
+            {(
+              [
+                {
+                  key: 'fullLength' as const,
+                  label: 'Target shingle is full length and uncut',
+                },
+                {
+                  key: 'twoCourses' as const,
+                  label: 'Target shingle is at least 2 courses up from any eave',
+                },
+                {
+                  key: 'oneLength' as const,
+                  label:
+                    'Target shingle is at least one full shingle length from any rake, valley, or hip',
+                },
+                {
+                  key: 'noPenetrations' as const,
+                  label: 'Repairability assessment area is free of any roof penetrations',
+                },
+                {
+                  key: 'representative' as const,
+                  label:
+                    'Assessment area is representative of the overall roof exposure (not sheltered by trees or adjacent structures)',
+                },
+              ]
+            ).map((item, idx) => {
+              const checked = rapSelection[item.key];
+              return (
+                <Pressable
+                  key={item.key}
+                  onPress={() =>
+                    setRapSelection((s) => ({ ...s, [item.key]: !s[item.key] }))
+                  }
+                  style={styles.selectionCheck}
+                  hitSlop={4}
+                >
+                  <View
+                    style={[
+                      styles.selectionCheckbox,
+                      {
+                        borderColor: checked ? colors.primary : colors.border,
+                        backgroundColor: checked ? colors.primary : 'transparent',
+                      },
+                    ]}
+                  >
+                    {checked ? (
+                      <Icon name="check" size={13} color={colors.primaryForeground} />
+                    ) : null}
+                  </View>
+                  <Text
+                    style={{ color: colors.foreground, flex: 1, fontSize: 13, lineHeight: 18 }}
+                  >
+                    {idx + 2}. {item.label}
+                  </Text>
                 </Pressable>
               );
             })}
           </View>
 
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Take Photograph (RAP1)</Text>
-            {renderPhotoButton(
-              'rap1',
-              rap1Photo,
-              (p) => setRap1Photo((prev) => ({ ...prev, local: p })),
-              'Take RAP1 Photo',
-            )}
-          </View>
+          {/* Everything from Marking onward is locked until Selection is complete. */}
+          {selectionComplete ? (
+            <>
+              {renderInstructionCard('Instructions — Marking', MARKING_STEPS)}
 
-          {renderInstructionCard('Instructions — Pull', PULL_STEPS)}
-
-          {([1, 2] as const).map((n) => (
-            <View key={n}>
               <Text style={[styles.qLabel, { color: colors.foreground }]}>
-                Did Shingle {n} sustain Mat Transfer during the removal process?
+                How many shingles require manipulation to complete the protocol?
               </Text>
-              <View style={[styles.chipWrap, { marginTop: 8 }]}>
-                {(['yes', 'no'] as const).map((v) => {
-                  const on = matTransfer[n] === v;
+              <View style={styles.chipWrap}>
+                {([6, 7, 8] as const).map((n) => {
+                  const on = manipulatedCount === n;
                   return (
                     <Pressable
-                      key={v}
-                      onPress={() => setMatTransfer((m) => ({ ...m, [n]: on ? null : v }))}
+                      key={n}
+                      onPress={() => setManipulatedCount(on ? null : n)}
                       style={chipStyle(on)}
                     >
-                      <Text style={chipText(on)}>{v === 'yes' ? 'Yes' : 'No'}</Text>
+                      <Text style={chipText(on)}>{n}</Text>
                     </Pressable>
                   );
                 })}
               </View>
-            </View>
-          ))}
 
-          {renderInstructionCard('Instructions — Replace & Re-secure', RESET_STEPS)}
-
-          {DAMAGE_QUESTIONS.map((q) => {
-            const a = damage[q.key];
-            const setA = (patch: Partial<DamageAnswer>) =>
-              setDamage((d) => ({ ...d, [q.key]: { ...d[q.key], ...patch } }));
-            return (
-              <View key={q.key} style={{ gap: 8 }}>
-                <Text style={[styles.qLabel, { color: colors.foreground }]}>
-                  {q.num}: {q.label}
+              <View
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                  Take Photograph (RAP1)
                 </Text>
-                <View style={styles.chipWrap}>
-                  {(['yes', 'no'] as const).map((v) => {
-                    const on = a.answer === v;
-                    return (
-                      <Pressable
-                        key={v}
-                        onPress={() => setA({ answer: on ? null : v })}
-                        style={chipStyle(on)}
-                      >
-                        <Text style={chipText(on)}>{v === 'yes' ? 'Yes' : 'No'}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                {renderPhotoButton(
+                  'rap1',
+                  rap1Photo,
+                  (p) => setRap1Photo((prev) => ({ ...prev, local: p })),
+                  'Take RAP1 Photo',
+                )}
+              </View>
 
-                {a.answer === 'yes' ? (
-                  <View
-                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  >
-                    <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                      {q.num}A: Select all affected shingles
+              {renderInstructionCard('Instructions — Pull', PULL_STEPS)}
+
+              {([1, 2] as const).map((n) => (
+                <View key={n}>
+                  <Text style={[styles.qLabel, { color: colors.foreground }]}>
+                    Did Shingle {n} sustain Mat Transfer during the removal process?
+                  </Text>
+                  <View style={[styles.chipWrap, { marginTop: 8 }]}>
+                    {(['yes', 'no'] as const).map((v) => {
+                      const on = matTransfer[n] === v;
+                      return (
+                        <Pressable
+                          key={v}
+                          onPress={() => setMatTransfer((m) => ({ ...m, [n]: on ? null : v }))}
+                          style={chipStyle(on)}
+                        >
+                          <Text style={chipText(on)}>{v === 'yes' ? 'Yes' : 'No'}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+
+              {renderInstructionCard('Instructions — Replace & Re-secure', RESET_STEPS)}
+
+              {DAMAGE_QUESTIONS.map((q) => {
+                const a = damage[q.key];
+                const setA = (patch: Partial<DamageAnswer>) =>
+                  setDamage((d) => ({ ...d, [q.key]: { ...d[q.key], ...patch } }));
+                return (
+                  <View key={q.key} style={{ gap: 8 }}>
+                    <Text style={[styles.qLabel, { color: colors.foreground }]}>
+                      {q.num}: {q.label}
                     </Text>
                     <View style={styles.chipWrap}>
-                      {selectableShingles.map((s) => {
-                        const on = a.shingles.includes(s);
+                      {(['yes', 'no'] as const).map((v) => {
+                        const on = a.answer === v;
                         return (
                           <Pressable
-                            key={s}
-                            onPress={() =>
-                              setA({
-                                shingles: on
-                                  ? a.shingles.filter((x) => x !== s)
-                                  : [...a.shingles, s].sort((x, y) => x - y),
-                              })
-                            }
+                            key={v}
+                            onPress={() => setA({ answer: on ? null : v })}
                             style={chipStyle(on)}
                           >
-                            <Text style={chipText(on)}>{s}</Text>
+                            <Text style={chipText(on)}>{v === 'yes' ? 'Yes' : 'No'}</Text>
                           </Pressable>
                         );
                       })}
                     </View>
-                    <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                      Photograph one example with a note.
-                    </Text>
-                    {renderPhotoButton(
-                      q.key,
-                      a.photo,
-                      (p) => setA({ photo: { ...a.photo, local: p } }),
-                      'Take Example Photo',
-                    )}
-                    <TextInput
-                      value={a.note}
-                      onChangeText={(t) => setA({ note: t })}
-                      placeholder="Photo note (which shingle, what you see)…"
-                      placeholderTextColor={colors.mutedForeground}
-                      multiline
-                      style={[
-                        styles.noteInput,
-                        {
-                          color: colors.foreground,
-                          borderColor: colors.border,
-                          backgroundColor: colors.background,
-                        },
-                      ]}
-                    />
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
 
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Scorecard</Text>
-            {(
-              [
-                // Supplied by the "How many shingles require manipulation" question.
-                ['Manipulated shingles', manipulatedCount ?? 0],
-                ['New collateral-damaged shingles', collateralSet.size],
-                ['Mat-transfer findings on 1–2', matTransferCount],
-                ['Delamination', categoryCount('delamination')],
-                ['Creasing/cracking/fracture', categoryCount('creasing')],
-                ['Nail-zone damage', categoryCount('nailZone')],
-                ['Puncture/tear/gouge', categoryCount('puncture')],
-                ['Reseating/seal-integration concerns', categoryCount('reseat')],
-              ] as Array<[string, number]>
-            ).map(([label, count]) => (
-              <View key={label} style={styles.scoreRow}>
-                <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>{label}</Text>
-                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 15 }}>
-                  {count}
+                    {a.answer === 'yes' ? (
+                      <View
+                        style={[
+                          styles.card,
+                          { backgroundColor: colors.card, borderColor: colors.border },
+                        ]}
+                      >
+                        <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                          {q.num}A: Select all affected shingles
+                        </Text>
+                        <View style={styles.chipWrap}>
+                          {selectableShingles.map((s) => {
+                            const on = a.shingles.includes(s);
+                            return (
+                              <Pressable
+                                key={s}
+                                onPress={() =>
+                                  setA({
+                                    shingles: on
+                                      ? a.shingles.filter((x) => x !== s)
+                                      : [...a.shingles, s].sort((x, y) => x - y),
+                                  })
+                                }
+                                style={chipStyle(on)}
+                              >
+                                <Text style={chipText(on)}>{s}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                          Photograph one example with a note.
+                        </Text>
+                        {renderPhotoButton(
+                          q.key,
+                          a.photo,
+                          (p) => setA({ photo: { ...a.photo, local: p } }),
+                          'Take Example Photo',
+                        )}
+                        <TextInput
+                          value={a.note}
+                          onChangeText={(t) => setA({ note: t })}
+                          placeholder="Photo note (which shingle, what you see)…"
+                          placeholderTextColor={colors.mutedForeground}
+                          multiline
+                          style={[
+                            styles.noteInput,
+                            {
+                              color: colors.foreground,
+                              borderColor: colors.border,
+                              backgroundColor: colors.background,
+                            },
+                          ]}
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+
+              <View
+                style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Scorecard</Text>
+                {(
+                  [
+                    ['Manipulated shingles', manipulatedCount ?? 0],
+                    ['New collateral-damaged shingles', collateralSet.size],
+                    ['Mat-transfer findings on 1–2', matTransferCount],
+                    ['Delamination', categoryCount('delamination')],
+                    ['Creasing/cracking/fracture', categoryCount('creasing')],
+                    ['Nail-zone damage', categoryCount('nailZone')],
+                    ['Puncture/tear/gouge', categoryCount('puncture')],
+                    ['Reseating/seal-integration concerns', categoryCount('reseat')],
+                  ] as Array<[string, number]>
+                ).map(([label, count]) => (
+                  <View key={label} style={styles.scoreRow}>
+                    <Text style={{ color: colors.foreground, flex: 1, fontSize: 14 }}>
+                      {label}
+                    </Text>
+                    <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 15 }}>
+                      {count}
+                    </Text>
+                  </View>
+                ))}
+                <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>
+                  This scorecard, the RAP1 photo, and up to 2 newly-damaged-shingle photos go to
+                  the report — priority to 1 delamination and 1 creased/cracked/fractured example.
                 </Text>
               </View>
-            ))}
-            <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>
-              This scorecard, the RAP1 photo, and up to 2 newly-damaged-shingle photos go to the
-              report — priority to 1 delamination and 1 creased/cracked/fractured example.
-            </Text>
-          </View>
+            </>
+          ) : (
+            <View
+              style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <View style={[styles.stepRow, { alignItems: 'center' }]}>
+                <Icon name="alert-circle" size={15} color={colors.mutedForeground} />
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                  Complete all selection confirmations above to unlock the protocol steps.
+                </Text>
+              </View>
+            </View>
+          )}
         </>
       ) : null}
 
@@ -1264,6 +1485,36 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   scoreRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 3 },
+  selectionRadio: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
+  selectionCheck: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 4 },
+  selectionCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
   saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
