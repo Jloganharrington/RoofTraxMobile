@@ -164,8 +164,8 @@ export const PROTOCOL_STEPS: readonly ProtocolStep[] = [
   {
     key: 'declaration',
     order: 15,
-    name: 'Declaration',
-    description: 'The inspector signs off on the completeness of the capture.',
+    name: 'Field Attestation',
+    description: 'The inspector reads and signs the Field Attestation under the Uniform Inspection Procedure.',
   },
   {
     key: 'summary',

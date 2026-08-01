@@ -425,8 +425,8 @@ export default function InspectionDetailScreen() {
         return {
           done: state.declarationSigned,
           subtitle: state.declarationSigned
-            ? 'Methodology attestation signed'
-            : 'Read & sign the inspector attestation',
+            ? 'Field Attestation signed'
+            : 'Read & sign the Field Attestation',
         };
       case 'submit':
         return {

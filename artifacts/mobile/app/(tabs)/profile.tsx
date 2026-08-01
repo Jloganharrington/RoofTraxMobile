@@ -477,7 +477,7 @@ export default function ProfileScreen() {
           </View>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
             {signatureUrl
-              ? `Applied to inspection declarations.${signatureSignedAt ? ` Captured ${new Date(signatureSignedAt).toLocaleDateString()}.` : ''}`
+              ? `Applied to inspection field attestations.${signatureSignedAt ? ` Captured ${new Date(signatureSignedAt).toLocaleDateString()}.` : ''}`
               : 'Required before you can submit an inspection.'}
           </Text>
           {signatureUrl && !capturing && (

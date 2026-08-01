@@ -11,7 +11,14 @@ import {
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
-import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
+import {
+  getGetCurrentAuthUserQueryKey,
+  getGetCompanyReportSettingsQueryKey,
+  getGetInspectionQueryKey,
+  useGetCurrentAuthUser,
+  useGetCompanyReportSettings,
+  useGetInspection,
+} from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/lib/auth';
@@ -20,20 +27,54 @@ import { recordSignatureAttestation } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
 
-// E5 / S8 — Attestation & signature. The inspector reads the methodology
-// declaration and attests to it by applying their signature-on-file (M-F / F0):
-// they capture their signature once on their profile, and here they apply it to
-// this specific inspection. The S8 proof recorded is a SHA-256 of the exact
-// declaration text signed; the on-file signature is recorded by reference (its
-// storage URL + hash), never re-drawn per inspection. Without a signature on
-// file, S8 cannot be cleared — the screen routes the inspector to set one up.
+// E5 / S8 — Field Attestation. The inspector reads the Uniform Inspection
+// Procedure attestation (populated with inspection-specific details) and
+// attests to it by applying their signature-on-file (M-F / F0). The S8 proof
+// recorded is a SHA-256 of the full rendered attestation text (body + footer)
+// at the moment of signing; the on-file signature is recorded by reference.
 
-const DECLARATION_TEXT =
-  'I attest that I personally performed this inspection, that the captured ' +
-  'evidence accurately and completely represents the conditions observed at ' +
-  'the property on the date of inspection, and that I followed the required ' +
-  'capture protocol for every documented slope, elevation, and damage ' +
-  'instance. I have not omitted, altered, or staged any evidence.';
+/** Build the two parts of the Field Attestation at render time. */
+function buildAttestation(opts: {
+  address: string | null | undefined;
+  dateOfLoss: string | null | undefined;
+  companyName: string | null | undefined;
+  inspectorName: string;
+  licenseLine: string;
+  signatureDate: string;
+}) {
+  const addr = opts.address?.trim() || 'this property';
+  const inspDate = opts.dateOfLoss
+    ? new Date(opts.dateOfLoss).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : 'the date of inspection';
+  const company = opts.companyName?.trim() || 'my company';
+
+  const body =
+    `I attest that the inspection of the property at ${addr} on ${inspDate} ` +
+    `was performed by me under ${company}'s Uniform Inspection Procedure; ` +
+    `that the photographs, measurements, and observations in this inspection ` +
+    `record were captured by me at the property on that date; that conditions ` +
+    `I observed to be pre-existing or unrelated to the reported event are ` +
+    `identified as such in the record; and that the findings recorded here are ` +
+    `stated to my professional judgment within a reasonable degree of certainty.`;
+
+  const licPart = opts.licenseLine ? ` — ${opts.licenseLine}` : '';
+  const footer =
+    `Inspector: ${opts.inspectorName}, Company: ${company}${licPart} ` +
+    `Date of Attestation: ${opts.signatureDate}`;
+
+  return { body, footer, full: `${body}\n\n${footer}` };
+}
+
+function formatLicenses(
+  licenses: Array<{ state: string; number: string }>,
+): string {
+  if (!licenses.length) return '';
+  return licenses.map((l) => `Lic. ${l.number} (${l.state})`).join(', ');
+}
 
 export default function InspectionDeclarationScreen() {
   const colors = useColors();
@@ -41,8 +82,21 @@ export default function InspectionDeclarationScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   useNextSectionHeader(id, 'declaration');
-  const { signatureUrl, signatureSha256, signatureSignedAt, isLoading: profileLoading } =
+
+  const { signatureUrl, signatureSha256, signatureSignedAt, companyName, companyId, isLoading: profileLoading } =
     useProfile();
+
+  const authQuery = useGetCurrentAuthUser({
+    query: { queryKey: getGetCurrentAuthUserQueryKey() },
+  });
+  const authUser = authQuery.data?.user;
+
+  const reportSettingsQuery = useGetCompanyReportSettings(companyId ?? '', {
+    query: {
+      enabled: !!companyId,
+      queryKey: getGetCompanyReportSettingsQueryKey(companyId ?? ''),
+    },
+  });
 
   const inspectionQuery = useGetInspection(id, {
     query: { queryKey: getGetInspectionQueryKey(id) },
@@ -52,10 +106,15 @@ export default function InspectionDeclarationScreen() {
   const [agreed, setAgreed] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
-  if ((inspectionQuery.isLoading && !inspection) || profileLoading) {
+  const isLoading =
+    (inspectionQuery.isLoading && !inspection) ||
+    profileLoading ||
+    authQuery.isLoading;
+
+  if (isLoading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: 'Declaration' }} />
+        <Stack.Screen options={{ title: 'Field Attestation' }} />
         <ActivityIndicator color={colors.primary} />
       </View>
     );
@@ -63,7 +122,7 @@ export default function InspectionDeclarationScreen() {
   if (!inspection) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <Stack.Screen options={{ title: 'Declaration' }} />
+        <Stack.Screen options={{ title: 'Field Attestation' }} />
         <Icon name="alert-circle" size={28} color={colors.mutedForeground} />
         <Text style={{ color: colors.mutedForeground, marginTop: 8 }}>Inspection not found.</Text>
       </View>
@@ -74,16 +133,49 @@ export default function InspectionDeclarationScreen() {
   const alreadySigned = state.declarationSigned;
   const hasSignatureOnFile = !!signatureUrl && !!signatureSha256;
 
-  // Applies the on-file signature to this inspection. We hash the exact
-  // declaration text as the S8 proof and record the on-file signature by
-  // reference — the raw image never re-enters the client payload.
+  const inspectorName = [authUser?.firstName, authUser?.lastName]
+    .filter(Boolean)
+    .join(' ') || (user?.email ?? 'Inspector');
+  const licenseLine = formatLicenses(reportSettingsQuery.data?.settings?.licenses ?? []);
+  const todayFormatted = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const attestation = buildAttestation({
+    address: inspection.address,
+    dateOfLoss: inspection.dateOfLoss,
+    companyName: companyName,
+    inspectorName,
+    licenseLine,
+    signatureDate: todayFormatted,
+  });
+
+  // Applies the on-file signature to this inspection. Hashes the full
+  // rendered attestation text (body + footer with today's date) as the S8
+  // proof — the hash is tied to these specific inspection details.
   async function handleApplySignature() {
     if (!user || saving || !hasSignatureOnFile) return;
     setSaving(true);
     try {
+      // Recompute with the exact signing timestamp so the hash is reproducible.
+      const signingDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+      const signingAttestation = buildAttestation({
+        address: inspection!.address,
+        dateOfLoss: inspection!.dateOfLoss,
+        companyName: companyName,
+        inspectorName,
+        licenseLine,
+        signatureDate: signingDate,
+      });
       const declarationHash = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
-        DECLARATION_TEXT,
+        signingAttestation.full,
       );
       await recordSignatureAttestation(queryClient, id, user.id, {
         declarationHash,
@@ -99,29 +191,54 @@ export default function InspectionDeclarationScreen() {
 
   if (alreadySigned) {
     return (
-      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
-        <Stack.Screen options={{ title: 'Declaration' }} />
+      <ScrollView
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={styles.content}
+      >
+        <Stack.Screen options={{ title: 'Field Attestation' }} />
         <View style={[styles.banner, { backgroundColor: '#ecfdf5', borderColor: colors.success }]}>
           <Icon name="check" size={22} color={colors.success} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.bannerTitle, { color: colors.foreground }]}>Declaration signed</Text>
+            <Text style={[styles.bannerTitle, { color: colors.foreground }]}>
+              Field Attestation signed
+            </Text>
             <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
               The S8 attestation is recorded for this inspection.
             </Text>
           </View>
         </View>
-        <Text style={[styles.declaration, { color: colors.mutedForeground }]}>{DECLARATION_TEXT}</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.bodyText, { color: colors.mutedForeground }]}>
+            {attestation.body}
+          </Text>
+          <View style={[styles.footerBar, { borderTopColor: colors.border }]}>
+            <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
+              {attestation.footer}
+            </Text>
+          </View>
+        </View>
       </ScrollView>
     );
   }
 
   return (
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ title: 'Declaration' }} />
+      <Stack.Screen options={{ title: 'Field Attestation' }} />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[styles.section, { color: colors.foreground }]}>Inspector attestation</Text>
+        <Text style={[styles.section, { color: colors.foreground }]}>Field Attestation</Text>
+        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+          Rendered at Stage 10 of the Uniform Inspection Procedure — becomes part of the attested field record.
+        </Text>
+
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.declaration, { color: colors.foreground }]}>{DECLARATION_TEXT}</Text>
+          <Text style={[styles.bodyText, { color: colors.foreground }]}>
+            {attestation.body}
+          </Text>
+          <View style={[styles.footerBar, { borderTopColor: colors.border }]}>
+            <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
+              {attestation.footer}
+            </Text>
+          </View>
         </View>
 
         {!hasSignatureOnFile ? (
@@ -131,7 +248,7 @@ export default function InspectionDeclarationScreen() {
               <Text style={[styles.bannerTitle, { color: '#92400e' }]}>No signature on file</Text>
               <Text style={{ color: '#92400e', fontSize: 13 }}>
                 Capture your signature on your profile once — it will be applied to this and every
-                future inspection declaration.
+                future field attestation.
               </Text>
               <Pressable
                 onPress={() =>
@@ -185,7 +302,7 @@ export default function InspectionDeclarationScreen() {
                 <ActivityIndicator color={colors.primaryForeground} />
               ) : (
                 <Text style={[styles.actionText, { color: colors.primaryForeground }]}>
-                  Apply my signature & sign
+                  Apply my signature & attest
                 </Text>
               )}
             </Pressable>
@@ -202,11 +319,25 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 12 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  banner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, borderRadius: 14, borderWidth: 1 },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
   bannerTitle: { fontSize: 15, fontWeight: '800', marginBottom: 2 },
   section: { fontSize: 16, fontWeight: '700' },
-  card: { borderRadius: 14, borderWidth: 1, padding: 16 },
-  declaration: { fontSize: 14, lineHeight: 21 },
+  meta: { fontSize: 12, lineHeight: 18, marginTop: -4 },
+  card: { borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
+  bodyText: { fontSize: 14, lineHeight: 22, padding: 16 },
+  footerBar: {
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  footerText: { fontSize: 12, lineHeight: 18 },
   agreeRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   checkbox: {
     width: 24,

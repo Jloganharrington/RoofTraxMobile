@@ -92,7 +92,7 @@ function AuthenticatedStack() {
       <Stack.Screen name="inspection-interior" options={{ title: 'Interior / Attic' }} />
       <Stack.Screen name="inspection-homeowner" options={{ title: 'Homeowner' }} />
       <Stack.Screen name="inspection-readiness" options={{ title: 'Readiness' }} />
-      <Stack.Screen name="inspection-declaration" options={{ title: 'Declaration' }} />
+      <Stack.Screen name="inspection-declaration" options={{ title: 'Field Attestation' }} />
       <Stack.Screen name="bug-reports" options={{ title: 'Bug Reports' }} />
       <Stack.Screen name="inspection-agreement" options={{ title: 'Get Homeowner Signature' }} />
       <Stack.Screen name="proof-package-settings" options={{ title: 'Proof Package Settings' }} />
