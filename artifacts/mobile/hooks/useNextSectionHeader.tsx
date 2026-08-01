@@ -37,6 +37,7 @@ export const STEPS_MERGED_INTO_ROOF = new Set<StepKey>([
   'existing_conditions',
   'test_squares', 'components', 'product', // merged into Roof Inspection
   'homeowner',                              // merged into Arrival Log
+  'summary', 'estimate',                   // moved to RoofTrax Web dashboard
 ]);
 
 /**
