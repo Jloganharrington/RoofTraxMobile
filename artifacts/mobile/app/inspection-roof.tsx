@@ -1147,7 +1147,7 @@ export default function InspectionRoofScreen() {
             {productRecognized === null && (
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 12 }]}>
                 <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                  Do you recognize this roofing product with better than 50/50 confidence?
+                  Do documented characteristics of the roofing system distinguish this product from reasonable alternatives?
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <Pressable
