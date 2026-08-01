@@ -54,6 +54,7 @@ import type {
   CreateInteriorObservationInput,
   CreateMeasurementInput,
   CreatePinInput,
+  CreatePriceBookItemInput,
   CreateTestSquareHitInput,
   CreateTestSquareInput,
   CrmStatusEnvelope,
@@ -61,11 +62,13 @@ import type {
   CurationResultEnvelope,
   DamageInstanceEnvelope,
   DeleteCompanyJurisdictionPack200,
+  DeletePriceBookItem200,
   DeleteSuccess,
   EmailReportInput,
   EmailReportResult,
   ErrorEnvelope,
   FipsaSettingsEnvelope,
+  GenerateSummaryInput,
   GetActivityStatsParams,
   GetInspectionReportPreviewUrl200,
   GetWeatherEventsParams,
@@ -75,6 +78,7 @@ import type {
   InspectionComponentEnvelope,
   InspectionElevationEnvelope,
   InspectionEnvelope,
+  InspectionEstimateEnvelope,
   InspectionListEnvelope,
   InspectionPenetrationEnvelope,
   InspectionPhotoEnvelope,
@@ -82,6 +86,7 @@ import type {
   InspectionSidingFacetEnvelope,
   InspectionSlopeEnvelope,
   InspectionStatusEnvelope,
+  InspectionSummaryEnvelope,
   InteriorObservationEnvelope,
   JurisdictionPackEnvelope,
   JurisdictionPackListEnvelope,
@@ -100,7 +105,10 @@ import type {
   PortalEnvelope,
   PortalReportHtmlEnvelope,
   PreflightResultEnvelope,
+  PriceBookItemEnvelope,
+  PriceBookItemListEnvelope,
   ProfileEnvelope,
+  PutEstimateInput,
   ReportBrandingEnvelope,
   ResearchJurisdictionCodes200,
   ReverseGeocodeCoordinatesParams,
@@ -121,11 +129,13 @@ import type {
   UpdateInspectionSidingFacetInput,
   UpdateInspectionSlopeInput,
   UpdatePinInput,
+  UpdatePriceBookItemInput,
   UpdateProfileCredentialsInput,
   UpdateProfileSignatureInput,
   UpdateProfileSmtpInput,
   UpdateReportBrandingInput,
   UpdateReportBrandingResult,
+  UpdateSummaryInput,
   UpdateTeamUserInput,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -3633,6 +3643,667 @@ export const useEmailInspectionReport = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getEmailInspectionReportMutationOptions(options));
+    }
+
+export const getGetInspectionSummaryUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/summary`
+}
+
+/**
+ * @summary Get the stored AI summary for an inspection
+ */
+export const getInspectionSummary = async (inspectionId: string, options?: RequestInit): Promise<InspectionSummaryEnvelope> => {
+
+  return customFetch<InspectionSummaryEnvelope>(getGetInspectionSummaryUrl(inspectionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInspectionSummaryQueryKey = (inspectionId: string,) => {
+    return [
+    `/api/inspections/${inspectionId}/summary`
+    ] as const;
+    }
+
+
+export const getGetInspectionSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getInspectionSummary>>, TError = ErrorType<ErrorEnvelope>>(inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInspectionSummaryQueryKey(inspectionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInspectionSummary>>> = ({ signal }) => getInspectionSummary(inspectionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: inspectionId !== null && inspectionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInspectionSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInspectionSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getInspectionSummary>>>
+export type GetInspectionSummaryQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the stored AI summary for an inspection
+ */
+
+export function useGetInspectionSummary<TData = Awaited<ReturnType<typeof getInspectionSummary>>, TError = ErrorType<ErrorEnvelope>>(
+ inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInspectionSummaryQueryOptions(inspectionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateInspectionSummaryUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/summary`
+}
+
+/**
+ * @summary Generate (or regenerate) the AI forensic summary for an inspection
+ */
+export const generateInspectionSummary = async (inspectionId: string,
+    generateSummaryInput?: GenerateSummaryInput, options?: RequestInit): Promise<InspectionSummaryEnvelope> => {
+
+  return customFetch<InspectionSummaryEnvelope>(getGenerateInspectionSummaryUrl(inspectionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(generateSummaryInput)
+  }
+);}
+
+
+
+
+
+export const getGenerateInspectionSummaryMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInspectionSummary>>, TError,{inspectionId: string;data?: BodyType<GenerateSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateInspectionSummary>>, TError,{inspectionId: string;data?: BodyType<GenerateSummaryInput>}, TContext> => {
+
+const mutationKey = ['generateInspectionSummary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateInspectionSummary>>, {inspectionId: string;data?: BodyType<GenerateSummaryInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  generateInspectionSummary(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateInspectionSummaryMutationResult = NonNullable<Awaited<ReturnType<typeof generateInspectionSummary>>>
+    export type GenerateInspectionSummaryMutationBody = BodyType<GenerateSummaryInput> | undefined
+    export type GenerateInspectionSummaryMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Generate (or regenerate) the AI forensic summary for an inspection
+ */
+export const useGenerateInspectionSummary = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInspectionSummary>>, TError,{inspectionId: string;data?: BodyType<GenerateSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateInspectionSummary>>,
+        TError,
+        {inspectionId: string;data?: BodyType<GenerateSummaryInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateInspectionSummaryMutationOptions(options));
+    }
+
+export const getUpdateInspectionSummaryUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/summary`
+}
+
+/**
+ * @summary Manually edit the stored AI summary narrative
+ */
+export const updateInspectionSummary = async (inspectionId: string,
+    updateSummaryInput: UpdateSummaryInput, options?: RequestInit): Promise<InspectionSummaryEnvelope> => {
+
+  return customFetch<InspectionSummaryEnvelope>(getUpdateInspectionSummaryUrl(inspectionId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSummaryInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateInspectionSummaryMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSummary>>, TError,{inspectionId: string;data: BodyType<UpdateSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSummary>>, TError,{inspectionId: string;data: BodyType<UpdateSummaryInput>}, TContext> => {
+
+const mutationKey = ['updateInspectionSummary'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInspectionSummary>>, {inspectionId: string;data: BodyType<UpdateSummaryInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  updateInspectionSummary(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInspectionSummaryMutationResult = NonNullable<Awaited<ReturnType<typeof updateInspectionSummary>>>
+    export type UpdateInspectionSummaryMutationBody = BodyType<UpdateSummaryInput>
+    export type UpdateInspectionSummaryMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Manually edit the stored AI summary narrative
+ */
+export const useUpdateInspectionSummary = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInspectionSummary>>, TError,{inspectionId: string;data: BodyType<UpdateSummaryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInspectionSummary>>,
+        TError,
+        {inspectionId: string;data: BodyType<UpdateSummaryInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInspectionSummaryMutationOptions(options));
+    }
+
+export const getGetInspectionEstimateUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/estimate`
+}
+
+/**
+ * @summary Get the stored estimate for an inspection
+ */
+export const getInspectionEstimate = async (inspectionId: string, options?: RequestInit): Promise<InspectionEstimateEnvelope> => {
+
+  return customFetch<InspectionEstimateEnvelope>(getGetInspectionEstimateUrl(inspectionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInspectionEstimateQueryKey = (inspectionId: string,) => {
+    return [
+    `/api/inspections/${inspectionId}/estimate`
+    ] as const;
+    }
+
+
+export const getGetInspectionEstimateQueryOptions = <TData = Awaited<ReturnType<typeof getInspectionEstimate>>, TError = ErrorType<ErrorEnvelope>>(inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionEstimate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInspectionEstimateQueryKey(inspectionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInspectionEstimate>>> = ({ signal }) => getInspectionEstimate(inspectionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: inspectionId !== null && inspectionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInspectionEstimate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInspectionEstimateQueryResult = NonNullable<Awaited<ReturnType<typeof getInspectionEstimate>>>
+export type GetInspectionEstimateQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the stored estimate for an inspection
+ */
+
+export function useGetInspectionEstimate<TData = Awaited<ReturnType<typeof getInspectionEstimate>>, TError = ErrorType<ErrorEnvelope>>(
+ inspectionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInspectionEstimate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInspectionEstimateQueryOptions(inspectionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveInspectionEstimateUrl = (inspectionId: string,) => {
+
+
+
+
+  return `/api/inspections/${inspectionId}/estimate`
+}
+
+/**
+ * @summary Save (full replace) the estimate for an inspection
+ */
+export const saveInspectionEstimate = async (inspectionId: string,
+    putEstimateInput: PutEstimateInput, options?: RequestInit): Promise<InspectionEstimateEnvelope> => {
+
+  return customFetch<InspectionEstimateEnvelope>(getSaveInspectionEstimateUrl(inspectionId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(putEstimateInput)
+  }
+);}
+
+
+
+
+
+export const getSaveInspectionEstimateMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveInspectionEstimate>>, TError,{inspectionId: string;data: BodyType<PutEstimateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveInspectionEstimate>>, TError,{inspectionId: string;data: BodyType<PutEstimateInput>}, TContext> => {
+
+const mutationKey = ['saveInspectionEstimate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveInspectionEstimate>>, {inspectionId: string;data: BodyType<PutEstimateInput>}> = (props) => {
+          const {inspectionId,data} = props ?? {};
+
+          return  saveInspectionEstimate(inspectionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveInspectionEstimateMutationResult = NonNullable<Awaited<ReturnType<typeof saveInspectionEstimate>>>
+    export type SaveInspectionEstimateMutationBody = BodyType<PutEstimateInput>
+    export type SaveInspectionEstimateMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Save (full replace) the estimate for an inspection
+ */
+export const useSaveInspectionEstimate = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveInspectionEstimate>>, TError,{inspectionId: string;data: BodyType<PutEstimateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveInspectionEstimate>>,
+        TError,
+        {inspectionId: string;data: BodyType<PutEstimateInput>},
+        TContext
+      > => {
+      return useMutation(getSaveInspectionEstimateMutationOptions(options));
+    }
+
+export const getListPriceBookItemsUrl = () => {
+
+
+
+
+  return `/api/price-book/items`
+}
+
+/**
+ * @summary List all price book items for the current user's company
+ */
+export const listPriceBookItems = async ( options?: RequestInit): Promise<PriceBookItemListEnvelope> => {
+
+  return customFetch<PriceBookItemListEnvelope>(getListPriceBookItemsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPriceBookItemsQueryKey = () => {
+    return [
+    `/api/price-book/items`
+    ] as const;
+    }
+
+
+export const getListPriceBookItemsQueryOptions = <TData = Awaited<ReturnType<typeof listPriceBookItems>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPriceBookItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPriceBookItemsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPriceBookItems>>> = ({ signal }) => listPriceBookItems({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPriceBookItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPriceBookItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listPriceBookItems>>>
+export type ListPriceBookItemsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List all price book items for the current user's company
+ */
+
+export function useListPriceBookItems<TData = Awaited<ReturnType<typeof listPriceBookItems>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPriceBookItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPriceBookItemsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePriceBookItemUrl = () => {
+
+
+
+
+  return `/api/price-book/items`
+}
+
+/**
+ * @summary Create a new price book item (admin only)
+ */
+export const createPriceBookItem = async (createPriceBookItemInput: CreatePriceBookItemInput, options?: RequestInit): Promise<PriceBookItemEnvelope> => {
+
+  return customFetch<PriceBookItemEnvelope>(getCreatePriceBookItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPriceBookItemInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePriceBookItemMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPriceBookItem>>, TError,{data: BodyType<CreatePriceBookItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPriceBookItem>>, TError,{data: BodyType<CreatePriceBookItemInput>}, TContext> => {
+
+const mutationKey = ['createPriceBookItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPriceBookItem>>, {data: BodyType<CreatePriceBookItemInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPriceBookItem(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePriceBookItemMutationResult = NonNullable<Awaited<ReturnType<typeof createPriceBookItem>>>
+    export type CreatePriceBookItemMutationBody = BodyType<CreatePriceBookItemInput>
+    export type CreatePriceBookItemMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a new price book item (admin only)
+ */
+export const useCreatePriceBookItem = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPriceBookItem>>, TError,{data: BodyType<CreatePriceBookItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPriceBookItem>>,
+        TError,
+        {data: BodyType<CreatePriceBookItemInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePriceBookItemMutationOptions(options));
+    }
+
+export const getUpdatePriceBookItemUrl = (itemId: string,) => {
+
+
+
+
+  return `/api/price-book/items/${itemId}`
+}
+
+/**
+ * @summary Update a price book item (admin only)
+ */
+export const updatePriceBookItem = async (itemId: string,
+    updatePriceBookItemInput: UpdatePriceBookItemInput, options?: RequestInit): Promise<PriceBookItemEnvelope> => {
+
+  return customFetch<PriceBookItemEnvelope>(getUpdatePriceBookItemUrl(itemId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePriceBookItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePriceBookItemMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePriceBookItem>>, TError,{itemId: string;data: BodyType<UpdatePriceBookItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePriceBookItem>>, TError,{itemId: string;data: BodyType<UpdatePriceBookItemInput>}, TContext> => {
+
+const mutationKey = ['updatePriceBookItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePriceBookItem>>, {itemId: string;data: BodyType<UpdatePriceBookItemInput>}> = (props) => {
+          const {itemId,data} = props ?? {};
+
+          return  updatePriceBookItem(itemId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePriceBookItemMutationResult = NonNullable<Awaited<ReturnType<typeof updatePriceBookItem>>>
+    export type UpdatePriceBookItemMutationBody = BodyType<UpdatePriceBookItemInput>
+    export type UpdatePriceBookItemMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a price book item (admin only)
+ */
+export const useUpdatePriceBookItem = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePriceBookItem>>, TError,{itemId: string;data: BodyType<UpdatePriceBookItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePriceBookItem>>,
+        TError,
+        {itemId: string;data: BodyType<UpdatePriceBookItemInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePriceBookItemMutationOptions(options));
+    }
+
+export const getDeletePriceBookItemUrl = (itemId: string,) => {
+
+
+
+
+  return `/api/price-book/items/${itemId}`
+}
+
+/**
+ * @summary Delete a price book item (admin only)
+ */
+export const deletePriceBookItem = async (itemId: string, options?: RequestInit): Promise<DeletePriceBookItem200> => {
+
+  return customFetch<DeletePriceBookItem200>(getDeletePriceBookItemUrl(itemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePriceBookItemMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePriceBookItem>>, TError,{itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePriceBookItem>>, TError,{itemId: string}, TContext> => {
+
+const mutationKey = ['deletePriceBookItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePriceBookItem>>, {itemId: string}> = (props) => {
+          const {itemId} = props ?? {};
+
+          return  deletePriceBookItem(itemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePriceBookItemMutationResult = NonNullable<Awaited<ReturnType<typeof deletePriceBookItem>>>
+
+    export type DeletePriceBookItemMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a price book item (admin only)
+ */
+export const useDeletePriceBookItem = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePriceBookItem>>, TError,{itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePriceBookItem>>,
+        TError,
+        {itemId: string},
+        TContext
+      > => {
+      return useMutation(getDeletePriceBookItemMutationOptions(options));
     }
 
 export const getCreateInspectionSidingFacetUrl = (inspectionId: string,) => {

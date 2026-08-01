@@ -1118,18 +1118,31 @@ export interface HomeownerFacts {
   priorRepairs?: string | null;
   /** @nullable */
   priorClaims?: string | null;
+  /** @nullable */
   policyActiveAtLoss?: boolean | null;
+  /** @nullable */
   replacementCostCoverage?: boolean | null;
+  /** @nullable */
   olCoverage?: boolean | null;
+  /** @nullable */
   specialExclusions?: string | null;
+  /** @nullable */
   lengthOfOwnership?: string | null;
+  /** @nullable */
   knownRoofAge?: string | null;
+  /** @nullable */
   knownSidingAge?: string | null;
+  /** @nullable */
   homeAtTimeOfEvent?: boolean | null;
+  /** @nullable */
   mitigationStepsPrior?: string | null;
+  /** @nullable */
   previousClaimsOpened?: string | null;
+  /** @nullable */
   currentClaimsOpened?: string | null;
+  /** @nullable */
   previousRepairs?: string | null;
+  /** @nullable */
   previousUnrepairedDamage?: string | null;
 }
 
@@ -1210,7 +1223,7 @@ export type InspectionLatestAgreement = {
   signerName: string;
 } | null;
 
-export type InspectionEstimateMeasuredBasis = {
+export type InspectionEstimatePropertyMeasuredBasis = {
   /** @nullable */
   roofAreaSqft: number | null;
   /** @nullable */
@@ -1220,45 +1233,45 @@ export type InspectionEstimateMeasuredBasis = {
   damagedSidingFacetCount: number;
 };
 
-export type InspectionEstimateLinesItemEvidenceLinksItemTargetType = typeof InspectionEstimateLinesItemEvidenceLinksItemTargetType[keyof typeof InspectionEstimateLinesItemEvidenceLinksItemTargetType];
+export type InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType = typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType[keyof typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType];
 
 
-export const InspectionEstimateLinesItemEvidenceLinksItemTargetType = {
+export const InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType = {
   photo: 'photo',
   damage_instance: 'damage_instance',
 } as const;
 
-export type InspectionEstimateLinesItemEvidenceLinksItemLinkSource = typeof InspectionEstimateLinesItemEvidenceLinksItemLinkSource[keyof typeof InspectionEstimateLinesItemEvidenceLinksItemLinkSource];
+export type InspectionEstimatePropertyLinesItemEvidenceLinksItemLinkSource = typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemLinkSource[keyof typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemLinkSource];
 
 
-export const InspectionEstimateLinesItemEvidenceLinksItemLinkSource = {
+export const InspectionEstimatePropertyLinesItemEvidenceLinksItemLinkSource = {
   inspector: 'inspector',
   user: 'user',
   ai_suggested: 'ai_suggested',
   imported: 'imported',
 } as const;
 
-export type InspectionEstimateLinesItemEvidenceLinksItemReviewStatus = typeof InspectionEstimateLinesItemEvidenceLinksItemReviewStatus[keyof typeof InspectionEstimateLinesItemEvidenceLinksItemReviewStatus];
+export type InspectionEstimatePropertyLinesItemEvidenceLinksItemReviewStatus = typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemReviewStatus[keyof typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemReviewStatus];
 
 
-export const InspectionEstimateLinesItemEvidenceLinksItemReviewStatus = {
+export const InspectionEstimatePropertyLinesItemEvidenceLinksItemReviewStatus = {
   unreviewed: 'unreviewed',
   approved: 'approved',
   rejected: 'rejected',
 } as const;
 
-export type InspectionEstimateLinesItemEvidenceLinksItem = {
-  targetType: InspectionEstimateLinesItemEvidenceLinksItemTargetType;
+export type InspectionEstimatePropertyLinesItemEvidenceLinksItem = {
+  targetType: InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType;
   targetId: string;
-  linkSource: InspectionEstimateLinesItemEvidenceLinksItemLinkSource;
-  reviewStatus: InspectionEstimateLinesItemEvidenceLinksItemReviewStatus;
+  linkSource: InspectionEstimatePropertyLinesItemEvidenceLinksItemLinkSource;
+  reviewStatus: InspectionEstimatePropertyLinesItemEvidenceLinksItemReviewStatus;
   /** @nullable */
   reviewedBy: string | null;
   /** @nullable */
   reviewedAt: string | null;
 };
 
-export type InspectionEstimateLinesItem = {
+export type InspectionEstimatePropertyLinesItem = {
   /** @nullable */
   priceBookItemId: string | null;
   description: string;
@@ -1269,7 +1282,7 @@ export type InspectionEstimateLinesItem = {
   totalCents: number;
   isAdder: boolean;
   /** Structured evidence links (photo/finding → this scope line) with provenance and review state. Absent on legacy lines. reviewedBy/reviewedAt are stamped server-side; AI-suggested links are never treated as verified unless approved. */
-  evidenceLinks?: InspectionEstimateLinesItemEvidenceLinksItem[];
+  evidenceLinks?: InspectionEstimatePropertyLinesItemEvidenceLinksItem[];
   /** Server-derived photo ids from APPROVED links only. */
   linkedPhotoIds?: string[];
   /** Server-derived damage-instance ids from APPROVED links only. */
@@ -1279,11 +1292,11 @@ export type InspectionEstimateLinesItem = {
 /**
  * Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.
  */
-export type InspectionEstimate = {
+export type InspectionEstimateProperty = {
   /** Waste factor applied to measured roof squares (10 = 10%). */
   wastePercent: number;
-  measuredBasis: InspectionEstimateMeasuredBasis;
-  lines: InspectionEstimateLinesItem[];
+  measuredBasis: InspectionEstimatePropertyMeasuredBasis;
+  lines: InspectionEstimatePropertyLinesItem[];
   subtotalCents: number;
   /** @nullable */
   note: string | null;
@@ -2238,7 +2251,7 @@ export interface Inspection {
   /** The most recent active (non-voided) signed FIPSA agreement for this inspection. Null when no agreement has been signed yet. Populated by the detail view only. */
   latestAgreement?: InspectionLatestAgreement;
   /** Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only. */
-  estimate?: InspectionEstimate;
+  estimate?: InspectionEstimateProperty;
   /** AI-generated forensic summary produced at the Summary step by Claude Sonnet. Null until the inspector triggers generation. Populated by the detail view only. */
   aiSummary?: InspectionAiSummary;
   /**
@@ -2933,6 +2946,209 @@ export interface WeatherCandidatesEnvelope {
 }
 
 /**
+ * AI-generated forensic summary stored on an inspection.
+ */
+export interface InspectionSummary {
+  /** The AI-generated forensic damage narrative. */
+  forensicSummary: string;
+  /** The AI-generated repairability analysis. */
+  repairabilityText: string;
+  /** @nullable */
+  confidence?: string | null;
+  missingOrUnverifiedItems?: string[];
+  qualityFlags?: string[];
+  generatedAt: string;
+  /** @nullable */
+  editedAt?: string | null;
+  /** @nullable */
+  editedBy?: string | null;
+}
+
+export interface InspectionSummaryEnvelope {
+  summary: InspectionSummary | null;
+}
+
+export interface GenerateSummaryInput {
+  /** Optional additional guidance to focus the AI summary. */
+  userPrompt?: string;
+}
+
+export interface UpdateSummaryInput {
+  forensicSummary?: string;
+  repairabilityText?: string;
+}
+
+export type EvidenceLinkItemTargetType = typeof EvidenceLinkItemTargetType[keyof typeof EvidenceLinkItemTargetType];
+
+
+export const EvidenceLinkItemTargetType = {
+  photo: 'photo',
+  damage_instance: 'damage_instance',
+} as const;
+
+export type EvidenceLinkItemLinkSource = typeof EvidenceLinkItemLinkSource[keyof typeof EvidenceLinkItemLinkSource];
+
+
+export const EvidenceLinkItemLinkSource = {
+  inspector: 'inspector',
+  user: 'user',
+  ai_suggested: 'ai_suggested',
+  imported: 'imported',
+} as const;
+
+export type EvidenceLinkItemReviewStatus = typeof EvidenceLinkItemReviewStatus[keyof typeof EvidenceLinkItemReviewStatus];
+
+
+export const EvidenceLinkItemReviewStatus = {
+  unreviewed: 'unreviewed',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface EvidenceLinkItem {
+  targetType: EvidenceLinkItemTargetType;
+  targetId: string;
+  linkSource: EvidenceLinkItemLinkSource;
+  reviewStatus: EvidenceLinkItemReviewStatus;
+}
+
+export interface EstimateLineItem {
+  /** @nullable */
+  priceBookItemId?: string | null;
+  description: string;
+  /** @nullable */
+  unit?: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  isAdder: boolean;
+  evidenceLinks?: EvidenceLinkItem[];
+  linkedPhotoIds?: string[];
+  linkedDamageInstanceIds?: string[];
+}
+
+export interface MeasuredBasis {
+  /** @nullable */
+  totalRoofSqft?: number | null;
+  /** @nullable */
+  totalRoofSquares?: number | null;
+  /** @nullable */
+  adjustedRoofSquares?: number | null;
+  /** @nullable */
+  damagedSidingFacetCount?: number | null;
+}
+
+export interface InspectionEstimate {
+  wastePercent: number;
+  measuredBasis?: MeasuredBasis;
+  lines: EstimateLineItem[];
+  subtotalCents: number;
+  /** @nullable */
+  note?: string | null;
+  updatedAt: string;
+}
+
+export interface InspectionEstimateEnvelope {
+  estimate: InspectionEstimate | null;
+}
+
+export interface EstimateLineInput {
+  /** @nullable */
+  priceBookItemId?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 300
+     */
+  description: string;
+  /**
+     * @maxLength 60
+     * @nullable
+     */
+  unit?: string | null;
+  quantity: number;
+  /** @minimum 0 */
+  unitPriceCents: number;
+  isAdder: boolean;
+  evidenceLinks?: EvidenceLinkItem[];
+}
+
+export interface PutEstimateInput {
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  wastePercent: number;
+  /** @maxItems 200 */
+  lines: EstimateLineInput[];
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  note?: string | null;
+}
+
+export interface PriceBookItem {
+  id: string;
+  companyId: string;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** Unit price in cents. */
+  unitPrice: number;
+  /** @nullable */
+  unit?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PriceBookItemEnvelope {
+  item: PriceBookItem;
+}
+
+export interface PriceBookItemListEnvelope {
+  items: PriceBookItem[];
+}
+
+export interface CreatePriceBookItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  description?: string | null;
+  /** @minimum 0 */
+  unitPrice: number;
+  /**
+     * @maxLength 60
+     * @nullable
+     */
+  unit?: string | null;
+}
+
+export interface UpdatePriceBookItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name?: string;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  description?: string | null;
+  /** @minimum 0 */
+  unitPrice?: number;
+  /**
+     * @maxLength 60
+     * @nullable
+     */
+  unit?: string | null;
+}
+
+/**
  * Carrier/contractor-safe subset of the inspection record shown in the public Evidence Portal. Never includes agreement/FIPSA content.
  */
 export interface PortalInspectionSummary {
@@ -3044,6 +3260,10 @@ latitude?: number;
  * Optional longitude of the rep's current location.
  */
 longitude?: number;
+};
+
+export type DeletePriceBookItem200 = {
+  ok: boolean;
 };
 
 export type ListInspectionReportCodeCitations200 = {

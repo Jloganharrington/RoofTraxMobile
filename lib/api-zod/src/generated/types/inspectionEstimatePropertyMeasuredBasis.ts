@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type InspectionEstimateMeasuredBasis = {
+export type InspectionEstimatePropertyMeasuredBasis = {
   /** @nullable */
   roofAreaSqft: number | null;
   /** @nullable */

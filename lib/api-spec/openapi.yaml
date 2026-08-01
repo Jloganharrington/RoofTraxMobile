@@ -43,6 +43,8 @@ tags:
       Public Evidence Portal — no-account access for contractors and adjusters
       via an inspection's unique share code. Exposes inspection photos and
       Proof Package versions only; agreement/FIPSA content is never served.
+  - name: PriceBook
+    description: Company price book items for estimate line-item lookup.
 paths:
   /healthz:
     get:
@@ -1577,6 +1579,369 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "502":
           description: SMTP delivery failed (bad credentials, unreachable host, or rejected recipient).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /inspections/{inspectionId}/summary:
+    get:
+      tags: [Inspections]
+      operationId: getInspectionSummary
+      summary: Get the stored AI summary for an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Summary returned (null if not yet generated).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSummaryEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Inspections]
+      operationId: generateInspectionSummary
+      summary: Generate (or regenerate) the AI forensic summary for an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateSummaryInput"
+      responses:
+        "200":
+          description: Summary generated and stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSummaryEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: AI generation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Inspections]
+      operationId: updateInspectionSummary
+      summary: Manually edit the stored AI summary narrative
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSummaryInput"
+      responses:
+        "200":
+          description: Summary updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionSummaryEnvelope"
+        "400":
+          description: Invalid payload or no summary exists yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /inspections/{inspectionId}/estimate:
+    get:
+      tags: [Inspections]
+      operationId: getInspectionEstimate
+      summary: Get the stored estimate for an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Estimate returned (null if not yet saved).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEstimateEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Inspection module not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      tags: [Inspections]
+      operationId: saveInspectionEstimate
+      summary: Save (full replace) the estimate for an inspection
+      parameters:
+        - name: inspectionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutEstimateInput"
+      responses:
+        "200":
+          description: Estimate saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEstimateEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /price-book/items:
+    get:
+      tags: [PriceBook]
+      operationId: listPriceBookItems
+      summary: List all price book items for the current user's company
+      responses:
+        "200":
+          description: Items list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceBookItemListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [PriceBook]
+      operationId: createPriceBookItem
+      summary: Create a new price book item (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePriceBookItemInput"
+      responses:
+        "201":
+          description: Item created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceBookItemEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /price-book/items/{itemId}:
+    patch:
+      tags: [PriceBook]
+      operationId: updatePriceBookItem
+      summary: Update a price book item (admin only)
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePriceBookItemInput"
+      responses:
+        "200":
+          description: Item updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceBookItemEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Item not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [PriceBook]
+      operationId: deletePriceBookItem
+      summary: Delete a price book item (admin only)
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Item deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Item not found.
           content:
             application/json:
               schema:
@@ -7248,6 +7613,250 @@ components:
           type: [string, "null"]
         cached:
           type: boolean
+
+    InspectionSummary:
+      type: object
+      description: AI-generated forensic summary stored on an inspection.
+      required: [forensicSummary, repairabilityText, generatedAt]
+      properties:
+        forensicSummary:
+          type: string
+          description: The AI-generated forensic damage narrative.
+        repairabilityText:
+          type: string
+          description: The AI-generated repairability analysis.
+        confidence:
+          type: [string, "null"]
+        missingOrUnverifiedItems:
+          type: array
+          items:
+            type: string
+        qualityFlags:
+          type: array
+          items:
+            type: string
+        generatedAt:
+          type: string
+          format: date-time
+        editedAt:
+          type: [string, "null"]
+          format: date-time
+        editedBy:
+          type: [string, "null"]
+    InspectionSummaryEnvelope:
+      type: object
+      required: [summary]
+      properties:
+        summary:
+          anyOf:
+            - $ref: "#/components/schemas/InspectionSummary"
+            - type: "null"
+    GenerateSummaryInput:
+      type: object
+      properties:
+        userPrompt:
+          type: string
+          description: Optional additional guidance to focus the AI summary.
+    UpdateSummaryInput:
+      type: object
+      properties:
+        forensicSummary:
+          type: string
+        repairabilityText:
+          type: string
+
+    EvidenceLinkItem:
+      type: object
+      required: [targetType, targetId, linkSource, reviewStatus]
+      properties:
+        targetType:
+          type: string
+          enum: [photo, damage_instance]
+        targetId:
+          type: string
+        linkSource:
+          type: string
+          enum: [inspector, user, ai_suggested, imported]
+        reviewStatus:
+          type: string
+          enum: [unreviewed, approved, rejected]
+    EstimateLineItem:
+      type: object
+      required: [description, quantity, unitPriceCents, isAdder]
+      properties:
+        priceBookItemId:
+          type: [string, "null"]
+        description:
+          type: string
+        unit:
+          type: [string, "null"]
+        quantity:
+          type: number
+        unitPriceCents:
+          type: integer
+        isAdder:
+          type: boolean
+        evidenceLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceLinkItem"
+        linkedPhotoIds:
+          type: array
+          items:
+            type: string
+        linkedDamageInstanceIds:
+          type: array
+          items:
+            type: string
+    MeasuredBasis:
+      type: object
+      properties:
+        totalRoofSqft:
+          type: [number, "null"]
+        totalRoofSquares:
+          type: [number, "null"]
+        adjustedRoofSquares:
+          type: [number, "null"]
+        damagedSidingFacetCount:
+          type: [integer, "null"]
+    InspectionEstimate:
+      type: object
+      required: [wastePercent, lines, subtotalCents, updatedAt]
+      properties:
+        wastePercent:
+          type: number
+        measuredBasis:
+          $ref: "#/components/schemas/MeasuredBasis"
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        subtotalCents:
+          type: integer
+        note:
+          type: [string, "null"]
+        updatedAt:
+          type: string
+          format: date-time
+    InspectionEstimateEnvelope:
+      type: object
+      required: [estimate]
+      properties:
+        estimate:
+          anyOf:
+            - $ref: "#/components/schemas/InspectionEstimate"
+            - type: "null"
+    EstimateLineInput:
+      type: object
+      required: [description, quantity, unitPriceCents, isAdder]
+      properties:
+        priceBookItemId:
+          type: [string, "null"]
+        description:
+          type: string
+          minLength: 1
+          maxLength: 300
+        unit:
+          type: [string, "null"]
+          maxLength: 60
+        quantity:
+          type: number
+        unitPriceCents:
+          type: integer
+          minimum: 0
+        isAdder:
+          type: boolean
+        evidenceLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceLinkItem"
+    PutEstimateInput:
+      type: object
+      required: [wastePercent, lines]
+      properties:
+        wastePercent:
+          type: number
+          minimum: 0
+          maximum: 100
+        lines:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/EstimateLineInput"
+        note:
+          type: [string, "null"]
+          maxLength: 2000
+
+    PriceBookItem:
+      type: object
+      required: [id, companyId, name, unitPrice, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        unitPrice:
+          type: integer
+          description: Unit price in cents.
+        unit:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PriceBookItemEnvelope:
+      type: object
+      required: [item]
+      properties:
+        item:
+          $ref: "#/components/schemas/PriceBookItem"
+    PriceBookItemListEnvelope:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceBookItem"
+    CreatePriceBookItemInput:
+      type: object
+      required: [name, unitPrice]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: [string, "null"]
+          maxLength: 2000
+        unitPrice:
+          type: integer
+          minimum: 0
+        unit:
+          type: [string, "null"]
+          maxLength: 60
+    UpdatePriceBookItemInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: [string, "null"]
+          maxLength: 2000
+        unitPrice:
+          type: integer
+          minimum: 0
+        unit:
+          type: [string, "null"]
+          maxLength: 60
 
     PortalInspectionSummary:
       type: object

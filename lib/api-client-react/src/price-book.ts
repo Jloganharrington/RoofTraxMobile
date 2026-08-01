@@ -1,3 +1,8 @@
+/**
+ * Manual price-book hooks for Packages (not yet in the OpenAPI spec).
+ * Item hooks (useListPriceBookItems, useCreatePriceBookItem, etc.) and
+ * the PriceBookItem type are now generated — import them from the barrel.
+ */
 import {
   useMutation,
   useQuery,
@@ -8,17 +13,8 @@ import {
 import { customFetch } from './custom-fetch';
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (packages only — PriceBookItem is now generated)
 // ---------------------------------------------------------------------------
-
-export interface PriceBookItem {
-  id: string;
-  name: string;
-  description: string | null;
-  unitPrice: number; // stored in cents
-  createdAt: string;
-  updatedAt: string;
-}
 
 export type InspectionCondition =
   | 'roof_damage'
@@ -43,75 +39,7 @@ export interface PriceBookPackage {
 // Query keys
 // ---------------------------------------------------------------------------
 
-export const getPriceBookItemsQueryKey = () => ['price-book', 'items'] as const;
 export const getPriceBookPackagesQueryKey = () => ['price-book', 'packages'] as const;
-
-// ---------------------------------------------------------------------------
-// Line item hooks
-// ---------------------------------------------------------------------------
-
-export function useListPriceBookItems(
-  options?: Omit<UseQueryOptions<{ items: PriceBookItem[] }>, 'queryKey' | 'queryFn'>,
-) {
-  return useQuery({
-    queryKey: getPriceBookItemsQueryKey(),
-    queryFn: () => customFetch<{ items: PriceBookItem[] }>('/api/price-book/items'),
-    ...options,
-  });
-}
-
-export function useCreatePriceBookItem(
-  options?: UseMutationOptions<
-    { item: PriceBookItem },
-    Error,
-    { name: string; description?: string | null; unitPrice: number }
-  >,
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (data) =>
-      customFetch<{ item: PriceBookItem }>('/api/price-book/items', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: getPriceBookItemsQueryKey() }),
-    ...options,
-  });
-}
-
-export function useUpdatePriceBookItem(
-  options?: UseMutationOptions<
-    { item: PriceBookItem },
-    Error,
-    { id: string; name?: string; description?: string | null; unitPrice?: number }
-  >,
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, ...data }) =>
-      customFetch<{ item: PriceBookItem }>(`/api/price-book/items/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: getPriceBookItemsQueryKey() }),
-    ...options,
-  });
-}
-
-export function useDeletePriceBookItem(
-  options?: UseMutationOptions<{ ok: boolean }, Error, string>,
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id) =>
-      customFetch<{ ok: boolean }>(`/api/price-book/items/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: getPriceBookItemsQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getPriceBookPackagesQueryKey() });
-    },
-    ...options,
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Package hooks

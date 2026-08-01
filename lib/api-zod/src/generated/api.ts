@@ -1380,21 +1380,21 @@ export const ListInspectionsResponse = zod.object({
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "recordedAtUtc": zod.string(),
-  "priorRepairs": zod.string().nullable().optional(),
-  "priorClaims": zod.string().nullable().optional(),
-  "policyActiveAtLoss": zod.boolean().nullable().optional(),
-  "replacementCostCoverage": zod.boolean().nullable().optional(),
-  "olCoverage": zod.boolean().nullable().optional(),
-  "specialExclusions": zod.string().nullable().optional(),
-  "lengthOfOwnership": zod.string().nullable().optional(),
-  "knownRoofAge": zod.string().nullable().optional(),
-  "knownSidingAge": zod.string().nullable().optional(),
-  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
-  "mitigationStepsPrior": zod.string().nullable().optional(),
-  "previousClaimsOpened": zod.string().nullable().optional(),
-  "currentClaimsOpened": zod.string().nullable().optional(),
-  "previousRepairs": zod.string().nullable().optional(),
-  "previousUnrepairedDamage": zod.string().nullable().optional()
+  "priorRepairs": zod.string().nullish(),
+  "priorClaims": zod.string().nullish(),
+  "policyActiveAtLoss": zod.boolean().nullish(),
+  "replacementCostCoverage": zod.boolean().nullish(),
+  "olCoverage": zod.boolean().nullish(),
+  "specialExclusions": zod.string().nullish(),
+  "lengthOfOwnership": zod.string().nullish(),
+  "knownRoofAge": zod.string().nullish(),
+  "knownSidingAge": zod.string().nullish(),
+  "homeAtTimeOfEvent": zod.boolean().nullish(),
+  "mitigationStepsPrior": zod.string().nullish(),
+  "previousClaimsOpened": zod.string().nullish(),
+  "currentClaimsOpened": zod.string().nullish(),
+  "previousRepairs": zod.string().nullish(),
+  "previousUnrepairedDamage": zod.string().nullish()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -1837,6 +1837,9 @@ export const ListInspectionsResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
   "interiorObservations": zod.array(zod.object({
@@ -1987,21 +1990,21 @@ export const CreateInspectionResponse = zod.object({
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "recordedAtUtc": zod.string(),
-  "priorRepairs": zod.string().nullable().optional(),
-  "priorClaims": zod.string().nullable().optional(),
-  "policyActiveAtLoss": zod.boolean().nullable().optional(),
-  "replacementCostCoverage": zod.boolean().nullable().optional(),
-  "olCoverage": zod.boolean().nullable().optional(),
-  "specialExclusions": zod.string().nullable().optional(),
-  "lengthOfOwnership": zod.string().nullable().optional(),
-  "knownRoofAge": zod.string().nullable().optional(),
-  "knownSidingAge": zod.string().nullable().optional(),
-  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
-  "mitigationStepsPrior": zod.string().nullable().optional(),
-  "previousClaimsOpened": zod.string().nullable().optional(),
-  "currentClaimsOpened": zod.string().nullable().optional(),
-  "previousRepairs": zod.string().nullable().optional(),
-  "previousUnrepairedDamage": zod.string().nullable().optional()
+  "priorRepairs": zod.string().nullish(),
+  "priorClaims": zod.string().nullish(),
+  "policyActiveAtLoss": zod.boolean().nullish(),
+  "replacementCostCoverage": zod.boolean().nullish(),
+  "olCoverage": zod.boolean().nullish(),
+  "specialExclusions": zod.string().nullish(),
+  "lengthOfOwnership": zod.string().nullish(),
+  "knownRoofAge": zod.string().nullish(),
+  "knownSidingAge": zod.string().nullish(),
+  "homeAtTimeOfEvent": zod.boolean().nullish(),
+  "mitigationStepsPrior": zod.string().nullish(),
+  "previousClaimsOpened": zod.string().nullish(),
+  "currentClaimsOpened": zod.string().nullish(),
+  "previousRepairs": zod.string().nullish(),
+  "previousUnrepairedDamage": zod.string().nullish()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -2444,6 +2447,9 @@ export const CreateInspectionResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
   "interiorObservations": zod.array(zod.object({
@@ -2576,21 +2582,21 @@ export const GetInspectionResponse = zod.object({
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "recordedAtUtc": zod.string(),
-  "priorRepairs": zod.string().nullable().optional(),
-  "priorClaims": zod.string().nullable().optional(),
-  "policyActiveAtLoss": zod.boolean().nullable().optional(),
-  "replacementCostCoverage": zod.boolean().nullable().optional(),
-  "olCoverage": zod.boolean().nullable().optional(),
-  "specialExclusions": zod.string().nullable().optional(),
-  "lengthOfOwnership": zod.string().nullable().optional(),
-  "knownRoofAge": zod.string().nullable().optional(),
-  "knownSidingAge": zod.string().nullable().optional(),
-  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
-  "mitigationStepsPrior": zod.string().nullable().optional(),
-  "previousClaimsOpened": zod.string().nullable().optional(),
-  "currentClaimsOpened": zod.string().nullable().optional(),
-  "previousRepairs": zod.string().nullable().optional(),
-  "previousUnrepairedDamage": zod.string().nullable().optional()
+  "priorRepairs": zod.string().nullish(),
+  "priorClaims": zod.string().nullish(),
+  "policyActiveAtLoss": zod.boolean().nullish(),
+  "replacementCostCoverage": zod.boolean().nullish(),
+  "olCoverage": zod.boolean().nullish(),
+  "specialExclusions": zod.string().nullish(),
+  "lengthOfOwnership": zod.string().nullish(),
+  "knownRoofAge": zod.string().nullish(),
+  "knownSidingAge": zod.string().nullish(),
+  "homeAtTimeOfEvent": zod.boolean().nullish(),
+  "mitigationStepsPrior": zod.string().nullish(),
+  "previousClaimsOpened": zod.string().nullish(),
+  "currentClaimsOpened": zod.string().nullish(),
+  "previousRepairs": zod.string().nullish(),
+  "previousUnrepairedDamage": zod.string().nullish()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -3033,6 +3039,9 @@ export const GetInspectionResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
   "interiorObservations": zod.array(zod.object({
@@ -3170,9 +3179,22 @@ export const UpdateInspectionBody = zod.object({
 }).describe('Arrival-conditions log captured in Step 1 · Arrival Log (protocol v2 — windCondition replaces wind; personnelPresent is an array).'),zod.null()]).optional(),
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
-  "priorRepairs": zod.string().nullable(),
-  "priorClaims": zod.string().nullable(),
-  "recordedAtUtc": zod.string()
+  "recordedAtUtc": zod.string(),
+  "priorRepairs": zod.string().nullish(),
+  "priorClaims": zod.string().nullish(),
+  "policyActiveAtLoss": zod.boolean().nullish(),
+  "replacementCostCoverage": zod.boolean().nullish(),
+  "olCoverage": zod.boolean().nullish(),
+  "specialExclusions": zod.string().nullish(),
+  "lengthOfOwnership": zod.string().nullish(),
+  "knownRoofAge": zod.string().nullish(),
+  "knownSidingAge": zod.string().nullish(),
+  "homeAtTimeOfEvent": zod.boolean().nullish(),
+  "mitigationStepsPrior": zod.string().nullish(),
+  "previousClaimsOpened": zod.string().nullish(),
+  "currentClaimsOpened": zod.string().nullish(),
+  "previousRepairs": zod.string().nullish(),
+  "previousUnrepairedDamage": zod.string().nullish()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]).optional(),
   "roofDamageFound": zod.boolean().optional(),
   "sidingDamageFound": zod.boolean().optional(),
@@ -3479,21 +3501,21 @@ export const UpdateInspectionResponse = zod.object({
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "recordedAtUtc": zod.string(),
-  "priorRepairs": zod.string().nullable().optional(),
-  "priorClaims": zod.string().nullable().optional(),
-  "policyActiveAtLoss": zod.boolean().nullable().optional(),
-  "replacementCostCoverage": zod.boolean().nullable().optional(),
-  "olCoverage": zod.boolean().nullable().optional(),
-  "specialExclusions": zod.string().nullable().optional(),
-  "lengthOfOwnership": zod.string().nullable().optional(),
-  "knownRoofAge": zod.string().nullable().optional(),
-  "knownSidingAge": zod.string().nullable().optional(),
-  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
-  "mitigationStepsPrior": zod.string().nullable().optional(),
-  "previousClaimsOpened": zod.string().nullable().optional(),
-  "currentClaimsOpened": zod.string().nullable().optional(),
-  "previousRepairs": zod.string().nullable().optional(),
-  "previousUnrepairedDamage": zod.string().nullable().optional()
+  "priorRepairs": zod.string().nullish(),
+  "priorClaims": zod.string().nullish(),
+  "policyActiveAtLoss": zod.boolean().nullish(),
+  "replacementCostCoverage": zod.boolean().nullish(),
+  "olCoverage": zod.boolean().nullish(),
+  "specialExclusions": zod.string().nullish(),
+  "lengthOfOwnership": zod.string().nullish(),
+  "knownRoofAge": zod.string().nullish(),
+  "knownSidingAge": zod.string().nullish(),
+  "homeAtTimeOfEvent": zod.boolean().nullish(),
+  "mitigationStepsPrior": zod.string().nullish(),
+  "previousClaimsOpened": zod.string().nullish(),
+  "currentClaimsOpened": zod.string().nullish(),
+  "previousRepairs": zod.string().nullish(),
+  "previousUnrepairedDamage": zod.string().nullish()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -3936,6 +3958,9 @@ export const UpdateInspectionResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
   "interiorObservations": zod.array(zod.object({
@@ -4040,6 +4065,291 @@ export const EmailInspectionReportResponse = zod.object({
 
 
 /**
+ * @summary Get the stored AI summary for an inspection
+ */
+export const GetInspectionSummaryParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const GetInspectionSummaryResponse = zod.object({
+  "summary": zod.union([zod.object({
+  "forensicSummary": zod.string().describe('The AI-generated forensic damage narrative.'),
+  "repairabilityText": zod.string().describe('The AI-generated repairability analysis.'),
+  "confidence": zod.string().nullish(),
+  "missingOrUnverifiedItems": zod.array(zod.string()).optional(),
+  "qualityFlags": zod.array(zod.string()).optional(),
+  "generatedAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish(),
+  "editedBy": zod.string().nullish()
+}).describe('AI-generated forensic summary stored on an inspection.'),zod.null()])
+})
+
+
+/**
+ * @summary Generate (or regenerate) the AI forensic summary for an inspection
+ */
+export const GenerateInspectionSummaryParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const GenerateInspectionSummaryBody = zod.object({
+  "userPrompt": zod.string().optional().describe('Optional additional guidance to focus the AI summary.')
+})
+
+export const GenerateInspectionSummaryResponse = zod.object({
+  "summary": zod.union([zod.object({
+  "forensicSummary": zod.string().describe('The AI-generated forensic damage narrative.'),
+  "repairabilityText": zod.string().describe('The AI-generated repairability analysis.'),
+  "confidence": zod.string().nullish(),
+  "missingOrUnverifiedItems": zod.array(zod.string()).optional(),
+  "qualityFlags": zod.array(zod.string()).optional(),
+  "generatedAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish(),
+  "editedBy": zod.string().nullish()
+}).describe('AI-generated forensic summary stored on an inspection.'),zod.null()])
+})
+
+
+/**
+ * @summary Manually edit the stored AI summary narrative
+ */
+export const UpdateInspectionSummaryParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const UpdateInspectionSummaryBody = zod.object({
+  "forensicSummary": zod.string().optional(),
+  "repairabilityText": zod.string().optional()
+})
+
+export const UpdateInspectionSummaryResponse = zod.object({
+  "summary": zod.union([zod.object({
+  "forensicSummary": zod.string().describe('The AI-generated forensic damage narrative.'),
+  "repairabilityText": zod.string().describe('The AI-generated repairability analysis.'),
+  "confidence": zod.string().nullish(),
+  "missingOrUnverifiedItems": zod.array(zod.string()).optional(),
+  "qualityFlags": zod.array(zod.string()).optional(),
+  "generatedAt": zod.coerce.date(),
+  "editedAt": zod.coerce.date().nullish(),
+  "editedBy": zod.string().nullish()
+}).describe('AI-generated forensic summary stored on an inspection.'),zod.null()])
+})
+
+
+/**
+ * @summary Get the stored estimate for an inspection
+ */
+export const GetInspectionEstimateParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const GetInspectionEstimateResponse = zod.object({
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number(),
+  "measuredBasis": zod.object({
+  "totalRoofSqft": zod.number().nullish(),
+  "totalRoofSquares": zod.number().nullish(),
+  "adjustedRoofSquares": zod.number().nullish(),
+  "damagedSidingFacetCount": zod.number().nullish()
+}).optional(),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullish(),
+  "description": zod.string(),
+  "unit": zod.string().nullish(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected'])
+})).optional(),
+  "linkedPhotoIds": zod.array(zod.string()).optional(),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Save (full replace) the estimate for an inspection
+ */
+export const SaveInspectionEstimateParams = zod.object({
+  "inspectionId": zod.coerce.string()
+})
+
+export const saveInspectionEstimateBodyWastePercentMin = 0;
+export const saveInspectionEstimateBodyWastePercentMax = 100;
+
+export const saveInspectionEstimateBodyLinesItemDescriptionMax = 300;
+
+export const saveInspectionEstimateBodyLinesItemUnitMax = 60;
+
+export const saveInspectionEstimateBodyLinesItemUnitPriceCentsMin = 0;
+
+export const saveInspectionEstimateBodyLinesMax = 200;
+
+export const saveInspectionEstimateBodyNoteMax = 2000;
+
+
+
+export const SaveInspectionEstimateBody = zod.object({
+  "wastePercent": zod.number().min(saveInspectionEstimateBodyWastePercentMin).max(saveInspectionEstimateBodyWastePercentMax),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullish(),
+  "description": zod.string().min(1).max(saveInspectionEstimateBodyLinesItemDescriptionMax),
+  "unit": zod.string().max(saveInspectionEstimateBodyLinesItemUnitMax).nullish(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number().min(saveInspectionEstimateBodyLinesItemUnitPriceCentsMin),
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected'])
+})).optional()
+})).max(saveInspectionEstimateBodyLinesMax),
+  "note": zod.string().max(saveInspectionEstimateBodyNoteMax).nullish()
+})
+
+export const SaveInspectionEstimateResponse = zod.object({
+  "estimate": zod.union([zod.object({
+  "wastePercent": zod.number(),
+  "measuredBasis": zod.object({
+  "totalRoofSqft": zod.number().nullish(),
+  "totalRoofSquares": zod.number().nullish(),
+  "adjustedRoofSquares": zod.number().nullish(),
+  "damagedSidingFacetCount": zod.number().nullish()
+}).optional(),
+  "lines": zod.array(zod.object({
+  "priceBookItemId": zod.string().nullish(),
+  "description": zod.string(),
+  "unit": zod.string().nullish(),
+  "quantity": zod.number(),
+  "unitPriceCents": zod.number(),
+  "isAdder": zod.boolean(),
+  "evidenceLinks": zod.array(zod.object({
+  "targetType": zod.enum(['photo', 'damage_instance']),
+  "targetId": zod.string(),
+  "linkSource": zod.enum(['inspector', 'user', 'ai_suggested', 'imported']),
+  "reviewStatus": zod.enum(['unreviewed', 'approved', 'rejected'])
+})).optional(),
+  "linkedPhotoIds": zod.array(zod.string()).optional(),
+  "linkedDamageInstanceIds": zod.array(zod.string()).optional()
+})),
+  "subtotalCents": zod.number(),
+  "note": zod.string().nullish(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary List all price book items for the current user's company
+ */
+export const ListPriceBookItemsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "unitPrice": zod.number().describe('Unit price in cents.'),
+  "unit": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a new price book item (admin only)
+ */
+export const createPriceBookItemBodyNameMax = 200;
+
+export const createPriceBookItemBodyDescriptionMax = 2000;
+
+export const createPriceBookItemBodyUnitPriceMin = 0;
+
+export const createPriceBookItemBodyUnitMax = 60;
+
+
+
+export const CreatePriceBookItemBody = zod.object({
+  "name": zod.string().min(1).max(createPriceBookItemBodyNameMax),
+  "description": zod.string().max(createPriceBookItemBodyDescriptionMax).nullish(),
+  "unitPrice": zod.number().min(createPriceBookItemBodyUnitPriceMin),
+  "unit": zod.string().max(createPriceBookItemBodyUnitMax).nullish()
+})
+
+export const CreatePriceBookItemResponse = zod.object({
+  "item": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "unitPrice": zod.number().describe('Unit price in cents.'),
+  "unit": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update a price book item (admin only)
+ */
+export const UpdatePriceBookItemParams = zod.object({
+  "itemId": zod.coerce.string()
+})
+
+export const updatePriceBookItemBodyNameMax = 200;
+
+export const updatePriceBookItemBodyDescriptionMax = 2000;
+
+export const updatePriceBookItemBodyUnitPriceMin = 0;
+
+export const updatePriceBookItemBodyUnitMax = 60;
+
+
+
+export const UpdatePriceBookItemBody = zod.object({
+  "name": zod.string().min(1).max(updatePriceBookItemBodyNameMax).optional(),
+  "description": zod.string().max(updatePriceBookItemBodyDescriptionMax).nullish(),
+  "unitPrice": zod.number().min(updatePriceBookItemBodyUnitPriceMin).optional(),
+  "unit": zod.string().max(updatePriceBookItemBodyUnitMax).nullish()
+})
+
+export const UpdatePriceBookItemResponse = zod.object({
+  "item": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "unitPrice": zod.number().describe('Unit price in cents.'),
+  "unit": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete a price book item (admin only)
+ */
+export const DeletePriceBookItemParams = zod.object({
+  "itemId": zod.coerce.string()
+})
+
+export const DeletePriceBookItemResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Add a siding facet to an inspection (v2.1)
  */
 export const CreateInspectionSidingFacetParams = zod.object({
@@ -4062,7 +4372,7 @@ export const CreateInspectionSidingFacetBody = zod.object({
   "notes": zod.string().nullish(),
   "preExistingConditions": zod.array(zod.object({
   "note": zod.string()
-})).optional()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional()
 })
 
 export const CreateInspectionSidingFacetResponse = zod.object({
@@ -4081,7 +4391,7 @@ export const CreateInspectionSidingFacetResponse = zod.object({
   "notes": zod.string().nullable(),
   "preExistingConditions": zod.array(zod.object({
   "note": zod.string()
-})).optional(),
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -4110,7 +4420,7 @@ export const UpdateInspectionSidingFacetBody = zod.object({
   "notes": zod.string().nullish(),
   "preExistingConditions": zod.array(zod.object({
   "note": zod.string()
-})).optional()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional()
 }).describe('Partial siding-facet update — only supplied fields change.')
 
 export const UpdateInspectionSidingFacetResponse = zod.object({
@@ -4129,7 +4439,7 @@ export const UpdateInspectionSidingFacetResponse = zod.object({
   "notes": zod.string().nullable(),
   "preExistingConditions": zod.array(zod.object({
   "note": zod.string()
-})).optional(),
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })
 })
@@ -4766,21 +5076,21 @@ export const SubmitInspectionResponse = zod.object({
   "homeownerFacts": zod.union([zod.object({
   "awareOfDateOfLoss": zod.boolean().nullable(),
   "recordedAtUtc": zod.string(),
-  "priorRepairs": zod.string().nullable().optional(),
-  "priorClaims": zod.string().nullable().optional(),
-  "policyActiveAtLoss": zod.boolean().nullable().optional(),
-  "replacementCostCoverage": zod.boolean().nullable().optional(),
-  "olCoverage": zod.boolean().nullable().optional(),
-  "specialExclusions": zod.string().nullable().optional(),
-  "lengthOfOwnership": zod.string().nullable().optional(),
-  "knownRoofAge": zod.string().nullable().optional(),
-  "knownSidingAge": zod.string().nullable().optional(),
-  "homeAtTimeOfEvent": zod.boolean().nullable().optional(),
-  "mitigationStepsPrior": zod.string().nullable().optional(),
-  "previousClaimsOpened": zod.string().nullable().optional(),
-  "currentClaimsOpened": zod.string().nullable().optional(),
-  "previousRepairs": zod.string().nullable().optional(),
-  "previousUnrepairedDamage": zod.string().nullable().optional()
+  "priorRepairs": zod.string().nullish(),
+  "priorClaims": zod.string().nullish(),
+  "policyActiveAtLoss": zod.boolean().nullish(),
+  "replacementCostCoverage": zod.boolean().nullish(),
+  "olCoverage": zod.boolean().nullish(),
+  "specialExclusions": zod.string().nullish(),
+  "lengthOfOwnership": zod.string().nullish(),
+  "knownRoofAge": zod.string().nullish(),
+  "knownSidingAge": zod.string().nullish(),
+  "homeAtTimeOfEvent": zod.boolean().nullish(),
+  "mitigationStepsPrior": zod.string().nullish(),
+  "previousClaimsOpened": zod.string().nullish(),
+  "currentClaimsOpened": zod.string().nullish(),
+  "previousRepairs": zod.string().nullish(),
+  "previousUnrepairedDamage": zod.string().nullish()
 }).describe('Structured homeowner facts (E3). Plain factual intake only — no coverage, settlement, or advice language ever appears here.'),zod.null()]),
   "submissionManifest": zod.union([zod.object({
   "protocolVersion": zod.string(),
@@ -5223,6 +5533,9 @@ export const SubmitInspectionResponse = zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
 }).describe('One siding component slot (S{n}C{k}). Disposition is required by the gate before submission.')).describe('Positional component list — components[k-1] is S{n}C{k}. Each entry carries its disposition; each needs its own \'component\'-role photo whose sidingComponentIndex matches.'),
   "notes": zod.string().nullable(),
+  "preExistingConditions": zod.array(zod.object({
+  "note": zod.string()
+}).describe('One pre-existing or excluded condition on a siding facet — anything not being claimed, documented to make the rest of the claim credible.')).optional(),
   "createdAt": zod.coerce.date()
 })).optional().describe('v2.1 siding facets, populated by the detail view only.'),
   "interiorObservations": zod.array(zod.object({

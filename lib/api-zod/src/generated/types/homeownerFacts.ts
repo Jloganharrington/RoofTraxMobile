@@ -17,17 +17,30 @@ export interface HomeownerFacts {
   priorRepairs?: string | null;
   /** @nullable */
   priorClaims?: string | null;
+  /** @nullable */
   policyActiveAtLoss?: boolean | null;
+  /** @nullable */
   replacementCostCoverage?: boolean | null;
+  /** @nullable */
   olCoverage?: boolean | null;
+  /** @nullable */
   specialExclusions?: string | null;
+  /** @nullable */
   lengthOfOwnership?: string | null;
+  /** @nullable */
   knownRoofAge?: string | null;
+  /** @nullable */
   knownSidingAge?: string | null;
+  /** @nullable */
   homeAtTimeOfEvent?: boolean | null;
+  /** @nullable */
   mitigationStepsPrior?: string | null;
+  /** @nullable */
   previousClaimsOpened?: string | null;
+  /** @nullable */
   currentClaimsOpened?: string | null;
+  /** @nullable */
   previousRepairs?: string | null;
+  /** @nullable */
   previousUnrepairedDamage?: string | null;
 }

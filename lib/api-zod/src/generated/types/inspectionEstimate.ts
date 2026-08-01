@@ -5,19 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { InspectionEstimateLinesItem } from './inspectionEstimateLinesItem';
-import type { InspectionEstimateMeasuredBasis } from './inspectionEstimateMeasuredBasis';
+import type { EstimateLineItem } from './estimateLineItem';
+import type { MeasuredBasis } from './measuredBasis';
 
-/**
- * Advisory contractor estimate saved at the Estimate step. Money in integer cents; line rows snapshot the price-book values at save time. Null until a rep saves one. Populated by the detail view only.
- */
-export type InspectionEstimate = {
-  /** Waste factor applied to measured roof squares (10 = 10%). */
+export interface InspectionEstimate {
   wastePercent: number;
-  measuredBasis: InspectionEstimateMeasuredBasis;
-  lines: InspectionEstimateLinesItem[];
+  measuredBasis?: MeasuredBasis;
+  lines: EstimateLineItem[];
   subtotalCents: number;
   /** @nullable */
-  note: string | null;
+  note?: string | null;
   updatedAt: Date;
-} | null;
+}
