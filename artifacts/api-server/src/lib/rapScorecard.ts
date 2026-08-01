@@ -2,6 +2,8 @@ import type {
   RepairAttemptProtocol,
   RepairabilityAssessment,
   RapDamageCategoryKey,
+  RapSelection,
+  RapSelectionCriteria,
 } from '@workspace/db';
 
 // ── Repair Attempt Protocol (RAP) scorecard ────────────────────────────────
@@ -56,6 +58,9 @@ export interface RapReportSection {
   scorecard: RapScorecard;
   rap1PhotoId: string | null;
   examplePhotos: Array<{ photoId: string; categoryKey: RapDamageCategoryKey; label: string; note: string | null }>;
+  /** Target-shingle selection record. Absent on legacy assessments that
+   *  predate the selection step — renderers must treat it as optional. */
+  selection?: RapSelection | null;
 }
 
 /**
@@ -160,16 +165,27 @@ export function buildRapReportSection(assessment: unknown): RapReportSection | n
       note: entry?.finding?.note ?? null,
     };
   });
-  return { scorecard, rap1PhotoId: photos.rap1PhotoId, examplePhotos };
+  return { scorecard, rap1PhotoId: photos.rap1PhotoId, examplePhotos, selection: rap.selection ?? null };
 }
 
 /** Plain-text scorecard lines for the AI brief (matches report content). */
-export function rapScorecardBriefLines(scorecard: RapScorecard): string[] {
-  return [
+export function rapScorecardBriefLines(
+  scorecard: RapScorecard,
+  selection?: RapSelection | null,
+): string[] {
+  const lines: string[] = [
     `Repair Attempt Protocol scorecard:`,
     `  Manipulated shingles: ${scorecard.manipulatedShingles}`,
     `  New collateral-damaged shingles (unique): ${scorecard.newCollateralDamagedShingles}`,
     `  Mat-transfer findings on shingles 1-2: ${scorecard.matTransferCount}`,
     ...scorecard.categories.map((c) => `  ${c.label}: ${c.count}`),
   ];
+  if (selection?.mode === 'damaged_target') {
+    lines.push('  Selection criteria: confirmed (damaged target shingle)');
+  } else if (selection?.mode === 'fallback_slope') {
+    lines.push(
+      `  Selection criteria: fallback — no damaged shingle usable; note: ${selection.note ?? '(none)'}`,
+    );
+  }
+  return lines;
 }

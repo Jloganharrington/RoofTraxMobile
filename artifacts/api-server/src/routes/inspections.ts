@@ -3356,7 +3356,7 @@ function buildInspectionBrief(
         // Repair Attempt Protocol scorecard (asphalt-shingle roof flows).
         const rap = system === 'roof' ? extractRap(ra) : null;
         if (rap) {
-          for (const line of rapScorecardBriefLines(computeRapScorecard(rap))) {
+          for (const line of rapScorecardBriefLines(computeRapScorecard(rap), rap.selection)) {
             lines.push(`    ${line}`);
           }
         }
@@ -3377,7 +3377,7 @@ function buildInspectionBrief(
       }
       const rap = extractRap(ra);
       if (rap) {
-        for (const line of rapScorecardBriefLines(computeRapScorecard(rap))) {
+        for (const line of rapScorecardBriefLines(computeRapScorecard(rap), rap.selection)) {
           lines.push(`  ${line}`);
         }
       }
@@ -5157,7 +5157,40 @@ export async function renderCompiledReportHtml(opts: {
       .filter(Boolean)
       .join('');
 
-    rapSectionHtml = `${scorecardHtml}${
+    // Test Area Selection block — rendered only when the rep completed the
+    // selection step. Legacy assessments without it render nothing (no
+    // negative language for missing data).
+    let selectionHtml = '';
+    const sel = rapSection.selection;
+    if (sel) {
+      const confirmedCriteria: string[] = [
+        sel.criteria.fullLengthUncut ? 'full length and uncut' : null,
+        sel.criteria.twoCoursesAboveEave ? 'at least two courses above the eave' : null,
+        sel.criteria.fullShingleLengthFromEdges
+          ? 'at least one full shingle length from any rake, valley, or hip'
+          : null,
+        sel.criteria.freeOfPenetrations ? 'free of roof penetrations' : null,
+        sel.criteria.representativeExposure ? 'representative of overall roof exposure' : null,
+      ].filter((s): s is string => s !== null);
+
+      const fmtList = (items: string[]) =>
+        items.length <= 1
+          ? (items[0] ?? '')
+          : items.slice(0, -1).join(', ') + ', and ' + items[items.length - 1];
+
+      if (sel.mode === 'damaged_target') {
+        const all = ['target shingle with documented event-attributed damage', ...confirmedCriteria];
+        selectionHtml = `<p style="font-size:13px;margin-bottom:12px">Test area selection criteria were confirmed in the field prior to marking: ${escHtml(fmtList(all))}.</p>`;
+      } else if (sel.mode === 'fallback_slope') {
+        const noteText = sel.note ? ` Field note: ${escHtml(sel.note)}` : '';
+        selectionHtml = `<p style="font-size:13px;margin-bottom:8px">No event-damaged shingle was usable for the assessment; per protocol, the assessment was performed on a slope with identified damage.${noteText}</p>`;
+        if (confirmedCriteria.length > 0) {
+          selectionHtml += `<p style="font-size:13px;margin-bottom:12px">Confirmed site criteria: ${escHtml(fmtList(confirmedCriteria))}.</p>`;
+        }
+      }
+    }
+
+    rapSectionHtml = `${selectionHtml}${scorecardHtml}${
       rapCards ? `<div class="photo-grid" style="margin-top:16px">${rapCards}</div>` : ''
     }`;
   }

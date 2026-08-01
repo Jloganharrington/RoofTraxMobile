@@ -463,7 +463,32 @@ export interface RapDamageFinding {
   note?: string | null;
 }
 
+/** The five geometric/site criteria the rep confirms before marking. */
+export interface RapSelectionCriteria {
+  fullLengthUncut: boolean;
+  twoCoursesAboveEave: boolean;
+  fullShingleLengthFromEdges: boolean;
+  freeOfPenetrations: boolean;
+  representativeExposure: boolean;
+}
+
+/** Target-shingle selection record. Added after initial RAP launch — absent
+ *  on legacy assessments that predate the selection step. */
+export interface RapSelection {
+  /** 'damaged_target': the standard case — a shingle with documented
+   *  event-attributed damage was selected. 'fallback_slope': no usable
+   *  damaged shingle was available; protocol performed on a slope with
+   *  identified damage (note required). */
+  mode: 'damaged_target' | 'fallback_slope';
+  /** Required when mode === 'fallback_slope'. */
+  note?: string;
+  criteria: RapSelectionCriteria;
+}
+
 export interface RepairAttemptProtocol {
+  /** Target-shingle selection confirmations. Absent on assessments
+   *  predating the selection step — readers must treat it as optional. */
+  selection?: RapSelection | null;
   /** How many shingles required manipulation to complete the protocol
    * (6, 7, or 8). Null while unanswered; legacy records without it render
    * the historical fixed count. */

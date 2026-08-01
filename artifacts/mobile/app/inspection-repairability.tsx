@@ -323,13 +323,15 @@ export default function InspectionRepairabilityScreen() {
         } | null;
         rap?: {
           selection?: {
-            targetShingle?: 'damaged' | 'fallback' | null;
-            fallbackNote?: string | null;
-            fullLength?: boolean;
-            twoCourses?: boolean;
-            oneLength?: boolean;
-            noPenetrations?: boolean;
-            representative?: boolean;
+            mode?: 'damaged_target' | 'fallback_slope' | null;
+            note?: string | null;
+            criteria?: {
+              fullLengthUncut?: boolean;
+              twoCoursesAboveEave?: boolean;
+              fullShingleLengthFromEdges?: boolean;
+              freeOfPenetrations?: boolean;
+              representativeExposure?: boolean;
+            } | null;
           } | null;
           manipulatedCount?: 6 | 7 | 8 | null;
           rap1PhotoId?: string | null;
@@ -376,14 +378,15 @@ export default function InspectionRepairabilityScreen() {
         if (rap) {
           if (rap.selection) {
             const s = rap.selection;
+            const c = s.criteria ?? {};
             setRapSelection({
-              targetShingle: s.targetShingle ?? 'damaged',
-              fallbackNote: s.fallbackNote ?? '',
-              fullLength: s.fullLength ?? false,
-              twoCourses: s.twoCourses ?? false,
-              oneLength: s.oneLength ?? false,
-              noPenetrations: s.noPenetrations ?? false,
-              representative: s.representative ?? false,
+              targetShingle: s.mode === 'fallback_slope' ? 'fallback' : 'damaged',
+              fallbackNote: s.note ?? '',
+              fullLength: c.fullLengthUncut ?? false,
+              twoCourses: c.twoCoursesAboveEave ?? false,
+              oneLength: c.fullShingleLengthFromEdges ?? false,
+              noPenetrations: c.freeOfPenetrations ?? false,
+              representative: c.representativeExposure ?? false,
             });
           }
           setManipulatedCount(rap.manipulatedCount ?? null);
@@ -722,18 +725,24 @@ export default function InspectionRepairabilityScreen() {
                 : null,
               rap: rapIncluded
                 ? {
-                    selection: {
-                      targetShingle: rapSelection.targetShingle,
-                      fallbackNote:
-                        rapSelection.targetShingle === 'fallback'
-                          ? rapSelection.fallbackNote.trim() || null
-                          : null,
-                      fullLength: rapSelection.fullLength,
-                      twoCourses: rapSelection.twoCourses,
-                      oneLength: rapSelection.oneLength,
-                      noPenetrations: rapSelection.noPenetrations,
-                      representative: rapSelection.representative,
-                    },
+                    selection: rapSelection.targetShingle != null
+                      ? {
+                          mode: rapSelection.targetShingle === 'fallback'
+                            ? ('fallback_slope' as const)
+                            : ('damaged_target' as const),
+                          ...(rapSelection.targetShingle === 'fallback' &&
+                          rapSelection.fallbackNote.trim()
+                            ? { note: rapSelection.fallbackNote.trim() }
+                            : {}),
+                          criteria: {
+                            fullLengthUncut: rapSelection.fullLength,
+                            twoCoursesAboveEave: rapSelection.twoCourses,
+                            fullShingleLengthFromEdges: rapSelection.oneLength,
+                            freeOfPenetrations: rapSelection.noPenetrations,
+                            representativeExposure: rapSelection.representative,
+                          },
+                        }
+                      : null,
                     manipulatedCount,
                     rap1PhotoId,
                     matTransfer: { shingle1: matTransfer[1], shingle2: matTransfer[2] },
