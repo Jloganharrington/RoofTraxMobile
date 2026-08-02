@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser } from "@workspace/api-client-react";
-import { ClipboardList, Users, BookOpen, LogOut, Loader2, ShieldCheck } from "lucide-react";
+import { Kanban, MapPin, ClipboardList, Users, BookOpen, LogOut, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ShellProps {
@@ -27,9 +27,11 @@ export function Shell({ children }: ShellProps) {
   };
 
   const navItems = [
-    { label: "Inspections", path: "/inspections", icon: ClipboardList },
-    { label: "Team",        path: "/team",        icon: Users },
-    { label: "Price Book",  path: "/price-book",  icon: BookOpen },
+    { label: "Pipeline",     path: "/pipeline",     icon: Kanban },
+    { label: "Leads",        path: "/leads",        icon: MapPin },
+    { label: "Inspections",  path: "/inspections",  icon: ClipboardList },
+    { label: "Team",         path: "/team",         icon: Users },
+    { label: "Price Book",   path: "/price-book",   icon: BookOpen },
   ];
 
   return (
@@ -49,7 +51,13 @@ export function Shell({ children }: ShellProps) {
         {/* Nav */}
         <nav className="flex-1 p-3 space-y-0.5">
           {navItems.map((item) => {
-            const isActive = location.startsWith(item.path);
+            // Pipeline and Inspections: active when path starts with /pipeline or /inspections
+            // but /inspections/:id should highlight Pipeline, not Inspections
+            const isActive = location === item.path ||
+              (item.path === "/pipeline" && (location.startsWith("/pipeline") || (location.startsWith("/inspections/") && !location.includes("/estimate") && !location.includes("/summary") && !location.includes("/curation")))) ||
+              (item.path !== "/pipeline" && location.startsWith(item.path) && item.path !== "/inspections") ||
+              (item.path === "/inspections" && location === "/inspections");
+
             return (
               <Link
                 key={item.path}

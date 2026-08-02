@@ -6,7 +6,7 @@ import { Shell } from "@/components/layout/Shell";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Loader2, FileText, Calculator } from "lucide-react";
+import { Search, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function InspectionList() {
@@ -84,17 +84,11 @@ export default function InspectionList() {
                   <TableCell className="text-muted-foreground">
                     {format(new Date(inspection.createdAt), 'MMM d, yyyy')}
                   </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Link href={`/inspections/${inspection.id}/summary`} className="inline-block">
+                  <TableCell className="text-right">
+                    <Link href={`/inspections/${inspection.id}`} className="inline-block">
                       <Button variant="ghost" size="sm" className="h-8 gap-1">
-                        <FileText className="h-3.5 w-3.5" />
-                        Summary
-                      </Button>
-                    </Link>
-                    <Link href={`/inspections/${inspection.id}/estimate`} className="inline-block">
-                      <Button variant="ghost" size="sm" className="h-8 gap-1">
-                        <Calculator className="h-3.5 w-3.5" />
-                        Estimate
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Open
                       </Button>
                     </Link>
                   </TableCell>

@@ -4,9 +4,12 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 
 import Home from '@/pages/Home';
 import InspectionList from '@/pages/inspections/InspectionList';
+import ClaimHub from '@/pages/ClaimHub';
 import Summary from '@/pages/inspections/Summary';
 import Estimate from '@/pages/inspections/Estimate';
 import PhotoCuration from '@/pages/inspections/PhotoCuration';
+import Pipeline from '@/pages/pipeline/Pipeline';
+import Leads from '@/pages/leads/Leads';
 import TeamList from '@/pages/team/TeamList';
 import PriceBookList from '@/pages/price-book/PriceBookList';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -37,11 +40,22 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      
+
       {/* Protected Routes */}
+      <Route path="/pipeline">
+        <ProtectedRoute><Pipeline /></ProtectedRoute>
+      </Route>
+      <Route path="/leads">
+        <ProtectedRoute><Leads /></ProtectedRoute>
+      </Route>
       <Route path="/inspections">
         <ProtectedRoute><InspectionList /></ProtectedRoute>
       </Route>
+      {/* Claim Hub — primary claim surface */}
+      <Route path="/inspections/:id">
+        <ProtectedRoute><ClaimHub /></ProtectedRoute>
+      </Route>
+      {/* Legacy deep-link routes kept for backward compat */}
       <Route path="/inspections/:id/summary">
         <ProtectedRoute><Summary /></ProtectedRoute>
       </Route>

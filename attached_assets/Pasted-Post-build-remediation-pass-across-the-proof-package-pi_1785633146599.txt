@@ -1,0 +1,52 @@
+Post-build remediation pass across the proof package pipeline (#120–#122, #125, #126 are built). Six fixes — schema, logic, and data migration where values already exist. Work through them in order; several have migration steps that must run before the logic change deploys.
+
+=== FIX 1 — IICRC compile deadlock (standards_entries) ===
+Current behavior: IICRC S500/S520 entries are hardcoded verify_before_ship, and readiness item 9 blocks compile on any verify_before_ship reference — so any package with interior water scope can never compile.
+Changes:
+1. Add column humanEnteredProvisionsOnly (boolean, default false) to standards_entries.
+2. Migration: set humanEnteredProvisionsOnly = true on all IICRC entries; set their verificationStatus to 'verified' with verifiedAt = their edition-verification date (S500-2021 and S520-2024 are edition-verified) — remove any code path that forces IICRC entries to verify_before_ship.
+3. Generation workers: exclude entries with humanEnteredProvisionsOnly from AI prompt context entirely; where a section needs the citation, emit a placeholder token the reviewer completes (the license restriction is about standard TEXT entering the AI pipeline, not verification status).
+4. Add a citation-readiness check: an entry with humanEnteredProvisionsOnly = true cannot be cited by a section until its locatorTemplate is human-populated (non-empty); surface as a lint finding on the section, not a compile crash.
+5. Test: a claim with interior_scope_present = true and verified IICRC entries passes readiness item 9 and compiles.
+
+=== FIX 2 — Report attestation uses wrong block (Variant A misuse) ===
+Current behavior: when preparerId === inspectorId, the compiler renders attestation_block_a as the report attestation. That is wrong — block_a is the FIELD attestation, already frozen in the field record from mobile Stage 10; it asserts field acts at the property on the inspection date and must never render as the report signature.
+Changes:
+1. Compiler always selects attestation_block_b for the report attestation, in all cases.
+2. attestation_block_b renders an internal conditional on preparer_is_inspector: same person → single "Prepared and attested by" block; different people → "Field record attested by {inspector, credentials, inspection date}" + "Report prepared by {preparer, credentials}" with the signature line under the preparer. If the current block_b library content lacks this conditional structure, update the seeded content accordingly (new version row, never mutate).
+3. Remove all block-selection logic keyed on preparerId === inspectorId.
+4. Test: same-person and split-person claims both render block_b; block_a appears nowhere in the compiled report except where the field record itself is reproduced.
+
+=== FIX 3 — Compile/attest circularity ===
+Current behavior: the compiler reads reportAttestations at render time and the snapshot includes reportAttestationId — impossible for a blob compiled before attestation exists, and any post-hoc blob mutation breaks snapshot immutability.
+Changes:
+1. "Attest & Sign Report" flow becomes: (a) write the reportAttestations row referencing the current compiled blob version; (b) automatically trigger a final recompile producing a NEW blob version whose rendered attestation block and generationSnapshot include reportAttestationId and preparedAt.
+2. The pre-attestation blob remains in compiledReportVersions as the review version. Never mutate an existing blob.
+3. Deliver gate: POST /inspections/:id/deliver returns 422 unless a blob version exists whose snapshot contains a reportAttestationId (i.e., the signed recompile). Gate on the signed blob, not on the reportAttestations row alone.
+4. The exhibitBadgeMap is already frozen, so the signed recompile must be layout-identical except the attestation block — add a test asserting badge assignments and section versions are unchanged between the review blob and the signed blob.
+5. Migration: any existing compiled blobs referencing a reportAttestationId that was added after compile should be left as-is but flagged; going forward only the new flow runs.
+
+=== FIX 4 — Comparison type vocabulary (photo curation) ===
+Current behavior: comparison pairs use 'pre-loss / post-loss' framing. That is the rare case — the operative comparison types are same-day condition differentiation per the caption pattern library (Class 6).
+Changes:
+1. Comparison type enum becomes exactly: 'recency' (recent-character indicators vs documented pre-existing), 'cause_differentiation' (localized condition vs general weathering), 'covered_vs_unrelated' (event damage vs animal/mechanical/other unrelated).
+2. Migration: map any existing stored pairs — 'pre_loss_post_loss' or equivalent → 'recency'; condition-differentiating → 'cause_differentiation'.
+3. The captions generator branches caption structure on this enum per Class 6: one set caption plus one caption per photo stating precisely what that photo contributes to the comparison.
+4. Update the pair-builder UI labels to the three types with one-line descriptions.
+
+=== FIX 5 — Badge freezing reconciliation (#125 vs #122) ===
+Current behavior risk: photo badges assign at exhibit finalization (curation) while the compiler also assigns badges "at first compile" — two writers to exhibitBadgeMap.
+Changes:
+1. Confirm/enforce: exhibit finalization badges photo slots; first compile badges ONLY remaining non-photo content slots; both operations are append-only against the same exhibitBadgeMap; counters never reset; nothing ever renumbers.
+2. Add a guard: compile must not assign a badge to any slot already present in assignments, and must not touch counters for classes it adds nothing to.
+3. Test: finalize exhibits → compile → add supplement photo → recompile: original assignments byte-identical, new photo takes next counter in its class.
+
+=== FIX 6 — Caption staleness on exhibit changes ===
+Current behavior: exhibit set changes after captions are generated/locked leave stale captions locked.
+Changes:
+1. Any change to the exhibit set or any comparison pair after the captions section reaches generated/approved/locked flips the captions section to in_review with staledBy: 'exhibit_set_change', clearing its lock — same stale-propagation mechanism as the DAG rule.
+2. Findings approval is likewise invalidated (photoComparisonConfirmed cleared, findings back to in_review) if a confirmed comparison pair is removed or changed.
+3. Both events append to claim_events.
+4. Test: lock captions → remove one exhibit → captions and findings both in_review with staledBy set; timeline shows the events.
+
+Run the full existing test suite after all six; the fixes touch readiness, compile, attestation, and curation paths that #120's UI states depend on.

@@ -6229,4 +6229,364 @@ router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: R
   res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
 });
 
+// =============================================================================
+// PIPELINE (company-wide manager view) — Task #120
+// =============================================================================
+
+// GET /pipeline
+// Company-wide inspection list with rep identity, for the CRM pipeline board.
+// Accessible to any user with inspection module access; returns all company
+// inspections rather than the actor-scoped list at GET /inspections.
+router.get('/pipeline', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const rows = await db
+    .select({
+      id: inspectionsTable.id,
+      address: inspectionsTable.address,
+      status: inspectionsTable.status,
+      phase: inspectionsTable.phase,
+      damageType: inspectionsTable.damageType,
+      compiledReportVersions: inspectionsTable.compiledReportVersions,
+      createdAt: inspectionsTable.createdAt,
+      updatedAt: inspectionsTable.updatedAt,
+      inspectorUserId: inspectionsTable.inspectorUserId,
+      repFirstName: usersTable.firstName,
+      repLastName: usersTable.lastName,
+    })
+    .from(inspectionsTable)
+    .leftJoin(usersTable, eq(usersTable.id, inspectionsTable.inspectorUserId))
+    .where(eq(inspectionsTable.companyId, actor.companyId))
+    .orderBy(desc(inspectionsTable.updatedAt));
+
+  const inspections = rows.map((r) => ({
+    id: r.id,
+    address: r.address,
+    status: r.status,
+    phase: r.phase,
+    damageType: r.damageType,
+    compiledReportVersions: (r.compiledReportVersions ?? []) as Array<{
+      path: string;
+      compiledAt: string;
+      schemaVersion?: number;
+      lintStatus?: string;
+    }>,
+    repName: r.repFirstName
+      ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ')
+      : null,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+
+  res.json({ inspections });
+});
+
+// =============================================================================
+// CLAIM HUB ROUTES (Task #120)
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/readiness
+// Stage 0 readiness checklist. Returns pass/fail/warning for each prerequisite.
+// Full validation engine lands in Task #121; this route implements reasonable
+// DB-backed checks using the data that already exists.
+// ---------------------------------------------------------------------------
+router.get('/inspections/:inspectionId/readiness', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  // Run all checks in parallel
+  const [products, attests, measurements, testSquares] = await Promise.all([
+    db.select({ id: inspectionProductsTable.id, method: inspectionProductsTable.identificationMethod })
+      .from(inspectionProductsTable)
+      .where(and(
+        eq(inspectionProductsTable.inspectionId, inspectionId),
+        eq(inspectionProductsTable.companyId, actor.companyId),
+      )),
+    db.select({ id: attestationsTable.id, type: attestationsTable.attestationType })
+      .from(attestationsTable)
+      .where(and(
+        eq(attestationsTable.inspectionId, inspectionId),
+        eq(attestationsTable.companyId, actor.companyId),
+      )),
+    db.select({ id: measurementsTable.id })
+      .from(measurementsTable)
+      .where(and(
+        eq(measurementsTable.inspectionId, inspectionId),
+        eq(measurementsTable.companyId, actor.companyId),
+      ))
+      .limit(1),
+    db.select({ id: testSquaresTable.id })
+      .from(testSquaresTable)
+      .where(and(
+        eq(testSquaresTable.inspectionId, inspectionId),
+        eq(testSquaresTable.companyId, actor.companyId),
+      ))
+      .limit(1),
+  ]);
+
+  // Product ID check: at least one product with a real identification (not unidentifiable)
+  const determinedProducts = products.filter(p => p.method !== 'unidentifiable');
+  const productIdItem = (() => {
+    if (determinedProducts.length > 0) {
+      return { key: 'product_id', label: 'Product ID determination recorded', state: 'pass' as const, detail: null };
+    }
+    if (products.length > 0) {
+      return { key: 'product_id', label: 'Product ID determination recorded', state: 'warning' as const, detail: 'Product recorded as unidentifiable — confirm lab submission if applicable.' };
+    }
+    return { key: 'product_id', label: 'Product ID determination recorded', state: 'fail' as const, detail: 'No product identification on record.' };
+  })();
+
+  // Attested field record
+  const hasAttestation = attests.length > 0;
+  const attestItem = {
+    key: 'field_record_attested',
+    label: 'Attested field record',
+    state: hasAttestation ? 'pass' as const : 'fail' as const,
+    detail: hasAttestation ? null : 'Field record has not been attested by the inspector.',
+  };
+
+  // Storm data
+  const hasStorm = inspection.stormConfirmedRef != null;
+  const stormItem = {
+    key: 'storm_data',
+    label: 'Storm event confirmed',
+    state: hasStorm ? 'pass' as const : 'fail' as const,
+    detail: hasStorm ? null : 'No storm event has been confirmed for this inspection.',
+  };
+
+  // Measurement report
+  const hasMeasurement = measurements.length > 0 || inspection.measurementsReportUrl != null;
+  const measurementItem = {
+    key: 'measurement_report',
+    label: 'Measurement report',
+    state: hasMeasurement ? 'pass' as const : 'warning' as const,
+    detail: hasMeasurement ? null : 'No measurement report attached. Required for roof estimates.',
+  };
+
+  // RAP record
+  const hasTestSquares = testSquares.length > 0;
+  const rapAssessment = inspection.repairabilityAssessment as { warranted?: string } | null;
+  const rapGateReason = rapAssessment?.warranted;
+  const rapItem = (() => {
+    if (hasTestSquares) {
+      return { key: 'rap_record', label: 'RAP record present', state: 'pass' as const, detail: null };
+    }
+    if (rapGateReason === 'not_warranted_discontinued') {
+      return { key: 'rap_record', label: 'RAP: gate reason recorded — Not Warranted (Discontinued)', state: 'pass' as const, detail: null };
+    }
+    if (rapGateReason === 'not_authorized') {
+      return { key: 'rap_record', label: 'RAP: gate reason recorded — Not Authorized', state: 'pass' as const, detail: null };
+    }
+    return { key: 'rap_record', label: 'RAP record present', state: 'fail' as const, detail: 'No RAP test squares recorded and no gate reason on file.' };
+  })();
+
+  const items = [productIdItem, attestItem, stormItem, measurementItem, rapItem];
+  const overallPass = items.every(i => i.state !== 'fail');
+
+  res.json({ inspectionId, overallPass, items });
+});
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/sections
+// Returns section lifecycle states. Stub implementation — Task #122 builds
+// the full section pipeline and claim_sections table.
+// ---------------------------------------------------------------------------
+const SECTION_TYPES = [
+  'findings',
+  'causation',
+  'detriment_application',
+  'rap_narrative',
+  'estimate_justifications',
+  'summary_of_findings',
+  'closing_statement',
+] as const;
+
+router.get('/inspections/:inspectionId/sections', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  // Stub: return all sections as not_started until Task #122 creates claim_sections
+  const sections = SECTION_TYPES.map(sectionType => ({
+    sectionType,
+    state: 'not_started',
+    content: null,
+    gateFlags: null,
+    generatedAt: null,
+    approvedAt: null,
+    lockedAt: null,
+    rapMode: null,
+  }));
+
+  res.json({ sections });
+});
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/sections/:sectionType/generate
+// Stub — generation pipeline lands in Task #122.
+// ---------------------------------------------------------------------------
+router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const sectionType = req.params.sectionType as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  if (!SECTION_TYPES.includes(sectionType as typeof SECTION_TYPES[number])) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+
+  res.status(501).json({
+    error: 'AI generation pipeline not yet available.',
+    detail: 'Per-section generation is implemented in the generation pipeline task.',
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/sections/:sectionType/approve
+// Stub — section lifecycle managed by Task #122.
+// ---------------------------------------------------------------------------
+router.post('/inspections/:inspectionId/sections/:sectionType/approve', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const sectionType = req.params.sectionType as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  if (!SECTION_TYPES.includes(sectionType as typeof SECTION_TYPES[number])) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+
+  res.status(501).json({
+    error: 'Section lifecycle not yet available.',
+    detail: 'Section approve is implemented in the generation pipeline task.',
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/sections/:sectionType/lock
+// Stub — section lifecycle managed by Task #122.
+// ---------------------------------------------------------------------------
+router.post('/inspections/:inspectionId/sections/:sectionType/lock', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const sectionType = req.params.sectionType as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  if (!SECTION_TYPES.includes(sectionType as typeof SECTION_TYPES[number])) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+
+  res.status(501).json({
+    error: 'Section lifecycle not yet available.',
+    detail: 'Section lock is implemented in the generation pipeline task.',
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/events
+// Chronological claim event log from claimEventsTable.
+// ---------------------------------------------------------------------------
+router.get('/inspections/:inspectionId/events', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const events = await db
+    .select()
+    .from(claimEventsTable)
+    .where(and(
+      eq(claimEventsTable.inspectionId, inspectionId),
+      eq(claimEventsTable.companyId, actor.companyId),
+    ))
+    .orderBy(claimEventsTable.createdAt);
+
+  res.json({
+    events: events.map(e => ({
+      id: e.id,
+      eventType: e.eventType,
+      payload: e.payload,
+      actorId: e.actorId,
+      createdAt: e.createdAt.toISOString(),
+    })),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /leads
+// All pins (door-knock leads) for the authenticated user's company.
+// Includes the inspectionId when a linked inspection exists.
+// ---------------------------------------------------------------------------
+router.get('/leads', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const companyId = req.user.companyId;
+
+  const rows = await db
+    .select({
+      id: pinsTable.id,
+      address: pinsTable.address,
+      workflow: pinsTable.workflow,
+      damageType: pinsTable.damageType,
+      doorKnockResult: pinsTable.doorKnockResult,
+      contactOutcome: pinsTable.contactOutcome,
+      customerName: pinsTable.customerName,
+      customerPhone: pinsTable.customerPhone,
+      retailData: pinsTable.retailData,
+      userId: pinsTable.userId,
+      createdAt: pinsTable.createdAt,
+      repFirstName: usersTable.firstName,
+      repLastName: usersTable.lastName,
+      inspectionId: inspectionsTable.id,
+    })
+    .from(pinsTable)
+    .leftJoin(usersTable, eq(usersTable.id, pinsTable.userId))
+    .leftJoin(
+      inspectionsTable,
+      and(
+        eq(inspectionsTable.pinId, pinsTable.id),
+        eq(inspectionsTable.companyId, companyId),
+      ),
+    )
+    .where(eq(pinsTable.companyId, companyId))
+    .orderBy(desc(pinsTable.createdAt));
+
+  const leads = rows.map(r => ({
+    id: r.id,
+    address: r.address,
+    workflow: r.workflow,
+    damageType: r.damageType,
+    doorKnockResult: r.doorKnockResult,
+    contactOutcome: r.contactOutcome,
+    customerName: r.customerName,
+    customerPhone: r.customerPhone,
+    retailData: r.retailData,
+    repName: r.repFirstName && r.repLastName ? `${r.repFirstName} ${r.repLastName}` : (r.repFirstName ?? null),
+    inspectionId: r.inspectionId ?? null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+
+  res.json({ leads });
+});
+
 export default router;
+
