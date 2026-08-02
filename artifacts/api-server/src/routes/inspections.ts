@@ -1162,6 +1162,14 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
       }),
       ...(parsed.data.measurementsReportUrl !== undefined && {
         measurementsReportUrl: parsed.data.measurementsReportUrl,
+        // When the measurements PDF is replaced (URL changes), immediately clear
+        // stale facet inventory so the confirm screen falls back to the manual
+        // slope-ordering path rather than showing outdated counts/areas/pitches.
+        ...(parsed.data.measurementsReportUrl !== inspection.measurementsReportUrl && {
+          facetInventory: null,
+          facetCount: null,
+          facetInventoryStatus: null,
+        }),
       }),
       // REPORT_DATA v2 capture blocks. Whole-object replace (no partial
       // merge) — the client always sends the full block.
@@ -1183,6 +1191,15 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     })
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
+
+  // When the measurements PDF was replaced, purge the per-facet rows that
+  // belong to the old analysis so a future re-analyze always starts clean.
+  if (
+    parsed.data.measurementsReportUrl !== undefined &&
+    parsed.data.measurementsReportUrl !== inspection.measurementsReportUrl
+  ) {
+    await db.delete(roofFacetsTable).where(eq(roofFacetsTable.inspectionId, inspectionId));
+  }
 
   res.json(
     UpdateInspectionResponse.parse({
