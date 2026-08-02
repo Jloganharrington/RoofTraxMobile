@@ -18,6 +18,7 @@ import priceBookRouter from "./priceBook";
 import discontinuedProductsRouter from "./discontinuedProducts";
 import agreementRouter from "./agreement";
 import portalRouter from "./portal";
+import libraryRouter from "./library";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(priceBookRouter);
 router.use(discontinuedProductsRouter);
 router.use(agreementRouter);
 router.use(portalRouter);
+router.use(libraryRouter);
 
 export default router;

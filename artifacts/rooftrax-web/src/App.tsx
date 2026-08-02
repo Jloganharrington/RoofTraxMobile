@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 
 import Home from '@/pages/Home';
+import LibraryPage from '@/pages/settings/LibraryPage';
 import InspectionList from '@/pages/inspections/InspectionList';
 import ClaimHub from '@/pages/ClaimHub';
 import Summary from '@/pages/inspections/Summary';
@@ -70,6 +71,9 @@ function Router() {
       </Route>
       <Route path="/price-book">
         <ProtectedRoute><PriceBookList /></ProtectedRoute>
+      </Route>
+      <Route path="/settings/library">
+        <ProtectedRoute><LibraryPage /></ProtectedRoute>
       </Route>
 
       <Route component={NotFound} />

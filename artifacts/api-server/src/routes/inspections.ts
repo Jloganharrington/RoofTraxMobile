@@ -87,6 +87,9 @@ import {
   claimEventsTable,
   exhibitCaptionsTable,
   type ExhibitClass,
+  claimSectionsTable,
+  standardsEntriesTable,
+  ahjPacksTable,
 } from '@workspace/db';
 import type {
   Role,
@@ -130,6 +133,7 @@ type ProofPackageReportData = Pick<
   signaturePath: string | null;
 };
 import { buildPortalAccessFromRequest, generatePortalAccessCode } from '../lib/portalAccess';
+import { computeReadiness } from '../lib/readiness';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
 import {
   DETERMINATION_LABELS,
@@ -4210,6 +4214,86 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
     return;
   }
 
+  // ── Stage 0 readiness re-validation ───────────────────────────────────────
+  // Server-side gate: recompute the full 9-item readiness checklist before
+  // accepting a compile request. Any hard 'fail' item blocks compile so the
+  // UI cannot be bypassed by a direct API call.
+  {
+    const [
+      compileProducts,
+      compileAttests,
+      compileTestSquares,
+      compileDamageInstances,
+      compileSlopes,
+      [compileCompany],
+      compileAhjPacks,
+      compileLegacyPacks,
+      compileClaimSections,
+      compileStandardsEntries,
+    ] = await Promise.all([
+      db.select({
+        identificationMethod: inspectionProductsTable.identificationMethod,
+        discontinued: inspectionProductsTable.discontinued,
+        ordinaryAvailability: inspectionProductsTable.ordinaryAvailability,
+      }).from(inspectionProductsTable)
+        .where(and(eq(inspectionProductsTable.inspectionId, inspectionId), eq(inspectionProductsTable.companyId, actor.companyId))),
+      db.select({ attestationType: attestationsTable.attestationType })
+        .from(attestationsTable)
+        .where(and(eq(attestationsTable.inspectionId, inspectionId), eq(attestationsTable.companyId, actor.companyId))),
+      db.select({ id: testSquaresTable.id })
+        .from(testSquaresTable)
+        .where(and(eq(testSquaresTable.inspectionId, inspectionId), eq(testSquaresTable.companyId, actor.companyId))),
+      db.select({ id: damageInstancesTable.id })
+        .from(damageInstancesTable)
+        .where(and(eq(damageInstancesTable.inspectionId, inspectionId), eq(damageInstancesTable.companyId, actor.companyId)))
+        .limit(1),
+      db.select({ materialType: inspectionSlopesTable.materialType })
+        .from(inspectionSlopesTable)
+        .where(and(eq(inspectionSlopesTable.inspectionId, inspectionId), eq(inspectionSlopesTable.companyId, actor.companyId))),
+      db.select({ contractorLicenses: companiesTable.contractorLicenses, qualificationsText: companiesTable.qualificationsText })
+        .from(companiesTable).where(eq(companiesTable.id, actor.companyId)).limit(1),
+      db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+        .from(ahjPacksTable).where(eq(ahjPacksTable.companyId, actor.companyId)),
+      db.select({ state: companyJurisdictionPacksTable.state })
+        .from(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, actor.companyId)),
+      db.select({ sectionType: claimSectionsTable.sectionType, libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot })
+        .from(claimSectionsTable).where(eq(claimSectionsTable.inspectionId, inspectionId)),
+      db.select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus })
+        .from(standardsEntriesTable).where(eq(standardsEntriesTable.companyId, actor.companyId)),
+    ]);
+
+    const readinessResult = computeReadiness({
+      inspectionId,
+      inspection: {
+        ...inspection,
+        rapGateReason: (inspection.rapGateReason as string | null | undefined) ?? null,
+        estimate: (inspection.estimate as { lines?: Array<{ description?: string; categoryCode?: string }> } | null),
+        temporaryRepairs: (inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null),
+        propertyProfile: (inspection.propertyProfile as { structureType?: string; garageAttached?: boolean } | null),
+        interiorDamageFound: inspection.interiorDamageFound,
+      },
+      products: compileProducts.map(p => ({ identificationMethod: p.identificationMethod, discontinued: p.discontinued ?? null, ordinaryAvailability: p.ordinaryAvailability ?? null })),
+      slopes: compileSlopes,
+      attestations: compileAttests.map(a => ({ attestationType: a.attestationType ?? null })),
+      testSquaresCount: compileTestSquares.length,
+      damageInstancesCount: compileDamageInstances.length,
+      company: { contractorLicenses: compileCompany?.contractorLicenses ?? null, qualificationsText: compileCompany?.qualificationsText ?? null },
+      ahjPacks: compileAhjPacks,
+      legacyJurisdictionStates: compileLegacyPacks.map(p => p.state),
+      claimSections: compileClaimSections.map(s => ({ sectionType: s.sectionType, libraryVersionSnapshot: (s.libraryVersionSnapshot as { standardsEntryKeys?: string[] } | null) ?? null })),
+      standardsEntries: compileStandardsEntries.map(e => ({ entryKey: e.entryKey, verificationStatus: e.verificationStatus })),
+    });
+
+    if (!readinessResult.overallPass) {
+      const failingItems = readinessResult.items.filter(i => i.state === 'fail');
+      res.status(400).json({
+        error: 'Claim is not ready to compile. Resolve the following readiness items first.',
+        failingItems: failingItems.map(i => ({ key: i.key, label: i.label, detail: i.detail })),
+      });
+      return;
+    }
+  }
+
   // Load children and inspector info in parallel.
   const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
   const [[inspectorUser], [inspectorProfile]] = await Promise.all([
@@ -6300,96 +6384,114 @@ router.get('/inspections/:inspectionId/readiness', async (req: Request, res: Res
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
-  // Run all checks in parallel
-  const [products, attests, measurements, testSquares] = await Promise.all([
-    db.select({ id: inspectionProductsTable.id, method: inspectionProductsTable.identificationMethod })
+  // Fetch all data needed for the full 9-item readiness check in parallel.
+  const [
+    products,
+    attests,
+    testSquares,
+    damageInstances,
+    slopes,
+    [company],
+    ahjPacks,
+    legacyJurisdictionPacks,
+    claimSections,
+    standardsEntries,
+  ] = await Promise.all([
+    db.select({
+      identificationMethod: inspectionProductsTable.identificationMethod,
+      discontinued: inspectionProductsTable.discontinued,
+      ordinaryAvailability: inspectionProductsTable.ordinaryAvailability,
+    })
       .from(inspectionProductsTable)
       .where(and(
         eq(inspectionProductsTable.inspectionId, inspectionId),
         eq(inspectionProductsTable.companyId, actor.companyId),
       )),
-    db.select({ id: attestationsTable.id, type: attestationsTable.attestationType })
+    db.select({ attestationType: attestationsTable.attestationType })
       .from(attestationsTable)
       .where(and(
         eq(attestationsTable.inspectionId, inspectionId),
         eq(attestationsTable.companyId, actor.companyId),
       )),
-    db.select({ id: measurementsTable.id })
-      .from(measurementsTable)
-      .where(and(
-        eq(measurementsTable.inspectionId, inspectionId),
-        eq(measurementsTable.companyId, actor.companyId),
-      ))
-      .limit(1),
     db.select({ id: testSquaresTable.id })
       .from(testSquaresTable)
       .where(and(
         eq(testSquaresTable.inspectionId, inspectionId),
         eq(testSquaresTable.companyId, actor.companyId),
+      )),
+    db.select({ id: damageInstancesTable.id })
+      .from(damageInstancesTable)
+      .where(and(
+        eq(damageInstancesTable.inspectionId, inspectionId),
+        eq(damageInstancesTable.companyId, actor.companyId),
       ))
       .limit(1),
+    db.select({ materialType: inspectionSlopesTable.materialType })
+      .from(inspectionSlopesTable)
+      .where(and(
+        eq(inspectionSlopesTable.inspectionId, inspectionId),
+        eq(inspectionSlopesTable.companyId, actor.companyId),
+      )),
+    db.select({
+      contractorLicenses: companiesTable.contractorLicenses,
+      qualificationsText: companiesTable.qualificationsText,
+    })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, actor.companyId))
+      .limit(1),
+    db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+      .from(ahjPacksTable)
+      .where(eq(ahjPacksTable.companyId, actor.companyId)),
+    db.select({ state: companyJurisdictionPacksTable.state })
+      .from(companyJurisdictionPacksTable)
+      .where(eq(companyJurisdictionPacksTable.companyId, actor.companyId)),
+    db.select({
+      sectionType: claimSectionsTable.sectionType,
+      libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot,
+    })
+      .from(claimSectionsTable)
+      .where(eq(claimSectionsTable.inspectionId, inspectionId)),
+    db.select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus })
+      .from(standardsEntriesTable)
+      .where(eq(standardsEntriesTable.companyId, actor.companyId)),
   ]);
 
-  // Product ID check: at least one product with a real identification (not unidentifiable)
-  const determinedProducts = products.filter(p => p.method !== 'unidentifiable');
-  const productIdItem = (() => {
-    if (determinedProducts.length > 0) {
-      return { key: 'product_id', label: 'Product ID determination recorded', state: 'pass' as const, detail: null };
-    }
-    if (products.length > 0) {
-      return { key: 'product_id', label: 'Product ID determination recorded', state: 'warning' as const, detail: 'Product recorded as unidentifiable — confirm lab submission if applicable.' };
-    }
-    return { key: 'product_id', label: 'Product ID determination recorded', state: 'fail' as const, detail: 'No product identification on record.' };
-  })();
+  const result = computeReadiness({
+    inspectionId,
+    inspection: {
+      ...inspection,
+      rapGateReason: (inspection.rapGateReason as string | null | undefined) ?? null,
+      estimate: (inspection.estimate as { lines?: Array<{ description?: string; categoryCode?: string }> } | null),
+      temporaryRepairs: (inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null),
+      propertyProfile: (inspection.propertyProfile as { structureType?: string; garageAttached?: boolean } | null),
+      interiorDamageFound: inspection.interiorDamageFound,
+    },
+    products: products.map(p => ({
+      identificationMethod: p.identificationMethod,
+      discontinued: p.discontinued ?? null,
+      ordinaryAvailability: p.ordinaryAvailability ?? null,
+    })),
+    slopes,
+    attestations: attests.map(a => ({ attestationType: a.attestationType ?? null })),
+    testSquaresCount: testSquares.length,
+    damageInstancesCount: damageInstances.length,
+    company: {
+      contractorLicenses: company?.contractorLicenses ?? null,
+      qualificationsText: company?.qualificationsText ?? null,
+    },
+    ahjPacks,
+    legacyJurisdictionStates: legacyJurisdictionPacks.map(p => p.state),
+    claimSections: claimSections.map(s => ({
+      sectionType: s.sectionType,
+      libraryVersionSnapshot: (s.libraryVersionSnapshot as { standardsEntryKeys?: string[] } | null) ?? null,
+    })),
+    standardsEntries: standardsEntries.map(e => ({
+      entryKey: e.entryKey,
+      verificationStatus: e.verificationStatus,
+    })),
+  });
 
-  // Attested field record
-  const hasAttestation = attests.length > 0;
-  const attestItem = {
-    key: 'field_record_attested',
-    label: 'Attested field record',
-    state: hasAttestation ? 'pass' as const : 'fail' as const,
-    detail: hasAttestation ? null : 'Field record has not been attested by the inspector.',
-  };
-
-  // Storm data
-  const hasStorm = inspection.stormConfirmedRef != null;
-  const stormItem = {
-    key: 'storm_data',
-    label: 'Storm event confirmed',
-    state: hasStorm ? 'pass' as const : 'fail' as const,
-    detail: hasStorm ? null : 'No storm event has been confirmed for this inspection.',
-  };
-
-  // Measurement report
-  const hasMeasurement = measurements.length > 0 || inspection.measurementsReportUrl != null;
-  const measurementItem = {
-    key: 'measurement_report',
-    label: 'Measurement report',
-    state: hasMeasurement ? 'pass' as const : 'warning' as const,
-    detail: hasMeasurement ? null : 'No measurement report attached. Required for roof estimates.',
-  };
-
-  // RAP record
-  const hasTestSquares = testSquares.length > 0;
-  const rapAssessment = inspection.repairabilityAssessment as { warranted?: string } | null;
-  const rapGateReason = rapAssessment?.warranted;
-  const rapItem = (() => {
-    if (hasTestSquares) {
-      return { key: 'rap_record', label: 'RAP record present', state: 'pass' as const, detail: null };
-    }
-    if (rapGateReason === 'not_warranted_discontinued') {
-      return { key: 'rap_record', label: 'RAP: gate reason recorded — Not Warranted (Discontinued)', state: 'pass' as const, detail: null };
-    }
-    if (rapGateReason === 'not_authorized') {
-      return { key: 'rap_record', label: 'RAP: gate reason recorded — Not Authorized', state: 'pass' as const, detail: null };
-    }
-    return { key: 'rap_record', label: 'RAP record present', state: 'fail' as const, detail: 'No RAP test squares recorded and no gate reason on file.' };
-  })();
-
-  const items = [productIdItem, attestItem, stormItem, measurementItem, rapItem];
-  const overallPass = items.every(i => i.state !== 'fail');
-
-  res.json({ inspectionId, overallPass, items });
+  res.json(result);
 });
 
 // ---------------------------------------------------------------------------
@@ -6415,17 +6517,31 @@ router.get('/inspections/:inspectionId/sections', async (req: Request, res: Resp
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
-  // Stub: return all sections as not_started until Task #122 creates claim_sections
-  const sections = SECTION_TYPES.map(sectionType => ({
-    sectionType,
-    state: 'not_started',
-    content: null,
-    gateFlags: null,
-    generatedAt: null,
-    approvedAt: null,
-    lockedAt: null,
-    rapMode: null,
-  }));
+  // Read from claim_sections. Rows are created by Task #122's generation pipeline.
+  // Until then, return all section types as not_started (matching the pre-Task#122 stub).
+  const rows = await db
+    .select()
+    .from(claimSectionsTable)
+    .where(eq(claimSectionsTable.inspectionId, inspectionId));
+
+  const rowsByType = new Map(rows.map(r => [r.sectionType, r]));
+
+  const sections = SECTION_TYPES.map(sectionType => {
+    const row = rowsByType.get(sectionType);
+    return {
+      sectionType,
+      state: row?.state ?? 'not_started',
+      contentHtml: row?.contentHtml ?? null,
+      gateFlags: row?.gateFlags ?? null,
+      lintStatus: row?.lintStatus ?? null,
+      lintFindings: row?.lintFindings ?? null,
+      generatedAt: row?.generatedAt ?? null,
+      lockedAt: row?.lockedAt ?? null,
+      lockedBy: row?.lockedBy ?? null,
+      libraryVersionSnapshot: row?.libraryVersionSnapshot ?? null,
+      rapMode: (row?.gateFlags as { rapMode?: string } | null)?.rapMode ?? null,
+    };
+  });
 
   res.json({ sections });
 });

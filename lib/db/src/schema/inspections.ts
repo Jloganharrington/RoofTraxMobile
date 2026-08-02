@@ -824,6 +824,16 @@ export const inspectionsTable = pgTable('inspections', {
   // Rep-chosen date for the Phase 2 (forensic) inspection, set in the
   // post-agreement scheduling flow. Null until the rep books a date.
   scheduledFor: timestamp('scheduled_for', { withTimezone: true }),
+  // Stage 0: RAP gate reason — set when an inspector documents why the RAP
+  // protocol does not apply to this claim. Gates downstream generation.
+  // `not_warranted_discontinued` is only valid when product_id_class='identified'.
+  rapGateReason: varchar('rap_gate_reason', {
+    enum: ['not_warranted_discontinued', 'not_authorized'],
+  }),
+  // Deterministic trigger flags derived from the field record (Task #121).
+  // Recomputed and stored when the field record is attested or any material
+  // input changes. Never use the stored value for gating — always recompute.
+  triggerFlags: jsonb('trigger_flags'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -1153,6 +1163,15 @@ export const inspectionProductsTable = pgTable('inspection_products', {
   itelSampleRef: text('itel_sample_ref'),
   unidentifiableReason: text('unidentifiable_reason'),
   notes: text('notes'),
+  // Product determination fields added in Task #121. Null until desk-verified.
+  // `discontinued`: whether the product is still manufactured.
+  discontinued: varchar('discontinued', {
+    enum: ['still_manufactured', 'discontinued', 'not_verified'],
+  }),
+  // `ordinaryAvailability`: whether the product can be reasonably sourced.
+  ordinaryAvailability: varchar('ordinary_availability', {
+    enum: ['available', 'not_reasonably_available', 'not_assessed'],
+  }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -1414,6 +1433,185 @@ export const exhibitCaptionsTable = pgTable('exhibit_captions', {
     .$onUpdate(() => new Date()),
 });
 
+// =============================================================================
+// BOILERPLATE LIBRARY (Task #121)
+// =============================================================================
+
+// Valid section keys for the per-tenant boilerplate library.
+export const BOILERPLATE_SECTION_KEYS = [
+  'opening_statement',
+  'inspection_method',
+  'caption_patterns',
+  'rap_field_protocol',
+  'attestation_block_a',
+  'attestation_block_b',
+  'attestation_block_c',
+  'uniform_inspection_procedure',
+  'product_id_methodology',
+  'scope_block',
+  'std_rpr_01_source_record',
+] as const;
+export type BoilerplateSectionKey = (typeof BOILERPLATE_SECTION_KEYS)[number];
+
+/**
+ * Per-tenant versioned boilerplate library. A new row is created for every
+ * save — never mutate an existing version row. The latest active version is
+ * the highest version per (companyId, sectionKey).
+ */
+export const boilerplateSectionsTable = pgTable('boilerplate_sections', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  sectionKey: varchar('section_key', { enum: BOILERPLATE_SECTION_KEYS }).notNull(),
+  content: text('content').notNull().default(''),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: varchar('created_by').references(() => usersTable.id, { onDelete: 'set null' }),
+});
+
+export const STANDARDS_VERIFICATION_STATUSES = ['verified', 'verify_before_ship'] as const;
+export type StandardsVerificationStatus = (typeof STANDARDS_VERIFICATION_STATUSES)[number];
+
+/**
+ * Structured Standards Citation Library — individual entries queryable by key.
+ * `verify_before_ship` entries block compile until verifiedAt is set.
+ * IICRC S500/S520 entries are always `verify_before_ship`.
+ */
+export const standardsEntriesTable = pgTable('standards_entries', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  entryKey: varchar('entry_key').notNull(), // e.g. 'ASTM-D3161'
+  sourceType: varchar('source_type'), // e.g. 'ASTM', 'IRC', 'IBC', 'IICRC'
+  citationText: text('citation_text'),
+  verificationStatus: varchar('verification_status', {
+    enum: STANDARDS_VERIFICATION_STATUSES,
+  })
+    .notNull()
+    .default('verify_before_ship'),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  authorityLimit: text('authority_limit'),
+  locatorTemplate: text('locator_template'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: varchar('created_by').references(() => usersTable.id, { onDelete: 'set null' }),
+});
+
+/**
+ * Structured Detriment Library with machine-readable Applicability gates.
+ * Generation workers filter to entries whose applicabilityConditions are all
+ * present in the attested field record before building the prompt.
+ */
+export const detrimentEntriesTable = pgTable('detriment_entries', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  entryKey: varchar('entry_key').notNull(), // e.g. 'DET-AS-01'
+  // Array of condition codes (e.g. ['hail_damage', 'deck_exposed']) — ALL must
+  // be present in the attested field record for this entry to apply.
+  applicabilityConditions: jsonb('applicability_conditions').notNull().default([]),
+  statement: text('statement').notNull().default(''),
+  requiredSupport: text('required_support'),
+  limitation: text('limitation'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: varchar('created_by').references(() => usersTable.id, { onDelete: 'set null' }),
+});
+
+export const AHJ_PACK_TYPES = ['ahj_roof', 'ahj_siding'] as const;
+export type AhjPackType = (typeof AHJ_PACK_TYPES)[number];
+
+/**
+ * Per-tenant jurisdiction packs (AHJ-Roof, AHJ-Siding). Items are a jsonb
+ * array of { key, citationText, edition, trigger?, active }.
+ */
+export const ahjPacksTable = pgTable('ahj_packs', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  packType: varchar('pack_type', { enum: AHJ_PACK_TYPES }).notNull(),
+  jurisdiction: text('jurisdiction').notNull(),
+  items: jsonb('items').notNull().default([]),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: varchar('created_by').references(() => usersTable.id, { onDelete: 'set null' }),
+});
+
+// =============================================================================
+// CLAIM SECTIONS (Task #121 — full lifecycle in Task #122)
+// =============================================================================
+
+export const CLAIM_SECTION_TYPES = [
+  'findings',
+  'causation',
+  'detriment_application',
+  'rap_narrative',
+  'estimate_justifications',
+  'summary_of_findings',
+  'closing_statement',
+  'captions',
+] as const;
+export type ClaimSectionType = (typeof CLAIM_SECTION_TYPES)[number];
+
+export const CLAIM_SECTION_STATES = [
+  'not_started',
+  'generating',
+  'generated',
+  'in_review',
+  'approved',
+  'locked',
+] as const;
+export type ClaimSectionState = (typeof CLAIM_SECTION_STATES)[number];
+
+/**
+ * Per-inspection section lifecycle. One row per (inspectionId, sectionType).
+ * Replaced by real content when the AI generation pipeline runs (Task #122).
+ * `libraryVersionSnapshot` records the BP/AHJ/standards versions used at
+ * generation time so the claim remains auditable after library updates.
+ */
+export const claimSectionsTable = pgTable('claim_sections', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  sectionType: varchar('section_type', { enum: CLAIM_SECTION_TYPES }).notNull(),
+  state: varchar('state', { enum: CLAIM_SECTION_STATES }).notNull().default('not_started'),
+  contentHtml: text('content_html'),
+  lintStatus: varchar('lint_status'),
+  lintFindings: jsonb('lint_findings'),
+  // Stores reviewer confirmations and resolved gate booleans (e.g. causation
+  // reviewer checkbox, RAP slope mode, comparison-pass confirmation).
+  gateFlags: jsonb('gate_flags'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }),
+  lockedAt: timestamp('locked_at', { withTimezone: true }),
+  lockedBy: varchar('locked_by').references(() => usersTable.id, { onDelete: 'set null' }),
+  // Snapshot of library versions used at generation time — BP section versions,
+  // AHJ pack versions, and the set of standardsEntryKeys referenced.
+  libraryVersionSnapshot: jsonb('library_version_snapshot'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 export type Inspection = typeof inspectionsTable.$inferSelect;
 export type InspectionAddendum = typeof inspectionAddendaTable.$inferSelect;
 export type CompanyCrmConfig = typeof companyCrmConfigTable.$inferSelect;
@@ -1435,3 +1633,8 @@ export type ExhibitSelection = typeof exhibitSelectionsTable.$inferSelect;
 export type ComparisonPair = typeof comparisonPairsTable.$inferSelect;
 export type ClaimEvent = typeof claimEventsTable.$inferSelect;
 export type ExhibitCaption = typeof exhibitCaptionsTable.$inferSelect;
+export type BoilerplateSection = typeof boilerplateSectionsTable.$inferSelect;
+export type StandardsEntry = typeof standardsEntriesTable.$inferSelect;
+export type DetrimentEntry = typeof detrimentEntriesTable.$inferSelect;
+export type AhjPack = typeof ahjPacksTable.$inferSelect;
+export type ClaimSection = typeof claimSectionsTable.$inferSelect;

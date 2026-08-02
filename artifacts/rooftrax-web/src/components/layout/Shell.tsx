@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser } from "@workspace/api-client-react";
-import { Kanban, MapPin, ClipboardList, Users, BookOpen, LogOut, Loader2, ShieldCheck } from "lucide-react";
+import { Kanban, MapPin, Library, ClipboardList, Users, BookOpen, LogOut, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface ShellProps {
@@ -32,6 +32,7 @@ export function Shell({ children }: ShellProps) {
     { label: "Inspections",  path: "/inspections",  icon: ClipboardList },
     { label: "Team",         path: "/team",         icon: Users },
     { label: "Price Book",   path: "/price-book",   icon: BookOpen },
+    { label: "Library",      path: "/settings/library", icon: Library },
   ];
 
   return (
