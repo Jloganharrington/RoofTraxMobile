@@ -49,6 +49,7 @@ import {
 } from '@/components/DiscontinuedProductsModal';
 import { buildProtocolState, stageDeficiencies } from '@/lib/inspectionProtocolState';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
+import { getPendingMeasurements } from '@/lib/pendingMeasurements';
 import { storagePhotoUri, useStorageAuthHeaders } from '@/components/DiscontinuedProductsModal';
 
 // Step 3 · Roof Inspection (protocol v2). Eave/Edge components → Facets →
@@ -131,9 +132,16 @@ export default function InspectionRoofScreen() {
   const inspection = inspectionQuery.data?.inspection;
 
   const refetch = inspectionQuery.refetch;
+
+  // Tracks whether there are AI-parsed measurements awaiting confirmation.
+  // Re-checked every time this screen gains focus so returning from the
+  // confirm screen clears the gate automatically.
+  const [hasPending, setHasPending] = React.useState(() => getPendingMeasurements() !== null);
+
   useFocusEffect(
     React.useCallback(() => {
       void refetch();
+      setHasPending(getPendingMeasurements() !== null);
     }, [refetch]),
   );
 
@@ -792,6 +800,25 @@ export default function InspectionRoofScreen() {
             <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
           </Pressable>
         ) : facets.length === 0 ? (
+          hasPending ? (
+            // AI measurements have been parsed but not yet confirmed — send
+            // the inspector to the review screen before they can seed facets.
+            <Pressable
+              onPress={() => router.push({ pathname: '/inspection-measurements-confirm', params: { id } })}
+              style={[styles.card, { backgroundColor: '#fffbeb', borderColor: '#f59e0b' }]}
+            >
+              <View style={styles.cardHead}>
+                <Icon name="zap" size={18} color="#f59e0b" />
+                <Text style={[styles.rowTitle, { color: colors.foreground, flex: 1, marginLeft: 8 }]}>
+                  Review AI measurements first
+                </Text>
+                <Icon name="chevron-right" size={18} color="#f59e0b" />
+              </View>
+              <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
+                Confirm which slopes are in scope and designate your entry point before assigning facet IDs. Your confirmed slopes will seed the facet list automatically.
+              </Text>
+            </Pressable>
+          ) : (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.rowTitle, { color: colors.foreground }]}>How many facets does this roof have?</Text>
             <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
@@ -813,6 +840,7 @@ export default function InspectionRoofScreen() {
               {seeding ? <ActivityIndicator color={colors.primaryForeground} /> : <Text style={[styles.saveBtnText, { color: colors.primaryForeground }]}>Create facet list</Text>}
             </Pressable>
           </View>
+          )
         ) : (
           <>
             {facets.map((facet) => {
