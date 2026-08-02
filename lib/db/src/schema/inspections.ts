@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { uniqueIndex } from 'drizzle-orm/pg-core';
 import {
   boolean,
   doublePrecision,
@@ -1376,6 +1377,7 @@ export const CLAIM_EVENT_TYPES = [
   'section_approved',
   'section_locked',
   'compiled',
+  'report_attested',
   'delivered',
   'supplemented',
   'exhibit_selected',
@@ -1646,3 +1648,52 @@ export type StandardsEntry = typeof standardsEntriesTable.$inferSelect;
 export type DetrimentEntry = typeof detrimentEntriesTable.$inferSelect;
 export type AhjPack = typeof ahjPacksTable.$inferSelect;
 export type ClaimSection = typeof claimSectionsTable.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// REPORT ATTESTATIONS (Task #126)
+// ---------------------------------------------------------------------------
+// Records a named preparer's Variant B sign-off on a compiled proof package.
+// One row per compiled blob version (enforced by unique constraint on
+// inspectionId + blobVersionIndex). The blobVersionIndex is the 0-based
+// position in the inspection's compiledReportVersions jsonb array.
+
+export const reportAttestationsTable = pgTable(
+  'report_attestations',
+  {
+    id: varchar('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    inspectionId: varchar('inspection_id')
+      .notNull()
+      .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id),
+    /** The user who submitted the attestation (may differ from inspectorUserId). */
+    preparerId: varchar('preparer_id')
+      .notNull()
+      .references(() => usersTable.id),
+    preparedAt: timestamp('prepared_at', { withTimezone: true }).notNull().defaultNow(),
+    /** 0-based index into the inspection's compiledReportVersions jsonb array. */
+    blobVersionIndex: integer('blob_version_index').notNull(),
+    /** SHA-256 hex digest of statementText at the moment of signing. */
+    statementHash: varchar('statement_hash', { length: 64 }).notNull(),
+    /** Full statement text shown to the preparer at signing — the hash proves it. */
+    statementText: text('statement_text').notNull(),
+    /**
+     * attestation_block_a → preparer and inspector are the same person.
+     * attestation_block_b → preparer and inspector are different people.
+     */
+    attestationBlockKey: varchar('attestation_block_key', {
+      enum: ['attestation_block_a', 'attestation_block_b'],
+    }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Prevent double-attestation of the same blob version on the same claim.
+    uniqueIndex('report_attestations_inspection_version_idx').on(t.inspectionId, t.blobVersionIndex),
+  ],
+);
+
+export type ReportAttestation = typeof reportAttestationsTable.$inferSelect;
+export type NewReportAttestation = typeof reportAttestationsTable.$inferInsert;

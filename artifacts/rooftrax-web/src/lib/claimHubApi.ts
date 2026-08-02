@@ -197,6 +197,67 @@ export function useGetEvents(
 }
 
 // ---------------------------------------------------------------------------
+// Report Attestation (Variant B — Task #126)
+// ---------------------------------------------------------------------------
+
+export interface ReportAttestationRecord {
+  id: string;
+  preparerId: string;
+  preparedAt: string;
+  blobVersionIndex: number;
+  attestationBlockKey: 'attestation_block_a' | 'attestation_block_b';
+  statementHash: string;
+  statementText: string;
+}
+
+export type ReportAttestationResult =
+  | { attested: true; attestation: ReportAttestationRecord }
+  | {
+      attested: false;
+      reason?: string;
+      blobVersionIndex?: number;
+      statementText?: string;
+      preparerName?: string | null;
+      isSameIdentity?: boolean;
+    };
+
+export const getReportAttestationQueryKey = (id: string) =>
+  ['inspection', id, 'report-attestation'] as const;
+
+export function useGetReportAttestation(
+  inspectionId: string,
+  options?: Omit<UseQueryOptions<ReportAttestationResult>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getReportAttestationQueryKey(inspectionId),
+    queryFn: () =>
+      customFetch<ReportAttestationResult>(
+        `/api/inspections/${inspectionId}/report-attestation`,
+      ),
+    enabled: !!inspectionId,
+    ...options,
+  });
+}
+
+export function useAttestReport(inspectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      customFetch<{ attested: true; attestation: ReportAttestationRecord }>(
+        `/api/inspections/${inspectionId}/report-attestation`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ acknowledged: true }),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getReportAttestationQueryKey(inspectionId) });
+      qc.invalidateQueries({ queryKey: getGetInspectionQueryKey(inspectionId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Compile
 // ---------------------------------------------------------------------------
 
@@ -217,6 +278,10 @@ export function useCompileReport(inspectionId: string) {
       // Bust the exact cache key used by useGetInspection so compiledReportVersions
       // updates immediately in the Package version list.
       qc.invalidateQueries({ queryKey: getGetInspectionQueryKey(inspectionId) });
+      // A new compile creates a new blob version index — the previous attestation
+      // no longer covers the latest version. Invalidate so the UI reflects that
+      // re-attestation is required rather than showing the stale "Report Attested" badge.
+      qc.invalidateQueries({ queryKey: getReportAttestationQueryKey(inspectionId) });
     },
   });
 }

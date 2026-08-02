@@ -92,6 +92,7 @@ import {
   ahjPacksTable,
   boilerplateSectionsTable,
   detrimentEntriesTable,
+  reportAttestationsTable,
 } from '@workspace/db';
 import type {
   Role,
@@ -2873,11 +2874,297 @@ router.post('/inspections/:inspectionId/addenda', async (req: Request, res: Resp
   res.status(201).json(CreateInspectionAddendumResponse.parse({ addendum }));
 });
 
+// ---------------------------------------------------------------------------
+// Shared helper — build the canonical attestation statement text shown to the
+// preparer and stored (with its SHA-256) in the report_attestations row.
+// Both GET (preview) and POST (commit) must produce identical text from the
+// same inputs so the hash verifies.
+// ---------------------------------------------------------------------------
+function buildReportAttestationStatement(opts: {
+  preparerFirstName: string | null;
+  preparerLastName: string | null;
+  address: string | null;
+  claimNumber: string | null;
+  compiledAt: string;
+  isSameIdentity: boolean;
+  inspectorFirstName?: string | null;
+  inspectorLastName?: string | null;
+}): string {
+  const preparerName =
+    [opts.preparerFirstName, opts.preparerLastName].filter(Boolean).join(' ') ||
+    'Preparer';
+  const property = [
+    opts.address,
+    opts.claimNumber ? `(Claim No. ${opts.claimNumber})` : null,
+  ]
+    .filter(Boolean)
+    .join(' ') || 'this inspection';
+  const compiledDate = opts.compiledAt
+    ? new Date(opts.compiledAt).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : 'an unknown date';
+
+  const inspectorLine =
+    !opts.isSameIdentity && (opts.inspectorFirstName || opts.inspectorLastName)
+      ? ` The field inspection was conducted by ${[opts.inspectorFirstName, opts.inspectorLastName].filter(Boolean).join(' ')}.`
+      : '';
+
+  return (
+    `I, ${preparerName}, certify that I have personally reviewed the compiled ` +
+    `proof package for ${property}, compiled on ${compiledDate}, and that the ` +
+    `contents of this package accurately represent the findings documented and ` +
+    `attested in the field record for this inspection.${inspectorLine} By ` +
+    `submitting this attestation I authorize this package for delivery.`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/report-attestation
+// Returns the Variant B attestation for the current (latest) compiled blob
+// version, or a preview of the statement text if not yet attested.
+// ---------------------------------------------------------------------------
+router.get('/inspections/:inspectionId/report-attestation', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const versions = (inspection.compiledReportVersions ?? []) as Array<{
+    path: string;
+    generatedAt: string;
+    schemaVersion?: number;
+    lintStatus?: string;
+  }>;
+
+  if (versions.length === 0) {
+    return void res.json({ attested: false, reason: 'No compiled version exists yet' });
+  }
+
+  const currentIndex = versions.length - 1;
+  const currentVersion = versions[currentIndex]!;
+
+  const [existingAttestation] = await db
+    .select()
+    .from(reportAttestationsTable)
+    .where(
+      and(
+        eq(reportAttestationsTable.inspectionId, inspectionId),
+        eq(reportAttestationsTable.blobVersionIndex, currentIndex),
+      ),
+    )
+    .limit(1);
+
+  if (existingAttestation) {
+    return void res.json({
+      attested: true,
+      attestation: {
+        id: existingAttestation.id,
+        preparerId: existingAttestation.preparerId,
+        preparedAt: existingAttestation.preparedAt,
+        blobVersionIndex: existingAttestation.blobVersionIndex,
+        attestationBlockKey: existingAttestation.attestationBlockKey,
+        statementHash: existingAttestation.statementHash,
+        statementText: existingAttestation.statementText,
+      },
+    });
+  }
+
+  // Build the preview statement so the UI can show exactly what the preparer
+  // will be signing before they submit.
+  const [preparer, inspector] = await Promise.all([
+    db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, actor.userId))
+      .limit(1),
+    db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, inspection.inspectorUserId))
+      .limit(1),
+  ]);
+
+  const preparerRow = preparer[0] ?? { firstName: null, lastName: null };
+  const inspectorRow = inspector[0] ?? { firstName: null, lastName: null };
+  const isSameIdentity = actor.userId === inspection.inspectorUserId;
+
+  const statementText = buildReportAttestationStatement({
+    preparerFirstName: preparerRow.firstName,
+    preparerLastName: preparerRow.lastName,
+    address: inspection.address ?? null,
+    claimNumber: inspection.claimNumber ?? null,
+    compiledAt: currentVersion.generatedAt,
+    isSameIdentity,
+    inspectorFirstName: inspectorRow.firstName,
+    inspectorLastName: inspectorRow.lastName,
+  });
+
+  res.json({
+    attested: false,
+    blobVersionIndex: currentIndex,
+    statementText,
+    preparerName:
+      [preparerRow.firstName, preparerRow.lastName].filter(Boolean).join(' ') || null,
+    isSameIdentity,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/report-attestation
+// Variant B: preparer explicitly acknowledges the compiled package and
+// authorizes delivery. Creates a report_attestations row and a claim_event.
+// Body: { acknowledged: true }
+//
+// Gating: compiled report must exist; the current version must not already be
+// attested. Double-attestation is blocked by a DB unique constraint on
+// (inspection_id, blob_version_index).
+// ---------------------------------------------------------------------------
+router.post('/inspections/:inspectionId/report-attestation', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  // Attestation is a legally meaningful mutation — use the full write gate so
+  // only the assigned inspector, a manager, or an admin can sign off on a claim.
+  // allowLocked: true because compiled packages are in a locked state but still
+  // need to accept attestation before delivery.
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const versions = (inspection.compiledReportVersions ?? []) as Array<{
+    path: string;
+    generatedAt: string;
+    schemaVersion?: number;
+    lintStatus?: string;
+  }>;
+
+  if (versions.length === 0) {
+    return void res.status(422).json({
+      error: 'No compiled report exists. Compile the report before attesting.',
+    });
+  }
+
+  const body = req.body as { acknowledged?: boolean } | null;
+  if (body?.acknowledged !== true) {
+    return void res.status(422).json({
+      error: 'acknowledged: true is required. The preparer must explicitly confirm the attestation statement.',
+    });
+  }
+
+  const currentIndex = versions.length - 1;
+  const currentVersion = versions[currentIndex]!;
+
+  // Check for existing attestation — unique constraint is the DB-level guard,
+  // but we give a friendly 409 rather than letting a constraint exception propagate.
+  const [existingAttestation] = await db
+    .select({ id: reportAttestationsTable.id })
+    .from(reportAttestationsTable)
+    .where(
+      and(
+        eq(reportAttestationsTable.inspectionId, inspectionId),
+        eq(reportAttestationsTable.blobVersionIndex, currentIndex),
+      ),
+    )
+    .limit(1);
+
+  if (existingAttestation) {
+    return void res.status(409).json({
+      error: 'This compiled version has already been attested.',
+      attestationId: existingAttestation.id,
+    });
+  }
+
+  const [preparer, inspector] = await Promise.all([
+    db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, actor.userId))
+      .limit(1),
+    db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, inspection.inspectorUserId))
+      .limit(1),
+  ]);
+
+  const preparerRow = preparer[0] ?? { firstName: null, lastName: null };
+  const inspectorRow = inspector[0] ?? { firstName: null, lastName: null };
+  const isSameIdentity = actor.userId === inspection.inspectorUserId;
+
+  const statementText = buildReportAttestationStatement({
+    preparerFirstName: preparerRow.firstName,
+    preparerLastName: preparerRow.lastName,
+    address: inspection.address ?? null,
+    claimNumber: inspection.claimNumber ?? null,
+    compiledAt: currentVersion.generatedAt,
+    isSameIdentity,
+    inspectorFirstName: inspectorRow.firstName,
+    inspectorLastName: inspectorRow.lastName,
+  });
+
+  // SHA-256 of the exact statement text — binds the attestation to the content.
+  const { createHash } = await import('node:crypto');
+  const statementHash = createHash('sha256').update(statementText, 'utf8').digest('hex');
+
+  // Block 'a' = same person signs both; Block 'b' = split preparer/inspector.
+  const attestationBlockKey = isSameIdentity ? 'attestation_block_a' : 'attestation_block_b';
+
+  const now = new Date();
+  const [attestation] = await db
+    .insert(reportAttestationsTable)
+    .values({
+      inspectionId,
+      companyId: actor.companyId,
+      preparerId: actor.userId,
+      preparedAt: now,
+      blobVersionIndex: currentIndex,
+      statementText,
+      statementHash,
+      attestationBlockKey,
+    })
+    .returning();
+
+  // Append a claim event for the audit trail.
+  await db.insert(claimEventsTable).values({
+    inspectionId,
+    companyId: actor.companyId,
+    eventType: 'report_attested',
+    actorId: actor.userId,
+    payload: {
+      attestationId: attestation!.id,
+      blobVersionIndex: currentIndex,
+      attestationBlockKey,
+      statementHash,
+    },
+  });
+
+  res.status(201).json({
+    attested: true,
+    attestation: {
+      id: attestation!.id,
+      preparerId: attestation!.preparerId,
+      preparedAt: attestation!.preparedAt,
+      blobVersionIndex: attestation!.blobVersionIndex,
+      attestationBlockKey: attestation!.attestationBlockKey,
+      statementHash: attestation!.statementHash,
+      statementText: attestation!.statementText,
+    },
+  });
+});
+
 // Emails a generated report PDF to a homeowner via the *user's own* SMTP
 // settings (configured on their profile). The client generates the PDF
 // locally and posts it as base64; the server never re-renders it. Read-level
 // access is enough — sharing a report is not a mutation, so the C0
 // owner-or-manager write gate does not apply, but company scoping does.
+//
+// Deliver gate: a report_attestations row must exist for the current compiled
+// blob version before delivery is permitted (Variant B — Task #126).
 router.post('/inspections/:inspectionId/email-report', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -2899,6 +3186,31 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
   );
   if (!inspection) {
     res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  // Variant B attestation gate — the package must be signed before delivery.
+  const versions = (inspection.compiledReportVersions ?? []) as Array<{ path: string }>;
+  if (versions.length === 0) {
+    res.status(422).json({ error: 'No compiled report exists. Compile and attest the report before delivering.' });
+    return;
+  }
+  const currentVersionIndex = versions.length - 1;
+  const [attestation] = await db
+    .select({ id: reportAttestationsTable.id })
+    .from(reportAttestationsTable)
+    .where(
+      and(
+        eq(reportAttestationsTable.inspectionId, String(req.params.inspectionId)),
+        eq(reportAttestationsTable.blobVersionIndex, currentVersionIndex),
+      ),
+    )
+    .limit(1);
+  if (!attestation) {
+    res.status(422).json({
+      error: 'Report attestation required. Attest the compiled report (Variant B) before delivering.',
+      code: 'ATTESTATION_REQUIRED',
+    });
     return;
   }
 
@@ -5090,6 +5402,7 @@ ${JSON.stringify(photoBrief)}
   const versionEntry = JSON.stringify({
     path: compiledReportPath,
     generatedAt,
+    schemaVersion: 7,
     evidenceManifestSha256: manifestSha256,
     lintStatus: lint.lintStatus,
   });

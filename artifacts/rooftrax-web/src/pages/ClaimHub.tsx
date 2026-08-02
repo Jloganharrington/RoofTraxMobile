@@ -13,6 +13,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -52,6 +60,8 @@ import {
   useApproveSection,
   useLockSection,
   useCompileReport,
+  useGetReportAttestation,
+  useAttestReport,
   type SectionType,
   type ClaimSection,
   type ReadinessItem,
@@ -436,6 +446,12 @@ export default function ClaimHub() {
   const { data: eventsData } = useGetEvents(id);
   const compileReport = useCompileReport(id);
 
+  // Variant B attestation state
+  const [attestDialogOpen, setAttestDialogOpen] = useState(false);
+  const [attestAcknowledged, setAttestAcknowledged] = useState(false);
+  const { data: attestationData, isLoading: isAttestationLoading } = useGetReportAttestation(id);
+  const attestReport = useAttestReport(id);
+
   const inspection = inspectionEnv?.inspection as (Record<string, unknown> & { address?: string | null; status?: string; compiledReportVersions?: CompiledVersion[] }) | undefined;
   const readiness = readinessData;
   const sections = sectionsData?.sections ?? [];
@@ -793,21 +809,51 @@ export default function ClaimHub() {
                     </Tooltip>
                   </TooltipProvider>
 
-                  {/* Attestation placeholder */}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button variant="outline" disabled>
-                            Attest &amp; Sign Report
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent className="text-xs">
-                        Report attestation (Variant B) — coming in a future release.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  {/* Attestation (Variant B) */}
+                  {(() => {
+                    const isAttested = attestationData?.attested === true;
+                    const canAttest =
+                      pkgStatus === "compiled" && !isAttested && !isAttestationLoading && !attestReport.isPending;
+                    return (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              {isAttested ? (
+                                <Badge className="bg-green-100 text-green-700 border-green-300 dark:bg-green-900 dark:text-green-300 px-3 py-1.5 text-xs font-medium flex items-center gap-1.5">
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Report Attested
+                                </Badge>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  disabled={!canAttest}
+                                  onClick={() => {
+                                    setAttestAcknowledged(false);
+                                    setAttestDialogOpen(true);
+                                  }}
+                                >
+                                  {isAttestationLoading ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Lock className="h-4 w-4 mr-2" />
+                                  )}
+                                  Attest &amp; Sign Report
+                                </Button>
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          {!canAttest && !isAttested && (
+                            <TooltipContent className="text-xs">
+                              {pkgStatus !== "compiled"
+                                ? "Compile the report before attesting."
+                                : "Loading attestation status…"}
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
+                    );
+                  })()}
                 </div>
               </CardContent>
             </Card>
@@ -906,6 +952,90 @@ export default function ClaimHub() {
           </div>
         )}
       </div>
+
+      {/* Variant B Attestation Dialog */}
+      <Dialog
+        open={attestDialogOpen}
+        onOpenChange={(open) => {
+          if (!attestReport.isPending) setAttestDialogOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Attest &amp; Sign Report</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Review the statement below. By checking the box and submitting you
+              personally authorize this package for delivery.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Statement block */}
+          <div className="rounded-md border bg-muted/40 p-4 text-sm leading-relaxed text-foreground">
+            {attestationData?.attested === false && attestationData.statementText ? (
+              <p>{attestationData.statementText}</p>
+            ) : (
+              <p className="text-muted-foreground italic">Loading statement…</p>
+            )}
+          </div>
+
+          {/* Acknowledgement checkbox */}
+          <div className="flex items-start gap-3 pt-1">
+            <Checkbox
+              id="attest-acknowledged"
+              checked={attestAcknowledged}
+              onCheckedChange={(v) => setAttestAcknowledged(v === true)}
+              disabled={attestReport.isPending}
+            />
+            <label
+              htmlFor="attest-acknowledged"
+              className="text-sm leading-snug cursor-pointer select-none"
+            >
+              I confirm the above statement is accurate and I authorize delivery
+              of this compiled package.
+            </label>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setAttestDialogOpen(false)}
+              disabled={attestReport.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!attestAcknowledged || attestReport.isPending}
+              onClick={() =>
+                attestReport.mutate(undefined, {
+                  onSuccess: () => {
+                    setAttestDialogOpen(false);
+                    toast({
+                      title: "Report attested",
+                      description: "The package is now authorized for delivery.",
+                    });
+                  },
+                  onError: (err) => {
+                    const message =
+                      err instanceof Error ? err.message : "Attestation failed.";
+                    toast({
+                      title: "Attestation failed",
+                      description: message,
+                      variant: "destructive",
+                    });
+                  },
+                })
+              }
+            >
+              {attestReport.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Lock className="h-4 w-4 mr-2" />
+              )}
+              {attestReport.isPending ? "Signing…" : "Sign Report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Shell>
   );
 }
