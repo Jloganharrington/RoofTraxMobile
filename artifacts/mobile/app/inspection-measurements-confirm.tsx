@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
+  Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -185,6 +188,10 @@ export default function InspectionMeasurementsConfirm() {
   );
 
   const [applying, setApplying] = useState(false);
+  // Label of the slope the inspector will use as their entry point (F1).
+  // Null = use AI order (largest slope stays F1).
+  const [entryLabel, setEntryLabel] = useState<string | null>(null);
+  const [overviewModalOpen, setOverviewModalOpen] = useState(false);
 
   // Navigate back if there is no pending data to review. useEffect defers the
   // navigation until after the render is committed, satisfying React's constraint
@@ -193,6 +200,28 @@ export default function InspectionMeasurementsConfirm() {
     if (!pending) router.back();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Auto-recalculate totals from selected slopes ───────────────────────────
+  // The report summary page counts every plane — including EPDM flat sections,
+  // detached structures, and anything else outside the claim scope. When the
+  // user toggles slopes off, total_area_sqft and total_squares are recomputed
+  // from the selected slopes so the applied totals match the actual scope.
+  const derivedAreaSqft = useMemo(() => {
+    const areas = slopes
+      .filter(s => s.enabled && s.areaSqft.trim() !== '')
+      .map(s => parseFloat(s.areaSqft))
+      .filter(n => !isNaN(n) && n > 0);
+    return areas.length > 0 ? areas.reduce((a, b) => a + b, 0) : null;
+  }, [slopes]);
+
+  useEffect(() => {
+    if (derivedAreaSqft === null) return;
+    setTotals(prev => prev.map(t => {
+      if (t.key === 'total_area_sqft') return { ...t, value: derivedAreaSqft.toFixed(1) };
+      if (t.key === 'total_squares')   return { ...t, value: (derivedAreaSqft / 100).toFixed(2) };
+      return t;
+    }));
+  }, [derivedAreaSqft]);
 
   // Nothing to render while the navigator processes the back action.
   if (!pending) return null;
@@ -237,11 +266,17 @@ export default function InspectionMeasurementsConfirm() {
       const token   = await getToken('auth_session_token');
 
       // Build payload from enabled items only.
+      // Reorder slopes so the inspector's entry point is F1, then relabel
+      // the rest F2, F3… in their current display order.
+      const enabledSlopes = slopes.filter(s => s.enabled);
+      const entrySlope = entryLabel ? enabledSlopes.find(s => s.label === entryLabel) : null;
+      const orderedSlopes = entrySlope
+        ? [entrySlope, ...enabledSlopes.filter(s => s !== entrySlope)]
+        : enabledSlopes;
+
       const payload = {
-        slopes: slopes
-          .filter(s => s.enabled)
-          .map(s => ({
-            label:          s.label,
+        slopes: orderedSlopes.map((s, i) => ({
+            label:          `F${i + 1}`,
             areaSqft:       s.areaSqft    ? parseFloat(s.areaSqft)   : null,
             pitchRise:      s.pitchRise   ? parseInt(s.pitchRise, 10) : null,
             pitchRun:       s.pitchRun    ? parseInt(s.pitchRun, 10)  : null,
@@ -307,13 +342,22 @@ export default function InspectionMeasurementsConfirm() {
   // ── Slope card ─────────────────────────────────────────────────────────────
 
   function SlopeCard({ slope, idx }: { slope: EditableSlope; idx: number }) {
+    const isEntry = entryLabel === slope.label;
     return (
-      <View style={[styles.slopeCard, { backgroundColor: colors.card, borderColor: colors.border, opacity: slope.enabled ? 1 : 0.45 }]}>
+      <View style={[styles.slopeCard, { backgroundColor: colors.card, borderColor: isEntry ? colors.primary : colors.border, borderWidth: isEntry ? 2 : 1, opacity: slope.enabled ? 1 : 0.45 }]}>
         <View style={styles.slopeHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={[styles.slopeBadge, { backgroundColor: colors.secondary }]}>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{slope.label}</Text>
-            </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* Tapping the badge designates this slope as the entry point (F1). */}
+            <Pressable
+              onPress={() => setEntryLabel(prev => prev === slope.label ? null : slope.label)}
+              hitSlop={8}
+            >
+              <View style={[styles.slopeBadge, { backgroundColor: isEntry ? colors.primary : colors.secondary }]}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                  {isEntry ? '★ Entry' : slope.label}
+                </Text>
+              </View>
+            </Pressable>
             {slope.compassBearing != null && (
               <View style={[styles.compassBadge, { backgroundColor: colors.accent }]}>
                 <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: 12 }}>
@@ -412,10 +456,24 @@ export default function InspectionMeasurementsConfirm() {
           Review and edit values below. Toggle off any row you do not want applied.
         </Text>
 
+        {/* ── Roof Diagram button ── */}
+        {pending.overviewImageUrl && (
+          <Pressable
+            onPress={() => setOverviewModalOpen(true)}
+            style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+          >
+            <Icon name="image" size={16} color={colors.primary} />
+            <Text style={[styles.diagramBtnText, { color: colors.primary }]}>View Roof Diagram</Text>
+          </Pressable>
+        )}
+
         {/* ── Roof Facets ── */}
         {slopes.length > 0 && (
           <>
             {sectionHeader('Roof Facets')}
+            <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
+              Tap a label badge to mark your entry point — that slope becomes F1.
+            </Text>
             {slopes.map((slope, i) => (
               <SlopeCard key={slope.label} slope={slope} idx={i} />
             ))}
@@ -446,6 +504,11 @@ export default function InspectionMeasurementsConfirm() {
         {totals.length > 0 && (
           <>
             {sectionHeader('Totals')}
+            {slopes.length > 0 && (
+              <Text style={[styles.recalcNote, { color: colors.mutedForeground }]}>
+                Area and squares are recalculated from your selected slopes. Deselect any out-of-scope planes (e.g. EPDM, detached structures) above to update these figures.
+              </Text>
+            )}
             {card(
               totals.map((item, i) => (
                 <React.Fragment key={item.key}>
@@ -521,6 +584,32 @@ export default function InspectionMeasurementsConfirm() {
         <View style={{ height: 96 }} />
       </ScrollView>
 
+      {/* ── Roof overview image modal ── */}
+      {pending.overviewImageUrl && (
+        <Modal
+          visible={overviewModalOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOverviewModalOpen(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>Roof Diagram</Text>
+                <Pressable onPress={() => setOverviewModalOpen(false)} hitSlop={12}>
+                  <Icon name="x" size={20} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+              <Image
+                source={{ uri: pending.overviewImageUrl }}
+                style={styles.diagramImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* ── Bottom action bar ── */}
       <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <Pressable
@@ -565,6 +654,15 @@ const styles = StyleSheet.create({
   slopeHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   slopeBadge:    { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
   compassBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  diagramBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
+  diagramBtnText:{ fontWeight: '600', fontSize: 14 },
+  entryHint:     { fontSize: 12, marginBottom: 4 },
+  recalcNote:    { fontSize: 12, marginBottom: 8, lineHeight: 17 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 16 },
+  modalCard:     { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  modalHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
+  modalTitle:    { fontWeight: '700', fontSize: 16 },
+  diagramImage:  { width: '100%', height: 480 },
   slopeFields:   { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   slopeField:    { flex: 1, gap: 4 },
   slopeFieldLabel:{ fontSize: 11, fontWeight: '600' },

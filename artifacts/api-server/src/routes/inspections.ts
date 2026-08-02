@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as pathJoin } from 'node:path';
 import { z } from 'zod';
 import {
   CreateAttestationBody,
@@ -4044,10 +4048,14 @@ router.post('/inspections/:inspectionId/analyze-measurements', async (req: Reque
   }
 
   // ── Fetch PDF from GCS and base64-encode for Claude ────────────────────────
+  // buf is kept at outer scope so the overview image extraction below can also
+  // write it to a temp file for ImageMagick without a second download.
   let pdfBase64: string;
+  let buf: Buffer;
   try {
     const file = await objectStorageService.getObjectEntityFile(inspection.measurementsReportUrl);
-    const [buf] = await file.download();
+    const [downloaded] = await file.download();
+    buf = downloaded;
     pdfBase64 = buf.toString('base64');
   } catch (err) {
     req.log.error({ err }, 'Failed to read measurements report from storage');
@@ -4085,7 +4093,8 @@ Extract ALL measurements and return ONLY a valid JSON object — no markdown fen
     { "label": "S1", "areaSqft": 180.0 }
   ],
   "confidence": "high",
-  "notes": null
+  "notes": null,
+  "overviewPageNumber": 0
 }
 
 Rules:
@@ -4099,7 +4108,8 @@ Rules:
 - sidingFacets: include only if the report contains siding or wall measurements.
 - confidence: "high" = values clearly stated; "medium" = some estimated; "low" = document unclear or unreadable.
 - notes: brief string noting any missing data or quality issues, or null.
-- Set any numeric field to null if you cannot determine it confidently.`;
+- Set any numeric field to null if you cannot determine it confidently.
+- overviewPageNumber: the 0-based index of the page that contains the labeled roof overview diagram showing each plane with its area. EagleView puts this on page 1 (index 0), GAF/QuickMeasure on page 2 (index 1). Set null if no diagram page is present.`;
 
   type RawParsed = {
     slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null; compassBearing?: number | null }>;
@@ -4109,6 +4119,7 @@ Rules:
     sidingFacets?: Array<{ label: string; areaSqft?: number | null }>;
     confidence?: string;
     notes?: string | null;
+    overviewPageNumber?: number | null;
   };
 
   let raw: RawParsed;
@@ -4137,6 +4148,40 @@ Rules:
     return;
   }
 
+  // ── Overview image extraction ───────────────────────────────────────────────
+  // After Claude identifies the overview page, render it to JPEG with
+  // ImageMagick and upload to object storage. Failures are non-fatal — the
+  // modal button is simply omitted when overviewImageUrl is null.
+  let overviewImageUrl: string | null = null;
+  const rawPageNum = raw.overviewPageNumber;
+  if (typeof rawPageNum === 'number' && rawPageNum >= 0 && rawPageNum <= 9) {
+    const pageNum = Math.floor(rawPageNum);
+    let tmpDir: string | null = null;
+    try {
+      tmpDir = mkdtempSync(pathJoin(tmpdir(), 'rt-overview-'));
+      const pdfPath = pathJoin(tmpDir, 'report.pdf');
+      const jpegPath = pathJoin(tmpDir, 'overview.jpg');
+      writeFileSync(pdfPath, buf);
+      execFileSync('convert', [
+        '-density', '150',
+        `${pdfPath}[${pageNum}]`,
+        '-resize', 'x1400',
+        '-quality', '85',
+        jpegPath,
+      ], { timeout: 30_000 });
+      const jpegBuf = readFileSync(jpegPath);
+      const objectPath = await objectStorageService.uploadObjectBuffer(jpegBuf, 'image/jpeg');
+      // 3-hour window covers the duration the confirm screen can be open.
+      overviewImageUrl = await objectStorageService.getSignedDownloadUrl(objectPath, 10_800);
+    } catch (err) {
+      req.log.warn({ err, pageNum }, 'Overview image extraction failed — returning null');
+    } finally {
+      if (tmpDir) {
+        try { rmSync(tmpDir, { recursive: true }); } catch { /* ignore */ }
+      }
+    }
+  }
+
   // Normalise into the typed ParsedMeasurements shape and return — no DB writes.
   const parsed = {
     slopes:       (raw.slopes ?? []).map(s => ({
@@ -4153,6 +4198,7 @@ Rules:
     sidingFacets: (raw.sidingFacets ?? []).map(f => ({ label: f.label, areaSqft: f.areaSqft ?? null })),
     confidence:   (raw.confidence as 'high' | 'medium' | 'low') ?? 'low',
     notes:        raw.notes ?? null,
+    overviewImageUrl,
   };
 
   res.json({ parsed });

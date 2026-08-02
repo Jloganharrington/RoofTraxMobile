@@ -110,4 +110,8 @@ export interface ParsedMeasurements {
   sidingFacets: ParsedSidingFacet[];
   confidence: 'high' | 'medium' | 'low';
   notes: string | null;
+  /** Short-lived signed URL for the roof overview image extracted from the
+   *  measurements report PDF. Null when the report is not a PDF, no overview
+   *  diagram was found, or extraction failed. Expires ~2 hours after analysis. */
+  overviewImageUrl: string | null;
 }
