@@ -24,7 +24,7 @@ import { uploadFile, UploadError } from '@/lib/upload';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
-import { clearOverviewImageUrl } from '@/lib/overviewImageStore';
+import { clearOverviewImage } from '@/lib/overviewImageStore';
 import { addBusinessDays } from '@/lib/fipsaTemplate';
 import {
   buildProtocolState,
@@ -154,7 +154,7 @@ export default function InspectionDetailScreen() {
       // stale pending measurements and cached diagram so the rep re-analyzes.
       setPendingMeasurements(null);
       setAnalyzePending(false);
-      clearOverviewImageUrl(id);
+      clearOverviewImage(id);
     } catch (err) {
       const msg =
         err instanceof UploadError

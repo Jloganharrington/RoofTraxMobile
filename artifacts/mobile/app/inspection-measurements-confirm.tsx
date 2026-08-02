@@ -28,7 +28,7 @@ import { ZoomableImage } from '@/components/ZoomableImage';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
-import { setOverviewImageUrl } from '@/lib/overviewImageStore';
+import { setOverviewImage, getOverviewImage } from '@/lib/overviewImageStore';
 import { Icon } from '@/components/Icon';
 
 // ── Editable row shapes ───────────────────────────────────────────────────────
@@ -196,6 +196,7 @@ export default function InspectionMeasurementsConfirm() {
   // Roof diagram: initialised from the analysis response; fetched on demand
   // via render-overview-image if absent (e.g. runs before the magick fix).
   const [overviewUrl, setOverviewUrl]       = useState<string | null>(getPendingMeasurements()?.overviewImageUrl ?? null);
+  const [overviewPage, setOverviewPage]     = useState<number>(getPendingMeasurements()?.overviewPageNumber ?? 0);
   const [overviewLoading, setOverviewLoading] = useState(false);
 
   // ── ALL hooks must be declared before any conditional return ────────────────
@@ -239,8 +240,8 @@ export default function InspectionMeasurementsConfirm() {
   // Cache the overview URL by inspectionId so it survives pending clearance
   // and remains accessible from Facet Details.
   useEffect(() => {
-    const url = getPendingMeasurements()?.overviewImageUrl;
-    if (url) setOverviewImageUrl(id, url);
+    const p = getPendingMeasurements();
+    if (p?.overviewImageUrl) setOverviewImage(id, p.overviewImageUrl, p.overviewPageNumber ?? 0);
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nothing to render while the navigator processes the back action.
@@ -248,8 +249,7 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Overview image (lazy fetch) ────────────────────────────────────────────
 
-  async function openOverview() {
-    if (overviewUrl) { setOverviewModalOpen(true); return; }
+  async function fetchOverviewPage(page: number) {
     setOverviewLoading(true);
     try {
       const apiBase = getApiBaseUrl();
@@ -257,18 +257,31 @@ export default function InspectionMeasurementsConfirm() {
       const res = await fetch(`${apiBase}/inspections/${id}/render-overview-image`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageNumber: getPendingMeasurements()?.overviewPageNumber ?? 0 }),
+        body: JSON.stringify({ pageNumber: page }),
       });
       if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as { url: string };
       setOverviewUrl(data.url);
-      setOverviewImageUrl(id, data.url);
+      setOverviewPage(page);
+      setOverviewImage(id, data.url, page);
       setOverviewModalOpen(true);
     } catch {
       Alert.alert('Could not load diagram', 'The PDF page could not be rendered. Try again.');
     } finally {
       setOverviewLoading(false);
     }
+  }
+
+  async function openOverview() {
+    const cached = getOverviewImage(id);
+    if (cached) {
+      setOverviewUrl(cached.url);
+      setOverviewPage(cached.page);
+      setOverviewModalOpen(true);
+      return;
+    }
+    if (overviewUrl) { setOverviewModalOpen(true); return; }
+    await fetchOverviewPage(getPendingMeasurements()?.overviewPageNumber ?? 0);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -692,6 +705,31 @@ export default function InspectionMeasurementsConfirm() {
             {overviewUrl ? (
               <ZoomableImage uri={overviewUrl} style={styles.diagramImage} />
             ) : null}
+            <View style={styles.pageNav}>
+              <Pressable
+                onPress={() => void fetchOverviewPage(overviewPage - 1)}
+                disabled={overviewLoading || overviewPage <= 0}
+                hitSlop={8}
+                style={{ opacity: overviewLoading || overviewPage <= 0 ? 0.3 : 1 }}
+              >
+                <Icon name="chevron-left" size={24} color={colors.foreground} />
+              </Pressable>
+              {overviewLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                  Page {overviewPage + 1} — wrong page? Use arrows
+                </Text>
+              )}
+              <Pressable
+                onPress={() => void fetchOverviewPage(overviewPage + 1)}
+                disabled={overviewLoading || overviewPage >= 9}
+                hitSlop={8}
+                style={{ opacity: overviewLoading || overviewPage >= 9 ? 0.3 : 1 }}
+              >
+                <Icon name="chevron-right" size={24} color={colors.foreground} />
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -747,6 +785,7 @@ const styles = StyleSheet.create({
   modalHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
   modalTitle:    { fontWeight: '700', fontSize: 16 },
   diagramImage:  { width: '100%', height: 480 },
+  pageNav:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
   slopeFields:   { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   slopeField:    { flex: 1, gap: 4 },
   slopeFieldLabel:{ fontSize: 11, fontWeight: '600' },

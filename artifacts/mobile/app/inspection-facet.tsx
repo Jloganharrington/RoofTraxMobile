@@ -22,7 +22,7 @@ import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
-import { getOverviewImageUrl, setOverviewImageUrl } from '@/lib/overviewImageStore';
+import { getOverviewImage, setOverviewImage } from '@/lib/overviewImageStore';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 
@@ -101,6 +101,7 @@ export default function InspectionFacetScreen() {
   const [overviewModalOpen, setOverviewModalOpen] = React.useState(false);
   const [overviewLoading, setOverviewLoading]     = React.useState(false);
   const [overviewUrl, setOverviewUrl]             = React.useState<string | null>(null);
+  const [overviewPage, setOverviewPage]           = React.useState(0);
   // Which tie-in option was just selected for the first time this session —
   // drives the one-time instructions + photo-capture prompt.
   const [tieInPrompt, setTieInPrompt] = React.useState<{ valley: boolean; hip_ridge: boolean }>({
@@ -112,8 +113,11 @@ export default function InspectionFacetScreen() {
   // then load on demand via render-overview-image if missing. Must run before
   // any conditional return so the hook order is invariant across renders.
   React.useEffect(() => {
-    const cached = getOverviewImageUrl(id);
-    if (cached) setOverviewUrl(cached);
+    const cached = getOverviewImage(id);
+    if (cached) {
+      setOverviewUrl(cached.url);
+      setOverviewPage(cached.page);
+    }
   }, [id]);
 
   // Keep showing the spinner while a refetch is in flight and the facet
@@ -158,9 +162,7 @@ export default function InspectionFacetScreen() {
   const pitchNum = Number(pitchValue);
   const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
 
-  async function openOverview() {
-    const cached = overviewUrl ?? getOverviewImageUrl(id);
-    if (cached) { setOverviewUrl(cached); setOverviewModalOpen(true); return; }
+  async function fetchOverviewPage(page: number) {
     if (!inspection?.measurementsReportUrl) return;
     setOverviewLoading(true);
     try {
@@ -169,18 +171,31 @@ export default function InspectionFacetScreen() {
       const res = await fetch(`${apiBase}/inspections/${id}/render-overview-image`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageNumber: 0 }),
+        body: JSON.stringify({ pageNumber: page }),
       });
       if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as { url: string };
       setOverviewUrl(data.url);
-      setOverviewImageUrl(id, data.url);
+      setOverviewPage(page);
+      setOverviewImage(id, data.url, page);
       setOverviewModalOpen(true);
     } catch {
       Alert.alert('Could not load diagram', 'The PDF page could not be rendered. Try again.');
     } finally {
       setOverviewLoading(false);
     }
+  }
+
+  async function openOverview() {
+    const cached = getOverviewImage(id);
+    if (cached) {
+      setOverviewUrl(cached.url);
+      setOverviewPage(cached.page);
+      setOverviewModalOpen(true);
+      return;
+    }
+    if (overviewUrl) { setOverviewModalOpen(true); return; }
+    await fetchOverviewPage(0);
   }
 
   const state = buildProtocolState(inspection);
@@ -754,6 +769,31 @@ export default function InspectionFacetScreen() {
             {overviewUrl ? (
               <ZoomableImage uri={overviewUrl} style={{ width: '100%', aspectRatio: 1.2 }} />
             ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Pressable
+                onPress={() => void fetchOverviewPage(overviewPage - 1)}
+                disabled={overviewLoading || overviewPage <= 0}
+                hitSlop={8}
+                style={{ opacity: overviewLoading || overviewPage <= 0 ? 0.3 : 1 }}
+              >
+                <Icon name="chevron-left" size={24} color={colors.foreground} />
+              </Pressable>
+              {overviewLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                  Page {overviewPage + 1} — wrong page? Use arrows
+                </Text>
+              )}
+              <Pressable
+                onPress={() => void fetchOverviewPage(overviewPage + 1)}
+                disabled={overviewLoading || overviewPage >= 9}
+                hitSlop={8}
+                style={{ opacity: overviewLoading || overviewPage >= 9 ? 0.3 : 1 }}
+              >
+                <Icon name="chevron-right" size={24} color={colors.foreground} />
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
