@@ -1,0 +1,59 @@
+# Replit Instructions — Simplify Analysis to Facet Inventory Only
+
+## Context
+
+The previous build attempted route sequencing (adjacency graphs, entry-facet selection, F-numbered routes, transition notes). That is being removed entirely — the AI could not reliably differentiate roof levels and orientation, and the route detail is not needed. The feature is now a single-stage extraction: analyze the report, save facet count / facet areas / pitches to the database, and show the user a confirmation with the count. Facets with a pitch below 1/12 are excluded from the saved inventory.
+
+The updated system prompt is in `facet-sequencer-system-prompt.md`. Store it verbatim at `server/prompts/facet-extractor.md` and load it at startup.
+
+## 1. Remove the sequencing feature
+
+- Delete the `POST /api/inspections/:id/sequence` endpoint and its zod schemas.
+- Delete the entry-facet picker (State B), the route stepper (State C), transition connectors, ladder-move summary, cautions chips, and the drag-to-reorder override UI.
+- Migration: drop or null out `entry_facet_id`, `facet_sequence`, `sequence_generated_at` (dropping is fine — no production data depends on them). Remove `facet_graph` if present; it is replaced by the simpler columns below.
+- Remove the sequence-consumption wiring from the inspection wizard. The wizard iterates facets in the stored order (area descending) as before.
+
+## 2. Database
+
+On the inspections table (SQLite):
+
+- `facet_inventory` TEXT NULL — full extraction JSON from the AI (kept for audit/re-render)
+- `facet_count` INTEGER NULL — included facet count (pitch >= 1/12)
+- `facet_inventory_status` TEXT NULL — 'pending' | 'complete' | 'failed'
+
+Additionally insert one row per included facet into a `roof_facets` table (create if it doesn't exist): `inspection_id`, `facet_id` (RF-3 / A2), `area_sqft` REAL, `pitch` TEXT, `sort_order` INTEGER (area descending). Excluded flat facets are NOT inserted — they exist only inside the `facet_inventory` JSON.
+
+## 3. Backend endpoint
+
+### POST /api/inspections/:id/analyze
+
+1. Base64-encode the uploaded measurement PDF.
+2. Anthropic Messages API call:
+   - model: `claude-opus-4-8` — do NOT pass a `temperature` parameter (rejected with HTTP 400)
+   - system: contents of `server/prompts/facet-extractor.md`
+   - messages: one user turn with a `document` block (base64 PDF, `application/pdf`) and a text block: `Analyze this report.`
+   - max_tokens: 4000
+3. Parse: strip any accidental ```json fences, `JSON.parse`, validate with zod:
+   - `facetCount === facets.length`
+   - every included facet pitch parses to >= 1/12; every excluded facet pitch parses to < 1/12
+   - `facets` non-empty unless `reportType === "unknown"`
+   - included area + excluded area within ±2% of `property.totalRoofAreaSqFt` (warn-level, not reject-level — the model self-reports discrepancies in `warnings`)
+4. On validation failure, retry once with the errors appended: `Your previous output failed validation: <errors>. Return corrected JSON only.` Second failure → status 'failed', return 422.
+5. On success: save `facet_inventory`, `facet_count`, status 'complete'; delete-and-reinsert `roof_facets` rows for this inspection; return the JSON to the client.
+
+## 4. Frontend
+
+Two states on the inspection prep screen:
+
+**Not analyzed.** Existing upload UI + "Analyze with AI" button with progress indicator.
+
+**Analyzed — confirmation.** A confirmation card, headline: **"{facetCount} facets found"**, subline with total included area and predominant pitch. Below it, the facet list (read-only), sorted by area descending: facet ID, area, pitch. If `excluded.count > 0`, one muted footnote line: "{n} flat facet(s) ({x} sq ft, <1/12 pitch) excluded." Surface any `warnings` as dismissible amber chips. Actions: "Confirm" (proceeds to the inspection wizard) and "Re-analyze" (confirm dialog, wipes and reruns).
+
+## 5. Acceptance criteria
+
+1. Hover sample (RF-1…RF-4, all 3/12, 1,209 sq ft) → confirmation shows "4 facets found", 4 `roof_facets` rows, no exclusions.
+2. GAF Centreville sample (16 facets incl. one 0-pitch 80 sq ft facet) → confirmation shows "15 facets found" with the exclusion footnote; totals reconcile within ±2%.
+3. GAF Woodbridge sample (9 facets, duplicate area values) → 9 distinct rows (or 9 minus any flat), no merged duplicates.
+4. Re-analyze replaces `roof_facets` rows cleanly, no orphans.
+5. Non-measurement PDF → clean "not a supported measurement report" error.
+6. No `temperature` parameter on any Anthropic call; no sequencing code paths remain.
