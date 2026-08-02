@@ -579,7 +579,7 @@ export default function InspectionMeasurementsConfirm() {
   // Page bounds for the roof diagram navigator (store lookup — cheap).
   const _confPages   = getMeasurementPages(id);
   const _confMinPage = _confPages[0]?.page ?? 0;
-  const _confMaxPage = _confPages.length > 0 ? _confPages[_confPages.length - 1]!.page : 9;
+  const _confMaxPage = _confPages.length > 0 ? _confPages[_confPages.length - 1]!.page : 49;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

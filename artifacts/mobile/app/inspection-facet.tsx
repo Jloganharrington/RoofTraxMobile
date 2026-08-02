@@ -187,7 +187,7 @@ export default function InspectionFacetScreen() {
   // Page bounds for the roof diagram navigator (store lookup — cheap).
   const _facetPages   = getMeasurementPages(id);
   const _facetMinPage = _facetPages[0]?.page ?? 0;
-  const _facetMaxPage = _facetPages.length > 0 ? _facetPages[_facetPages.length - 1]!.page : 9;
+  const _facetMaxPage = _facetPages.length > 0 ? _facetPages[_facetPages.length - 1]!.page : 49;
 
   async function fetchOverviewPage(page: number) {
     if (!inspection?.measurementsReportUrl) return;

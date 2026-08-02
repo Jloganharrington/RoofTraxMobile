@@ -4198,7 +4198,7 @@ Rules:
       ),
     );
 
-    for (let pageNum = 0; pageNum <= 9; pageNum++) {
+    for (let pageNum = 0; pageNum <= 49; pageNum++) {
       const jpegPath = pathJoin(tmpDir, `page-${pageNum}.jpg`);
       try {
         // IMv7 binary is `magick`; exits non-zero when the page index is past
@@ -4433,7 +4433,7 @@ router.post('/inspections/:inspectionId/render-overview-image', async (req: Requ
   }
 
   const pageNumber = typeof req.body?.pageNumber === 'number'
-    ? Math.max(0, Math.min(9, Math.floor(req.body.pageNumber)))
+    ? Math.max(0, Math.min(49, Math.floor(req.body.pageNumber)))
     : 0;
 
   let buf: Buffer;
