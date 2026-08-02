@@ -4197,12 +4197,72 @@ Rules:
     totals:       raw.totals       ?? {},
     accessories:  raw.accessories  ?? {},
     sidingFacets: (raw.sidingFacets ?? []).map(f => ({ label: f.label, areaSqft: f.areaSqft ?? null })),
-    confidence:   (raw.confidence as 'high' | 'medium' | 'low') ?? 'low',
-    notes:        raw.notes ?? null,
+    confidence:        (raw.confidence as 'high' | 'medium' | 'low') ?? 'low',
+    notes:             raw.notes ?? null,
     overviewImageUrl,
+    overviewPageNumber: typeof rawPageNum === 'number' ? Math.floor(rawPageNum) : null,
   };
 
   res.json({ parsed });
+});
+
+// POST /inspections/:inspectionId/render-overview-image
+// Renders a single PDF page to JPEG on demand and returns a short-lived signed
+// URL.  Called by mobile when the initial analysis lacked an overviewImageUrl
+// (e.g. runs done before the magick binary fix) or when the URL has expired.
+router.post('/inspections/:inspectionId/render-overview-image', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  if (!inspection.measurementsReportUrl) {
+    res.status(422).json({ error: 'No measurements report has been uploaded for this inspection.' });
+    return;
+  }
+
+  const pageNumber = typeof req.body?.pageNumber === 'number'
+    ? Math.max(0, Math.min(9, Math.floor(req.body.pageNumber)))
+    : 0;
+
+  let buf: Buffer;
+  try {
+    const file = await objectStorageService.getObjectEntityFile(inspection.measurementsReportUrl);
+    const [downloaded] = await file.download();
+    buf = downloaded;
+  } catch (err) {
+    req.log.error({ err }, 'render-overview-image: failed to read PDF from storage');
+    res.status(422).json({ error: 'Could not read the measurements report from storage.' });
+    return;
+  }
+
+  let tmpDir: string | null = null;
+  try {
+    tmpDir = mkdtempSync(pathJoin(tmpdir(), 'rt-overview-'));
+    const pdfPath  = pathJoin(tmpDir, 'report.pdf');
+    const jpegPath = pathJoin(tmpDir, 'overview.jpg');
+    writeFileSync(pdfPath, buf);
+    execFileSync('magick', [
+      '-density', '150',
+      `${pdfPath}[${pageNumber}]`,
+      '-resize', 'x1400',
+      '-quality', '85',
+      jpegPath,
+    ], { timeout: 30_000 });
+    const jpegBuf    = readFileSync(jpegPath);
+    const objectPath = await objectStorageService.uploadObjectBuffer(jpegBuf, 'image/jpeg');
+    const url        = await objectStorageService.getSignedDownloadUrl(objectPath, 10_800);
+    res.json({ url });
+  } catch (err) {
+    req.log.warn({ err, pageNumber }, 'render-overview-image: magick render failed');
+    res.status(500).json({ error: 'Failed to render the overview image from the PDF.' });
+  } finally {
+    if (tmpDir) {
+      try { rmSync(tmpDir, { recursive: true }); } catch { /* ignore */ }
+    }
+  }
 });
 
 // POST /inspections/:inspectionId/apply-measurements

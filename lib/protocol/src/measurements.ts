@@ -112,6 +112,10 @@ export interface ParsedMeasurements {
   notes: string | null;
   /** Short-lived signed URL for the roof overview image extracted from the
    *  measurements report PDF. Null when the report is not a PDF, no overview
-   *  diagram was found, or extraction failed. Expires ~2 hours after analysis. */
+   *  diagram was found, or extraction failed. Expires ~3 hours after analysis. */
   overviewImageUrl: string | null;
+  /** 0-based PDF page index that contains the overview diagram, as identified
+   *  by the AI. Null when not found. Passed to render-overview-image when the
+   *  signed URL is absent (e.g. analysis was run before the magick fix). */
+  overviewPageNumber: number | null;
 }

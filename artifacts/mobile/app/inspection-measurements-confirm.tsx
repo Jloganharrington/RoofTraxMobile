@@ -193,6 +193,10 @@ export default function InspectionMeasurementsConfirm() {
   // Nothing is pre-assigned — the inspector must tap a slope before applying.
   const [entryIdx, setEntryIdx] = useState<number | null>(null);
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
+  // Roof diagram: initialised from the analysis response; fetched on demand
+  // via render-overview-image if absent (e.g. runs before the magick fix).
+  const [overviewUrl, setOverviewUrl]       = useState<string | null>(getPendingMeasurements()?.overviewImageUrl ?? null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   // ── ALL hooks must be declared before any conditional return ────────────────
 
@@ -241,6 +245,31 @@ export default function InspectionMeasurementsConfirm() {
 
   // Nothing to render while the navigator processes the back action.
   if (!pending) return null;
+
+  // ── Overview image (lazy fetch) ────────────────────────────────────────────
+
+  async function openOverview() {
+    if (overviewUrl) { setOverviewModalOpen(true); return; }
+    setOverviewLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const token   = await getToken('auth_session_token');
+      const res = await fetch(`${apiBase}inspections/${id}/render-overview-image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageNumber: getPendingMeasurements()?.overviewPageNumber ?? 0 }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { url: string };
+      setOverviewUrl(data.url);
+      setOverviewImageUrl(id, data.url);
+      setOverviewModalOpen(true);
+    } catch {
+      Alert.alert('Could not load diagram', 'The PDF page could not be rendered. Try again.');
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -508,16 +537,19 @@ export default function InspectionMeasurementsConfirm() {
             : 'Review and edit values below. Toggle off any row you do not want applied.'}
         </Text>
 
-        {/* ── Roof Diagram button ── */}
-        {pending.overviewImageUrl && (
-          <Pressable
-            onPress={() => setOverviewModalOpen(true)}
-            style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.primary }]}
-          >
-            <Icon name="image" size={16} color={colors.primary} />
-            <Text style={[styles.diagramBtnText, { color: colors.primary }]}>View Roof Diagram</Text>
-          </Pressable>
-        )}
+        {/* ── Roof Diagram button — always visible; fetches the image on first tap ── */}
+        <Pressable
+          onPress={openOverview}
+          disabled={overviewLoading}
+          style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.primary, opacity: overviewLoading ? 0.6 : 1 }]}
+        >
+          {overviewLoading
+            ? <ActivityIndicator size="small" color={colors.primary} />
+            : <Icon name="image" size={16} color={colors.primary} />}
+          <Text style={[styles.diagramBtnText, { color: colors.primary }]}>
+            {overviewLoading ? 'Loading diagram…' : 'View Roof Diagram'}
+          </Text>
+        </Pressable>
 
         {/* ── Roof Facets ── */}
         {slopes.length > 0 && (
@@ -643,30 +675,30 @@ export default function InspectionMeasurementsConfirm() {
       </ScrollView>
 
       {/* ── Roof overview image modal ── */}
-      {pending.overviewImageUrl && (
-        <Modal
-          visible={overviewModalOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setOverviewModalOpen(false)}
-        >
-          <View style={styles.modalBackdrop}>
-            <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: colors.foreground }]}>Roof Diagram</Text>
-                <Pressable onPress={() => setOverviewModalOpen(false)} hitSlop={12}>
-                  <Icon name="x" size={20} color={colors.mutedForeground} />
-                </Pressable>
-              </View>
+      <Modal
+        visible={overviewModalOpen && !!overviewUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOverviewModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Roof Diagram</Text>
+              <Pressable onPress={() => setOverviewModalOpen(false)} hitSlop={12}>
+                <Icon name="x" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            {overviewUrl ? (
               <Image
-                source={{ uri: pending.overviewImageUrl }}
+                source={{ uri: overviewUrl }}
                 style={styles.diagramImage}
                 resizeMode="contain"
               />
-            </View>
+            ) : null}
           </View>
-        </Modal>
-      )}
+        </View>
+      </Modal>
 
       {/* ── Bottom action bar ── */}
       <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>

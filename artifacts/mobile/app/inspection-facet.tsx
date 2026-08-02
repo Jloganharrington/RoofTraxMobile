@@ -22,7 +22,9 @@ import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
-import { getOverviewImageUrl } from '@/lib/overviewImageStore';
+import { getOverviewImageUrl, setOverviewImageUrl } from '@/lib/overviewImageStore';
+import { getApiBaseUrl } from '@/lib/api';
+import { getToken } from '@/lib/tokenStorage';
 
 // Facet detail (Step 3 · Roof Facets, protocol v2). One roof plane: area,
 // material, pitch (rise:run — a pitch steeper than 8/12 triggers the steep
@@ -97,6 +99,8 @@ export default function InspectionFacetScreen() {
   // photoId of the photo currently having its caption saved, or null.
   const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
   const [overviewModalOpen, setOverviewModalOpen] = React.useState(false);
+  const [overviewLoading, setOverviewLoading]     = React.useState(false);
+  const [overviewUrl, setOverviewUrl]             = React.useState<string | null>(null);
   // Which tie-in option was just selected for the first time this session —
   // drives the one-time instructions + photo-capture prompt.
   const [tieInPrompt, setTieInPrompt] = React.useState<{ valley: boolean; hip_ridge: boolean }>({
@@ -146,9 +150,37 @@ export default function InspectionFacetScreen() {
   const pitchNum = Number(pitchValue);
   const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
 
-  // Roof diagram: persisted in the overview store when the inspector ran AI
-  // analysis — available even after pending measurements are cleared.
-  const overviewImageUrl = getOverviewImageUrl(id);
+  // Roof diagram: seed from the overview store (persisted across navigation),
+  // then load on demand via render-overview-image if missing.
+  React.useEffect(() => {
+    const cached = getOverviewImageUrl(id);
+    if (cached) setOverviewUrl(cached);
+  }, [id]);
+
+  async function openOverview() {
+    const cached = overviewUrl ?? getOverviewImageUrl(id);
+    if (cached) { setOverviewUrl(cached); setOverviewModalOpen(true); return; }
+    if (!inspection?.measurementsReportUrl) return;
+    setOverviewLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const token   = await getToken('auth_session_token');
+      const res = await fetch(`${apiBase}inspections/${id}/render-overview-image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageNumber: 0 }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { url: string };
+      setOverviewUrl(data.url);
+      setOverviewImageUrl(id, data.url);
+      setOverviewModalOpen(true);
+    } catch {
+      Alert.alert('Could not load diagram', 'The PDF page could not be rendered. Try again.');
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
 
   const state = buildProtocolState(inspection);
   const damageRecords = state.damageInstances.filter((d) => d.slopeId === slopeId);
@@ -322,17 +354,24 @@ export default function InspectionFacetScreen() {
               </Text>
             </View>
           )}
-          {/* Spacer so the diagram button aligns to the right */}
-          <View style={{ flex: 1 }} />
-          {overviewImageUrl && (
-            <Pressable
-              onPress={() => setOverviewModalOpen(true)}
-              hitSlop={8}
-              style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.primary }]}
-            >
-              <Icon name="image" size={15} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>Roof Diagram</Text>
-            </Pressable>
+          {/* Diagram button — shown whenever the inspection has a PDF report */}
+          {inspection.measurementsReportUrl && (
+            <>
+              <View style={{ flex: 1 }} />
+              <Pressable
+                onPress={openOverview}
+                disabled={overviewLoading}
+                hitSlop={8}
+                style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.primary, opacity: overviewLoading ? 0.6 : 1 }]}
+              >
+                {overviewLoading
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Icon name="image" size={15} color={colors.primary} />}
+                <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>
+                  {overviewLoading ? 'Loading…' : 'Roof Diagram'}
+                </Text>
+              </Pressable>
+            </>
           )}
         </View>
 
@@ -697,30 +736,30 @@ export default function InspectionFacetScreen() {
       </Modal>
 
       {/* Roof diagram modal */}
-      {overviewImageUrl && (
-        <Modal
-          visible={overviewModalOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setOverviewModalOpen(false)}
-        >
-          <View style={styles.modalBackdrop}>
-            <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, gap: 12 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 16 }}>Roof Diagram</Text>
-                <Pressable onPress={() => setOverviewModalOpen(false)} hitSlop={12}>
-                  <Icon name="x" size={20} color={colors.mutedForeground} />
-                </Pressable>
-              </View>
+      <Modal
+        visible={overviewModalOpen && !!overviewUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOverviewModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, gap: 12 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 16 }}>Roof Diagram</Text>
+              <Pressable onPress={() => setOverviewModalOpen(false)} hitSlop={12}>
+                <Icon name="x" size={20} color={colors.mutedForeground} />
+              </Pressable>
+            </View>
+            {overviewUrl ? (
               <Image
-                source={{ uri: overviewImageUrl }}
+                source={{ uri: overviewUrl }}
                 style={{ width: '100%', aspectRatio: 1.2 }}
                 resizeMode="contain"
               />
-            </View>
+            ) : null}
           </View>
-        </Modal>
-      )}
+        </View>
+      </Modal>
 
       {/* Material picker */}
       <Modal
