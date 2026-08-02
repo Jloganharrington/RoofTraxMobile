@@ -264,13 +264,21 @@ export default function InspectionMeasurementsConfirm() {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
 
-      // Assign facet IDs: the inspector's chosen entry point becomes F1,
-      // remaining enabled slopes follow in the AI's original order (area desc).
+      // Assign facet IDs: entry slope → F1, then sweep clockwise by compass
+      // bearing from F1, so physically adjacent planes follow naturally.
       const enabledSlopes = slopes.filter(s => s.enabled);
       const entrySlope = (entryIdx !== null && slopes[entryIdx]?.enabled) ? slopes[entryIdx] : null;
-      const orderedSlopes = entrySlope
-        ? [entrySlope, ...enabledSlopes.filter(s => s !== entrySlope)]
-        : enabledSlopes;
+      let orderedSlopes: EditableSlope[];
+      if (entrySlope && entryIdx !== null) {
+        const nonEntryIndices = slopes.reduce<number[]>(
+          (acc, s, i) => { if (s.enabled && i !== entryIdx) acc.push(i); return acc; },
+          [],
+        );
+        const sortedNonEntry = cwSortedAfterEntry(nonEntryIndices, entryIdx).map(i => slopes[i]);
+        orderedSlopes = [entrySlope, ...sortedNonEntry];
+      } else {
+        orderedSlopes = enabledSlopes;
+      }
 
       const payload = {
         slopes: orderedSlopes.map((s, i) => ({
@@ -339,6 +347,24 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Slope card ─────────────────────────────────────────────────────────────
 
+  // Sort slope indices in a clockwise bearing sweep starting from the entry
+  // slope's compass bearing.  Slopes with no bearing fall back to their
+  // current position (area-desc, the AI's original order).
+  function cwSortedAfterEntry(nonEntryIndices: number[], entryI: number): number[] {
+    const entryBearing = slopes[entryI]?.compassBearing;
+    if (entryBearing == null) return nonEntryIndices; // no bearing → keep area order
+    return [...nonEntryIndices].sort((a, b) => {
+      const ba = slopes[a]?.compassBearing;
+      const bb = slopes[b]?.compassBearing;
+      if (ba == null && bb == null) return 0;
+      if (ba == null) return 1;   // no-bearing slopes go last
+      if (bb == null) return -1;
+      const da = (ba - entryBearing + 360) % 360;
+      const db = (bb - entryBearing + 360) % 360;
+      return da - db;
+    });
+  }
+
   // Compute what facet label each slope will receive when applied.
   // Returns null when no entry has been selected yet (labels are not
   // pre-assigned — the inspector picks the ordering by choosing F1 first).
@@ -347,7 +373,8 @@ export default function InspectionMeasurementsConfirm() {
     if (!slopes[idx]?.enabled) return null;
     const enabledIndices = slopes.reduce<number[]>((acc, s, i) => { if (s.enabled) acc.push(i); return acc; }, []);
     if (!enabledIndices.includes(entryIdx)) return null;
-    const ordered = [entryIdx, ...enabledIndices.filter(i => i !== entryIdx)];
+    const nonEntry = cwSortedAfterEntry(enabledIndices.filter(i => i !== entryIdx), entryIdx);
+    const ordered  = [entryIdx, ...nonEntry];
     const pos = ordered.indexOf(idx);
     return pos >= 0 ? `F${pos + 1}` : null;
   }
