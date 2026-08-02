@@ -188,24 +188,32 @@ export default function InspectionMeasurementsConfirm() {
   );
 
   const [applying, setApplying] = useState(false);
-  // Label of the slope the inspector will use as their entry point (F1).
-  // Null = use AI order (largest slope stays F1).
-  const [entryLabel, setEntryLabel] = useState<string | null>(null);
+  // Index into `slopes` of the slope the inspector will enter first (F1).
+  // Nothing is pre-assigned — the inspector must tap a slope before applying.
+  const [entryIdx, setEntryIdx] = useState<number | null>(null);
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
 
-  // Navigate back if there is no pending data to review. useEffect defers the
-  // navigation until after the render is committed, satisfying React's constraint
-  // that side-effects must not happen during the render phase.
+  // ── ALL hooks must be declared before any conditional return ────────────────
+
+  // Navigate back if there is no pending data to review.
   useEffect(() => {
     if (!pending) router.back();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Count enabled items (must be before null guard) ────────────────────────
+  const enabledCount = useMemo(() =>
+    slopes.filter(s => s.enabled).length
+    + linears.filter(m => m.enabled).length
+    + totals.filter(m => m.enabled).length
+    + accessories.filter(m => m.enabled).length
+    + sidingFacets.filter(f => f.enabled).length,
+    [slopes, linears, totals, accessories, sidingFacets],
+  );
+
+  const enabledSlopeCount = useMemo(() => slopes.filter(s => s.enabled).length, [slopes]);
+
   // ── Auto-recalculate totals from selected slopes ───────────────────────────
-  // The report summary page counts every plane — including EPDM flat sections,
-  // detached structures, and anything else outside the claim scope. When the
-  // user toggles slopes off, total_area_sqft and total_squares are recomputed
-  // from the selected slopes so the applied totals match the actual scope.
   const derivedAreaSqft = useMemo(() => {
     const areas = slopes
       .filter(s => s.enabled && s.areaSqft.trim() !== '')
@@ -226,17 +234,6 @@ export default function InspectionMeasurementsConfirm() {
   // Nothing to render while the navigator processes the back action.
   if (!pending) return null;
 
-  // ── Count enabled items ────────────────────────────────────────────────────
-
-  const enabledCount = useMemo(() =>
-    slopes.filter(s => s.enabled).length
-    + linears.filter(m => m.enabled).length
-    + totals.filter(m => m.enabled).length
-    + accessories.filter(m => m.enabled).length
-    + sidingFacets.filter(f => f.enabled).length,
-    [slopes, linears, totals, accessories, sidingFacets],
-  );
-
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   function updateMeasurementList(
@@ -250,6 +247,8 @@ export default function InspectionMeasurementsConfirm() {
 
   function updateSlope(idx: number, patch: Partial<EditableSlope>) {
     setSlopes(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
+    // If the inspector disables the slope they had set as entry, clear the selection.
+    if (patch.enabled === false && idx === entryIdx) setEntryIdx(null);
   }
 
   function updateSiding(idx: number, patch: Partial<EditableSidingFacet>) {
@@ -265,11 +264,10 @@ export default function InspectionMeasurementsConfirm() {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
 
-      // Build payload from enabled items only.
-      // Reorder slopes so the inspector's entry point is F1, then relabel
-      // the rest F2, F3… in their current display order.
+      // Assign facet IDs: the inspector's chosen entry point becomes F1,
+      // remaining enabled slopes follow in the AI's original order (area desc).
       const enabledSlopes = slopes.filter(s => s.enabled);
-      const entrySlope = entryLabel ? enabledSlopes.find(s => s.label === entryLabel) : null;
+      const entrySlope = (entryIdx !== null && slopes[entryIdx]?.enabled) ? slopes[entryIdx] : null;
       const orderedSlopes = entrySlope
         ? [entrySlope, ...enabledSlopes.filter(s => s !== entrySlope)]
         : enabledSlopes;
@@ -341,20 +339,34 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Slope card ─────────────────────────────────────────────────────────────
 
+  // Compute what facet label each slope will receive when applied.
+  // Returns null when no entry has been selected yet (labels are not
+  // pre-assigned — the inspector picks the ordering by choosing F1 first).
+  function previewLabel(idx: number): string | null {
+    if (entryIdx === null) return null;
+    if (!slopes[idx]?.enabled) return null;
+    const enabledIndices = slopes.reduce<number[]>((acc, s, i) => { if (s.enabled) acc.push(i); return acc; }, []);
+    if (!enabledIndices.includes(entryIdx)) return null;
+    const ordered = [entryIdx, ...enabledIndices.filter(i => i !== entryIdx)];
+    const pos = ordered.indexOf(idx);
+    return pos >= 0 ? `F${pos + 1}` : null;
+  }
+
   function SlopeCard({ slope, idx }: { slope: EditableSlope; idx: number }) {
-    const isEntry = entryLabel === slope.label;
+    const isEntry = entryIdx === idx;
+    const label   = previewLabel(idx);
     return (
       <View style={[styles.slopeCard, { backgroundColor: colors.card, borderColor: isEntry ? colors.primary : colors.border, borderWidth: isEntry ? 2 : 1, opacity: slope.enabled ? 1 : 0.45 }]}>
         <View style={styles.slopeHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {/* Tapping the badge designates this slope as the entry point (F1). */}
+            {/* Tap to designate as entry (F1). Shows preview label once set. */}
             <Pressable
-              onPress={() => setEntryLabel(prev => prev === slope.label ? null : slope.label)}
+              onPress={() => slope.enabled && setEntryIdx(prev => prev === idx ? null : idx)}
               hitSlop={8}
             >
-              <View style={[styles.slopeBadge, { backgroundColor: isEntry ? colors.primary : colors.secondary }]}>
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                  {isEntry ? '★ Entry' : slope.label}
+              <View style={[styles.slopeBadge, { backgroundColor: isEntry ? colors.primary : label ? colors.secondary : colors.muted }]}>
+                <Text style={{ color: isEntry || label ? '#fff' : colors.mutedForeground, fontWeight: '700', fontSize: 13 }}>
+                  {isEntry ? '★ F1 · Entry' : label ?? 'Set as F1'}
                 </Text>
               </View>
             </Pressable>
@@ -426,6 +438,9 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const needsEntry = enabledSlopeCount > 0 && entryIdx === null;
+  const canApply   = !needsEntry && enabledCount > 0;
+
   const confColor = confidenceColor(
     pending.confidence,
     colors.success,
@@ -453,14 +468,16 @@ export default function InspectionMeasurementsConfirm() {
 
         {/* Instructions */}
         <Text style={[styles.instructions, { color: colors.mutedForeground }]}>
-          Review and edit values below. Toggle off any row you do not want applied.
+          {slopes.length > 0
+            ? 'Use the roof diagram to identify each plane, then tap "Set as F1" on the slope you will access first. Toggle off any planes not in scope (e.g. EPDM flat sections).'
+            : 'Review and edit values below. Toggle off any row you do not want applied.'}
         </Text>
 
         {/* ── Roof Diagram button ── */}
         {pending.overviewImageUrl && (
           <Pressable
             onPress={() => setOverviewModalOpen(true)}
-            style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.primary }]}
           >
             <Icon name="image" size={16} color={colors.primary} />
             <Text style={[styles.diagramBtnText, { color: colors.primary }]}>View Roof Diagram</Text>
@@ -471,9 +488,15 @@ export default function InspectionMeasurementsConfirm() {
         {slopes.length > 0 && (
           <>
             {sectionHeader('Roof Facets')}
-            <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
-              Tap a label badge to mark your entry point — that slope becomes F1.
-            </Text>
+            {entryIdx === null ? (
+              <Text style={[styles.entryHint, { color: '#f59e0b', fontWeight: '600' }]}>
+                ⚠ Tap "Set as F1" on the slope you will access first. This is required before you can apply.
+              </Text>
+            ) : (
+              <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
+                Facet IDs are shown as a preview. Tap a different slope to change F1.
+              </Text>
+            )}
             {slopes.map((slope, i) => (
               <SlopeCard key={slope.label} slope={slope} idx={i} />
             ))}
@@ -614,20 +637,18 @@ export default function InspectionMeasurementsConfirm() {
       <View style={[styles.bottomBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <Pressable
           onPress={handleApply}
-          disabled={applying || enabledCount === 0}
-          style={[
-            styles.applyBtn,
-            {
-              backgroundColor: enabledCount > 0 ? colors.primary : colors.muted,
-              opacity: applying ? 0.7 : 1,
-            },
-          ]}
+          disabled={applying || !canApply}
+          style={[styles.applyBtn, { backgroundColor: canApply ? colors.primary : colors.muted, opacity: applying ? 0.7 : 1 }]}
         >
           {applying ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={[styles.applyBtnText, { color: enabledCount > 0 ? colors.primaryForeground : colors.mutedForeground }]}>
-              {enabledCount === 0 ? 'No measurements selected' : `Apply ${enabledCount} measurement${enabledCount === 1 ? '' : 's'}`}
+            <Text style={[styles.applyBtnText, { color: canApply ? colors.primaryForeground : colors.mutedForeground }]}>
+              {needsEntry
+                ? 'Select your entry point (F1) above'
+                : enabledCount === 0
+                  ? 'No measurements selected'
+                  : `Apply ${enabledSlopeCount} slope${enabledSlopeCount === 1 ? '' : 's'} + measurements`}
             </Text>
           )}
         </Pressable>
