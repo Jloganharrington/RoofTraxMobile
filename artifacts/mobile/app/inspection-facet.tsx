@@ -768,7 +768,7 @@ export default function InspectionFacetScreen() {
               </Pressable>
             </View>
             {overviewUrl ? (
-              <ZoomableImage uri={overviewUrl} style={{ width: '100%', aspectRatio: 1.2 }} />
+              <ZoomableImage uri={overviewUrl} style={{ width: '100%', height: 480 }} />
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Pressable
