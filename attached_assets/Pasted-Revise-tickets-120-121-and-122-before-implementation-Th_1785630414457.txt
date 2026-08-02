@@ -1,0 +1,51 @@
+Revise tickets #120, #121, and #122 before implementation. These corrections align the plans with locked methodology decisions — several current values would produce legally inconsistent records.
+
+=== #121 — Trigger Flag Engine corrections ===
+
+1. product_id_class: change to exactly two values: 'identified' | 'lab_recommended'.
+   - Remove 'field_approximated' entirely — no middle classification exists. Inspector candidate observations are inspection notes, never classifications.
+   - Remove 'unknown' as a flag value. A missing determination is the absence of a product ID record, which Stage 0 readiness catches — not a value the flag can hold.
+
+2. discontinued_status: change to 'discontinued_verified' | 'discontinued_not_verified' | 'not_applicable'.
+   - Remove 'suspected'. A library lead that hasn't been desk-verified is 'discontinued_not_verified'.
+   - discontinued_status is DERIVED from two underlying record fields, which must also be stored:
+     discontinued: 'still_manufactured' | 'discontinued' | 'not_verified'
+     ordinary_availability: 'available' | 'not_reasonably_available' | 'not_assessed'
+   - 'not_applicable' means discontinued status is genuinely irrelevant to the analysis — never a substitute for unknown. Enforce in derivation logic and add a code comment.
+
+3. Add a missing flag: compatibility: 'compatibility_assessed' | 'compatibility_not_assessed'.
+   Validation rules (enforce in deriveClaimFlags and readiness):
+   - discontinued_verified requires product_id_class === 'identified'
+   - compatibility_assessed requires product_id_class === 'identified'
+   - lab_recommended must never carry a product-specific discontinued or compatibility conclusion
+
+4. Readiness checklist corrections:
+   - Item "Product identified": rename to "Product ID determination recorded" — passes when a product ID record exists with idClass set to EITHER value. 'lab_recommended' is a complete, valid determination, not a failure.
+   - Item "RAP record present (if hail peril)": remove the peril condition — repairability is peril-agnostic (wind claims need it most). Correct check: RAP record present OR a gate reason recorded ('not_warranted_discontinued' | 'not_authorized'). The only failure state is no record AND no gate reason. Additionally: 'not_warranted_discontinued' as a gate reason is only valid when product_id_class === 'identified'.
+
+5. boilerplate_sections sectionKey enum — add missing keys:
+   uniform_inspection_procedure, product_id_methodology, attestation_block_c, scope_block, std_rpr_01_source_record.
+
+6. Standards Citation Library must be STRUCTURED data, not a text blob — readiness item 9 depends on it. New table standards_entries: id, companyId, entryKey, sourceType, citationText, verificationStatus ('verified' | 'verify_before_ship'), verifiedAt, authorityLimit (text), locatorTemplate (text), version. Readiness item 9 checks planned sections' referenced entryKeys against verificationStatus.
+
+7. Detriment Library must also be structured — its Applicability gate is a code check, not a prompt instruction. New table (or structured jsonb) detriment_entries: id, companyId, entryKey (e.g. 'DET-AS-01'), applicabilityConditions (jsonb array of condition codes matching field-record condition types), statement, requiredSupport, limitation, version. Generation workers filter entries to those whose applicabilityConditions exist in the attested record BEFORE building the prompt.
+
+=== #122 — Generation Pipeline / Compiler corrections ===
+
+8. Exhibit badges: replace the A–M letter scheme with the established class-prefixed scheme: S-# (storm), R-# (roof), I-# (interior), F-# (field measurement), C-# (collateral), T-# (test square). exhibitBadgeMap stores frozen per-class counters plus slot→badge assignments, e.g. { counters: { R: 4, S: 1 }, assignments: { "slot-uuid": "R-3" } }. Badges freeze at first compile; recompiles read the frozen map; supplements append within their class (next counter value); nothing ever renumbers. A–M caps at 13 exhibits and conflicts with shipped packages using the class-prefixed format.
+
+9. Causation/detriment approval gate: "attested inspector name present in company settings" is a config check, not a review act. Replace with an explicit reviewer confirmation in the approve request body: causationReviewConfirmed: true plus reviewerUserId — asserting the causation content was reviewed against the attested field record. Store on the section's gateFlags.
+
+10. generationSnapshot: add a standardsCited array capturing, for every standards entry referenced by any locked section: { entryKey, verificationStatus, verifiedAt } as of compile time. This is what makes "correct as of report date" provable from the snapshot alone.
+
+11. Add to the dependencies/out-of-scope notes of both #120 and #122: a Photo Curation & Captioning task is a named prerequisite for the findings hard gate — the reviewer needs a surface to select exhibit photos and build comparison pairs before photoComparisonConfirmed can mean anything. Caption generation is its own AI section type (caption drafting rules from the caption pattern library) and is currently unassigned to any task. Do not implement in these tickets; create the task stub so it isn't lost.
+
+12. Add a deferred task stub: Report Attestation & Signing (Variant B) — capture of the preparer's signature act (preparer vs. inspector split when they differ), which Deliver will eventually gate on. Not implemented in these tickets; must exist on the roadmap.
+
+=== #120 — Claim Hub corrections ===
+
+13. Sections tab: reflect the corrected gate set — causation/detriment cards show the reviewer-confirmation checkbox (item 9), RAP card shows the fallback confirmation only when mode === 'fallback_slope', findings card's comparison checkbox is disabled with tooltip "Requires photo curation (upcoming)" until the curation task lands.
+
+14. Overview tab readiness list: render the corrected checklist from item 4, including the RAP gate-reason pass state ("RAP: gate reason recorded — Not Warranted (Discontinued)" renders as PASS, not a warning).
+
+Do not begin implementation until these revisions are reflected in the ticket text.

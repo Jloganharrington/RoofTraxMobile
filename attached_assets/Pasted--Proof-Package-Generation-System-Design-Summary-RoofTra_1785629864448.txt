@@ -1,0 +1,129 @@
+# Proof Package Generation — System Design Summary
+<!-- RoofTrax-web / CRM-integrated. This document summarizes the full generation pipeline from field capture to delivered package. It is the orienting spec for building the generation system inside RoofTrax-web; the referenced BP modules contain the authoritative content and rules. -->
+
+## 1. Purpose and Governing Principles
+
+The Proof Package is a contractor construction document: it reports observed conditions, causation indicators, repair methodology, applicable construction requirements, and pricing. It is never a policy interpretation, coverage opinion, or settlement demand. The generation system enforces that lane at every layer.
+
+Five principles govern the design:
+
+1. **Evidence gates content.** No generated sentence may assert more than the attested field record supports. Libraries (Detriment, Captions, Standards) carry hard Applicability gates; the AI renders confirmed forms only when confirming evidence exists in the record.
+2. **Order is fixed; scope is conditional.** Sections render in a fixed assembly order; which sections render is determined by trigger flags derived from documented conditions, never by drafting discretion. Absent modules are omitted, never placeholdered.
+3. **Humans approve; the compiler renders.** AI drafts, a human reviews and locks, and the compile step is deterministic — same locked inputs, same PDF, every time. No AI in the compile step.
+4. **Everything cites its version.** Reports cite the field protocol, BP library, standards entries, and product library by version; shipped packages are frozen snapshots that remain correct as records of what governed at report date.
+5. **The record explains itself.** Attestation chains, exhibit badges, selection confirmations, and access logs make the package self-proving: what was examined, why, by whom, under what method.
+
+## 2. Where It Lives — CRM Integration
+
+The **claim record is the root object.** Everything the generator consumes or produces attaches to it:
+
+- **Customer / property** — identity, address, structure profile (drives AHJ resolution and attachment-type triggers).
+- **Inspection records** — attested field records from the field app (preliminary + forensic), synced via the outbox to the claim.
+- **Assets** — photo set (full-resolution, digital index), measurement report, storm data, retained samples log, RAP record.
+- **Documents** — generated sections, compiled packages, supplements — all versioned, all snapshotted, all on the claim timeline.
+- **Events** — inspections, attestations, generation runs, review approvals, compiles, deliveries, index access — one chronological audit trail per claim.
+
+Generation is a CRM workflow, not a separate tool: the user opens a claim, sees readiness status, runs generation, reviews sections, compiles, and delivers — without leaving the claim. Package status (drafting / in review / compiled / delivered / supplemented) is a first-class claim attribute visible in pipeline views.
+
+## 3. Content Architecture
+
+Four content classes feed every package:
+
+| Class | Source | Examples |
+|---|---|---|
+| **[BP] Boilerplate** | Per-tenant static library, versioned | Opening Statement, Inspection Method & Evidence Framework, Uniform Inspection Procedure, Attestation Blocks, Repairability Field Protocol, Product ID Methodology, Detriment Library, Caption Patterns, Standards Citation Library |
+| **[PS] Property-Specific** | The claim's attested records | Findings, photos/captions, causation analysis, repairability results, estimate justifications, Summary of Findings |
+| **[AHJ] Jurisdiction** | AHJ Packs (AHJ-Roof, AHJ-Siding), resolved by locality | Code citations with factual triggers, adopted edition/amendments, manufacturer-instruction enforceability provisions |
+| **Policy flags** | Per-claim booleans | Cosmetic endorsement present, damage definition present, matching endorsement — adjust drafting, never argued |
+
+Supporting per-tenant data: price book (estimate engine), discontinued-product library (versioned, with availability metadata), theming tokens (2.1 template shell), license/branding block.
+
+## 4. Inputs — What Generation Consumes
+
+1. **Attested field record** — the Uniform Inspection Procedure output: arrival record, interview (reported history), property profile, elevations + collateral sweep, roof/siding/interior findings with per-facet damage and unrelated-condition documentation, edge/assembly determinations, penetrations, test squares, product-ID record, RAP record with selection confirmations, inspector attestation (Variant A). Immutable after attestation; supplements only.
+2. **Measurement report** — parsed geometry (facets, areas, pitches, orientations, linears). Facet orientations + per-facet damage density = the directionality analysis, computed here, not in the field.
+3. **Storm data** — event verification for the loss date/address (vendor TBD), storm-history reconciliation.
+4. **Photo index** — full-resolution originals with structured tags (facet, class, condition codes); Index ID for external access.
+5. **AHJ Pack** — resolved from the property's jurisdiction; user de-selects non-applicable items.
+6. **Price book + scope record** — estimate lines with per-item construction justifications.
+7. **Trigger flags** — derived, not asked: `claim_posture`, `structure_attachment`, `created_opening`, `mitigation_performed`, `deck_replacement_in_scope`, `interior_scope_present`, `product_id_class`, `discontinued_status`, `compatibility`, peril, material set.
+
+**Readiness check (Stage 0):** before generation runs, the claim is validated — attestation present, required assets attached, flag combinations legal per the validation rules (e.g., `discontinued_verified` requires `identified`), VERIFY-BEFORE-SHIP standards not referenced by any planned section. Failures block with a checklist, not a crash.
+
+## 5. The Three-Stage Pipeline
+
+### Stage 1 — AI Generation (per section)
+Sections generate as independent objects under section-specific system prompts that inherit the library rules (building-as-subject; Applicability gates; conditional forms only with confirming evidence; Authority limits binding; caption drafting rules). Generation follows the **dependency DAG**:
+
+- Instant: BP shells resolve from the library; AHJ sections resolve from the pack.
+- Parallel: PS sections generate from the attested record (findings, captions, causation/detriment application, RAP narrative, estimate justifications).
+- Last: **Summary of Findings and Closing Statement generate from the completed, approved sections** — synthesis, never a second analysis. An upstream edit flips them stale for regeneration.
+
+Standards citations render as locator-complete references (document, edition, provision, proposition). Per the IICRC compliance rule, S500/S520 provision citations are human-entered from the licensed copy; standard text never enters the AI pipeline.
+
+### Stage 2 — Human Review (section lifecycle)
+Every section moves `draft → ai_generated → in_review → approved → locked`. The package can compile only when all included sections are locked. Hard gates requiring explicit human confirmation (auto-approval prohibited):
+
+- Comparison photo sets (recency/cause differentiation) — human confirms the pairing.
+- The causation/opinion content and attestation blocks — named credentialed person signs.
+- Any section relying on product identification, discontinued status, or compatibility — reviewer confirms the flags match the record.
+- Fallback paths (RAP fallback-slope selection, lab-recommended product ID) — reviewer confirms the honest-variant text rendered.
+
+Boilerplate sections auto-approve; AHJ sections approve after de-selection review.
+
+### Stage 3 — Deterministic Compile
+The compiler takes locked section content + tenant template shell + trigger flags and produces the PDF. Compiler responsibilities (never the sections'):
+
+- **Exhibit badges** — assigned at first compile, then **frozen for the life of the claim**; recompiles preserve assignments; new photos take new IDs; supplements never renumber.
+- **TOC with real page numbers** (DOM-traversal approach from the Phase 2 template).
+- **Layout rules** — max 2 photos/page; comparison sets stacked vertically, never split; captions in the "Photo — Exhibit {badge} —" format.
+- **Scope-block placement** — canonical contractor-lane block in the Opening; footer variant through the body; no duplicate closing block unless configured.
+- **Snapshot** — the compile stores the exact section versions, library versions, protocol version, AHJ pack version, and flag state that produced the PDF. Any package can be reproduced or defended from its snapshot.
+
+## 6. Conditional Modules
+
+Rendered only when triggered; omitted silently otherwise:
+
+| Module | Trigger |
+|---|---|
+| Joint Verification | `claim_posture ∈ {post_carrier_inspection, post_partial_denial}` |
+| Emergency Temporary Repairs | `created_opening AND mitigation_performed` |
+| Sheathing Quantity Determination | `deck_replacement_in_scope`; FRT+CDX variant when `structure_attachment = attached`, CDX-only when detached |
+| Interior/Moisture module | `interior_scope_present` |
+| RAP section | RAP record present; gate reason renders when assessment not performed |
+| Test-square exhibits | peril includes hail |
+
+`claim_posture` also scales level-of-proof: pre-claim packages carry full causation documentation; post-acceptance packages concentrate on condition and construction requirements.
+
+## 7. Photos and the Digital Index
+
+The package carries the curated exhibit set (~10 core photos plus module exhibits); the **full photo inventory is not attached**. All originals live in the digital index at full resolution; the package includes a one-page **Photo Inventory Access** sheet (URL, Index ID, photo count, resolution statement). Index access is logged — the claim timeline shows whether and when the adjuster opened the full set. AI proposes the curated set from structured tags; the reviewer confirms (comparison sets are a hard gate).
+
+## 8. Attestation and Audit Chain
+
+Field attestation (Variant A) freezes the field record → sections cite the attested record → report attestation (Variant B) closes the package over the cited record, with the preparer/inspector split rendered when they differ → concealed-condition changes issue as **dated, attributable supplements** compiled as new versioned documents on the claim, never edits. The RAP section cites the Repairability Field Protocol by version and the Williams methodology through Source Record locators as *aligned with the method's mechanics*. The snapshot (§5, Stage 3) plus the claim event trail is the complete defense file for any package.
+
+## 9. Delivery and Post-Delivery
+
+Compiled packages deliver from the claim (download/send); delivery is an event. Supplements follow the same pipeline with a scope limited to the new analysis, take new exhibit IDs, and cite the original package. Standards re-verification (annual audit + event triggers) governs *future* packages only — shipped packages remain correct as of their report date, provable from their snapshots.
+
+## 10. Build Order for RoofTrax-web
+
+1. **Claim object model + asset/record attachment** (everything else hangs on it) — includes inspection sync from the field app outbox.
+2. **BP/AHJ library storage with versioning** + tenant theming tokens.
+3. **Trigger-flag derivation + Stage 0 readiness validation** (validation rules from the Product ID Methodology and module triggers).
+4. **Compiler** (template shell, badges, TOC, layout, snapshot) — build before AI generation so review has a render target.
+5. **Section lifecycle + review UI** (per-section states, hard gates, stale propagation).
+6. **AI generation workers** per section type (system prompts inherit library rules; Summary/Closing DAG-last).
+7. **Photo index + access sheet + access logging.**
+8. **Delivery, supplements, claim timeline.**
+
+## 11. Open Items
+
+- Storm data vendor selection (§4 input).
+- AHJ Pack authoring (AHJ-Roof, AHJ-Siding) and jurisdiction resolution.
+- Anticipated Technical Questions library (2.9) — feeds causation/denial-adjacent drafting rules.
+- Diagram library (2.8) — SVG, tenant-themeable.
+- Uniform Inspection Procedure Stage 6.7 language sync + PDF re-render.
+- Photo Access Sheet template (#11).
+- Section-schema versioning policy for snapshot compatibility (RapReportSection.selection was the first instance).
