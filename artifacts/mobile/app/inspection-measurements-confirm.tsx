@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -25,6 +24,7 @@ import type {
   InspectionAccessoryType,
 } from '@workspace/protocol';
 import { useColors } from '@/hooks/useColors';
+import { ZoomableImage } from '@/components/ZoomableImage';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
@@ -690,11 +690,7 @@ export default function InspectionMeasurementsConfirm() {
               </Pressable>
             </View>
             {overviewUrl ? (
-              <Image
-                source={{ uri: overviewUrl }}
-                style={styles.diagramImage}
-                resizeMode="contain"
-              />
+              <ZoomableImage uri={overviewUrl} style={styles.diagramImage} />
             ) : null}
           </View>
         </View>

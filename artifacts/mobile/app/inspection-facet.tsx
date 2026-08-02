@@ -2,7 +2,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { FACET_DAMAGE_TYPES, type FacetDamageType, bearingToCardinal } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
+import { ZoomableImage } from '@/components/ZoomableImage';
 import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
@@ -752,11 +752,7 @@ export default function InspectionFacetScreen() {
               </Pressable>
             </View>
             {overviewUrl ? (
-              <Image
-                source={{ uri: overviewUrl }}
-                style={{ width: '100%', aspectRatio: 1.2 }}
-                resizeMode="contain"
-              />
+              <ZoomableImage uri={overviewUrl} style={{ width: '100%', aspectRatio: 1.2 }} />
             ) : null}
           </View>
         </View>
