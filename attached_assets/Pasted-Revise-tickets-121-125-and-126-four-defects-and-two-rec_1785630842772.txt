@@ -1,0 +1,15 @@
+Revise tickets #121, #125, and #126 — four defects and two reconciliations:
+
+#121 — IICRC deadlock fix:
+Remove "IICRC S500/S520 entries are verify_before_ship always" — combined with readiness item 9 this makes any interior-water package permanently uncompilable. Replace with: IICRC entries are verifiable normally (edition-level metadata; S500-2021 and S520-2024 are currently verified). Add a boolean column humanEnteredProvisionsOnly to standards_entries, true for all IICRC entries: (a) these entries' citation/locator text is never included in AI prompt context — the generation worker excludes them and leaves a citation placeholder the human completes; (b) the entry cannot be cited by a section until its locatorTemplate has been human-populated. The license restriction is about standard TEXT entering the AI pipeline, not about verification status.
+
+#126 — attestation block selection fix:
+attestation_block_a is the FIELD attestation only — it is already frozen in the field record from the mobile Stage 10 flow and must never render as the report signature. The report attestation is attestation_block_b in ALL cases, with an internal conditional on preparer_is_inspector: same person → single "Prepared and attested by" block; different people → "Field record attested by {inspector, credentials, inspection date}" + "Report prepared by {preparer, credentials}" with signature line under the preparer. Remove all logic selecting block_a at report level.
+
+#126 — compile/attest circularity fix:
+Do not mutate the compiled blob after attestation, and do not have the compiler read reportAttestations for a blob compiled before attestation exists. New flow: "Attest & Sign Report" (1) writes the reportAttestations row referencing the current blob version, (2) automatically triggers a final recompile producing a NEW blob version whose rendered attestation block and generationSnapshot include reportAttestationId and preparedAt. The pre-attestation blob remains in compiledReportVersions as the review version; Deliver gates on the signed blob version existing (422 otherwise). Exhibit badge map is already frozen so the signed recompile is layout-identical except the attestation block.
+
+#125 — comparison type vocabulary fix:
+Replace "pre-loss / post-loss or condition-differentiating" with the three comparison types from the caption pattern library, as the enum the pair builder and caption generator both use: 'recency' (recent-character indicators vs documented pre-existing), 'cause_differentiation' (localized condition vs general weathering), 'covered_vs_unrelated' (event damage vs animal/mechanical/other unrelated). Pre-loss photo pairs, when they exist, fit under 'recency'. The captions generator branches caption structure on this enum per Class 6 of the caption library (one set caption + one caption per photo stating what that photo contributes).
+
+#125 + #122 — badge

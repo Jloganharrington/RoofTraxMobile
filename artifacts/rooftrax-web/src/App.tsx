@@ -6,6 +6,7 @@ import Home from '@/pages/Home';
 import InspectionList from '@/pages/inspections/InspectionList';
 import Summary from '@/pages/inspections/Summary';
 import Estimate from '@/pages/inspections/Estimate';
+import PhotoCuration from '@/pages/inspections/PhotoCuration';
 import TeamList from '@/pages/team/TeamList';
 import PriceBookList from '@/pages/price-book/PriceBookList';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -46,6 +47,9 @@ function Router() {
       </Route>
       <Route path="/inspections/:id/estimate">
         <ProtectedRoute><Estimate /></ProtectedRoute>
+      </Route>
+      <Route path="/inspections/:id/curation">
+        <ProtectedRoute><PhotoCuration /></ProtectedRoute>
       </Route>
       <Route path="/team">
         <ProtectedRoute><TeamList /></ProtectedRoute>

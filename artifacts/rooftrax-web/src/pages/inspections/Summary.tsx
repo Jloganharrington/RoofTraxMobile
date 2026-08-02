@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, AlertTriangle, Sparkles, ArrowLeft, CheckCircle2, Info, FileText } from "lucide-react";
+import { Loader2, AlertTriangle, Sparkles, ArrowLeft, CheckCircle2, Info, Camera, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Summary() {
@@ -116,6 +116,12 @@ export default function Summary() {
             <p className="text-muted-foreground">{inspection.address}</p>
           </div>
           <div className="flex gap-2">
+            <Link href={`/inspections/${id}/curation`} className="inline-block">
+              <Button variant="outline">
+                <Camera className="h-4 w-4 mr-2" />
+                Photo Curation
+              </Button>
+            </Link>
             <Link href={`/inspections/${id}/estimate`} className="inline-block">
               <Button variant="outline">View Estimate</Button>
             </Link>

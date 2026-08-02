@@ -82,6 +82,11 @@ import {
   type CodeCitation as CodeCitationRow,
   userProfilesTable,
   usersTable,
+  exhibitSelectionsTable,
+  comparisonPairsTable,
+  claimEventsTable,
+  exhibitCaptionsTable,
+  type ExhibitClass,
 } from '@workspace/db';
 import type {
   Role,
@@ -5548,6 +5553,680 @@ router.post('/inspections/:inspectionId/report/lint-resolve', async (req: Reques
     .where(eq(inspectionsTable.id, inspectionId));
 
   res.json({ resolution });
+});
+
+// ── Photo Curation & Captioning (Task #125) ────────────────────────────────
+//
+// Exhibit class inference for photos that haven't been manually classified.
+function inferExhibitClass(photo: {
+  stage: string | null;
+  subjectType: string;
+  triadRole: string | null;
+  preliminaryRole: string | null;
+}): ExhibitClass {
+  const { stage, subjectType, triadRole, preliminaryRole } = photo;
+  if (stage === 'test_squares' || subjectType === 'test_square' || subjectType === 'test_square_hit') return 'T';
+  if (stage === 'interior' || subjectType === 'interior_observation') return 'I';
+  if (stage === 'collateral' || triadRole === 'collateral') return 'C';
+  if (triadRole === 'measurement') return 'F';
+  if (stage === 'arrival' || preliminaryRole === 'front_of_home' || preliminaryRole === 'roof_overview') return 'S';
+  return 'R';
+}
+
+/**
+ * Returns true and sends a 409 response if the inspection's exhibit selection
+ * set has already been finalized (any selection row has `finalizedAt` set).
+ * All mutating curation endpoints must call this and return early on true.
+ */
+async function checkCurationNotFinalized(
+  inspectionId: string,
+  companyId: string,
+  res: Response,
+): Promise<boolean> {
+  const [finalized] = await db
+    .select({ id: exhibitSelectionsTable.id })
+    .from(exhibitSelectionsTable)
+    .where(
+      and(
+        eq(exhibitSelectionsTable.inspectionId, inspectionId),
+        eq(exhibitSelectionsTable.companyId, companyId),
+        sql`${exhibitSelectionsTable.finalizedAt} IS NOT NULL`,
+      ),
+    )
+    .limit(1);
+  if (finalized) {
+    res.status(409).json({
+      error: 'Badges are frozen — exhibit selections and comparison pairs cannot be changed after finalization.',
+    });
+    return true;
+  }
+  return false;
+}
+
+// Shared helper: load full curation state for a given inspection.
+async function loadCurationState(inspectionId: string, companyId: string) {
+  const [photos, selections, pairs, captions] = await Promise.all([
+    db
+      .select()
+      .from(inspectionPhotosTable)
+      .where(and(eq(inspectionPhotosTable.inspectionId, inspectionId), eq(inspectionPhotosTable.companyId, companyId)))
+      .orderBy(inspectionPhotosTable.createdAt),
+    db
+      .select()
+      .from(exhibitSelectionsTable)
+      .where(and(eq(exhibitSelectionsTable.inspectionId, inspectionId), eq(exhibitSelectionsTable.companyId, companyId)))
+      .orderBy(exhibitSelectionsTable.sortOrder),
+    db
+      .select()
+      .from(comparisonPairsTable)
+      .where(and(eq(comparisonPairsTable.inspectionId, inspectionId), eq(comparisonPairsTable.companyId, companyId)))
+      .orderBy(comparisonPairsTable.createdAt),
+    db
+      .select()
+      .from(exhibitCaptionsTable)
+      .where(and(eq(exhibitCaptionsTable.inspectionId, inspectionId), eq(exhibitCaptionsTable.companyId, companyId)))
+      .orderBy(exhibitCaptionsTable.badgeLabel),
+  ]);
+
+  const photoMap = new Map(photos.map((p) => [p.id, p]));
+
+  const isFinalized = selections.length > 0 && selections.every((s) => s.finalizedAt !== null);
+  const allCaptionsLocked = captions.length > 0 && captions.every((c) => c.state === 'locked');
+
+  return {
+    inspectionId,
+    photos: photos.map((p) => ({
+      id: p.id,
+      url: p.url,
+      stage: p.stage,
+      subjectType: p.subjectType,
+      triadRole: p.triadRole,
+      preliminaryRole: p.preliminaryRole,
+      capturedAtUtc: p.capturedAtUtc?.toISOString() ?? null,
+      sha256: p.sha256,
+    })),
+    selections: selections.map((s) => ({
+      ...s,
+      finalizedAt: s.finalizedAt?.toISOString() ?? null,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+      photo: photoMap.has(s.photoId)
+        ? {
+            id: s.photoId,
+            url: photoMap.get(s.photoId)!.url,
+            stage: photoMap.get(s.photoId)!.stage,
+            subjectType: photoMap.get(s.photoId)!.subjectType,
+            triadRole: photoMap.get(s.photoId)!.triadRole,
+            preliminaryRole: photoMap.get(s.photoId)!.preliminaryRole,
+            capturedAtUtc: photoMap.get(s.photoId)!.capturedAtUtc?.toISOString() ?? null,
+            sha256: photoMap.get(s.photoId)!.sha256,
+          }
+        : null,
+    })),
+    pairs: pairs.map((pair) => ({
+      ...pair,
+      confirmedAt: pair.confirmedAt?.toISOString() ?? null,
+      createdAt: pair.createdAt.toISOString(),
+      beforePhoto: photoMap.has(pair.beforePhotoId)
+        ? { id: pair.beforePhotoId, url: photoMap.get(pair.beforePhotoId)!.url, stage: photoMap.get(pair.beforePhotoId)!.stage, subjectType: photoMap.get(pair.beforePhotoId)!.subjectType, triadRole: photoMap.get(pair.beforePhotoId)!.triadRole, preliminaryRole: photoMap.get(pair.beforePhotoId)!.preliminaryRole, capturedAtUtc: photoMap.get(pair.beforePhotoId)!.capturedAtUtc?.toISOString() ?? null, sha256: photoMap.get(pair.beforePhotoId)!.sha256 }
+        : null,
+      afterPhoto: photoMap.has(pair.afterPhotoId)
+        ? { id: pair.afterPhotoId, url: photoMap.get(pair.afterPhotoId)!.url, stage: photoMap.get(pair.afterPhotoId)!.stage, subjectType: photoMap.get(pair.afterPhotoId)!.subjectType, triadRole: photoMap.get(pair.afterPhotoId)!.triadRole, preliminaryRole: photoMap.get(pair.afterPhotoId)!.preliminaryRole, capturedAtUtc: photoMap.get(pair.afterPhotoId)!.capturedAtUtc?.toISOString() ?? null, sha256: photoMap.get(pair.afterPhotoId)!.sha256 }
+        : null,
+    })),
+    captions: captions.map((c) => ({
+      ...c,
+      generatedAt: c.generatedAt?.toISOString() ?? null,
+      lockedAt: c.lockedAt?.toISOString() ?? null,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    isFinalized,
+    exhibitBadgeMap: null as null | { counters: Record<string, number>; assignments: Record<string, string> },
+    photoComparisonGateActive: isFinalized && allCaptionsLocked,
+  };
+}
+
+// GET /inspections/:inspectionId/curation
+router.get('/:inspectionId/curation', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  const state = await loadCurationState(inspection.id, actor.companyId);
+  const inspectionRow = await db.select({ compiledReportVersions: inspectionsTable.compiledReportVersions }).from(inspectionsTable).where(eq(inspectionsTable.id, inspection.id)).limit(1);
+  // exhibitBadgeMap stored in compiledReportVersions or a side channel — for now read from first compiled blob metadata if available
+  res.json(state);
+});
+
+// POST /inspections/:inspectionId/curation/propose — AI-propose exhibit set
+router.post('/:inspectionId/curation/propose', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+  if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
+
+  const photos = await db
+    .select()
+    .from(inspectionPhotosTable)
+    .where(and(eq(inspectionPhotosTable.inspectionId, inspection.id), eq(inspectionPhotosTable.companyId, actor.companyId)))
+    .orderBy(inspectionPhotosTable.createdAt);
+
+  // Auto-proposal algorithm: prioritise by stage/role, cap at 12 exhibits
+  const proposed: typeof photos = [];
+  const addedIds = new Set<string>();
+
+  function tryAdd(p: (typeof photos)[number]) {
+    if (!addedIds.has(p.id) && proposed.length < 12) {
+      proposed.push(p);
+      addedIds.add(p.id);
+    }
+  }
+
+  // 1. Overview / arrival photos
+  for (const p of photos) {
+    if (p.preliminaryRole === 'front_of_home' || p.preliminaryRole === 'roof_overview') tryAdd(p);
+  }
+  // 2. Test square close-ups (up to 4)
+  const tsClosed = photos.filter((p) => p.subjectType === 'test_square' || p.subjectType === 'test_square_hit');
+  for (const p of tsClosed.slice(0, 4)) tryAdd(p);
+  // 3. Collateral / storm
+  for (const p of photos.filter((p) => p.stage === 'collateral' || p.triadRole === 'collateral').slice(0, 2)) tryAdd(p);
+  // 4. Interior (up to 2)
+  for (const p of photos.filter((p) => p.stage === 'interior' || p.subjectType === 'interior_observation').slice(0, 2)) tryAdd(p);
+  // 5. Roof damage — prefer close-ups per subjectId group, then wides to fill
+  const damagePhotos = photos.filter((p) => ['slope', 'elevation', 'damage_instance'].includes(p.subjectType));
+  const groupedBySubject = new Map<string, (typeof photos)[number][]>();
+  for (const p of damagePhotos) {
+    const key = `${p.subjectType}:${p.subjectId ?? 'none'}`;
+    if (!groupedBySubject.has(key)) groupedBySubject.set(key, []);
+    groupedBySubject.get(key)!.push(p);
+  }
+  for (const group of groupedBySubject.values()) {
+    const close = group.find((p) => p.triadRole === 'close');
+    const wide = group.find((p) => p.triadRole === 'wide');
+    if (close) tryAdd(close);
+    if (wide) tryAdd(wide);
+    if (proposed.length >= 12) break;
+  }
+
+  // Clear existing AI-proposed selections, insert new ones
+  await db.delete(exhibitSelectionsTable).where(
+    and(
+      eq(exhibitSelectionsTable.inspectionId, inspection.id),
+      eq(exhibitSelectionsTable.companyId, actor.companyId),
+      eq(exhibitSelectionsTable.isAiProposed, true),
+    ),
+  );
+
+  for (let i = 0; i < proposed.length; i++) {
+    const p = proposed[i];
+    const inferredClass = inferExhibitClass(p);
+    // Upsert: if already manually selected, don't overwrite
+    const existing = await db
+      .select()
+      .from(exhibitSelectionsTable)
+      .where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.photoId, p.id)))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(exhibitSelectionsTable).values({
+        inspectionId: inspection.id,
+        companyId: actor.companyId,
+        photoId: p.id,
+        exhibitClass: inferredClass,
+        sortOrder: i,
+        isAiProposed: true,
+      });
+    }
+  }
+
+  await db.insert(claimEventsTable).values({
+    inspectionId: inspection.id,
+    companyId: actor.companyId,
+    eventType: 'exhibit_selected',
+    payload: { source: 'ai_proposal', count: proposed.length },
+    actorId: actor.userId,
+  });
+
+  const state = await loadCurationState(inspection.id, actor.companyId);
+  res.json(state);
+});
+
+// PATCH /inspections/:inspectionId/curation/photos/:photoId — select/deselect/reclassify
+router.patch('/:inspectionId/curation/photos/:photoId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  const { selected, exhibitClass, sortOrder } = z.object({
+    selected: z.boolean(),
+    exhibitClass: z.enum(['R', 'S', 'I', 'F', 'C', 'T']).nullable().optional(),
+    sortOrder: z.number().int().optional(),
+  }).parse(req.body);
+
+  // Inspection-level guard: blocks both edits to existing rows AND new insertions
+  if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
+
+  const photoId = req.params.photoId as string;
+  const photo = await db.select().from(inspectionPhotosTable).where(and(eq(inspectionPhotosTable.id, photoId), eq(inspectionPhotosTable.inspectionId, inspection.id))).limit(1);
+  if (!photo.length) { res.status(404).json({ error: 'Photo not found' }); return; }
+
+  const existing = await db.select().from(exhibitSelectionsTable).where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.photoId, photoId))).limit(1);
+
+  if (!selected) {
+    await db.delete(exhibitSelectionsTable).where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.photoId, photoId)));
+    await db.insert(claimEventsTable).values({ inspectionId: inspection.id, companyId: actor.companyId, eventType: 'exhibit_deselected', payload: { photoId }, actorId: actor.userId });
+    res.json({ selection: null });
+    return;
+  }
+
+  const inferredClass = inferExhibitClass(photo[0]);
+  const resolvedClass = (exhibitClass ?? existing[0]?.exhibitClass ?? inferredClass) as ExhibitClass;
+
+  if (existing.length > 0) {
+    await db.update(exhibitSelectionsTable).set({
+      exhibitClass: resolvedClass,
+      ...(sortOrder !== undefined ? { sortOrder } : {}),
+      isAiProposed: false,
+    }).where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.photoId, photoId)));
+  } else {
+    await db.insert(exhibitSelectionsTable).values({
+      inspectionId: inspection.id,
+      companyId: actor.companyId,
+      photoId,
+      exhibitClass: resolvedClass,
+      sortOrder: sortOrder ?? 0,
+      isAiProposed: false,
+    });
+    await db.insert(claimEventsTable).values({ inspectionId: inspection.id, companyId: actor.companyId, eventType: 'exhibit_selected', payload: { photoId }, actorId: actor.userId });
+  }
+
+  if (exhibitClass !== undefined) {
+    await db.insert(claimEventsTable).values({ inspectionId: inspection.id, companyId: actor.companyId, eventType: 'exhibit_class_set', payload: { photoId, exhibitClass }, actorId: actor.userId });
+  }
+
+  const [updated] = await db.select().from(exhibitSelectionsTable).where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.photoId, photoId))).limit(1);
+  res.json({ selection: updated });
+});
+
+// POST /inspections/:inspectionId/curation/pairs — confirm a comparison pair
+router.post('/:inspectionId/curation/pairs', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+  if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
+
+  const { beforePhotoId, afterPhotoId, pairType, notes } = z.object({
+    beforePhotoId: z.string().min(1),
+    afterPhotoId: z.string().min(1),
+    pairType: z.enum(['pre_post_loss', 'condition_differentiation', 'directional_comparison']),
+    notes: z.string().max(1000).optional(),
+  }).parse(req.body);
+
+  if (beforePhotoId === afterPhotoId) { res.status(400).json({ error: 'A photo cannot be paired with itself.' }); return; }
+
+  // Validate both photos belong to this inspection and company (prevent cross-tenant ID injection)
+  const [beforePhotoRow] = await db
+    .select({ id: inspectionPhotosTable.id })
+    .from(inspectionPhotosTable)
+    .where(and(
+      eq(inspectionPhotosTable.id, beforePhotoId),
+      eq(inspectionPhotosTable.inspectionId, inspection.id),
+      eq(inspectionPhotosTable.companyId, actor.companyId),
+    ))
+    .limit(1);
+  if (!beforePhotoRow) { res.status(422).json({ error: 'Before photo not found in this inspection.' }); return; }
+
+  const [afterPhotoRow] = await db
+    .select({ id: inspectionPhotosTable.id })
+    .from(inspectionPhotosTable)
+    .where(and(
+      eq(inspectionPhotosTable.id, afterPhotoId),
+      eq(inspectionPhotosTable.inspectionId, inspection.id),
+      eq(inspectionPhotosTable.companyId, actor.companyId),
+    ))
+    .limit(1);
+  if (!afterPhotoRow) { res.status(422).json({ error: 'After photo not found in this inspection.' }); return; }
+
+  const [pair] = await db.insert(comparisonPairsTable).values({
+    inspectionId: inspection.id,
+    companyId: actor.companyId,
+    beforePhotoId,
+    afterPhotoId,
+    pairType,
+    confirmedBy: actor.userId,
+    confirmedAt: new Date(),
+    notes: notes ?? null,
+  }).returning();
+
+  await db.insert(claimEventsTable).values({ inspectionId: inspection.id, companyId: actor.companyId, eventType: 'comparison_pair_confirmed', payload: { pairId: pair.id, pairType }, actorId: actor.userId });
+
+  res.json({ pair: { ...pair, confirmedAt: pair.confirmedAt?.toISOString() ?? null, createdAt: pair.createdAt.toISOString() } });
+});
+
+// DELETE /inspections/:inspectionId/curation/pairs/:pairId
+router.delete('/:inspectionId/curation/pairs/:pairId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+  if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
+
+  const pairId = req.params.pairId as string;
+  const existing = await db.select().from(comparisonPairsTable).where(and(eq(comparisonPairsTable.id, pairId), eq(comparisonPairsTable.inspectionId, inspection.id))).limit(1);
+  if (!existing.length) { res.status(404).json({ error: 'Pair not found' }); return; }
+
+  await db.delete(comparisonPairsTable).where(eq(comparisonPairsTable.id, pairId));
+  await db.insert(claimEventsTable).values({ inspectionId: inspection.id, companyId: actor.companyId, eventType: 'comparison_pair_removed', payload: { pairId }, actorId: actor.userId });
+
+  res.json({ ok: true });
+});
+
+// POST /inspections/:inspectionId/curation/finalize — freeze badge assignments
+router.post('/:inspectionId/curation/finalize', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can finalize badge assignments.' }); return; }
+
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  const selections = await db
+    .select()
+    .from(exhibitSelectionsTable)
+    .where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.companyId, actor.companyId)))
+    .orderBy(exhibitSelectionsTable.sortOrder);
+
+  if (selections.length === 0) { res.status(422).json({ error: 'No photos selected — select at least one exhibit photo before freezing.' }); return; }
+
+  const alreadyFinalized = selections.every((s) => s.finalizedAt !== null);
+  if (alreadyFinalized) { res.status(409).json({ error: 'Badge assignments are already frozen.' }); return; }
+
+  // Fetch photo metadata for class inference (outside transaction — read-only)
+  const photoIds = selections.map((s) => s.photoId);
+  const photos = await db.select().from(inspectionPhotosTable).where(inArray(inspectionPhotosTable.id, photoIds));
+  const photoMap = new Map(photos.map((p) => [p.id, p]));
+
+  // Compute badge assignments before the transaction
+  const counters: Record<string, number> = { R: 0, S: 0, I: 0, F: 0, C: 0, T: 0 };
+  const assignments: Record<string, { cls: ExhibitClass; badge: string }> = {};
+  for (const sel of selections) {
+    const photo = photoMap.get(sel.photoId);
+    const cls = (sel.exhibitClass ?? (photo ? inferExhibitClass(photo) : 'R')) as ExhibitClass;
+    counters[cls] = (counters[cls] ?? 0) + 1;
+    assignments[sel.id] = { cls, badge: `${cls}-${counters[cls]}` };
+  }
+
+  // Wrap all writes in a transaction — partial failure leaves no half-frozen state.
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    for (const sel of selections) {
+      const { cls, badge } = assignments[sel.id];
+      await tx.update(exhibitSelectionsTable).set({
+        exhibitClass: cls,
+        badgeLabel: badge,
+        finalizedAt: now,
+      }).where(eq(exhibitSelectionsTable.id, sel.id));
+    }
+
+    for (const sel of selections) {
+      const { badge } = assignments[sel.id];
+      const [exists] = await tx
+        .select({ id: exhibitCaptionsTable.id })
+        .from(exhibitCaptionsTable)
+        .where(eq(exhibitCaptionsTable.exhibitSelectionId, sel.id))
+        .limit(1);
+      if (!exists) {
+        await tx.insert(exhibitCaptionsTable).values({
+          inspectionId: inspection.id,
+          companyId: actor.companyId,
+          exhibitSelectionId: sel.id,
+          badgeLabel: badge,
+          state: 'pending',
+        });
+      }
+    }
+
+    await tx.insert(claimEventsTable).values({
+      inspectionId: inspection.id,
+      companyId: actor.companyId,
+      eventType: 'exhibit_badges_finalized',
+      payload: { counters, assignmentCount: Object.keys(assignments).length },
+      actorId: actor.userId,
+    });
+  });
+
+  const state = await loadCurationState(inspection.id, actor.companyId);
+  res.json(state);
+});
+
+// POST /inspections/:inspectionId/sections/captions/generate — AI caption generation
+router.post('/:inspectionId/sections/captions/generate', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can generate captions.' }); return; }
+
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  // Must be finalized first
+  const selections = await db.select().from(exhibitSelectionsTable)
+    .where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.companyId, actor.companyId)));
+  const isFinalized = selections.length > 0 && selections.every((s) => s.finalizedAt !== null);
+  if (!isFinalized) { res.status(422).json({ error: 'Freeze badge assignments before generating captions.' }); return; }
+
+  const allCaptions = await db.select().from(exhibitCaptionsTable)
+    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+    .orderBy(exhibitCaptionsTable.badgeLabel);
+
+  if (allCaptions.length === 0) { res.status(422).json({ error: 'No caption slots found — finalize badge assignments first.' }); return; }
+
+  // Only regenerate unlocked captions — locked captions are permanently immutable.
+  const captions = allCaptions.filter((c) => c.state !== 'locked');
+  if (captions.length === 0) {
+    res.status(422).json({ error: 'All captions are locked — nothing to regenerate.' });
+    return;
+  }
+
+  // Build photo brief for the AI prompt (unlocked slots only)
+  const photoIds = selections.map((s) => s.photoId);
+  const photos = await db.select().from(inspectionPhotosTable).where(inArray(inspectionPhotosTable.id, photoIds));
+  const photoMap = new Map(photos.map((p) => [p.id, p]));
+  const selectionMap = new Map(selections.map((s) => [s.id, s]));
+
+  const exhibitBrief = captions.map((c) => {
+    const sel = selectionMap.get(c.exhibitSelectionId);
+    const photo = sel ? photoMap.get(sel.photoId) : undefined;
+    return {
+      exhibitCaptionId: c.id,
+      badge: c.badgeLabel,
+      stage: photo?.stage ?? 'unknown',
+      subjectType: photo?.subjectType ?? 'unknown',
+      triadRole: photo?.triadRole ?? null,
+      preliminaryRole: photo?.preliminaryRole ?? null,
+      exhibitClass: sel?.exhibitClass ?? 'R',
+    };
+  });
+
+  const prompt = `You are a technical report writer for a forensic roofing and siding inspection company.
+
+Generate one concise exhibit caption for each photo below. Each caption MUST:
+1. Start with exactly "Photo — Exhibit {badge} —" (use the badge field provided)
+2. Describe the observed condition or subject in technical, observation-based language
+3. Reference the specific building component (facet, elevation, surface) where applicable
+4. State what the photo documents (e.g. "hail impact damage to field shingles", "displacement of step flashing at chimney", "granule loss pattern on south-facing slope")
+5. Be exactly 1-2 sentences
+6. Never assert coverage conclusions, policy interpretations, dollar amounts, or insurance-advocacy language
+7. Never use words like "should be covered", "insurance", "claim", "settlement", "damages owed"
+
+Exhibit class guide: R=Roof, S=Storm/storm-event evidence, I=Interior/attic, F=Field measurement, C=Collateral damage, T=Test square
+
+Photos:
+${JSON.stringify(exhibitBrief, null, 2)}
+
+Return a JSON array exactly: [{ "exhibitCaptionId": "...", "caption": "Photo — Exhibit X-# — ..." }, ...]`;
+
+  let generated: Array<{ exhibitCaptionId: string; caption: string }> = [];
+  try {
+    const response = await geminiAi.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: { responseMimeType: 'application/json', maxOutputTokens: 4096 },
+    });
+    const raw = response.text ?? '';
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+    generated = JSON.parse(cleaned) as typeof generated;
+  } catch (err) {
+    req.log.error({ err }, 'Caption generation failed');
+    res.status(502).json({ error: 'Caption generation failed. Please try again.' });
+    return;
+  }
+
+  // Accept only IDs that belong to unlocked caption slots for this inspection.
+  const captionIdSet = new Set(captions.map((c) => c.id));
+  const validGenerated = (Array.isArray(generated) ? generated : []).filter(
+    (g) =>
+      typeof g.exhibitCaptionId === 'string' &&
+      captionIdSet.has(g.exhibitCaptionId) &&
+      typeof g.caption === 'string' &&
+      g.caption.length > 0,
+  );
+
+  // Safety threshold: require ≥50% of unlocked target captions to be returned validly.
+  // A lower match rate indicates a malformed/truncated AI response — fail fast rather than
+  // silently committing a partial update.
+  const targetCount = captions.length;
+  if (validGenerated.length < Math.ceil(targetCount * 0.5)) {
+    req.log.error(
+      { validCount: validGenerated.length, targetCount, rawLength: (generated as unknown[]).length },
+      'Caption generation AI response below 50% valid-ID threshold — aborting commit',
+    );
+    res.status(502).json({
+      error: `Caption generation produced too few valid results (${validGenerated.length}/${targetCount}). The AI response may be malformed — please retry.`,
+    });
+    return;
+  }
+
+  const now = new Date();
+  for (const g of validGenerated) {
+    const sanitized = sanitizeHtml(g.caption, { allowedTags: [], allowedAttributes: {} });
+    const captionText = sanitized.slice(0, 500) || `Photo — Exhibit (see badge) — [caption pending review]`;
+    // Double-guard: also exclude locked rows in the update predicate (belt-and-suspenders).
+    await db.update(exhibitCaptionsTable)
+      .set({ captionText, state: 'generated', generatedAt: now })
+      .where(and(
+        eq(exhibitCaptionsTable.id, g.exhibitCaptionId),
+        eq(exhibitCaptionsTable.inspectionId, inspection.id),
+        sql`${exhibitCaptionsTable.state} != 'locked'`,
+      ));
+  }
+
+  await db.insert(claimEventsTable).values({
+    inspectionId: inspection.id,
+    companyId: actor.companyId,
+    eventType: 'captions_generated',
+    payload: { count: validGenerated.length },
+    actorId: actor.userId,
+  });
+
+  const updated = await db.select().from(exhibitCaptionsTable)
+    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+    .orderBy(exhibitCaptionsTable.badgeLabel);
+
+  res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
+});
+
+// PATCH /inspections/:inspectionId/sections/captions/:captionId — edit caption text
+router.patch('/:inspectionId/sections/captions/:captionId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  const { captionText } = z.object({ captionText: z.string().min(1).max(500) }).parse(req.body);
+  const captionId = req.params.captionId as string;
+
+  const [caption] = await db.select().from(exhibitCaptionsTable).where(and(eq(exhibitCaptionsTable.id, captionId), eq(exhibitCaptionsTable.inspectionId, inspection.id))).limit(1);
+  if (!caption) { res.status(404).json({ error: 'Caption not found' }); return; }
+  if (caption.state === 'locked') { res.status(409).json({ error: 'Caption is locked and cannot be edited.' }); return; }
+
+  const sanitized = sanitizeHtml(captionText, { allowedTags: [], allowedAttributes: {} });
+  const [updated] = await db.update(exhibitCaptionsTable)
+    .set({ captionText: sanitized, state: 'in_review' })
+    .where(eq(exhibitCaptionsTable.id, captionId))
+    .returning();
+
+  res.json({ caption: { ...updated, generatedAt: updated.generatedAt?.toISOString() ?? null, lockedAt: updated.lockedAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() } });
+});
+
+// POST /inspections/:inspectionId/sections/captions/approve — approve all generated captions
+router.post('/:inspectionId/sections/captions/approve', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can approve captions.' }); return; }
+
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  await db.update(exhibitCaptionsTable)
+    .set({ state: 'approved' })
+    .where(and(
+      eq(exhibitCaptionsTable.inspectionId, inspection.id),
+      eq(exhibitCaptionsTable.companyId, actor.companyId),
+      inArray(exhibitCaptionsTable.state, ['generated', 'in_review']),
+    ));
+
+  const updated = await db.select().from(exhibitCaptionsTable)
+    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+    .orderBy(exhibitCaptionsTable.badgeLabel);
+
+  res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
+});
+
+// POST /inspections/:inspectionId/sections/captions/lock — lock all approved captions
+router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can lock captions.' }); return; }
+
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  const allCaptions = await db.select().from(exhibitCaptionsTable)
+    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)));
+
+  const unapproved = allCaptions.filter((c) => c.state !== 'approved' && c.state !== 'locked');
+  if (unapproved.length > 0) {
+    res.status(422).json({ error: `${unapproved.length} caption(s) are not yet approved — approve all captions before locking.` });
+    return;
+  }
+
+  const now = new Date();
+  await db.update(exhibitCaptionsTable)
+    .set({ state: 'locked', lockedAt: now, lockedBy: actor.userId })
+    .where(and(
+      eq(exhibitCaptionsTable.inspectionId, inspection.id),
+      eq(exhibitCaptionsTable.companyId, actor.companyId),
+      eq(exhibitCaptionsTable.state, 'approved'),
+    ));
+
+  await db.insert(claimEventsTable).values({
+    inspectionId: inspection.id,
+    companyId: actor.companyId,
+    eventType: 'section_locked',
+    payload: { section: 'captions' },
+    actorId: actor.userId,
+  });
+
+  const updated = await db.select().from(exhibitCaptionsTable)
+    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+    .orderBy(exhibitCaptionsTable.badgeLabel);
+
+  res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
 });
 
 export default router;
