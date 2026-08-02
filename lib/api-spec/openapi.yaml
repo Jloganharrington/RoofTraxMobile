@@ -6340,6 +6340,7 @@ components:
           tieInValley,
           tieInHipRidge,
           notes,
+          compassBearing,
           createdAt,
         ]
       properties:
@@ -6371,6 +6372,11 @@ components:
           type: boolean
         notes:
           type: [string, "null"]
+        compassBearing:
+          type: [number, "null"]
+          description: >-
+            0–360° azimuth of the slope's downhill-facing direction, or null
+            when the vendor report does not include per-facet bearing data.
         createdAt:
           type: string
           format: date-time
@@ -6408,6 +6414,8 @@ components:
           type: boolean
         notes:
           type: [string, "null"]
+        compassBearing:
+          type: [number, "null"]
     UpdateInspectionSlopeInput:
       type: object
       description: Partial facet update — only supplied fields change.
@@ -6435,6 +6443,8 @@ components:
           type: boolean
         notes:
           type: [string, "null"]
+        compassBearing:
+          type: [number, "null"]
     InspectionSidingFacet:
       type: object
       required:

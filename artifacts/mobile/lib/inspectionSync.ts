@@ -254,6 +254,7 @@ export async function createSlope(
       tieInValley: fields.tieInValley ?? false,
       tieInHipRidge: fields.tieInHipRidge ?? false,
       notes: fields.notes ?? null,
+      compassBearing: null,
       createdAt: now,
     };
     return { ...inspection, slopes: [...(inspection.slopes ?? []), optimistic] };

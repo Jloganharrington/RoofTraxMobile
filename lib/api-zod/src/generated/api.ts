@@ -1450,6 +1450,7 @@ export const ListInspectionsResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
   "elevations": zod.array(zod.object({
@@ -2060,6 +2061,7 @@ export const CreateInspectionResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
   "elevations": zod.array(zod.object({
@@ -2652,6 +2654,7 @@ export const GetInspectionResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
   "elevations": zod.array(zod.object({
@@ -3571,6 +3574,7 @@ export const UpdateInspectionResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
   "elevations": zod.array(zod.object({
@@ -4477,7 +4481,8 @@ export const UpdateInspectionSlopeBody = zod.object({
   "damagePresent": zod.boolean().optional(),
   "tieInValley": zod.boolean().optional(),
   "tieInHipRidge": zod.boolean().optional(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "compassBearing": zod.number().nullish()
 }).describe('Partial facet update — only supplied fields change.')
 
 export const UpdateInspectionSlopeResponse = zod.object({
@@ -4495,6 +4500,7 @@ export const UpdateInspectionSlopeResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })
 })
@@ -4532,7 +4538,8 @@ export const CreateInspectionSlopeBody = zod.object({
   "damagePresent": zod.boolean().optional(),
   "tieInValley": zod.boolean().optional(),
   "tieInHipRidge": zod.boolean().optional(),
-  "notes": zod.string().nullish()
+  "notes": zod.string().nullish(),
+  "compassBearing": zod.number().nullish()
 })
 
 export const CreateInspectionSlopeResponse = zod.object({
@@ -4550,6 +4557,7 @@ export const CreateInspectionSlopeResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })
 })
@@ -5146,6 +5154,7 @@ export const SubmitInspectionResponse = zod.object({
   "tieInValley": zod.boolean(),
   "tieInHipRidge": zod.boolean(),
   "notes": zod.string().nullable(),
+  "compassBearing": zod.number().nullable().describe('0–360° azimuth of the slope\'s downhill-facing direction, or null when the vendor report does not include per-facet bearing data.'),
   "createdAt": zod.coerce.date()
 })).optional().describe('Child slopes. Populated by GET \/inspections\/{id} (detail view); omitted from the list feed. Optional so list rows and the mobile optimistic cache stay valid.'),
   "elevations": zod.array(zod.object({

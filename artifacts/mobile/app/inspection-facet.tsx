@@ -15,7 +15,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
-import { FACET_DAMAGE_TYPES, type FacetDamageType } from '@workspace/protocol';
+import { FACET_DAMAGE_TYPES, type FacetDamageType, bearingToCardinal } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
@@ -305,7 +305,17 @@ export default function InspectionFacetScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.heading, { color: colors.foreground }]}>{facet.label}</Text>
+        <View style={styles.headingRow}>
+          <Text style={[styles.heading, { color: colors.foreground }]}>{facet.label}</Text>
+          {facet.compassBearing != null && (
+            <View style={[styles.compassBadge, { backgroundColor: colors.accent }]}>
+              <Icon name="navigation" size={13} color={colors.secondary} />
+              <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: 13 }}>
+                {bearingToCardinal(facet.compassBearing)}
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Details */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -747,7 +757,9 @@ function Field({
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 10 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  heading: { fontSize: 20, fontWeight: '800' },
+  headingRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  heading:      { fontSize: 20, fontWeight: '800' },
+  compassBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   section: { fontSize: 16, fontWeight: '700', marginTop: 8 },
   card: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 10 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

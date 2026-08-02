@@ -1289,6 +1289,7 @@ router.patch(
           tieInHipRidge: parsed.data.tieInHipRidge,
         }),
         ...(parsed.data.notes !== undefined && { notes: parsed.data.notes }),
+        ...(parsed.data.compassBearing !== undefined && { compassBearing: parsed.data.compassBearing }),
     };
     const slopeWhere = and(
       eq(inspectionSlopesTable.id, req.params.slopeId as string),
@@ -4060,7 +4061,7 @@ Extract ALL measurements and return ONLY a valid JSON object — no markdown fen
 
 {
   "slopes": [
-    { "label": "F1", "areaSqft": 245.5, "pitchRise": 4, "pitchRun": 12, "materialType": "asphalt_shingle" }
+    { "label": "F1", "areaSqft": 245.5, "pitchRise": 4, "pitchRun": 12, "materialType": "asphalt_shingle", "compassBearing": 180 }
   ],
   "linears": {
     "ridge_lf": 32,
@@ -4088,9 +4089,10 @@ Extract ALL measurements and return ONLY a valid JSON object — no markdown fen
 }
 
 Rules:
-- Label each roof plane F1, F2, F3… in the order they appear in the report.
+- Sort slopes by descending areaSqft — the largest slope is always F1, the second-largest F2, and so on. Never use report page order for labeling.
 - pitchRise and pitchRun are integers (4/12 pitch → pitchRise: 4, pitchRun: 12).
 - materialType must be one of: asphalt_shingle, cedar_shake, standing_seam_metal — or null if not stated.
+- compassBearing: the 0–360° azimuth of each slope's downhill-facing direction. Extract from the report's per-facet bearing data — EagleView labels this "Azimuth", Hover labels it "Orientation", GAF labels it "Bearing". Set null when the report does not include per-facet bearing data.
 - linears: include ridge_lf, hip_lf, valley_lf, eave_lf, rake_lf only when explicitly stated; omit absent keys.
 - totals: total_area_sqft and total_squares are usually on the report summary page. Include waste_factor_pct if stated.
 - accessories: drip_edge_lf, starter_lf, step_flashing_lf, counter_flashing_lf — include only when explicitly listed.
@@ -4100,7 +4102,7 @@ Rules:
 - Set any numeric field to null if you cannot determine it confidently.`;
 
   type RawParsed = {
-    slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null }>;
+    slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null; compassBearing?: number | null }>;
     linears?: Record<string, number | null>;
     totals?: Record<string, number | null>;
     accessories?: Record<string, number | null>;
@@ -4138,11 +4140,12 @@ Rules:
   // Normalise into the typed ParsedMeasurements shape and return — no DB writes.
   const parsed = {
     slopes:       (raw.slopes ?? []).map(s => ({
-      label:        s.label,
-      areaSqft:     s.areaSqft ?? null,
-      pitchRise:    s.pitchRise ?? null,
-      pitchRun:     s.pitchRun ?? null,
-      materialType: s.materialType ?? null,
+      label:          s.label,
+      areaSqft:       s.areaSqft ?? null,
+      pitchRise:      s.pitchRise ?? null,
+      pitchRun:       s.pitchRun ?? null,
+      materialType:   s.materialType ?? null,
+      compassBearing: typeof s.compassBearing === 'number' ? s.compassBearing : null,
     })),
     linears:      raw.linears      ?? {},
     totals:       raw.totals       ?? {},
@@ -4167,7 +4170,7 @@ router.post('/inspections/:inspectionId/apply-measurements', async (req: Request
   if (!inspection) return;
 
   type ApplyBody = {
-    slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null }>;
+    slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null; compassBearing?: number | null }>;
     linears?: Record<string, number | null>;
     totals?: Record<string, number | null>;
     accessories?: Record<string, number | null>;
@@ -4219,10 +4222,11 @@ router.post('/inspections/:inspectionId/apply-measurements', async (req: Request
       companyId:    actor.companyId,
       inspectionId,
       label:        slope.label,
-      ...(slope.areaSqft  != null && { areaSqft:    slope.areaSqft }),
-      ...(slope.pitchRise != null && { pitchRise:   slope.pitchRise }),
-      ...(slope.pitchRun  != null && { pitchRun:    slope.pitchRun }),
-      ...(slope.materialType != null && { materialType: slope.materialType }),
+      ...(slope.areaSqft       != null && { areaSqft:       slope.areaSqft }),
+      ...(slope.pitchRise      != null && { pitchRise:      slope.pitchRise }),
+      ...(slope.pitchRun       != null && { pitchRun:       slope.pitchRun }),
+      ...(slope.materialType   != null && { materialType:   slope.materialType }),
+      ...(slope.compassBearing != null && { compassBearing: slope.compassBearing }),
     });
     slopesCreated++;
   }

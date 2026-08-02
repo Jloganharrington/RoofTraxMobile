@@ -77,6 +77,24 @@ export interface ParsedSlope {
   pitchRise: number | null;
   pitchRun: number | null;
   materialType: string | null;
+  /** 0–360° azimuth of the slope's downhill-facing direction, or null when the
+   *  vendor report does not include per-facet bearing data. */
+  compassBearing: number | null;
+}
+
+// ── Compass direction helpers ─────────────────────────────────────────────────
+
+const COMPASS_POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+export type CompassPoint = (typeof COMPASS_POINTS)[number];
+
+/**
+ * Convert a compass bearing (0–360°) to the nearest 8-point cardinal label.
+ * Normalises values outside 0–360 and handles negatives gracefully.
+ */
+export function bearingToCardinal(deg: number): CompassPoint {
+  const normalized = ((deg % 360) + 360) % 360;
+  const idx = Math.round(normalized / 45) % 8;
+  return COMPASS_POINTS[idx];
 }
 
 export interface ParsedSidingFacet {

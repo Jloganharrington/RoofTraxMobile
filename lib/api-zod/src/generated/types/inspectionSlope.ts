@@ -26,5 +26,10 @@ export interface InspectionSlope {
   tieInHipRidge: boolean;
   /** @nullable */
   notes: string | null;
+  /**
+     * 0–360° azimuth of the slope's downhill-facing direction, or null when the vendor report does not include per-facet bearing data.
+     * @nullable
+     */
+  compassBearing: number | null;
   createdAt: Date;
 }

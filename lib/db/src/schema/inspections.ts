@@ -875,6 +875,11 @@ export const inspectionSlopesTable = pgTable('inspection_slopes', {
   tieInValley: boolean('tie_in_valley').notNull().default(false),
   tieInHipRidge: boolean('tie_in_hip_ridge').notNull().default(false),
   notes: text('notes'),
+  // AI-extracted bearing: 0–360° downhill-facing azimuth. Null when the vendor
+  // report does not publish per-facet bearing data (EagleView "Azimuth", Hover
+  // "Orientation", GAF "Bearing"). Used to display a cardinal direction to the
+  // inspector on the roof so they can orient to the correct slope.
+  compassBearing: doublePrecision('compass_bearing'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

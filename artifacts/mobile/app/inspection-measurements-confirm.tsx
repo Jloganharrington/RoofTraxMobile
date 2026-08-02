@@ -13,7 +13,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetInspectionQueryKey } from '@workspace/api-client-react';
-import { MEASUREMENT_META } from '@workspace/protocol';
+import { MEASUREMENT_META, bearingToCardinal } from '@workspace/protocol';
 import type {
   ParsedSlope,
   ParsedSidingFacet,
@@ -35,6 +35,7 @@ type EditableSlope = {
   pitchRise: string;
   pitchRun: string;
   materialType: string;
+  compassBearing: number | null;
   enabled: boolean;
 };
 
@@ -155,12 +156,13 @@ export default function InspectionMeasurementsConfirm() {
 
   const [slopes, setSlopes] = useState<EditableSlope[]>(() =>
     (pending?.slopes ?? []).map(s => ({
-      label:        s.label,
-      areaSqft:     numStr(s.areaSqft),
-      pitchRise:    numStr(s.pitchRise),
-      pitchRun:     numStr(s.pitchRun),
-      materialType: s.materialType ?? '',
-      enabled:      true,
+      label:          s.label,
+      areaSqft:       numStr(s.areaSqft),
+      pitchRise:      numStr(s.pitchRise),
+      pitchRun:       numStr(s.pitchRun),
+      materialType:   s.materialType ?? '',
+      compassBearing: s.compassBearing ?? null,
+      enabled:        true,
     })),
   );
 
@@ -239,11 +241,12 @@ export default function InspectionMeasurementsConfirm() {
         slopes: slopes
           .filter(s => s.enabled)
           .map(s => ({
-            label:        s.label,
-            areaSqft:     s.areaSqft    ? parseFloat(s.areaSqft)    : null,
-            pitchRise:    s.pitchRise   ? parseInt(s.pitchRise, 10)  : null,
-            pitchRun:     s.pitchRun    ? parseInt(s.pitchRun, 10)   : null,
-            materialType: s.materialType || null,
+            label:          s.label,
+            areaSqft:       s.areaSqft    ? parseFloat(s.areaSqft)   : null,
+            pitchRise:      s.pitchRise   ? parseInt(s.pitchRise, 10) : null,
+            pitchRun:       s.pitchRun    ? parseInt(s.pitchRun, 10)  : null,
+            materialType:   s.materialType || null,
+            compassBearing: s.compassBearing,
           })),
         linears: Object.fromEntries(
           linears.filter(m => m.enabled).map(m => [m.key, m.value ? parseFloat(m.value) : null]),
@@ -307,8 +310,17 @@ export default function InspectionMeasurementsConfirm() {
     return (
       <View style={[styles.slopeCard, { backgroundColor: colors.card, borderColor: colors.border, opacity: slope.enabled ? 1 : 0.45 }]}>
         <View style={styles.slopeHeader}>
-          <View style={[styles.slopeBadge, { backgroundColor: colors.secondary }]}>
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{slope.label}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={[styles.slopeBadge, { backgroundColor: colors.secondary }]}>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{slope.label}</Text>
+            </View>
+            {slope.compassBearing != null && (
+              <View style={[styles.compassBadge, { backgroundColor: colors.accent }]}>
+                <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: 12 }}>
+                  ↓ {bearingToCardinal(slope.compassBearing)}
+                </Text>
+              </View>
+            )}
           </View>
           <Switch
             value={slope.enabled}
@@ -552,6 +564,7 @@ const styles = StyleSheet.create({
   slopeCard:     { borderRadius: 14, borderWidth: 1, padding: 12, gap: 10 },
   slopeHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   slopeBadge:    { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
+  compassBadge:  { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   slopeFields:   { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   slopeField:    { flex: 1, gap: 4 },
   slopeFieldLabel:{ fontSize: 11, fontWeight: '600' },

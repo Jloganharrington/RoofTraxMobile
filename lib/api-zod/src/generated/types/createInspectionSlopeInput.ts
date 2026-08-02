@@ -26,4 +26,6 @@ export interface CreateInspectionSlopeInput {
   tieInHipRidge?: boolean;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  compassBearing?: number | null;
 }
