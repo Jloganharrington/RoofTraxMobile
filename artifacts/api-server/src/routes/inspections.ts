@@ -1192,13 +1192,20 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
 
-  // When the measurements PDF was replaced, purge the per-facet rows that
-  // belong to the old analysis so a future re-analyze always starts clean.
+  // When the measurements PDF was replaced, purge the per-facet rows and
+  // measurement-report-page photos that belong to the old analysis so a
+  // future re-analyze always starts clean.
   if (
     parsed.data.measurementsReportUrl !== undefined &&
     parsed.data.measurementsReportUrl !== inspection.measurementsReportUrl
   ) {
     await db.delete(roofFacetsTable).where(eq(roofFacetsTable.inspectionId, inspectionId));
+    await db.delete(inspectionPhotosTable).where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.subjectType, 'measurement_report_page'),
+      ),
+    );
   }
 
   res.json(
@@ -4166,38 +4173,76 @@ Rules:
     return;
   }
 
-  // ── Overview image extraction ───────────────────────────────────────────────
-  // After Claude identifies the overview page, render it to JPEG with
-  // ImageMagick and upload to object storage. Failures are non-fatal — the
-  // modal button is simply omitted when overviewImageUrl is null.
+  // ── Measurement report page rendering ──────────────────────────────────────
+  // Render every page of the PDF to JPEG and save as inspection_photos rows
+  // (subjectType 'measurement_report_page') so mobile can flip between pages
+  // without any further API calls.  Failures are non-fatal per page — mobile
+  // falls back to render-overview-image for entries that are missing.
   let overviewImageUrl: string | null = null;
   const rawPageNum = raw.overviewPageNumber;
-  if (typeof rawPageNum === 'number' && rawPageNum >= 0 && rawPageNum <= 9) {
-    const pageNum = Math.floor(rawPageNum);
-    let tmpDir: string | null = null;
-    try {
-      tmpDir = mkdtempSync(pathJoin(tmpdir(), 'rt-overview-'));
-      const pdfPath = pathJoin(tmpDir, 'report.pdf');
-      const jpegPath = pathJoin(tmpDir, 'overview.jpg');
-      writeFileSync(pdfPath, buf);
-      // IMv7 renamed the top-level binary from "convert" to "magick".
-      execFileSync('magick', [
-        '-density', '150',
-        `${pdfPath}[${pageNum}]`,
-        '-resize', 'x1400',
-        '-quality', '85',
-        jpegPath,
-      ], { timeout: 30_000 });
-      const jpegBuf = readFileSync(jpegPath);
-      const objectPath = await objectStorageService.uploadObjectBuffer(jpegBuf, 'image/jpeg');
-      // 3-hour window covers the duration the confirm screen can be open.
-      overviewImageUrl = await objectStorageService.getSignedDownloadUrl(objectPath, 10_800);
-    } catch (err) {
-      req.log.warn({ err, pageNum }, 'Overview image extraction failed — returning null');
-    } finally {
-      if (tmpDir) {
-        try { rmSync(tmpDir, { recursive: true }); } catch { /* ignore */ }
+  const identifiedPage = (typeof rawPageNum === 'number' && rawPageNum >= 0 && rawPageNum <= 9)
+    ? Math.floor(rawPageNum) : null;
+  const measurementPages: Array<{ page: number; url: string }> = [];
+
+  let tmpDir: string | null = null;
+  try {
+    tmpDir = mkdtempSync(pathJoin(tmpdir(), 'rt-overview-'));
+    const pdfPath = pathJoin(tmpDir, 'report.pdf');
+    writeFileSync(pdfPath, buf);
+
+    // Clear stale pages from any previous analysis.
+    await db.delete(inspectionPhotosTable).where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.subjectType, 'measurement_report_page'),
+      ),
+    );
+
+    for (let pageNum = 0; pageNum <= 9; pageNum++) {
+      const jpegPath = pathJoin(tmpDir, `page-${pageNum}.jpg`);
+      try {
+        // IMv7 binary is `magick`; exits non-zero when the page index is past
+        // the end of the PDF — use that as the loop terminator.
+        execFileSync('magick', [
+          '-density', '150',
+          `${pdfPath}[${pageNum}]`,
+          '-resize', 'x1400',
+          '-quality', '85',
+          jpegPath,
+        ], { timeout: 30_000 });
+      } catch {
+        break; // no more pages
       }
+      try {
+        const jpegBuf    = readFileSync(jpegPath);
+        const sha256     = createHash('sha256').update(jpegBuf).digest('hex');
+        const objectPath = await objectStorageService.uploadObjectBuffer(jpegBuf, 'image/jpeg');
+        await db.insert(inspectionPhotosTable).values({
+          companyId: inspection.companyId,
+          inspectionId,
+          subjectType: 'measurement_report_page',
+          subjectId: String(pageNum),
+          url: objectPath,
+          sha256,
+          includeInProofPackage: false,
+        });
+        const signedUrl = await objectStorageService.getSignedDownloadUrl(objectPath, 10_800);
+        measurementPages.push({ page: pageNum, url: signedUrl });
+        if (pageNum === identifiedPage) overviewImageUrl = signedUrl;
+      } catch (err) {
+        req.log.warn({ err, pageNum }, 'Measurement page upload failed — skipping');
+      }
+    }
+
+    // If the AI-identified page failed to render, fall back to page 0.
+    if (identifiedPage !== null && overviewImageUrl === null && measurementPages.length > 0) {
+      overviewImageUrl = measurementPages[0]!.url;
+    }
+  } catch (err) {
+    req.log.warn({ err }, 'Measurement report page rendering failed');
+  } finally {
+    if (tmpDir) {
+      try { rmSync(tmpDir, { recursive: true }); } catch { /* ignore */ }
     }
   }
 
@@ -4253,7 +4298,7 @@ Rules:
     overviewPageNumber: typeof rawPageNum === 'number' ? Math.floor(rawPageNum) : null,
   };
 
-  res.json({ parsed, facetInventoryStatus, facetInventory: facetInventoryResult });
+  res.json({ parsed, facetInventoryStatus, facetInventory: facetInventoryResult, measurementPages });
 });
 
 // ── Facet inventory extraction helpers ───────────────────────────────────────
@@ -4427,6 +4472,40 @@ router.post('/inspections/:inspectionId/render-overview-image', async (req: Requ
       try { rmSync(tmpDir, { recursive: true }); } catch { /* ignore */ }
     }
   }
+});
+
+// GET /inspections/:inspectionId/measurement-pages
+// Returns all measurement-report-page photos for this inspection with fresh
+// 3-hour signed URLs, sorted by page number.  Called by mobile when the
+// in-memory page store is cold (app restart or URL expiry).
+router.get('/inspections/:inspectionId/measurement-pages', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const rows = await db
+    .select()
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, actor.companyId),
+        eq(inspectionPhotosTable.subjectType, 'measurement_report_page'),
+      ),
+    );
+
+  const pages = await Promise.all(
+    rows.map(async (row) => ({
+      page: parseInt(row.subjectId ?? '0', 10),
+      url:  await objectStorageService.getSignedDownloadUrl(row.url, 10_800),
+    })),
+  );
+  pages.sort((a, b) => a.page - b.page);
+
+  res.json({ pages });
 });
 
 // POST /inspections/:inspectionId/apply-measurements

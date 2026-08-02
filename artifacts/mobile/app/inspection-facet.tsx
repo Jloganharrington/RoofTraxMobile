@@ -22,7 +22,7 @@ import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
-import { getOverviewImage, setOverviewImage } from '@/lib/overviewImageStore';
+import { getMeasurementPages, getMeasurementPageUrl, getCurrentPage, setCurrentPage, setMeasurementPages, addMeasurementPage } from '@/lib/overviewImageStore';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 
@@ -110,15 +110,36 @@ export default function InspectionFacetScreen() {
   });
 
 
-  // Roof diagram: seed from the overview store (persisted across navigation),
-  // then load on demand via render-overview-image if missing. Must run before
-  // any conditional return so the hook order is invariant across renders.
+  // Roof diagram: seed from the page store (populated during AI analysis).
+  // If the store is cold (app restart / URL expiry), fetch fresh signed URLs
+  // from the server.  Must run before any conditional return so the hook
+  // order stays invariant across renders.
   React.useEffect(() => {
-    const cached = getOverviewImage(id);
-    if (cached) {
-      setOverviewUrl(cached.url);
-      setOverviewPage(cached.page);
+    const pages = getMeasurementPages(id);
+    if (pages.length > 0) {
+      const pg  = getCurrentPage(id);
+      const url = getMeasurementPageUrl(id, pg) ?? pages[0]!.url;
+      setOverviewUrl(url);
+      setOverviewPage(getMeasurementPageUrl(id, pg) !== null ? pg : pages[0]!.page);
+      return;
     }
+    // Store cold — fetch pages from the server.
+    void (async () => {
+      try {
+        const apiBase = getApiBaseUrl();
+        const token   = await getToken('auth_session_token');
+        const res     = await fetch(`${apiBase}/inspections/${id}/measurement-pages`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { pages: Array<{ page: number; url: string }> };
+        if (data.pages?.length) {
+          setMeasurementPages(id, data.pages, data.pages[0]!.page);
+          setOverviewUrl(data.pages[0]!.url);
+          setOverviewPage(data.pages[0]!.page);
+        }
+      } catch { /* non-fatal — openOverview falls back to render-overview-image */ }
+    })();
   }, [id]);
 
   // Keep showing the spinner while a refetch is in flight and the facet
@@ -163,6 +184,11 @@ export default function InspectionFacetScreen() {
   const pitchNum = Number(pitchValue);
   const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
 
+  // Page bounds for the roof diagram navigator (store lookup — cheap).
+  const _facetPages   = getMeasurementPages(id);
+  const _facetMinPage = _facetPages[0]?.page ?? 0;
+  const _facetMaxPage = _facetPages.length > 0 ? _facetPages[_facetPages.length - 1]!.page : 9;
+
   async function fetchOverviewPage(page: number) {
     if (!inspection?.measurementsReportUrl) return;
     setOverviewLoading(true);
@@ -178,7 +204,7 @@ export default function InspectionFacetScreen() {
       const data = (await res.json()) as { url: string };
       setOverviewUrl(data.url);
       setOverviewPage(page);
-      setOverviewImage(id, data.url, page);
+      addMeasurementPage(id, page, data.url);
       setOverviewModalOpen(true);
     } catch {
       Alert.alert('Could not load diagram', 'The PDF page could not be rendered. Try again.');
@@ -188,10 +214,12 @@ export default function InspectionFacetScreen() {
   }
 
   async function openOverview() {
-    const cached = getOverviewImage(id);
-    if (cached) {
-      setOverviewUrl(cached.url);
-      setOverviewPage(cached.page);
+    const pages = getMeasurementPages(id);
+    if (pages.length > 0) {
+      const pg  = getCurrentPage(id);
+      const url = getMeasurementPageUrl(id, pg) ?? pages[0]!.url;
+      setOverviewUrl(url);
+      setOverviewPage(getMeasurementPageUrl(id, pg) !== null ? pg : pages[0]!.page);
       setOverviewModalOpen(true);
       return;
     }
@@ -772,10 +800,15 @@ export default function InspectionFacetScreen() {
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Pressable
-                onPress={() => void fetchOverviewPage(overviewPage - 1)}
-                disabled={overviewLoading || overviewPage <= 0}
+                onPress={() => {
+                  const newPage = overviewPage - 1;
+                  const url = getMeasurementPageUrl(id, newPage);
+                  if (url !== null) { setOverviewUrl(url); setOverviewPage(newPage); setCurrentPage(id, newPage); }
+                  else { void fetchOverviewPage(newPage); }
+                }}
+                disabled={overviewLoading || overviewPage <= _facetMinPage}
                 hitSlop={8}
-                style={{ opacity: overviewLoading || overviewPage <= 0 ? 0.3 : 1 }}
+                style={{ opacity: overviewLoading || overviewPage <= _facetMinPage ? 0.3 : 1 }}
               >
                 <Icon name="chevron-left" size={24} color={colors.foreground} />
               </Pressable>
@@ -787,10 +820,15 @@ export default function InspectionFacetScreen() {
                 </Text>
               )}
               <Pressable
-                onPress={() => void fetchOverviewPage(overviewPage + 1)}
-                disabled={overviewLoading || overviewPage >= 9}
+                onPress={() => {
+                  const newPage = overviewPage + 1;
+                  const url = getMeasurementPageUrl(id, newPage);
+                  if (url !== null) { setOverviewUrl(url); setOverviewPage(newPage); setCurrentPage(id, newPage); }
+                  else { void fetchOverviewPage(newPage); }
+                }}
+                disabled={overviewLoading || overviewPage >= _facetMaxPage}
                 hitSlop={8}
-                style={{ opacity: overviewLoading || overviewPage >= 9 ? 0.3 : 1 }}
+                style={{ opacity: overviewLoading || overviewPage >= _facetMaxPage ? 0.3 : 1 }}
               >
                 <Icon name="chevron-right" size={24} color={colors.foreground} />
               </Pressable>

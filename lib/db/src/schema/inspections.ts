@@ -109,6 +109,9 @@ export const INSPECTION_SUBJECT_TYPES = [
   // v2.1 additive subject: a siding facet (S1, S2, …) the siding-inspection
   // flow attaches damage / facet / component photos to.
   'siding_facet',
+  // System-generated: each page of the measurements PDF rendered to JPEG
+  // during AI analysis so mobile can display them without further API calls.
+  'measurement_report_page',
 ] as const;
 export type InspectionSubjectType = (typeof INSPECTION_SUBJECT_TYPES)[number];
 

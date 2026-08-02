@@ -8,6 +8,8 @@ import type { ParsedMeasurements, FacetInventory, FacetInventoryStatus } from '@
 export interface PendingMeasurementsData extends ParsedMeasurements {
   facetInventory?: FacetInventory | null;
   facetInventoryStatus?: FacetInventoryStatus | null;
+  /** All rendered measurement-report pages returned by analyze-measurements. */
+  measurementPages?: Array<{ page: number; url: string }>;
 }
 
 let _pending: PendingMeasurementsData | null = null;

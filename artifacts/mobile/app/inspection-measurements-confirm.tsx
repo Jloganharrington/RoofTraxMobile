@@ -30,7 +30,7 @@ import { ZoomableImage } from '@/components/ZoomableImage';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
-import { setOverviewImage, getOverviewImage } from '@/lib/overviewImageStore';
+import { setMeasurementPages, getMeasurementPages, getMeasurementPageUrl, getCurrentPage, setCurrentPage, addMeasurementPage } from '@/lib/overviewImageStore';
 import { Icon, type IconName } from '@/components/Icon';
 
 // ── Editable row shapes ───────────────────────────────────────────────────────
@@ -252,11 +252,17 @@ export default function InspectionMeasurementsConfirm() {
     }));
   }, [derivedAreaSqft]);
 
-  // Cache the overview URL by inspectionId so it survives pending clearance
-  // and remains accessible from Facet Details.
+  // Seed the page store so all pages survive navigation and remain accessible
+  // from Facet Details without further API calls.
   useEffect(() => {
     const p = getPendingMeasurements();
-    if (p?.overviewImageUrl) setOverviewImage(id, p.overviewImageUrl, p.overviewPageNumber ?? 0);
+    if (p?.measurementPages?.length) {
+      setMeasurementPages(id, p.measurementPages, p.overviewPageNumber ?? 0);
+    } else if (p?.overviewImageUrl) {
+      // Backward compat: single-URL analyses run before multi-page support.
+      const pg = p.overviewPageNumber ?? 0;
+      setMeasurementPages(id, [{ page: pg, url: p.overviewImageUrl }], pg);
+    }
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load the facet graph + any existing sequence.
@@ -287,7 +293,7 @@ export default function InspectionMeasurementsConfirm() {
       const data = (await res.json()) as { url: string };
       setOverviewUrl(data.url);
       setOverviewPage(page);
-      setOverviewImage(id, data.url, page);
+      addMeasurementPage(id, page, data.url);
       setOverviewModalOpen(true);
     } catch {
       Alert.alert('Could not load diagram', 'The PDF page could not be rendered. Try again.');
@@ -297,10 +303,12 @@ export default function InspectionMeasurementsConfirm() {
   }
 
   async function openOverview() {
-    const cached = getOverviewImage(id);
-    if (cached) {
-      setOverviewUrl(cached.url);
-      setOverviewPage(cached.page);
+    const pages = getMeasurementPages(id);
+    if (pages.length > 0) {
+      const pg  = getCurrentPage(id);
+      const url = getMeasurementPageUrl(id, pg) ?? pages[0]!.url;
+      setOverviewUrl(url);
+      setOverviewPage(getMeasurementPageUrl(id, pg) !== null ? pg : pages[0]!.page);
       setOverviewModalOpen(true);
       return;
     }
@@ -325,8 +333,16 @@ export default function InspectionMeasurementsConfirm() {
         Alert.alert('Re-analyze failed', 'Could not re-run analysis. Please try again.');
         return;
       }
-      const data = await res.json() as { parsed: import('@workspace/protocol').ParsedMeasurements; facetInventoryStatus: import('@workspace/protocol').FacetInventoryStatus | null; facetInventory: FacetInventory | null };
-      setPendingMeasurements({ ...data.parsed, facetInventory: data.facetInventory, facetInventoryStatus: data.facetInventoryStatus });
+      const data = await res.json() as { parsed: import('@workspace/protocol').ParsedMeasurements; facetInventoryStatus: import('@workspace/protocol').FacetInventoryStatus | null; facetInventory: FacetInventory | null; measurementPages?: Array<{ page: number; url: string }> };
+      const newPages = data.measurementPages ?? [];
+      setPendingMeasurements({ ...data.parsed, facetInventory: data.facetInventory, facetInventoryStatus: data.facetInventoryStatus, measurementPages: newPages });
+      if (newPages.length > 0) {
+        setMeasurementPages(id, newPages, data.parsed.overviewPageNumber ?? 0);
+        const pgNum = data.parsed.overviewPageNumber ?? 0;
+        const url   = getMeasurementPageUrl(id, pgNum) ?? newPages[0]!.url;
+        setOverviewUrl(url);
+        setOverviewPage(pgNum);
+      }
       setDismissedWarnings([]);
     } catch {
       Alert.alert('Re-analyze failed', 'Could not connect to the server. Please try again.');
@@ -559,6 +575,11 @@ export default function InspectionMeasurementsConfirm() {
     '#f59e0b',
     colors.mutedForeground,
   );
+
+  // Page bounds for the roof diagram navigator (store lookup — cheap).
+  const _confPages   = getMeasurementPages(id);
+  const _confMinPage = _confPages[0]?.page ?? 0;
+  const _confMaxPage = _confPages.length > 0 ? _confPages[_confPages.length - 1]!.page : 9;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -812,10 +833,15 @@ export default function InspectionMeasurementsConfirm() {
             ) : null}
             <View style={styles.pageNav}>
               <Pressable
-                onPress={() => void fetchOverviewPage(overviewPage - 1)}
-                disabled={overviewLoading || overviewPage <= 0}
+                onPress={() => {
+                  const newPage = overviewPage - 1;
+                  const url = getMeasurementPageUrl(id, newPage);
+                  if (url !== null) { setOverviewUrl(url); setOverviewPage(newPage); setCurrentPage(id, newPage); }
+                  else { void fetchOverviewPage(newPage); }
+                }}
+                disabled={overviewLoading || overviewPage <= _confMinPage}
                 hitSlop={8}
-                style={{ opacity: overviewLoading || overviewPage <= 0 ? 0.3 : 1 }}
+                style={{ opacity: overviewLoading || overviewPage <= _confMinPage ? 0.3 : 1 }}
               >
                 <Icon name="chevron-left" size={24} color={colors.foreground} />
               </Pressable>
@@ -827,10 +853,15 @@ export default function InspectionMeasurementsConfirm() {
                 </Text>
               )}
               <Pressable
-                onPress={() => void fetchOverviewPage(overviewPage + 1)}
-                disabled={overviewLoading || overviewPage >= 9}
+                onPress={() => {
+                  const newPage = overviewPage + 1;
+                  const url = getMeasurementPageUrl(id, newPage);
+                  if (url !== null) { setOverviewUrl(url); setOverviewPage(newPage); setCurrentPage(id, newPage); }
+                  else { void fetchOverviewPage(newPage); }
+                }}
+                disabled={overviewLoading || overviewPage >= _confMaxPage}
                 hitSlop={8}
-                style={{ opacity: overviewLoading || overviewPage >= 9 ? 0.3 : 1 }}
+                style={{ opacity: overviewLoading || overviewPage >= _confMaxPage ? 0.3 : 1 }}
               >
                 <Icon name="chevron-right" size={24} color={colors.foreground} />
               </Pressable>
