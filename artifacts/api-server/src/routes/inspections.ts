@@ -4183,6 +4183,36 @@ Rules:
     }
   }
 
+  // ── Stage 1: EXTRACT — facet adjacency graph via the sequencing engine ─────
+  // Runs on the same PDF within this request. On success the graph is stored
+  // on the inspection row and any prior entry facet / sequence is cleared
+  // (re-analysis invalidates the old route). Failure is recorded in
+  // facet_graph_status but does not fail the measurements response.
+  let facetGraphStatus: 'complete' | 'failed' = 'failed';
+  try {
+    const graph = await runFacetExtract(pdfBase64, req);
+    await db.update(inspectionsTable)
+      .set({
+        facetGraph: graph,
+        facetGraphStatus: 'complete',
+        entryFacetId: null,
+        facetSequence: null,
+        sequenceGeneratedAt: null,
+      })
+      .where(eq(inspectionsTable.id, inspectionId));
+    facetGraphStatus = 'complete';
+  } catch (err) {
+    req.log.error({ err }, 'Facet EXTRACT failed');
+    await db.update(inspectionsTable)
+      .set({
+        facetGraphStatus: 'failed',
+        entryFacetId: null,
+        facetSequence: null,
+        sequenceGeneratedAt: null,
+      })
+      .where(eq(inspectionsTable.id, inspectionId));
+  }
+
   // Normalise into the typed ParsedMeasurements shape and return — no DB writes.
   const parsed = {
     slopes:       (raw.slopes ?? []).map(s => ({
@@ -4203,7 +4233,339 @@ Rules:
     overviewPageNumber: typeof rawPageNum === 'number' ? Math.floor(rawPageNum) : null,
   };
 
-  res.json({ parsed });
+  res.json({ parsed, facetGraphStatus });
+});
+
+// ── Facet routing: two-stage EXTRACT → SEQUENCE flow ─────────────────────────
+// The system prompt is stored verbatim on disk and loaded once at first use.
+let facetSequencerPrompt: string | null = null;
+function getFacetSequencerPrompt(): string {
+  if (facetSequencerPrompt === null) {
+    // The workflow (dev and deploy) launches from artifacts/api-server, so
+    // cwd-relative is the primary path; fall back to the repo-root-relative
+    // path in case the process is started from the workspace root.
+    const candidates = [
+      pathJoin(process.cwd(), 'prompts/facet-sequencer.md'),
+      pathJoin(process.cwd(), 'artifacts/api-server/prompts/facet-sequencer.md'),
+    ];
+    for (const p of candidates) {
+      try {
+        facetSequencerPrompt = readFileSync(p, 'utf8');
+        break;
+      } catch { /* try next */ }
+    }
+    if (facetSequencerPrompt === null) {
+      throw new Error(`facet-sequencer prompt file not found; tried: ${candidates.join(', ')}`);
+    }
+  }
+  return facetSequencerPrompt;
+}
+
+const facetGraphSchema = z.object({
+  task: z.literal('EXTRACT'),
+  reportType: z.enum(['hover', 'gaf_quickmeasure', 'unknown']),
+  property: z.object({
+    address: z.string(),
+    reportDate: z.string(),
+    totalRoofAreaSqFt: z.number(),
+    facetCount: z.number(),
+    predominantPitch: z.string(),
+  }),
+  facets: z.array(z.object({
+    id: z.string(),
+    sourceLabel: z.string(),
+    areaSqFt: z.number(),
+    pitch: z.string(),
+    walkability: z.enum(['walkable', 'caution', 'steep_assist', 'low_slope']),
+    location: z.string(),
+    notes: z.string(),
+  })),
+  edges: z.array(z.object({
+    a: z.string(),
+    b: z.string(),
+    type: z.enum(['ridge', 'hip', 'valley', 'step', 'dismount']),
+    lengthFt: z.number().nullable(),
+    confidence: z.enum(['high', 'medium', 'low']),
+  })),
+  warnings: z.array(z.string()),
+}).superRefine((g, ctx) => {
+  if (g.reportType !== 'unknown' && g.facets.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'facets must be non-empty unless reportType is "unknown"' });
+  }
+  const ids = new Set(g.facets.map(f => f.id));
+  if (ids.size !== g.facets.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'facet ids must be unique' });
+  }
+  for (const e of g.edges) {
+    if (!ids.has(e.a) || !ids.has(e.b)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `edge ${e.a}–${e.b} references a facet id not present in facets` });
+    }
+  }
+});
+type FacetGraphT = z.infer<typeof facetGraphSchema>;
+
+function makeFacetSequenceSchema(graph: FacetGraphT, entryFacetId: string) {
+  return z.object({
+    task: z.literal('SEQUENCE'),
+    entryFacetId: z.string(),
+    sequence: z.array(z.object({
+      order: z.string(),
+      facetId: z.string(),
+      areaSqFt: z.number(),
+      pitch: z.string(),
+      transition: z.object({
+        fromFacetId: z.string(),
+        type: z.enum(['ridge', 'hip', 'valley', 'step', 'dismount']),
+        note: z.string(),
+      }).nullable(),
+    })).min(1),
+    ladderMoves: z.number(),
+    cautions: z.array(z.string()),
+    warnings: z.array(z.string()),
+  }).superRefine((s, ctx) => {
+    if (s.sequence[0]!.order !== 'F1') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sequence[0].order must be "F1"' });
+    }
+    if (s.sequence[0]!.facetId !== entryFacetId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[0].facetId must be the entry facet "${entryFacetId}"` });
+    }
+    const graphIds = new Set(graph.facets.map(f => f.id));
+    const seqIds = s.sequence.map(step => step.facetId);
+    if (new Set(seqIds).size !== seqIds.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sequence must not repeat a facet' });
+    }
+    for (const fid of graphIds) {
+      if (!seqIds.includes(fid)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `facet ${fid} missing from sequence` });
+      }
+    }
+    for (const fid of seqIds) {
+      if (!graphIds.has(fid)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence facet ${fid} not present in graph` });
+      }
+    }
+    s.sequence.forEach((step, i) => {
+      if (step.order !== `F${i + 1}`) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}].order must be "F${i + 1}" (contiguous)` });
+      }
+      if (i === 0) {
+        if (step.transition !== null) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'F1 transition must be null' });
+        }
+      } else {
+        if (!step.transition) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}] missing transition` });
+        } else {
+          if (step.transition.fromFacetId !== s.sequence[i - 1]!.facetId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}].transition.fromFacetId must match previous step's facetId` });
+          }
+          // Non-dismount transitions must correspond to a graph edge between
+          // the two facets of a compatible type (dismounts may cross gaps).
+          if (step.transition.type !== 'dismount') {
+            const from = step.transition.fromFacetId;
+            const to = step.facetId;
+            const edge = graph.edges.find(e =>
+              (e.a === from && e.b === to) || (e.a === to && e.b === from));
+            if (!edge) {
+              ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}]: no graph edge between ${from} and ${to}; use type "dismount" or follow an existing edge` });
+            } else if (edge.type !== step.transition.type) {
+              ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}]: transition type "${step.transition.type}" does not match graph edge type "${edge.type}" between ${from} and ${to}` });
+            }
+          }
+        }
+      }
+    });
+    const dismounts = s.sequence.filter(step => step.transition?.type === 'dismount').length;
+    if (s.ladderMoves !== dismounts) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `ladderMoves (${s.ladderMoves}) must equal the number of dismount transitions (${dismounts})` });
+    }
+  });
+}
+
+function stripJsonFences(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+}
+
+// Calls the model, parses + validates; on validation failure retries once with
+// the validation errors appended, then throws.
+async function callSequencerWithRetry<T>(opts: {
+  req: Request;
+  model: string;
+  maxTokens: number;
+  userContent: Array<Record<string, unknown>>;
+  validate: (raw: unknown) => { success: true; data: T } | { success: false; error: z.ZodError };
+}): Promise<T> {
+  let lastErrors = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const content = attempt === 0
+      ? opts.userContent
+      : [...opts.userContent, { type: 'text', text: `Your previous output failed validation: ${lastErrors}. Return corrected JSON only.` }];
+    const message = await anthropic.messages.create({
+      model: opts.model,
+      max_tokens: opts.maxTokens,
+      system: getFacetSequencerPrompt(),
+      messages: [{ role: 'user', content: content as never }],
+    });
+    const rawText = message.content[0]?.type === 'text' ? message.content[0].text : '';
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stripJsonFences(rawText));
+    } catch {
+      opts.req.log.warn({ rawText: rawText.slice(0, 2000) }, 'facet-sequencer: model output was not JSON');
+      lastErrors = 'output was not valid JSON';
+      continue;
+    }
+    const result = opts.validate(parsed);
+    if (result.success) return result.data;
+    opts.req.log.warn({ errors: result.error.issues, rawText: rawText.slice(0, 2000) }, 'facet-sequencer: output failed validation');
+    lastErrors = result.error.issues.map(i => i.message).join('; ');
+  }
+  throw new Error(`facet-sequencer output failed validation after retry: ${lastErrors}`);
+}
+
+async function runFacetExtract(pdfBase64: string, req: Request): Promise<FacetGraphT> {
+  return callSequencerWithRetry<FacetGraphT>({
+    req,
+    model: 'claude-opus-4-7',
+    maxTokens: 8192,
+    userContent: [
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+      { type: 'text', text: '{"task": "EXTRACT"}' },
+    ],
+    validate: (raw) => facetGraphSchema.safeParse(raw),
+  });
+}
+
+// GET /inspections/:inspectionId/facet-routing
+// Returns the stored facet graph + sequence state for the confirm screen.
+router.get('/inspections/:inspectionId/facet-routing', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  res.json({
+    facetGraphStatus: inspection.facetGraphStatus ?? null,
+    facetGraph: inspection.facetGraph ?? null,
+    entryFacetId: inspection.entryFacetId ?? null,
+    facetSequence: inspection.facetSequence ?? null,
+    sequenceGeneratedAt: inspection.sequenceGeneratedAt?.toISOString() ?? null,
+  });
+});
+
+// POST /inspections/:inspectionId/sequence
+// Stage 2 — the inspector taps their entry facet; the engine returns the full
+// optimized route F1→Fn. Text-only call (no PDF), fast and cheap.
+router.post('/inspections/:inspectionId/sequence', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  if (inspection.facetGraphStatus !== 'complete' || !inspection.facetGraph) {
+    res.status(409).json({ error: 'Facet graph is not ready. Run analysis first.' });
+    return;
+  }
+  const graphParse = facetGraphSchema.safeParse(inspection.facetGraph);
+  if (!graphParse.success) {
+    res.status(409).json({ error: 'Stored facet graph is invalid. Re-run analysis.' });
+    return;
+  }
+  const graph = graphParse.data;
+
+  const entryFacetId = typeof req.body?.entryFacetId === 'string' ? req.body.entryFacetId : null;
+  if (!entryFacetId || !graph.facets.some(f => f.id === entryFacetId)) {
+    res.status(400).json({ error: 'entryFacetId must be a facet id present in the extracted graph.' });
+    return;
+  }
+
+  try {
+    const seqSchema = makeFacetSequenceSchema(graph, entryFacetId);
+    const sequence = await callSequencerWithRetry<z.infer<typeof seqSchema>>({
+      req,
+      model: 'claude-sonnet-4-6',
+      maxTokens: 8192,
+      userContent: [
+        { type: 'text', text: JSON.stringify({ task: 'SEQUENCE', entryFacetId, graph }) },
+      ],
+      validate: (raw) => seqSchema.safeParse(raw),
+    });
+
+    const now = new Date();
+    await db.update(inspectionsTable)
+      .set({ entryFacetId, facetSequence: sequence, sequenceGeneratedAt: now })
+      .where(eq(inspectionsTable.id, inspectionId));
+    res.json({ facetSequence: sequence, sequenceGeneratedAt: now.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, 'Facet SEQUENCE failed');
+    res.status(502).json({ error: 'Could not generate the facet route. Please try again.' });
+  }
+});
+
+// PATCH /inspections/:inspectionId/facet-sequence
+// Manual override: the inspector reordered steps by hand. Body carries the new
+// facetId order; the server renumbers F-labels, preserves transitions as
+// removed (manual order invalidates AI transition notes between moved steps),
+// and tags the result manuallyAdjusted.
+router.patch('/inspections/:inspectionId/facet-sequence', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res);
+  if (!inspection) return;
+
+  if (!inspection.facetSequence) {
+    res.status(409).json({ error: 'No facet sequence exists to adjust.' });
+    return;
+  }
+  // Defensive parse of the stored jsonb — malformed data yields a 409, not a 500.
+  const storedParse = z.object({
+    sequence: z.array(z.object({
+      order: z.string(),
+      facetId: z.string(),
+      areaSqFt: z.number(),
+      pitch: z.string(),
+      transition: z.unknown(),
+    })).min(1),
+  }).passthrough().safeParse(inspection.facetSequence);
+  if (!storedParse.success) {
+    res.status(409).json({ error: 'Stored facet sequence is invalid. Re-run sequencing.' });
+    return;
+  }
+  const stored = storedParse.data;
+
+  const order = Array.isArray(req.body?.facetIdOrder) ? req.body.facetIdOrder as string[] : null;
+  const storedIds = stored.sequence.map(s => s.facetId);
+  if (!order || order.length !== storedIds.length
+      || new Set(order).size !== order.length
+      || !order.every(fid => storedIds.includes(fid))) {
+    res.status(400).json({ error: 'facetIdOrder must be a permutation of the current sequence facet ids.' });
+    return;
+  }
+
+  const byId = new Map(stored.sequence.map(s => [s.facetId, s]));
+  const resequenced = {
+    ...stored,
+    entryFacetId: order[0],
+    sequence: order.map((fid, i) => {
+      const step = byId.get(fid)!;
+      // Transitions came from the AI route; after a manual reorder the old
+      // from/note pairs no longer describe adjacent steps, so keep a
+      // transition only when the predecessor is unchanged.
+      const prevId = i > 0 ? order[i - 1] : null;
+      const t = step.transition as { fromFacetId?: string } | null;
+      const keepTransition = i > 0 && t && t.fromFacetId === prevId;
+      return { ...step, order: `F${i + 1}`, transition: keepTransition ? step.transition : (i === 0 ? null : { fromFacetId: prevId, type: 'step', note: 'Manually reordered — verify path on site.' }) };
+    }),
+    manuallyAdjusted: true,
+  };
+
+  await db.update(inspectionsTable)
+    .set({ facetSequence: resequenced, entryFacetId: order[0] })
+    .where(eq(inspectionsTable.id, inspectionId));
+  res.json({ facetSequence: resequenced });
 });
 
 // POST /inspections/:inspectionId/render-overview-image

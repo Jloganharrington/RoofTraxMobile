@@ -738,6 +738,14 @@ export const inspectionsTable = pgTable('inspections', {
   // uploaded report photo). Nullable; absence is a soft flag, never a block.
   sidingMeasurementReportRef: text('siding_measurement_report_ref'),
   measurementsReportUrl: text('measurements_report_url'),
+  // Facet routing (two-stage EXTRACT → SEQUENCE flow). facetGraph holds the
+  // full EXTRACT output; facetSequence the SEQUENCE output (optionally
+  // manually adjusted). Re-analysis clears entryFacetId + facetSequence.
+  facetGraph: jsonb('facet_graph').$type<unknown | null>(),
+  facetGraphStatus: text('facet_graph_status').$type<'pending' | 'complete' | 'failed' | null>(),
+  entryFacetId: text('entry_facet_id'),
+  facetSequence: jsonb('facet_sequence').$type<unknown | null>(),
+  sequenceGeneratedAt: timestamp('sequence_generated_at', { withTimezone: true }),
   // REPORT_DATA v2 capture blocks — all nullable; null means "not captured"
   // and the corresponding report section omits.
   propertyProfile: jsonb('property_profile').$type<PropertyProfile | null>(),

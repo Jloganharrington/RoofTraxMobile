@@ -109,6 +109,37 @@ export default function InspectionFacetScreen() {
     hip_ridge: false,
   });
 
+  // AI walking-route transition note for this facet (matched by F-label).
+  // Loaded once per inspection; absence is fine (route not generated).
+  const [routeNote, setRouteNote] = React.useState<Map<string, string> | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const apiBase = getApiBaseUrl();
+        const token   = await getToken('auth_session_token');
+        const res = await fetch(`${apiBase}/inspections/${id}/facet-routing`, {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          facetSequence: { sequence: Array<{ order: string; transition: { type: string; note: string } | null }> } | null;
+        };
+        if (cancelled || !data.facetSequence) return;
+        const map = new Map<string, string>();
+        for (const step of data.facetSequence.sequence) {
+          if (step.transition?.note) {
+            map.set(step.order, `${step.transition.type === 'dismount' ? 'Ladder move — ' : ''}${step.transition.note}`);
+          }
+        }
+        setRouteNote(map);
+      } catch {
+        // Non-fatal: no transition notes shown.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
+
   // Roof diagram: seed from the overview store (persisted across navigation),
   // then load on demand via render-overview-image if missing. Must run before
   // any conditional return so the hook order is invariant across renders.
@@ -390,6 +421,16 @@ export default function InspectionFacetScreen() {
             </>
           )}
         </View>
+
+        {/* AI walking-route transition note (how to get onto this facet) */}
+        {routeNote?.get(facet.label) ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Icon name="arrow-right" size={14} color={colors.primary} />
+            <Text style={{ color: colors.mutedForeground, fontSize: 12, flex: 1 }}>
+              {routeNote.get(facet.label)}
+            </Text>
+          </View>
+        ) : null}
 
         {/* Details */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>

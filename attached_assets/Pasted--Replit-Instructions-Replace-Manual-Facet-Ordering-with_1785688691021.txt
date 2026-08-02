@@ -1,0 +1,84 @@
+# Replit Instructions — Replace Manual Facet Ordering with Two-Stage Extract → Sequence Flow
+
+## Context
+
+Current behavior: user uploads a Hover or GAF QuickMeasure PDF, clicks "Analyze with AI", the AI sorts facets largest-to-smallest, and the user then manually selects each facet one by one to build the inspection order. This manual ordering step is being removed entirely.
+
+New behavior: analysis and routing are split into two stages. Stage 1 (EXTRACT) runs once at upload and produces a facet graph. Stage 2 (SEQUENCE) runs when the inspector taps the facet they'll access the roof from — that tap makes it F1, and the AI returns the complete optimized route F1→Fn with transition instructions. The only user input to ordering is the single tap on the entry facet.
+
+The full system prompt is provided in `facet-sequencer-system-prompt.md`. Store it verbatim at `server/prompts/facet-sequencer.md` and load it at startup. Do not paraphrase or trim it.
+
+## 1. Database changes
+
+Add to the inspections table (SQLite, so store JSON as TEXT):
+
+- `facet_graph` TEXT NULL — full EXTRACT output JSON
+- `facet_graph_status` TEXT NULL — 'pending' | 'complete' | 'failed'
+- `entry_facet_id` TEXT NULL
+- `facet_sequence` TEXT NULL — full SEQUENCE output JSON
+- `sequence_generated_at` TEXT NULL
+
+Write a migration; do not drop or rename existing columns. Keep any existing facet-order columns intact for now so old records still render, but stop writing to them.
+
+## 2. Backend endpoints
+
+### POST /api/inspections/:id/analyze  (Stage 1 — replaces current analyze endpoint behavior)
+
+1. Load the uploaded measurement PDF for this inspection, base64-encode it.
+2. Call the Anthropic Messages API:
+   - model: `claude-opus-4-8` (fall back to `claude-sonnet-4-6` if cost/latency matters for extraction retries)
+   - Do NOT pass a `temperature` parameter — claude-opus-4-8 rejects it with HTTP 400.
+   - system: contents of `server/prompts/facet-sequencer.md`
+   - messages: one user turn containing (a) a `document` content block with the base64 PDF, media_type `application/pdf`, and (b) a text block: `{"task": "EXTRACT"}`
+   - max_tokens: 8000
+3. Parse the response text: strip any accidental ```json fences, `JSON.parse`, then validate with a zod schema mirroring the EXTRACT schema in the system prompt (reportType enum, facets array non-empty unless reportType is unknown, every edge's `a`/`b` present in facets, etc.).
+4. On validation failure, retry once with the validation error appended to the user message as: `Your previous output failed validation: <errors>. Return corrected JSON only.` If it fails again, set `facet_graph_status = 'failed'` and return 422 with the errors.
+5. On success: store JSON in `facet_graph`, set status `complete`, clear `entry_facet_id` and `facet_sequence` (re-analysis invalidates any prior route), return the graph to the client.
+
+### POST /api/inspections/:id/sequence  (Stage 2 — new)
+
+Body: `{ "entryFacetId": "RF-2" }`
+
+1. Reject 409 if `facet_graph_status !== 'complete'`; reject 400 if `entryFacetId` is not in the stored graph's facets.
+2. Call the Anthropic API with the same system prompt. User turn is a single text block:
+   `{"task": "SEQUENCE", "entryFacetId": "<id>", "graph": <facet_graph JSON>}`
+   No PDF attachment — this call is text-only, fast, and cheap. max_tokens: 4000. No temperature parameter.
+3. Parse and zod-validate: `sequence[0].order === "F1"` and `sequence[0].facetId === entryFacetId`; sequence covers every facet in the graph exactly once; every transition `fromFacetId` matches the previous step's facetId; F-numbers are contiguous. Same one-retry-with-errors pattern as Stage 1.
+4. Store `entry_facet_id`, `facet_sequence`, `sequence_generated_at`; return the sequence.
+
+Both endpoints: wrap API calls in try/catch, log the raw model output on parse failure, surface a clean error message to the client.
+
+## 3. Frontend flow changes
+
+Remove the manual "select each facet to place in order" UI entirely. New flow, three states on the inspection prep screen:
+
+**State A — Not analyzed.** Existing upload UI plus the "Analyze with AI" button, now calling the new analyze endpoint. Show a progress indicator; extraction of a 30-page Hover PDF can take 30–60s.
+
+**State B — Analyzed, no entry facet.** Header: "Tap the facet you'll access the roof from." Render the facet graph as a grid of cards, one per facet, sorted by area descending. Each card shows: source label (RF-4 / A1), area, pitch, walkability badge (color-coded: green walkable, yellow caution, red steep_assist, blue low_slope), and the `location` descriptor as the card's main text — that descriptor is how the inspector recognizes the facet, so give it visual priority. Tapping a card immediately calls the sequence endpoint (optimistic spinner on the tapped card). No confirm dialog — a mis-tap is fixed by tapping "Change entry facet" afterward.
+
+**State C — Sequenced.** Render the route as a vertical stepper:
+- Each step: big F-number, facet label + location, area, pitch, walkability badge.
+- Between steps, render the transition note as a connector row with an icon per type (hip/valley/ridge/step) — and a prominent ladder icon + amber styling for `dismount` transitions.
+- Top summary bar: total facets, ladder moves count, and any `cautions` from the response as dismissible chips.
+- Actions: "Change entry facet" (returns to State B, keeps graph), "Re-analyze" (confirm dialog — wipes graph + sequence), and "Start Inspection" which feeds this sequence into the existing inspection wizard so the wizard walks facets in F-order.
+- Keep a manual override escape hatch: long-press a step to enter a drag-to-reorder mode. If the user reorders, renumber F-labels client-side, PATCH the stored `facet_sequence`, and tag it `"manuallyAdjusted": true`. AI proposes, human can dispose.
+
+## 4. Wiring the sequence into the inspection wizard
+
+The existing stepped inspection wizard (roof surface components section) should consume `facet_sequence` as its facet iteration order. Each wizard facet screen shows the F-number, the transition note for arriving at that facet, and the location descriptor. Do not change the wizard's per-facet checklist content — only its ordering source.
+
+## 5. Acceptance criteria
+
+1. Uploading the sample Hover report (4 facets, RF-1…RF-4, all 3/12) and analyzing yields a graph with 4 facets summing to 1,209 ±2% sq ft and edges including the two valleys.
+2. Tapping RF-2 as entry returns F1 = RF-2 and a 4-step sequence where at least one transition is type `valley`, given the geometry.
+3. Uploading a GAF QuickMeasure report yields A1…An IDs with area-descending order and location descriptors; no facet count mismatch against the report's stated facet total.
+4. Analyze → sequence → change entry facet → sequence again works without re-running extraction (verify only one document-bearing API call per report).
+5. Manual drag-reorder persists, renumbers F-labels, and flags `manuallyAdjusted`.
+6. A non-measurement PDF returns a clean "not a supported measurement report" error, not a crash.
+7. No `temperature` parameter is sent on any Anthropic call.
+
+## 6. Out of scope — do not do
+
+- Do not build an SVG roof-plan renderer for facet selection in this pass; the card grid with location descriptors is the selection UI. (Plan-view tap-to-select is a future enhancement once EXTRACT reliably returns polygon coordinates.)
+- Do not modify the proof package generation pipeline or any n8n workflows.
+- Do not add insurance/claims language anywhere in this feature.

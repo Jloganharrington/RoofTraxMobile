@@ -22,6 +22,12 @@ import type {
   InspectionLinearType,
   InspectionTotalType,
   InspectionAccessoryType,
+  FacetGraph,
+  FacetGraphFacet,
+  FacetSequence,
+  FacetRoutingState,
+  FacetWalkability,
+  FacetEdgeType,
 } from '@workspace/protocol';
 import { useColors } from '@/hooks/useColors';
 import { ZoomableImage } from '@/components/ZoomableImage';
@@ -29,7 +35,7 @@ import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
 import { setOverviewImage, getOverviewImage } from '@/lib/overviewImageStore';
-import { Icon } from '@/components/Icon';
+import { Icon, type IconName } from '@/components/Icon';
 
 // ── Editable row shapes ───────────────────────────────────────────────────────
 
@@ -62,6 +68,30 @@ const MATERIAL_LABELS: Record<string, string> = {
   cedar_shake:          'Cedar Shake',
   standing_seam_metal:  'Standing Seam Metal',
 };
+
+// Walkability badge palette (green walkable / amber caution / red steep / blue low-slope).
+const WALKABILITY_META: Record<FacetWalkability, { label: string; color: string }> = {
+  walkable:     { label: 'Walkable',    color: '#22c55e' },
+  caution:      { label: 'Caution',     color: '#f59e0b' },
+  steep_assist: { label: 'Steep',       color: '#ef4444' },
+  low_slope:    { label: 'Low Slope',   color: '#3b82f6' },
+};
+
+const TRANSITION_ICON: Record<FacetEdgeType, IconName> = {
+  ridge:    'minus',
+  hip:      'chevron-up',
+  valley:   'chevron-down',
+  step:     'arrow-right',
+  dismount: 'alert-triangle',
+};
+
+/** "3/12" | "3:12" | "3" → rise 3, run 12. */
+function parsePitch(p: string): { rise: number | null; run: number } {
+  const m = p.match(/(\d+(?:\.\d+)?)\s*[/:x]\s*(\d+)/);
+  if (m) return { rise: Math.round(parseFloat(m[1]!)), run: parseInt(m[2]!, 10) || 12 };
+  const n = parseFloat(p);
+  return { rise: Number.isFinite(n) ? Math.round(n) : null, run: 12 };
+}
 
 function numStr(v: number | null | undefined): string {
   if (v == null) return '';
@@ -202,6 +232,15 @@ export default function InspectionMeasurementsConfirm() {
   const [overviewPage, setOverviewPage]     = useState<number>(getPendingMeasurements()?.overviewPageNumber ?? 0);
   const [overviewLoading, setOverviewLoading] = useState(false);
 
+  // ── Facet routing (two-stage EXTRACT → SEQUENCE) ───────────────────────────
+  // null = still loading from the server.
+  const [routing, setRouting]           = useState<FacetRoutingState | null>(null);
+  const [seqLoadingId, setSeqLoadingId] = useState<string | null>(null); // facet card spinner
+  const [choosingEntry, setChoosingEntry] = useState(false);             // "Change entry facet"
+  const [reorderIds, setReorderIds]     = useState<string[] | null>(null); // non-null = reorder mode
+  const [savingReorder, setSavingReorder] = useState(false);
+  const [dismissedCautions, setDismissedCautions] = useState<number[]>([]);
+
   // ── ALL hooks must be declared before any conditional return ────────────────
 
   // Navigate back if there is no pending data to review.
@@ -247,8 +286,33 @@ export default function InspectionMeasurementsConfirm() {
     if (p?.overviewImageUrl) setOverviewImage(id, p.overviewImageUrl, p.overviewPageNumber ?? 0);
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load the facet graph + any existing sequence.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const apiBase = getApiBaseUrl();
+        const token   = await getToken('auth_session_token');
+        const res = await fetch(`${apiBase}/inspections/${id}/facet-routing`, {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as FacetRoutingState;
+        if (!cancelled) setRouting(data);
+      } catch {
+        if (!cancelled) setRouting({ facetGraphStatus: 'failed', facetGraph: null, entryFacetId: null, facetSequence: null, sequenceGeneratedAt: null });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
+
   // Nothing to render while the navigator processes the back action.
   if (!pending) return null;
+
+  // The route currently in force. Hidden while the inspector is picking a new
+  // entry facet so State B renders instead.
+  const activeGraph: FacetGraph | null = routing?.facetGraphStatus === 'complete' ? (routing.facetGraph ?? null) : null;
+  const activeSequence: FacetSequence | null = choosingEntry ? null : (routing?.facetSequence ?? null);
 
   // ── Overview image (lazy fetch) ────────────────────────────────────────────
 
@@ -287,6 +351,62 @@ export default function InspectionMeasurementsConfirm() {
     await fetchOverviewPage(getPendingMeasurements()?.overviewPageNumber ?? 0);
   }
 
+  // ── Facet routing actions ──────────────────────────────────────────────────
+
+  // Stage 2: tap the entry facet → full route. Text-only server call, no PDF.
+  async function requestSequence(facetId: string) {
+    if (seqLoadingId) return;
+    setSeqLoadingId(facetId);
+    try {
+      const apiBase = getApiBaseUrl();
+      const token   = await getToken('auth_session_token');
+      const res = await fetch(`${apiBase}/inspections/${id}/sequence`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ entryFacetId: facetId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        Alert.alert('Could not build route', body.error ?? 'Please try again.');
+        return;
+      }
+      const data = (await res.json()) as { facetSequence: FacetSequence; sequenceGeneratedAt: string };
+      setRouting(prev => prev ? { ...prev, entryFacetId: facetId, facetSequence: data.facetSequence, sequenceGeneratedAt: data.sequenceGeneratedAt } : prev);
+      setChoosingEntry(false);
+      setDismissedCautions([]);
+    } catch {
+      Alert.alert('Could not build route', 'Could not connect to the server. Please try again.');
+    } finally {
+      setSeqLoadingId(null);
+    }
+  }
+
+  async function saveReorder() {
+    if (!reorderIds || savingReorder) return;
+    setSavingReorder(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const token   = await getToken('auth_session_token');
+      const res = await fetch(`${apiBase}/inspections/${id}/facet-sequence`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ facetIdOrder: reorderIds }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        Alert.alert('Could not save order', body.error ?? 'Please try again.');
+        return;
+      }
+      const data = (await res.json()) as { facetSequence: FacetSequence };
+      setRouting(prev => prev ? { ...prev, facetSequence: data.facetSequence, entryFacetId: data.facetSequence.entryFacetId } : prev);
+      setReorderIds(null);
+    } catch {
+      Alert.alert('Could not save order', 'Could not connect to the server. Please try again.');
+    } finally {
+      setSavingReorder(false);
+    }
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   function updateMeasurementList(
@@ -317,21 +437,34 @@ export default function InspectionMeasurementsConfirm() {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
 
-      // Assign facet IDs from the inspector's manual tap order: first tapped
-      // slope → F1, second → F2, and so on.
-      const orderedSlopes = orderedIdxs
-        .map(i => slopes[i])
-        .filter((s): s is EditableSlope => !!s && s.enabled);
+      // Slopes come from the AI sequence when one exists (F-numbers follow the
+      // walking route); otherwise fall back to the manual tap order.
+      const slopesPayload = activeSequence
+        ? activeSequence.sequence.map(step => {
+            const pitch = parsePitch(step.pitch);
+            return {
+              label:          step.order,
+              areaSqft:       step.areaSqFt || null,
+              pitchRise:      pitch.rise,
+              pitchRun:       pitch.run,
+              materialType:   null,
+              compassBearing: null,
+            };
+          })
+        : orderedIdxs
+            .map(i => slopes[i])
+            .filter((s): s is EditableSlope => !!s && s.enabled)
+            .map((s, i) => ({
+              label:          `F${i + 1}`,
+              areaSqft:       s.areaSqft    ? parseFloat(s.areaSqft)   : null,
+              pitchRise:      s.pitchRise   ? parseInt(s.pitchRise, 10) : null,
+              pitchRun:       s.pitchRun    ? parseInt(s.pitchRun, 10)  : null,
+              materialType:   s.materialType || null,
+              compassBearing: s.compassBearing,
+            }));
 
       const payload = {
-        slopes: orderedSlopes.map((s, i) => ({
-            label:          `F${i + 1}`,
-            areaSqft:       s.areaSqft    ? parseFloat(s.areaSqft)   : null,
-            pitchRise:      s.pitchRise   ? parseInt(s.pitchRise, 10) : null,
-            pitchRun:       s.pitchRun    ? parseInt(s.pitchRun, 10)  : null,
-            materialType:   s.materialType || null,
-            compassBearing: s.compassBearing,
-          })),
+        slopes: slopesPayload,
         linears: Object.fromEntries(
           linears.filter(m => m.enabled).map(m => [m.key, m.value ? parseFloat(m.value) : null]),
         ),
@@ -484,10 +617,15 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  // Every enabled slope must be given a facet number before applying.
+  // With an AI sequence, apply is ready as soon as the route exists. Without
+  // one (extraction failed → manual fallback), every enabled slope must be
+  // given a facet number before applying.
   const orderedCount  = orderedIdxs.filter(i => slopes[i]?.enabled).length;
-  const needsOrdering = enabledSlopeCount > 0 && orderedCount < enabledSlopeCount;
-  const canApply      = !needsOrdering && enabledCount > 0;
+  const needsOrdering = !activeSequence && enabledSlopeCount > 0 && orderedCount < enabledSlopeCount;
+  const routePending  = !!activeGraph && !activeSequence; // State B — must pick entry facet
+  const canApply      = activeSequence
+    ? !reorderIds
+    : !needsOrdering && !routePending && enabledCount > 0;
 
   const confColor = confidenceColor(
     pending.confidence,
@@ -516,9 +654,13 @@ export default function InspectionMeasurementsConfirm() {
 
         {/* Instructions */}
         <Text style={[styles.instructions, { color: colors.mutedForeground }]}>
-          {slopes.length > 0
-            ? 'Use the roof diagram to identify each plane, then tap the slopes in walking order — first tap is F1, second is F2, and so on. Toggle off any planes not in scope (e.g. EPDM flat sections).'
-            : 'Review and edit values below. Toggle off any row you do not want applied.'}
+          {activeGraph
+            ? activeSequence
+              ? 'Your walking route is below. Long-press a step to reorder, or change the entry facet to re-route.'
+              : 'Tap the facet you will access the roof from. The route will be built automatically.'
+            : slopes.length > 0
+              ? 'Use the roof diagram to identify each plane, then tap the slopes in walking order — first tap is F1, second is F2, and so on. Toggle off any planes not in scope (e.g. EPDM flat sections).'
+              : 'Review and edit values below. Toggle off any row you do not want applied.'}
         </Text>
 
         {/* ── Roof Diagram button — always visible; fetches the image on first tap ── */}
@@ -535,10 +677,204 @@ export default function InspectionMeasurementsConfirm() {
           </Text>
         </Pressable>
 
-        {/* ── Roof Facets ── */}
-        {slopes.length > 0 && (
+        {/* ── Facet routing: State B — pick entry facet ── */}
+        {routing === null && slopes.length > 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Loading facet route…</Text>
+          </View>
+        )}
+
+        {activeGraph && !activeSequence && (
+          <>
+            {sectionHeader(`Roof Facets (${activeGraph.facets.length})`)}
+            <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
+              Tap the facet where your ladder will be — the walking route starts there.
+            </Text>
+            {[...activeGraph.facets]
+              .sort((a, b) => b.areaSqFt - a.areaSqFt)
+              .map(facet => {
+                const walk = WALKABILITY_META[facet.walkability];
+                const busy = seqLoadingId === facet.id;
+                return (
+                  <Pressable
+                    key={facet.id}
+                    onPress={() => void requestSequence(facet.id)}
+                    disabled={!!seqLoadingId}
+                    style={[styles.facetCard, { backgroundColor: colors.card, borderColor: busy ? colors.primary : colors.border, opacity: seqLoadingId && !busy ? 0.5 : 1 }]}
+                  >
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 15 }}>
+                        {facet.location || facet.sourceLabel}
+                      </Text>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                        {facet.sourceLabel} · {Math.round(facet.areaSqFt)} sqft · {facet.pitch} pitch
+                      </Text>
+                      {facet.notes ? (
+                        <Text style={{ color: colors.mutedForeground, fontSize: 11 }} numberOfLines={2}>{facet.notes}</Text>
+                      ) : null}
+                    </View>
+                    {busy ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <View style={[styles.walkBadge, { backgroundColor: `${walk.color}22`, borderColor: walk.color }]}>
+                        <Text style={{ color: walk.color, fontWeight: '700', fontSize: 11 }}>{walk.label}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            {choosingEntry && (
+              <Pressable onPress={() => setChoosingEntry(false)} style={styles.inlineBtn}>
+                <Text style={{ color: colors.mutedForeground, fontSize: 13, fontWeight: '600' }}>Cancel — keep current route</Text>
+              </Pressable>
+            )}
+          </>
+        )}
+
+        {/* ── Facet routing: State C — route stepper ── */}
+        {activeGraph && activeSequence && (() => {
+          const facetById = new Map<string, FacetGraphFacet>(activeGraph.facets.map(f => [f.id, f]));
+          const ids = reorderIds ?? activeSequence.sequence.map(s => s.facetId);
+          const stepByFacet = new Map(activeSequence.sequence.map(s => [s.facetId, s]));
+          const visibleCautions = activeSequence.cautions.filter((_, i) => !dismissedCautions.includes(i));
+          return (
+            <>
+              {sectionHeader('Walking Route')}
+              {/* Summary bar */}
+              <View style={[styles.summaryBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
+                  {ids.length} facet{ids.length === 1 ? '' : 's'}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                  {activeSequence.ladderMoves} ladder move{activeSequence.ladderMoves === 1 ? '' : 's'}
+                </Text>
+                {activeSequence.manuallyAdjusted ? (
+                  <Text style={{ color: '#f59e0b', fontSize: 12, fontWeight: '600' }}>Adjusted</Text>
+                ) : null}
+              </View>
+              {visibleCautions.map((c, i) => {
+                const realIdx = activeSequence.cautions.indexOf(c);
+                return (
+                  <View key={`${realIdx}-${c.slice(0, 16)}`} style={[styles.cautionChip, { borderColor: '#f59e0b' }]}>
+                    <Icon name="alert-triangle" size={14} color="#f59e0b" />
+                    <Text style={{ color: colors.foreground, fontSize: 12, flex: 1 }}>{c}</Text>
+                    <Pressable onPress={() => setDismissedCautions(prev => [...prev, realIdx])} hitSlop={8}>
+                      <Icon name="x" size={14} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                );
+              })}
+
+              {ids.map((fid, i) => {
+                const facet = facetById.get(fid);
+                const step  = stepByFacet.get(fid);
+                if (!step) return null;
+                const walk = facet ? WALKABILITY_META[facet.walkability] : null;
+                // In reorder mode transitions are stale — hide them.
+                const transition = !reorderIds && i > 0 ? step.transition : null;
+                return (
+                  <React.Fragment key={fid}>
+                    {transition && (
+                      <View style={styles.transitionRow}>
+                        <Icon
+                          name={TRANSITION_ICON[transition.type] ?? 'arrow-right'}
+                          size={14}
+                          color={transition.type === 'dismount' ? '#f59e0b' : colors.mutedForeground}
+                        />
+                        <Text style={{ color: transition.type === 'dismount' ? '#f59e0b' : colors.mutedForeground, fontSize: 12, flex: 1 }}>
+                          {transition.type === 'dismount' ? 'LADDER — ' : ''}{transition.note}
+                        </Text>
+                      </View>
+                    )}
+                    <Pressable
+                      onLongPress={() => !reorderIds && setReorderIds(ids)}
+                      style={[styles.stepCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    >
+                      <View style={[styles.stepBadge, { backgroundColor: colors.primary }]}>
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>F{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={{ color: colors.foreground, fontWeight: '600', fontSize: 14 }}>
+                          {facet?.location || facet?.sourceLabel || fid}
+                        </Text>
+                        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                          {Math.round(step.areaSqFt)} sqft · {step.pitch} pitch
+                        </Text>
+                      </View>
+                      {walk && (
+                        <View style={[styles.walkBadge, { backgroundColor: `${walk.color}22`, borderColor: walk.color }]}>
+                          <Text style={{ color: walk.color, fontWeight: '700', fontSize: 10 }}>{walk.label}</Text>
+                        </View>
+                      )}
+                      {reorderIds && (
+                        <View style={{ gap: 6 }}>
+                          <Pressable
+                            disabled={i === 0}
+                            hitSlop={6}
+                            onPress={() => setReorderIds(prev => {
+                              if (!prev || i === 0) return prev;
+                              const next = [...prev];
+                              [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
+                              return next;
+                            })}
+                            style={{ opacity: i === 0 ? 0.3 : 1 }}
+                          >
+                            <Icon name="chevron-up" size={20} color={colors.foreground} />
+                          </Pressable>
+                          <Pressable
+                            disabled={i === ids.length - 1}
+                            hitSlop={6}
+                            onPress={() => setReorderIds(prev => {
+                              if (!prev || i === prev.length - 1) return prev;
+                              const next = [...prev];
+                              [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
+                              return next;
+                            })}
+                            style={{ opacity: i === ids.length - 1 ? 0.3 : 1 }}
+                          >
+                            <Icon name="chevron-down" size={20} color={colors.foreground} />
+                          </Pressable>
+                        </View>
+                      )}
+                    </Pressable>
+                  </React.Fragment>
+                );
+              })}
+
+              {reorderIds ? (
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable
+                    onPress={() => void saveReorder()}
+                    disabled={savingReorder}
+                    style={[styles.inlineBtn, { flex: 1, backgroundColor: colors.primary, opacity: savingReorder ? 0.7 : 1 }]}
+                  >
+                    {savingReorder
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Save order</Text>}
+                  </Pressable>
+                  <Pressable onPress={() => setReorderIds(null)} style={[styles.inlineBtn, { flex: 1, borderWidth: 1, borderColor: colors.border }]}>
+                    <Text style={{ color: colors.mutedForeground, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable onPress={() => setChoosingEntry(true)} style={[styles.inlineBtn, { borderWidth: 1, borderColor: colors.border }]}>
+                  <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>Change entry facet</Text>
+                </Pressable>
+              )}
+            </>
+          );
+        })()}
+
+        {/* ── Roof Facets — manual fallback (no AI graph) ── */}
+        {!activeGraph && routing !== null && slopes.length > 0 && (
           <>
             {sectionHeader('Roof Facets')}
+            {routing.facetGraphStatus === 'failed' && (
+              <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
+                Automatic facet routing was unavailable for this report — order the slopes manually below.
+              </Text>
+            )}
             {needsOrdering ? (
               <Text style={[styles.entryHint, { color: '#f59e0b', fontWeight: '600' }]}>
                 ⚠ Tap each slope in walking order to number them F1, F2, … ({orderedCount}/{enabledSlopeCount} numbered). Tap a numbered slope to un-assign it.
@@ -716,11 +1052,17 @@ export default function InspectionMeasurementsConfirm() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={[styles.applyBtnText, { color: canApply ? colors.primaryForeground : colors.mutedForeground }]}>
-              {needsOrdering
-                ? `Number all slopes above (${orderedCount}/${enabledSlopeCount})`
-                : enabledCount === 0
-                  ? 'No measurements selected'
-                  : `Apply ${enabledSlopeCount} slope${enabledSlopeCount === 1 ? '' : 's'} + measurements`}
+              {activeSequence
+                ? reorderIds
+                  ? 'Save or cancel reorder above'
+                  : `Apply route (${activeSequence.sequence.length} facets) + measurements`
+                : routePending
+                  ? 'Tap your entry facet above'
+                  : needsOrdering
+                    ? `Number all slopes above (${orderedCount}/${enabledSlopeCount})`
+                    : enabledCount === 0
+                      ? 'No measurements selected'
+                      : `Apply ${enabledSlopeCount} slope${enabledSlopeCount === 1 ? '' : 's'} + measurements`}
             </Text>
           )}
         </Pressable>
@@ -750,6 +1092,14 @@ const styles = StyleSheet.create({
   diagramBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
   diagramBtnText:{ fontWeight: '600', fontSize: 14 },
   entryHint:     { fontSize: 12, marginBottom: 4 },
+  facetCard:     { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1, padding: 14 },
+  walkBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  summaryBar:    { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
+  cautionChip:   { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
+  transitionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 18, paddingVertical: 2 },
+  stepCard:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1, padding: 12 },
+  stepBadge:     { width: 38, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  inlineBtn:     { alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10 },
   recalcNote:    { fontSize: 12, marginBottom: 8, lineHeight: 17 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 16 },
   modalCard:     { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },

@@ -119,3 +119,77 @@ export interface ParsedMeasurements {
    *  signed URL is absent (e.g. analysis was run before the magick fix). */
   overviewPageNumber: number | null;
 }
+
+// ── Facet routing (two-stage EXTRACT → SEQUENCE flow) ───────────────────────
+
+export type FacetWalkability = 'walkable' | 'caution' | 'steep_assist' | 'low_slope';
+export type FacetEdgeType = 'ridge' | 'hip' | 'valley' | 'step' | 'dismount';
+
+export interface FacetGraphFacet {
+  id: string;
+  sourceLabel: string;
+  areaSqFt: number;
+  pitch: string;
+  walkability: FacetWalkability;
+  location: string;
+  notes: string;
+}
+
+export interface FacetGraphEdge {
+  a: string;
+  b: string;
+  type: FacetEdgeType;
+  lengthFt: number | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+/** EXTRACT output — the facet adjacency graph parsed from the report PDF. */
+export interface FacetGraph {
+  task: 'EXTRACT';
+  reportType: 'hover' | 'gaf_quickmeasure' | 'unknown';
+  property: {
+    address: string;
+    reportDate: string;
+    totalRoofAreaSqFt: number;
+    facetCount: number;
+    predominantPitch: string;
+  };
+  facets: FacetGraphFacet[];
+  edges: FacetGraphEdge[];
+  warnings: string[];
+}
+
+export interface FacetSequenceStep {
+  order: string; // "F1", "F2", …
+  facetId: string;
+  areaSqFt: number;
+  pitch: string;
+  transition: {
+    fromFacetId: string;
+    type: FacetEdgeType;
+    note: string;
+  } | null;
+}
+
+/** SEQUENCE output — the optimized on-roof route starting at the entry facet. */
+export interface FacetSequence {
+  task: 'SEQUENCE';
+  entryFacetId: string;
+  sequence: FacetSequenceStep[];
+  ladderMoves: number;
+  cautions: string[];
+  warnings: string[];
+  /** Set when the inspector reorders steps by hand after the AI proposal. */
+  manuallyAdjusted?: boolean;
+}
+
+export type FacetGraphStatus = 'pending' | 'complete' | 'failed';
+
+/** GET /inspections/:id/facet-routing response. */
+export interface FacetRoutingState {
+  facetGraphStatus: FacetGraphStatus | null;
+  facetGraph: FacetGraph | null;
+  entryFacetId: string | null;
+  facetSequence: FacetSequence | null;
+  sequenceGeneratedAt: string | null;
+}
