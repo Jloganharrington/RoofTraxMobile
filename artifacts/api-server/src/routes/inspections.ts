@@ -90,6 +90,8 @@ import {
   claimSectionsTable,
   standardsEntriesTable,
   ahjPacksTable,
+  boilerplateSectionsTable,
+  detrimentEntriesTable,
 } from '@workspace/db';
 import type {
   Role,
@@ -134,6 +136,17 @@ type ProofPackageReportData = Pick<
 };
 import { buildPortalAccessFromRequest, generatePortalAccessCode } from '../lib/portalAccess';
 import { computeReadiness } from '../lib/readiness';
+import {
+  generateSectionContent,
+  assembleSectionHtml,
+  filterDetrimentEntries,
+  buildFieldConditionSet,
+  DAG_LAST_SECTION_TYPES,
+  DAG_UPSTREAM_SECTION_TYPES,
+  GENERATABLE_SECTION_TYPES,
+  type GeneratableSectionType,
+  type LockedSectionRow,
+} from '../lib/sectionGeneration';
 import { composeAiSystemPrompt, parseAiSummaryResponse } from '../lib/aiSummaryPrompt';
 import {
   DETERMINATION_LABELS,
@@ -4909,6 +4922,113 @@ ${JSON.stringify(photoBrief)}
     signaturePath,
   };
 
+  // ── Section assembly & generationSnapshot ──────────────────────────────
+  // Read locked sections and build the section assembly HTML (TOC + body).
+  // Also gather standards entries for standardsCited snapshot.
+  const [lockedSectionRows, allStandardsRows, finalizedBadgeSelections] = await Promise.all([
+    db
+      .select({
+        sectionType: claimSectionsTable.sectionType,
+        contentHtml: claimSectionsTable.contentHtml,
+        lockedAt: claimSectionsTable.lockedAt,
+        lockedBy: claimSectionsTable.lockedBy,
+        libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot,
+        id: claimSectionsTable.id,
+      })
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.state, 'locked'),
+        ),
+      ),
+    db
+      .select({
+        entryKey: standardsEntriesTable.entryKey,
+        verificationStatus: standardsEntriesTable.verificationStatus,
+        verifiedAt: standardsEntriesTable.verifiedAt,
+      })
+      .from(standardsEntriesTable)
+      .where(eq(standardsEntriesTable.companyId, actor.companyId)),
+    db
+      .select({ id: exhibitSelectionsTable.id, badgeLabel: exhibitSelectionsTable.badgeLabel, exhibitClass: exhibitSelectionsTable.exhibitClass })
+      .from(exhibitSelectionsTable)
+      .where(
+        and(
+          eq(exhibitSelectionsTable.inspectionId, inspectionId),
+          eq(exhibitSelectionsTable.companyId, actor.companyId),
+          isNotNull(exhibitSelectionsTable.finalizedAt),
+        ),
+      ),
+  ]);
+
+  const sectionAssemblyHtml = assembleSectionHtml(lockedSectionRows as LockedSectionRow[]);
+
+  // ── Exhibit badge map — freeze on first compile ──────────────────────────
+  // Build from finalized exhibit selections and store on the inspection row
+  // so subsequent recompiles read the same frozen assignments.
+  let badgeMap = inspection.exhibitBadgeMap as
+    | { counters: Record<string, number>; assignments: Record<string, string> }
+    | null;
+  if (!badgeMap && finalizedBadgeSelections.length > 0) {
+    const counters: Record<string, number> = { R: 0, S: 0, I: 0, F: 0, C: 0, T: 0 };
+    const assignments: Record<string, string> = {};
+    for (const sel of finalizedBadgeSelections) {
+      if (sel.badgeLabel) {
+        assignments[sel.id] = sel.badgeLabel;
+        const cls = sel.badgeLabel.split('-')[0];
+        const num = parseInt(sel.badgeLabel.split('-')[1] ?? '0', 10);
+        if (cls && !Number.isNaN(num)) counters[cls] = Math.max(counters[cls] ?? 0, num);
+      }
+    }
+    badgeMap = { counters, assignments };
+    // Fire-and-forget update — compile continues without waiting. If this
+    // fails (race condition on concurrent first compile), the next compile
+    // re-freezes identically (same selections, same labels).
+    db
+      .update(inspectionsTable)
+      .set({ exhibitBadgeMap: badgeMap })
+      .where(and(eq(inspectionsTable.id, inspectionId), isNull(inspectionsTable.exhibitBadgeMap)))
+      .catch((err: unknown) => req.log.warn({ err, inspectionId }, 'exhibitBadgeMap freeze failed'));
+  }
+
+  // ── generationSnapshot ───────────────────────────────────────────────────
+  // Records the exact library versions and section row IDs in use at compile
+  // time. Baked into the blob so any future re-render uses the snapshot to
+  // prove which versions were used rather than relying on current library state.
+  const sectionVersions: Record<string, string> = {};
+  const libraryVersions: Record<string, number> = {};
+  for (const row of lockedSectionRows) {
+    sectionVersions[row.sectionType] = row.id;
+    const snap = row.libraryVersionSnapshot as { bpVersions?: Record<string, number>; ahjPackVersions?: Record<string, number> } | null;
+    if (snap?.bpVersions) Object.assign(libraryVersions, snap.bpVersions);
+  }
+
+  // standardsCited: collect every standards entry referenced by any locked section
+  const referencedEntryKeys = new Set<string>();
+  for (const row of lockedSectionRows) {
+    const snap = row.libraryVersionSnapshot as { standardsEntryKeys?: string[] } | null;
+    for (const k of snap?.standardsEntryKeys ?? []) referencedEntryKeys.add(k);
+  }
+  const standardsCited = allStandardsRows
+    .filter((e) => referencedEntryKeys.has(e.entryKey))
+    .map((e) => ({
+      entryKey: e.entryKey,
+      verificationStatus: e.verificationStatus,
+      verifiedAt: e.verifiedAt?.toISOString() ?? null,
+    }));
+
+  const generationSnapshot = {
+    protocolVersion: '7.0',
+    sectionVersions,
+    libraryVersions,
+    triggerFlags: (inspection.triggerFlags ?? null) as Record<string, string> | null,
+    standardsCited,
+    compiledAt: generatedAt,
+    compiledBy: actor.userId,
+    hasSections: lockedSectionRows.length > 0,
+  };
+
   const compiledData = {
     schemaVersion: 7,
     reportData,
@@ -4950,6 +5070,13 @@ ${JSON.stringify(photoBrief)}
     // Manager-authorized reopen history — disclosed in the rendered package
     // so a re-submitted record never hides that it was unlocked and edited.
     unlockLog: inspection.unlockLog ?? [],
+    // Per-section AI generation pipeline (Task #122). Empty until sections
+    // are generated, approved, and locked.
+    sectionAssemblyHtml,
+    generationSnapshot,
+    // Frozen exhibit badge map (class-prefixed scheme). Null until badges
+    // are finalized via the curation route and a compile runs.
+    exhibitBadgeMap: badgeMap,
   };
 
   const compiledReportPath = await objectStorageService.uploadObjectBuffer(
@@ -6548,70 +6675,510 @@ router.get('/inspections/:inspectionId/sections', async (req: Request, res: Resp
 
 // ---------------------------------------------------------------------------
 // POST /inspections/:inspectionId/sections/:sectionType/generate
-// Stub — generation pipeline lands in Task #122.
+// Real AI generation — Task #122.
+//
+// DAG enforcement: summary_of_findings and closing_statement return 409 if
+// any upstream section (findings/causation/detriment_application/rap_narrative/
+// estimate_justifications) is not yet approved or locked.
+//
+// Applicability gate: detriment entries are pre-filtered by condition set
+// derived from the attested field record BEFORE the prompt is built.
+// This is a code check, not a prompt instruction.
+//
+// Re-generation: if a section row already exists in approved/locked state,
+// DAG-downstream sections are flipped to in_review (stale propagation).
 // ---------------------------------------------------------------------------
 router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const sectionType = req.params.sectionType as string;
+  const rawType = req.params.sectionType as string;
+
+  // captions has its own dedicated route; reject here to avoid confusion.
+  if (rawType === 'captions') {
+    return void res.status(422).json({
+      error: 'Requires photo curation.',
+      detail: 'Caption generation requires finalized badge assignments from the Photo Curation task.',
+    });
+  }
+
+  if (!GENERATABLE_SECTION_TYPES.includes(rawType as GeneratableSectionType)) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+  const sectionType = rawType as GeneratableSectionType;
+
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
-  if (!SECTION_TYPES.includes(sectionType as typeof SECTION_TYPES[number])) {
-    return void res.status(400).json({ error: 'Unknown section type' });
+  // ── DAG enforcement ──────────────────────────────────────────────────────
+  // DAG-last sections require all upstream sections to be approved or locked.
+  if (DAG_LAST_SECTION_TYPES.has(sectionType)) {
+    const upstreamRows = await db
+      .select({ sectionType: claimSectionsTable.sectionType, state: claimSectionsTable.state })
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          inArray(claimSectionsTable.sectionType, [...DAG_UPSTREAM_SECTION_TYPES]),
+        ),
+      );
+    const upstreamByType = new Map(upstreamRows.map((r) => [r.sectionType, r.state]));
+    const notReady = DAG_UPSTREAM_SECTION_TYPES.filter(
+      (t) => !['approved', 'locked'].includes(upstreamByType.get(t) ?? 'not_started'),
+    );
+    if (notReady.length > 0) {
+      return void res.status(409).json({
+        error: `Cannot generate ${sectionType} until all upstream sections are approved. Pending: ${notReady.join(', ')}`,
+        pendingSections: notReady,
+      });
+    }
   }
 
-  res.status(501).json({
-    error: 'AI generation pipeline not yet available.',
-    detail: 'Per-section generation is implemented in the generation pipeline task.',
+  // ── Load generation data in parallel ────────────────────────────────────
+  const [
+    children,
+    detrimentEntries,
+    boilerplateVersions,
+    ahjPackVersionRows,
+    standardsEntriesRows,
+    approvedSectionRows,
+    existingRow,
+  ] = await Promise.all([
+    hydrateInspectionChildren(inspectionId, actor.companyId),
+    db
+      .select({
+        entryKey: detrimentEntriesTable.entryKey,
+        statement: detrimentEntriesTable.statement,
+        requiredSupport: detrimentEntriesTable.requiredSupport,
+        limitation: detrimentEntriesTable.limitation,
+        applicabilityConditions: detrimentEntriesTable.applicabilityConditions,
+      })
+      .from(detrimentEntriesTable)
+      .where(eq(detrimentEntriesTable.companyId, actor.companyId)),
+    db
+      .select({ sectionKey: boilerplateSectionsTable.sectionKey, version: boilerplateSectionsTable.version })
+      .from(boilerplateSectionsTable)
+      .where(eq(boilerplateSectionsTable.companyId, actor.companyId)),
+    db
+      .select({ packType: ahjPacksTable.packType, version: ahjPacksTable.version })
+      .from(ahjPacksTable)
+      .where(eq(ahjPacksTable.companyId, actor.companyId)),
+    db
+      .select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus, version: standardsEntriesTable.version })
+      .from(standardsEntriesTable)
+      .where(eq(standardsEntriesTable.companyId, actor.companyId)),
+    // For DAG-last sections: load approved/locked upstream sections' content
+    DAG_LAST_SECTION_TYPES.has(sectionType)
+      ? db
+          .select({ sectionType: claimSectionsTable.sectionType, contentHtml: claimSectionsTable.contentHtml, state: claimSectionsTable.state })
+          .from(claimSectionsTable)
+          .where(
+            and(
+              eq(claimSectionsTable.inspectionId, inspectionId),
+              inArray(claimSectionsTable.sectionType, [...DAG_UPSTREAM_SECTION_TYPES]),
+            ),
+          )
+      : Promise.resolve([] as { sectionType: string; contentHtml: string | null; state: string }[]),
+    // Check if a section row already exists (for stale propagation)
+    db
+      .select({ id: claimSectionsTable.id, state: claimSectionsTable.state })
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.sectionType, sectionType),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  // ── Locked-section guard ─────────────────────────────────────────────────
+  // A locked section is final. Re-generation is blocked; the caller must
+  // unlock (reopen) the section through an authorized flow before replacing it.
+  if (existingRow.length > 0 && existingRow[0]!.state === 'locked') {
+    return void res.status(409).json({
+      error: 'Section is locked and cannot be re-generated. It must be unlocked by a manager before changes can be made.',
+      state: 'locked',
+      sectionId: existingRow[0]!.id,
+    });
+  }
+
+  const approvedSections = new Map<string, string>(
+    (approvedSectionRows as { sectionType: string; contentHtml: string | null; state: string }[])
+      .filter((r) => ['approved', 'locked'].includes(r.state) && r.contentHtml)
+      .map((r) => [r.sectionType, r.contentHtml!]),
+  );
+
+  // ── AI generation ────────────────────────────────────────────────────────
+  let generationResult;
+  try {
+    generationResult = await generateSectionContent({
+      inspectionId,
+      sectionType,
+      inspection: inspection as unknown as Record<string, unknown>,
+      children,
+      detrimentEntries: detrimentEntries.map((d) => ({
+        ...d,
+        requiredSupport: d.requiredSupport ?? null,
+        limitation: d.limitation ?? null,
+      })),
+      approvedSections,
+      standardsEntries: standardsEntriesRows.map((e) => ({
+        ...e,
+        version: e.version ?? 1,
+        verifiedAt: null,
+      })),
+      boilerplateVersions: boilerplateVersions.map((b) => ({
+        sectionKey: b.sectionKey,
+        version: b.version ?? 1,
+      })),
+      ahjPackVersions: ahjPackVersionRows.map((p) => ({
+        packType: p.packType,
+        version: p.version ?? 1,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err, inspectionId, sectionType }, 'Section AI generation failed');
+    return void res.status(502).json({ error: 'Section generation failed. Please try again.' });
+  }
+
+  const now = new Date();
+
+  // ── Stale propagation ────────────────────────────────────────────────────
+  // If re-generating an upstream section whose downstream DAG sections are
+  // already approved or locked, flip them to in_review with staledBy.
+  if (existingRow.length > 0 && !DAG_LAST_SECTION_TYPES.has(sectionType)) {
+    const existingState = existingRow[0]!.state;
+    if (['generated', 'in_review', 'approved', 'locked'].includes(existingState)) {
+      // Only stale sections that depend on this one
+      const downstreamTypes = [...DAG_LAST_SECTION_TYPES];
+      for (const downstreamType of downstreamTypes) {
+        await db
+          .update(claimSectionsTable)
+          .set({ state: 'in_review', staledBy: sectionType, updatedAt: now })
+          .where(
+            and(
+              eq(claimSectionsTable.inspectionId, inspectionId),
+              eq(claimSectionsTable.sectionType, downstreamType),
+              inArray(claimSectionsTable.state, ['approved', 'locked']),
+            ),
+          );
+      }
+    }
+  }
+
+  // ── Upsert claim_sections row ────────────────────────────────────────────
+  const upsertValues = {
+    inspectionId,
+    companyId: actor.companyId,
+    sectionType,
+    state: 'generated' as const,
+    contentHtml: generationResult.contentHtml,
+    lintStatus: generationResult.lintResult.lintStatus,
+    lintFindings: generationResult.lintResult.findings,
+    gateFlags: { rapMode: generationResult.rapMode },
+    generatedAt: now,
+    // Clear stale marker when re-generating
+    staledBy: null,
+    libraryVersionSnapshot: generationResult.libraryVersionSnapshot,
+  };
+
+  let sectionId: string;
+  if (existingRow.length > 0) {
+    await db
+      .update(claimSectionsTable)
+      .set({ ...upsertValues, lockedAt: null, lockedBy: null })
+      .where(eq(claimSectionsTable.id, existingRow[0]!.id));
+    sectionId = existingRow[0]!.id;
+  } else {
+    const [inserted] = await db
+      .insert(claimSectionsTable)
+      .values(upsertValues)
+      .returning({ id: claimSectionsTable.id });
+    sectionId = inserted!.id;
+  }
+
+  res.json({
+    sectionType,
+    state: 'generated',
+    sectionId,
+    contentHtml: generationResult.contentHtml,
+    lintStatus: generationResult.lintResult.lintStatus,
+    lintFindings: generationResult.lintResult.findings,
+    rapMode: generationResult.rapMode,
+    libraryVersionSnapshot: generationResult.libraryVersionSnapshot,
+    generatedAt: now.toISOString(),
   });
 });
 
 // ---------------------------------------------------------------------------
 // POST /inspections/:inspectionId/sections/:sectionType/approve
-// Stub — section lifecycle managed by Task #122.
+// Advances state generated → approved with gate checks:
+//   causation / detriment_application: causationReviewConfirmed: true required
+//   rap_narrative: rapFallbackConfirmed: true required when mode=fallback_slope
+//   findings: photoComparisonConfirmed always passes (stub until photo curation)
+// Manager-or-admin only for causation/detriment_application gates.
 // ---------------------------------------------------------------------------
 router.post('/inspections/:inspectionId/sections/:sectionType/approve', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const sectionType = req.params.sectionType as string;
+  const rawType = req.params.sectionType as string;
+
+  if (!GENERATABLE_SECTION_TYPES.includes(rawType as GeneratableSectionType)) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+  const sectionType = rawType as GeneratableSectionType;
+
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
-  if (!SECTION_TYPES.includes(sectionType as typeof SECTION_TYPES[number])) {
-    return void res.status(400).json({ error: 'Unknown section type' });
+  const [sectionRow] = await db
+    .select()
+    .from(claimSectionsTable)
+    .where(
+      and(
+        eq(claimSectionsTable.inspectionId, inspectionId),
+        eq(claimSectionsTable.sectionType, sectionType),
+      ),
+    )
+    .limit(1);
+
+  if (!sectionRow) {
+    return void res.status(404).json({ error: 'Section not found — generate it first' });
+  }
+  if (!['generated', 'in_review'].includes(sectionRow.state)) {
+    return void res.status(409).json({
+      error: `Section is in state '${sectionRow.state}' — can only approve from generated or in_review`,
+    });
   }
 
-  res.status(501).json({
-    error: 'Section lifecycle not yet available.',
-    detail: 'Section approve is implemented in the generation pipeline task.',
+  const body = req.body as Record<string, unknown>;
+  const existingGateFlags = (sectionRow.gateFlags as Record<string, unknown> | null) ?? {};
+  const newGateFlags: Record<string, unknown> = { ...existingGateFlags };
+
+  // ── Gate checks per section type ─────────────────────────────────────────
+  if (sectionType === 'causation' || sectionType === 'detriment_application') {
+    // Requires manager+ to confirm deliberate review act
+    if (!isManagerOrAdmin(actor.role)) {
+      return void res.status(403).json({
+        error: 'Causation and Detriment Application sections require manager or admin approval',
+      });
+    }
+    if (body.causationReviewConfirmed !== true) {
+      return void res.status(422).json({
+        error: 'causationReviewConfirmed: true is required to approve this section',
+        detail:
+          'This confirms a deliberate review of the causation reasoning against the attested field record.',
+      });
+    }
+    newGateFlags.causationReviewConfirmed = true;
+    newGateFlags.reviewerUserId = actor.userId;
+    newGateFlags.reviewedAt = new Date().toISOString();
+  }
+
+  if (sectionType === 'rap_narrative') {
+    const rapMode = (existingGateFlags.rapMode as string | null) ?? null;
+    if (rapMode === 'fallback_slope' && body.rapFallbackConfirmed !== true) {
+      return void res.status(422).json({
+        error: 'rapFallbackConfirmed: true is required when RAP mode is fallback_slope',
+        detail: 'This asserts the fallback-variant narrative rendered correctly for this inspection.',
+      });
+    }
+    if (body.rapFallbackConfirmed === true) {
+      newGateFlags.rapFallbackConfirmed = true;
+    }
+  }
+
+  // findings: photoComparisonConfirmed always passes (stub — real gate lands in photo curation task)
+  if (sectionType === 'findings') {
+    newGateFlags.photoComparisonConfirmed = true;
+  }
+
+  await db
+    .update(claimSectionsTable)
+    .set({
+      state: 'approved',
+      gateFlags: newGateFlags,
+      staledBy: null,
+    })
+    .where(eq(claimSectionsTable.id, sectionRow.id));
+
+  res.json({
+    sectionType,
+    state: 'approved',
+    sectionId: sectionRow.id,
+    gateFlags: newGateFlags,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/sections/:sectionType/auto-approve
+// Manager-only shortcut: approves without gate checks. Intended for
+// boilerplate shells accepted as-is and for sections reviewed offline.
+// ---------------------------------------------------------------------------
+router.post('/inspections/:inspectionId/sections/:sectionType/auto-approve', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  if (!isManagerOrAdmin(actor.role)) {
+    return void res.status(403).json({ error: 'Only managers and admins can auto-approve sections' });
+  }
+
+  const inspectionId = req.params.inspectionId as string;
+  const rawType = req.params.sectionType as string;
+
+  if (!GENERATABLE_SECTION_TYPES.includes(rawType as GeneratableSectionType)) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+  const sectionType = rawType as GeneratableSectionType;
+
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const [sectionRow] = await db
+    .select()
+    .from(claimSectionsTable)
+    .where(
+      and(
+        eq(claimSectionsTable.inspectionId, inspectionId),
+        eq(claimSectionsTable.sectionType, sectionType),
+      ),
+    )
+    .limit(1);
+
+  if (!sectionRow) {
+    return void res.status(404).json({ error: 'Section not found — generate it first' });
+  }
+  if (sectionRow.state === 'locked') {
+    return void res.status(409).json({ error: 'Section is already locked and cannot be changed' });
+  }
+
+  const existingGateFlags = (sectionRow.gateFlags as Record<string, unknown> | null) ?? {};
+
+  await db
+    .update(claimSectionsTable)
+    .set({
+      state: 'approved',
+      staledBy: null,
+      gateFlags: {
+        ...existingGateFlags,
+        autoApprovedBy: actor.userId,
+        autoApprovedAt: new Date().toISOString(),
+      },
+    })
+    .where(eq(claimSectionsTable.id, sectionRow.id));
+
+  res.json({
+    sectionType,
+    state: 'approved',
+    sectionId: sectionRow.id,
+    autoApproved: true,
   });
 });
 
 // ---------------------------------------------------------------------------
 // POST /inspections/:inspectionId/sections/:sectionType/lock
-// Stub — section lifecycle managed by Task #122.
+// Advances approved → locked. Final; no further changes allowed.
+// Stale propagation: locking an upstream section flips any approved or locked
+// DAG-downstream sections (summary_of_findings, closing_statement) to in_review.
+// Blocked lint status prevents locking unless a manager explicitly overrides.
 // ---------------------------------------------------------------------------
 router.post('/inspections/:inspectionId/sections/:sectionType/lock', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const sectionType = req.params.sectionType as string;
+  const rawType = req.params.sectionType as string;
+
+  if (!GENERATABLE_SECTION_TYPES.includes(rawType as GeneratableSectionType)) {
+    return void res.status(400).json({ error: 'Unknown section type' });
+  }
+  const sectionType = rawType as GeneratableSectionType;
+
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
-  if (!SECTION_TYPES.includes(sectionType as typeof SECTION_TYPES[number])) {
-    return void res.status(400).json({ error: 'Unknown section type' });
+  const [sectionRow] = await db
+    .select()
+    .from(claimSectionsTable)
+    .where(
+      and(
+        eq(claimSectionsTable.inspectionId, inspectionId),
+        eq(claimSectionsTable.sectionType, sectionType),
+      ),
+    )
+    .limit(1);
+
+  if (!sectionRow) {
+    return void res.status(404).json({ error: 'Section not found' });
+  }
+  if (sectionRow.state !== 'approved') {
+    return void res.status(409).json({
+      error: `Section must be in 'approved' state to lock — current state: ${sectionRow.state}`,
+    });
   }
 
-  res.status(501).json({
-    error: 'Section lifecycle not yet available.',
-    detail: 'Section lock is implemented in the generation pipeline task.',
+  // Blocked lint prevents locking. Only a manager/admin can override, and they
+  // must do so explicitly via { overrideLintBlock: true } in the request body.
+  // A non-manager sending overrideLintBlock: true is still rejected — the flag
+  // only activates the override for users who already pass the role check.
+  const body = req.body as { overrideLintBlock?: boolean } | null;
+  if (sectionRow.lintStatus === 'blocked') {
+    if (!isManagerOrAdmin(actor.role)) {
+      return void res.status(422).json({
+        error: 'Section has blocked lint findings. A manager must resolve or override before locking.',
+        lintStatus: 'blocked',
+        lintFindings: sectionRow.lintFindings,
+      });
+    }
+    // Manager must confirm the override explicitly.
+    if (body?.overrideLintBlock !== true) {
+      return void res.status(422).json({
+        error: 'Section has blocked lint findings. Pass overrideLintBlock: true to acknowledge and proceed.',
+        lintStatus: 'blocked',
+        lintFindings: sectionRow.lintFindings,
+      });
+    }
+  }
+
+  const now = new Date();
+  await db
+    .update(claimSectionsTable)
+    .set({
+      state: 'locked',
+      lockedAt: now,
+      lockedBy: actor.userId,
+    })
+    .where(eq(claimSectionsTable.id, sectionRow.id));
+
+  // ── Stale propagation ────────────────────────────────────────────────────
+  // Locking an upstream section flips DAG-downstream sections that are already
+  // approved or locked back to in_review so they incorporate the finalized content.
+  if (!DAG_LAST_SECTION_TYPES.has(sectionType)) {
+    const downstreamTypes = [...DAG_LAST_SECTION_TYPES];
+    for (const downstreamType of downstreamTypes) {
+      await db
+        .update(claimSectionsTable)
+        .set({ state: 'in_review', staledBy: sectionType, lockedAt: null, lockedBy: null })
+        .where(
+          and(
+            eq(claimSectionsTable.inspectionId, inspectionId),
+            eq(claimSectionsTable.sectionType, downstreamType),
+            inArray(claimSectionsTable.state, ['approved', 'locked']),
+          ),
+        );
+    }
+  }
+
+  res.json({
+    sectionType,
+    state: 'locked',
+    sectionId: sectionRow.id,
+    lockedAt: now.toISOString(),
+    lockedBy: actor.userId,
   });
 });
 

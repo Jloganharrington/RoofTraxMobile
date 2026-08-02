@@ -834,6 +834,11 @@ export const inspectionsTable = pgTable('inspections', {
   // Recomputed and stored when the field record is attested or any material
   // input changes. Never use the stored value for gating — always recompute.
   triggerFlags: jsonb('trigger_flags'),
+  // Frozen exhibit-badge map built at first compile (Task #122).
+  // Structure: { counters: { R, S, I, F, C, T }, assignments: { selectionId → badge } }
+  // Subsequent recompiles read this frozen map — nothing ever renumbers.
+  // New content at supplement time appends within class using counters[class]+1.
+  exhibitBadgeMap: jsonb('exhibit_badge_map'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
@@ -1605,6 +1610,9 @@ export const claimSectionsTable = pgTable('claim_sections', {
   // Snapshot of library versions used at generation time — BP section versions,
   // AHJ pack versions, and the set of standardsEntryKeys referenced.
   libraryVersionSnapshot: jsonb('library_version_snapshot'),
+  // Set when a re-generate of an upstream section stales this section. Cleared
+  // when the section is re-generated. Format: the sectionType that caused staleness.
+  staledBy: varchar('staled_by', { length: 100 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
