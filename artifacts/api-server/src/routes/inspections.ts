@@ -4162,7 +4162,8 @@ Rules:
       const pdfPath = pathJoin(tmpDir, 'report.pdf');
       const jpegPath = pathJoin(tmpDir, 'overview.jpg');
       writeFileSync(pdfPath, buf);
-      execFileSync('convert', [
+      // IMv7 renamed the top-level binary from "convert" to "magick".
+      execFileSync('magick', [
         '-density', '150',
         `${pdfPath}[${pageNum}]`,
         '-resize', 'x1400',

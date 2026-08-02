@@ -28,6 +28,7 @@ import { useColors } from '@/hooks/useColors';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
+import { setOverviewImageUrl } from '@/lib/overviewImageStore';
 import { Icon } from '@/components/Icon';
 
 // ── Editable row shapes ───────────────────────────────────────────────────────
@@ -230,6 +231,13 @@ export default function InspectionMeasurementsConfirm() {
       return t;
     }));
   }, [derivedAreaSqft]);
+
+  // Cache the overview URL by inspectionId so it survives pending clearance
+  // and remains accessible from Facet Details.
+  useEffect(() => {
+    const url = getPendingMeasurements()?.overviewImageUrl;
+    if (url) setOverviewImageUrl(id, url);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nothing to render while the navigator processes the back action.
   if (!pending) return null;

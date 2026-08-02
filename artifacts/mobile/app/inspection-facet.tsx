@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -21,6 +22,7 @@ import { useColors } from '@/hooks/useColors';
 import { createDamageInstance, deleteSlope, updateSlope, patchPhotoCaption } from '@/lib/inspectionSync';
 import { buildProtocolState } from '@/lib/inspectionProtocolState';
 import { DamageCaptionChips, DamageCaptionBadge } from '@/components/DamageCaptionChips';
+import { getOverviewImageUrl } from '@/lib/overviewImageStore';
 
 // Facet detail (Step 3 · Roof Facets, protocol v2). One roof plane: area,
 // material, pitch (rise:run — a pitch steeper than 8/12 triggers the steep
@@ -94,6 +96,7 @@ export default function InspectionFacetScreen() {
   const [removing, setRemoving] = React.useState(false);
   // photoId of the photo currently having its caption saved, or null.
   const [savingCaption, setSavingCaption] = React.useState<string | null>(null);
+  const [overviewModalOpen, setOverviewModalOpen] = React.useState(false);
   // Which tie-in option was just selected for the first time this session —
   // drives the one-time instructions + photo-capture prompt.
   const [tieInPrompt, setTieInPrompt] = React.useState<{ valley: boolean; hip_ridge: boolean }>({
@@ -142,6 +145,10 @@ export default function InspectionFacetScreen() {
         : '');
   const pitchNum = Number(pitchValue);
   const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
+
+  // Roof diagram: persisted in the overview store when the inspector ran AI
+  // analysis — available even after pending measurements are cleared.
+  const overviewImageUrl = getOverviewImageUrl(id);
 
   const state = buildProtocolState(inspection);
   const damageRecords = state.damageInstances.filter((d) => d.slopeId === slopeId);
@@ -314,6 +321,18 @@ export default function InspectionFacetScreen() {
                 {bearingToCardinal(facet.compassBearing)}
               </Text>
             </View>
+          )}
+          {/* Spacer so the diagram button aligns to the right */}
+          <View style={{ flex: 1 }} />
+          {overviewImageUrl && (
+            <Pressable
+              onPress={() => setOverviewModalOpen(true)}
+              hitSlop={8}
+              style={[styles.diagramBtn, { backgroundColor: colors.card, borderColor: colors.primary }]}
+            >
+              <Icon name="image" size={15} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>Roof Diagram</Text>
+            </Pressable>
           )}
         </View>
 
@@ -677,6 +696,32 @@ export default function InspectionFacetScreen() {
         </Pressable>
       </Modal>
 
+      {/* Roof diagram modal */}
+      {overviewImageUrl && (
+        <Modal
+          visible={overviewModalOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOverviewModalOpen(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 16, gap: 12 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 16 }}>Roof Diagram</Text>
+                <Pressable onPress={() => setOverviewModalOpen(false)} hitSlop={12}>
+                  <Icon name="x" size={20} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+              <Image
+                source={{ uri: overviewImageUrl }}
+                style={{ width: '100%', aspectRatio: 1.2 }}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {/* Material picker */}
       <Modal
         visible={materialPickerOpen}
@@ -805,4 +850,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   removeBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, marginTop: 12 },
+  diagramBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1 },
 });
