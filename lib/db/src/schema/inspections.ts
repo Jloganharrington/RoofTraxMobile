@@ -738,14 +738,12 @@ export const inspectionsTable = pgTable('inspections', {
   // uploaded report photo). Nullable; absence is a soft flag, never a block.
   sidingMeasurementReportRef: text('siding_measurement_report_ref'),
   measurementsReportUrl: text('measurements_report_url'),
-  // Facet routing (two-stage EXTRACT → SEQUENCE flow). facetGraph holds the
-  // full EXTRACT output; facetSequence the SEQUENCE output (optionally
-  // manually adjusted). Re-analysis clears entryFacetId + facetSequence.
-  facetGraph: jsonb('facet_graph').$type<unknown | null>(),
-  facetGraphStatus: text('facet_graph_status').$type<'pending' | 'complete' | 'failed' | null>(),
-  entryFacetId: text('entry_facet_id'),
-  facetSequence: jsonb('facet_sequence').$type<unknown | null>(),
-  sequenceGeneratedAt: timestamp('sequence_generated_at', { withTimezone: true }),
+  // Facet inventory — single-stage AI extraction from the measurement PDF.
+  // facetInventory holds the full AI response JSON; facetCount is the
+  // included facet count (pitch >= 1/12). Re-analysis replaces all three.
+  facetInventory: jsonb('facet_inventory').$type<unknown | null>(),
+  facetCount: integer('facet_count'),
+  facetInventoryStatus: text('facet_inventory_status').$type<'pending' | 'complete' | 'failed' | null>(),
   // REPORT_DATA v2 capture blocks — all nullable; null means "not captured"
   // and the corresponding report section omits.
   propertyProfile: jsonb('property_profile').$type<PropertyProfile | null>(),
@@ -853,6 +851,22 @@ export const inspectionsTable = pgTable('inspections', {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
+});
+
+// AI-extracted roof facet inventory. One row per inspectable facet (pitch
+// >= 1/12). Rows are delete-and-reinserted on every re-analysis; the full
+// extraction JSON is stored on the inspection row for audit/re-render.
+export const roofFacetsTable = pgTable('roof_facets', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  facetId: text('facet_id').notNull(),
+  areaSqFt: real('area_sq_ft').notNull(),
+  pitch: text('pitch').notNull(),
+  sortOrder: integer('sort_order').notNull(),
 });
 
 // A roof facet/plane on the inspected structure. Raw geometry only — no

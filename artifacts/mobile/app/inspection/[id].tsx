@@ -14,7 +14,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { getGetInspectionQueryKey, useGetInspection } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { applicableSteps, stepLabel, type StepKey } from '@workspace/protocol';
+import { applicableSteps, stepLabel, type StepKey, type FacetInventory, type FacetInventoryStatus } from '@workspace/protocol';
 import { Icon } from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
@@ -127,8 +127,8 @@ export default function InspectionDetailScreen() {
         Alert.alert('Analysis failed', body.error ?? 'Something went wrong. Please try again.');
         return;
       }
-      const data = await res.json() as { parsed: import('@workspace/protocol').ParsedMeasurements };
-      setPendingMeasurements(data.parsed);
+      const data = await res.json() as { parsed: import('@workspace/protocol').ParsedMeasurements; facetInventoryStatus: FacetInventoryStatus | null; facetInventory: FacetInventory | null };
+      setPendingMeasurements({ ...data.parsed, facetInventory: data.facetInventory, facetInventoryStatus: data.facetInventoryStatus });
       setAnalyzePending(true);
       router.push({ pathname: '/inspection-measurements-confirm', params: { id } });
     } catch {

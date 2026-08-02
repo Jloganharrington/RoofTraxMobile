@@ -120,76 +120,40 @@ export interface ParsedMeasurements {
   overviewPageNumber: number | null;
 }
 
-// ── Facet routing (two-stage EXTRACT → SEQUENCE flow) ───────────────────────
+// ── Facet inventory (single-stage AI extraction) ────────────────────────────
 
-export type FacetWalkability = 'walkable' | 'caution' | 'steep_assist' | 'low_slope';
-export type FacetEdgeType = 'ridge' | 'hip' | 'valley' | 'step' | 'dismount';
+export type FacetInventoryStatus = 'pending' | 'complete' | 'failed';
 
-export interface FacetGraphFacet {
+/** A single roof facet returned by the facet-extractor AI (pitch >= 1/12). */
+export interface RoofFacet {
   id: string;
-  sourceLabel: string;
   areaSqFt: number;
   pitch: string;
-  walkability: FacetWalkability;
-  location: string;
-  notes: string;
+  sortOrder: number;
 }
 
-export interface FacetGraphEdge {
-  a: string;
-  b: string;
-  type: FacetEdgeType;
-  lengthFt: number | null;
-  confidence: 'high' | 'medium' | 'low';
+export interface FacetInventoryItem {
+  id: string;
+  areaSqFt: number;
+  pitch: string;
 }
 
-/** EXTRACT output — the facet adjacency graph parsed from the report PDF. */
-export interface FacetGraph {
-  task: 'EXTRACT';
+/** Full AI extraction response stored in the facet_inventory column. */
+export interface FacetInventory {
   reportType: 'hover' | 'gaf_quickmeasure' | 'unknown';
   property: {
     address: string;
     reportDate: string;
     totalRoofAreaSqFt: number;
-    facetCount: number;
+    reportFacetCount: number;
     predominantPitch: string;
   };
-  facets: FacetGraphFacet[];
-  edges: FacetGraphEdge[];
+  facetCount: number;
+  facets: FacetInventoryItem[];
+  excluded: {
+    count: number;
+    areaSqFt: number;
+    facets: FacetInventoryItem[];
+  };
   warnings: string[];
-}
-
-export interface FacetSequenceStep {
-  order: string; // "F1", "F2", …
-  facetId: string;
-  areaSqFt: number;
-  pitch: string;
-  transition: {
-    fromFacetId: string;
-    type: FacetEdgeType;
-    note: string;
-  } | null;
-}
-
-/** SEQUENCE output — the optimized on-roof route starting at the entry facet. */
-export interface FacetSequence {
-  task: 'SEQUENCE';
-  entryFacetId: string;
-  sequence: FacetSequenceStep[];
-  ladderMoves: number;
-  cautions: string[];
-  warnings: string[];
-  /** Set when the inspector reorders steps by hand after the AI proposal. */
-  manuallyAdjusted?: boolean;
-}
-
-export type FacetGraphStatus = 'pending' | 'complete' | 'failed';
-
-/** GET /inspections/:id/facet-routing response. */
-export interface FacetRoutingState {
-  facetGraphStatus: FacetGraphStatus | null;
-  facetGraph: FacetGraph | null;
-  entryFacetId: string | null;
-  facetSequence: FacetSequence | null;
-  sequenceGeneratedAt: string | null;
 }

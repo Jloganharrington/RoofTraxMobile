@@ -22,13 +22,9 @@ import type {
   InspectionLinearType,
   InspectionTotalType,
   InspectionAccessoryType,
-  FacetGraph,
-  FacetGraphFacet,
-  FacetSequence,
-  FacetRoutingState,
-  FacetWalkability,
-  FacetEdgeType,
+  FacetInventory,
 } from '@workspace/protocol';
+import { type PendingMeasurementsData } from '@/lib/pendingMeasurements';
 import { useColors } from '@/hooks/useColors';
 import { ZoomableImage } from '@/components/ZoomableImage';
 import { getApiBaseUrl } from '@/lib/api';
@@ -67,22 +63,6 @@ const MATERIAL_LABELS: Record<string, string> = {
   asphalt_shingle:      'Asphalt Shingle',
   cedar_shake:          'Cedar Shake',
   standing_seam_metal:  'Standing Seam Metal',
-};
-
-// Walkability badge palette (green walkable / amber caution / red steep / blue low-slope).
-const WALKABILITY_META: Record<FacetWalkability, { label: string; color: string }> = {
-  walkable:     { label: 'Walkable',    color: '#22c55e' },
-  caution:      { label: 'Caution',     color: '#f59e0b' },
-  steep_assist: { label: 'Steep',       color: '#ef4444' },
-  low_slope:    { label: 'Low Slope',   color: '#3b82f6' },
-};
-
-const TRANSITION_ICON: Record<FacetEdgeType, IconName> = {
-  ridge:    'minus',
-  hip:      'chevron-up',
-  valley:   'chevron-down',
-  step:     'arrow-right',
-  dismount: 'alert-triangle',
 };
 
 /** "3/12" | "3:12" | "3" → rise 3, run 12. */
@@ -219,8 +199,6 @@ export default function InspectionMeasurementsConfirm() {
   );
 
   const [applying, setApplying] = useState(false);
-  // Index into `slopes` of the slope the inspector will enter first (F1).
-  // Nothing is pre-assigned — the inspector must tap a slope before applying.
   // Manual facet ordering: the inspector taps slopes in the order they will
   // be walked — first tap = F1, second = F2, and so on. Tapping an already
   // numbered slope removes it (later slopes renumber automatically).
@@ -232,14 +210,9 @@ export default function InspectionMeasurementsConfirm() {
   const [overviewPage, setOverviewPage]     = useState<number>(getPendingMeasurements()?.overviewPageNumber ?? 0);
   const [overviewLoading, setOverviewLoading] = useState(false);
 
-  // ── Facet routing (two-stage EXTRACT → SEQUENCE) ───────────────────────────
-  // null = still loading from the server.
-  const [routing, setRouting]           = useState<FacetRoutingState | null>(null);
-  const [seqLoadingId, setSeqLoadingId] = useState<string | null>(null); // facet card spinner
-  const [choosingEntry, setChoosingEntry] = useState(false);             // "Change entry facet"
-  const [reorderIds, setReorderIds]     = useState<string[] | null>(null); // non-null = reorder mode
-  const [savingReorder, setSavingReorder] = useState(false);
-  const [dismissedCautions, setDismissedCautions] = useState<number[]>([]);
+  // Inventory confirmation state.
+  const [dismissedWarnings, setDismissedWarnings] = useState<number[]>([]);
+  const [reAnalyzing, setReAnalyzing] = useState(false);
 
   // ── ALL hooks must be declared before any conditional return ────────────────
 
@@ -290,29 +263,13 @@ export default function InspectionMeasurementsConfirm() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const apiBase = getApiBaseUrl();
-        const token   = await getToken('auth_session_token');
-        const res = await fetch(`${apiBase}/inspections/${id}/facet-routing`, {
-          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as FacetRoutingState;
-        if (!cancelled) setRouting(data);
-      } catch {
-        if (!cancelled) setRouting({ facetGraphStatus: 'failed', facetGraph: null, entryFacetId: null, facetSequence: null, sequenceGeneratedAt: null });
-      }
+      // nothing to prefetch — inventory arrives with the analyze response
     })();
     return () => { cancelled = true; };
   }, [id]);
 
   // Nothing to render while the navigator processes the back action.
   if (!pending) return null;
-
-  // The route currently in force. Hidden while the inspector is picking a new
-  // entry facet so State B renders instead.
-  const activeGraph: FacetGraph | null = routing?.facetGraphStatus === 'complete' ? (routing.facetGraph ?? null) : null;
-  const activeSequence: FacetSequence | null = choosingEntry ? null : (routing?.facetSequence ?? null);
 
   // ── Overview image (lazy fetch) ────────────────────────────────────────────
 
@@ -351,59 +308,30 @@ export default function InspectionMeasurementsConfirm() {
     await fetchOverviewPage(getPendingMeasurements()?.overviewPageNumber ?? 0);
   }
 
-  // ── Facet routing actions ──────────────────────────────────────────────────
+  // ── Inventory re-analyze ──────────────────────────────────────────────────
 
-  // Stage 2: tap the entry facet → full route. Text-only server call, no PDF.
-  async function requestSequence(facetId: string) {
-    if (seqLoadingId) return;
-    setSeqLoadingId(facetId);
+  async function reAnalyze() {
+    if (reAnalyzing) return;
+    setReAnalyzing(true);
     try {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
-      const res = await fetch(`${apiBase}/inspections/${id}/sequence`, {
+      const res = await fetch(`${apiBase}/inspections/${id}/analyze-measurements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ entryFacetId: facetId }),
+        body: JSON.stringify({ reAnalyzeOnly: true }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        Alert.alert('Could not build route', body.error ?? 'Please try again.');
+        Alert.alert('Re-analyze failed', 'Could not re-run analysis. Please try again.');
         return;
       }
-      const data = (await res.json()) as { facetSequence: FacetSequence; sequenceGeneratedAt: string };
-      setRouting(prev => prev ? { ...prev, entryFacetId: facetId, facetSequence: data.facetSequence, sequenceGeneratedAt: data.sequenceGeneratedAt } : prev);
-      setChoosingEntry(false);
-      setDismissedCautions([]);
+      const data = await res.json() as { parsed: import('@workspace/protocol').ParsedMeasurements; facetInventoryStatus: import('@workspace/protocol').FacetInventoryStatus | null; facetInventory: FacetInventory | null };
+      setPendingMeasurements({ ...data.parsed, facetInventory: data.facetInventory, facetInventoryStatus: data.facetInventoryStatus });
+      setDismissedWarnings([]);
     } catch {
-      Alert.alert('Could not build route', 'Could not connect to the server. Please try again.');
+      Alert.alert('Re-analyze failed', 'Could not connect to the server. Please try again.');
     } finally {
-      setSeqLoadingId(null);
-    }
-  }
-
-  async function saveReorder() {
-    if (!reorderIds || savingReorder) return;
-    setSavingReorder(true);
-    try {
-      const apiBase = getApiBaseUrl();
-      const token   = await getToken('auth_session_token');
-      const res = await fetch(`${apiBase}/inspections/${id}/facet-sequence`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ facetIdOrder: reorderIds }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
-        Alert.alert('Could not save order', body.error ?? 'Please try again.');
-        return;
-      }
-      const data = (await res.json()) as { facetSequence: FacetSequence };
-      setRouting(prev => prev ? { ...prev, facetSequence: data.facetSequence, entryFacetId: data.facetSequence.entryFacetId } : prev);
-      setReorderIds(null);
-    } catch {
-      Alert.alert('Could not save order', 'Could not connect to the server. Please try again.');
-    } finally {
-      setSavingReorder(false);
+      setReAnalyzing(false);
     }
   }
 
@@ -431,20 +359,22 @@ export default function InspectionMeasurementsConfirm() {
   // ── Apply ──────────────────────────────────────────────────────────────────
 
   async function handleApply() {
-    if (applying || enabledCount === 0) return;
+    if (!pending) return;
+    const invComplete = pending.facetInventoryStatus === 'complete' && (pending.facetInventory?.facetCount ?? 0) > 0;
+    if (applying || (!invComplete && enabledCount === 0)) return;
     setApplying(true);
     try {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
 
-      // Slopes come from the AI sequence when one exists (F-numbers follow the
-      // walking route); otherwise fall back to the manual tap order.
-      const slopesPayload = activeSequence
-        ? activeSequence.sequence.map(step => {
-            const pitch = parsePitch(step.pitch);
+      // Slopes come from the AI inventory when one exists (area-desc order, F1…Fn);
+      // otherwise fall back to the manual tap order.
+      const slopesPayload = invComplete
+        ? (pending.facetInventory?.facets ?? []).map((f, idx) => {
+            const pitch = parsePitch(f.pitch);
             return {
-              label:          step.order,
-              areaSqft:       step.areaSqFt || null,
+              label:          `F${idx + 1}`,
+              areaSqft:       f.areaSqFt || null,
               pitchRise:      pitch.rise,
               pitchRun:       pitch.run,
               materialType:   null,
@@ -617,15 +547,11 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  // With an AI sequence, apply is ready as soon as the route exists. Without
-  // one (extraction failed → manual fallback), every enabled slope must be
-  // given a facet number before applying.
+  const inventoryComplete = pending.facetInventoryStatus === 'complete'
+    && (pending.facetInventory?.facetCount ?? 0) > 0;
   const orderedCount  = orderedIdxs.filter(i => slopes[i]?.enabled).length;
-  const needsOrdering = !activeSequence && enabledSlopeCount > 0 && orderedCount < enabledSlopeCount;
-  const routePending  = !!activeGraph && !activeSequence; // State B — must pick entry facet
-  const canApply      = activeSequence
-    ? !reorderIds
-    : !needsOrdering && !routePending && enabledCount > 0;
+  const needsOrdering = !inventoryComplete && enabledSlopeCount > 0 && orderedCount < enabledSlopeCount;
+  const canApply      = inventoryComplete ? !reAnalyzing : (!needsOrdering && enabledCount > 0);
 
   const confColor = confidenceColor(
     pending.confidence,
@@ -654,10 +580,8 @@ export default function InspectionMeasurementsConfirm() {
 
         {/* Instructions */}
         <Text style={[styles.instructions, { color: colors.mutedForeground }]}>
-          {activeGraph
-            ? activeSequence
-              ? 'Your walking route is below. Long-press a step to reorder, or change the entry facet to re-route.'
-              : 'Tap the facet you will access the roof from. The route will be built automatically.'
+          {inventoryComplete
+            ? 'Facet inventory confirmed. Edit measurements below if needed, then tap Confirm.'
             : slopes.length > 0
               ? 'Use the roof diagram to identify each plane, then tap the slopes in walking order — first tap is F1, second is F2, and so on. Toggle off any planes not in scope (e.g. EPDM flat sections).'
               : 'Review and edit values below. Toggle off any row you do not want applied.'}
@@ -677,202 +601,76 @@ export default function InspectionMeasurementsConfirm() {
           </Text>
         </Pressable>
 
-        {/* ── Facet routing: State B — pick entry facet ── */}
-        {routing === null && slopes.length > 0 && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Loading facet route…</Text>
-          </View>
-        )}
-
-        {activeGraph && !activeSequence && (
-          <>
-            {sectionHeader(`Roof Facets (${activeGraph.facets.length})`)}
-            <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
-              Tap the facet where your ladder will be — the walking route starts there.
-            </Text>
-            {[...activeGraph.facets]
-              .sort((a, b) => b.areaSqFt - a.areaSqFt)
-              .map(facet => {
-                const walk = WALKABILITY_META[facet.walkability];
-                const busy = seqLoadingId === facet.id;
-                return (
-                  <Pressable
-                    key={facet.id}
-                    onPress={() => void requestSequence(facet.id)}
-                    disabled={!!seqLoadingId}
-                    style={[styles.facetCard, { backgroundColor: colors.card, borderColor: busy ? colors.primary : colors.border, opacity: seqLoadingId && !busy ? 0.5 : 1 }]}
-                  >
-                    <View style={{ flex: 1, gap: 3 }}>
-                      <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 15 }}>
-                        {facet.location || facet.sourceLabel}
-                      </Text>
-                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                        {facet.sourceLabel} · {Math.round(facet.areaSqFt)} sqft · {facet.pitch} pitch
-                      </Text>
-                      {facet.notes ? (
-                        <Text style={{ color: colors.mutedForeground, fontSize: 11 }} numberOfLines={2}>{facet.notes}</Text>
-                      ) : null}
-                    </View>
-                    {busy ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <View style={[styles.walkBadge, { backgroundColor: `${walk.color}22`, borderColor: walk.color }]}>
-                        <Text style={{ color: walk.color, fontWeight: '700', fontSize: 11 }}>{walk.label}</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            {choosingEntry && (
-              <Pressable onPress={() => setChoosingEntry(false)} style={styles.inlineBtn}>
-                <Text style={{ color: colors.mutedForeground, fontSize: 13, fontWeight: '600' }}>Cancel — keep current route</Text>
-              </Pressable>
-            )}
-          </>
-        )}
-
-        {/* ── Facet routing: State C — route stepper ── */}
-        {activeGraph && activeSequence && (() => {
-          const facetById = new Map<string, FacetGraphFacet>(activeGraph.facets.map(f => [f.id, f]));
-          const ids = reorderIds ?? activeSequence.sequence.map(s => s.facetId);
-          const stepByFacet = new Map(activeSequence.sequence.map(s => [s.facetId, s]));
-          const visibleCautions = activeSequence.cautions.filter((_, i) => !dismissedCautions.includes(i));
+        {/* ── Facet inventory confirmation card ── */}
+        {inventoryComplete && pending.facetInventory && (() => {
+          const inv = pending.facetInventory;
+          const totalArea = inv.facets.reduce((sum, f) => sum + f.areaSqFt, 0);
+          const visibleWarnings = inv.warnings.filter((_, i) => !dismissedWarnings.includes(i));
           return (
             <>
-              {sectionHeader('Walking Route')}
-              {/* Summary bar */}
-              <View style={[styles.summaryBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
-                  {ids.length} facet{ids.length === 1 ? '' : 's'}
+              {sectionHeader(`Roof Facets (${inv.facetCount})`)}
+              <View style={[styles.inventoryCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Icon name="check" size={20} color={colors.primary} />
+                  <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 18 }}>
+                    {inv.facetCount} facet{inv.facetCount === 1 ? '' : 's'} found
+                  </Text>
+                </View>
+                <Text style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 2 }}>
+                  {Math.round(totalArea)} sqft total · Predominant pitch: {inv.property.predominantPitch}
                 </Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  {activeSequence.ladderMoves} ladder move{activeSequence.ladderMoves === 1 ? '' : 's'}
-                </Text>
-                {activeSequence.manuallyAdjusted ? (
-                  <Text style={{ color: '#f59e0b', fontSize: 12, fontWeight: '600' }}>Adjusted</Text>
-                ) : null}
+
+                <View style={[styles.divider, { backgroundColor: colors.border, marginVertical: 10 }]} />
+
+                {inv.facets.map((f) => (
+                  <View key={f.id} style={styles.inventoryRow}>
+                    <Text style={[styles.inventoryId, { color: colors.foreground }]}>{f.id}</Text>
+                    <Text style={[styles.inventoryArea, { color: colors.mutedForeground }]}>{Math.round(f.areaSqFt)} sqft</Text>
+                    <Text style={[styles.inventoryPitch, { color: colors.mutedForeground }]}>{f.pitch}</Text>
+                  </View>
+                ))}
+
+                {inv.excluded.count > 0 && (
+                  <Text style={{ color: colors.mutedForeground, fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>
+                    {inv.excluded.count} flat facet{inv.excluded.count === 1 ? '' : 's'} ({Math.round(inv.excluded.areaSqFt)} sqft, &lt;1/12 pitch) excluded
+                  </Text>
+                )}
               </View>
-              {visibleCautions.map((c, i) => {
-                const realIdx = activeSequence.cautions.indexOf(c);
+
+              {visibleWarnings.map((w, _visIdx) => {
+                const realIdx = inv.warnings.indexOf(w);
                 return (
-                  <View key={`${realIdx}-${c.slice(0, 16)}`} style={[styles.cautionChip, { borderColor: '#f59e0b' }]}>
+                  <View key={realIdx} style={[styles.warningChip, { borderColor: '#f59e0b' }]}>
                     <Icon name="alert-triangle" size={14} color="#f59e0b" />
-                    <Text style={{ color: colors.foreground, fontSize: 12, flex: 1 }}>{c}</Text>
-                    <Pressable onPress={() => setDismissedCautions(prev => [...prev, realIdx])} hitSlop={8}>
+                    <Text style={{ color: colors.foreground, fontSize: 12, flex: 1 }}>{w}</Text>
+                    <Pressable onPress={() => setDismissedWarnings(prev => [...prev, realIdx])} hitSlop={8}>
                       <Icon name="x" size={14} color={colors.mutedForeground} />
                     </Pressable>
                   </View>
                 );
               })}
 
-              {ids.map((fid, i) => {
-                const facet = facetById.get(fid);
-                const step  = stepByFacet.get(fid);
-                if (!step) return null;
-                const walk = facet ? WALKABILITY_META[facet.walkability] : null;
-                // In reorder mode transitions are stale — hide them.
-                const transition = !reorderIds && i > 0 ? step.transition : null;
-                return (
-                  <React.Fragment key={fid}>
-                    {transition && (
-                      <View style={styles.transitionRow}>
-                        <Icon
-                          name={TRANSITION_ICON[transition.type] ?? 'arrow-right'}
-                          size={14}
-                          color={transition.type === 'dismount' ? '#f59e0b' : colors.mutedForeground}
-                        />
-                        <Text style={{ color: transition.type === 'dismount' ? '#f59e0b' : colors.mutedForeground, fontSize: 12, flex: 1 }}>
-                          {transition.type === 'dismount' ? 'LADDER — ' : ''}{transition.note}
-                        </Text>
-                      </View>
-                    )}
-                    <Pressable
-                      onLongPress={() => !reorderIds && setReorderIds(ids)}
-                      style={[styles.stepCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    >
-                      <View style={[styles.stepBadge, { backgroundColor: colors.primary }]}>
-                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>F{i + 1}</Text>
-                      </View>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={{ color: colors.foreground, fontWeight: '600', fontSize: 14 }}>
-                          {facet?.location || facet?.sourceLabel || fid}
-                        </Text>
-                        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                          {Math.round(step.areaSqFt)} sqft · {step.pitch} pitch
-                        </Text>
-                      </View>
-                      {walk && (
-                        <View style={[styles.walkBadge, { backgroundColor: `${walk.color}22`, borderColor: walk.color }]}>
-                          <Text style={{ color: walk.color, fontWeight: '700', fontSize: 10 }}>{walk.label}</Text>
-                        </View>
-                      )}
-                      {reorderIds && (
-                        <View style={{ gap: 6 }}>
-                          <Pressable
-                            disabled={i === 0}
-                            hitSlop={6}
-                            onPress={() => setReorderIds(prev => {
-                              if (!prev || i === 0) return prev;
-                              const next = [...prev];
-                              [next[i - 1], next[i]] = [next[i]!, next[i - 1]!];
-                              return next;
-                            })}
-                            style={{ opacity: i === 0 ? 0.3 : 1 }}
-                          >
-                            <Icon name="chevron-up" size={20} color={colors.foreground} />
-                          </Pressable>
-                          <Pressable
-                            disabled={i === ids.length - 1}
-                            hitSlop={6}
-                            onPress={() => setReorderIds(prev => {
-                              if (!prev || i === prev.length - 1) return prev;
-                              const next = [...prev];
-                              [next[i], next[i + 1]] = [next[i + 1]!, next[i]!];
-                              return next;
-                            })}
-                            style={{ opacity: i === ids.length - 1 ? 0.3 : 1 }}
-                          >
-                            <Icon name="chevron-down" size={20} color={colors.foreground} />
-                          </Pressable>
-                        </View>
-                      )}
-                    </Pressable>
-                  </React.Fragment>
-                );
-              })}
-
-              {reorderIds ? (
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Pressable
-                    onPress={() => void saveReorder()}
-                    disabled={savingReorder}
-                    style={[styles.inlineBtn, { flex: 1, backgroundColor: colors.primary, opacity: savingReorder ? 0.7 : 1 }]}
-                  >
-                    {savingReorder
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Save order</Text>}
-                  </Pressable>
-                  <Pressable onPress={() => setReorderIds(null)} style={[styles.inlineBtn, { flex: 1, borderWidth: 1, borderColor: colors.border }]}>
-                    <Text style={{ color: colors.mutedForeground, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <Pressable onPress={() => setChoosingEntry(true)} style={[styles.inlineBtn, { borderWidth: 1, borderColor: colors.border }]}>
-                  <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>Change entry facet</Text>
-                </Pressable>
-              )}
+              <Pressable
+                onPress={() => void reAnalyze()}
+                disabled={reAnalyzing}
+                style={[styles.reAnalyzeBtn, { borderColor: colors.border, opacity: reAnalyzing ? 0.6 : 1 }]}
+              >
+                {reAnalyzing
+                  ? <ActivityIndicator size="small" color={colors.mutedForeground} />
+                  : <Icon name="refresh-cw" size={14} color={colors.mutedForeground} />}
+                <Text style={{ color: colors.mutedForeground, fontWeight: '600', fontSize: 13 }}>Re-analyze</Text>
+              </Pressable>
             </>
           );
         })()}
 
-        {/* ── Roof Facets — manual fallback (no AI graph) ── */}
-        {!activeGraph && routing !== null && slopes.length > 0 && (
+        {/* ── Roof Facets — manual fallback (no AI inventory) ── */}
+        {!inventoryComplete && slopes.length > 0 && (
           <>
             {sectionHeader('Roof Facets')}
-            {routing.facetGraphStatus === 'failed' && (
+            {pending.facetInventoryStatus === 'failed' && (
               <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
-                Automatic facet routing was unavailable for this report — order the slopes manually below.
+                Automatic facet analysis was unavailable for this report — order the slopes manually below.
               </Text>
             )}
             {needsOrdering ? (
@@ -1052,12 +850,10 @@ export default function InspectionMeasurementsConfirm() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={[styles.applyBtnText, { color: canApply ? colors.primaryForeground : colors.mutedForeground }]}>
-              {activeSequence
-                ? reorderIds
-                  ? 'Save or cancel reorder above'
-                  : `Apply route (${activeSequence.sequence.length} facets) + measurements`
-                : routePending
-                  ? 'Tap your entry facet above'
+              {reAnalyzing
+                ? 'Re-analyzing…'
+                : inventoryComplete
+                  ? `Confirm ${pending.facetInventory!.facetCount} facet${pending.facetInventory!.facetCount === 1 ? '' : 's'} + measurements`
                   : needsOrdering
                     ? `Number all slopes above (${orderedCount}/${enabledSlopeCount})`
                     : enabledCount === 0
@@ -1092,14 +888,13 @@ const styles = StyleSheet.create({
   diagramBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
   diagramBtnText:{ fontWeight: '600', fontSize: 14 },
   entryHint:     { fontSize: 12, marginBottom: 4 },
-  facetCard:     { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1, padding: 14 },
-  walkBadge:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
-  summaryBar:    { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
-  cautionChip:   { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
-  transitionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 18, paddingVertical: 2 },
-  stepCard:      { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: 1, padding: 12 },
-  stepBadge:     { width: 38, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  inlineBtn:     { alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10 },
+  inventoryCard: { borderRadius: 14, borderWidth: 2, padding: 14 },
+  inventoryRow:  { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8 },
+  inventoryId:   { width: 64, fontWeight: '600', fontSize: 14 },
+  inventoryArea: { flex: 1, fontSize: 13 },
+  inventoryPitch:{ width: 54, fontSize: 13, textAlign: 'right' as const },
+  warningChip:   { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  reAnalyzeBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1 },
   recalcNote:    { fontSize: 12, marginBottom: 8, lineHeight: 17 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 16 },
   modalCard:     { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
