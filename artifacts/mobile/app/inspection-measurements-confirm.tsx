@@ -254,7 +254,7 @@ export default function InspectionMeasurementsConfirm() {
     try {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
-      const res = await fetch(`${apiBase}inspections/${id}/render-overview-image`, {
+      const res = await fetch(`${apiBase}/inspections/${id}/render-overview-image`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageNumber: getPendingMeasurements()?.overviewPageNumber ?? 0 }),

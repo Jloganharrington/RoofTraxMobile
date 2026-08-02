@@ -108,6 +108,14 @@ export default function InspectionFacetScreen() {
     hip_ridge: false,
   });
 
+  // Roof diagram: seed from the overview store (persisted across navigation),
+  // then load on demand via render-overview-image if missing. Must run before
+  // any conditional return so the hook order is invariant across renders.
+  React.useEffect(() => {
+    const cached = getOverviewImageUrl(id);
+    if (cached) setOverviewUrl(cached);
+  }, [id]);
+
   // Keep showing the spinner while a refetch is in flight and the facet
   // hasn't appeared yet (it may land with the next response) instead of
   // flashing "Facet not found".
@@ -150,13 +158,6 @@ export default function InspectionFacetScreen() {
   const pitchNum = Number(pitchValue);
   const steep = pitchValue.trim() !== '' && !Number.isNaN(pitchNum) && pitchNum > 8;
 
-  // Roof diagram: seed from the overview store (persisted across navigation),
-  // then load on demand via render-overview-image if missing.
-  React.useEffect(() => {
-    const cached = getOverviewImageUrl(id);
-    if (cached) setOverviewUrl(cached);
-  }, [id]);
-
   async function openOverview() {
     const cached = overviewUrl ?? getOverviewImageUrl(id);
     if (cached) { setOverviewUrl(cached); setOverviewModalOpen(true); return; }
@@ -165,7 +166,7 @@ export default function InspectionFacetScreen() {
     try {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
-      const res = await fetch(`${apiBase}inspections/${id}/render-overview-image`, {
+      const res = await fetch(`${apiBase}/inspections/${id}/render-overview-image`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageNumber: 0 }),

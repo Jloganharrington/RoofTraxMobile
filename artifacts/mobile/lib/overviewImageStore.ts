@@ -18,3 +18,9 @@ export function setOverviewImageUrl(inspectionId: string, url: string): void {
 export function getOverviewImageUrl(inspectionId: string): string | null {
   return store.get(inspectionId) ?? null;
 }
+
+/** Called when the measurements report is replaced — the cached diagram
+ *  belongs to the old PDF. */
+export function clearOverviewImageUrl(inspectionId: string): void {
+  store.delete(inspectionId);
+}

@@ -24,6 +24,7 @@ import { uploadFile, UploadError } from '@/lib/upload';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import { getPendingMeasurements, setPendingMeasurements } from '@/lib/pendingMeasurements';
+import { clearOverviewImageUrl } from '@/lib/overviewImageStore';
 import { addBusinessDays } from '@/lib/fipsaTemplate';
 import {
   buildProtocolState,
@@ -149,6 +150,11 @@ export default function InspectionDetailScreen() {
       const asset = result.assets[0]!;
       const objectPath = await uploadFile(asset.uri, 'application/pdf');
       await patchInspection(queryClient, id, { measurementsReportUrl: objectPath });
+      // A new report invalidates anything parsed from the old one: clear the
+      // stale pending measurements and cached diagram so the rep re-analyzes.
+      setPendingMeasurements(null);
+      setAnalyzePending(false);
+      clearOverviewImageUrl(id);
     } catch (err) {
       const msg =
         err instanceof UploadError
