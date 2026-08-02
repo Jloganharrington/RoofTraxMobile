@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -69,6 +69,27 @@ function confidenceColor(c: string, success: string, warning: string, muted: str
   return muted;
 }
 
+// These are module-level so they can be used in useState initialisers before
+// any conditional return (React Rules of Hooks).
+const LINEAR_KEYS:    readonly InspectionLinearType[]    = ['ridge_lf', 'hip_lf', 'valley_lf', 'eave_lf', 'rake_lf'];
+const TOTAL_KEYS:     readonly InspectionTotalType[]     = ['total_area_sqft', 'total_squares', 'waste_factor_pct'];
+const ACCESSORY_KEYS: readonly InspectionAccessoryType[] = ['drip_edge_lf', 'starter_lf', 'step_flashing_lf', 'counter_flashing_lf'];
+
+function toMeasurementRows(
+  obj: Partial<Record<string, number | null>>,
+  allowedKeys: readonly string[],
+): EditableMeasurement[] {
+  return allowedKeys
+    .filter(k => k in obj)
+    .map(k => ({
+      key:     k,
+      label:   MEASUREMENT_META[k as keyof typeof MEASUREMENT_META]?.label ?? k,
+      value:   numStr(obj[k]),
+      unit:    MEASUREMENT_META[k as keyof typeof MEASUREMENT_META]?.unit ?? '',
+      enabled: obj[k] != null,
+    }));
+}
+
 // ── Measurement row ───────────────────────────────────────────────────────────
 
 function MeasurementRow({
@@ -124,16 +145,16 @@ export default function InspectionMeasurementsConfirm() {
 
   const pending = getPendingMeasurements();
 
-  // If arrived here with no pending data, go back immediately.
-  if (!pending) {
-    router.back();
-    return null;
-  }
-
-  // ── Initialise editable state ──────────────────────────────────────────────
+  // ── ALL hooks must be declared before any conditional return (Rules of Hooks).
+  // Previously router.back() was called synchronously during render when pending
+  // was null, which caused:
+  //   • "Rendered fewer hooks than expected" (useState calls below were skipped)
+  //   • "Cannot update a component while rendering a different component"
+  //   • "GO_BACK action not handled by any navigator"
+  // Fix: hoist every hook above the null check; use useEffect for navigation.
 
   const [slopes, setSlopes] = useState<EditableSlope[]>(() =>
-    pending.slopes.map(s => ({
+    (pending?.slopes ?? []).map(s => ({
       label:        s.label,
       areaSqft:     numStr(s.areaSqft),
       pitchRise:    numStr(s.pitchRise),
@@ -143,30 +164,18 @@ export default function InspectionMeasurementsConfirm() {
     })),
   );
 
-  const toMeasurementRows = useCallback(
-    (obj: Record<string, number | null>, allowedKeys: readonly string[]): EditableMeasurement[] =>
-      allowedKeys
-        .filter(k => k in obj)
-        .map(k => ({
-          key:     k,
-          label:   MEASUREMENT_META[k as keyof typeof MEASUREMENT_META]?.label ?? k,
-          value:   numStr(obj[k]),
-          unit:    MEASUREMENT_META[k as keyof typeof MEASUREMENT_META]?.unit ?? '',
-          enabled: obj[k] != null,
-        })),
-    [],
+  const [linears,     setLinears]     = useState<EditableMeasurement[]>(
+    () => toMeasurementRows(pending?.linears     ?? {}, LINEAR_KEYS),
+  );
+  const [totals,      setTotals]      = useState<EditableMeasurement[]>(
+    () => toMeasurementRows(pending?.totals      ?? {}, TOTAL_KEYS),
+  );
+  const [accessories, setAccessories] = useState<EditableMeasurement[]>(
+    () => toMeasurementRows(pending?.accessories ?? {}, ACCESSORY_KEYS),
   );
 
-  const LINEAR_KEYS:    readonly InspectionLinearType[]    = ['ridge_lf', 'hip_lf', 'valley_lf', 'eave_lf', 'rake_lf'];
-  const TOTAL_KEYS:     readonly InspectionTotalType[]     = ['total_area_sqft', 'total_squares', 'waste_factor_pct'];
-  const ACCESSORY_KEYS: readonly InspectionAccessoryType[] = ['drip_edge_lf', 'starter_lf', 'step_flashing_lf', 'counter_flashing_lf'];
-
-  const [linears,     setLinears]     = useState<EditableMeasurement[]>(() => toMeasurementRows(pending.linears,     LINEAR_KEYS));
-  const [totals,      setTotals]      = useState<EditableMeasurement[]>(() => toMeasurementRows(pending.totals,      TOTAL_KEYS));
-  const [accessories, setAccessories] = useState<EditableMeasurement[]>(() => toMeasurementRows(pending.accessories, ACCESSORY_KEYS));
-
   const [sidingFacets, setSidingFacets] = useState<EditableSidingFacet[]>(() =>
-    pending.sidingFacets.map(f => ({
+    (pending?.sidingFacets ?? []).map(f => ({
       label:    f.label,
       areaSqft: numStr(f.areaSqft),
       enabled:  true,
@@ -174,6 +183,17 @@ export default function InspectionMeasurementsConfirm() {
   );
 
   const [applying, setApplying] = useState(false);
+
+  // Navigate back if there is no pending data to review. useEffect defers the
+  // navigation until after the render is committed, satisfying React's constraint
+  // that side-effects must not happen during the render phase.
+  useEffect(() => {
+    if (!pending) router.back();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Nothing to render while the navigator processes the back action.
+  if (!pending) return null;
 
   // ── Count enabled items ────────────────────────────────────────────────────
 
