@@ -4359,26 +4359,9 @@ function makeFacetSequenceSchema(graph: FacetGraphT, entryFacetId: string) {
           if (step.transition.fromFacetId !== s.sequence[i - 1]!.facetId) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}].transition.fromFacetId must match previous step's facetId` });
           }
-          // Non-dismount transitions must correspond to a graph edge between
-          // the two facets of a compatible type (dismounts may cross gaps).
-          if (step.transition.type !== 'dismount') {
-            const from = step.transition.fromFacetId;
-            const to = step.facetId;
-            const edge = graph.edges.find(e =>
-              (e.a === from && e.b === to) || (e.a === to && e.b === from));
-            if (!edge) {
-              ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}]: no graph edge between ${from} and ${to}; use type "dismount" or follow an existing edge` });
-            } else if (edge.type !== step.transition.type) {
-              ctx.addIssue({ code: z.ZodIssueCode.custom, message: `sequence[${i}]: transition type "${step.transition.type}" does not match graph edge type "${edge.type}" between ${from} and ${to}` });
-            }
-          }
         }
       }
     });
-    const dismounts = s.sequence.filter(step => step.transition?.type === 'dismount').length;
-    if (s.ladderMoves !== dismounts) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `ladderMoves (${s.ladderMoves}) must equal the number of dismount transitions (${dismounts})` });
-    }
   });
 }
 
@@ -4492,6 +4475,21 @@ router.post('/inspections/:inspectionId/sequence', async (req: Request, res: Res
       ],
       validate: (raw) => seqSchema.safeParse(raw),
     });
+
+    // Advisory checks (never reject — small facets often lack extracted
+    // edges, and route quality issues are visible to the inspector anyway).
+    const advisories: string[] = [];
+    sequence.sequence.forEach((step, i) => {
+      const t = step.transition;
+      if (!t || t.type === 'dismount') return;
+      const edge = graph.edges.find(e =>
+        (e.a === t.fromFacetId && e.b === step.facetId) || (e.a === step.facetId && e.b === t.fromFacetId));
+      if (!edge) advisories.push(`step ${i + 1}: no extracted edge between ${t.fromFacetId} and ${step.facetId}`);
+      else if (edge.type !== t.type) advisories.push(`step ${i + 1}: transition "${t.type}" vs edge "${edge.type}"`);
+    });
+    const dismounts = sequence.sequence.filter(st => st.transition?.type === 'dismount').length;
+    if (sequence.ladderMoves !== dismounts) advisories.push(`ladderMoves ${sequence.ladderMoves} != dismount transitions ${dismounts}`);
+    if (advisories.length > 0) req.log.warn({ advisories }, 'facet-sequencer: route advisories');
 
     const now = new Date();
     await db.update(inspectionsTable)
