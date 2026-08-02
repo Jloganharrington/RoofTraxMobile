@@ -191,7 +191,10 @@ export default function InspectionMeasurementsConfirm() {
   const [applying, setApplying] = useState(false);
   // Index into `slopes` of the slope the inspector will enter first (F1).
   // Nothing is pre-assigned — the inspector must tap a slope before applying.
-  const [entryIdx, setEntryIdx] = useState<number | null>(null);
+  // Manual facet ordering: the inspector taps slopes in the order they will
+  // be walked — first tap = F1, second = F2, and so on. Tapping an already
+  // numbered slope removes it (later slopes renumber automatically).
+  const [orderedIdxs, setOrderedIdxs] = useState<number[]>([]);
   const [overviewModalOpen, setOverviewModalOpen] = useState(false);
   // Roof diagram: initialised from the analysis response; fetched on demand
   // via render-overview-image if absent (e.g. runs before the magick fix).
@@ -297,8 +300,8 @@ export default function InspectionMeasurementsConfirm() {
 
   function updateSlope(idx: number, patch: Partial<EditableSlope>) {
     setSlopes(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
-    // If the inspector disables the slope they had set as entry, clear the selection.
-    if (patch.enabled === false && idx === entryIdx) setEntryIdx(null);
+    // If the inspector disables a slope, drop it from the manual ordering.
+    if (patch.enabled === false) setOrderedIdxs(prev => prev.filter(i => i !== idx));
   }
 
   function updateSiding(idx: number, patch: Partial<EditableSidingFacet>) {
@@ -314,21 +317,11 @@ export default function InspectionMeasurementsConfirm() {
       const apiBase = getApiBaseUrl();
       const token   = await getToken('auth_session_token');
 
-      // Assign facet IDs: entry slope → F1, then sweep clockwise by compass
-      // bearing from F1, so physically adjacent planes follow naturally.
-      const enabledSlopes = slopes.filter(s => s.enabled);
-      const entrySlope = (entryIdx !== null && slopes[entryIdx]?.enabled) ? slopes[entryIdx] : null;
-      let orderedSlopes: EditableSlope[];
-      if (entrySlope && entryIdx !== null) {
-        const nonEntryIndices = slopes.reduce<number[]>(
-          (acc, s, i) => { if (s.enabled && i !== entryIdx) acc.push(i); return acc; },
-          [],
-        );
-        const sortedNonEntry = cwSortedAfterEntry(nonEntryIndices, entryIdx).map(i => slopes[i]);
-        orderedSlopes = [entrySlope, ...sortedNonEntry];
-      } else {
-        orderedSlopes = enabledSlopes;
-      }
+      // Assign facet IDs from the inspector's manual tap order: first tapped
+      // slope → F1, second → F2, and so on.
+      const orderedSlopes = orderedIdxs
+        .map(i => slopes[i])
+        .filter((s): s is EditableSlope => !!s && s.enabled);
 
       const payload = {
         slopes: orderedSlopes.map((s, i) => ({
@@ -397,53 +390,29 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Slope card ─────────────────────────────────────────────────────────────
 
-  // Sort slope indices in a clockwise bearing sweep starting from the entry
-  // slope's compass bearing.  Slopes with no bearing fall back to their
-  // current position (area-desc, the AI's original order).
-  function cwSortedAfterEntry(nonEntryIndices: number[], entryI: number): number[] {
-    const entryBearing = slopes[entryI]?.compassBearing;
-    if (entryBearing == null) return nonEntryIndices; // no bearing → keep area order
-    return [...nonEntryIndices].sort((a, b) => {
-      const ba = slopes[a]?.compassBearing;
-      const bb = slopes[b]?.compassBearing;
-      if (ba == null && bb == null) return 0;
-      if (ba == null) return 1;   // no-bearing slopes go last
-      if (bb == null) return -1;
-      const da = (ba - entryBearing + 360) % 360;
-      const db = (bb - entryBearing + 360) % 360;
-      return da - db;
-    });
-  }
-
-  // Compute what facet label each slope will receive when applied.
-  // Returns null when no entry has been selected yet (labels are not
-  // pre-assigned — the inspector picks the ordering by choosing F1 first).
-  function previewLabel(idx: number): string | null {
-    if (entryIdx === null) return null;
-    if (!slopes[idx]?.enabled) return null;
-    const enabledIndices = slopes.reduce<number[]>((acc, s, i) => { if (s.enabled) acc.push(i); return acc; }, []);
-    if (!enabledIndices.includes(entryIdx)) return null;
-    const nonEntry = cwSortedAfterEntry(enabledIndices.filter(i => i !== entryIdx), entryIdx);
-    const ordered  = [entryIdx, ...nonEntry];
-    const pos = ordered.indexOf(idx);
-    return pos >= 0 ? `F${pos + 1}` : null;
+  // Toggle a slope in/out of the manual ordering. Tapping an unnumbered
+  // slope appends it (next F number); tapping a numbered one removes it and
+  // later slopes renumber automatically.
+  function toggleOrder(idx: number) {
+    setOrderedIdxs(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]);
   }
 
   function SlopeCard({ slope, idx }: { slope: EditableSlope; idx: number }) {
-    const isEntry = entryIdx === idx;
-    const label   = previewLabel(idx);
+    const pos     = orderedIdxs.indexOf(idx);
+    const label   = pos >= 0 ? `F${pos + 1}` : null;
+    const nextNum = orderedIdxs.length + 1;
     return (
-      <View style={[styles.slopeCard, { backgroundColor: colors.card, borderColor: isEntry ? colors.primary : colors.border, borderWidth: isEntry ? 2 : 1, opacity: slope.enabled ? 1 : 0.45 }]}>
+      <View style={[styles.slopeCard, { backgroundColor: colors.card, borderColor: label ? colors.primary : colors.border, borderWidth: label ? 2 : 1, opacity: slope.enabled ? 1 : 0.45 }]}>
         <View style={styles.slopeHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {/* Tap to designate as entry (F1). Shows preview label once set. */}
+            {/* Tap to assign the next facet number; tap again to remove. */}
             <Pressable
-              onPress={() => slope.enabled && setEntryIdx(prev => prev === idx ? null : idx)}
+              onPress={() => slope.enabled && toggleOrder(idx)}
               hitSlop={8}
             >
-              <View style={[styles.slopeBadge, { backgroundColor: isEntry ? colors.primary : label ? colors.secondary : colors.muted }]}>
-                <Text style={{ color: isEntry || label ? '#fff' : colors.mutedForeground, fontWeight: '700', fontSize: 13 }}>
-                  {isEntry ? '★ F1 · Entry' : label ?? 'Set as F1'}
+              <View style={[styles.slopeBadge, { backgroundColor: label ? colors.primary : colors.muted }]}>
+                <Text style={{ color: label ? '#fff' : colors.mutedForeground, fontWeight: '700', fontSize: 13 }}>
+                  {label ?? `Tap to set F${nextNum}`}
                 </Text>
               </View>
             </Pressable>
@@ -515,8 +484,10 @@ export default function InspectionMeasurementsConfirm() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const needsEntry = enabledSlopeCount > 0 && entryIdx === null;
-  const canApply   = !needsEntry && enabledCount > 0;
+  // Every enabled slope must be given a facet number before applying.
+  const orderedCount  = orderedIdxs.filter(i => slopes[i]?.enabled).length;
+  const needsOrdering = enabledSlopeCount > 0 && orderedCount < enabledSlopeCount;
+  const canApply      = !needsOrdering && enabledCount > 0;
 
   const confColor = confidenceColor(
     pending.confidence,
@@ -546,7 +517,7 @@ export default function InspectionMeasurementsConfirm() {
         {/* Instructions */}
         <Text style={[styles.instructions, { color: colors.mutedForeground }]}>
           {slopes.length > 0
-            ? 'Use the roof diagram to identify each plane, then tap "Set as F1" on the slope you will access first. Toggle off any planes not in scope (e.g. EPDM flat sections).'
+            ? 'Use the roof diagram to identify each plane, then tap the slopes in walking order — first tap is F1, second is F2, and so on. Toggle off any planes not in scope (e.g. EPDM flat sections).'
             : 'Review and edit values below. Toggle off any row you do not want applied.'}
         </Text>
 
@@ -568,15 +539,15 @@ export default function InspectionMeasurementsConfirm() {
         {slopes.length > 0 && (
           <>
             {sectionHeader('Roof Facets')}
-            {entryIdx === null ? (
+            {needsOrdering ? (
               <Text style={[styles.entryHint, { color: '#f59e0b', fontWeight: '600' }]}>
-                ⚠ Tap "Set as F1" on the slope you will access first. This is required before you can apply.
+                ⚠ Tap each slope in walking order to number them F1, F2, … ({orderedCount}/{enabledSlopeCount} numbered). Tap a numbered slope to un-assign it.
               </Text>
-            ) : (
+            ) : enabledSlopeCount > 0 ? (
               <Text style={[styles.entryHint, { color: colors.mutedForeground }]}>
-                Facet IDs are shown as a preview. Tap a different slope to change F1.
+                All slopes numbered. Tap a numbered slope to un-assign and renumber.
               </Text>
-            )}
+            ) : null}
             {slopes.map((slope, i) => (
               <SlopeCard key={slope.label} slope={slope} idx={i} />
             ))}
@@ -745,8 +716,8 @@ export default function InspectionMeasurementsConfirm() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={[styles.applyBtnText, { color: canApply ? colors.primaryForeground : colors.mutedForeground }]}>
-              {needsEntry
-                ? 'Select your entry point (F1) above'
+              {needsOrdering
+                ? `Number all slopes above (${orderedCount}/${enabledSlopeCount})`
                 : enabledCount === 0
                   ? 'No measurements selected'
                   : `Apply ${enabledSlopeCount} slope${enabledSlopeCount === 1 ? '' : 's'} + measurements`}
