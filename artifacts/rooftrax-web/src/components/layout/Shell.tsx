@@ -3,7 +3,6 @@ import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser } from "@workspace/api-client-react";
 import {
   LayoutGrid,
-  Share2,
   Store,
   Shield,
   Layers,
@@ -48,7 +47,6 @@ const NAV_SECTIONS: NavSection[] = [
     heading: "Navigation",
     items: [
       { label: "Dashboard",                path: "/",                     icon: LayoutGrid },
-      { label: "Lead Generation Pipeline", path: "/pipeline",             icon: Share2 },
       { label: "Retail Pipeline",          path: "/retail-pipeline",      icon: Store },
       { label: "Insurance Pipeline",       path: "/insurance-pipeline",   icon: Shield },
       { label: "Project Pipeline",         path: "/project-pipeline",     icon: Layers },
