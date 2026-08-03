@@ -211,6 +211,10 @@ export function parseMdLibrary(text: string): ParsedMdLibrary {
   function flushStd() {
     if (!currentStd) return;
     if (!currentStd.entryKey) { warnings.push('Skipped a standards entry with no key.'); return; }
+    // Skip blank category headings (no citation text, no source type)
+    if (!currentStd.citationText.trim() && !currentStd.sourceType.trim()) {
+      currentStd = null; lastFieldStd = null; return;
+    }
     standards.push(currentStd);
     currentStd = null;
     lastFieldStd = null;
@@ -241,10 +245,13 @@ export function parseMdLibrary(text: string): ParsedMdLibrary {
       continue;
     }
 
-    // ── Entry header: ## ENTRY-KEY ─────────────────────────────────────────
-    if (/^##\s+/u.test(line)) {
+    // ── Entry header: ## ENTRY-KEY or ### ENTRY-KEY (any depth ≥ 2) ──────────
+    // Files may use ## for category groupers and ### for individual entries.
+    // Matching any ##+ heading means category headings create a blank entry
+    // that flushDet/flushStd silently skips (no statement / no citation text).
+    if (/^#{2,}\s+/u.test(line)) {
       flushStd(); flushDet();
-      const key = line.replace(/^#{1,6}\s+/, '').trim();
+      const key = line.replace(/^#{2,}\s+/, '').trim();
       if (!key) continue;
       if (section === 'standards') { currentStd = blankStd(key); }
       else if (section === 'detriments') { currentDet = blankDet(key); }

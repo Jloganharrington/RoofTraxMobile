@@ -23,6 +23,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -31,7 +41,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2 } from "lucide-react";
+import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2, Trash2 } from "lucide-react";
 import { parseMdLibrary, parseMdBoilerplate, type ParsedStandard, type ParsedDetriment, type ParsedBpSection } from "@/lib/parseMdLibrary";
 
 // ---------------------------------------------------------------------------
@@ -456,6 +466,7 @@ function StandardsTab() {
   const [form, setForm] = useState<Partial<StandardsEntry>>({});
   const [isNew, setIsNew] = useState(false);
   const [newKey, setNewKey] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: (vars: { entryKey: string; body: Record<string, unknown> }) =>
@@ -471,6 +482,17 @@ function StandardsTab() {
       setIsNew(false);
     },
     onError: (err) => toast({ title: "Save failed", description: String(err), variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (entryKey: string) =>
+      customFetch(`/api/report-settings/standards-entries/${encodeURIComponent(entryKey)}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["standards-entries"] });
+      toast({ title: "Entry deleted" });
+      setDeleting(null);
+    },
+    onError: (err) => toast({ title: "Delete failed", description: String(err), variant: "destructive" }),
   });
 
   const openEdit = (entry: StandardsEntry) => {
@@ -517,7 +539,12 @@ function StandardsTab() {
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{entry.citation_text}</p>
               )}
             </div>
-            <Button size="sm" variant="outline" onClick={() => openEdit(entry)}>Edit</Button>
+            <div className="flex gap-1.5 shrink-0">
+              <Button size="sm" variant="outline" onClick={() => openEdit(entry)}>Edit</Button>
+              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={() => setDeleting(entry.entry_key)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         ))}
         {data?.entries?.length === 0 && (
@@ -579,6 +606,26 @@ function StandardsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleting} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete standards entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-mono font-medium">{deleting}</span> and all its version history will be permanently removed. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleting && deleteMutation.mutate(deleting)}
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -605,6 +652,7 @@ function DetrimentTab() {
   const [form, setForm] = useState<Partial<DetrimentEntry & { entry_key: string }>>({});
   const [isNew, setIsNew] = useState(false);
   const [newKey, setNewKey] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: (vars: { entryKey: string; body: Record<string, unknown> }) =>
@@ -620,6 +668,17 @@ function DetrimentTab() {
       setIsNew(false);
     },
     onError: (err) => toast({ title: "Save failed", description: String(err), variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (entryKey: string) =>
+      customFetch(`/api/report-settings/detriment-entries/${encodeURIComponent(entryKey)}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["detriment-entries"] });
+      toast({ title: "Entry deleted" });
+      setDeleting(null);
+    },
+    onError: (err) => toast({ title: "Delete failed", description: String(err), variant: "destructive" }),
   });
 
   const openNew = () => {
@@ -664,7 +723,12 @@ function DetrimentTab() {
                 )}
                 <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{entry.statement}</p>
               </div>
-              <Button size="sm" variant="outline" onClick={() => { setEditing(entry); setForm(entry); setIsNew(false); }}>Edit</Button>
+              <div className="flex gap-1.5 shrink-0">
+                <Button size="sm" variant="outline" onClick={() => { setEditing(entry); setForm(entry); setIsNew(false); }}>Edit</Button>
+                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 px-2" onClick={() => setDeleting(entry.entry_key)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             </div>
           </div>
         ))}
@@ -733,6 +797,26 @@ function DetrimentTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleting} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete detriment entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-mono font-medium">{deleting}</span> and all its version history will be permanently removed. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleting && deleteMutation.mutate(deleting)}
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

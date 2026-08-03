@@ -231,6 +231,21 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
   res.status(201).json({ entry: inserted });
 });
 
+// DELETE /report-settings/standards-entries/:entryKey
+router.delete('/report-settings/standards-entries/:entryKey', async (req: Request, res: Response) => {
+  const actor = await requireLibrarySuperAdmin(req, res);
+  if (!actor) return;
+  const entryKey = req.params.entryKey as string;
+  if (!entryKey) return void res.status(400).json({ error: 'Invalid entryKey' });
+  await db.delete(standardsEntriesTable).where(
+    and(
+      eq(standardsEntriesTable.companyId, actor.companyId),
+      eq(standardsEntriesTable.entryKey, entryKey),
+    ),
+  );
+  res.json({ ok: true });
+});
+
 // ---------------------------------------------------------------------------
 // Detriment Entries
 // ---------------------------------------------------------------------------
@@ -295,6 +310,21 @@ router.put('/report-settings/detriment-entries/:entryKey', async (req: Request, 
     .returning();
 
   res.status(201).json({ entry: inserted });
+});
+
+// DELETE /report-settings/detriment-entries/:entryKey
+router.delete('/report-settings/detriment-entries/:entryKey', async (req: Request, res: Response) => {
+  const actor = await requireLibrarySuperAdmin(req, res);
+  if (!actor) return;
+  const entryKey = req.params.entryKey as string;
+  if (!entryKey) return void res.status(400).json({ error: 'Invalid entryKey' });
+  await db.delete(detrimentEntriesTable).where(
+    and(
+      eq(detrimentEntriesTable.companyId, actor.companyId),
+      eq(detrimentEntriesTable.entryKey, entryKey),
+    ),
+  );
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
