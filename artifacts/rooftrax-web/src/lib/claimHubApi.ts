@@ -316,8 +316,108 @@ export function useGetPipeline(
 }
 
 // ---------------------------------------------------------------------------
-// Leads
+// Leads — full profile type + hooks
 // ---------------------------------------------------------------------------
+
+export interface FullLead {
+  id: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  workflow: 'retail' | 'insurance';
+  damageType: string | null;
+  photoUrl: string | null;
+  doorKnockResult: string | null;
+  contactOutcome: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  status: string;
+  pipelineStage: string | null;
+  // Owner info
+  ownerFirstName: string | null;
+  ownerLastName: string | null;
+  ownerEmail: string | null;
+  owner2FirstName: string | null;
+  owner2LastName: string | null;
+  notes: string | null;
+  // Insurance
+  insuranceCarrier: string | null;
+  policyNumber: string | null;
+  claimNumber: string | null;
+  dateOfLoss: string | null;
+  inspectionDate: string | null;
+  adjusterName: string | null;
+  adjusterPhone: string | null;
+  adjusterEmail: string | null;
+  adjusterMeetingDate: string | null;
+  // Financials
+  contractAmount: string | null;
+  depositAmount: string | null;
+  depositDate: string | null;
+  depositPaymentMethod: string | null;
+  deductibleAmount: string | null;
+  rcvAmount: string | null;
+  acvAmount: string | null;
+  supplementAmount: string | null;
+  finalPaymentAmount: string | null;
+  // Selections & Scope
+  contractScope: string | null;
+  squareFootage: string | null;
+  roofPitch: string | null;
+  measurementVendor: string | null;
+  measurementReportUrl: string | null;
+  materialBrand: string | null;
+  materialColor: string | null;
+  materialStyle: string | null;
+  // Retail jsonb blob
+  retailData: {
+    ownerName1?: string;
+    ownerName2?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    interestedRoof?: boolean;
+    interestedSiding?: boolean;
+    interestedWindows?: boolean;
+    interestedDoors?: boolean;
+    appointmentDate?: string | null;
+    notes?: string | null;
+  } | null;
+  // Meta
+  repName: string | null;
+  userId: string;
+  companyId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getLeadQueryKey = (id: string) => ['lead', id] as const;
+
+export function useGetLead(
+  pinId: string,
+  options?: Omit<UseQueryOptions<{ lead: FullLead }>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getLeadQueryKey(pinId),
+    queryFn: () => customFetch<{ lead: FullLead }>(`/api/pins/${pinId}`),
+    enabled: !!pinId,
+    ...options,
+  });
+}
+
+export function useUpdateLead(pinId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Record<string, string | null>) =>
+      customFetch<{ lead: FullLead }>(`/api/pins/${pinId}/profile`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(getLeadQueryKey(pinId), data);
+      qc.invalidateQueries({ queryKey: getLeadsQueryKey() });
+    },
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Retail Pipeline

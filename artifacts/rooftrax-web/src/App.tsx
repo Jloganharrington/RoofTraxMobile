@@ -14,6 +14,7 @@ import InsurancePipeline from '@/pages/pipeline/InsurancePipeline';
 import ProjectPipeline from '@/pages/pipeline/ProjectPipeline';
 import RetailPipeline from '@/pages/pipeline/RetailPipeline';
 import Leads from '@/pages/leads/Leads';
+import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
 import PriceBookList from '@/pages/price-book/PriceBookList';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -60,6 +61,9 @@ function Router() {
       </Route>
       <Route path="/leads">
         <ProtectedRoute><Leads /></ProtectedRoute>
+      </Route>
+      <Route path="/leads/:id">
+        <ProtectedRoute><LeadProfile /></ProtectedRoute>
       </Route>
       <Route path="/inspections">
         <ProtectedRoute><InspectionList /></ProtectedRoute>

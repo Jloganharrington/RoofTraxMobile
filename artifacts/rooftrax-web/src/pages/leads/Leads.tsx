@@ -3,7 +3,7 @@
  * Filterable by result type; links to the Claim Hub when an inspection exists.
  */
 import { useState, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Shell } from "@/components/layout/Shell";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ExternalLink, Loader2 } from "lucide-react";
+import { Search, ExternalLink, Loader2, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { useGetLeads } from "@/lib/claimHubApi";
 
@@ -56,6 +56,7 @@ const CONTACT_LABELS: Record<string, string> = {
 
 export default function Leads() {
   const { data, isLoading } = useGetLeads();
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState('');
   const [resultFilter, setResultFilter] = useState<string>('all');
 
@@ -160,9 +161,15 @@ export default function Leads() {
                   ].filter(Boolean);
 
                   return (
-                    <TableRow key={lead.id}>
+                    <TableRow
+                      key={lead.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/leads/${lead.id}`)}
+                    >
                       <TableCell className="text-sm font-medium max-w-48 truncate">
-                        {lead.address ?? '—'}
+                        <span className="flex items-center gap-1">
+                          {lead.address ?? '—'}
+                        </span>
                       </TableCell>
                       <TableCell className="text-sm">
                         <div className="space-y-0.5">

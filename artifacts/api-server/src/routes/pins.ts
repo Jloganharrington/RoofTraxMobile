@@ -8,8 +8,9 @@ import {
   UpdatePinBody,
   UpdatePinResponse,
 } from '@workspace/api-zod';
-import { db, pinsTable, userProfilesTable } from '@workspace/db';
+import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
@@ -227,6 +228,169 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
     .returning();
 
   res.json(UpdatePinResponse.parse({ pin: updated }));
+});
+
+// ---------------------------------------------------------------------------
+// Lead Profile — zod schema for the full profile PATCH
+// ---------------------------------------------------------------------------
+
+const LeadProfileBody = z.object({
+  ownerFirstName:       z.string().nullable().optional(),
+  ownerLastName:        z.string().nullable().optional(),
+  ownerEmail:           z.string().nullable().optional(),
+  owner2FirstName:      z.string().nullable().optional(),
+  owner2LastName:       z.string().nullable().optional(),
+  customerName:         z.string().nullable().optional(),
+  customerPhone:        z.string().nullable().optional(),
+  notes:                z.string().nullable().optional(),
+  pipelineStage:        z.string().nullable().optional(),
+  insuranceCarrier:     z.string().nullable().optional(),
+  policyNumber:         z.string().nullable().optional(),
+  claimNumber:          z.string().nullable().optional(),
+  dateOfLoss:           z.string().nullable().optional(),
+  inspectionDate:       z.string().nullable().optional(),
+  adjusterName:         z.string().nullable().optional(),
+  adjusterPhone:        z.string().nullable().optional(),
+  adjusterEmail:        z.string().nullable().optional(),
+  adjusterMeetingDate:  z.string().nullable().optional(),
+  contractAmount:       z.string().nullable().optional(),
+  depositAmount:        z.string().nullable().optional(),
+  depositDate:          z.string().nullable().optional(),
+  depositPaymentMethod: z.string().nullable().optional(),
+  deductibleAmount:     z.string().nullable().optional(),
+  rcvAmount:            z.string().nullable().optional(),
+  acvAmount:            z.string().nullable().optional(),
+  supplementAmount:     z.string().nullable().optional(),
+  finalPaymentAmount:   z.string().nullable().optional(),
+  contractScope:        z.string().nullable().optional(),
+  squareFootage:        z.string().nullable().optional(),
+  roofPitch:            z.string().nullable().optional(),
+  measurementVendor:    z.string().nullable().optional(),
+  measurementReportUrl: z.string().nullable().optional(),
+  materialBrand:        z.string().nullable().optional(),
+  materialColor:        z.string().nullable().optional(),
+  materialStyle:        z.string().nullable().optional(),
+});
+
+function toDateOrNull(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// GET /pins/:pinId — full lead record with rep name
+router.get('/pins/:pinId', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const pinId = req.params.pinId as string;
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) {
+    res.status(404).json({ error: 'Pin not found' });
+    return;
+  }
+
+  const [user] = await db
+    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(eq(usersTable.id, pin.userId));
+
+  const repName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
+    : null;
+
+  res.json({ lead: { ...pin, repName } });
+});
+
+// PATCH /pins/:pinId/profile — update lead profile fields
+router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const pinId = req.params.pinId as string;
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) {
+    res.status(404).json({ error: 'Pin not found' });
+    return;
+  }
+
+  const role = await getRole(req.user.id);
+  if (!canEditPin(role, req.user.id, pin.userId)) {
+    res.status(403).json({ error: 'Not permitted to edit this pin' });
+    return;
+  }
+
+  const parsed = LeadProfileBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
+    return;
+  }
+
+  const d = parsed.data;
+  const [updated] = await db
+    .update(pinsTable)
+    .set({
+      ...(d.ownerFirstName       !== undefined && { ownerFirstName:       d.ownerFirstName }),
+      ...(d.ownerLastName        !== undefined && { ownerLastName:        d.ownerLastName }),
+      ...(d.ownerEmail           !== undefined && { ownerEmail:           d.ownerEmail }),
+      ...(d.owner2FirstName      !== undefined && { owner2FirstName:      d.owner2FirstName }),
+      ...(d.owner2LastName       !== undefined && { owner2LastName:       d.owner2LastName }),
+      ...(d.customerName         !== undefined && { customerName:         d.customerName }),
+      ...(d.customerPhone        !== undefined && { customerPhone:        d.customerPhone }),
+      ...(d.notes                !== undefined && { notes:                d.notes }),
+      ...(d.pipelineStage        !== undefined && { pipelineStage:        d.pipelineStage }),
+      ...(d.insuranceCarrier     !== undefined && { insuranceCarrier:     d.insuranceCarrier }),
+      ...(d.policyNumber         !== undefined && { policyNumber:         d.policyNumber }),
+      ...(d.claimNumber          !== undefined && { claimNumber:          d.claimNumber }),
+      ...(d.dateOfLoss           !== undefined && { dateOfLoss:           toDateOrNull(d.dateOfLoss) }),
+      ...(d.inspectionDate       !== undefined && { inspectionDate:       toDateOrNull(d.inspectionDate) }),
+      ...(d.adjusterName         !== undefined && { adjusterName:         d.adjusterName }),
+      ...(d.adjusterPhone        !== undefined && { adjusterPhone:        d.adjusterPhone }),
+      ...(d.adjusterEmail        !== undefined && { adjusterEmail:        d.adjusterEmail }),
+      ...(d.adjusterMeetingDate  !== undefined && { adjusterMeetingDate:  toDateOrNull(d.adjusterMeetingDate) }),
+      ...(d.contractAmount       !== undefined && { contractAmount:       d.contractAmount }),
+      ...(d.depositAmount        !== undefined && { depositAmount:        d.depositAmount }),
+      ...(d.depositDate          !== undefined && { depositDate:          toDateOrNull(d.depositDate) }),
+      ...(d.depositPaymentMethod !== undefined && { depositPaymentMethod: d.depositPaymentMethod }),
+      ...(d.deductibleAmount     !== undefined && { deductibleAmount:     d.deductibleAmount }),
+      ...(d.rcvAmount            !== undefined && { rcvAmount:            d.rcvAmount }),
+      ...(d.acvAmount            !== undefined && { acvAmount:            d.acvAmount }),
+      ...(d.supplementAmount     !== undefined && { supplementAmount:     d.supplementAmount }),
+      ...(d.finalPaymentAmount   !== undefined && { finalPaymentAmount:   d.finalPaymentAmount }),
+      ...(d.contractScope        !== undefined && { contractScope:        d.contractScope }),
+      ...(d.squareFootage        !== undefined && { squareFootage:        d.squareFootage }),
+      ...(d.roofPitch            !== undefined && { roofPitch:            d.roofPitch }),
+      ...(d.measurementVendor    !== undefined && { measurementVendor:    d.measurementVendor }),
+      ...(d.measurementReportUrl !== undefined && { measurementReportUrl: d.measurementReportUrl }),
+      ...(d.materialBrand        !== undefined && { materialBrand:        d.materialBrand }),
+      ...(d.materialColor        !== undefined && { materialColor:        d.materialColor }),
+      ...(d.materialStyle        !== undefined && { materialStyle:        d.materialStyle }),
+    })
+    .where(eq(pinsTable.id, pinId))
+    .returning();
+
+  const [user] = await db
+    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(eq(usersTable.id, pin.userId));
+
+  const repName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
+    : null;
+
+  res.json({ lead: { ...updated, repName } });
 });
 
 router.delete('/pins/:pinId', async (req: Request, res: Response) => {

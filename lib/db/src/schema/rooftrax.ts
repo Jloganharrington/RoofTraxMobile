@@ -147,6 +147,48 @@ export const pinsTable = pgTable('pins', {
   customerName: text('customer_name'),
   customerPhone: text('customer_phone'),
   status: varchar('status').notNull().default('active'),
+
+  // ── Lead profile fields ────────────────────────────────────────────────
+  ownerFirstName: text('owner_first_name'),
+  ownerLastName: text('owner_last_name'),
+  ownerEmail: text('owner_email'),
+  owner2FirstName: text('owner2_first_name'),
+  owner2LastName: text('owner2_last_name'),
+  notes: text('notes'),
+  pipelineStage: varchar('pipeline_stage'),
+
+  // ── Insurance ──────────────────────────────────────────────────────────
+  insuranceCarrier: varchar('insurance_carrier'),
+  policyNumber: varchar('policy_number'),
+  claimNumber: varchar('claim_number'),
+  dateOfLoss: timestamp('date_of_loss', { withTimezone: true }),
+  inspectionDate: timestamp('inspection_date', { withTimezone: true }),
+  adjusterName: varchar('adjuster_name'),
+  adjusterPhone: varchar('adjuster_phone'),
+  adjusterEmail: varchar('adjuster_email'),
+  adjusterMeetingDate: timestamp('adjuster_meeting_date', { withTimezone: true }),
+
+  // ── Financials ─────────────────────────────────────────────────────────
+  contractAmount: varchar('contract_amount'),
+  depositAmount: varchar('deposit_amount'),
+  depositDate: timestamp('deposit_date', { withTimezone: true }),
+  depositPaymentMethod: varchar('deposit_payment_method'),
+  deductibleAmount: varchar('deductible_amount'),
+  rcvAmount: varchar('rcv_amount'),
+  acvAmount: varchar('acv_amount'),
+  supplementAmount: varchar('supplement_amount'),
+  finalPaymentAmount: varchar('final_payment_amount'),
+
+  // ── Selections & Scope ─────────────────────────────────────────────────
+  contractScope: text('contract_scope'),
+  squareFootage: varchar('square_footage'),
+  roofPitch: varchar('roof_pitch'),
+  measurementVendor: varchar('measurement_vendor'),
+  measurementReportUrl: text('measurement_report_url'),
+  materialBrand: varchar('material_brand'),
+  materialColor: varchar('material_color'),
+  materialStyle: varchar('material_style'),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
