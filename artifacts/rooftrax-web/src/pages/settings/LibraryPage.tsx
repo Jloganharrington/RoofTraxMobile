@@ -32,7 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2 } from "lucide-react";
-import { parseMdLibrary, type ParsedStandard, type ParsedDetriment } from "@/lib/parseMdLibrary";
+import { parseMdLibrary, parseMdBoilerplate, type ParsedStandard, type ParsedDetriment, type ParsedBpSection } from "@/lib/parseMdLibrary";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,6 +111,149 @@ const BP_SECTION_LABELS: Record<string, string> = {
   std_rpr_01_source_record: "STD-RPR-01 Source Record",
 };
 
+// ---------------------------------------------------------------------------
+// Boilerplate multi-section import button
+// ---------------------------------------------------------------------------
+
+function BpMultiImportButton({ onDone }: { onDone: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [sections, setSections] = useState<ParsedBpSection[]>([]);
+  const [unrecognised, setUnrecognised] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
+  const [done, setDone] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = typeof evt.target?.result === "string" ? evt.target.result : "";
+      const parsed = parseMdBoilerplate(text);
+      setSections(parsed.sections);
+      setUnrecognised(parsed.unrecognised);
+      setOpen(true);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleImport = async () => {
+    const total = sections.length;
+    setImporting(true);
+    setProgress({ done: 0, total, errors: 0 });
+    let errors = 0;
+    for (const sec of sections) {
+      try {
+        await customFetch(`/api/report-settings/bp-library/${sec.sectionKey}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: sec.content }),
+        });
+      } catch { errors++; }
+      setProgress((p) => ({ ...p, done: p.done + 1, errors }));
+    }
+    setImporting(false);
+    setDone(true);
+    onDone();
+    if (errors === 0) {
+      toast({ title: "Import complete", description: `${total} section${total !== 1 ? "s" : ""} saved.` });
+    } else {
+      toast({ title: "Import finished with errors", description: `${total - errors} saved, ${errors} failed.`, variant: "destructive" });
+    }
+  };
+
+  const reset = () => {
+    setSections([]); setUnrecognised([]); setImporting(false);
+    setProgress({ done: 0, total: 0, errors: 0 }); setDone(false);
+  };
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".md,text/markdown" className="hidden" onChange={handleFile} />
+      <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+        <FileText className="h-3.5 w-3.5 mr-1.5" />
+        Import multi-section .md
+      </Button>
+
+      <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); setOpen(false); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Boilerplate Sections</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {unrecognised.length > 0 && (
+              <div className="rounded-md bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 p-3">
+                <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-1">Unrecognised headings (skipped):</p>
+                {unrecognised.map((h) => (
+                  <p key={h} className="text-xs text-yellow-700 dark:text-yellow-400 font-mono pl-2">— {h}</p>
+                ))}
+              </div>
+            )}
+
+            {sections.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No recognised sections found in this file.</p>
+            ) : (
+              <div className="space-y-2">
+                {sections.map((s) => (
+                  <div key={s.sectionKey} className="flex items-start gap-2 rounded-md border bg-card p-2.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0 mt-px" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium">{BP_SECTION_LABELS[s.sectionKey] ?? s.sectionKey}</p>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                        {s.content.slice(0, 120)}{s.content.length > 120 ? "…" : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(importing || done) && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{done ? "Complete" : "Saving…"}</span>
+                  <span>{progress.done} / {progress.total}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all duration-200"
+                    style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            {!importing && !done && (
+              <>
+                <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Cancel</Button>
+                <Button onClick={() => void handleImport()} disabled={sections.length === 0}>
+                  Save {sections.length} section{sections.length !== 1 ? "s" : ""}
+                </Button>
+              </>
+            )}
+            {importing && (
+              <Button disabled><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</Button>
+            )}
+            {done && (
+              <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Close</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Boilerplate tab
+// ---------------------------------------------------------------------------
+
 function BoilerplateTab() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -176,30 +319,35 @@ function BoilerplateTab() {
   if (isLoading) return <Skeleton className="h-48 w-full" />;
 
   return (
-    <div className="space-y-2">
-      {(data?.entries ?? []).map((entry) => (
-        <div
-          key={entry.sectionKey}
-          className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
-        >
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">{BP_SECTION_LABELS[entry.sectionKey] ?? entry.sectionKey}</p>
-            {entry.hasContent ? (
-              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                v{entry.version} · {entry.updatedAt ? format(new Date(entry.updatedAt), "MMM d, yyyy") : "–"} · {entry.contentPreview}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground/60 mt-0.5">No content yet</p>
-            )}
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <BpMultiImportButton onDone={() => qc.invalidateQueries({ queryKey: ["bp-library"] })} />
+      </div>
+      <div className="space-y-2">
+        {(data?.entries ?? []).map((entry) => (
+          <div
+            key={entry.sectionKey}
+            className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{BP_SECTION_LABELS[entry.sectionKey] ?? entry.sectionKey}</p>
+              {entry.hasContent ? (
+                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  v{entry.version} · {entry.updatedAt ? format(new Date(entry.updatedAt), "MMM d, yyyy") : "–"} · {entry.contentPreview}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground/60 mt-0.5">No content yet</p>
+              )}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => openEditor(entry)}>
+              <Edit3 className="h-3 w-3 mr-1.5" />
+              {entry.hasContent ? "Edit" : "Add"}
+            </Button>
           </div>
-          <Button size="sm" variant="outline" onClick={() => openEditor(entry)}>
-            <Edit3 className="h-3 w-3 mr-1.5" />
-            {entry.hasContent ? "Edit" : "Add"}
-          </Button>
-        </div>
-      ))}
+        ))}
+      </div>
 
-      {/* Hidden file input for .md import */}
+      {/* Hidden file input for single-section .md import */}
       <input
         ref={fileInputRef}
         type="file"

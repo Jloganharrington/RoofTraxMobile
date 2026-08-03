@@ -109,6 +109,90 @@ function blankDet(key: string): ParsedDetriment {
 }
 
 // ---------------------------------------------------------------------------
+// Boilerplate multi-section parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps a heading string to a known boilerplate section key.
+ * Accepts both the human label ("Attestation Block A") and the raw key
+ * ("attestation_block_a"), case-insensitive.
+ */
+const BP_LABEL_TO_KEY: Record<string, string> = {
+  'opening statement': 'opening_statement',
+  'inspection method': 'inspection_method',
+  'caption patterns': 'caption_patterns',
+  'rap field protocol': 'rap_field_protocol',
+  'attestation block a': 'attestation_block_a',
+  'attestation block b': 'attestation_block_b',
+  'attestation block c': 'attestation_block_c',
+  'uniform inspection procedure': 'uniform_inspection_procedure',
+  'product id methodology': 'product_id_methodology',
+  'scope block': 'scope_block',
+  'std-rpr-01 source record': 'std_rpr_01_source_record',
+  'std rpr 01 source record': 'std_rpr_01_source_record',
+  // raw key aliases
+  'opening_statement': 'opening_statement',
+  'inspection_method': 'inspection_method',
+  'caption_patterns': 'caption_patterns',
+  'rap_field_protocol': 'rap_field_protocol',
+  'attestation_block_a': 'attestation_block_a',
+  'attestation_block_b': 'attestation_block_b',
+  'attestation_block_c': 'attestation_block_c',
+  'uniform_inspection_procedure': 'uniform_inspection_procedure',
+  'product_id_methodology': 'product_id_methodology',
+  'scope_block': 'scope_block',
+  'std_rpr_01_source_record': 'std_rpr_01_source_record',
+};
+
+export interface ParsedBpSection {
+  sectionKey: string;
+  content: string;
+}
+
+export interface ParsedMdBoilerplate {
+  sections: ParsedBpSection[];
+  unrecognised: string[]; // heading texts that didn't match any known key
+}
+
+/**
+ * Parse a `.md` file that contains multiple boilerplate sections separated
+ * by top-level `#` headings. Each heading must match a known section label
+ * or key. Content between headings is trimmed and stored verbatim.
+ *
+ * Example:
+ *   # Attestation Block A
+ *   ...content...
+ *
+ *   # Attestation Block B
+ *   ...content...
+ */
+export function parseMdBoilerplate(text: string): ParsedMdBoilerplate {
+  const sections: ParsedBpSection[] = [];
+  const unrecognised: string[] = [];
+
+  // Split the file at every top-level `#` heading (not `##` or deeper).
+  // The regex captures the heading text and everything until the next heading.
+  const chunks = text.split(/^(#\s+[^\n]+)/m);
+  // chunks: ['preamble', '# Heading A', 'body A', '# Heading B', 'body B', ...]
+
+  for (let i = 1; i < chunks.length; i += 2) {
+    const headingRaw = chunks[i]!.replace(/^#+\s*/, '').trim();
+    const body = (chunks[i + 1] ?? '').trim();
+    const key = BP_LABEL_TO_KEY[headingRaw.toLowerCase()];
+    if (key) {
+      // Merge if the same key appears more than once (last write wins).
+      const existing = sections.find((s) => s.sectionKey === key);
+      if (existing) { existing.content = body; }
+      else { sections.push({ sectionKey: key, content: body }); }
+    } else {
+      unrecognised.push(headingRaw);
+    }
+  }
+
+  return { sections, unrecognised };
+}
+
+// ---------------------------------------------------------------------------
 // Main parser
 // ---------------------------------------------------------------------------
 
@@ -204,18 +288,28 @@ export function parseMdLibrary(text: string): ParsedMdLibrary {
       }
     }
 
-    // ── Continuation line (no recognised Key: prefix) ──────────────────────
+    // ── Continuation / default body text ──────────────────────────────────
+    // Unrecognised lines (no known Key: prefix) default to citationText for
+    // standards and statement for detriments. This handles files where the
+    // body text under ## ENTRY-KEY is plain prose rather than Key: Value pairs.
     const cont = line.trim();
     if (!cont) { lastFieldStd = null; lastFieldDet = null; continue; }
 
-    if (section === 'standards' && currentStd && lastFieldStd && lastFieldStd !== 'verificationStatus') {
-      const prev = (currentStd as Record<string, unknown>)[lastFieldStd] as string;
-      (currentStd as Record<string, unknown>)[lastFieldStd] = prev + ' ' + cont;
+    if (section === 'standards' && currentStd) {
+      const target = lastFieldStd ?? 'citationText';
+      if (target !== 'verificationStatus') {
+        const prev = (currentStd as Record<string, unknown>)[target] as string;
+        (currentStd as Record<string, unknown>)[target] = prev ? prev + ' ' + cont : cont;
+        lastFieldStd = target;
+      }
     }
-    if (section === 'detriments' && currentDet && lastFieldDet &&
-        lastFieldDet !== 'applicabilityConditions') {
-      const prev = (currentDet as Record<string, unknown>)[lastFieldDet] as string;
-      (currentDet as Record<string, unknown>)[lastFieldDet] = prev + ' ' + cont;
+    if (section === 'detriments' && currentDet) {
+      const target = lastFieldDet ?? 'statement';
+      if (target !== 'applicabilityConditions') {
+        const prev = (currentDet as Record<string, unknown>)[target] as string;
+        (currentDet as Record<string, unknown>)[target] = prev ? prev + ' ' + cont : cont;
+        lastFieldDet = target;
+      }
     }
   }
 
