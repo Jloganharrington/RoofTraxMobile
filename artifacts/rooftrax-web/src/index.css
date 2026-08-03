@@ -109,7 +109,7 @@
   --sidebar-ring: 24 95% 53%;
 
   /* ── Typography */
-  --app-font-sans: Arial, sans-serif;
+  --app-font-sans: 'Inter', sans-serif;
   --app-font-condensed: Georgia, serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'Space Mono', Menlo, monospace;

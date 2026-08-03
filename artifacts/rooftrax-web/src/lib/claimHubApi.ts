@@ -61,27 +61,23 @@ export interface ClaimEvent {
   createdAt: string;
 }
 
-export interface PipelineLead {
+/** Unified lead row — covers pins (retail/insurance) and inspection claims */
+export interface UnifiedLead {
   id: string;
+  recordType: 'pin' | 'inspection';
+  pipeline: 'retail' | 'insurance' | 'project';
+  name: string | null;
   address: string | null;
-  workflow: 'retail' | 'insurance';
+  phone: string | null;
   damageType: string | null;
-  doorKnockResult: string | null;
-  contactOutcome: string | null;
-  customerName: string | null;
-  customerPhone: string | null;
-  retailData: {
-    ownerName1?: string;
-    interestedRoof?: boolean;
-    interestedSiding?: boolean;
-    interestedWindows?: boolean;
-    interestedDoors?: boolean;
-    appointmentDate?: string | null;
-  } | null;
+  stage: string;
   repName: string | null;
-  inspectionId: string | null;
+  detailPath: string;
   createdAt: string;
 }
+
+/** @deprecated Use UnifiedLead — kept temporarily to avoid type errors during migration */
+export type PipelineLead = UnifiedLead;
 
 // ---------------------------------------------------------------------------
 // Query keys

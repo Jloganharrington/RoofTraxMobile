@@ -7997,22 +7997,25 @@ router.get('/leads', async (req: Request, res: Response) => {
 
   const companyId = req.user.companyId;
 
-  const rows = await db
+  // ── 1. Pins (retail + insurance door-knock leads) ────────────────────────
+  const pinRows = await db
     .select({
-      id: pinsTable.id,
-      address: pinsTable.address,
-      workflow: pinsTable.workflow,
-      damageType: pinsTable.damageType,
+      id:              pinsTable.id,
+      address:         pinsTable.address,
+      workflow:        pinsTable.workflow,
+      damageType:      pinsTable.damageType,
       doorKnockResult: pinsTable.doorKnockResult,
-      contactOutcome: pinsTable.contactOutcome,
-      customerName: pinsTable.customerName,
-      customerPhone: pinsTable.customerPhone,
-      retailData: pinsTable.retailData,
-      userId: pinsTable.userId,
-      createdAt: pinsTable.createdAt,
-      repFirstName: usersTable.firstName,
-      repLastName: usersTable.lastName,
-      inspectionId: inspectionsTable.id,
+      contactOutcome:  pinsTable.contactOutcome,
+      customerName:    pinsTable.customerName,
+      customerPhone:   pinsTable.customerPhone,
+      ownerFirstName:  pinsTable.ownerFirstName,
+      ownerLastName:   pinsTable.ownerLastName,
+      retailData:      pinsTable.retailData,
+      createdAt:       pinsTable.createdAt,
+      repFirstName:    usersTable.firstName,
+      repLastName:     usersTable.lastName,
+      inspectionId:    inspectionsTable.id,
+      inspectionStatus: inspectionsTable.status,
     })
     .from(pinsTable)
     .leftJoin(usersTable, eq(usersTable.id, pinsTable.userId))
@@ -8026,20 +8029,87 @@ router.get('/leads', async (req: Request, res: Response) => {
     .where(eq(pinsTable.companyId, companyId))
     .orderBy(desc(pinsTable.createdAt));
 
-  const leads = rows.map(r => ({
-    id: r.id,
-    address: r.address,
-    workflow: r.workflow,
-    damageType: r.damageType,
-    doorKnockResult: r.doorKnockResult,
-    contactOutcome: r.contactOutcome,
-    customerName: r.customerName,
-    customerPhone: r.customerPhone,
-    retailData: r.retailData,
-    repName: r.repFirstName && r.repLastName ? `${r.repFirstName} ${r.repLastName}` : (r.repFirstName ?? null),
-    inspectionId: r.inspectionId ?? null,
-    createdAt: r.createdAt.toISOString(),
-  }));
+  // ── 2. Inspections (insurance/project claims that have no pin, or all) ──
+  // We include ALL inspections so every claim appears in the list even if
+  // the pin was created before the pin-inspection link existed.
+  const inspectionRows = await db
+    .select({
+      id:           inspectionsTable.id,
+      address:      inspectionsTable.address,
+      status:       inspectionsTable.status,
+      damageType:   inspectionsTable.damageType,
+      insuredName:  inspectionsTable.insuredName,
+      pinId:        inspectionsTable.pinId,
+      createdAt:    inspectionsTable.createdAt,
+      repFirstName: usersTable.firstName,
+      repLastName:  usersTable.lastName,
+    })
+    .from(inspectionsTable)
+    .leftJoin(usersTable, eq(usersTable.id, inspectionsTable.inspectorUserId))
+    .where(eq(inspectionsTable.companyId, companyId))
+    .orderBy(desc(inspectionsTable.createdAt));
+
+  // ── Stage derivation helpers ─────────────────────────────────────────────
+  const INSPECTION_STATUS_LABELS: Record<string, string> = {
+    scheduled:    'Phase 1 Inspection Scheduled',
+    capturing:    'Phase 2 Inspection Complete',
+    validating:   'Proof Package Generated',
+    package_ready:'Proof Package Generated',
+    submitted:    'Claim Filed',
+  };
+
+  function derivePinStage(r: typeof pinRows[number]): string {
+    if (r.doorKnockResult === 'no_answer') return 'Archived – Lost';
+    if (r.inspectionId) {
+      const s = r.inspectionStatus ?? '';
+      return INSPECTION_STATUS_LABELS[s] ?? 'Estimate Provided';
+    }
+    if (r.doorKnockResult === 'appointment' || r.contactOutcome === 'call_to_schedule') return 'Appt. Scheduled';
+    if (r.doorKnockResult === 'no_appointment') return 'Follow-Up Required';
+    return 'Pin Dropped';
+  }
+
+  // Set of inspection IDs already covered via a pin link (avoid duplicates)
+  const coveredInspectionIds = new Set(pinRows.map(r => r.inspectionId).filter(Boolean));
+
+  // ── 3. Build unified rows ────────────────────────────────────────────────
+  const pinLeads = pinRows.map(r => {
+    const ownerName = [r.ownerFirstName, r.ownerLastName].filter(Boolean).join(' ') || null;
+    return {
+      id:         r.id,
+      recordType: 'pin' as const,
+      pipeline:   r.workflow as 'retail' | 'insurance',
+      name:       ownerName || r.customerName || (r.retailData as any)?.ownerName1 || null,
+      address:    r.address,
+      phone:      r.customerPhone || (r.retailData as any)?.phone || null,
+      damageType: r.damageType,
+      stage:      derivePinStage(r),
+      repName:    r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
+      detailPath: `/leads/${r.id}`,
+      createdAt:  r.createdAt.toISOString(),
+    };
+  });
+
+  const inspectionLeads = inspectionRows
+    .filter(r => !coveredInspectionIds.has(r.id)) // skip inspections already shown via pin
+    .map(r => ({
+      id:         r.id,
+      recordType: 'inspection' as const,
+      pipeline:   'insurance' as const,
+      name:       r.insuredName ?? null,
+      address:    r.address,
+      phone:      null as string | null,
+      damageType: r.damageType,
+      stage:      INSPECTION_STATUS_LABELS[r.status ?? ''] ?? (r.status ?? 'Unknown'),
+      repName:    r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
+      detailPath: `/inspections/${r.id}`,
+      createdAt:  r.createdAt.toISOString(),
+    }));
+
+  // Sort merged list newest-first
+  const leads = [...pinLeads, ...inspectionLeads].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 
   res.json({ leads });
 });

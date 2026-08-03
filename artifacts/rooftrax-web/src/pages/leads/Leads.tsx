@@ -1,13 +1,11 @@
 /**
- * Leads — table of all door-knock pins for the company.
- * Filterable by result type; links to the Claim Hub when an inspection exists.
+ * All Leads — unified list of retail pins, insurance pins, and inspection
+ * claims across all three pipelines.
  */
 import { useState, useMemo } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Shell } from "@/components/layout/Shell";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -17,38 +15,40 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Search, ExternalLink, Loader2, ChevronRight } from "lucide-react";
+import { Search } from "lucide-react";
 import { format } from "date-fns";
-import { useGetLeads } from "@/lib/claimHubApi";
+import { useGetLeads, type UnifiedLead } from "@/lib/claimHubApi";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Config
 // ---------------------------------------------------------------------------
 
-const RESULT_LABELS: Record<string, string> = {
-  no_answer: 'No Answer',
-  no_appointment: 'No Appointment',
-  appointment: 'Appointment',
+const PIPELINE_CONFIG: Record<
+  string,
+  { label: string; colors: string }
+> = {
+  retail: {
+    label: 'Retail',
+    colors: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  },
+  insurance: {
+    label: 'Insurance',
+    colors: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  },
+  project: {
+    label: 'Project',
+    colors: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+  },
 };
 
-const RESULT_COLORS: Record<string, string> = {
-  no_answer: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
-  no_appointment: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-  appointment: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-};
+type FilterTab = 'all' | 'retail' | 'insurance' | 'project';
 
-const CONTACT_LABELS: Record<string, string> = {
-  no_soliciting: 'No Soliciting',
-  priority_inspection: 'Priority',
-  call_to_schedule: 'Call to Schedule',
-};
+const FILTER_TABS: { id: FilterTab; label: string }[] = [
+  { id: 'all',       label: 'All' },
+  { id: 'retail',    label: 'Retail' },
+  { id: 'insurance', label: 'Insurance' },
+  { id: 'project',   label: 'Project' },
+];
 
 // ---------------------------------------------------------------------------
 // Page
@@ -57,61 +57,79 @@ const CONTACT_LABELS: Record<string, string> = {
 export default function Leads() {
   const { data, isLoading } = useGetLeads();
   const [, navigate] = useLocation();
-  const [search, setSearch] = useState('');
-  const [resultFilter, setResultFilter] = useState<string>('all');
+  const [search, setSearch]       = useState('');
+  const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
-  const leads = data?.leads ?? [];
+  const leads: UnifiedLead[] = data?.leads ?? [];
 
   const filtered = useMemo(() => {
+    const term = search.toLowerCase().trim();
     return leads.filter((lead) => {
-      const matchesResult =
-        resultFilter === 'all' || lead.doorKnockResult === resultFilter;
+      const matchesPipeline =
+        activeTab === 'all' || lead.pipeline === activeTab;
 
-      const term = search.toLowerCase();
       const matchesSearch =
         !term ||
+        (lead.name?.toLowerCase().includes(term) ?? false) ||
         (lead.address?.toLowerCase().includes(term) ?? false) ||
-        (lead.customerName?.toLowerCase().includes(term) ?? false) ||
-        (lead.retailData?.ownerName1?.toLowerCase().includes(term) ?? false);
+        (lead.stage?.toLowerCase().includes(term) ?? false);
 
-      return matchesResult && matchesSearch;
+      return matchesPipeline && matchesSearch;
     });
-  }, [leads, search, resultFilter]);
+  }, [leads, search, activeTab]);
+
+  // Count per tab
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: leads.length };
+    for (const lead of leads) {
+      c[lead.pipeline] = (c[lead.pipeline] ?? 0) + 1;
+    }
+    return c;
+  }, [leads]);
 
   return (
     <Shell>
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
+            <h1 className="text-2xl font-bold tracking-tight">All Leads</h1>
             <p className="text-sm text-muted-foreground">
-              Door-knock contacts from the field.
+              Retail, insurance, and project pipeline leads in one list.
             </p>
           </div>
 
-          <div className="flex gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search name or address…"
-                className="pl-9"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Select value={resultFilter} onValueChange={setResultFilter}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="All results" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All results</SelectItem>
-                <SelectItem value="appointment">Appointment</SelectItem>
-                <SelectItem value="no_appointment">No Appointment</SelectItem>
-                <SelectItem value="no_answer">No Answer</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search name, address, or stage…"
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
+        </div>
+
+        {/* Pipeline filter tabs */}
+        <div className="flex gap-1 border-b">
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              {tab.label}
+              {counts[tab.id] !== undefined && (
+                <span className="ml-1.5 text-[11px] font-normal opacity-60">
+                  {counts[tab.id]}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Table */}
@@ -119,20 +137,19 @@ export default function Leads() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Name</TableHead>
                 <TableHead>Address</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Result</TableHead>
-                <TableHead>Interests</TableHead>
+                <TableHead>Pipeline</TableHead>
+                <TableHead>Stage</TableHead>
                 <TableHead>Rep</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead className="w-24">Claim</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
+                Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((__, j) => (
+                    {Array.from({ length: 6 }).map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -141,94 +158,67 @@ export default function Leads() {
                 ))
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                  <TableCell
+                    colSpan={6}
+                    className="text-center py-12 text-muted-foreground text-sm"
+                  >
                     {leads.length === 0
-                      ? 'No leads found. Field reps capture leads from the mobile app.'
+                      ? 'No leads yet. Field reps drop pins from the mobile app.'
                       : 'No leads match your filter.'}
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((lead) => {
-                  const name =
-                    lead.customerName ||
-                    lead.retailData?.ownerName1 ||
-                    '—';
-                  const interests = [
-                    lead.retailData?.interestedRoof && 'Roof',
-                    lead.retailData?.interestedSiding && 'Siding',
-                    lead.retailData?.interestedWindows && 'Windows',
-                    lead.retailData?.interestedDoors && 'Doors',
-                  ].filter(Boolean);
+                  const pipelineCfg = PIPELINE_CONFIG[lead.pipeline] ?? {
+                    label: lead.pipeline,
+                    colors: 'bg-zinc-100 text-zinc-600',
+                  };
 
                   return (
                     <TableRow
-                      key={lead.id}
+                      key={`${lead.recordType}-${lead.id}`}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/leads/${lead.id}`)}
+                      onClick={() => navigate(lead.detailPath)}
                     >
-                      <TableCell className="text-sm font-medium max-w-48 truncate">
-                        <span className="flex items-center gap-1">
-                          {lead.address ?? '—'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-sm">
+                      {/* Name */}
+                      <TableCell className="text-sm font-medium">
                         <div className="space-y-0.5">
-                          <div className="font-medium">{name}</div>
-                          {lead.customerPhone && (
-                            <div className="text-xs text-muted-foreground">{lead.customerPhone}</div>
-                          )}
-                          {lead.contactOutcome && (
-                            <Badge variant="outline" className="text-[10px]">
-                              {CONTACT_LABELS[lead.contactOutcome] ?? lead.contactOutcome}
-                            </Badge>
+                          <div>{lead.name ?? <span className="text-muted-foreground italic">—</span>}</div>
+                          {lead.phone && (
+                            <div className="text-xs text-muted-foreground">{lead.phone}</div>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {lead.doorKnockResult ? (
-                          <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                              RESULT_COLORS[lead.doorKnockResult] ?? ''
-                            }`}
-                          >
-                            {RESULT_LABELS[lead.doorKnockResult] ?? lead.doorKnockResult}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">—</span>
-                        )}
+
+                      {/* Address */}
+                      <TableCell className="text-sm text-muted-foreground max-w-48 truncate">
+                        {lead.address ?? '—'}
                       </TableCell>
+
+                      {/* Pipeline badge */}
                       <TableCell>
-                        {interests.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {interests.map((i) => (
-                              <Badge key={i as string} variant="secondary" className="text-[10px]">
-                                {i as string}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">—</span>
-                        )}
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${pipelineCfg.colors}`}
+                        >
+                          {pipelineCfg.label}
+                        </span>
                       </TableCell>
+
+                      {/* Stage */}
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {lead.stage}
+                      </TableCell>
+
+                      {/* Rep */}
                       <TableCell className="text-sm text-muted-foreground">
                         {lead.repName ?? '—'}
                       </TableCell>
+
+                      {/* Date */}
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                         {lead.createdAt
                           ? format(new Date(lead.createdAt), 'MMM d, yyyy')
                           : '—'}
-                      </TableCell>
-                      <TableCell>
-                        {lead.inspectionId ? (
-                          <Link href={`/inspections/${lead.inspectionId}`}>
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
-                              <ExternalLink className="h-3 w-3 mr-1" />
-                              Open
-                            </Button>
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">—</span>
-                        )}
                       </TableCell>
                     </TableRow>
                   );
