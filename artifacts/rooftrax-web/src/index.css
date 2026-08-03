@@ -110,8 +110,8 @@
 
   /* ── Typography */
   --app-font-sans: 'Inter', sans-serif;
-  --app-font-condensed: Georgia, serif;
-  --app-font-serif: Georgia, serif;
+  --app-font-condensed: 'Inter', sans-serif;
+  --app-font-serif: 'Inter', sans-serif;
   --app-font-mono: 'Space Mono', Menlo, monospace;
 }
 
@@ -124,16 +124,15 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 
-  /* Georgia headings */
+  /* Inter headings */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--app-font-condensed);
-    font-weight: 800;
-    letter-spacing: 0.01em;
-    text-transform: uppercase;
+    font-family: var(--app-font-sans);
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
 
-  /* Georgia for navigation and sidebar menu items */
+  /* Inter for navigation and sidebar menu items */
   nav a, nav button, aside a, aside button, aside span {
-    font-family: var(--app-font-condensed);
+    font-family: var(--app-font-sans);
   }
 }
