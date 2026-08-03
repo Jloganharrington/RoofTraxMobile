@@ -14,7 +14,6 @@ import {
   FileText,
   BarChart2,
   Receipt,
-  Building2,
   Users,
   ShieldCheck,
   Settings,
@@ -70,7 +69,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     heading: "Admin",
     items: [
-      { label: "Companies",         path: "/companies",          icon: Building2 },
       { label: "Team Management",   path: "/team",               icon: Users },
       { label: "User Authorization",path: "/user-authorization", icon: ShieldCheck },
       { label: "Settings",          path: "/settings",           icon: Settings,   soon: true },
