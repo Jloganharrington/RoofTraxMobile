@@ -109,8 +109,8 @@
   --sidebar-ring: 24 95% 53%;
 
   /* ── Typography */
-  --app-font-sans: 'Barlow', sans-serif;
-  --app-font-condensed: 'Barlow Condensed', sans-serif;
+  --app-font-sans: Georgia, serif;
+  --app-font-condensed: Georgia, serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'Space Mono', Menlo, monospace;
 }
