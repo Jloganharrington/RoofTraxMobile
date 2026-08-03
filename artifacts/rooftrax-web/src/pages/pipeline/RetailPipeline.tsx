@@ -24,6 +24,7 @@ interface RetailStage {
 }
 
 const RETAIL_STAGES: RetailStage[] = [
+  { key: 'pin_dropped',      label: 'Pin Dropped',        statuses: [],             accent: 'border-slate-400',   textAccent: 'text-slate-400' },
   { key: 'appt_scheduled',   label: 'Appt. Scheduled',   statuses: ['scheduled'],  accent: 'border-green-500',   textAccent: 'text-green-400' },
   { key: 'appt_confirmed',   label: 'Appt. Confirmed',   statuses: [],             accent: 'border-blue-500',    textAccent: 'text-blue-400' },
   { key: 'estimate_provided',label: 'Estimate Provided', statuses: [],             accent: 'border-violet-500',  textAccent: 'text-violet-400' },
