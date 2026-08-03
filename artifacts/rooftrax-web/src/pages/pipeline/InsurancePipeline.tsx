@@ -24,7 +24,7 @@ interface InsStage {
 }
 
 const INS_STAGES: InsStage[] = [
-  { key: 'pin_dropped',             label: 'Pin Dropped',                   statuses: [],                              accent: 'border-slate-400',   textAccent: 'text-slate-400' },
+  { key: 'pin_dropped',             label: 'Pin Dropped',                   statuses: ['pin_dropped'],                 accent: 'border-slate-400',   textAccent: 'text-slate-400' },
   { key: 'phase1_scheduled',        label: 'Phase 1 Inspection Scheduled',  statuses: ['scheduled'],                   accent: 'border-blue-400',    textAccent: 'text-blue-400' },
   { key: 'fipsa_signed',            label: 'FIPSA Signed',                  statuses: [],                              accent: 'border-indigo-400',  textAccent: 'text-indigo-400' },
   { key: 'phase2_scheduled',        label: 'Phase 2 Inspection Scheduled',  statuses: [],                              accent: 'border-violet-400',  textAccent: 'text-violet-400' },

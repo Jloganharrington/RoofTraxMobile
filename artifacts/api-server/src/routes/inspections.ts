@@ -7160,7 +7160,50 @@ router.get('/pipeline', async (req: Request, res: Response) => {
     updatedAt: r.updatedAt.toISOString(),
   }));
 
-  res.json({ inspections });
+  // Include insurance-workflow pins that have no linked inspection yet.
+  // These surface in the Insurance Pipeline's "Pin Dropped" column (status = 'pin_dropped').
+  const unlinkedPinRows = await db
+    .select({
+      id:           pinsTable.id,
+      address:      pinsTable.address,
+      damageType:   pinsTable.damageType,
+      createdAt:    pinsTable.createdAt,
+      updatedAt:    pinsTable.updatedAt,
+      repFirstName: usersTable.firstName,
+      repLastName:  usersTable.lastName,
+    })
+    .from(pinsTable)
+    .leftJoin(usersTable, eq(usersTable.id, pinsTable.userId))
+    .leftJoin(
+      inspectionsTable,
+      and(
+        eq(inspectionsTable.pinId, pinsTable.id),
+        eq(inspectionsTable.companyId, actor.companyId),
+      ),
+    )
+    .where(
+      and(
+        eq(pinsTable.companyId, actor.companyId),
+        eq(pinsTable.workflow, 'insurance'),
+        isNull(inspectionsTable.id),
+      ),
+    )
+    .orderBy(desc(pinsTable.createdAt));
+
+  const pinDroppedItems = unlinkedPinRows.map((p) => ({
+    id:                     p.id,
+    address:                p.address,
+    status:                 'pin_dropped',
+    phase:                  'forensic',
+    damageType:             p.damageType,
+    pinId:                  p.id,
+    compiledReportVersions: [] as Array<{ path: string; compiledAt: string; schemaVersion?: number; lintStatus?: string }>,
+    repName:                p.repFirstName ? [p.repFirstName, p.repLastName].filter(Boolean).join(' ') : null,
+    createdAt:              p.createdAt.toISOString(),
+    updatedAt:              p.updatedAt.toISOString(),
+  }));
+
+  res.json({ inspections: [...inspections, ...pinDroppedItems] });
 });
 
 // ---------------------------------------------------------------------------
@@ -7962,7 +8005,12 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
         eq(inspectionsTable.companyId, companyId),
       ),
     )
-    .where(eq(pinsTable.companyId, companyId))
+    .where(
+      and(
+        eq(pinsTable.companyId, companyId),
+        eq(pinsTable.workflow, 'retail'),
+      ),
+    )
     .orderBy(desc(pinsTable.createdAt));
 
   function deriveRetailStage(r: typeof rows[number]): string {
