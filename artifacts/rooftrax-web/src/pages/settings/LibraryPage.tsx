@@ -31,7 +31,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2 } from "lucide-react";
+import { parseMdLibrary, type ParsedStandard, type ParsedDetriment } from "@/lib/parseMdLibrary";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -706,6 +707,308 @@ function AhjPacksTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Bulk import dialog
+// ---------------------------------------------------------------------------
+
+const FORMAT_EXAMPLE = `# Standards
+
+## ASTM-D3161
+Source Type: ASTM
+Citation Text: Standard Test Method for Wind-Resistance of Steep-Slope Roofing Products
+Authority Limit: Supports wind uplift claims for asphalt shingles rated to this standard
+Locator Template: ASTM D3161
+Verification Status: verified
+
+## IRC-R902.1
+Source Type: IRC
+Citation Text: ...
+
+# Detriments
+
+## DET-WIND-01
+Applicability Conditions: wind_damage, tab_fracture
+Statement: Wind uplift caused complete or partial tab separation along the rake edge.
+Required Support: Pattern documentation showing directional separation consistent with wind
+Limitation: Applies to 3-tab asphalt shingles only`;
+
+type ImportState = 'idle' | 'parsed' | 'importing' | 'done';
+
+function BulkImportDialog() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<ImportState>('idle');
+  const [standards, setStandards] = useState<ParsedStandard[]>([]);
+  const [detriments, setDetriments] = useState<ParsedDetriment[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
+  const [showFormat, setShowFormat] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = typeof evt.target?.result === 'string' ? evt.target.result : '';
+      const parsed = parseMdLibrary(text);
+      setStandards(parsed.standards);
+      setDetriments(parsed.detriments);
+      setWarnings(parsed.warnings);
+      setState('parsed');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleImport = async () => {
+    const total = standards.length + detriments.length;
+    if (total === 0) return;
+    setState('importing');
+    setProgress({ done: 0, total, errors: 0 });
+    let errors = 0;
+
+    for (const std of standards) {
+      try {
+        await customFetch(
+          `/api/report-settings/standards-entries/${encodeURIComponent(std.entryKey)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceType: std.sourceType || undefined,
+              citationText: std.citationText || undefined,
+              authorityLimit: std.authorityLimit || undefined,
+              locatorTemplate: std.locatorTemplate || undefined,
+              markVerified: std.verificationStatus === 'verified',
+            }),
+          }
+        );
+      } catch { errors++; }
+      setProgress((p) => ({ ...p, done: p.done + 1, errors }));
+    }
+
+    for (const det of detriments) {
+      try {
+        await customFetch(
+          `/api/report-settings/detriment-entries/${encodeURIComponent(det.entryKey)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              applicabilityConditions: det.applicabilityConditions,
+              statement: det.statement,
+              requiredSupport: det.requiredSupport || undefined,
+              limitation: det.limitation || undefined,
+            }),
+          }
+        );
+      } catch { errors++; }
+      setProgress((p) => ({ ...p, done: p.done + 1, errors }));
+    }
+
+    setState('done');
+    void qc.invalidateQueries({ queryKey: ['standards-entries'] });
+    void qc.invalidateQueries({ queryKey: ['detriment-entries'] });
+    if (errors === 0) {
+      toast({ title: 'Import complete', description: `${total} entries saved.` });
+    } else {
+      toast({
+        title: 'Import finished with errors',
+        description: `${total - errors} saved, ${errors} failed.`,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const reset = () => {
+    setState('idle');
+    setStandards([]);
+    setDetriments([]);
+    setWarnings([]);
+    setProgress({ done: 0, total: 0, errors: 0 });
+    setShowFormat(false);
+  };
+
+  const handleOpenChange = (v: boolean) => {
+    if (!v) reset();
+    setOpen(v);
+  };
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <FileText className="h-3.5 w-3.5 mr-1.5" />
+        Import from .md
+      </Button>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".md,text/markdown"
+        className="hidden"
+        onChange={handleFile}
+      />
+
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Bulk Import Standards &amp; Detriments</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            {/* Format reference */}
+            <div className="rounded-md border bg-muted/30">
+              <button
+                type="button"
+                onClick={() => setShowFormat((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <span>Expected .md format</span>
+                <span>{showFormat ? '▲' : '▼'}</span>
+              </button>
+              {showFormat && (
+                <pre className="px-3 pb-3 text-[11px] font-mono whitespace-pre-wrap text-muted-foreground border-t">
+                  {FORMAT_EXAMPLE}
+                </pre>
+              )}
+            </div>
+
+            {/* File picker */}
+            {state === 'idle' && (
+              <div
+                className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border p-10 cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="h-8 w-8 text-muted-foreground" />
+                <div className="text-center">
+                  <p className="text-sm font-medium">Click to choose a .md file</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    One file containing both # Standards and # Detriments sections
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Parsed preview */}
+            {(state === 'parsed' || state === 'importing' || state === 'done') && (
+              <div className="space-y-3">
+                {warnings.length > 0 && (
+                  <div className="rounded-md bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 p-3 space-y-1">
+                    {warnings.map((w, i) => (
+                      <p key={i} className="text-xs text-yellow-800 dark:text-yellow-300 flex gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                        {w}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Standards */}
+                  <div className="rounded-md border bg-card p-3 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                      Standards — {standards.length}
+                    </p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {standards.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">None found</p>
+                      ) : (
+                        standards.map((s) => (
+                          <div key={s.entryKey} className="flex items-center gap-1.5">
+                            <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                            <span className="text-xs font-mono truncate">{s.entryKey}</span>
+                            {s.verificationStatus === 'verified' && (
+                              <Badge variant="secondary" className="text-[9px] h-3.5 px-1 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 shrink-0">✓</Badge>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Detriments */}
+                  <div className="rounded-md border bg-card p-3 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                      Detriments — {detriments.length}
+                    </p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {detriments.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">None found</p>
+                      ) : (
+                        detriments.map((d) => (
+                          <div key={d.entryKey} className="flex items-start gap-1.5">
+                            <CheckCircle className="h-3 w-3 text-blue-500 shrink-0 mt-px" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-mono truncate">{d.entryKey}</p>
+                              {d.applicabilityConditions.length > 0 && (
+                                <p className="text-[10px] text-muted-foreground truncate">
+                                  {d.applicabilityConditions.join(', ')}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                {(state === 'importing' || state === 'done') && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{state === 'done' ? 'Complete' : 'Importing…'}</span>
+                      <span>{progress.done} / {progress.total}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-200"
+                        style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                      />
+                    </div>
+                    {progress.errors > 0 && (
+                      <p className="text-xs text-destructive">{progress.errors} entries failed to save.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-shrink-0 pt-2">
+            {state === 'parsed' && (
+              <>
+                <Button variant="outline" onClick={() => { reset(); }}>
+                  Choose different file
+                </Button>
+                <Button
+                  onClick={() => void handleImport()}
+                  disabled={standards.length + detriments.length === 0}
+                >
+                  Import {standards.length + detriments.length} entries
+                </Button>
+              </>
+            )}
+            {state === 'importing' && (
+              <Button disabled>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                Importing…
+              </Button>
+            )}
+            {(state === 'idle' || state === 'done') && (
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                {state === 'done' ? 'Close' : 'Cancel'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -713,12 +1016,15 @@ export default function LibraryPage() {
   return (
     <Shell>
       <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">BP/AHJ Library</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage the per-tenant boilerplate, standards citations, detriment entries, and AHJ
-            jurisdiction packs used by the AI generation pipeline.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">BP/AHJ Library</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage the per-tenant boilerplate, standards citations, detriment entries, and AHJ
+              jurisdiction packs used by the AI generation pipeline.
+            </p>
+          </div>
+          <BulkImportDialog />
         </div>
 
         <Card>
