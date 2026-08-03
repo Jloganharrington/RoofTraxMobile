@@ -34,6 +34,7 @@ const INS_STAGES: InsStage[] = [
   { key: 'claim_review',            label: 'Claim Review',                  statuses: [],                              accent: 'border-rose-400' },
   { key: 'claim_approved',          label: 'Claim Approved',                statuses: [],                              accent: 'border-green-400' },
   { key: 'contract_pending',        label: 'Contract Pending',              statuses: [],                              accent: 'border-teal-400' },
+  { key: 'no_damage_found',         label: 'No Damage Found',               statuses: [],                              accent: 'border-zinc-400' },
 ];
 
 // ---------------------------------------------------------------------------
