@@ -7922,6 +7922,76 @@ router.get('/inspections/:inspectionId/events', async (req: Request, res: Respon
 // All pins (door-knock leads) for the authenticated user's company.
 // Includes the inspectionId when a linked inspection exists.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// GET /retail-pipeline
+// Pins grouped into retail pipeline stages. Stage is derived server-side
+// from doorKnockResult, contactOutcome, and linked inspection status.
+// ---------------------------------------------------------------------------
+
+router.get('/retail-pipeline', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const companyId = req.user.companyId;
+
+  const rows = await db
+    .select({
+      id:             pinsTable.id,
+      address:        pinsTable.address,
+      workflow:       pinsTable.workflow,
+      damageType:     pinsTable.damageType,
+      doorKnockResult: pinsTable.doorKnockResult,
+      contactOutcome: pinsTable.contactOutcome,
+      customerName:   pinsTable.customerName,
+      customerPhone:  pinsTable.customerPhone,
+      retailData:     pinsTable.retailData,
+      createdAt:      pinsTable.createdAt,
+      repFirstName:   usersTable.firstName,
+      repLastName:    usersTable.lastName,
+      inspectionId:   inspectionsTable.id,
+      inspectionStatus: inspectionsTable.status,
+    })
+    .from(pinsTable)
+    .leftJoin(usersTable, eq(usersTable.id, pinsTable.userId))
+    .leftJoin(
+      inspectionsTable,
+      and(
+        eq(inspectionsTable.pinId, pinsTable.id),
+        eq(inspectionsTable.companyId, companyId),
+      ),
+    )
+    .where(eq(pinsTable.companyId, companyId))
+    .orderBy(desc(pinsTable.createdAt));
+
+  function deriveRetailStage(r: typeof rows[number]): string {
+    if (r.doorKnockResult === 'no_answer') return 'archived_lost';
+    if (r.inspectionId) {
+      const s = r.inspectionStatus;
+      if (s === 'submitted' || s === 'package_ready') return 'contract_signed';
+      return 'estimate_provided';
+    }
+    if (r.doorKnockResult === 'appointment' || r.contactOutcome === 'call_to_schedule') return 'appt_scheduled';
+    if (r.doorKnockResult === 'no_appointment') return 'followup_required';
+    return 'pin_dropped';
+  }
+
+  const leads = rows.map(r => ({
+    id:              r.id,
+    address:         r.address,
+    customerName:    r.customerName,
+    customerPhone:   r.customerPhone,
+    damageType:      r.damageType,
+    doorKnockResult: r.doorKnockResult,
+    contactOutcome:  r.contactOutcome,
+    workflow:        r.workflow,
+    repName:         r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
+    inspectionId:    r.inspectionId ?? null,
+    retailStage:     deriveRetailStage(r),
+    createdAt:       r.createdAt.toISOString(),
+  }));
+
+  res.json({ leads });
+});
+
 router.get('/leads', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 

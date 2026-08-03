@@ -320,6 +320,37 @@ export function useGetPipeline(
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Retail Pipeline
+// ---------------------------------------------------------------------------
+
+export interface RetailLead {
+  id: string;
+  address: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  damageType: string | null;
+  doorKnockResult: string | null;
+  contactOutcome: string | null;
+  workflow: string | null;
+  repName: string | null;
+  inspectionId: string | null;
+  retailStage: string;
+  createdAt: string;
+}
+
+export const getRetailPipelineQueryKey = () => ['retail-pipeline'] as const;
+
+export function useGetRetailPipeline(
+  options?: Omit<UseQueryOptions<{ leads: RetailLead[] }>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getRetailPipelineQueryKey(),
+    queryFn: () => customFetch<{ leads: RetailLead[] }>('/api/retail-pipeline'),
+    ...options,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
 
