@@ -229,6 +229,38 @@ export default function RetailPipeline() {
           </div>
         </div>
 
+        {/* Stage menu — horizontal scrollable pills showing count per stage */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
+          {RETAIL_STAGES.map(stage => {
+            const count = grouped.get(stage.key)?.length ?? 0;
+            const active = openStages.has(stage.key);
+            return (
+              <button
+                key={stage.key}
+                type="button"
+                onClick={() => toggle(stage.key)}
+                className={cn(
+                  'flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all',
+                  count > 0
+                    ? cn(stage.accent, stage.textAccent, 'bg-card', active ? 'opacity-100' : 'opacity-50')
+                    : 'border-border/40 text-muted-foreground/40 cursor-default',
+                )}
+                disabled={count === 0}
+              >
+                {stage.label}
+                {count > 0 && (
+                  <span className={cn(
+                    'min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold',
+                    active ? 'bg-foreground/15' : 'bg-foreground/10',
+                  )}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="space-y-2">
           {RETAIL_STAGES.map(stage => (
             <AccordionSection

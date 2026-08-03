@@ -156,6 +156,9 @@ export const pinsTable = pgTable('pins', {
   owner2LastName: text('owner2_last_name'),
   notes: text('notes'),
   pipelineStage: varchar('pipeline_stage'),
+  profileStatus: varchar('profile_status'),
+  statusNotes: text('status_notes'),
+  statusLastUpdated: timestamp('status_last_updated', { withTimezone: true }),
 
   // ── Insurance ──────────────────────────────────────────────────────────
   insuranceCarrier: varchar('insurance_carrier'),

@@ -244,6 +244,9 @@ const LeadProfileBody = z.object({
   customerPhone:        z.string().nullable().optional(),
   notes:                z.string().nullable().optional(),
   pipelineStage:        z.string().nullable().optional(),
+  profileStatus:        z.string().nullable().optional(),
+  statusNotes:          z.string().nullable().optional(),
+  statusLastUpdated:    z.string().nullable().optional(),
   insuranceCarrier:     z.string().nullable().optional(),
   policyNumber:         z.string().nullable().optional(),
   claimNumber:          z.string().nullable().optional(),
@@ -377,6 +380,9 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
       ...(d.materialBrand        !== undefined && { materialBrand:        d.materialBrand }),
       ...(d.materialColor        !== undefined && { materialColor:        d.materialColor }),
       ...(d.materialStyle        !== undefined && { materialStyle:        d.materialStyle }),
+      ...(d.profileStatus        !== undefined && { profileStatus:        d.profileStatus }),
+      ...(d.statusNotes          !== undefined && { statusNotes:          d.statusNotes }),
+      ...(d.statusLastUpdated    !== undefined && { statusLastUpdated:    d.statusLastUpdated ? new Date(d.statusLastUpdated) : null }),
     })
     .where(eq(pinsTable.id, pinId))
     .returning();

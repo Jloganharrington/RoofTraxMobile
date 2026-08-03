@@ -1,9 +1,14 @@
 /**
  * Lead Profile — full detail view for a single door-knock lead/pin.
- * Six-tab navigation: Lead Dashboard · Financials · Insurance ·
- *   Communication · Selections & Scope · Files
+ *
+ * Tabs are conditional on pipeline type:
+ *   Insurance leads → Dashboard · Financials · Insurance · Communication · Selections & Scope · Files
+ *   Retail leads    → Dashboard · Financials · Communication · Selections & Scope · Files
+ *
+ * The sticky header exposes a pipeline-stage dropdown (with auto-save) and,
+ * for insurance leads, a profile sub-status dropdown.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { Shell } from '@/components/layout/Shell';
 import { Button } from '@/components/ui/button';
@@ -12,6 +17,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import {
   ArrowLeft,
@@ -24,29 +36,38 @@ import {
   FolderOpen,
   Save,
   Loader2,
+  ChevronRight,
 } from 'lucide-react';
 import { useGetLead, useUpdateLead, type FullLead } from '@/lib/claimHubApi';
+import {
+  INSURANCE_STAGES,
+  RETAIL_STAGES,
+  STAGE_PROFILE_STATUSES,
+  STAGE_DEFAULT_PROFILE_STATUS,
+  getStageLabel,
+} from '@/lib/pipelineStages';
 
 // ---------------------------------------------------------------------------
 // Tab config
 // ---------------------------------------------------------------------------
 
-type TabId =
-  | 'dashboard'
-  | 'financials'
-  | 'insurance'
-  | 'communication'
-  | 'scope'
-  | 'files';
+type TabId = 'dashboard' | 'financials' | 'insurance' | 'communication' | 'scope' | 'files';
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'dashboard',     label: 'Lead Dashboard',      icon: <User className="h-4 w-4" /> },
-  { id: 'financials',    label: 'Financials',           icon: <DollarSign className="h-4 w-4" /> },
-  { id: 'insurance',     label: 'Insurance',            icon: <Shield className="h-4 w-4" /> },
-  { id: 'communication', label: 'Communication',        icon: <MessageSquare className="h-4 w-4" /> },
-  { id: 'scope',         label: 'Selections & Scope',   icon: <Clipboard className="h-4 w-4" /> },
-  { id: 'files',         label: 'Files',                icon: <FolderOpen className="h-4 w-4" /> },
-];
+function buildTabs(isInsurance: boolean) {
+  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: 'dashboard',     label: 'Lead Dashboard',    icon: <User className="h-4 w-4" /> },
+    { id: 'financials',    label: 'Financials',         icon: <DollarSign className="h-4 w-4" /> },
+  ];
+  if (isInsurance) {
+    tabs.push({ id: 'insurance', label: 'Insurance', icon: <Shield className="h-4 w-4" /> });
+  }
+  tabs.push(
+    { id: 'communication', label: 'Communication',      icon: <MessageSquare className="h-4 w-4" /> },
+    { id: 'scope',         label: 'Selections & Scope', icon: <Clipboard className="h-4 w-4" /> },
+    { id: 'files',         label: 'Files',              icon: <FolderOpen className="h-4 w-4" /> },
+  );
+  return tabs;
+}
 
 // ---------------------------------------------------------------------------
 // Field helpers
@@ -64,125 +85,62 @@ function FieldGroup({ title, children }: { title: string; children: React.ReactN
 }
 
 function Field({
-  label,
-  name,
-  value,
-  onChange,
-  type = 'text',
-  placeholder,
-  span2 = false,
+  label, name, value, onChange, type = 'text', placeholder, span2 = false,
 }: {
-  label: string;
-  name: string;
-  value: string;
+  label: string; name: string; value: string;
   onChange: (name: string, val: string) => void;
-  type?: string;
-  placeholder?: string;
-  span2?: boolean;
+  type?: string; placeholder?: string; span2?: boolean;
 }) {
   return (
     <div className={span2 ? 'sm:col-span-2' : ''}>
       <Label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</Label>
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(name, e.target.value)}
-        placeholder={placeholder ?? label}
-        className="h-9"
-      />
+      <Input type={type} value={value} onChange={e => onChange(name, e.target.value)}
+        placeholder={placeholder ?? label} className="h-9" />
     </div>
   );
 }
 
 function TextareaField({
-  label,
-  name,
-  value,
-  onChange,
-  placeholder,
-  rows = 4,
+  label, name, value, onChange, placeholder, rows = 4,
 }: {
-  label: string;
-  name: string;
-  value: string;
+  label: string; name: string; value: string;
   onChange: (name: string, val: string) => void;
-  placeholder?: string;
-  rows?: number;
+  placeholder?: string; rows?: number;
 }) {
   return (
     <div className="sm:col-span-2">
       <Label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</Label>
-      <Textarea
-        value={value}
-        onChange={(e) => onChange(name, e.target.value)}
-        placeholder={placeholder ?? label}
-        rows={rows}
-        className="resize-none"
-      />
+      <Textarea value={value} onChange={e => onChange(name, e.target.value)}
+        placeholder={placeholder ?? label} rows={rows} className="resize-none" />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Form state shape (all nullable fields as strings for controlled inputs)
+// Form state
 // ---------------------------------------------------------------------------
 
 type FormState = {
-  // Dashboard
-  ownerFirstName: string;
-  ownerLastName: string;
-  ownerEmail: string;
-  owner2FirstName: string;
-  owner2LastName: string;
-  customerName: string;
-  customerPhone: string;
-  pipelineStage: string;
-  notes: string;
-  // Insurance
-  insuranceCarrier: string;
-  policyNumber: string;
-  claimNumber: string;
-  dateOfLoss: string;
-  inspectionDate: string;
-  adjusterName: string;
-  adjusterPhone: string;
-  adjusterEmail: string;
-  adjusterMeetingDate: string;
-  // Financials
-  contractAmount: string;
-  depositAmount: string;
-  depositDate: string;
-  depositPaymentMethod: string;
-  deductibleAmount: string;
-  rcvAmount: string;
-  acvAmount: string;
-  supplementAmount: string;
-  finalPaymentAmount: string;
-  // Scope
-  contractScope: string;
-  squareFootage: string;
-  roofPitch: string;
-  measurementVendor: string;
-  measurementReportUrl: string;
-  materialBrand: string;
-  materialColor: string;
-  materialStyle: string;
-  // Communication (notes re-used)
+  ownerFirstName: string; ownerLastName: string; ownerEmail: string;
+  owner2FirstName: string; owner2LastName: string;
+  customerName: string; customerPhone: string;
+  pipelineStage: string; profileStatus: string; statusNotes: string; notes: string;
+  insuranceCarrier: string; policyNumber: string; claimNumber: string;
+  dateOfLoss: string; inspectionDate: string;
+  adjusterName: string; adjusterPhone: string; adjusterEmail: string; adjusterMeetingDate: string;
+  contractAmount: string; depositAmount: string; depositDate: string; depositPaymentMethod: string;
+  deductibleAmount: string; rcvAmount: string; acvAmount: string;
+  supplementAmount: string; finalPaymentAmount: string;
+  contractScope: string; squareFootage: string; roofPitch: string;
+  measurementVendor: string; measurementReportUrl: string;
+  materialBrand: string; materialColor: string; materialStyle: string;
   communicationNotes: string;
 };
 
-function toStr(v: string | null | undefined): string {
-  return v ?? '';
-}
-
-// Convert an ISO timestamp to a date input value (yyyy-MM-dd)
-function toDateInput(v: string | null | undefined): string {
+function toStr(v: string | null | undefined) { return v ?? ''; }
+function toDateInput(v: string | null | undefined) {
   if (!v) return '';
-  try {
-    return new Date(v).toISOString().slice(0, 10);
-  } catch {
-    return '';
-  }
+  try { return new Date(v).toISOString().slice(0, 10); } catch { return ''; }
 }
 
 function initForm(lead: FullLead): FormState {
@@ -195,6 +153,8 @@ function initForm(lead: FullLead): FormState {
     customerName: toStr(lead.customerName),
     customerPhone: toStr(lead.customerPhone),
     pipelineStage: toStr(lead.pipelineStage),
+    profileStatus: toStr(lead.profileStatus),
+    statusNotes: toStr(lead.statusNotes),
     notes: toStr(lead.notes),
     insuranceCarrier: toStr(lead.insuranceCarrier),
     policyNumber: toStr(lead.policyNumber),
@@ -226,30 +186,13 @@ function initForm(lead: FullLead): FormState {
   };
 }
 
-// Tab field keys — used to build the partial patch payload per tab
 const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
-  dashboard: [
-    'ownerFirstName', 'ownerLastName', 'ownerEmail',
-    'owner2FirstName', 'owner2LastName',
-    'customerName', 'customerPhone',
-    'pipelineStage', 'notes',
-  ],
-  financials: [
-    'contractAmount', 'depositAmount', 'depositDate', 'depositPaymentMethod',
-    'deductibleAmount', 'rcvAmount', 'acvAmount', 'supplementAmount', 'finalPaymentAmount',
-  ],
-  insurance: [
-    'insuranceCarrier', 'policyNumber', 'claimNumber',
-    'dateOfLoss', 'inspectionDate',
-    'adjusterName', 'adjusterPhone', 'adjusterEmail', 'adjusterMeetingDate',
-  ],
+  dashboard:     ['ownerFirstName','ownerLastName','ownerEmail','owner2FirstName','owner2LastName','customerName','customerPhone','statusNotes','notes'],
+  financials:    ['contractAmount','depositAmount','depositDate','depositPaymentMethod','deductibleAmount','rcvAmount','acvAmount','supplementAmount','finalPaymentAmount'],
+  insurance:     ['insuranceCarrier','policyNumber','claimNumber','dateOfLoss','inspectionDate','adjusterName','adjusterPhone','adjusterEmail','adjusterMeetingDate'],
   communication: ['communicationNotes'],
-  scope: [
-    'contractScope', 'squareFootage', 'roofPitch',
-    'measurementVendor', 'measurementReportUrl',
-    'materialBrand', 'materialColor', 'materialStyle',
-  ],
-  files: [],
+  scope:         ['contractScope','squareFootage','roofPitch','measurementVendor','measurementReportUrl','materialBrand','materialColor','materialStyle'],
+  files:         [],
 };
 
 // ---------------------------------------------------------------------------
@@ -257,46 +200,53 @@ const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
 // ---------------------------------------------------------------------------
 
 function DashboardTab({
-  form,
-  onField,
-}: {
-  form: FormState;
-  onField: (name: string, val: string) => void;
-}) {
+  form, onField, isInsurance,
+}: { form: FormState; onField: (n: string, v: string) => void; isInsurance: boolean }) {
   return (
     <div className="space-y-8">
       <FieldGroup title="Primary Owner">
-        <Field label="First Name" name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
-        <Field label="Last Name"  name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
-        <Field label="Email"      name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
-        <Field label="Phone"      name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
+        <Field label="First Name"    name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
+        <Field label="Last Name"     name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
+        <Field label="Email"         name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
+        <Field label="Phone"         name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
+        <Field label="Display Name"  name="customerName"   value={form.customerName}   onChange={onField} span2 />
       </FieldGroup>
+
       <FieldGroup title="Secondary Owner">
         <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
         <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
       </FieldGroup>
-      <FieldGroup title="Pipeline">
-        <Field label="Pipeline Stage" name="pipelineStage" value={form.pipelineStage} onChange={onField} placeholder="e.g. inspection_scheduled" />
-        <Field label="Customer Name (display)" name="customerName" value={form.customerName} onChange={onField} />
-      </FieldGroup>
-      <FieldGroup title="Notes">
-        <TextareaField label="Internal Notes" name="notes" value={form.notes} onChange={onField} rows={5} placeholder="Add notes about this lead…" />
+
+      {/* Insurance-only quick summary in the dashboard */}
+      {isInsurance && (
+        <FieldGroup title="Insurance Quick Info">
+          <Field label="Insurance Carrier"  name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
+          <Field label="Claim Number"       name="claimNumber"      value={form.claimNumber}      onChange={onField} />
+          <Field label="Inspection Date"    name="inspectionDate"   value={form.inspectionDate}   onChange={onField} type="date" />
+          <Field label="Date of Loss"       name="dateOfLoss"       value={form.dateOfLoss}       onChange={onField} type="date" />
+        </FieldGroup>
+      )}
+
+      {isInsurance && (
+        <FieldGroup title="Status Notes">
+          <TextareaField label="Status Notes" name="statusNotes" value={form.statusNotes} onChange={onField}
+            rows={3} placeholder="Notes about the current stage (supplement needed, adjuster follow-up, etc.)…" />
+        </FieldGroup>
+      )}
+
+      <FieldGroup title="Internal Notes">
+        <TextareaField label="Internal Notes" name="notes" value={form.notes} onChange={onField}
+          rows={5} placeholder="Add notes about this lead…" />
       </FieldGroup>
     </div>
   );
 }
 
-function FinancialsTab({
-  form,
-  onField,
-}: {
-  form: FormState;
-  onField: (name: string, val: string) => void;
-}) {
+function FinancialsTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
   return (
     <div className="space-y-8">
       <FieldGroup title="Contract">
-        <Field label="Contract Amount ($)" name="contractAmount" value={form.contractAmount} onChange={onField} placeholder="0.00" />
+        <Field label="Contract Amount ($)" name="contractAmount"   value={form.contractAmount}   onChange={onField} placeholder="0.00" />
         <Field label="Deductible ($)"      name="deductibleAmount" value={form.deductibleAmount} onChange={onField} placeholder="0.00" />
       </FieldGroup>
       <FieldGroup title="Deposit">
@@ -314,13 +264,7 @@ function FinancialsTab({
   );
 }
 
-function InsuranceTab({
-  form,
-  onField,
-}: {
-  form: FormState;
-  onField: (name: string, val: string) => void;
-}) {
+function InsuranceTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
   return (
     <div className="space-y-8">
       <FieldGroup title="Policy">
@@ -342,58 +286,34 @@ function InsuranceTab({
   );
 }
 
-function CommunicationTab({
-  form,
-  onField,
-}: {
-  form: FormState;
-  onField: (name: string, val: string) => void;
-}) {
+function CommunicationTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
   return (
     <div className="space-y-8">
       <FieldGroup title="Notes & Activity">
-        <TextareaField
-          label="Communication Notes"
-          name="communicationNotes"
-          value={form.communicationNotes}
-          onChange={onField}
-          rows={10}
-          placeholder="Log calls, emails, and other interactions here…"
-        />
+        <TextareaField label="Communication Notes" name="communicationNotes" value={form.communicationNotes}
+          onChange={onField} rows={10} placeholder="Log calls, emails, and other interactions here…" />
       </FieldGroup>
     </div>
   );
 }
 
-function ScopeTab({
-  form,
-  onField,
-}: {
-  form: FormState;
-  onField: (name: string, val: string) => void;
-}) {
+function ScopeTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
   return (
     <div className="space-y-8">
       <FieldGroup title="Scope of Work">
-        <TextareaField
-          label="Contract Scope"
-          name="contractScope"
-          value={form.contractScope}
-          onChange={onField}
-          rows={5}
-          placeholder="Describe the scope of work…"
-        />
+        <TextareaField label="Contract Scope" name="contractScope" value={form.contractScope}
+          onChange={onField} rows={5} placeholder="Describe the scope of work…" />
       </FieldGroup>
       <FieldGroup title="Measurements">
-        <Field label="Square Footage"      name="squareFootage"       value={form.squareFootage}       onChange={onField} placeholder="e.g. 28 squares" />
-        <Field label="Roof Pitch"          name="roofPitch"           value={form.roofPitch}           onChange={onField} placeholder="e.g. 4/12" />
-        <Field label="Measurement Vendor"  name="measurementVendor"   value={form.measurementVendor}   onChange={onField} placeholder="EagleView, GAF QuickMeasure…" />
+        <Field label="Square Footage"        name="squareFootage"       value={form.squareFootage}       onChange={onField} placeholder="e.g. 28 squares" />
+        <Field label="Roof Pitch"            name="roofPitch"           value={form.roofPitch}           onChange={onField} placeholder="e.g. 4/12" />
+        <Field label="Measurement Vendor"    name="measurementVendor"   value={form.measurementVendor}   onChange={onField} placeholder="EagleView, GAF QuickMeasure…" />
         <Field label="Measurement Report URL" name="measurementReportUrl" value={form.measurementReportUrl} onChange={onField} placeholder="https://…" span2 />
       </FieldGroup>
       <FieldGroup title="Material Selections">
-        <Field label="Brand"  name="materialBrand" value={form.materialBrand} onChange={onField} placeholder="GAF, Owens Corning…" />
-        <Field label="Color"  name="materialColor" value={form.materialColor} onChange={onField} placeholder="Charcoal, Barkwood…" />
-        <Field label="Style"  name="materialStyle" value={form.materialStyle} onChange={onField} placeholder="Timberline HDZ, Duration…" />
+        <Field label="Brand" name="materialBrand" value={form.materialBrand} onChange={onField} placeholder="GAF, Owens Corning…" />
+        <Field label="Color" name="materialColor" value={form.materialColor} onChange={onField} placeholder="Charcoal, Barkwood…" />
+        <Field label="Style" name="materialStyle" value={form.materialStyle} onChange={onField} placeholder="Timberline HDZ, Duration…" />
       </FieldGroup>
     </div>
   );
@@ -425,32 +345,71 @@ export default function LeadProfile() {
 
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [form, setForm] = useState<FormState | null>(null);
+  const [stageSaving, setStageSaving] = useState(false);
 
-  // Initialize form when data arrives (only once)
   useEffect(() => {
-    if (data?.lead && !form) {
-      setForm(initForm(data.lead));
-    }
+    if (data?.lead && !form) setForm(initForm(data.lead));
   }, [data, form]);
 
+  const lead = data?.lead;
+  const isInsurance = !lead?.workflow || lead.workflow === 'insurance';
+  const isRetail = lead?.workflow === 'retail';
+
+  // Rebuild tabs whenever pipeline type resolves
+  const tabs = useMemo(() => buildTabs(isInsurance), [isInsurance]);
+
+  // Available stages based on pipeline type
+  const stageOptions = isRetail ? RETAIL_STAGES : INSURANCE_STAGES;
+
+  // Profile sub-status options for current stage (insurance only)
+  const profileStatusOptions = useMemo(() => {
+    if (!isInsurance || !form?.pipelineStage) return [];
+    return STAGE_PROFILE_STATUSES[form.pipelineStage] ?? [];
+  }, [isInsurance, form?.pipelineStage]);
+
   function handleField(name: string, val: string) {
-    setForm((prev) => (prev ? { ...prev, [name]: val } : prev));
+    setForm(prev => prev ? { ...prev, [name]: val } : prev);
+  }
+
+  // Auto-save stage change immediately; auto-populate default profile status
+  async function handleStageChange(newStage: string) {
+    const defaultStatus = isInsurance ? (STAGE_DEFAULT_PROFILE_STATUS[newStage] ?? '') : '';
+    setForm(prev => prev ? { ...prev, pipelineStage: newStage, profileStatus: defaultStatus } : prev);
+    setStageSaving(true);
+    try {
+      await updateLead({
+        pipelineStage: newStage,
+        profileStatus: defaultStatus || null,
+        statusLastUpdated: new Date().toISOString(),
+      });
+      toast({ title: 'Stage updated', description: getStageLabel(newStage) });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to update stage.', variant: 'destructive' });
+    } finally {
+      setStageSaving(false);
+    }
+  }
+
+  // Auto-save profile status change immediately
+  async function handleProfileStatusChange(newStatus: string) {
+    setForm(prev => prev ? { ...prev, profileStatus: newStatus } : prev);
+    try {
+      await updateLead({ profileStatus: newStatus, statusLastUpdated: new Date().toISOString() });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to update status.', variant: 'destructive' });
+    }
   }
 
   async function handleSave() {
     if (!form) return;
     const keys = TAB_FIELDS[activeTab];
     if (keys.length === 0) return;
-
-    // Build partial payload for this tab's fields only
     const payload: Record<string, string | null> = {};
     for (const k of keys) {
       const raw = form[k];
-      // Map communicationNotes → notes on the server
       const serverKey = k === 'communicationNotes' ? 'notes' : k;
       payload[serverKey] = raw === '' ? null : raw;
     }
-
     try {
       await updateLead(payload);
       toast({ title: 'Saved', description: 'Lead profile updated.' });
@@ -459,12 +418,9 @@ export default function LeadProfile() {
     }
   }
 
-  // Helpers
-  const lead = data?.lead;
   const displayName = lead
     ? [lead.ownerFirstName, lead.ownerLastName].filter(Boolean).join(' ') ||
-      lead.customerName ||
-      'Unnamed Lead'
+      lead.customerName || 'Unnamed Lead'
     : '';
 
   const WORKFLOW_COLORS: Record<string, string> = {
@@ -488,14 +444,13 @@ export default function LeadProfile() {
   return (
     <Shell>
       <div className="space-y-0 -mx-4 sm:-mx-6">
-        {/* ── Sticky header ──────────────────────────────────────────────── */}
+        {/* ── Sticky header ─────────────────────────────────────────────── */}
         <div className="sticky top-0 z-20 bg-background border-b px-4 sm:px-6">
-          {/* Top bar */}
+
+          {/* Row 1 — back · name · badges */}
           <div className="flex items-center gap-3 py-3">
-            <button
-              onClick={() => navigate('/leads')}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
+            <button onClick={() => navigate('/leads')}
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
               <ArrowLeft className="h-5 w-5" />
             </button>
 
@@ -509,33 +464,75 @@ export default function LeadProfile() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-lg font-bold truncate">{displayName}</h1>
                   {lead?.workflow && (
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                        WORKFLOW_COLORS[lead.workflow] ?? ''
-                      }`}
-                    >
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${WORKFLOW_COLORS[lead.workflow] ?? ''}`}>
                       {lead.workflow.charAt(0).toUpperCase() + lead.workflow.slice(1)}
                     </span>
-                  )}
-                  {lead?.pipelineStage && (
-                    <Badge variant="outline" className="text-[10px]">
-                      {lead.pipelineStage.replace(/_/g, ' ')}
-                    </Badge>
                   )}
                 </div>
                 {lead?.address && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                    <MapPin className="h-3 w-3" />
-                    {lead.address}
+                    <MapPin className="h-3 w-3" />{lead.address}
                   </p>
                 )}
               </div>
             )}
           </div>
 
-          {/* Tab navigation */}
+          {/* Row 2 — stage dropdown · profile status (insurance) · last-updated */}
+          {!isLoading && lead && form && (
+            <div className="flex items-center gap-2 pb-2 flex-wrap">
+              {/* Stage select */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">Stage</span>
+                <Select value={form.pipelineStage || ''} onValueChange={handleStageChange} disabled={stageSaving}>
+                  <SelectTrigger className="h-7 text-xs min-w-[180px] max-w-[220px]">
+                    <SelectValue placeholder="Set stage…">
+                      {form.pipelineStage ? getStageLabel(form.pipelineStage) : 'Set stage…'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stageOptions.map(s => (
+                      <SelectItem key={s.key} value={s.key} className="text-xs">{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {stageSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              </div>
+
+              {/* Profile status — insurance only, only when stage has sub-statuses */}
+              {isInsurance && profileStatusOptions.length > 0 && (
+                <>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">Status</span>
+                    <Select value={form.profileStatus || ''} onValueChange={handleProfileStatusChange}>
+                      <SelectTrigger className="h-7 text-xs min-w-[200px] max-w-[260px]">
+                        <SelectValue placeholder="Select status…">
+                          {form.profileStatus || 'Select status…'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profileStatusOptions.map(s => (
+                          <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {/* Profile status badge when no sub-statuses but one is set */}
+              {isInsurance && profileStatusOptions.length === 0 && form.profileStatus && (
+                <Badge variant="outline" className="text-[10px] h-7">
+                  {form.profileStatus}
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Row 3 — tab navigation */}
           <div className="flex gap-0 overflow-x-auto scrollbar-none">
-            {TABS.map((tab) => (
+            {tabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -545,8 +542,7 @@ export default function LeadProfile() {
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 }`}
               >
-                {tab.icon}
-                {tab.label}
+                {tab.icon}{tab.label}
               </button>
             ))}
           </div>
@@ -562,22 +558,20 @@ export default function LeadProfile() {
             </div>
           ) : (
             <>
-              {activeTab === 'dashboard'     && <DashboardTab     form={form} onField={handleField} />}
+              {activeTab === 'dashboard'     && <DashboardTab     form={form} onField={handleField} isInsurance={isInsurance} />}
               {activeTab === 'financials'    && <FinancialsTab    form={form} onField={handleField} />}
-              {activeTab === 'insurance'     && <InsuranceTab     form={form} onField={handleField} />}
+              {activeTab === 'insurance'     && isInsurance && <InsuranceTab form={form} onField={handleField} />}
               {activeTab === 'communication' && <CommunicationTab form={form} onField={handleField} />}
               {activeTab === 'scope'         && <ScopeTab         form={form} onField={handleField} />}
               {activeTab === 'files'         && <FilesTab />}
 
-              {/* Save button (hidden on Files tab) */}
               {activeTab !== 'files' && (
                 <div className="mt-8 flex justify-end border-t pt-6">
                   <Button onClick={handleSave} disabled={saving} className="min-w-28">
-                    {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</>
-                    ) : (
-                      <><Save className="h-4 w-4 mr-2" />Save Changes</>
-                    )}
+                    {saving
+                      ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</>
+                      : <><Save className="h-4 w-4 mr-2" />Save Changes</>
+                    }
                   </Button>
                 </div>
               )}

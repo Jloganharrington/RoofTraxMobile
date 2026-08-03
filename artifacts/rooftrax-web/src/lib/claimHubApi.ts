@@ -329,6 +329,9 @@ export interface FullLead {
   customerPhone: string | null;
   status: string;
   pipelineStage: string | null;
+  profileStatus: string | null;
+  statusNotes: string | null;
+  statusLastUpdated: string | null;
   // Owner info
   ownerFirstName: string | null;
   ownerLastName: string | null;
