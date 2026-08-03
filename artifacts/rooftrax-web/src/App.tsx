@@ -11,6 +11,7 @@ import Estimate from '@/pages/inspections/Estimate';
 import PhotoCuration from '@/pages/inspections/PhotoCuration';
 import Pipeline from '@/pages/pipeline/Pipeline';
 import InsurancePipeline from '@/pages/pipeline/InsurancePipeline';
+import ProjectPipeline from '@/pages/pipeline/ProjectPipeline';
 import Leads from '@/pages/leads/Leads';
 import TeamList from '@/pages/team/TeamList';
 import PriceBookList from '@/pages/price-book/PriceBookList';
@@ -49,6 +50,9 @@ function Router() {
       </Route>
       <Route path="/insurance-pipeline">
         <ProtectedRoute><InsurancePipeline /></ProtectedRoute>
+      </Route>
+      <Route path="/project-pipeline">
+        <ProtectedRoute><ProjectPipeline /></ProtectedRoute>
       </Route>
       <Route path="/leads">
         <ProtectedRoute><Leads /></ProtectedRoute>
