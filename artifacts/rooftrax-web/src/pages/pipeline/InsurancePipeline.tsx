@@ -5,7 +5,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Shell } from "@/components/layout/Shell";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInDays } from "date-fns";
 import { ChevronDown, ChevronRight, MapPin, Clock, Package } from "lucide-react";
@@ -19,22 +18,23 @@ import { useGetPipeline, type PipelineInspection } from "@/lib/claimHubApi";
 interface InsStage {
   key: string;
   label: string;
-  statuses: string[];   // DB status values that fall into this stage
-  accent: string;       // Tailwind border-color class
+  statuses: string[];
+  accent: string;      // border color class
+  textAccent: string;  // matching text color class
 }
 
 const INS_STAGES: InsStage[] = [
-  { key: 'pin_dropped',             label: 'Pin Dropped',                   statuses: [],                              accent: 'border-slate-400' },
-  { key: 'phase1_scheduled',        label: 'Phase 1 Inspection Scheduled',  statuses: ['scheduled'],                   accent: 'border-blue-400' },
-  { key: 'fipsa_signed',            label: 'FIPSA Signed',                  statuses: [],                              accent: 'border-indigo-400' },
-  { key: 'phase2_scheduled',        label: 'Phase 2 Inspection Scheduled',  statuses: [],                              accent: 'border-violet-400' },
-  { key: 'phase2_complete',         label: 'Phase 2 Inspection Complete',   statuses: ['capturing'],                   accent: 'border-amber-400' },
-  { key: 'proof_package_generated', label: 'Proof Package Generated',       statuses: ['validating', 'package_ready'], accent: 'border-orange-400' },
-  { key: 'claim_filed',             label: 'Claim Filed w/ Proof Package',  statuses: ['submitted'],                   accent: 'border-emerald-400' },
-  { key: 'claim_review',            label: 'Claim Review',                  statuses: [],                              accent: 'border-rose-400' },
-  { key: 'claim_approved',          label: 'Claim Approved',                statuses: [],                              accent: 'border-green-400' },
-  { key: 'contract_pending',        label: 'Contract Pending',              statuses: [],                              accent: 'border-teal-400' },
-  { key: 'no_damage_found',         label: 'No Damage Found',               statuses: [],                              accent: 'border-zinc-400' },
+  { key: 'pin_dropped',             label: 'Pin Dropped',                   statuses: [],                              accent: 'border-slate-400',   textAccent: 'text-slate-400' },
+  { key: 'phase1_scheduled',        label: 'Phase 1 Inspection Scheduled',  statuses: ['scheduled'],                   accent: 'border-blue-400',    textAccent: 'text-blue-400' },
+  { key: 'fipsa_signed',            label: 'FIPSA Signed',                  statuses: [],                              accent: 'border-indigo-400',  textAccent: 'text-indigo-400' },
+  { key: 'phase2_scheduled',        label: 'Phase 2 Inspection Scheduled',  statuses: [],                              accent: 'border-violet-400',  textAccent: 'text-violet-400' },
+  { key: 'phase2_complete',         label: 'Phase 2 Inspection Complete',   statuses: ['capturing'],                   accent: 'border-amber-400',   textAccent: 'text-amber-400' },
+  { key: 'proof_package_generated', label: 'Proof Package Generated',       statuses: ['validating', 'package_ready'], accent: 'border-orange-400',  textAccent: 'text-orange-400' },
+  { key: 'claim_filed',             label: 'Claim Filed w/ Proof Package',  statuses: ['submitted'],                   accent: 'border-emerald-400', textAccent: 'text-emerald-400' },
+  { key: 'claim_review',            label: 'Claim Review',                  statuses: [],                              accent: 'border-rose-400',    textAccent: 'text-rose-400' },
+  { key: 'claim_approved',          label: 'Claim Approved',                statuses: [],                              accent: 'border-green-400',   textAccent: 'text-green-400' },
+  { key: 'contract_pending',        label: 'Contract Pending',              statuses: [],                              accent: 'border-teal-400',    textAccent: 'text-teal-400' },
+  { key: 'no_damage_found',         label: 'No Damage Found',               statuses: [],                              accent: 'border-zinc-400',    textAccent: 'text-zinc-400' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
 
   return (
     <Link href={`/inspections/${inspection.id}`}>
-      <div className="group rounded-lg border bg-card hover:bg-card/80 p-3 cursor-pointer transition-all hover:shadow-sm space-y-2 h-full">
+      <div className="group rounded-xl border bg-card hover:bg-card/80 p-3 cursor-pointer transition-all hover:shadow-md space-y-2 h-full">
         {/* Address */}
         <div className="flex items-start gap-2">
           <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
@@ -112,54 +112,38 @@ interface AccordionSectionProps {
   onToggle: () => void;
 }
 
-function AccordionSection({ stage, stageNumber, cards, isLoading, open, onToggle }: AccordionSectionProps) {
+function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onToggle }: AccordionSectionProps) {
   return (
-    <div className={cn("rounded-lg border bg-card overflow-hidden border-l-[3px]", stage.accent)}>
-      {/* Header — always visible */}
+    <div className={cn("rounded-2xl border bg-card overflow-hidden border-l-4", stage.accent)}>
+      {/* Header */}
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+        className="w-full flex items-center gap-2.5 px-4 py-3.5 hover:bg-muted/20 transition-colors text-left"
       >
-        {/* Stage number */}
-        <span className="text-[10px] font-bold text-muted-foreground/50 w-4 shrink-0 tabular-nums">
-          {stageNumber}
-        </span>
-
-        {/* Chevron */}
-        {open
-          ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        }
-
-        {/* Label */}
-        <span className="flex-1 text-sm font-semibold">{stage.label}</span>
-
-        {/* Count badge */}
-        <Badge
-          variant="secondary"
-          className={cn(
-            "text-[10px] h-5 px-2 shrink-0",
-            cards.length > 0 ? "bg-primary/10 text-primary" : "text-muted-foreground"
-          )}
-        >
+        <span className={cn("text-sm font-semibold flex-1", stage.textAccent)}>{stage.label}</span>
+        <span className={cn("text-sm font-bold tabular-nums mr-1", stage.textAccent)}>
           {isLoading ? '—' : cards.length}
-        </Badge>
+        </span>
+        {open
+          ? <ChevronDown className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+          : <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+        }
       </button>
 
       {/* Expandable body */}
       {open && (
-        <div className="px-4 pb-4 pt-1 border-t border-border/50">
+        <div className="px-4 pb-4 pt-2 border-t border-border/30 bg-muted/10">
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-3">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full opacity-70" />
-              <Skeleton className="h-24 w-full opacity-40" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl opacity-70" />
+              <Skeleton className="h-24 w-full rounded-xl opacity-40" />
             </div>
           ) : cards.length === 0 ? (
-            <p className="text-xs text-muted-foreground/50 italic py-4 text-center">No claims in this stage</p>
+            <p className="text-xs text-muted-foreground/40 italic py-5 text-center">No claims in this stage</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
               {cards.map((insp) => (
                 <ClaimCard key={insp.id} inspection={insp} />
               ))}

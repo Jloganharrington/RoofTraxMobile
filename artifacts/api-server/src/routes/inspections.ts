@@ -107,7 +107,7 @@ import type {
   EvidenceLink,
   InspectionEstimate,
 } from '@workspace/db';
-import { and, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
@@ -7158,6 +7158,42 @@ router.get('/pipeline', async (req: Request, res: Response) => {
   }));
 
   res.json({ inspections });
+});
+
+// ---------------------------------------------------------------------------
+// GET /search?q= — search inspections by insuredName or address
+// ---------------------------------------------------------------------------
+
+router.get('/search', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (q.length < 2) return res.json({ results: [] });
+
+  const term = `%${q}%`;
+
+  const rows = await db
+    .select({
+      id:          inspectionsTable.id,
+      address:     inspectionsTable.address,
+      insuredName: inspectionsTable.insuredName,
+      status:      inspectionsTable.status,
+    })
+    .from(inspectionsTable)
+    .where(
+      and(
+        eq(inspectionsTable.companyId, actor.companyId),
+        or(
+          ilike(inspectionsTable.address,     term),
+          ilike(inspectionsTable.insuredName, term),
+        ),
+      ),
+    )
+    .orderBy(desc(inspectionsTable.updatedAt))
+    .limit(10);
+
+  res.json({ results: rows });
 });
 
 // =============================================================================

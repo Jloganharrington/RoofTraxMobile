@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser } from "@workspace/api-client-react";
 import {
@@ -20,7 +20,10 @@ import {
   Bell,
   LogOut,
   Loader2,
+  Search,
+  X,
 } from "lucide-react";
+import { useSearch } from "@/lib/claimHubApi";
 
 interface ShellProps {
   children: ReactNode;
@@ -77,6 +80,106 @@ const NAV_SECTIONS: NavSection[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Search bar
+// ---------------------------------------------------------------------------
+
+function SearchBar() {
+  const [query, setQuery]       = useState('');
+  const [debouncedQ, setDQ]     = useState('');
+  const [open, setOpen]         = useState(false);
+  const wrapRef                 = useRef<HTMLDivElement>(null);
+  const inputRef                = useRef<HTMLInputElement>(null);
+  const [, navigate]            = useLocation();
+  const { data, isFetching }    = useSearch(debouncedQ);
+  const results                 = data?.results ?? [];
+
+  // Debounce: update debouncedQ 300 ms after the user stops typing
+  useEffect(() => {
+    const t = setTimeout(() => setDQ(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { setOpen(false); inputRef.current?.blur(); }
+  };
+
+  const handleSelect = (id: string) => {
+    navigate(`/inspections/${id}`);
+    setQuery('');
+    setDQ('');
+    setOpen(false);
+  };
+
+  const clear = () => { setQuery(''); setDQ(''); inputRef.current?.focus(); };
+
+  return (
+    <div ref={wrapRef} className="relative px-3 py-2 border-b border-sidebar-border">
+      <div className="flex items-center gap-2 bg-sidebar-accent/40 rounded-lg px-2.5 py-1.5">
+        <Search className="h-3.5 w-3.5 text-sidebar-foreground/40 shrink-0" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          placeholder="Search customers & properties…"
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          className="flex-1 bg-transparent text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 outline-none min-w-0"
+        />
+        {query && (
+          <button type="button" onClick={clear} className="text-sidebar-foreground/30 hover:text-sidebar-foreground/60 transition-colors">
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+
+      {/* Dropdown */}
+      {open && debouncedQ.length >= 2 && (
+        <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-popover border border-border rounded-xl shadow-lg overflow-hidden">
+          {isFetching ? (
+            <p className="text-xs text-muted-foreground px-3 py-3">Searching…</p>
+          ) : results.length === 0 ? (
+            <p className="text-xs text-muted-foreground px-3 py-3">No results for "{debouncedQ}"</p>
+          ) : (
+            <ul>
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(r.id)}
+                    className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors border-b border-border/30 last:border-0"
+                  >
+                    {r.insuredName && (
+                      <p className="text-xs font-semibold truncate">{r.insuredName}</p>
+                    )}
+                    {r.address && (
+                      <p className={`text-[11px] truncate ${r.insuredName ? 'text-muted-foreground' : 'text-xs font-semibold'}`}>
+                        {r.address}
+                      </p>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Active-path helper
 // ---------------------------------------------------------------------------
 
@@ -121,6 +224,9 @@ export function Shell({ children }: ShellProps) {
             </span>
           </div>
         </div>
+
+        {/* Search */}
+        <SearchBar />
 
         {/* Nav sections */}
         <nav className="flex-1 overflow-y-auto py-3">

@@ -319,6 +319,31 @@ export function useGetPipeline(
 // Leads
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+export interface SearchResult {
+  id: string;
+  address: string | null;
+  insuredName: string | null;
+  status: string;
+}
+
+export function useSearch(query: string) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: ['search', trimmed],
+    queryFn: () =>
+      customFetch<{ results: SearchResult[] }>(
+        `/api/search?q=${encodeURIComponent(trimmed)}`,
+      ),
+    enabled: trimmed.length >= 2,
+    staleTime: 30_000,
+    placeholderData: { results: [] },
+  });
+}
+
 export function useGetLeads(
   options?: Omit<UseQueryOptions<{ leads: PipelineLead[] }>, 'queryKey' | 'queryFn'>,
 ) {

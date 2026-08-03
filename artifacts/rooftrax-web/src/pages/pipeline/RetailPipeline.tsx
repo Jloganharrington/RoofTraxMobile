@@ -1,6 +1,6 @@
 /**
- * Project Pipeline — Kanban accordion view.
- * Stages: PM Handoff → Materials → Scheduled → Complete → Final Payment → Archive
+ * Retail Pipeline — Kanban accordion view.
+ * Stages: Appt. Scheduled → Confirmed → Estimate → Follow-Up → Contract → Deposit → Archived
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -15,7 +15,7 @@ import { useGetPipeline, type PipelineInspection } from "@/lib/claimHubApi";
 // Stage definitions
 // ---------------------------------------------------------------------------
 
-interface ProjStage {
+interface RetailStage {
   key: string;
   label: string;
   statuses: string[];
@@ -23,13 +23,14 @@ interface ProjStage {
   textAccent: string;
 }
 
-const PROJ_STAGES: ProjStage[] = [
-  { key: 'pm_handoff',           label: 'Project Manager Handoff', statuses: [], accent: 'border-blue-400',    textAccent: 'text-blue-400' },
-  { key: 'materials_orders',     label: 'Materials Orders',        statuses: [], accent: 'border-violet-400',  textAccent: 'text-violet-400' },
-  { key: 'project_scheduled',    label: 'Project Scheduled',       statuses: [], accent: 'border-amber-400',   textAccent: 'text-amber-400' },
-  { key: 'project_complete',     label: 'Project Complete',        statuses: [], accent: 'border-emerald-400', textAccent: 'text-emerald-400' },
-  { key: 'final_payment',        label: 'Final Payment Received',  statuses: [], accent: 'border-green-400',   textAccent: 'text-green-400' },
-  { key: 'archive',              label: 'Archive',                 statuses: [], accent: 'border-zinc-400',    textAccent: 'text-zinc-400' },
+const RETAIL_STAGES: RetailStage[] = [
+  { key: 'appt_scheduled',   label: 'Appt. Scheduled',   statuses: ['scheduled'],  accent: 'border-green-500',   textAccent: 'text-green-400' },
+  { key: 'appt_confirmed',   label: 'Appt. Confirmed',   statuses: [],             accent: 'border-blue-500',    textAccent: 'text-blue-400' },
+  { key: 'estimate_provided',label: 'Estimate Provided', statuses: [],             accent: 'border-violet-500',  textAccent: 'text-violet-400' },
+  { key: 'followup_required',label: 'Follow-Up Required',statuses: [],             accent: 'border-amber-600',   textAccent: 'text-amber-400' },
+  { key: 'contract_signed',  label: 'Contract Signed',   statuses: ['submitted'],  accent: 'border-teal-500',    textAccent: 'text-teal-400' },
+  { key: 'deposit_received', label: 'Deposit Received',  statuses: [],             accent: 'border-emerald-500', textAccent: 'text-emerald-400' },
+  { key: 'archived_lost',    label: 'Archived – Lost',   statuses: [],             accent: 'border-red-700',     textAccent: 'text-red-400' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -60,7 +61,6 @@ function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
             {inspection.address ?? 'Unknown address'}
           </span>
         </div>
-
         <div className="flex flex-wrap items-center gap-1.5">
           {hasPackage && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
@@ -74,7 +74,6 @@ function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
             </span>
           )}
         </div>
-
         <div className="flex items-center justify-between pt-1 border-t border-border/50">
           <span className="text-[10px] text-muted-foreground truncate max-w-[110px]">
             {inspection.repName ?? <span className="italic opacity-50">No rep</span>}
@@ -96,15 +95,14 @@ function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
 // ---------------------------------------------------------------------------
 
 interface AccordionSectionProps {
-  stage: ProjStage;
-  stageNumber: number;
+  stage: RetailStage;
   cards: PipelineInspection[];
   isLoading: boolean;
   open: boolean;
   onToggle: () => void;
 }
 
-function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onToggle }: AccordionSectionProps) {
+function AccordionSection({ stage, cards, isLoading, open, onToggle }: AccordionSectionProps) {
   return (
     <div className={cn("rounded-2xl border bg-card overflow-hidden border-l-4", stage.accent)}>
       <button
@@ -131,7 +129,7 @@ function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onTo
               <Skeleton className="h-24 w-full rounded-xl opacity-40" />
             </div>
           ) : cards.length === 0 ? (
-            <p className="text-xs text-muted-foreground/40 italic py-5 text-center">No projects in this stage</p>
+            <p className="text-xs text-muted-foreground/40 italic py-5 text-center">No leads in this stage</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
               {cards.map((insp) => (
@@ -149,13 +147,13 @@ function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onTo
 // Page
 // ---------------------------------------------------------------------------
 
-export default function ProjectPipeline() {
+export default function RetailPipeline() {
   const { data, isLoading } = useGetPipeline();
   const inspections = data?.inspections ?? [];
 
   const statusToStageKey = useMemo(() => {
     const map = new Map<string, string>();
-    for (const stage of PROJ_STAGES) {
+    for (const stage of RETAIL_STAGES) {
       for (const s of stage.statuses) map.set(s, stage.key);
     }
     return map;
@@ -163,7 +161,7 @@ export default function ProjectPipeline() {
 
   const grouped = useMemo(() => {
     const map = new Map<string, PipelineInspection[]>();
-    for (const stage of PROJ_STAGES) map.set(stage.key, []);
+    for (const stage of RETAIL_STAGES) map.set(stage.key, []);
     for (const insp of inspections) {
       const stageKey = statusToStageKey.get(insp.status) ?? null;
       if (stageKey) map.get(stageKey)?.push(insp);
@@ -172,7 +170,7 @@ export default function ProjectPipeline() {
   }, [inspections, statusToStageKey]);
 
   const [openStages, setOpenStages] = useState<Set<string>>(
-    () => new Set(PROJ_STAGES.map((s) => s.key))
+    () => new Set(RETAIL_STAGES.map((s) => s.key))
   );
 
   const toggle = (key: string) => {
@@ -184,22 +182,22 @@ export default function ProjectPipeline() {
     });
   };
 
-  const totalProjects = inspections.length;
+  const total = inspections.length;
 
   return (
     <Shell>
       <div className="space-y-4 max-w-6xl">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Project Pipeline</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Retail Pipeline</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {isLoading ? 'Loading…' : `${totalProjects} project${totalProjects !== 1 ? 's' : ''} across all stages`}
+              {isLoading ? 'Loading…' : `${total} lead${total !== 1 ? 's' : ''} across all stages`}
             </p>
           </div>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setOpenStages(new Set(PROJ_STAGES.map((s) => s.key)))}
+              onClick={() => setOpenStages(new Set(RETAIL_STAGES.map((s) => s.key)))}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Expand all
@@ -216,11 +214,10 @@ export default function ProjectPipeline() {
         </div>
 
         <div className="space-y-2">
-          {PROJ_STAGES.map((stage, idx) => (
+          {RETAIL_STAGES.map((stage) => (
             <AccordionSection
               key={stage.key}
               stage={stage}
-              stageNumber={idx + 1}
               cards={grouped.get(stage.key) ?? []}
               isLoading={isLoading}
               open={openStages.has(stage.key)}
