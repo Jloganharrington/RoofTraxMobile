@@ -32,6 +32,8 @@ const INS_STAGES: InsStage[] = [
   { key: 'proof_package_generated', label: 'Proof Package Generated',       statuses: ['validating', 'package_ready'], accent: 'border-orange-400' },
   { key: 'claim_filed',             label: 'Claim Filed w/ Proof Package',  statuses: ['submitted'],                   accent: 'border-emerald-400' },
   { key: 'claim_review',            label: 'Claim Review',                  statuses: [],                              accent: 'border-rose-400' },
+  { key: 'claim_approved',          label: 'Claim Approved',                statuses: [],                              accent: 'border-green-400' },
+  { key: 'contract_pending',        label: 'Contract Pending',              statuses: [],                              accent: 'border-teal-400' },
 ];
 
 // ---------------------------------------------------------------------------
