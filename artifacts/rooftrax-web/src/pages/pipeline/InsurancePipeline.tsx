@@ -57,7 +57,7 @@ function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
   const hasPackage = (inspection.compiledReportVersions ?? []).length > 0;
 
   return (
-    <Link href={`/inspections/${inspection.id}`}>
+    <Link href={inspection.pinId ? `/leads/${inspection.pinId}` : `/leads/ins-${inspection.id}`}>
       <div className="group rounded-xl border bg-card hover:bg-card/80 p-3 cursor-pointer transition-all hover:shadow-md space-y-2 h-full">
         {/* Address */}
         <div className="flex items-start gap-2">

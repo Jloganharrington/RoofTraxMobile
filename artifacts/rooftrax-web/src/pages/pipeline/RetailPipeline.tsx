@@ -117,11 +117,7 @@ function LeadCard({ lead }: { lead: RetailLead }) {
     </div>
   );
 
-  // If there's a linked inspection, navigate to it; otherwise no link
-  if (lead.inspectionId) {
-    return <Link href={`/inspections/${lead.inspectionId}`}>{inner}</Link>;
-  }
-  return inner;
+  return <Link href={`/leads/${lead.id}`}>{inner}</Link>;
 }
 
 // ---------------------------------------------------------------------------

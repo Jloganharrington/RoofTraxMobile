@@ -292,6 +292,7 @@ export interface PipelineInspection {
   status: string;
   phase: string;
   damageType: string | null;
+  pinId: string | null;
   compiledReportVersions: Array<{ path: string; compiledAt: string; schemaVersion?: number; lintStatus?: string }>;
   repName: string | null;
   createdAt: string;
@@ -392,27 +393,27 @@ export interface FullLead {
 export const getLeadQueryKey = (id: string) => ['lead', id] as const;
 
 export function useGetLead(
-  pinId: string,
+  leadId: string,
   options?: Omit<UseQueryOptions<{ lead: FullLead }>, 'queryKey' | 'queryFn'>,
 ) {
   return useQuery({
-    queryKey: getLeadQueryKey(pinId),
-    queryFn: () => customFetch<{ lead: FullLead }>(`/api/pins/${pinId}`),
-    enabled: !!pinId,
+    queryKey: getLeadQueryKey(leadId),
+    queryFn: () => customFetch<{ lead: FullLead }>(`/api/leads/${leadId}`),
+    enabled: !!leadId,
     ...options,
   });
 }
 
-export function useUpdateLead(pinId: string) {
+export function useUpdateLead(leadId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: Record<string, string | null>) =>
-      customFetch<{ lead: FullLead }>(`/api/pins/${pinId}/profile`, {
+      customFetch<{ lead: FullLead }>(`/api/leads/${leadId}/profile`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
     onSuccess: (data) => {
-      qc.setQueryData(getLeadQueryKey(pinId), data);
+      qc.setQueryData(getLeadQueryKey(leadId), data);
       qc.invalidateQueries({ queryKey: getLeadsQueryKey() });
     },
   });

@@ -7127,6 +7127,7 @@ router.get('/pipeline', async (req: Request, res: Response) => {
       phase: inspectionsTable.phase,
       damageType: inspectionsTable.damageType,
       compiledReportVersions: inspectionsTable.compiledReportVersions,
+      pinId: inspectionsTable.pinId,
       createdAt: inspectionsTable.createdAt,
       updatedAt: inspectionsTable.updatedAt,
       inspectorUserId: inspectionsTable.inspectorUserId,
@@ -7144,6 +7145,7 @@ router.get('/pipeline', async (req: Request, res: Response) => {
     status: r.status,
     phase: r.phase,
     damageType: r.damageType,
+    pinId: r.pinId ?? null,
     compiledReportVersions: (r.compiledReportVersions ?? []) as Array<{
       path: string;
       compiledAt: string;
@@ -7992,6 +7994,288 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
   res.json({ leads });
 });
 
+// ---------------------------------------------------------------------------
+// GET /leads/:leadId — unified lead detail (pin or inspection)
+// Accepts plain pin IDs (e.g. "abc-123") or "ins-<inspectionId>" prefixed IDs.
+// ---------------------------------------------------------------------------
+
+router.get('/leads/:leadId', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const { leadId } = req.params as { leadId: string };
+
+  if (leadId.startsWith('ins-')) {
+    const inspectionId = leadId.slice(4);
+    const inspection = await loadInspectionInCompany(inspectionId, req.user.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Lead not found' });
+
+    const [user] = await db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, inspection.inspectorUserId));
+
+    const repName = user
+      ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
+      : null;
+
+    const lead = {
+      id: `ins-${inspection.id}`,
+      address: inspection.address,
+      latitude: inspection.latitude ?? 0,
+      longitude: inspection.longitude ?? 0,
+      workflow: 'insurance' as const,
+      damageType: inspection.damageType,
+      photoUrl: null,
+      doorKnockResult: null,
+      contactOutcome: null,
+      customerName: inspection.insuredName,
+      customerPhone: null,
+      status: inspection.status,
+      pipelineStage: null,
+      profileStatus: null,
+      statusNotes: null,
+      statusLastUpdated: null,
+      ownerFirstName: null,
+      ownerLastName: null,
+      ownerEmail: null,
+      owner2FirstName: null,
+      owner2LastName: null,
+      notes: inspection.notes,
+      insuranceCarrier: inspection.carrierName,
+      policyNumber: inspection.policyNumber,
+      claimNumber: inspection.claimNumber,
+      dateOfLoss: inspection.dateOfLoss ?? null,
+      inspectionDate: null,
+      adjusterName: null,
+      adjusterPhone: null,
+      adjusterEmail: null,
+      adjusterMeetingDate: null,
+      contractAmount: null,
+      depositAmount: null,
+      depositDate: null,
+      depositPaymentMethod: null,
+      deductibleAmount: null,
+      rcvAmount: null,
+      acvAmount: null,
+      supplementAmount: null,
+      finalPaymentAmount: null,
+      contractScope: null,
+      squareFootage: null,
+      roofPitch: null,
+      measurementVendor: null,
+      measurementReportUrl: inspection.measurementsReportUrl ?? null,
+      materialBrand: null,
+      materialColor: null,
+      materialStyle: null,
+      retailData: null,
+      repName,
+      userId: inspection.inspectorUserId,
+      companyId: inspection.companyId,
+      createdAt: inspection.createdAt.toISOString(),
+      updatedAt: inspection.updatedAt.toISOString(),
+    };
+
+    return void res.json({ lead });
+  }
+
+  // Plain pin ID
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  const [user] = await db
+    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(eq(usersTable.id, pin.userId));
+
+  const repName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
+    : null;
+
+  res.json({ lead: { ...pin, repName } });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /leads/:leadId/profile — save profile fields (pin or inspection)
+// ---------------------------------------------------------------------------
+
+router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const { leadId } = req.params as { leadId: string };
+
+  if (leadId.startsWith('ins-')) {
+    const inspectionId = leadId.slice(4);
+    const inspection = await loadInspectionInCompany(inspectionId, req.user.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Lead not found' });
+
+    const body = req.body as Record<string, string | null | undefined>;
+
+    // Map FullLead profile fields → inspection columns
+    const set: Record<string, unknown> = {};
+    if (body.customerName       !== undefined) set.insuredName  = body.customerName;
+    if (body.insuranceCarrier   !== undefined) set.carrierName  = body.insuranceCarrier;
+    if (body.claimNumber        !== undefined) set.claimNumber  = body.claimNumber;
+    if (body.policyNumber       !== undefined) set.policyNumber = body.policyNumber;
+    if (body.dateOfLoss         !== undefined) set.dateOfLoss   = body.dateOfLoss ?? null;
+    if (body.notes              !== undefined) set.notes        = body.notes;
+
+    if (Object.keys(set).length > 0) {
+      await db
+        .update(inspectionsTable)
+        .set(set)
+        .where(eq(inspectionsTable.id, inspectionId));
+    }
+
+    const updated = await loadInspectionInCompany(inspectionId, req.user.companyId);
+    const [user] = await db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, inspection.inspectorUserId));
+    const repName = user
+      ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
+      : null;
+
+    return void res.json({
+      lead: {
+        id: `ins-${updated!.id}`,
+        address: updated!.address,
+        latitude: updated!.latitude ?? 0,
+        longitude: updated!.longitude ?? 0,
+        workflow: 'insurance' as const,
+        damageType: updated!.damageType,
+        photoUrl: null,
+        doorKnockResult: null,
+        contactOutcome: null,
+        customerName: updated!.insuredName,
+        customerPhone: null,
+        status: updated!.status,
+        pipelineStage: null,
+        profileStatus: null,
+        statusNotes: null,
+        statusLastUpdated: null,
+        ownerFirstName: null,
+        ownerLastName: null,
+        ownerEmail: null,
+        owner2FirstName: null,
+        owner2LastName: null,
+        notes: updated!.notes,
+        insuranceCarrier: updated!.carrierName,
+        policyNumber: updated!.policyNumber,
+        claimNumber: updated!.claimNumber,
+        dateOfLoss: updated!.dateOfLoss ?? null,
+        inspectionDate: null,
+        adjusterName: null,
+        adjusterPhone: null,
+        adjusterEmail: null,
+        adjusterMeetingDate: null,
+        contractAmount: null,
+        depositAmount: null,
+        depositDate: null,
+        depositPaymentMethod: null,
+        deductibleAmount: null,
+        rcvAmount: null,
+        acvAmount: null,
+        supplementAmount: null,
+        finalPaymentAmount: null,
+        contractScope: null,
+        squareFootage: null,
+        roofPitch: null,
+        measurementVendor: null,
+        measurementReportUrl: updated!.measurementsReportUrl ?? null,
+        materialBrand: null,
+        materialColor: null,
+        materialStyle: null,
+        retailData: null,
+        repName,
+        userId: updated!.inspectorUserId,
+        companyId: updated!.companyId,
+        createdAt: updated!.createdAt.toISOString(),
+        updatedAt: updated!.updatedAt.toISOString(),
+      },
+    });
+  }
+
+  // Pin lead — proxy through to the existing pin profile handler
+  // Re-use the same Zod schema and DB logic as PATCH /pins/:pinId/profile
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  const role = await getRole(req.user.id);
+  if (!canEditPin(role, req.user.id, pin.userId)) {
+    return void res.status(403).json({ error: 'Not permitted to edit this lead' });
+  }
+
+  const parsed = LeadProfileBody.safeParse(req.body);
+  if (!parsed.success) {
+    return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
+  }
+
+  const d = parsed.data;
+  const [updated] = await db
+    .update(pinsTable)
+    .set({
+      ...(d.ownerFirstName       !== undefined && { ownerFirstName:       d.ownerFirstName }),
+      ...(d.ownerLastName        !== undefined && { ownerLastName:        d.ownerLastName }),
+      ...(d.ownerEmail           !== undefined && { ownerEmail:           d.ownerEmail }),
+      ...(d.owner2FirstName      !== undefined && { owner2FirstName:      d.owner2FirstName }),
+      ...(d.owner2LastName       !== undefined && { owner2LastName:       d.owner2LastName }),
+      ...(d.customerName         !== undefined && { customerName:         d.customerName }),
+      ...(d.customerPhone        !== undefined && { customerPhone:        d.customerPhone }),
+      ...(d.notes                !== undefined && { notes:                d.notes }),
+      ...(d.pipelineStage        !== undefined && { pipelineStage:        d.pipelineStage }),
+      ...(d.insuranceCarrier     !== undefined && { insuranceCarrier:     d.insuranceCarrier }),
+      ...(d.policyNumber         !== undefined && { policyNumber:         d.policyNumber }),
+      ...(d.claimNumber          !== undefined && { claimNumber:          d.claimNumber }),
+      ...(d.dateOfLoss           !== undefined && { dateOfLoss:           toDateOrNull(d.dateOfLoss) }),
+      ...(d.inspectionDate       !== undefined && { inspectionDate:       toDateOrNull(d.inspectionDate) }),
+      ...(d.adjusterName         !== undefined && { adjusterName:         d.adjusterName }),
+      ...(d.adjusterPhone        !== undefined && { adjusterPhone:        d.adjusterPhone }),
+      ...(d.adjusterEmail        !== undefined && { adjusterEmail:        d.adjusterEmail }),
+      ...(d.adjusterMeetingDate  !== undefined && { adjusterMeetingDate:  toDateOrNull(d.adjusterMeetingDate) }),
+      ...(d.contractAmount       !== undefined && { contractAmount:       d.contractAmount }),
+      ...(d.depositAmount        !== undefined && { depositAmount:        d.depositAmount }),
+      ...(d.depositDate          !== undefined && { depositDate:          toDateOrNull(d.depositDate) }),
+      ...(d.depositPaymentMethod !== undefined && { depositPaymentMethod: d.depositPaymentMethod }),
+      ...(d.deductibleAmount     !== undefined && { deductibleAmount:     d.deductibleAmount }),
+      ...(d.rcvAmount            !== undefined && { rcvAmount:            d.rcvAmount }),
+      ...(d.acvAmount            !== undefined && { acvAmount:            d.acvAmount }),
+      ...(d.supplementAmount     !== undefined && { supplementAmount:     d.supplementAmount }),
+      ...(d.finalPaymentAmount   !== undefined && { finalPaymentAmount:   d.finalPaymentAmount }),
+      ...(d.contractScope        !== undefined && { contractScope:        d.contractScope }),
+      ...(d.squareFootage        !== undefined && { squareFootage:        d.squareFootage }),
+      ...(d.roofPitch            !== undefined && { roofPitch:            d.roofPitch }),
+      ...(d.measurementVendor    !== undefined && { measurementVendor:    d.measurementVendor }),
+      ...(d.measurementReportUrl !== undefined && { measurementReportUrl: d.measurementReportUrl }),
+      ...(d.materialBrand        !== undefined && { materialBrand:        d.materialBrand }),
+      ...(d.materialColor        !== undefined && { materialColor:        d.materialColor }),
+      ...(d.materialStyle        !== undefined && { materialStyle:        d.materialStyle }),
+      ...(d.profileStatus        !== undefined && { profileStatus:        d.profileStatus }),
+      ...(d.statusNotes          !== undefined && { statusNotes:          d.statusNotes }),
+      ...(d.statusLastUpdated    !== undefined && { statusLastUpdated:    d.statusLastUpdated ? new Date(d.statusLastUpdated) : null }),
+    })
+    .where(eq(pinsTable.id, leadId))
+    .returning();
+
+  const [user] = await db
+    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(eq(usersTable.id, pin.userId));
+
+  const repName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
+    : null;
+
+  res.json({ lead: { ...updated, repName } });
+});
+
 router.get('/leads', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
@@ -8102,7 +8386,7 @@ router.get('/leads', async (req: Request, res: Response) => {
       damageType: r.damageType,
       stage:      INSPECTION_STATUS_LABELS[r.status ?? ''] ?? (r.status ?? 'Unknown'),
       repName:    r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
-      detailPath: `/inspections/${r.id}`,
+      detailPath: r.pinId ? `/leads/${r.pinId}` : `/leads/ins-${r.id}`,
       createdAt:  r.createdAt.toISOString(),
     }));
 
