@@ -110,7 +110,8 @@ import type {
 import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin } from '../lib/permissions';
+import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '../lib/permissions';
+import { getRole, LeadProfileBody, toDateOrNull } from './pins';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { buildProofPackageHtml, type ProofPackageData } from '../lib/proofPackageTemplate';
 
@@ -8068,6 +8069,21 @@ router.get('/leads/:leadId', async (req: Request, res: Response) => {
       materialColor: null,
       materialStyle: null,
       retailData: null,
+      // Lead Dashboard fields (ins- leads don't have these)
+      nonOwnerOccupied:  null,
+      mailingAddress:    null,
+      mailingCity:       null,
+      mailingState:      null,
+      mailingZip:        null,
+      mailerSentDate:    null,
+      claimFiledDate:    null,
+      policyHolder:      null,
+      coverageType:      null,
+      approvedRcvAmount: null,
+      approvedAcvAmount: null,
+      depreciationAmount: null,
+      inspectionNotes:   null,
+      inspectionId: inspectionId,
       repName,
       userId: inspection.inspectorUserId,
       companyId: inspection.companyId,
@@ -8086,16 +8102,23 @@ router.get('/leads/:leadId', async (req: Request, res: Response) => {
 
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
-  const [user] = await db
-    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
-    .from(usersTable)
-    .where(eq(usersTable.id, pin.userId));
+  const [[user], [linked]] = await Promise.all([
+    db
+      .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+      .from(usersTable)
+      .where(eq(usersTable.id, pin.userId)),
+    db
+      .select({ id: inspectionsTable.id })
+      .from(inspectionsTable)
+      .where(and(eq(inspectionsTable.pinId, leadId), eq(inspectionsTable.companyId, req.user.companyId)))
+      .limit(1),
+  ]);
 
   const repName = user
     ? [user.firstName, user.lastName].filter(Boolean).join(' ') || null
     : null;
 
-  res.json({ lead: { ...pin, repName } });
+  res.json({ lead: { ...pin, repName, inspectionId: linked?.id ?? null } });
 });
 
 // ---------------------------------------------------------------------------
@@ -8190,6 +8213,19 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
         materialColor: null,
         materialStyle: null,
         retailData: null,
+        nonOwnerOccupied:   null,
+        mailingAddress:     null,
+        mailingCity:        null,
+        mailingState:       null,
+        mailingZip:         null,
+        mailerSentDate:     null,
+        claimFiledDate:     null,
+        policyHolder:       null,
+        coverageType:       null,
+        approvedRcvAmount:  null,
+        approvedAcvAmount:  null,
+        depreciationAmount: null,
+        inspectionNotes:    null,
         repName,
         userId: updated!.inspectorUserId,
         companyId: updated!.companyId,
@@ -8257,6 +8293,20 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
       ...(d.materialBrand        !== undefined && { materialBrand:        d.materialBrand }),
       ...(d.materialColor        !== undefined && { materialColor:        d.materialColor }),
       ...(d.materialStyle        !== undefined && { materialStyle:        d.materialStyle }),
+      // Lead Dashboard fields
+      ...(d.nonOwnerOccupied   !== undefined && { nonOwnerOccupied:   d.nonOwnerOccupied }),
+      ...(d.mailingAddress     !== undefined && { mailingAddress:     d.mailingAddress }),
+      ...(d.mailingCity        !== undefined && { mailingCity:        d.mailingCity }),
+      ...(d.mailingState       !== undefined && { mailingState:       d.mailingState }),
+      ...(d.mailingZip         !== undefined && { mailingZip:         d.mailingZip }),
+      ...(d.mailerSentDate     !== undefined && { mailerSentDate:     d.mailerSentDate ? new Date(d.mailerSentDate) : null }),
+      ...(d.claimFiledDate     !== undefined && { claimFiledDate:     d.claimFiledDate ? new Date(d.claimFiledDate) : null }),
+      ...(d.policyHolder       !== undefined && { policyHolder:       d.policyHolder }),
+      ...(d.coverageType       !== undefined && { coverageType:       d.coverageType }),
+      ...(d.approvedRcvAmount  !== undefined && { approvedRcvAmount:  d.approvedRcvAmount }),
+      ...(d.approvedAcvAmount  !== undefined && { approvedAcvAmount:  d.approvedAcvAmount }),
+      ...(d.depreciationAmount !== undefined && { depreciationAmount: d.depreciationAmount }),
+      ...(d.inspectionNotes    !== undefined && { inspectionNotes:    d.inspectionNotes }),
       ...(d.profileStatus        !== undefined && { profileStatus:        d.profileStatus }),
       ...(d.statusNotes          !== undefined && { statusNotes:          d.statusNotes }),
       ...(d.statusLastUpdated    !== undefined && { statusLastUpdated:    d.statusLastUpdated ? new Date(d.statusLastUpdated) : null }),

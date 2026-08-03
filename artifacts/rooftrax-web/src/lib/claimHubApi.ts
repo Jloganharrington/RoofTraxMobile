@@ -382,6 +382,23 @@ export interface FullLead {
     appointmentDate?: string | null;
     notes?: string | null;
   } | null;
+  // Property
+  nonOwnerOccupied: boolean | null;
+  mailingAddress: string | null;
+  mailingCity: string | null;
+  mailingState: string | null;
+  mailingZip: string | null;
+  // Extended insurance
+  mailerSentDate: string | null;
+  claimFiledDate: string | null;
+  policyHolder: string | null;
+  coverageType: string | null;
+  approvedRcvAmount: string | null;
+  approvedAcvAmount: string | null;
+  depreciationAmount: string | null;
+  inspectionNotes: string | null;
+  // Linked inspection (set for pin leads that have a converted inspection, and always set for ins- leads)
+  inspectionId: string | null;
   // Meta
   repName: string | null;
   userId: string;
@@ -407,13 +424,14 @@ export function useGetLead(
 export function useUpdateLead(leadId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: Record<string, string | null>) =>
+    mutationFn: (payload: Record<string, string | boolean | null>) =>
       customFetch<{ lead: FullLead }>(`/api/leads/${leadId}/profile`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
-    onSuccess: (data) => {
-      qc.setQueryData(getLeadQueryKey(leadId), data);
+    onSuccess: () => {
+      // Invalidate and re-fetch so inspectionId and other computed fields stay fresh
+      qc.invalidateQueries({ queryKey: getLeadQueryKey(leadId) });
       qc.invalidateQueries({ queryKey: getLeadsQueryKey() });
     },
   });

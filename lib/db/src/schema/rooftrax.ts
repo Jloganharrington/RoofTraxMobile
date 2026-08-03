@@ -192,6 +192,21 @@ export const pinsTable = pgTable('pins', {
   materialColor: varchar('material_color'),
   materialStyle: varchar('material_style'),
 
+  // ── Lead Dashboard fields (imported from GitHub schema) ───────────────────
+  nonOwnerOccupied:   boolean('non_owner_occupied').default(false),
+  mailingAddress:     text('mailing_address'),
+  mailingCity:        varchar('mailing_city'),
+  mailingState:       varchar('mailing_state'),
+  mailingZip:         varchar('mailing_zip'),
+  mailerSentDate:     timestamp('mailer_sent_date', { withTimezone: true }),
+  claimFiledDate:     timestamp('claim_filed_date', { withTimezone: true }),
+  policyHolder:       varchar('policy_holder'),
+  coverageType:       varchar('coverage_type'),
+  approvedRcvAmount:  varchar('approved_rcv_amount'),
+  approvedAcvAmount:  varchar('approved_acv_amount'),
+  depreciationAmount: varchar('depreciation_amount'),
+  inspectionNotes:    text('inspection_notes'),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

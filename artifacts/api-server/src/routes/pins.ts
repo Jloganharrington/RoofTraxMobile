@@ -18,7 +18,7 @@ import { canDeletePin, canEditPin, isManagerOrAdmin } from '../lib/permissions';
 
 const router: IRouter = Router();
 
-async function getRole(userId: string) {
+export async function getRole(userId: string) {
   const [profile] = await db
     .select()
     .from(userProfilesTable)
@@ -234,7 +234,7 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
 // Lead Profile — zod schema for the full profile PATCH
 // ---------------------------------------------------------------------------
 
-const LeadProfileBody = z.object({
+export const LeadProfileBody = z.object({
   ownerFirstName:       z.string().nullable().optional(),
   ownerLastName:        z.string().nullable().optional(),
   ownerEmail:           z.string().nullable().optional(),
@@ -273,9 +273,23 @@ const LeadProfileBody = z.object({
   materialBrand:        z.string().nullable().optional(),
   materialColor:        z.string().nullable().optional(),
   materialStyle:        z.string().nullable().optional(),
+  // Lead Dashboard fields
+  nonOwnerOccupied:    z.boolean().nullable().optional(),
+  mailingAddress:      z.string().nullable().optional(),
+  mailingCity:         z.string().nullable().optional(),
+  mailingState:        z.string().nullable().optional(),
+  mailingZip:          z.string().nullable().optional(),
+  mailerSentDate:      z.string().nullable().optional(),
+  claimFiledDate:      z.string().nullable().optional(),
+  policyHolder:        z.string().nullable().optional(),
+  coverageType:        z.string().nullable().optional(),
+  approvedRcvAmount:   z.string().nullable().optional(),
+  approvedAcvAmount:   z.string().nullable().optional(),
+  depreciationAmount:  z.string().nullable().optional(),
+  inspectionNotes:     z.string().nullable().optional(),
 });
 
-function toDateOrNull(s: string | null | undefined): Date | null {
+export function toDateOrNull(s: string | null | undefined): Date | null {
   if (!s) return null;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;

@@ -1,9 +1,10 @@
 /**
- * Lead Profile — full detail view for a single door-knock lead/pin.
+ * Lead Profile — full detail view for a single lead (pin or inspection).
  *
- * Tabs are conditional on pipeline type:
- *   Insurance leads → Dashboard · Financials · Insurance · Communication · Selections & Scope · Files
- *   Retail leads    → Dashboard · Financials · Communication · Selections & Scope · Files
+ * Tab order:
+ *   Insurance leads with inspection → Dashboard · Inspection Flow · Insurance · Financials · Communication · Selections & Scope · Files
+ *   Insurance leads (no inspection) → Dashboard · Insurance · Financials · Communication · Selections & Scope · Files
+ *   Retail leads                    → Dashboard · Financials · Communication · Selections & Scope · Files
  *
  * The sticky header exposes a pipeline-stage dropdown (with auto-save) and,
  * for insurance leads, a profile sub-status dropdown.
@@ -37,8 +38,13 @@ import {
   Save,
   Loader2,
   ChevronRight,
+  FileText,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
-import { useGetLead, useUpdateLead, type FullLead } from '@/lib/claimHubApi';
+import { useGetLead, useUpdateLead, useGetReadiness, type FullLead } from '@/lib/claimHubApi';
 import {
   INSURANCE_STAGES,
   RETAIL_STAGES,
@@ -51,17 +57,20 @@ import {
 // Tab config
 // ---------------------------------------------------------------------------
 
-type TabId = 'dashboard' | 'financials' | 'insurance' | 'communication' | 'scope' | 'files';
+type TabId = 'dashboard' | 'inspection_flow' | 'insurance' | 'financials' | 'communication' | 'scope' | 'files';
 
-function buildTabs(isInsurance: boolean) {
+function buildTabs(isInsurance: boolean, hasInspection: boolean) {
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard',     label: 'Lead Dashboard',    icon: <User className="h-4 w-4" /> },
-    { id: 'financials',    label: 'Financials',         icon: <DollarSign className="h-4 w-4" /> },
+    { id: 'dashboard', label: 'Lead Dashboard', icon: <User className="h-4 w-4" /> },
   ];
+  if (hasInspection) {
+    tabs.push({ id: 'inspection_flow', label: 'Inspection', icon: <FileText className="h-4 w-4" /> });
+  }
   if (isInsurance) {
     tabs.push({ id: 'insurance', label: 'Insurance', icon: <Shield className="h-4 w-4" /> });
   }
   tabs.push(
+    { id: 'financials',    label: 'Financials',         icon: <DollarSign className="h-4 w-4" /> },
     { id: 'communication', label: 'Communication',      icon: <MessageSquare className="h-4 w-4" /> },
     { id: 'scope',         label: 'Selections & Scope', icon: <Clipboard className="h-4 w-4" /> },
     { id: 'files',         label: 'Files',              icon: <FolderOpen className="h-4 w-4" /> },
@@ -84,34 +93,51 @@ function FieldGroup({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function Field({
-  label, name, value, onChange, type = 'text', placeholder, span2 = false,
-}: {
-  label: string; name: string; value: string;
+interface FieldProps {
+  label: string;
+  name: string;
+  value: string;
   onChange: (name: string, val: string) => void;
-  type?: string; placeholder?: string; span2?: boolean;
-}) {
+  type?: string;
+  placeholder?: string;
+  span2?: boolean;
+}
+
+function Field({ label, name, value, onChange, type = 'text', placeholder, span2 }: FieldProps) {
   return (
     <div className={span2 ? 'sm:col-span-2' : ''}>
-      <Label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</Label>
-      <Input type={type} value={value} onChange={e => onChange(name, e.target.value)}
-        placeholder={placeholder ?? label} className="h-9" />
+      <Label className="text-xs text-muted-foreground mb-1 block">{label}</Label>
+      <Input
+        type={type}
+        value={value}
+        onChange={e => onChange(name, e.target.value)}
+        placeholder={placeholder}
+        className="h-9 text-sm"
+      />
     </div>
   );
 }
 
-function TextareaField({
-  label, name, value, onChange, placeholder, rows = 4,
-}: {
-  label: string; name: string; value: string;
+interface TextareaFieldProps {
+  label: string;
+  name: string;
+  value: string;
   onChange: (name: string, val: string) => void;
-  placeholder?: string; rows?: number;
-}) {
+  rows?: number;
+  placeholder?: string;
+}
+
+function TextareaField({ label, name, value, onChange, rows = 4, placeholder }: TextareaFieldProps) {
   return (
     <div className="sm:col-span-2">
-      <Label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</Label>
-      <Textarea value={value} onChange={e => onChange(name, e.target.value)}
-        placeholder={placeholder ?? label} rows={rows} className="resize-none" />
+      <Label className="text-xs text-muted-foreground mb-1 block">{label}</Label>
+      <Textarea
+        value={value}
+        onChange={e => onChange(name, e.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className="text-sm resize-none"
+      />
     </div>
   );
 }
@@ -120,123 +146,391 @@ function TextareaField({
 // Form state
 // ---------------------------------------------------------------------------
 
-type FormState = {
+interface FormState {
   ownerFirstName: string; ownerLastName: string; ownerEmail: string;
   owner2FirstName: string; owner2LastName: string;
   customerName: string; customerPhone: string;
-  pipelineStage: string; profileStatus: string; statusNotes: string; notes: string;
+  notes: string; statusNotes: string; pipelineStage: string; profileStatus: string;
+  // Property
+  nonOwnerOccupied: boolean;
+  mailingAddress: string; mailingCity: string; mailingState: string; mailingZip: string;
+  // Extended insurance
+  mailerSentDate: string; claimFiledDate: string;
+  policyHolder: string; coverageType: string;
+  approvedRcvAmount: string; approvedAcvAmount: string; depreciationAmount: string;
+  inspectionNotes: string;
+  // Insurance
   insuranceCarrier: string; policyNumber: string; claimNumber: string;
   dateOfLoss: string; inspectionDate: string;
   adjusterName: string; adjusterPhone: string; adjusterEmail: string; adjusterMeetingDate: string;
+  // Financials
   contractAmount: string; depositAmount: string; depositDate: string; depositPaymentMethod: string;
-  deductibleAmount: string; rcvAmount: string; acvAmount: string;
-  supplementAmount: string; finalPaymentAmount: string;
+  deductibleAmount: string; rcvAmount: string; acvAmount: string; supplementAmount: string; finalPaymentAmount: string;
+  communicationNotes: string;
   contractScope: string; squareFootage: string; roofPitch: string;
   measurementVendor: string; measurementReportUrl: string;
   materialBrand: string; materialColor: string; materialStyle: string;
-  communicationNotes: string;
-};
+}
 
-function toStr(v: string | null | undefined) { return v ?? ''; }
-function toDateInput(v: string | null | undefined) {
+function toStr(v: string | null | undefined): string {
+  return v ?? '';
+}
+
+// Timestamps come back as ISO strings from the API; extract just the date part for <input type="date">
+function toDateStr(v: string | null | undefined): string {
   if (!v) return '';
-  try { return new Date(v).toISOString().slice(0, 10); } catch { return ''; }
+  return v.slice(0, 10); // "2026-07-15T00:00:00.000Z" → "2026-07-15"
 }
 
 function initForm(lead: FullLead): FormState {
   return {
-    ownerFirstName: toStr(lead.ownerFirstName),
-    ownerLastName: toStr(lead.ownerLastName),
-    ownerEmail: toStr(lead.ownerEmail),
-    owner2FirstName: toStr(lead.owner2FirstName),
-    owner2LastName: toStr(lead.owner2LastName),
-    customerName: toStr(lead.customerName),
-    customerPhone: toStr(lead.customerPhone),
-    pipelineStage: toStr(lead.pipelineStage),
-    profileStatus: toStr(lead.profileStatus),
-    statusNotes: toStr(lead.statusNotes),
-    notes: toStr(lead.notes),
-    insuranceCarrier: toStr(lead.insuranceCarrier),
-    policyNumber: toStr(lead.policyNumber),
-    claimNumber: toStr(lead.claimNumber),
-    dateOfLoss: toDateInput(lead.dateOfLoss),
-    inspectionDate: toDateInput(lead.inspectionDate),
-    adjusterName: toStr(lead.adjusterName),
-    adjusterPhone: toStr(lead.adjusterPhone),
-    adjusterEmail: toStr(lead.adjusterEmail),
-    adjusterMeetingDate: toDateInput(lead.adjusterMeetingDate),
-    contractAmount: toStr(lead.contractAmount),
-    depositAmount: toStr(lead.depositAmount),
-    depositDate: toDateInput(lead.depositDate),
+    ownerFirstName:       toStr(lead.ownerFirstName),
+    ownerLastName:        toStr(lead.ownerLastName),
+    ownerEmail:           toStr(lead.ownerEmail),
+    owner2FirstName:      toStr(lead.owner2FirstName),
+    owner2LastName:       toStr(lead.owner2LastName),
+    customerName:         toStr(lead.customerName),
+    customerPhone:        toStr(lead.customerPhone),
+    notes:                toStr(lead.notes),
+    statusNotes:          toStr(lead.statusNotes),
+    pipelineStage:        toStr(lead.pipelineStage),
+    profileStatus:        toStr(lead.profileStatus),
+    // Property
+    nonOwnerOccupied:     lead.nonOwnerOccupied ?? false,
+    mailingAddress:       toStr(lead.mailingAddress),
+    mailingCity:          toStr(lead.mailingCity),
+    mailingState:         toStr(lead.mailingState),
+    mailingZip:           toStr(lead.mailingZip),
+    // Extended insurance
+    mailerSentDate:       toDateStr(lead.mailerSentDate),
+    claimFiledDate:       toDateStr(lead.claimFiledDate),
+    policyHolder:         toStr(lead.policyHolder),
+    coverageType:         toStr(lead.coverageType),
+    approvedRcvAmount:    toStr(lead.approvedRcvAmount),
+    approvedAcvAmount:    toStr(lead.approvedAcvAmount),
+    depreciationAmount:   toStr(lead.depreciationAmount),
+    inspectionNotes:      toStr(lead.inspectionNotes),
+    // Insurance
+    insuranceCarrier:     toStr(lead.insuranceCarrier),
+    policyNumber:         toStr(lead.policyNumber),
+    claimNumber:          toStr(lead.claimNumber),
+    dateOfLoss:           toDateStr(lead.dateOfLoss),
+    inspectionDate:       toDateStr(lead.inspectionDate),
+    adjusterName:         toStr(lead.adjusterName),
+    adjusterPhone:        toStr(lead.adjusterPhone),
+    adjusterEmail:        toStr(lead.adjusterEmail),
+    adjusterMeetingDate:  toDateStr(lead.adjusterMeetingDate),
+    contractAmount:       toStr(lead.contractAmount),
+    depositAmount:        toStr(lead.depositAmount),
+    depositDate:          toDateStr(lead.depositDate),
     depositPaymentMethod: toStr(lead.depositPaymentMethod),
-    deductibleAmount: toStr(lead.deductibleAmount),
-    rcvAmount: toStr(lead.rcvAmount),
-    acvAmount: toStr(lead.acvAmount),
-    supplementAmount: toStr(lead.supplementAmount),
-    finalPaymentAmount: toStr(lead.finalPaymentAmount),
-    contractScope: toStr(lead.contractScope),
-    squareFootage: toStr(lead.squareFootage),
-    roofPitch: toStr(lead.roofPitch),
-    measurementVendor: toStr(lead.measurementVendor),
+    deductibleAmount:     toStr(lead.deductibleAmount),
+    rcvAmount:            toStr(lead.rcvAmount),
+    acvAmount:            toStr(lead.acvAmount),
+    supplementAmount:     toStr(lead.supplementAmount),
+    finalPaymentAmount:   toStr(lead.finalPaymentAmount),
+    communicationNotes:   toStr(lead.notes),
+    contractScope:        toStr(lead.contractScope),
+    squareFootage:        toStr(lead.squareFootage),
+    roofPitch:            toStr(lead.roofPitch),
+    measurementVendor:    toStr(lead.measurementVendor),
     measurementReportUrl: toStr(lead.measurementReportUrl),
-    materialBrand: toStr(lead.materialBrand),
-    materialColor: toStr(lead.materialColor),
-    materialStyle: toStr(lead.materialStyle),
-    communicationNotes: toStr(lead.notes),
+    materialBrand:        toStr(lead.materialBrand),
+    materialColor:        toStr(lead.materialColor),
+    materialStyle:        toStr(lead.materialStyle),
   };
 }
 
 const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
-  dashboard:     ['ownerFirstName','ownerLastName','ownerEmail','owner2FirstName','owner2LastName','customerName','customerPhone','statusNotes','notes'],
-  financials:    ['contractAmount','depositAmount','depositDate','depositPaymentMethod','deductibleAmount','rcvAmount','acvAmount','supplementAmount','finalPaymentAmount'],
-  insurance:     ['insuranceCarrier','policyNumber','claimNumber','dateOfLoss','inspectionDate','adjusterName','adjusterPhone','adjusterEmail','adjusterMeetingDate'],
-  communication: ['communicationNotes'],
-  scope:         ['contractScope','squareFootage','roofPitch','measurementVendor','measurementReportUrl','materialBrand','materialColor','materialStyle'],
-  files:         [],
+  dashboard:       [
+    'ownerFirstName','ownerLastName','ownerEmail','owner2FirstName','owner2LastName',
+    'customerName','customerPhone',
+    'nonOwnerOccupied','mailingAddress','mailingCity','mailingState','mailingZip',
+    'mailerSentDate','claimFiledDate','policyHolder','coverageType',
+    'approvedRcvAmount','approvedAcvAmount','depreciationAmount','inspectionNotes',
+    'insuranceCarrier','policyNumber','claimNumber','dateOfLoss','inspectionDate',
+    'adjusterName','adjusterPhone','adjusterEmail','adjusterMeetingDate',
+    'deductibleAmount','statusNotes','notes',
+  ],
+  inspection_flow: [],
+  insurance:       ['insuranceCarrier','policyNumber','claimNumber','dateOfLoss','inspectionDate','adjusterName','adjusterPhone','adjusterEmail','adjusterMeetingDate'],
+  financials:      ['contractAmount','depositAmount','depositDate','depositPaymentMethod','deductibleAmount','rcvAmount','acvAmount','supplementAmount','finalPaymentAmount'],
+  communication:   ['communicationNotes'],
+  scope:           ['contractScope','squareFootage','roofPitch','measurementVendor','measurementReportUrl','materialBrand','materialColor','materialStyle'],
+  files:           [],
 };
 
 // ---------------------------------------------------------------------------
 // Tab panels
 // ---------------------------------------------------------------------------
 
+function InspectionFlowTab({ inspectionId }: { inspectionId: string }) {
+  const { data: readiness, isLoading } = useGetReadiness(inspectionId);
+  const [, navigate] = useLocation();
+
+  return (
+    <div className="space-y-6">
+      {/* Open inspection CTA */}
+      <div className="flex items-center justify-between rounded-xl border bg-card px-5 py-4">
+        <div>
+          <p className="text-sm font-semibold">Full Inspection Workflow</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Field capture, AI Sections, Estimate, and Proof Package
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(`/inspections/${inspectionId}`)}
+          className="gap-1.5 shrink-0"
+        >
+          Open <ExternalLink className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {/* Stage 0 Readiness */}
+      <div className="rounded-xl border bg-card p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Stage 0 Readiness</h3>
+            {!isLoading && readiness && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {readiness.overallPass
+                  ? 'All checks passed — ready to generate.'
+                  : 'Some checks need attention before generating.'}
+              </p>
+            )}
+          </div>
+          {!isLoading && readiness && (
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              readiness.overallPass
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+            }`}>
+              {readiness.overallPass ? 'Ready' : 'Attention needed'}
+            </span>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-3 pt-1">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        ) : readiness ? (
+          <div className="divide-y divide-border/50">
+            {readiness.items.map(item => (
+              <div key={item.key} className="flex items-start gap-3 py-3">
+                <div className="shrink-0 mt-0.5">
+                  {item.state === 'pass' ? (
+                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  ) : item.state === 'warning' ? (
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-tight">{item.label}</p>
+                  {item.detail && (
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{item.detail}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground py-2">No readiness data available.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DashboardTab({
-  form, onField, isInsurance,
-}: { form: FormState; onField: (n: string, v: string) => void; isInsurance: boolean }) {
+  form, onField, onCheck, isInsurance, lead,
+}: {
+  form: FormState;
+  onField: (n: string, v: string) => void;
+  onCheck: (n: string, v: boolean) => void;
+  isInsurance: boolean;
+  lead: FullLead;
+}) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+      {/* ── Left: Property & Contact ─────────────────────────────────── */}
+      <div className="space-y-6">
+
+        {/* Property photo */}
+        {lead.photoUrl ? (
+          <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
+            <img src={lead.photoUrl} alt="Property" className="w-full h-full object-cover" />
+          </div>
+        ) : (
+          <div className="rounded-xl border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            <MapPin className="h-8 w-8 opacity-20" />
+            <p className="text-xs">No property photo</p>
+          </div>
+        )}
+
+        <FieldGroup title="Property">
+          {/* Address is read-only (set at pin creation) */}
+          <div className="sm:col-span-2 bg-muted/40 rounded-lg px-3 py-2 text-sm text-foreground/70 leading-snug">
+            {lead.address ?? <span className="italic text-muted-foreground">No address</span>}
+          </div>
+          <div className="sm:col-span-2 flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="nonOwnerOccupied"
+              checked={form.nonOwnerOccupied}
+              onChange={e => onCheck('nonOwnerOccupied', e.target.checked)}
+              className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+            />
+            <Label htmlFor="nonOwnerOccupied" className="text-sm font-normal cursor-pointer">
+              Non-owner occupied property
+            </Label>
+          </div>
+        </FieldGroup>
+
+        {form.nonOwnerOccupied && (
+          <FieldGroup title="Mailing Address">
+            <Field label="Street"  name="mailingAddress" value={form.mailingAddress} onChange={onField} span2 placeholder="123 Main St" />
+            <Field label="City"    name="mailingCity"    value={form.mailingCity}    onChange={onField} placeholder="Dallas" />
+            <Field label="State"   name="mailingState"   value={form.mailingState}   onChange={onField} placeholder="TX" />
+            <Field label="ZIP"     name="mailingZip"     value={form.mailingZip}     onChange={onField} placeholder="75201" />
+          </FieldGroup>
+        )}
+
+        <FieldGroup title="Primary Contact">
+          <Field label="First Name"   name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
+          <Field label="Last Name"    name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
+          <Field label="Email"        name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
+          <Field label="Phone"        name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
+          <Field label="Display Name" name="customerName"   value={form.customerName}   onChange={onField} span2 placeholder="Shown on cards and reports" />
+        </FieldGroup>
+
+        <FieldGroup title="Secondary Owner">
+          <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
+          <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
+        </FieldGroup>
+      </div>
+
+      {/* ── Right: Lead Info (conditional) ───────────────────────────── */}
+      <div className="space-y-6">
+        {isInsurance ? (
+          <>
+            <FieldGroup title="Claim Timeline">
+              <Field label="Mailer Sent"          name="mailerSentDate"  value={form.mailerSentDate}  onChange={onField} type="date" />
+              <Field label="Inspection Date"      name="inspectionDate"  value={form.inspectionDate}  onChange={onField} type="date" />
+              <Field label="Storm / Date of Loss" name="dateOfLoss"      value={form.dateOfLoss}      onChange={onField} type="date" />
+              <Field label="Claim Filed"          name="claimFiledDate"  value={form.claimFiledDate}  onChange={onField} type="date" />
+            </FieldGroup>
+
+            <FieldGroup title="Policy">
+              <Field label="Insurance Carrier" name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
+              <Field label="Policy Holder"     name="policyHolder"     value={form.policyHolder}     onChange={onField} />
+              <Field label="Policy Number"     name="policyNumber"     value={form.policyNumber}     onChange={onField} />
+              <Field label="Claim Number"      name="claimNumber"      value={form.claimNumber}      onChange={onField} />
+              <Field label="Coverage Type"     name="coverageType"     value={form.coverageType}     onChange={onField} placeholder="HO-3, HO-5…" />
+            </FieldGroup>
+
+            <FieldGroup title="Adjuster">
+              <Field label="Adjuster Name"  name="adjusterName"        value={form.adjusterName}        onChange={onField} />
+              <Field label="Adjuster Phone" name="adjusterPhone"       value={form.adjusterPhone}       onChange={onField} type="tel" />
+              <Field label="Adjuster Email" name="adjusterEmail"       value={form.adjusterEmail}       onChange={onField} type="email" />
+              <Field label="Meeting Date"   name="adjusterMeetingDate" value={form.adjusterMeetingDate} onChange={onField} type="date" />
+            </FieldGroup>
+
+            <FieldGroup title="Claim Amounts">
+              <Field label="Approved RCV ($)"  name="approvedRcvAmount"  value={form.approvedRcvAmount}  onChange={onField} placeholder="0.00" />
+              <Field label="Approved ACV ($)"  name="approvedAcvAmount"  value={form.approvedAcvAmount}  onChange={onField} placeholder="0.00" />
+              <Field label="Depreciation ($)"  name="depreciationAmount" value={form.depreciationAmount} onChange={onField} placeholder="0.00" />
+              <Field label="Deductible ($)"    name="deductibleAmount"   value={form.deductibleAmount}   onChange={onField} placeholder="0.00" />
+            </FieldGroup>
+
+            <FieldGroup title="Inspection Notes">
+              <TextareaField label="Inspection Notes" name="inspectionNotes" value={form.inspectionNotes}
+                onChange={onField} rows={4} placeholder="Damage observations, photo notes, inspector comments…" />
+            </FieldGroup>
+
+            <FieldGroup title="Status Notes">
+              <TextareaField label="Status Notes" name="statusNotes" value={form.statusNotes}
+                onChange={onField} rows={3} placeholder="Supplement needed, adjuster follow-up, next steps…" />
+            </FieldGroup>
+          </>
+        ) : (
+          <>
+            {/* Retail: appointment date (read-only, set by mobile) */}
+            {lead.retailData?.appointmentDate && (
+              <div className="rounded-xl border bg-card px-5 py-4 space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Appointment</p>
+                <p className="text-sm font-semibold">
+                  {new Date(lead.retailData.appointmentDate).toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
+                  })}
+                </p>
+              </div>
+            )}
+
+            {/* Damage interests (read-only, set by mobile) */}
+            {lead.retailData && (
+              <FieldGroup title="Damage Interests">
+                <div className="sm:col-span-2 flex flex-wrap gap-2">
+                  {(
+                    [
+                      { key: 'interestedRoof'    as const, label: 'Roof' },
+                      { key: 'interestedSiding'  as const, label: 'Siding' },
+                      { key: 'interestedWindows' as const, label: 'Windows' },
+                      { key: 'interestedDoors'   as const, label: 'Doors' },
+                    ]
+                  ).filter(({ key }) => lead.retailData?.[key]).map(({ label }) => (
+                    <span key={label} className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                      {label}
+                    </span>
+                  ))}
+                  {!lead.retailData.interestedRoof && !lead.retailData.interestedSiding &&
+                   !lead.retailData.interestedWindows && !lead.retailData.interestedDoors && (
+                    <span className="text-xs text-muted-foreground italic">None recorded</span>
+                  )}
+                </div>
+                {lead.retailData.notes && (
+                  <div className="sm:col-span-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed">
+                    {lead.retailData.notes}
+                  </div>
+                )}
+              </FieldGroup>
+            )}
+
+            <FieldGroup title="Internal Notes">
+              <TextareaField label="Notes" name="notes" value={form.notes} onChange={onField} rows={7}
+                placeholder="Add notes about this lead…" />
+            </FieldGroup>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InsuranceTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
   return (
     <div className="space-y-8">
-      <FieldGroup title="Primary Owner">
-        <Field label="First Name"    name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
-        <Field label="Last Name"     name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
-        <Field label="Email"         name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
-        <Field label="Phone"         name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
-        <Field label="Display Name"  name="customerName"   value={form.customerName}   onChange={onField} span2 />
+      <FieldGroup title="Policy">
+        <Field label="Insurance Carrier" name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
+        <Field label="Policy Number"     name="policyNumber"     value={form.policyNumber}     onChange={onField} />
+        <Field label="Claim Number"      name="claimNumber"      value={form.claimNumber}      onChange={onField} />
+        <Field label="Date of Loss"      name="dateOfLoss"       value={form.dateOfLoss}       onChange={onField} type="date" />
       </FieldGroup>
-
-      <FieldGroup title="Secondary Owner">
-        <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
-        <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
+      <FieldGroup title="Inspection">
+        <Field label="Inspection Date" name="inspectionDate" value={form.inspectionDate} onChange={onField} type="date" />
       </FieldGroup>
-
-      {/* Insurance-only quick summary in the dashboard */}
-      {isInsurance && (
-        <FieldGroup title="Insurance Quick Info">
-          <Field label="Insurance Carrier"  name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
-          <Field label="Claim Number"       name="claimNumber"      value={form.claimNumber}      onChange={onField} />
-          <Field label="Inspection Date"    name="inspectionDate"   value={form.inspectionDate}   onChange={onField} type="date" />
-          <Field label="Date of Loss"       name="dateOfLoss"       value={form.dateOfLoss}       onChange={onField} type="date" />
-        </FieldGroup>
-      )}
-
-      {isInsurance && (
-        <FieldGroup title="Status Notes">
-          <TextareaField label="Status Notes" name="statusNotes" value={form.statusNotes} onChange={onField}
-            rows={3} placeholder="Notes about the current stage (supplement needed, adjuster follow-up, etc.)…" />
-        </FieldGroup>
-      )}
-
-      <FieldGroup title="Internal Notes">
-        <TextareaField label="Internal Notes" name="notes" value={form.notes} onChange={onField}
-          rows={5} placeholder="Add notes about this lead…" />
+      <FieldGroup title="Adjuster">
+        <Field label="Adjuster Name"         name="adjusterName"        value={form.adjusterName}        onChange={onField} />
+        <Field label="Adjuster Phone"        name="adjusterPhone"       value={form.adjusterPhone}       onChange={onField} type="tel" />
+        <Field label="Adjuster Email"        name="adjusterEmail"       value={form.adjusterEmail}       onChange={onField} type="email" />
+        <Field label="Adjuster Meeting Date" name="adjusterMeetingDate" value={form.adjusterMeetingDate} onChange={onField} type="date" />
       </FieldGroup>
     </div>
   );
@@ -259,28 +553,6 @@ function FinancialsTab({ form, onField }: { form: FormState; onField: (n: string
         <Field label="ACV Amount ($)"        name="acvAmount"          value={form.acvAmount}          onChange={onField} placeholder="0.00" />
         <Field label="Supplement Amount ($)" name="supplementAmount"   value={form.supplementAmount}   onChange={onField} placeholder="0.00" />
         <Field label="Final Payment ($)"     name="finalPaymentAmount" value={form.finalPaymentAmount} onChange={onField} placeholder="0.00" />
-      </FieldGroup>
-    </div>
-  );
-}
-
-function InsuranceTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
-  return (
-    <div className="space-y-8">
-      <FieldGroup title="Policy">
-        <Field label="Insurance Carrier" name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
-        <Field label="Policy Number"     name="policyNumber"     value={form.policyNumber}     onChange={onField} />
-        <Field label="Claim Number"      name="claimNumber"      value={form.claimNumber}      onChange={onField} />
-        <Field label="Date of Loss"      name="dateOfLoss"       value={form.dateOfLoss}       onChange={onField} type="date" />
-      </FieldGroup>
-      <FieldGroup title="Inspection">
-        <Field label="Inspection Date" name="inspectionDate" value={form.inspectionDate} onChange={onField} type="date" />
-      </FieldGroup>
-      <FieldGroup title="Adjuster">
-        <Field label="Adjuster Name"         name="adjusterName"        value={form.adjusterName}        onChange={onField} />
-        <Field label="Adjuster Phone"        name="adjusterPhone"       value={form.adjusterPhone}       onChange={onField} type="tel" />
-        <Field label="Adjuster Email"        name="adjusterEmail"       value={form.adjusterEmail}       onChange={onField} type="email" />
-        <Field label="Adjuster Meeting Date" name="adjusterMeetingDate" value={form.adjusterMeetingDate} onChange={onField} type="date" />
       </FieldGroup>
     </div>
   );
@@ -355,8 +627,17 @@ export default function LeadProfile() {
   const isInsurance = !lead?.workflow || lead.workflow === 'insurance';
   const isRetail = lead?.workflow === 'retail';
 
-  // Rebuild tabs whenever pipeline type resolves
-  const tabs = useMemo(() => buildTabs(isInsurance), [isInsurance]);
+  // Derive the linked inspection ID (for the Inspection Flow tab)
+  const inspectionId = useMemo(() => {
+    if (!lead) return null;
+    // ins- prefixed leads ARE inspections; strip prefix to get the raw ID
+    if (lead.id.startsWith('ins-')) return lead.id.slice(4);
+    // Pin leads may have a linked inspection populated by the API
+    return lead.inspectionId ?? null;
+  }, [lead]);
+
+  // Rebuild tabs whenever pipeline type or inspection presence changes
+  const tabs = useMemo(() => buildTabs(isInsurance, !!inspectionId), [isInsurance, inspectionId]);
 
   // Available stages based on pipeline type
   const stageOptions = isRetail ? RETAIL_STAGES : INSURANCE_STAGES;
@@ -368,6 +649,10 @@ export default function LeadProfile() {
   }, [isInsurance, form?.pipelineStage]);
 
   function handleField(name: string, val: string) {
+    setForm(prev => prev ? { ...prev, [name]: val } : prev);
+  }
+
+  function handleCheckField(name: string, val: boolean) {
     setForm(prev => prev ? { ...prev, [name]: val } : prev);
   }
 
@@ -404,11 +689,15 @@ export default function LeadProfile() {
     if (!form) return;
     const keys = TAB_FIELDS[activeTab];
     if (keys.length === 0) return;
-    const payload: Record<string, string | null> = {};
+    const payload: Record<string, string | boolean | null> = {};
     for (const k of keys) {
-      const raw = form[k];
+      const raw = form[k as keyof FormState];
       const serverKey = k === 'communicationNotes' ? 'notes' : k;
-      payload[serverKey] = raw === '' ? null : raw;
+      if (typeof raw === 'boolean') {
+        payload[serverKey] = raw;
+      } else {
+        payload[serverKey] = (raw as string) === '' ? null : (raw as string);
+      }
     }
     try {
       await updateLead(payload);
@@ -558,14 +847,15 @@ export default function LeadProfile() {
             </div>
           ) : (
             <>
-              {activeTab === 'dashboard'     && <DashboardTab     form={form} onField={handleField} isInsurance={isInsurance} />}
-              {activeTab === 'financials'    && <FinancialsTab    form={form} onField={handleField} />}
-              {activeTab === 'insurance'     && isInsurance && <InsuranceTab form={form} onField={handleField} />}
-              {activeTab === 'communication' && <CommunicationTab form={form} onField={handleField} />}
-              {activeTab === 'scope'         && <ScopeTab         form={form} onField={handleField} />}
-              {activeTab === 'files'         && <FilesTab />}
+              {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} />}
+              {activeTab === 'inspection_flow' && inspectionId && <InspectionFlowTab inspectionId={inspectionId} />}
+              {activeTab === 'insurance'       && isInsurance && <InsuranceTab  form={form} onField={handleField} />}
+              {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} />}
+              {activeTab === 'communication'   && <CommunicationTab  form={form} onField={handleField} />}
+              {activeTab === 'scope'           && <ScopeTab          form={form} onField={handleField} />}
+              {activeTab === 'files'           && <FilesTab />}
 
-              {activeTab !== 'files' && (
+              {activeTab !== 'files' && activeTab !== 'inspection_flow' && (
                 <div className="mt-8 flex justify-end border-t pt-6">
                   <Button onClick={handleSave} disabled={saving} className="min-w-28">
                     {saving
