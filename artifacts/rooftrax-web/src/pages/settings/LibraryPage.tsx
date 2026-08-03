@@ -3,8 +3,9 @@
  * Super-admin only. Accessible at /settings/library.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
 import { Shell } from "@/components/layout/Shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck } from "lucide-react";
+import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -120,6 +121,8 @@ function BoilerplateTab() {
   const [editorContent, setEditorContent] = useState("");
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [loadingFull, setLoadingFull] = useState(false);
+  const [editorTab, setEditorTab] = useState<"write" | "preview">("write");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const saveMutation = useMutation({
     mutationFn: (vars: { sectionKey: string; content: string }) =>
@@ -140,6 +143,7 @@ function BoilerplateTab() {
 
   const openEditor = useCallback(async (entry: BpEntry) => {
     setEditing(entry);
+    setEditorTab("write");
     setLoadingFull(true);
     try {
       const res = await customFetch<{ entry: { content?: string } | null }>(
@@ -153,6 +157,19 @@ function BoilerplateTab() {
     } finally {
       setLoadingFull(false);
     }
+  }, []);
+
+  const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result;
+      if (typeof text === "string") setEditorContent(text);
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-imported
+    e.target.value = "";
   }, []);
 
   if (isLoading) return <Skeleton className="h-48 w-full" />;
@@ -181,6 +198,15 @@ function BoilerplateTab() {
         </div>
       ))}
 
+      {/* Hidden file input for .md import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".md,text/markdown"
+        className="hidden"
+        onChange={handleFileImport}
+      />
+
       <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -188,21 +214,69 @@ function BoilerplateTab() {
               {editing ? BP_SECTION_LABELS[editing.sectionKey] ?? editing.sectionKey : ""}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
+
+          <div className="space-y-3">
+            {/* Write / Preview toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex rounded-md border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setEditorTab("write")}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    editorTab === "write"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Write
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditorTab("preview")}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    editorTab === "preview"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Preview
+                </button>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loadingFull}
+              >
+                <Upload className="h-3 w-3 mr-1.5" />
+                Import .md file
+              </Button>
+            </div>
+
             {loadingFull ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (
+              <Skeleton className="h-[260px] w-full" />
+            ) : editorTab === "write" ? (
               <Textarea
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
                 className="min-h-[260px] font-mono text-sm"
-                placeholder="Enter content (HTML or plain text)…"
+                placeholder="Enter Markdown, HTML, or plain text…"
               />
+            ) : (
+              <div className="min-h-[260px] rounded-md border bg-muted/30 p-4 overflow-auto prose prose-sm dark:prose-invert max-w-none text-sm">
+                {editorContent.trim() ? (
+                  <ReactMarkdown>{editorContent}</ReactMarkdown>
+                ) : (
+                  <p className="text-muted-foreground italic">Nothing to preview.</p>
+                )}
+              </div>
             )}
+
             {editing && editorContent === fullContent && !loadingFull && (
               <p className="text-xs text-muted-foreground">No changes yet.</p>
             )}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
             <Button
