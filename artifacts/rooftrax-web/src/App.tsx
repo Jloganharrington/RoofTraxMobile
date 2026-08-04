@@ -27,6 +27,7 @@ import { ComingSoon } from '@/pages/ComingSoon';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
+import MapPage from '@/pages/MapPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -115,10 +116,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/map">
-        <ProtectedRoute>
-          <ComingSoon icon={MapPin} title="Map View"
-            description="See your team's active inspections and leads plotted on a live territory map." />
-        </ProtectedRoute>
+        <ProtectedRoute><MapPage /></ProtectedRoute>
       </Route>
       <Route path="/templates">
         <ProtectedRoute>
