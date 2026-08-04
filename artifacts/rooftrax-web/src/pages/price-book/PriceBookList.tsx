@@ -146,7 +146,7 @@ function ItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" key={resetKey}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {initial.editingId ? "Edit Line Item" : "Add Line Item"}
