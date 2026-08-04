@@ -19,6 +19,7 @@ import discontinuedProductsRouter from "./discontinuedProducts";
 import agreementRouter from "./agreement";
 import portalRouter from "./portal";
 import libraryRouter from "./library";
+import ahjWizardRouter from "./ahjWizard";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(discontinuedProductsRouter);
 router.use(agreementRouter);
 router.use(portalRouter);
 router.use(libraryRouter);
+router.use(ahjWizardRouter);
 
 export default router;

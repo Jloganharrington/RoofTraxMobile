@@ -1,0 +1,110 @@
+{
+  "_comment": "Virginia golden-set eval fixture for AHJ Wizard extraction scoring. The fire-separation canary (R302.2.2) must be a 'found' item (not a gap) for the run to pass.",
+  "jurisdiction": "Virginia",
+  "codeEdition": "2021 Virginia Residential Code (VRC) / 2021 Virginia Existing Building Code (VEBC)",
+  "goldenItems": [
+    {
+      "id": "VA-001",
+      "citation": "Section 101",
+      "codeBody": "VRC",
+      "description": "Virginia Residential Code governing-code authority — USBC Part I adopts IRC with Virginia amendments",
+      "classification": "permit_inspection",
+      "isCanary": false
+    },
+    {
+      "id": "VA-002",
+      "citation": "R908.3",
+      "codeBody": "VRC",
+      "description": "Reroofing in flood hazard areas — additional requirements for existing roofs in SFHA zones",
+      "classification": "structural_attachment",
+      "isCanary": false
+    },
+    {
+      "id": "VA-003",
+      "citation": "R908.3.1.1",
+      "codeBody": "VRC",
+      "description": "Roof replacement in flood hazard areas — compliance with new construction provisions when >50% replacement",
+      "classification": "structural_attachment",
+      "isCanary": false
+    },
+    {
+      "id": "VA-004",
+      "citation": "R905.2.1",
+      "codeBody": "VRC",
+      "description": "Underlayment for asphalt shingles — Class D felt or ASTM D226/D4869 synthetic underlayment requirements",
+      "classification": "underlayment",
+      "isCanary": false
+    },
+    {
+      "id": "VA-005",
+      "citation": "R503.2.1.1",
+      "codeBody": "VRC",
+      "description": "Wood structural panels for roof sheathing — minimum thickness, span rating, and attachment requirements",
+      "classification": "deck_attachment",
+      "isCanary": false
+    },
+    {
+      "id": "VA-006",
+      "citation": "R302.2.2",
+      "codeBody": "VRC",
+      "description": "Fire separation between attached garages and dwelling — 1/2-inch gypsum board on garage side; triggers roof scope when decking or sheathing is replaced in the soffit-adjacent area",
+      "classification": "fire_separation",
+      "isCanary": true,
+      "canaryNote": "The fire-separation canary. Must be a 'found' candidate item, never a gap. A run that misses this or parks it as a gap fails the eval."
+    },
+    {
+      "id": "VA-007",
+      "citation": "R905.2.8.2",
+      "codeBody": "VRC",
+      "description": "Drip edge and eave flashing requirements for asphalt shingle roofs — minimum 2-inch horizontal leg, corrosion-resistant metal",
+      "classification": "drip_edge_metal",
+      "isCanary": false
+    },
+    {
+      "id": "VA-008",
+      "citation": "R908.5",
+      "codeBody": "VRC / VEBC",
+      "description": "Reroofing — materials, load capacity, and permit trigger when existing roof is being replaced or recovered",
+      "classification": "layering_tearoff",
+      "isCanary": false
+    },
+    {
+      "id": "VA-009",
+      "citation": "R905.1",
+      "codeBody": "VRC",
+      "description": "Roof covering application must follow manufacturer installation instructions and code minimum requirements — manufacturer instructions govern when more restrictive",
+      "classification": "underlayment",
+      "isCanary": false
+    },
+    {
+      "id": "VA-010",
+      "citation": "R703.11.1",
+      "codeBody": "VRC",
+      "description": "Flashing at wall-to-roof intersections — corrosion-resistant metal, minimum dimensions, counter-flashing requirements",
+      "classification": "flashing",
+      "isCanary": false
+    },
+    {
+      "id": "VA-011",
+      "citation": "R703.2",
+      "codeBody": "VRC",
+      "description": "Weather-resistant barrier (WRB) provisions — required behind exterior wall cladding; applies to wall sections disturbed by roofing work at rakes and eaves",
+      "classification": "underlayment",
+      "isCanary": false
+    },
+    {
+      "id": "VA-012",
+      "citation": "R105.2",
+      "codeBody": "VRC",
+      "description": "Permit threshold for roof decking replacement — replacement of roof sheathing or structural decking requires a permit; repair of less than 25% in any 12-month period may qualify for exemption",
+      "classification": "permit_inspection",
+      "isCanary": false
+    }
+  ],
+  "evalCriteria": {
+    "minimumRecall": 1.0,
+    "maxMissed": 0,
+    "canaryMustBeFound": true,
+    "canaryCitation": "R302.2.2"
+  }
+}

@@ -34,6 +34,8 @@ app.use(cookieParser());
 // Registered first: express.json marks the body as parsed, so the general
 // parser below skips requests these already handled.
 app.use('/api/inspections/:inspectionId/email-report', express.json({ limit: '15mb' }));
+// AHJ Wizard corpus upload: licensed code documents may be several MB of text.
+app.use('/api/ahj-wizard/sources', express.json({ limit: '10mb' }));
 // Sign endpoint: receives a base64 PNG signature image (~50–500KB).
 // PDF base64 from expo-print can be ~2 MB binary → ~2.7 MB base64; allow 5 MB.
 app.use('/api/inspections/:inspectionId/agreement/sign', express.json({ limit: '5mb' }));

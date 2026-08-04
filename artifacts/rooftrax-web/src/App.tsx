@@ -4,6 +4,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 
 import Home from '@/pages/Home';
 import LibraryPage from '@/pages/settings/LibraryPage';
+import AhjWizardPage from '@/pages/settings/AhjWizardPage';
 import InspectionList from '@/pages/inspections/InspectionList';
 import ClaimHub from '@/pages/ClaimHub';
 import Summary from '@/pages/inspections/Summary';
@@ -90,6 +91,9 @@ function Router() {
       </Route>
       <Route path="/settings/library">
         <ProtectedRoute><LibraryPage /></ProtectedRoute>
+      </Route>
+      <Route path="/settings/library/ahj-wizard">
+        <ProtectedRoute><AhjWizardPage /></ProtectedRoute>
       </Route>
 
       <Route component={NotFound} />

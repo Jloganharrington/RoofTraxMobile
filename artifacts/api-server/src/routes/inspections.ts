@@ -7215,7 +7215,7 @@ router.get('/search', async (req: Request, res: Response) => {
   if (!actor) return;
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-  if (q.length < 2) return res.json({ results: [] });
+  if (q.length < 2) return void res.json({ results: [] });
 
   const term = `%${q}%`;
 

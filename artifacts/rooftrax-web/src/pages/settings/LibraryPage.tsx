@@ -41,7 +41,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2, Trash2, Bot } from "lucide-react";
+import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2, Trash2, Bot, Wand2 } from "lucide-react";
+import { Link } from "wouter";
 import {
   parseMdLibrary,
   parseMdBoilerplate,
@@ -1792,6 +1793,14 @@ export default function LibraryPage() {
                 <DetrimentTab />
               </TabsContent>
               <TabsContent value="ahj">
+                <div className="mb-4 flex items-center justify-end">
+                  <Link href="/settings/library/ahj-wizard">
+                    <Button size="sm" variant="outline">
+                      <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+                      AHJ Wizard
+                    </Button>
+                  </Link>
+                </div>
                 <AhjPacksTab />
               </TabsContent>
               <TabsContent value="ai-agents">
