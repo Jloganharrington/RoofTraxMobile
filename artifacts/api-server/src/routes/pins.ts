@@ -114,6 +114,9 @@ router.post('/pins', async (req: Request, res: Response) => {
       contactOutcome,
       customerName,
       customerPhone,
+      // Initialise every new pin to 'pin_dropped' so it immediately appears in
+      // the correct pipeline column without relying on the legacy status fallback.
+      pipelineStage: 'pin_dropped',
     })
     .returning();
 

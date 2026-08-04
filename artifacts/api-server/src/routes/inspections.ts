@@ -7858,7 +7858,27 @@ router.get('/pipeline', async (req: Request, res: Response) => {
     sourcePipeline:         p.sourcePipeline   ?? null,
   }));
 
-  res.json({ inspections: [...inspections, ...pinDroppedItems] });
+  // Exclude leads that have advanced to a project-pipeline stage.
+  // After pm_handoff the lead belongs on the Project Pipeline board only.
+  // Without this filter, resolveStageKey() on the client falls back to the
+  // inspection's status and resurfaces the lead in a wrong insurance column.
+  const PROJECT_PIPELINE_STAGE_KEYS_SET = new Set([
+    'pm_handoff', 'pre_production', 'materials_ordered', 'scheduled',
+    'in_production', 'complete', 'final_invoiced', 'closed_warranty',
+    // Old vocabulary keys — guards any row not yet reached by migration 015
+    'work_scheduled', 'work_started', 'replacement_complete',
+    'certificate_of_completion', 'final_payment_pending',
+    'final_payment_received', 'archived_complete',
+  ]);
+
+  const filteredInspections = inspections.filter(
+    (i) => !i.stageKey || !PROJECT_PIPELINE_STAGE_KEYS_SET.has(i.stageKey),
+  );
+  const filteredPinDropped = pinDroppedItems.filter(
+    (i) => !i.stageKey || !PROJECT_PIPELINE_STAGE_KEYS_SET.has(i.stageKey),
+  );
+
+  res.json({ inspections: [...filteredInspections, ...filteredPinDropped] });
 });
 
 // ---------------------------------------------------------------------------
@@ -8746,9 +8766,17 @@ router.post('/inspections/:inspectionId/events', async (req: Request, res: Respo
 // ---------------------------------------------------------------------------
 
 // Project-stage keys — leads with any of these are excluded from the Retail board.
+// Includes both current project stage keys AND the old vocabulary keys that
+// migration 015 remaps, so any row the migration hasn't reached yet is still
+// filtered out instead of silently dropping on the client.
 const RETAIL_EXCLUDE_STAGE_KEYS = new Set([
+  // Current project-pipeline stage keys
   'pm_handoff', 'pre_production', 'materials_ordered', 'scheduled',
   'in_production', 'complete', 'final_invoiced', 'closed_warranty',
+  // Old project-pipeline vocabulary keys (pre-migration 015)
+  'work_scheduled', 'work_started', 'replacement_complete',
+  'certificate_of_completion', 'final_payment_pending',
+  'final_payment_received', 'archived_complete',
 ]);
 
 router.get('/retail-pipeline', async (req: Request, res: Response) => {
