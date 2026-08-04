@@ -1445,6 +1445,8 @@ export const CLAIM_EVENT_TYPES = [
   'comparison_pair_removed',
   'exhibit_badges_finalized',
   'captions_generated',
+  'field_record_reviewed',
+  'package_delivered',
 ] as const;
 export type ClaimEventType = (typeof CLAIM_EVENT_TYPES)[number];
 

@@ -2674,6 +2674,15 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
     .where(eq(inspectionsTable.id, inspectionId))
     .returning();
 
+  // Record package_delivered claim event.
+  await db.insert(claimEventsTable).values({
+    inspectionId,
+    companyId: actor.companyId,
+    eventType: 'package_delivered',
+    payload: {},
+    actorId: actor.userId,
+  });
+
   res.json(SubmitInspectionResponse.parse({ inspection: updated }));
 });
 
@@ -8007,6 +8016,84 @@ router.get('/inspections/:inspectionId/events', async (req: Request, res: Respon
       actorId: e.actorId,
       createdAt: e.createdAt.toISOString(),
     })),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/events
+// Record a UI-triggered claim event. Only the allowlisted event types that a
+// rep action creates (e.g. field_record_reviewed) may be posted here.
+// Internal pipeline events (compiled, section_generated, etc.) are recorded
+// by their own routes.
+// ---------------------------------------------------------------------------
+
+const UI_RECORDABLE_EVENT_TYPES = ['field_record_reviewed'] as const;
+type UiRecordableEventType = (typeof UI_RECORDABLE_EVENT_TYPES)[number];
+
+router.post('/inspections/:inspectionId/events', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const body = req.body as Record<string, unknown>;
+  const eventType = body.eventType as string | undefined;
+
+  if (!eventType || !(UI_RECORDABLE_EVENT_TYPES as readonly string[]).includes(eventType)) {
+    return void res.status(400).json({
+      error: `eventType must be one of: ${UI_RECORDABLE_EVENT_TYPES.join(', ')}`,
+    });
+  }
+
+  const typedEvent = eventType as UiRecordableEventType;
+
+  // Idempotent: if this event already exists for the inspection, return the
+  // existing record rather than duplicating it.
+  const [existing] = await db
+    .select()
+    .from(claimEventsTable)
+    .where(
+      and(
+        eq(claimEventsTable.inspectionId, inspectionId),
+        eq(claimEventsTable.companyId, actor.companyId),
+        eq(claimEventsTable.eventType, typedEvent),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    return void res.json({
+      event: {
+        id: existing.id,
+        eventType: existing.eventType,
+        payload: existing.payload,
+        actorId: existing.actorId,
+        createdAt: existing.createdAt.toISOString(),
+      },
+    });
+  }
+
+  const [inserted] = await db
+    .insert(claimEventsTable)
+    .values({
+      inspectionId,
+      companyId: actor.companyId,
+      eventType: typedEvent,
+      payload: (body.payload as Record<string, unknown> | undefined) ?? {},
+      actorId: actor.userId,
+    })
+    .returning();
+
+  res.status(201).json({
+    event: {
+      id: inserted.id,
+      eventType: inserted.eventType,
+      payload: inserted.payload,
+      actorId: inserted.actorId,
+      createdAt: inserted.createdAt.toISOString(),
+    },
   });
 });
 

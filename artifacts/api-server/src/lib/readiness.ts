@@ -219,7 +219,7 @@ export function computeReadiness(input: ReadinessInput): ReadinessResult {
       fail(
         'rap_record',
         'RAP record present',
-        'No RAP test squares recorded and no gate reason on file.',
+        'No repairability assessment recorded and no gate reason on file.',
       ),
     );
   }

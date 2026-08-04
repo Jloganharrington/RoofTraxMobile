@@ -1,7 +1,14 @@
 /**
- * InspectionFlowWizard — full inline inspection workflow for the Lead Profile
- * Inspection tab. Covers Stages 0-6: Readiness → Field Capture → Photo Curation
- * → AI Sections → Estimate → Compile & Attest → Submit.
+ * InspectionFlowWizard — Proof Package Builder.
+ *
+ * Gate: shows "Awaiting Field Capture" until the field record is attested.
+ * Once attested, renders a readiness progress bar + 6-step pipeline:
+ *   1. Review Field Data
+ *   2. Photo Curation      ─┐ both unlock after step 1
+ *   3. Estimate            ─┘
+ *   4. AI Report Sections
+ *   5. Compile & Attest
+ *   6. Deliver
  */
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
@@ -30,6 +37,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -40,8 +52,11 @@ import {
   Download,
   Camera,
   Image,
-  Send,
+  Truck,
   CheckCheck,
+  ChevronDown,
+  Clock,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +66,9 @@ import {
   useGetReportAttestation,
   useAttestReport,
   useCompileReport,
-  useSubmitClaim,
+  useDeliverPackage,
+  useGetEvents,
+  useRecordClaimEvent,
   type ReadinessItem,
 } from "@/lib/claimHubApi";
 import { useGetCuration } from "@/lib/curationApi";
@@ -76,25 +93,380 @@ interface CompiledVersion {
 type InspEnv = {
   inspection: {
     status?: string;
+    phase?: string | null;
     scheduledFor?: string | null;
+    updatedAt?: string | null;
+    address?: string | null;
     compiledReportVersions?: CompiledVersion[];
+    roofDamageFound?: boolean | null;
+    sidingDamageFound?: boolean | null;
+    collateralDamageFound?: boolean | null;
+    interiorDamageFound?: boolean | null;
+    attestations?: Array<{ attestationType: string | null; createdAt?: string }>;
+    photos?: Array<{ id: string }>;
+    products?: Array<{ id: string; identificationMethod?: string | null }>;
     [key: string]: unknown;
   };
   [key: string]: unknown;
 };
 
 // ---------------------------------------------------------------------------
-// StagePanel
+// AwaitingFieldCapture — gate shown before an attested field record exists
+// ---------------------------------------------------------------------------
+
+function AwaitingFieldCapture({
+  inspectionId,
+  inspection,
+}: {
+  inspectionId: string;
+  inspection: InspEnv["inspection"] | undefined;
+}) {
+  const status = inspection?.status ?? null;
+
+  // Derive a human-readable capture status badge
+  const captureStatus = (() => {
+    const hasAttestation = inspection?.attestations?.some(
+      (a) => a.attestationType === "stage_signoff",
+    );
+    if (hasAttestation) return { label: "Synced — Pending Attestation", variant: "amber" as const };
+    if (status === "in_progress") return { label: "In Progress", variant: "blue" as const };
+    if (status === "scheduled") return { label: "Scheduled", variant: "gray" as const };
+    if (status && status !== "draft") return { label: "In Progress", variant: "blue" as const };
+    return { label: "Not Started", variant: "gray" as const };
+  })();
+
+  const lastSync = inspection?.updatedAt
+    ? format(new Date(inspection.updatedAt), "MMM d, yyyy 'at' h:mm a")
+    : null;
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-12 px-6 space-y-5">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
+        <Camera className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+      </div>
+
+      <div className="space-y-1.5">
+        <h3 className="text-base font-semibold text-foreground">
+          Awaiting Field Capture
+        </h3>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          The Proof Package Builder will unlock once the field record is
+          attested by the inspector.
+        </p>
+      </div>
+
+      {/* Status badge */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Capture status:</span>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+            captureStatus.variant === "amber" &&
+              "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+            captureStatus.variant === "blue" &&
+              "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+            captureStatus.variant === "gray" &&
+              "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+          )}
+        >
+          <Clock className="h-3 w-3" />
+          {captureStatus.label}
+        </span>
+      </div>
+
+      {lastSync && (
+        <p className="text-xs text-muted-foreground">
+          Last sync: {lastSync}
+        </p>
+      )}
+
+      <a
+        href={`/rooftrax-web/inspections/${inspectionId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
+      >
+        <FileText className="h-3.5 w-3.5" />
+        View Field Record
+        <ExternalLink className="h-3 w-3" />
+      </a>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ReadinessProgressBar — replaces the old Stage 0 checklist panel
+// ---------------------------------------------------------------------------
+
+function ReadinessProgressBar({
+  readiness,
+  loading,
+}: {
+  readiness: { overallPass: boolean; items: ReadinessItem[] } | undefined;
+  loading: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (loading) {
+    return <Skeleton className="h-10 w-full rounded-xl" />;
+  }
+  if (!readiness) return null;
+
+  const passCount = readiness.items.filter((i) => i.state === "pass").length;
+  const total = readiness.items.length;
+  const pct = total > 0 ? (passCount / total) * 100 : 0;
+  const failing = readiness.items.filter((i) => i.state !== "pass");
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <div
+        className={cn(
+          "rounded-xl border px-4 py-3 space-y-2",
+          readiness.overallPass
+            ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30"
+            : "border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/30",
+        )}
+      >
+        <CollapsibleTrigger asChild>
+          <button className="w-full flex items-center gap-3 text-left" type="button">
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">
+                  Stage Readiness
+                </span>
+                <span className="text-xs text-muted-foreground font-medium">
+                  {passCount} / {total} checks passing
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    readiness.overallPass ? "bg-emerald-500" : "bg-amber-500",
+                  )}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+            {failing.length > 0 && (
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
+                  !expanded && "-rotate-90",
+                )}
+              />
+            )}
+            {readiness.overallPass && (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+            )}
+          </button>
+        </CollapsibleTrigger>
+
+        {failing.length > 0 && (
+          <CollapsibleContent>
+            <div className="pt-1 divide-y divide-border/40">
+              {failing.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex items-start gap-2.5 py-2 text-xs"
+                >
+                  {item.state === "warning" ? (
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground">{item.label}</p>
+                    {item.detail && (
+                      <p className="text-muted-foreground mt-0.5">{item.detail}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        )}
+      </div>
+    </Collapsible>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FieldReviewModal — Step 1 read-only field record review
+// ---------------------------------------------------------------------------
+
+function FieldReviewModal({
+  open,
+  onOpenChange,
+  inspectionId,
+  inspection,
+  onReviewed,
+  isRecording,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  inspectionId: string;
+  inspection: InspEnv["inspection"] | undefined;
+  onReviewed: () => void;
+  isRecording: boolean;
+}) {
+  const hasAttestation = inspection?.attestations?.some(
+    (a) => a.attestationType === "stage_signoff",
+  );
+  const attestedAt = inspection?.attestations?.find(
+    (a) => a.attestationType === "stage_signoff",
+  )?.createdAt;
+
+  const damageFlagRow = (label: string, value: boolean | null | undefined) => (
+    <div className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      {value ? (
+        <Badge
+          variant="outline"
+          className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300"
+        >
+          Found
+        </Badge>
+      ) : (
+        <span className="text-xs text-muted-foreground">—</span>
+      )}
+    </div>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Field Record Review</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Read-only summary of the attested field record. Review before
+            marking the step complete.
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Attestation banner */}
+        <div
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium",
+            hasAttestation
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+              : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800",
+          )}
+        >
+          {hasAttestation ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+          )}
+          {hasAttestation
+            ? attestedAt
+              ? `Field record attested ${format(new Date(attestedAt), "MMM d, yyyy 'at' h:mm a")}`
+              : "Field record attested"
+            : "Field record not yet attested"}
+        </div>
+
+        {/* Overview */}
+        <div className="rounded-lg border divide-y divide-border/50">
+          {(
+            [
+              ["Status", String(inspection?.status ?? "—").replace(/_/g, " ")],
+              ["Phase", String(inspection?.phase ?? "—").replace(/_/g, " ")],
+              inspection?.scheduledFor
+                ? [
+                    "Scheduled",
+                    format(new Date(String(inspection.scheduledFor)), "MMM d, yyyy"),
+                  ]
+                : null,
+              inspection?.updatedAt
+                ? [
+                    "Last updated",
+                    format(new Date(String(inspection.updatedAt)), "MMM d, yyyy 'at' h:mm a"),
+                  ]
+                : null,
+            ].filter((r): r is [string, string] => r !== null)
+          ).map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between px-3 py-2 text-sm"
+              >
+                <span className="text-muted-foreground capitalize">{label}</span>
+                <span className="font-medium capitalize">{value}</span>
+              </div>
+            ))}
+        </div>
+
+        {/* Damage scope */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Damage Scope
+          </p>
+          <div className="rounded-lg border px-3">
+            {damageFlagRow("Roof damage", inspection?.roofDamageFound)}
+            {damageFlagRow("Siding damage", inspection?.sidingDamageFound)}
+            {damageFlagRow("Collateral damage", inspection?.collateralDamageFound)}
+            {damageFlagRow("Interior damage", inspection?.interiorDamageFound)}
+          </div>
+        </div>
+
+        {/* Evidence summary */}
+        <div className="rounded-lg border divide-y divide-border/50">
+          <div className="flex items-center justify-between px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Photos captured</span>
+            <span className="font-medium">{inspection?.photos?.length ?? 0}</span>
+          </div>
+          <div className="flex items-center justify-between px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Products identified</span>
+            <span className="font-medium">{inspection?.products?.length ?? 0}</span>
+          </div>
+        </div>
+
+        {/* Link to full record */}
+        <a
+          href={`/rooftrax-web/inspections/${inspectionId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Open Full Field Record
+        </a>
+
+        <DialogFooter className="pt-2">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isRecording}
+          >
+            Close
+          </Button>
+          <Button disabled={isRecording} onClick={onReviewed}>
+            {isRecording ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+            )}
+            {isRecording ? "Saving…" : "Mark Reviewed"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StageIndicator
 // ---------------------------------------------------------------------------
 
 function StageIndicator({
   index,
   isComplete,
   isActive,
+  isLocked,
 }: {
   index: number;
   isComplete: boolean;
   isActive: boolean;
+  isLocked: boolean;
 }) {
   return (
     <div
@@ -104,13 +476,25 @@ function StageIndicator({
           ? "border-emerald-500 bg-emerald-500 text-white"
           : isActive
             ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-muted text-muted-foreground",
+            : isLocked
+              ? "border-border/40 bg-muted/30 text-muted-foreground/40"
+              : "border-border bg-muted text-muted-foreground",
       )}
     >
-      {isComplete ? <CheckCheck className="h-3.5 w-3.5" /> : index}
+      {isComplete ? (
+        <CheckCheck className="h-3.5 w-3.5" />
+      ) : isLocked ? (
+        <Lock className="h-3 w-3" />
+      ) : (
+        index
+      )}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// StagePanel
+// ---------------------------------------------------------------------------
 
 function StagePanel({
   index,
@@ -118,6 +502,7 @@ function StagePanel({
   summary,
   isComplete,
   isActive,
+  isLocked,
   isOpen,
   onToggle,
   children,
@@ -127,31 +512,47 @@ function StagePanel({
   summary?: string;
   isComplete: boolean;
   isActive: boolean;
+  isLocked: boolean;
   isOpen: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const handleToggle = () => {
+    if (isLocked) return;
+    onToggle();
+  };
+
   return (
     <div
       className={cn(
         "rounded-xl border transition-colors",
-        isActive && !isComplete && "border-primary/40 bg-card",
         isComplete && "border-emerald-200 dark:border-emerald-900/40 bg-card",
-        !isActive && !isComplete && "border-border bg-muted/20",
+        isActive && !isComplete && "border-primary/40 bg-card",
+        isLocked && "border-border/40 bg-muted/10",
+        !isActive && !isComplete && !isLocked && "border-border bg-muted/20",
       )}
     >
       {/* Header */}
       <button
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 p-4 text-left"
+        onClick={handleToggle}
+        className={cn(
+          "flex w-full items-center gap-3 p-4 text-left",
+          isLocked && "cursor-not-allowed",
+        )}
         type="button"
+        disabled={isLocked}
       >
-        <StageIndicator index={index} isComplete={isComplete} isActive={isActive} />
+        <StageIndicator
+          index={index}
+          isComplete={isComplete}
+          isActive={isActive}
+          isLocked={isLocked}
+        />
         <div className="flex-1 min-w-0">
           <p
             className={cn(
               "text-sm font-semibold leading-tight",
-              !isActive && !isComplete && "text-muted-foreground",
+              (isLocked || (!isActive && !isComplete)) && "text-muted-foreground",
             )}
           >
             {title}
@@ -165,49 +566,30 @@ function StagePanel({
             Complete
           </span>
         )}
-        <svg
-          className={cn(
-            "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
-            !isOpen && "-rotate-90",
-          )}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        {!isLocked && (
+          <svg
+            className={cn(
+              "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
+              !isOpen && "-rotate-90",
+            )}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        )}
       </button>
 
       {/* Content */}
-      {isOpen && (
+      {isOpen && !isLocked && (
         <div className="border-t px-4 pb-4 pt-3 space-y-3">{children}</div>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Readiness item row (Stage 0 + Stage 1)
-// ---------------------------------------------------------------------------
-
-function ReadinessRow({ item }: { item: ReadinessItem }) {
-  const icon =
-    item.state === "pass" ? (
-      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-    ) : item.state === "warning" ? (
-      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-    ) : (
-      <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-    );
-  return (
-    <div className="flex items-start gap-2.5 py-2 border-b last:border-0">
-      {icon}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{item.label}</p>
-        {item.detail && (
-          <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
-        )}
-      </div>
     </div>
   );
 }
@@ -243,67 +625,100 @@ export function InspectionFlowWizard({
       queryKey: getGetInspectionQueryKey(inspectionId),
     },
   });
+  const { data: eventsData } = useGetEvents(inspectionId);
 
   const inspection = (inspectionEnv as InspEnv | undefined)?.inspection;
   const compiledVersions = inspection?.compiledReportVersions ?? [];
   const sections = sectionsData?.sections ?? [];
   const curation = curationData;
+  const events = eventsData?.events ?? [];
 
   const compileReport = useCompileReport(inspectionId);
   const attestReport = useAttestReport(inspectionId);
-  const submitClaim = useSubmitClaim(inspectionId);
+  const deliverPackage = useDeliverPackage(inspectionId);
+  const recordEvent = useRecordClaimEvent(inspectionId);
 
   // ── Attestation dialog ───────────────────────────────────────────────────
   const [attestDialogOpen, setAttestDialogOpen] = useState(false);
   const [attestAcknowledged, setAttestAcknowledged] = useState(false);
 
-  // ── Stage completion ─────────────────────────────────────────────────────
-  const s0Complete = readiness?.overallPass === true;
-  const s1Complete = s0Complete;
+  // ── Field review modal ───────────────────────────────────────────────────
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+
+  // ── Gate: field record attested? ─────────────────────────────────────────
+  const fieldRecordAttestedItem = readiness?.items.find(
+    (i) => i.key === "field_record_attested",
+  );
+  const isFieldRecordAttested =
+    fieldRecordAttestedItem?.state === "pass";
+  const showGate =
+    !loadingReadiness && readiness != null && !isFieldRecordAttested;
+
+  // ── Step completion ──────────────────────────────────────────────────────
+  // s1: field record reviewed (UI event)
+  const s1Complete = events.some((e) => e.eventType === "field_record_reviewed");
+  // s2: photo curation finalized
   const s2Complete =
     curation?.isFinalized === true &&
     (curation.captions.length === 0 ||
       curation.captions.every((c) => c.state === "locked"));
-  const s3Complete = SECTION_ORDER.every((t) =>
+  // s3: estimate has ≥1 line items
+  const s3Complete = (estimateEnv?.estimate?.lines?.length ?? 0) > 0;
+  // s4: all AI sections locked
+  const s4Complete = SECTION_ORDER.every((t) =>
     sections.some((s) => s.sectionType === t && s.state === "locked"),
   );
-  const s4Complete = (estimateEnv?.estimate?.lines?.length ?? 0) > 0;
+  // s5: compiled + attested
   const s5Complete =
     compiledVersions.length > 0 && attestationData?.attested === true;
+  // s6: package delivered
   const s6Complete = inspection?.status === "submitted";
 
-  const stageComplete = [
-    s0Complete,
-    s1Complete,
-    s2Complete,
-    s3Complete,
-    s4Complete,
-    s5Complete,
-    s6Complete,
-  ];
+  // ── Active stages (parallel 2+3) ─────────────────────────────────────────
+  // Returns the set of 0-based step indices that are "active" (highlighted blue)
+  const activeStages = (() => {
+    if (!s1Complete) return new Set([0]);
+    if (!s2Complete || !s3Complete) {
+      const a = new Set<number>();
+      if (!s2Complete) a.add(1);
+      if (!s3Complete) a.add(2);
+      return a;
+    }
+    if (!s4Complete) return new Set([3]);
+    if (!s5Complete) return new Set([4]);
+    return new Set([5]);
+  })();
 
-  // ── Active stage + open state ────────────────────────────────────────────
-  const activeStageIndex = stageComplete.findIndex((c) => !c);
-  const effectiveActive = activeStageIndex === -1 ? 6 : activeStageIndex;
+  // A step is "locked" (can't open accordion) when its prerequisites aren't met
+  const isStepLocked = (i: number): boolean => {
+    if (i === 0) return false; // Review Field Data always accessible
+    if (i === 1) return !s1Complete; // Photo Curation unlocks after step 1
+    if (i === 2) return !s1Complete; // Estimate unlocks after step 1
+    if (i === 3) return !s2Complete || !s3Complete; // Sections unlock after 2+3
+    if (i === 4) return !s4Complete; // Compile unlocks after sections
+    if (i === 5) return !s5Complete; // Deliver unlocks after compile+attest
+    return false;
+  };
 
+  // ── Open state for accordion panels ─────────────────────────────────────
   const [openStages, setOpenStages] = useState<Set<number>>(
-    () => new Set([effectiveActive]),
+    () => new Set(activeStages),
   );
 
-  // When active stage changes (data loads), auto-open it but don't close anything
   useEffect(() => {
-    if (effectiveActive >= 0) {
-      setOpenStages((prev) => {
-        if (prev.has(effectiveActive)) return prev;
-        const next = new Set(prev);
-        next.add(effectiveActive);
-        return next;
-      });
-    }
-  }, [effectiveActive]);
+    setOpenStages((prev) => {
+      const next = new Set(prev);
+      for (const a of activeStages) {
+        next.add(a);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s1Complete, s2Complete, s3Complete, s4Complete, s5Complete, s6Complete]);
 
   const toggle = (i: number) =>
     setOpenStages((prev) => {
+      if (isStepLocked(i)) return prev;
       const next = new Set(prev);
       next.has(i) ? next.delete(i) : next.add(i);
       return next;
@@ -313,7 +728,6 @@ export function InspectionFlowWizard({
   const lockedCount = SECTION_ORDER.filter((t) =>
     sections.some((s) => s.sectionType === t && s.state === "locked"),
   ).length;
-
   const hasRealSections = sections.some((s) => s.state !== "not_started");
   const allSectionsLocked =
     sections.length > 0 && sections.every((s) => s.state === "locked");
@@ -325,22 +739,18 @@ export function InspectionFlowWizard({
   const canAttest =
     pkgCompiled && !isAttested && !loadingAttestation && !attestReport.isPending;
 
-  const assignedCount = curation?.selections.filter((s) => s.exhibitClass).length ?? 0;
-  const captionLockedCount = curation?.captions.filter((c) => c.state === "locked").length ?? 0;
+  const assignedCount =
+    curation?.selections.filter((s) => s.exhibitClass).length ?? 0;
+  const captionLockedCount =
+    curation?.captions.filter((c) => c.state === "locked").length ?? 0;
 
-  // ── Stage definitions ────────────────────────────────────────────────────
-  const STAGES = [
+  // ── Step metadata ────────────────────────────────────────────────────────
+  const STEPS = [
     {
-      title: "Readiness",
-      summary: s0Complete
-        ? "All checks passed"
-        : readiness
-          ? `${readiness.items.filter((i) => i.state === "fail").length} check(s) need attention`
-          : undefined,
-    },
-    {
-      title: "Field Capture",
-      summary: s1Complete ? "Field record complete" : "Waiting on field data",
+      title: "Review Field Data",
+      summary: s1Complete
+        ? "Field record reviewed"
+        : "Review and mark the field record",
     },
     {
       title: "Photo Curation",
@@ -351,17 +761,17 @@ export function InspectionFlowWizard({
           : "Not started",
     },
     {
+      title: "Estimate",
+      summary: s3Complete
+        ? `${estimateEnv?.estimate?.lines?.length ?? 0} line item(s)`
+        : "No line items yet",
+    },
+    {
       title: "AI Report Sections",
       summary:
         lockedCount > 0
           ? `${lockedCount} / ${SECTION_ORDER.length} sections locked`
           : "Not started",
-    },
-    {
-      title: "Estimate",
-      summary: s4Complete
-        ? `${estimateEnv?.estimate?.lines?.length ?? 0} line item(s)`
-        : "No line items yet",
     },
     {
       title: "Compile & Attest",
@@ -372,78 +782,65 @@ export function InspectionFlowWizard({
           : "Not compiled yet",
     },
     {
-      title: "Submit",
-      summary: s6Complete ? "Claim submitted" : "Ready to submit",
+      title: "Deliver",
+      summary: s6Complete ? "Package delivered" : "Ready to deliver",
     },
   ];
 
+  // ── Loading skeleton ─────────────────────────────────────────────────────
+  if (loadingReadiness && !readiness) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-full rounded-xl" />
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-16 w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  // ── Gate: Awaiting Field Capture ─────────────────────────────────────────
+  if (showGate) {
+    return (
+      <div className="rounded-xl border bg-card">
+        <AwaitingFieldCapture
+          inspectionId={inspectionId}
+          inspection={inspection}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
-      {/* ── Stage 0: Readiness ─────────────────────────────────────────── */}
+      {/* ── Readiness progress bar ────────────────────────────────────── */}
+      <ReadinessProgressBar readiness={readiness} loading={loadingReadiness} />
+
+      {/* ── Step 1: Review Field Data ─────────────────────────────────── */}
       <StagePanel
-        index={0}
-        title={STAGES[0].title}
-        summary={STAGES[0].summary}
-        isComplete={s0Complete}
-        isActive={effectiveActive === 0}
+        index={1}
+        title={STEPS[0].title}
+        summary={STEPS[0].summary}
+        isComplete={s1Complete}
+        isActive={activeStages.has(0)}
+        isLocked={isStepLocked(0)}
         isOpen={openStages.has(0)}
         onToggle={() => toggle(0)}
       >
-        {loadingReadiness ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </div>
-        ) : readiness ? (
-          <div className="divide-y divide-border/50">
-            {readiness.items.map((item) => (
-              <ReadinessRow key={item.key} item={item} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground py-2">
-            Unable to load readiness data.
-          </p>
-        )}
-      </StagePanel>
+        <p className="text-sm text-muted-foreground">
+          Review the attested field record to confirm its accuracy before
+          building the package.
+        </p>
 
-      {/* ── Stage 1: Field Capture ─────────────────────────────────────── */}
-      <StagePanel
-        index={1}
-        title={STAGES[1].title}
-        summary={STAGES[1].summary}
-        isComplete={s1Complete}
-        isActive={effectiveActive === 1}
-        isOpen={openStages.has(1)}
-        onToggle={() => toggle(1)}
-      >
-        {/* Status badge */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">Status:</span>
-          <Badge variant="outline" className="capitalize text-xs">
-            {String(inspection?.status ?? "—").replace(/_/g, " ")}
-          </Badge>
-          {inspection?.scheduledFor && (
-            <Badge variant="secondary" className="text-xs">
-              Scheduled{" "}
-              {format(
-                new Date(String(inspection.scheduledFor)),
-                "MMM d, yyyy",
-              )}
-            </Badge>
-          )}
-        </div>
-
-        {/* Asset checklist from readiness */}
+        {/* Asset summary from readiness */}
         {readiness && (
           <div className="rounded-lg border bg-muted/20 divide-y divide-border/50">
             {readiness.items
               .filter((i) =>
                 [
                   "field_record_attested",
-                  "measurement_report",
-                  "storm_data",
+                  "forensic_findings",
+                  "product_id",
                   "rap_record",
                 ].includes(i.key),
               )
@@ -454,6 +851,8 @@ export function InspectionFlowWizard({
                 >
                   {item.state === "pass" ? (
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  ) : item.state === "warning" ? (
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                   ) : (
                     <XCircle className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
                   )}
@@ -469,39 +868,28 @@ export function InspectionFlowWizard({
           </div>
         )}
 
-        <a
-          href={`/rooftrax-web/inspections/${inspectionId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
-        >
-          <Camera className="h-3.5 w-3.5" />
-          Review Field Data
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        <Button onClick={() => setReviewModalOpen(true)}>
+          <Camera className="h-4 w-4 mr-2" />
+          {s1Complete ? "View Field Record" : "Review Field Record"}
+        </Button>
       </StagePanel>
 
-      {/* ── Stage 2: Photo Curation ───────────────────────────────────── */}
+      {/* ── Step 2: Photo Curation ────────────────────────────────────── */}
       <StagePanel
         index={2}
-        title={STAGES[2].title}
-        summary={STAGES[2].summary}
+        title={STEPS[1].title}
+        summary={STEPS[1].summary}
         isComplete={s2Complete}
-        isActive={effectiveActive === 2}
-        isOpen={openStages.has(2)}
-        onToggle={() => toggle(2)}
+        isActive={activeStages.has(1)}
+        isLocked={isStepLocked(1)}
+        isOpen={openStages.has(1)}
+        onToggle={() => toggle(1)}
       >
         {curation ? (
           <div className="rounded-lg border bg-muted/20 divide-y divide-border/50">
             {[
-              [
-                "Total photos",
-                String(curation.photos.length),
-              ],
-              [
-                "Exhibit selections",
-                `${assignedCount} assigned`,
-              ],
+              ["Total photos", String(curation.photos.length)],
+              ["Exhibit selections", `${assignedCount} assigned`],
               [
                 "Captions",
                 `${captionLockedCount} / ${curation.captions.length} locked`,
@@ -521,9 +909,7 @@ export function InspectionFlowWizard({
             ))}
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            No curation data yet.
-          </p>
+          <p className="text-xs text-muted-foreground">No curation data yet.</p>
         )}
 
         <a
@@ -538,13 +924,28 @@ export function InspectionFlowWizard({
         </a>
       </StagePanel>
 
-      {/* ── Stage 3: AI Report Sections ───────────────────────────────── */}
+      {/* ── Step 3: Estimate ─────────────────────────────────────────── */}
       <StagePanel
         index={3}
-        title={STAGES[3].title}
-        summary={STAGES[3].summary}
+        title={STEPS[2].title}
+        summary={STEPS[2].summary}
         isComplete={s3Complete}
-        isActive={effectiveActive === 3}
+        isActive={activeStages.has(2)}
+        isLocked={isStepLocked(2)}
+        isOpen={openStages.has(2)}
+        onToggle={() => toggle(2)}
+      >
+        <EstimatePanel inspectionId={inspectionId} />
+      </StagePanel>
+
+      {/* ── Step 4: AI Report Sections ───────────────────────────────── */}
+      <StagePanel
+        index={4}
+        title={STEPS[3].title}
+        summary={STEPS[3].summary}
+        isComplete={s4Complete}
+        isActive={activeStages.has(3)}
+        isLocked={isStepLocked(3)}
         isOpen={openStages.has(3)}
         onToggle={() => toggle(3)}
       >
@@ -571,7 +972,7 @@ export function InspectionFlowWizard({
           <div className="flex items-start gap-2 p-3 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <p className="text-xs">
-              Stage 0 readiness must pass before generating sections.
+              Stage readiness must pass before generating sections.
             </p>
           </div>
         )}
@@ -602,28 +1003,16 @@ export function InspectionFlowWizard({
         )}
       </StagePanel>
 
-      {/* ── Stage 4: Estimate ─────────────────────────────────────────── */}
-      <StagePanel
-        index={4}
-        title={STAGES[4].title}
-        summary={STAGES[4].summary}
-        isComplete={s4Complete}
-        isActive={effectiveActive === 4}
-        isOpen={openStages.has(4)}
-        onToggle={() => toggle(4)}
-      >
-        <EstimatePanel inspectionId={inspectionId} />
-      </StagePanel>
-
-      {/* ── Stage 5: Compile & Attest ─────────────────────────────────── */}
+      {/* ── Step 5: Compile & Attest ──────────────────────────────────── */}
       <StagePanel
         index={5}
-        title={STAGES[5].title}
-        summary={STAGES[5].summary}
+        title={STEPS[4].title}
+        summary={STEPS[4].summary}
         isComplete={s5Complete}
-        isActive={effectiveActive === 5}
-        isOpen={openStages.has(5)}
-        onToggle={() => toggle(5)}
+        isActive={activeStages.has(4)}
+        isLocked={isStepLocked(4)}
+        isOpen={openStages.has(4)}
+        onToggle={() => toggle(4)}
       >
         {/* Unlocked sections list */}
         {hasRealSections && !allSectionsLocked && (
@@ -808,22 +1197,21 @@ export function InspectionFlowWizard({
         )}
       </StagePanel>
 
-      {/* ── Stage 6: Submit ───────────────────────────────────────────── */}
+      {/* ── Step 6: Deliver ───────────────────────────────────────────── */}
       <StagePanel
         index={6}
-        title={STAGES[6].title}
-        summary={STAGES[6].summary}
+        title={STEPS[5].title}
+        summary={STEPS[5].summary}
         isComplete={s6Complete}
-        isActive={effectiveActive === 6}
-        isOpen={openStages.has(6)}
-        onToggle={() => toggle(6)}
+        isActive={activeStages.has(5)}
+        isLocked={isStepLocked(5)}
+        isOpen={openStages.has(5)}
+        onToggle={() => toggle(5)}
       >
         {s6Complete ? (
           <div className="flex items-center gap-2 text-emerald-600">
             <CheckCircle2 className="h-5 w-5" />
-            <p className="text-sm font-medium">
-              Claim submitted to carrier
-            </p>
+            <p className="text-sm font-medium">Package delivered</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -831,7 +1219,7 @@ export function InspectionFlowWizard({
               <div className="flex items-start gap-2 p-3 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <p className="text-xs">
-                  Compile and attest the report before submitting.
+                  Compile and attest the report before delivering.
                 </p>
               </div>
             )}
@@ -840,39 +1228,39 @@ export function InspectionFlowWizard({
                 <TooltipTrigger asChild>
                   <span>
                     <Button
-                      disabled={!s5Complete || submitClaim.isPending}
+                      disabled={!s5Complete || deliverPackage.isPending}
                       onClick={() =>
-                        submitClaim.mutate(undefined, {
+                        deliverPackage.mutate(undefined, {
                           onSuccess: () =>
                             toast({
-                              title: "Claim submitted",
+                              title: "Package delivered",
                               description:
-                                "The claim has been filed with the carrier.",
+                                "The compiled package has been delivered.",
                             }),
                           onError: (err) =>
                             toast({
-                              title: "Submission failed",
+                              title: "Delivery failed",
                               description:
                                 err instanceof Error
                                   ? err.message
-                                  : "Could not submit.",
+                                  : "Could not deliver.",
                               variant: "destructive",
                             }),
                         })
                       }
                     >
-                      {submitClaim.isPending ? (
+                      {deliverPackage.isPending ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : (
-                        <Send className="h-4 w-4 mr-2" />
+                        <Truck className="h-4 w-4 mr-2" />
                       )}
-                      {submitClaim.isPending ? "Submitting…" : "Submit Claim"}
+                      {deliverPackage.isPending ? "Delivering…" : "Deliver Package"}
                     </Button>
                   </span>
                 </TooltipTrigger>
                 {!s5Complete && (
                   <TooltipContent className="text-xs">
-                    Compile and attest the report before submitting.
+                    Compile and attest the report before delivering.
                   </TooltipContent>
                 )}
               </Tooltip>
@@ -880,6 +1268,42 @@ export function InspectionFlowWizard({
           </div>
         )}
       </StagePanel>
+
+      {/* ── Field Review Modal ────────────────────────────────────────── */}
+      <FieldReviewModal
+        open={reviewModalOpen}
+        onOpenChange={setReviewModalOpen}
+        inspectionId={inspectionId}
+        inspection={inspection}
+        isRecording={recordEvent.isPending}
+        onReviewed={() => {
+          if (s1Complete) {
+            // Already reviewed — just close
+            setReviewModalOpen(false);
+            return;
+          }
+          recordEvent.mutate(
+            { eventType: "field_record_reviewed" },
+            {
+              onSuccess: () => {
+                setReviewModalOpen(false);
+                toast({
+                  title: "Field record reviewed",
+                  description:
+                    "Step 1 complete. Photo Curation and Estimate are now unlocked.",
+                });
+              },
+              onError: (err) =>
+                toast({
+                  title: "Could not save review",
+                  description:
+                    err instanceof Error ? err.message : "Unknown error.",
+                  variant: "destructive",
+                }),
+            },
+          );
+        }}
+      />
 
       {/* ── Attestation dialog ────────────────────────────────────────── */}
       <Dialog
@@ -945,7 +1369,9 @@ export function InspectionFlowWizard({
                     toast({
                       title: "Attestation failed",
                       description:
-                        err instanceof Error ? err.message : "Attestation failed.",
+                        err instanceof Error
+                          ? err.message
+                          : "Attestation failed.",
                       variant: "destructive",
                     }),
                 })

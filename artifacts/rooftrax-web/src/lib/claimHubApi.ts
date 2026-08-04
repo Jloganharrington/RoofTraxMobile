@@ -478,7 +478,7 @@ export function useGetRetailPipeline(
 }
 
 // ---------------------------------------------------------------------------
-// Submit claim
+// Submit / Deliver claim
 // ---------------------------------------------------------------------------
 
 export function useSubmitClaim(inspectionId: string) {
@@ -491,6 +491,31 @@ export function useSubmitClaim(inspectionId: string) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: getGetInspectionQueryKey(inspectionId) });
+      qc.invalidateQueries({ queryKey: getEventsQueryKey(inspectionId) });
+    },
+  });
+}
+
+// Alias used by the new Deliver step — same endpoint, same behaviour.
+export const useDeliverPackage = useSubmitClaim;
+
+// ---------------------------------------------------------------------------
+// Record a UI-triggered claim event (e.g. field_record_reviewed)
+// ---------------------------------------------------------------------------
+
+export function useRecordClaimEvent(inspectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ eventType, payload }: { eventType: string; payload?: Record<string, unknown> }) =>
+      customFetch<{ event: ClaimEvent }>(
+        `/api/inspections/${inspectionId}/events`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ eventType, payload }),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getEventsQueryKey(inspectionId) });
     },
   });
 }
