@@ -350,6 +350,7 @@ export function ProofPackageWizard() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<WizardStep>("upload");
   const [files, setFiles] = useState<File[]>([]);
+  const [pastedText, setPastedText] = useState("");
   const [items, setItems] = useState<RoutingItem[]>([]);
   const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
   const [applyErrors, setApplyErrors] = useState<string[]>([]);
@@ -358,6 +359,7 @@ export function ProofPackageWizard() {
   const reset = useCallback(() => {
     setStep("upload");
     setFiles([]);
+    setPastedText("");
     setItems([]);
     setProgress({ done: 0, total: 0, errors: 0 });
     setApplyErrors([]);
@@ -402,6 +404,10 @@ export function ProofPackageWizard() {
             }),
         ),
       );
+
+      if (pastedText.trim()) {
+        fileData.push({ name: "pasted-content.txt", content: pastedText.trim() });
+      }
 
       const result = await customFetch<PlanResponse>("/api/report-settings/pp-wizard/analyze", {
         method: "POST",
@@ -597,6 +603,30 @@ export function ProofPackageWizard() {
             {step === "upload" && (
               <>
                 <DropZone files={files} onFiles={addFiles} onRemove={removeFile} />
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center" aria-hidden>
+                    <div className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-background px-2 text-[11px] text-muted-foreground">or paste text</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <textarea
+                    className="w-full min-h-[140px] rounded-md border bg-background px-3 py-2 text-xs font-mono resize-y placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder={"Paste boilerplate, citation text, detriment entries, or AHJ code provisions here…"}
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                  />
+                  {pastedText.trim().length > 0 && (
+                    <p className="text-[10px] text-muted-foreground text-right">
+                      {pastedText.trim().length.toLocaleString()} chars · will be analyzed as "pasted-content.txt"
+                    </p>
+                  )}
+                </div>
+
                 <FormatTips />
               </>
             )}
@@ -771,9 +801,15 @@ export function ProofPackageWizard() {
                 <Button variant="outline" onClick={() => handleOpenChange(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => void analyze()} disabled={files.length === 0}>
+                <Button onClick={() => void analyze()} disabled={files.length === 0 && !pastedText.trim()}>
                   <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-                  Analyze {files.length > 0 ? `${files.length} file${files.length !== 1 ? "s" : ""}` : "Files"}
+                  {files.length > 0 && pastedText.trim()
+                    ? `Analyze ${files.length} file${files.length !== 1 ? "s" : ""} + paste`
+                    : files.length > 0
+                    ? `Analyze ${files.length} file${files.length !== 1 ? "s" : ""}`
+                    : pastedText.trim()
+                    ? "Analyze Pasted Text"
+                    : "Analyze"}
                 </Button>
               </>
             )}
