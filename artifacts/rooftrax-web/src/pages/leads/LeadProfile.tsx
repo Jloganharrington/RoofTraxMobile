@@ -286,17 +286,19 @@ function DashboardTab({
       {/* ── Left: Property & Contact ─────────────────────────────────── */}
       <div className="space-y-6">
 
-        {/* Property photo */}
-        {lead.photoUrl ? (
-          <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
-            <img src={lead.photoUrl} alt="Property" className="w-full h-full object-cover" />
-          </div>
-        ) : (
-          <div className="rounded-xl border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <MapPin className="h-8 w-8 opacity-20" />
-            <p className="text-xs">No property photo</p>
-          </div>
-        )}
+        {/* Property photo — constrained to half column width */}
+        <div className="w-1/2">
+          {lead.photoUrl ? (
+            <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
+              <img src={lead.photoUrl} alt="Property" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="rounded-xl border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <MapPin className="h-6 w-6 opacity-20" />
+              <p className="text-xs">No photo</p>
+            </div>
+          )}
+        </div>
 
         <FieldGroup title="Property">
           {/* Address is read-only (set at pin creation) */}
@@ -340,98 +342,53 @@ function DashboardTab({
         </FieldGroup>
       </div>
 
-      {/* ── Right: Lead Info (conditional) ───────────────────────────── */}
+      {/* ── Right: Lead Info ─────────────────────────────────────────── */}
       <div className="space-y-6">
-        {isInsurance ? (
-          <>
-            <FieldGroup title="Claim Timeline">
-              <Field label="Mailer Sent"          name="mailerSentDate"  value={form.mailerSentDate}  onChange={onField} type="date" />
-              <Field label="Inspection Date"      name="inspectionDate"  value={form.inspectionDate}  onChange={onField} type="date" />
-              <Field label="Storm / Date of Loss" name="dateOfLoss"      value={form.dateOfLoss}      onChange={onField} type="date" />
-              <Field label="Claim Filed"          name="claimFiledDate"  value={form.claimFiledDate}  onChange={onField} type="date" />
-            </FieldGroup>
+        {/* Retail: appointment date (read-only, set by mobile) */}
+        {lead.retailData?.appointmentDate && (
+          <div className="rounded-xl border bg-card px-5 py-4 space-y-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Appointment</p>
+            <p className="text-sm font-semibold">
+              {new Date(lead.retailData.appointmentDate).toLocaleDateString('en-US', {
+                weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
+              })}
+            </p>
+          </div>
+        )}
 
-            <FieldGroup title="Policy">
-              <Field label="Insurance Carrier" name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
-              <Field label="Policy Holder"     name="policyHolder"     value={form.policyHolder}     onChange={onField} />
-              <Field label="Policy Number"     name="policyNumber"     value={form.policyNumber}     onChange={onField} />
-              <Field label="Claim Number"      name="claimNumber"      value={form.claimNumber}      onChange={onField} />
-              <Field label="Coverage Type"     name="coverageType"     value={form.coverageType}     onChange={onField} placeholder="HO-3, HO-5…" />
-            </FieldGroup>
-
-            <FieldGroup title="Adjuster">
-              <Field label="Adjuster Name"  name="adjusterName"        value={form.adjusterName}        onChange={onField} />
-              <Field label="Adjuster Phone" name="adjusterPhone"       value={form.adjusterPhone}       onChange={onField} type="tel" />
-              <Field label="Adjuster Email" name="adjusterEmail"       value={form.adjusterEmail}       onChange={onField} type="email" />
-              <Field label="Meeting Date"   name="adjusterMeetingDate" value={form.adjusterMeetingDate} onChange={onField} type="date" />
-            </FieldGroup>
-
-            <FieldGroup title="Claim Amounts">
-              <Field label="Approved RCV ($)"  name="approvedRcvAmount"  value={form.approvedRcvAmount}  onChange={onField} placeholder="0.00" />
-              <Field label="Approved ACV ($)"  name="approvedAcvAmount"  value={form.approvedAcvAmount}  onChange={onField} placeholder="0.00" />
-              <Field label="Depreciation ($)"  name="depreciationAmount" value={form.depreciationAmount} onChange={onField} placeholder="0.00" />
-              <Field label="Deductible ($)"    name="deductibleAmount"   value={form.deductibleAmount}   onChange={onField} placeholder="0.00" />
-            </FieldGroup>
-
-            <FieldGroup title="Inspection Notes">
-              <TextareaField label="Inspection Notes" name="inspectionNotes" value={form.inspectionNotes}
-                onChange={onField} rows={4} placeholder="Damage observations, photo notes, inspector comments…" />
-            </FieldGroup>
-
-            <FieldGroup title="Status Notes">
-              <TextareaField label="Status Notes" name="statusNotes" value={form.statusNotes}
-                onChange={onField} rows={3} placeholder="Supplement needed, adjuster follow-up, next steps…" />
-            </FieldGroup>
-          </>
-        ) : (
-          <>
-            {/* Retail: appointment date (read-only, set by mobile) */}
-            {lead.retailData?.appointmentDate && (
-              <div className="rounded-xl border bg-card px-5 py-4 space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Appointment</p>
-                <p className="text-sm font-semibold">
-                  {new Date(lead.retailData.appointmentDate).toLocaleDateString('en-US', {
-                    weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-                  })}
-                </p>
+        {/* Retail: damage interests (read-only, set by mobile) */}
+        {lead.retailData && (
+          <FieldGroup title="Damage Interests">
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
+              {(
+                [
+                  { key: 'interestedRoof'    as const, label: 'Roof' },
+                  { key: 'interestedSiding'  as const, label: 'Siding' },
+                  { key: 'interestedWindows' as const, label: 'Windows' },
+                  { key: 'interestedDoors'   as const, label: 'Doors' },
+                ]
+              ).filter(({ key }) => lead.retailData?.[key]).map(({ label }) => (
+                <span key={label} className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                  {label}
+                </span>
+              ))}
+              {!lead.retailData.interestedRoof && !lead.retailData.interestedSiding &&
+               !lead.retailData.interestedWindows && !lead.retailData.interestedDoors && (
+                <span className="text-xs text-muted-foreground italic">None recorded</span>
+              )}
+            </div>
+            {lead.retailData.notes && (
+              <div className="sm:col-span-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed">
+                {lead.retailData.notes}
               </div>
             )}
-
-            {/* Damage interests (read-only, set by mobile) */}
-            {lead.retailData && (
-              <FieldGroup title="Damage Interests">
-                <div className="sm:col-span-2 flex flex-wrap gap-2">
-                  {(
-                    [
-                      { key: 'interestedRoof'    as const, label: 'Roof' },
-                      { key: 'interestedSiding'  as const, label: 'Siding' },
-                      { key: 'interestedWindows' as const, label: 'Windows' },
-                      { key: 'interestedDoors'   as const, label: 'Doors' },
-                    ]
-                  ).filter(({ key }) => lead.retailData?.[key]).map(({ label }) => (
-                    <span key={label} className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
-                      {label}
-                    </span>
-                  ))}
-                  {!lead.retailData.interestedRoof && !lead.retailData.interestedSiding &&
-                   !lead.retailData.interestedWindows && !lead.retailData.interestedDoors && (
-                    <span className="text-xs text-muted-foreground italic">None recorded</span>
-                  )}
-                </div>
-                {lead.retailData.notes && (
-                  <div className="sm:col-span-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed">
-                    {lead.retailData.notes}
-                  </div>
-                )}
-              </FieldGroup>
-            )}
-
-            <FieldGroup title="Internal Notes">
-              <TextareaField label="Notes" name="notes" value={form.notes} onChange={onField} rows={7}
-                placeholder="Add notes about this lead…" />
-            </FieldGroup>
-          </>
+          </FieldGroup>
         )}
+
+        <FieldGroup title="Internal Notes">
+          <TextareaField label="Notes" name="notes" value={form.notes} onChange={onField} rows={7}
+            placeholder="Add notes about this lead…" />
+        </FieldGroup>
       </div>
     </div>
   );
