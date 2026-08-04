@@ -240,6 +240,58 @@ export function useApproveCaptions(inspectionId: string) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Exhibit Slots (slot-based curation manifest)
+// ---------------------------------------------------------------------------
+
+export interface SlotPhotoCandidate {
+  id: string;
+  url: string;
+  subjectType: string;
+  triadRole: string | null;
+  preliminaryRole: string | null;
+  stage: string | null;
+  capturedAtUtc: string | null;
+}
+
+export type SlotKind = 'single' | 'comparison';
+
+export interface ExhibitSlot {
+  slotKey: string;
+  label: string;
+  required: boolean;
+  kind: SlotKind;
+  comparisonType: ComparisonPairType | null;
+  candidates: SlotPhotoCandidate[];
+  confirmedPhotoId: string | null;
+  beforeCandidates: SlotPhotoCandidate[];
+  afterCandidates: SlotPhotoCandidate[];
+  confirmedPairId: string | null;
+  isSkipped: boolean;
+}
+
+export interface ExhibitSlotsResponse {
+  inspectionId: string;
+  slots: ExhibitSlot[];
+  allRequiredConfirmed: boolean;
+}
+
+export const getExhibitSlotsQueryKey = (inspectionId: string) =>
+  ['inspection', inspectionId, 'exhibit-slots'] as const;
+
+export function useGetExhibitSlots(
+  inspectionId: string,
+  options?: Omit<UseQueryOptions<ExhibitSlotsResponse>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getExhibitSlotsQueryKey(inspectionId),
+    queryFn: () =>
+      customFetch<ExhibitSlotsResponse>(`/api/inspections/${inspectionId}/exhibit-slots`),
+    enabled: !!inspectionId,
+    ...options,
+  });
+}
+
 export function useLockCaptions(inspectionId: string) {
   const qc = useQueryClient();
   return useMutation({

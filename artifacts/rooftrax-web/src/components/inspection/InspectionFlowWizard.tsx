@@ -89,6 +89,7 @@ import {
   SECTION_META,
 } from "@/components/inspection/SectionCard";
 import { EstimatePanel } from "@/pages/inspections/EstimatePanel";
+import { ExhibitManifest } from "@/components/inspection/ExhibitManifest";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -808,11 +809,9 @@ export function InspectionFlowWizard({
   // ── Step completion ──────────────────────────────────────────────────────
   // s1: field record reviewed (UI event)
   const s1Complete = events.some((e) => e.eventType === "field_record_reviewed");
-  // s2: photo curation finalized
-  const s2Complete =
-    curation?.isFinalized === true &&
-    (curation.captions.length === 0 ||
-      curation.captions.every((c) => c.state === "locked"));
+  // s2: all exhibit slots confirmed + curation finalized
+  // (caption locking continues on the curation page but no longer gates step 2)
+  const s2Complete = curation?.isFinalized === true;
   // s3: estimate has ≥1 line items
   const s3Complete = (estimateEnv?.estimate?.lines?.length ?? 0) > 0;
   // s4: all AI sections locked
@@ -939,8 +938,8 @@ export function InspectionFlowWizard({
       summary: s2Complete
         ? "Curation finalized"
         : assignedCount > 0
-          ? `${assignedCount} exhibit(s) assigned, ${captionLockedCount} caption(s) locked`
-          : "Not started",
+          ? `${assignedCount} exhibit(s) assigned`
+          : "Confirm exhibit slots",
     },
     {
       title: "Estimate",
@@ -1079,43 +1078,10 @@ export function InspectionFlowWizard({
         isOpen={openStages.has(1)}
         onToggle={() => toggle(1)}
       >
-        {curation ? (
-          <div className="rounded-lg border bg-muted/20 divide-y divide-border/50">
-            {[
-              ["Total photos", String(curation.photos.length)],
-              ["Exhibit selections", `${assignedCount} assigned`],
-              [
-                "Captions",
-                `${captionLockedCount} / ${curation.captions.length} locked`,
-              ],
-              [
-                "Curation status",
-                curation.isFinalized ? "Finalized ✓" : "Not finalized",
-              ],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between px-3 py-2 text-sm"
-              >
-                <span className="text-muted-foreground">{label}</span>
-                <span className="font-medium">{value}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No curation data yet.</p>
-        )}
-
-        <a
-          href={`/rooftrax-web/inspections/${inspectionId}/curation`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
-        >
-          <Image className="h-3.5 w-3.5" />
-          Open Photo Curation
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        <ExhibitManifest
+          inspectionId={inspectionId}
+          isFinalized={curation?.isFinalized ?? false}
+        />
       </StagePanel>
 
       {/* ── Step 3: Estimate ─────────────────────────────────────────── */}

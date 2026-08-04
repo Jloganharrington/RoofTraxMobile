@@ -252,6 +252,23 @@ async function requireInspectionModuleAccess(req: Request, res: Response) {
   return { role, department, companyId: req.user.companyId, userId: req.user.id };
 }
 
+/** Minimal auth helper for non-inspection routes that only need the user's role. */
+async function requireUserWithRole(req: Request, res: Response) {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  const [profile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+  return {
+    role: (profile?.role ?? 'field_rep') as Role,
+    companyId: req.user.companyId,
+    userId: req.user.id,
+  };
+}
+
 async function loadInspectionInCompany(inspectionId: string, companyId: string) {
   const [inspection] = await db
     .select()
@@ -6866,6 +6883,557 @@ router.delete('/:inspectionId/curation/pairs/:pairId', async (req: Request, res:
   res.json({ ok: true });
 });
 
+// ---------------------------------------------------------------------------
+// Shared slot-manifest logic — used by GET exhibit-slots and the finalize gate.
+// ---------------------------------------------------------------------------
+
+/** Derives the ordered slot manifest requirements (slotKey + required/optional + kind)
+ *  using the same flag-derivation rules as GET /exhibit-slots, without candidate
+ *  computation. Used by the finalize gate and the events endpoint for validation.
+ */
+type SlotRequirement = { slotKey: string; required: boolean; kind: 'single' | 'comparison' };
+
+async function deriveManifestRequirements(
+  inspection: NonNullable<Awaited<ReturnType<typeof loadInspectionInCompany>>>,
+  companyId: string,
+): Promise<SlotRequirement[]> {
+  const [testSquares, slopes, sidingFacets] = await Promise.all([
+    db.select({ id: testSquaresTable.id }).from(testSquaresTable)
+      .where(and(eq(testSquaresTable.inspectionId, inspection.id), eq(testSquaresTable.companyId, companyId))),
+    db.select({ id: inspectionSlopesTable.id, damagePresent: inspectionSlopesTable.damagePresent })
+      .from(inspectionSlopesTable)
+      .where(and(eq(inspectionSlopesTable.inspectionId, inspection.id), eq(inspectionSlopesTable.companyId, companyId))),
+    db.select({ id: inspectionSidingFacetsTable.id, preExistingConditions: inspectionSidingFacetsTable.preExistingConditions })
+      .from(inspectionSidingFacetsTable)
+      .where(and(eq(inspectionSidingFacetsTable.inspectionId, inspection.id), eq(inspectionSidingFacetsTable.companyId, companyId))),
+  ]);
+
+  const damageTypeLower = (inspection.damageType ?? '').toLowerCase();
+  const isHailPeril = damageTypeLower.includes('hail');
+  const hasRap = testSquares.length > 0;
+  const temporaryRepairs = inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null;
+  const createdOpening = temporaryRepairs?.openings ?? false;
+  const mitigationPerformed = temporaryRepairs?.performed ?? false;
+  const hasPreExisting = sidingFacets.some(
+    (f) => Array.isArray(f.preExistingConditions) && (f.preExistingConditions as unknown[]).length > 0,
+  );
+  const damagedSlopes = slopes.filter((s) => s.damagePresent);
+
+  const requirements: SlotRequirement[] = [];
+
+  // Always
+  requirements.push({ slotKey: 'front_elevation', required: true, kind: 'single' });
+  requirements.push({ slotKey: 'collateral_1', required: true, kind: 'single' });
+  requirements.push({ slotKey: 'collateral_2', required: false, kind: 'single' });
+  if (inspection.roofDamageFound) requirements.push({ slotKey: 'damage_closeup_roof', required: true, kind: 'single' });
+  if (inspection.sidingDamageFound) requirements.push({ slotKey: 'damage_closeup_siding', required: true, kind: 'single' });
+  requirements.push({ slotKey: 'edge_assembly', required: true, kind: 'single' });
+  if (damagedSlopes.length === 0 && inspection.roofDamageFound) {
+    requirements.push({ slotKey: 'facet_overview', required: true, kind: 'single' });
+  } else {
+    for (let i = 0; i < damagedSlopes.length; i++) {
+      requirements.push({ slotKey: `facet_overview_${i + 1}`, required: true, kind: 'single' });
+    }
+  }
+  // Hail
+  if (isHailPeril) {
+    const squareCount = testSquares.length > 0 ? testSquares.length : 1;
+    for (let i = 0; i < squareCount; i++) {
+      requirements.push({ slotKey: `test_square_${i + 1}`, required: true, kind: 'single' });
+    }
+    requirements.push({ slotKey: 'spatter', required: true, kind: 'single' });
+    requirements.push({ slotKey: 'comparison_recency', required: false, kind: 'comparison' });
+  }
+  // Interior
+  if (inspection.interiorDamageFound) {
+    requirements.push({ slotKey: 'interior_opening', required: true, kind: 'single' });
+    requirements.push({ slotKey: 'interior_path', required: false, kind: 'single' });
+    requirements.push({ slotKey: 'interior_terminus', required: true, kind: 'single' });
+  }
+  // RAP
+  if (hasRap) {
+    requirements.push({ slotKey: 'rap1_baseline', required: true, kind: 'single' });
+    requirements.push({ slotKey: 'rap_outcome_1', required: true, kind: 'single' });
+    requirements.push({ slotKey: 'rap_outcome_2', required: false, kind: 'single' });
+  }
+  // Mitigation
+  if (createdOpening && mitigationPerformed) {
+    requirements.push({ slotKey: 'mitigation_before', required: true, kind: 'single' });
+    requirements.push({ slotKey: 'mitigation_after', required: true, kind: 'single' });
+  }
+  // Pre-existing conditions
+  if (hasPreExisting) {
+    requirements.push({ slotKey: 'comparison_covered_vs_unrelated', required: false, kind: 'comparison' });
+  }
+
+  return requirements;
+}
+
+/** Returns true when every required single slot has an explicit slot_confirmed or
+ *  slot_swapped event with a photoId AND that photo is still currently selected
+ *  in exhibitSelectionsTable.
+ *
+ *  The dual check prevents desync: if a user deselects a confirmed photo via the
+ *  legacy curation page (which does not emit a slot event), finalization is blocked
+ *  until the slot is re-confirmed or the photo is re-selected.
+ */
+async function checkAllRequiredSlotsConfirmedByEvents(
+  inspection: NonNullable<Awaited<ReturnType<typeof loadInspectionInCompany>>>,
+  companyId: string,
+): Promise<boolean> {
+  const [requirements, slotEvents, selections] = await Promise.all([
+    deriveManifestRequirements(inspection, companyId),
+    db.select({ payload: claimEventsTable.payload })
+      .from(claimEventsTable)
+      .where(and(
+        eq(claimEventsTable.inspectionId, inspection.id),
+        eq(claimEventsTable.companyId, companyId),
+        inArray(claimEventsTable.eventType, ['slot_confirmed', 'slot_swapped']),
+      ))
+      .orderBy(claimEventsTable.createdAt), // oldest first; last write per slotKey wins
+    db.select({ photoId: exhibitSelectionsTable.photoId })
+      .from(exhibitSelectionsTable)
+      .where(and(
+        eq(exhibitSelectionsTable.inspectionId, inspection.id),
+        eq(exhibitSelectionsTable.companyId, companyId),
+      )),
+  ]);
+
+  // Build map: slotKey → most recent confirmed photoId (last event wins)
+  const confirmedSlotMap = new Map<string, string>();
+  for (const evt of slotEvents) {
+    const p = evt.payload as { slotKey?: string; photoId?: string } | null;
+    if (typeof p?.slotKey === 'string' && typeof p?.photoId === 'string') {
+      confirmedSlotMap.set(p.slotKey, p.photoId);
+    }
+  }
+
+  // Cross-check: confirmed photo must still be in exhibitSelectionsTable.
+  // This prevents desync via the legacy curation page (deselect without event).
+  const selectedPhotoIds = new Set(selections.map(s => s.photoId));
+
+  return requirements
+    .filter(r => r.required && r.kind === 'single')
+    .every(r => {
+      const confirmedId = confirmedSlotMap.get(r.slotKey);
+      return confirmedId !== undefined && selectedPhotoIds.has(confirmedId);
+    });
+}
+
+// GET /inspections/:inspectionId/exhibit-slots — derive slot manifest from claim flags + photo tags
+router.get('/:inspectionId/exhibit-slots', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
+  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  const [photos, testSquares, slopes, sidingFacets, selections, pairs, slotEvents] = await Promise.all([
+    db.select().from(inspectionPhotosTable)
+      .where(and(eq(inspectionPhotosTable.inspectionId, inspection.id), eq(inspectionPhotosTable.companyId, actor.companyId)))
+      .orderBy(inspectionPhotosTable.createdAt),
+    db.select().from(testSquaresTable)
+      .where(and(eq(testSquaresTable.inspectionId, inspection.id), eq(testSquaresTable.companyId, actor.companyId)))
+      .orderBy(testSquaresTable.createdAt),
+    db.select().from(inspectionSlopesTable)
+      .where(and(eq(inspectionSlopesTable.inspectionId, inspection.id), eq(inspectionSlopesTable.companyId, actor.companyId)))
+      .orderBy(inspectionSlopesTable.createdAt),
+    db.select({ id: inspectionSidingFacetsTable.id, preExistingConditions: inspectionSidingFacetsTable.preExistingConditions })
+      .from(inspectionSidingFacetsTable)
+      .where(and(eq(inspectionSidingFacetsTable.inspectionId, inspection.id), eq(inspectionSidingFacetsTable.companyId, actor.companyId))),
+    // Exhibit selections: used to detect desync when a photo is deselected via the
+    // legacy curation page without emitting a compensating slot event.
+    db.select({ photoId: exhibitSelectionsTable.photoId })
+      .from(exhibitSelectionsTable)
+      .where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.companyId, actor.companyId))),
+    db.select().from(comparisonPairsTable)
+      .where(and(eq(comparisonPairsTable.inspectionId, inspection.id), eq(comparisonPairsTable.companyId, actor.companyId))),
+    // Load slot events: confirmed/swapped carry the photoId assignment; skipped carry isSkipped flag
+    db.select({ eventType: claimEventsTable.eventType, payload: claimEventsTable.payload })
+      .from(claimEventsTable)
+      .where(and(
+        eq(claimEventsTable.inspectionId, inspection.id),
+        eq(claimEventsTable.companyId, actor.companyId),
+        inArray(claimEventsTable.eventType, ['slot_confirmed', 'slot_swapped', 'slot_skipped']),
+      ))
+      .orderBy(claimEventsTable.createdAt), // oldest-first so last write wins
+  ]);
+
+  // ── Claim flags ────────────────────────────────────────────────────────────
+  const damageTypeLower = (inspection.damageType ?? '').toLowerCase();
+  const isHailPeril = damageTypeLower.includes('hail');
+  const hasRap = testSquares.length > 0;
+  const temporaryRepairs = inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null;
+  const createdOpening = temporaryRepairs?.openings ?? false;
+  const mitigationPerformed = temporaryRepairs?.performed ?? false;
+  // Pre-existing conditions are documented per siding facet
+  const hasPreExisting = sidingFacets.some(
+    (f) => Array.isArray(f.preExistingConditions) && (f.preExistingConditions as unknown[]).length > 0,
+  );
+
+  // Build slot-state maps from events (oldest-first so later events override earlier ones).
+  // slot_confirmed / slot_swapped with { slotKey, photoId } → explicit per-slot assignment.
+  // slot_skipped with { slotKey } → optional-slot skip mark.
+  const slotConfirmedMap = new Map<string, string>(); // slotKey → photoId
+  const skippedSlotKeys = new Set<string>();
+  for (const evt of slotEvents) {
+    const p = evt.payload as { slotKey?: string; photoId?: string } | null;
+    if (typeof p?.slotKey !== 'string') continue;
+    if (evt.eventType === 'slot_skipped') {
+      skippedSlotKeys.add(p.slotKey);
+    } else if (typeof p?.photoId === 'string') {
+      // slot_confirmed or slot_swapped with explicit photoId
+      slotConfirmedMap.set(p.slotKey, p.photoId);
+      skippedSlotKeys.delete(p.slotKey); // confirming un-skips
+    }
+  }
+
+  // Cross-check: a slot is only truly confirmed if its photo is still selected.
+  // Deselecting via the legacy curation page doesn't emit a slot event, so we
+  // clear confirmedPhotoId for any slot whose event-confirmed photo is no longer
+  // in exhibitSelectionsTable. This keeps UI state and finalize gate consistent.
+  const selectedPhotoIds = new Set(selections.map(s => s.photoId));
+  for (const [slotKey, photoId] of slotConfirmedMap) {
+    if (!selectedPhotoIds.has(photoId)) {
+      slotConfirmedMap.delete(slotKey);
+    }
+  }
+
+  type PhotoRow = typeof photos[number];
+
+  function photoBrief(p: PhotoRow) {
+    return {
+      id: p.id,
+      url: p.url,
+      subjectType: p.subjectType,
+      triadRole: p.triadRole,
+      preliminaryRole: p.preliminaryRole,
+      stage: p.stage,
+      capturedAtUtc: p.capturedAtUtc?.toISOString() ?? null,
+    };
+  }
+
+  function rankPhotos(candidates: PhotoRow[], ranker: (p: PhotoRow) => number): PhotoRow[] {
+    return [...candidates].sort((a, b) => ranker(a) - ranker(b));
+  }
+
+  function confirmedPairFor(pairType: string): string | null {
+    return pairs.find((p) => p.pairType === pairType)?.id ?? null;
+  }
+
+  type SlotKind = 'single' | 'comparison';
+  type SlotDef = {
+    slotKey: string;
+    label: string;
+    required: boolean;
+    kind: SlotKind;
+    comparisonType?: string;
+    candidates?: PhotoRow[];
+    beforeCandidates?: PhotoRow[];
+    afterCandidates?: PhotoRow[];
+  };
+
+  const slotDefs: SlotDef[] = [];
+
+  // ── Always: front_elevation ───────────────────────────────────────────────
+  slotDefs.push({
+    slotKey: 'front_elevation',
+    label: 'Front Elevation',
+    required: true,
+    kind: 'single',
+    candidates: rankPhotos(
+      photos.filter((p) =>
+        p.preliminaryRole === 'front_of_home' ||
+        p.subjectType === 'elevation' ||
+        p.stage === 'arrival',
+      ),
+      (p) =>
+        p.preliminaryRole === 'front_of_home' ? 0 :
+        p.stage === 'arrival' ? 1 : 2,
+    ),
+  });
+
+  // ── Always: collateral (1–2) ──────────────────────────────────────────────
+  {
+    const collateralCandidates = rankPhotos(
+      photos.filter((p) =>
+        p.triadRole === 'collateral' ||
+        p.stage === 'collateral' ||
+        p.preliminaryRole === 'damage_closeup_collateral',
+      ),
+      (p) => p.triadRole === 'collateral' ? 0 : p.stage === 'collateral' ? 1 : 2,
+    );
+    slotDefs.push({ slotKey: 'collateral_1', label: 'Collateral Damage 1', required: true, kind: 'single', candidates: collateralCandidates });
+    slotDefs.push({ slotKey: 'collateral_2', label: 'Collateral Damage 2', required: false, kind: 'single', candidates: collateralCandidates });
+  }
+
+  // ── Always: damage_closeup per affected system ────────────────────────────
+  if (inspection.roofDamageFound) {
+    slotDefs.push({
+      slotKey: 'damage_closeup_roof',
+      label: 'Damage Close-up (Roof)',
+      required: true,
+      kind: 'single',
+      candidates: rankPhotos(
+        photos.filter((p) =>
+          p.preliminaryRole === 'damage_closeup' ||
+          p.preliminaryRole === 'damage_closeup_roof' ||
+          (p.triadRole === 'close' && ['damage_instance', 'slope'].includes(p.subjectType)),
+        ),
+        (p) =>
+          p.preliminaryRole === 'damage_closeup_roof' ? 0 :
+          p.preliminaryRole === 'damage_closeup' ? 1 :
+          (p.subjectType === 'damage_instance') ? 2 : 3,
+      ),
+    });
+  }
+  if (inspection.sidingDamageFound) {
+    slotDefs.push({
+      slotKey: 'damage_closeup_siding',
+      label: 'Damage Close-up (Siding)',
+      required: true,
+      kind: 'single',
+      candidates: rankPhotos(
+        photos.filter((p) =>
+          p.preliminaryRole === 'damage_closeup_siding' ||
+          (p.subjectType === 'siding_facet' && (p.triadRole === 'close' || p.triadRole === 'mid')),
+        ),
+        (p) => p.preliminaryRole === 'damage_closeup_siding' ? 0 : p.triadRole === 'close' ? 1 : 2,
+      ),
+    });
+  }
+
+  // ── Always: edge_assembly ─────────────────────────────────────────────────
+  slotDefs.push({
+    slotKey: 'edge_assembly',
+    label: 'Edge / Drip Assembly',
+    required: true,
+    kind: 'single',
+    candidates: rankPhotos(
+      photos.filter((p) =>
+        p.triadRole === 'measurement' ||
+        p.subjectType === 'penetration' ||
+        p.subjectType === 'component',
+      ),
+      (p) => p.triadRole === 'measurement' ? 0 : p.subjectType === 'penetration' ? 1 : 2,
+    ),
+  });
+
+  // ── Always: facet_overview per damaged facet ──────────────────────────────
+  {
+    const damagedSlopes = slopes.filter((s) => s.damagePresent);
+    if (damagedSlopes.length === 0 && inspection.roofDamageFound) {
+      slotDefs.push({
+        slotKey: 'facet_overview',
+        label: 'Facet Overview',
+        required: true,
+        kind: 'single',
+        candidates: rankPhotos(
+          photos.filter((p) =>
+            p.preliminaryRole === 'roof_overview' ||
+            (p.subjectType === 'slope' && p.triadRole === 'wide') ||
+            p.triadRole === 'wide',
+          ),
+          (p) => p.preliminaryRole === 'roof_overview' ? 0 : p.subjectType === 'slope' ? 1 : 2,
+        ),
+      });
+    } else {
+      for (let i = 0; i < damagedSlopes.length; i++) {
+        const slope = damagedSlopes[i];
+        slotDefs.push({
+          slotKey: `facet_overview_${i + 1}`,
+          label: `Facet Overview — ${slope.label ?? `Facet ${i + 1}`}`,
+          required: true,
+          kind: 'single',
+          candidates: rankPhotos(
+            photos.filter((p) =>
+              (p.subjectId === slope.id && (p.subjectType === 'slope' || p.triadRole === 'wide')) ||
+              p.preliminaryRole === 'roof_overview' ||
+              p.triadRole === 'wide',
+            ),
+            (p) => p.subjectId === slope.id ? 0 : p.preliminaryRole === 'roof_overview' ? 1 : 2,
+          ),
+        });
+      }
+    }
+  }
+
+  // ── Hail peril: test_square, spatter, comparison_recency ─────────────────
+  if (isHailPeril) {
+    const squaresToSlot = testSquares.length > 0 ? testSquares : [null];
+    for (let i = 0; i < squaresToSlot.length; i++) {
+      const ts = squaresToSlot[i];
+      slotDefs.push({
+        slotKey: `test_square_${i + 1}`,
+        label: ts ? `Test Square — ${ts.label ?? `TS ${i + 1}`}` : 'Test Square',
+        required: true,
+        kind: 'single',
+        candidates: rankPhotos(
+          photos.filter((p) =>
+            (p.subjectType === 'test_square' || p.subjectType === 'test_square_hit' || p.stage === 'test_squares') &&
+            (ts === null || p.subjectId === ts.id || !p.subjectId),
+          ),
+          (p) => ((ts && p.subjectId === ts.id) ? 0 : 5) + (p.triadRole === 'close' ? 0 : 1),
+        ),
+      });
+    }
+
+    slotDefs.push({
+      slotKey: 'spatter',
+      label: 'Hail Spatter / Storm Pattern',
+      required: true,
+      kind: 'single',
+      candidates: rankPhotos(
+        photos.filter((p) =>
+          p.stage === 'collateral' ||
+          p.triadRole === 'collateral' ||
+          p.preliminaryRole === 'roof_overview' ||
+          p.triadRole === 'wide',
+        ),
+        (p) => (p.stage === 'collateral' || p.triadRole === 'collateral') ? 0 : p.preliminaryRole === 'roof_overview' ? 1 : 2,
+      ),
+    });
+
+    {
+      const recencyBefore = photos.filter((p) =>
+        p.triadRole === 'wide' || p.triadRole === 'mid' || p.preliminaryRole === 'roof_overview',
+      );
+      const recencyAfter = photos.filter((p) =>
+        p.triadRole === 'close' ||
+        p.preliminaryRole === 'damage_closeup' ||
+        p.preliminaryRole === 'damage_closeup_roof',
+      );
+      if (recencyBefore.length > 0 && recencyAfter.length > 0) {
+        slotDefs.push({
+          slotKey: 'comparison_recency',
+          label: 'Comparison — Recency of Damage',
+          required: false,
+          kind: 'comparison',
+          comparisonType: 'directional_comparison',
+          beforeCandidates: recencyBefore.slice(0, 15),
+          afterCandidates: recencyAfter.slice(0, 15),
+        });
+      }
+    }
+  }
+
+  // ── Interior scope: interior_trace chain ─────────────────────────────────
+  if (inspection.interiorDamageFound) {
+    const interiorCandidates = rankPhotos(
+      photos.filter((p) =>
+        p.stage === 'interior' ||
+        p.subjectType === 'interior_observation' ||
+        p.preliminaryRole === 'damage_closeup_interior',
+      ),
+      (p) => p.subjectType === 'interior_observation' ? 0 : p.stage === 'interior' ? 1 : 2,
+    );
+    slotDefs.push({ slotKey: 'interior_opening', label: 'Interior — Opening / Entry Point', required: true, kind: 'single', candidates: interiorCandidates });
+    slotDefs.push({ slotKey: 'interior_path', label: 'Interior — Damage Path', required: false, kind: 'single', candidates: interiorCandidates });
+    slotDefs.push({ slotKey: 'interior_terminus', label: 'Interior — Terminus / Destination', required: true, kind: 'single', candidates: interiorCandidates });
+  }
+
+  // ── RAP record: rap1_baseline + rap_outcome ───────────────────────────────
+  if (hasRap) {
+    slotDefs.push({
+      slotKey: 'rap1_baseline',
+      label: 'RAP — Baseline State (Wide)',
+      required: true,
+      kind: 'single',
+      candidates: rankPhotos(
+        photos.filter((p) =>
+          (p.subjectType === 'test_square' || p.stage === 'test_squares') &&
+          (p.triadRole === 'wide' || p.triadRole === 'mid' || !p.triadRole),
+        ),
+        (p) => p.triadRole === 'wide' ? 0 : p.triadRole === 'mid' ? 1 : 2,
+      ),
+    });
+    const rapClose = rankPhotos(
+      photos.filter((p) =>
+        (p.subjectType === 'test_square' || p.subjectType === 'test_square_hit' || p.stage === 'test_squares') &&
+        (p.triadRole === 'close' || p.triadRole === 'mid' || !p.triadRole),
+      ),
+      (p) => p.triadRole === 'close' ? 0 : p.triadRole === 'mid' ? 1 : 2,
+    );
+    slotDefs.push({ slotKey: 'rap_outcome_1', label: 'RAP — Outcome (Priority Detriment)', required: true, kind: 'single', candidates: rapClose });
+    slotDefs.push({ slotKey: 'rap_outcome_2', label: 'RAP — Outcome (Crease)', required: false, kind: 'single', candidates: rapClose });
+  }
+
+  // ── Opening + mitigation ──────────────────────────────────────────────────
+  if (createdOpening && mitigationPerformed) {
+    const mitigationCandidates = rankPhotos(
+      photos.filter((p) =>
+        p.subjectType === 'inspection' ||
+        p.subjectType === 'slope' ||
+        p.subjectType === 'penetration',
+      ),
+      (p) => p.subjectType === 'inspection' ? 0 : 1,
+    );
+    slotDefs.push({ slotKey: 'mitigation_before', label: 'Mitigation — Before State', required: true, kind: 'single', candidates: mitigationCandidates });
+    slotDefs.push({ slotKey: 'mitigation_after', label: 'Mitigation — After State', required: true, kind: 'single', candidates: mitigationCandidates });
+  }
+
+  // ── Pre-existing conditions ───────────────────────────────────────────────
+  if (hasPreExisting) {
+    const coveredCandidates = photos.filter((p) =>
+      p.triadRole === 'close' || p.preliminaryRole === 'damage_closeup' || p.preliminaryRole === 'damage_closeup_roof',
+    );
+    const unrelatedCandidates = photos.filter((p) => p.triadRole === 'wide' || p.triadRole === 'mid');
+    if (coveredCandidates.length > 0 && unrelatedCandidates.length > 0) {
+      slotDefs.push({
+        slotKey: 'comparison_covered_vs_unrelated',
+        label: 'Comparison — Covered vs. Pre-existing',
+        required: false,
+        kind: 'comparison',
+        comparisonType: 'condition_differentiation',
+        beforeCandidates: coveredCandidates.slice(0, 15),
+        afterCandidates: unrelatedCandidates.slice(0, 15),
+      });
+    }
+  }
+
+  // ── Build response ─────────────────────────────────────────────────────────
+  const slots = slotDefs.map((def) => {
+    if (def.kind === 'comparison') {
+      return {
+        slotKey: def.slotKey,
+        label: def.label,
+        required: def.required,
+        kind: def.kind as SlotKind,
+        comparisonType: def.comparisonType ?? null,
+        candidates: [] as ReturnType<typeof photoBrief>[],
+        confirmedPhotoId: null as string | null,
+        beforeCandidates: (def.beforeCandidates ?? []).map(photoBrief),
+        afterCandidates: (def.afterCandidates ?? []).map(photoBrief),
+        confirmedPairId: def.comparisonType ? confirmedPairFor(def.comparisonType) : null,
+        isSkipped: skippedSlotKeys.has(def.slotKey),
+      };
+    }
+    const ranked = def.candidates ?? [];
+    return {
+      slotKey: def.slotKey,
+      label: def.label,
+      required: def.required,
+      kind: def.kind as SlotKind,
+      comparisonType: null as string | null,
+      candidates: ranked.slice(0, 20).map(photoBrief),
+      confirmedPhotoId: slotConfirmedMap.get(def.slotKey) ?? null,
+      beforeCandidates: [] as ReturnType<typeof photoBrief>[],
+      afterCandidates: [] as ReturnType<typeof photoBrief>[],
+      confirmedPairId: null as string | null,
+      isSkipped: skippedSlotKeys.has(def.slotKey),
+    };
+  });
+
+  // Required slots cannot be skipped (server rejects slot_skipped for required slots),
+  // so we don't include isSkipped in this check.
+  const allRequiredConfirmed = slots
+    .filter((s) => s.required)
+    .every((s) =>
+      s.kind === 'comparison' ? s.confirmedPairId !== null : s.confirmedPhotoId !== null,
+    );
+
+  res.json({ inspectionId: inspection.id, slots, allRequiredConfirmed });
+});
+
 // POST /inspections/:inspectionId/curation/finalize — freeze badge assignments
 router.post('/:inspectionId/curation/finalize', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
@@ -6874,6 +7442,14 @@ router.post('/:inspectionId/curation/finalize', async (req: Request, res: Respon
 
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+
+  // Server-side gate: every required single slot must have an explicit slot_confirmed
+  // or slot_swapped event with a photoId — the canonical per-slot source of truth.
+  const allConfirmed = await checkAllRequiredSlotsConfirmedByEvents(inspection, actor.companyId);
+  if (!allConfirmed) {
+    res.status(422).json({ error: 'All required exhibit slots must be confirmed before finalizing.' });
+    return;
+  }
 
   const selections = await db
     .select()
@@ -8032,7 +8608,11 @@ router.get('/inspections/:inspectionId/events', async (req: Request, res: Respon
 // by their own routes.
 // ---------------------------------------------------------------------------
 
-const UI_RECORDABLE_EVENT_TYPES = ['field_record_reviewed'] as const;
+// Idempotent events are deduplicated per inspection (only one record ever stored).
+// Append-only events always insert a new row (audit trail for repeated actions).
+const IDEMPOTENT_EVENT_TYPES = ['field_record_reviewed'] as const;
+const APPEND_ONLY_EVENT_TYPES = ['slot_confirmed', 'slot_swapped', 'slot_skipped'] as const;
+const UI_RECORDABLE_EVENT_TYPES = [...IDEMPOTENT_EVENT_TYPES, ...APPEND_ONLY_EVENT_TYPES] as const;
 type UiRecordableEventType = (typeof UI_RECORDABLE_EVENT_TYPES)[number];
 
 router.post('/inspections/:inspectionId/events', async (req: Request, res: Response) => {
@@ -8053,31 +8633,62 @@ router.post('/inspections/:inspectionId/events', async (req: Request, res: Respo
   }
 
   const typedEvent = eventType as UiRecordableEventType;
+  const isIdempotent = (IDEMPOTENT_EVENT_TYPES as readonly string[]).includes(typedEvent);
 
-  // Idempotent: if this event already exists for the inspection, return the
-  // existing record rather than duplicating it.
-  const [existing] = await db
-    .select()
-    .from(claimEventsTable)
-    .where(
-      and(
-        eq(claimEventsTable.inspectionId, inspectionId),
-        eq(claimEventsTable.companyId, actor.companyId),
-        eq(claimEventsTable.eventType, typedEvent),
-      ),
-    )
-    .limit(1);
+  // ── Slot event payload validation ─────────────────────────────────────────
+  if ((APPEND_ONLY_EVENT_TYPES as readonly string[]).includes(typedEvent)) {
+    const payload = body.payload as Record<string, unknown> | undefined;
+    const slotKey = typeof payload?.slotKey === 'string' ? payload.slotKey : null;
+    if (!slotKey) {
+      return void res.status(400).json({ error: 'payload.slotKey is required for slot events' });
+    }
+    if (typedEvent === 'slot_confirmed' || typedEvent === 'slot_swapped') {
+      const hasPhotoId = typeof payload?.photoId === 'string';
+      const hasComparison =
+        typeof payload?.beforePhotoId === 'string' && typeof payload?.afterPhotoId === 'string';
+      if (!hasPhotoId && !hasComparison) {
+        return void res.status(400).json({
+          error: 'slot_confirmed/slot_swapped requires payload.photoId (single slot) or payload.beforePhotoId + beforePhotoId (comparison slot)',
+        });
+      }
+    }
+    // Validate slotKey exists in manifest and forbid skipping required slots
+    const requirements = await deriveManifestRequirements(inspection, actor.companyId);
+    const slotReq = requirements.find((r) => r.slotKey === slotKey);
+    if (!slotReq) {
+      return void res.status(400).json({ error: `Unknown slot key: ${slotKey}` });
+    }
+    if (typedEvent === 'slot_skipped' && slotReq.required) {
+      return void res.status(400).json({ error: `Required slot '${slotKey}' cannot be skipped` });
+    }
+  }
 
-  if (existing) {
-    return void res.json({
-      event: {
-        id: existing.id,
-        eventType: existing.eventType,
-        payload: existing.payload,
-        actorId: existing.actorId,
-        createdAt: existing.createdAt.toISOString(),
-      },
-    });
+  if (isIdempotent) {
+    // Idempotent: if this event already exists for the inspection, return the
+    // existing record rather than duplicating it.
+    const [existing] = await db
+      .select()
+      .from(claimEventsTable)
+      .where(
+        and(
+          eq(claimEventsTable.inspectionId, inspectionId),
+          eq(claimEventsTable.companyId, actor.companyId),
+          eq(claimEventsTable.eventType, typedEvent),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      return void res.json({
+        event: {
+          id: existing.id,
+          eventType: existing.eventType,
+          payload: existing.payload,
+          actorId: existing.actorId,
+          createdAt: existing.createdAt.toISOString(),
+        },
+      });
+    }
   }
 
   const [inserted] = await db
@@ -8641,7 +9252,7 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
   }
 
   const [pin] = await db
-    .select()
+    .select({ id: pinsTable.id, userId: pinsTable.userId, pipelineStage: pinsTable.pipelineStage })
     .from(pinsTable)
     .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)))
     .limit(1);
@@ -8702,33 +9313,35 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
   res.json({ lead: { ...updated, repName } });
 });
 
-// ---------------------------------------------------------------------------
-// Lead Files — GET/POST /leads/:leadId/files
-//              PATCH/DELETE /leads/:leadId/files/:fileId
-// Supports both pin leads (UUID) and inspection leads ("ins-{id}").
-// ---------------------------------------------------------------------------
+// ── Lead Files ──────────────────────────────────────────────────────────────
+// leadId is the raw identifier — either a pin UUID or "ins-{inspectionId}".
+// Routes gate access by verifying the lead belongs to the actor's company.
 
-import { LEAD_FILE_CATEGORIES } from '@workspace/db';
+/** Categories that mirror LEAD_FILE_CATEGORIES in lib/db/src/schema/rooftrax.ts */
+const LEAD_FILE_CATEGORIES = [
+  'site_photos', 'contracts', 'estimates', 'insurance_documents',
+  'measurement_reports', 'permits', 'correspondence', 'general',
+] as const;
+type LeadFileCategory = typeof LEAD_FILE_CATEGORIES[number];
 
 /**
- * Verify the requesting user may read/write files on this lead.
- * Returns the lead owner's userId on success.
+ * Verify the requesting actor may read/write files on this lead and return
+ * the lead owner's userId. Handles both pin-UUID and ins- prefixed leads.
  */
-async function checkLeadFileAccess(
+async function checkLeadAccess(
   leadId: string,
-  user: { id: string; companyId: string },
-  role: string,
+  actor: { userId: string; companyId: string; role: string },
 ): Promise<{ ok: true; ownerId: string } | { ok: false; status: number; error: string }> {
-  const typedRole = role as import('@workspace/db').Role;
+  const typedRole = actor.role as import('@workspace/db').Role;
   if (leadId.startsWith('ins-')) {
     const inspectionId = leadId.slice(4);
     const [row] = await db
       .select({ id: inspectionsTable.id, inspectorUserId: inspectionsTable.inspectorUserId })
       .from(inspectionsTable)
-      .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, user.companyId)))
+      .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, actor.companyId)))
       .limit(1);
     if (!row) return { ok: false, status: 404, error: 'Lead not found' };
-    if (row.inspectorUserId !== user.id && !isManagerOrAdmin(typedRole)) {
+    if (row.inspectorUserId !== actor.userId && !isManagerOrAdmin(typedRole)) {
       return { ok: false, status: 403, error: 'Forbidden' };
     }
     return { ok: true, ownerId: row.inspectorUserId };
@@ -8736,20 +9349,21 @@ async function checkLeadFileAccess(
   const [pin] = await db
     .select({ id: pinsTable.id, userId: pinsTable.userId })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, user.companyId)))
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, actor.companyId)))
     .limit(1);
   if (!pin) return { ok: false, status: 404, error: 'Lead not found' };
-  if (pin.userId !== user.id && !isManagerOrAdmin(typedRole)) {
+  if (pin.userId !== actor.userId && !isManagerOrAdmin(typedRole)) {
     return { ok: false, status: 403, error: 'Forbidden' };
   }
   return { ok: true, ownerId: pin.userId };
 }
 
 router.get('/leads/:leadId/files', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const actor = await requireUserWithRole(req, res);
+  if (!actor) return;
   const { leadId } = req.params as { leadId: string };
-  const role = await getRole(req.user.id);
-  const access = await checkLeadFileAccess(leadId, req.user, role);
+
+  const access = await checkLeadAccess(leadId, actor);
   if (!access.ok) return void res.status(access.status).json({ error: access.error });
 
   const rows = await db
@@ -8769,7 +9383,7 @@ router.get('/leads/:leadId/files', async (req: Request, res: Response) => {
     })
     .from(leadFilesTable)
     .leftJoin(usersTable, eq(usersTable.id, leadFilesTable.userId))
-    .where(and(eq(leadFilesTable.leadId, leadId), eq(leadFilesTable.companyId, req.user.companyId)))
+    .where(and(eq(leadFilesTable.leadId, leadId), eq(leadFilesTable.companyId, actor.companyId)))
     .orderBy(leadFilesTable.createdAt);
 
   const files = rows.map(r => ({
@@ -8783,10 +9397,11 @@ router.get('/leads/:leadId/files', async (req: Request, res: Response) => {
 });
 
 router.post('/leads/:leadId/files', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const actor = await requireUserWithRole(req, res);
+  if (!actor) return;
   const { leadId } = req.params as { leadId: string };
-  const role = await getRole(req.user.id);
-  const access = await checkLeadFileAccess(leadId, req.user, role);
+
+  const access = await checkLeadAccess(leadId, actor);
   if (!access.ok) return void res.status(access.status).json({ error: access.error });
 
   const { objectPath, fileName, mimeType, fileSize, category } = req.body as {
@@ -8808,20 +9423,20 @@ router.post('/leads/:leadId/files', async (req: Request, res: Response) => {
     .where(eq(objectOwnershipTable.objectPath, objectPath))
     .limit(1);
 
-  if (!ownership || ownership.companyId !== req.user.companyId) {
+  if (!ownership || ownership.companyId !== actor.companyId) {
     return void res.status(403).json({ error: 'Object not owned by your company' });
   }
 
   const safeCategory = (LEAD_FILE_CATEGORIES as readonly string[]).includes(category ?? '')
-    ? (category as typeof LEAD_FILE_CATEGORIES[number])
+    ? (category as LeadFileCategory)
     : 'general';
 
   const [file] = await db
     .insert(leadFilesTable)
     .values({
       leadId,
-      companyId: req.user.companyId,
-      userId:    req.user.id,
+      companyId: actor.companyId,
+      userId:    actor.userId,
       objectPath,
       fileName,
       originalName: fileName,
@@ -8835,10 +9450,11 @@ router.post('/leads/:leadId/files', async (req: Request, res: Response) => {
 });
 
 router.patch('/leads/:leadId/files/:fileId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const actor = await requireUserWithRole(req, res);
+  if (!actor) return;
   const { leadId, fileId } = req.params as { leadId: string; fileId: string };
-  const role = await getRole(req.user.id);
-  const access = await checkLeadFileAccess(leadId, req.user, role);
+
+  const access = await checkLeadAccess(leadId, actor);
   if (!access.ok) return void res.status(access.status).json({ error: access.error });
 
   const [fileRow] = await db
@@ -8847,15 +9463,14 @@ router.patch('/leads/:leadId/files/:fileId', async (req: Request, res: Response)
     .where(and(
       eq(leadFilesTable.id, fileId),
       eq(leadFilesTable.leadId, leadId),
-      eq(leadFilesTable.companyId, req.user.companyId),
+      eq(leadFilesTable.companyId, actor.companyId),
     ))
     .limit(1);
 
   if (!fileRow) return void res.status(404).json({ error: 'File not found' });
 
-  // Owner or manager can rename / recategorise
-  const typedRole = role as import('@workspace/db').Role;
-  if (fileRow.userId !== req.user.id && !isManagerOrAdmin(typedRole)) {
+  // Owner or manager can rename/recategorize
+  if (fileRow.userId !== actor.userId && !isManagerOrAdmin(actor.role as import('@workspace/db').Role)) {
     return void res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -8867,7 +9482,7 @@ router.patch('/leads/:leadId/files/:fileId', async (req: Request, res: Response)
   const updates: Record<string, unknown> = {};
   if (fileName) updates.fileName = fileName;
   if (category && (LEAD_FILE_CATEGORIES as readonly string[]).includes(category)) {
-    updates.category = category;
+    updates.category = category as LeadFileCategory;
   }
 
   const [updated] = await db
@@ -8880,10 +9495,11 @@ router.patch('/leads/:leadId/files/:fileId', async (req: Request, res: Response)
 });
 
 router.delete('/leads/:leadId/files/:fileId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const actor = await requireUserWithRole(req, res);
+  if (!actor) return;
   const { leadId, fileId } = req.params as { leadId: string; fileId: string };
-  const role = await getRole(req.user.id);
-  const access = await checkLeadFileAccess(leadId, req.user, role);
+
+  const access = await checkLeadAccess(leadId, actor);
   if (!access.ok) return void res.status(access.status).json({ error: access.error });
 
   const [fileRow] = await db
@@ -8892,23 +9508,24 @@ router.delete('/leads/:leadId/files/:fileId', async (req: Request, res: Response
     .where(and(
       eq(leadFilesTable.id, fileId),
       eq(leadFilesTable.leadId, leadId),
-      eq(leadFilesTable.companyId, req.user.companyId),
+      eq(leadFilesTable.companyId, actor.companyId),
     ))
     .limit(1);
 
   if (!fileRow) return void res.status(404).json({ error: 'File not found' });
 
   // Owner or manager can delete
-  const typedRole = role as import('@workspace/db').Role;
-  if (fileRow.userId !== req.user.id && !isManagerOrAdmin(typedRole)) {
+  if (fileRow.userId !== actor.userId && !isManagerOrAdmin(actor.role as import('@workspace/db').Role)) {
     return void res.status(403).json({ error: 'Forbidden' });
   }
 
+  // Delete the file record and its ownership entry (object becomes unreachable)
   await db.delete(leadFilesTable).where(eq(leadFilesTable.id, fileId));
   await db.delete(objectOwnershipTable).where(eq(objectOwnershipTable.objectPath, fileRow.objectPath));
 
   res.status(204).end();
 });
+
 
 router.get('/leads', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
@@ -9031,8 +9648,6 @@ router.get('/leads', async (req: Request, res: Response) => {
 
   res.json({ leads });
 });
-
-
 
 // ── POST /inspections/:id/ahj-check ──────────────────────────────────────────
 // Lets managers re-trigger the AHJ jurisdiction check on demand — without

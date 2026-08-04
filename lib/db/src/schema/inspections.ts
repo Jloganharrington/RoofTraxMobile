@@ -1447,6 +1447,10 @@ export const CLAIM_EVENT_TYPES = [
   'captions_generated',
   'field_record_reviewed',
   'package_delivered',
+  // Slot-based curation events (Exhibit Manifest)
+  'slot_confirmed',
+  'slot_swapped',
+  'slot_skipped',
 ] as const;
 export type ClaimEventType = (typeof CLAIM_EVENT_TYPES)[number];
 
