@@ -52,6 +52,7 @@ import {
   type ParsedDetriment,
   type ParsedBpSection,
 } from "@/lib/parseMdLibrary";
+import { ProofPackageWizard } from "./ProofPackageWizard";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1761,7 +1762,7 @@ export default function LibraryPage() {
               jurisdiction packs used by the AI generation pipeline.
             </p>
           </div>
-          <BulkImportDialog />
+          <ProofPackageWizard />
         </div>
 
         <Card>

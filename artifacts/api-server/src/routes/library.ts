@@ -7,6 +7,7 @@
 import { Router, type Request, type Response } from 'express';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import {
   db,
   userProfilesTable,
@@ -518,6 +519,114 @@ router.delete('/report-settings/agent-prompts/:agentKey', async (req: Request, r
       ),
     );
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// Proof Package Data Wizard — AI content routing
+// ---------------------------------------------------------------------------
+
+const PP_WIZARD_PROMPT = `You are the Proof Package Data Wizard for a professional roofing inspection company.
+
+Your task: analyze the provided document(s) and route each piece of content to the correct destination in the system. Do NOT modify, paraphrase, or summarize any content — extract and route it exactly as written in the source.
+
+DESTINATION TYPES AND THEIR SCHEMAS:
+
+1. "boilerplate" — Standard report narrative text. Route to one of these section keys ONLY (use the exact key string):
+   • opening_statement — Introductory statement describing the purpose/scope of the inspection report
+   • inspection_method — Methodology description for how inspections are performed
+   • caption_patterns — Rules or patterns governing how photo captions are written
+   • rap_field_protocol — Field protocol for the Rapid Assessment Protocol (RAP)
+   • attestation_block_a — Inspector attestation/certification language, block A
+   • attestation_block_b — Inspector attestation/certification language, block B
+   • attestation_block_c — Inspector attestation/certification language, block C
+   • uniform_inspection_procedure — Standard uniform inspection procedure text
+   • product_id_methodology — Methodology for identifying roofing products
+   • scope_block — Scope of inspection boilerplate block
+   • std_rpr_01_source_record — STD-RPR-01 source record text
+
+   If content clearly matches a named boilerplate section, use that key. If you are uncertain which section key applies, skip it.
+
+2. "standards" — Published code/standards citations used to support inspection findings. Fields:
+   • entryKey (string, UPPER_SNAKE_CASE, e.g. "ASTM_D3462", "IRC_R905_2") — derive from the standard's identifier
+   • sourceType (string | null) — issuing organization: "ASTM", "ICC", "IRC", "IBC", "NRCA", "ARMA", "UL", "ASCE", etc.
+   • citationText (string) — EXACT citation text as written in the source, verbatim
+   • authorityLimit (string | null) — any stated limit on what this standard supports (optional)
+   • locatorTemplate (string | null) — URL or reference locator (optional)
+   • humanEnteredProvisionsOnly (boolean) — true if the provisions were human-authored (not AI-generated)
+
+3. "detriment" — Adverse condition / deficiency entries used to document damage. Fields:
+   • entryKey (string, UPPER_SNAKE_CASE, e.g. "MISSING_DRIP_EDGE") — short identifier
+   • applicabilityConditions (string[]) — snake_case condition tags that trigger this detriment
+   • statement (string) — EXACT detriment statement, verbatim
+   • requiredSupport (string | null) — what documentation or evidence is required (optional)
+   • limitation (string | null) — any limitation on applicability (optional)
+
+4. "ahj_pack" — Building code provisions for a specific jurisdiction. Fields:
+   • jurisdiction (string) — e.g. "Virginia", "Texas", "Travis County, TX"
+   • packType ("ahj_roof" | "ahj_siding") — roof pack unless content explicitly describes siding
+   • packItems (array of objects):
+     - key (string) — citation identifier, e.g. "VRC_R905_2_8_5"
+     - citationText (string) — EXACT citation text, verbatim
+     - edition (string | null) — code edition year (optional)
+     - trigger (string | null) — when this citation applies (optional)
+     - active (boolean, always true)
+
+   Group ALL items for the same jurisdiction+packType into a SINGLE "ahj_pack" entry.
+
+RULES:
+- Extract content VERBATIM — do not rewrite, summarize, or paraphrase citation or statement text
+- Only route content that clearly fits a destination; skip ambiguous or unclear content
+- Use confidence 0.0–1.0: ≥0.9 = very certain, 0.7–0.9 = likely, <0.7 = uncertain
+- Provide a short "reasoning" string (1 sentence max) for each routing decision
+- Provide a human-readable "label" for display in the UI (e.g. "Opening Statement", "ASTM D3462", "Missing Drip Edge")
+
+Output valid JSON only — no markdown fences, no explanation outside the JSON object:
+{
+  "items": [
+    { "destination": "boilerplate", "sectionKey": "...", "label": "...", "content": "...", "confidence": 0.0, "reasoning": "..." },
+    { "destination": "standards", "entryKey": "...", "label": "...", "sourceType": null, "citationText": "...", "authorityLimit": null, "locatorTemplate": null, "humanEnteredProvisionsOnly": true, "confidence": 0.0, "reasoning": "..." },
+    { "destination": "detriment", "entryKey": "...", "label": "...", "applicabilityConditions": [], "statement": "...", "requiredSupport": null, "limitation": null, "confidence": 0.0, "reasoning": "..." },
+    { "destination": "ahj_pack", "jurisdiction": "...", "packType": "ahj_roof", "label": "...", "packItems": [{ "key": "...", "citationText": "...", "edition": null, "trigger": null, "active": true }], "confidence": 0.0, "reasoning": "..." }
+  ]
+}`;
+
+const PpWizardAnalyzeBody = z.object({
+  files: z.array(
+    z.object({
+      name: z.string().max(200),
+      content: z.string().max(150_000),
+    }),
+  ).min(1).max(8),
+});
+
+router.post('/report-settings/pp-wizard/analyze', async (req: Request, res: Response) => {
+  const actor = await requireLibrarySuperAdmin(req, res);
+  if (!actor) return;
+
+  const body = PpWizardAnalyzeBody.safeParse(req.body);
+  if (!body.success) return void res.status(400).json({ error: body.error.message });
+
+  const combined = body.data.files
+    .map((f) => `=== FILE: ${f.name} ===\n\n${f.content}`)
+    .join('\n\n---\n\n');
+
+  let plan: unknown;
+  try {
+    const response = await geminiAi.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: combined }] }],
+      config: {
+        systemInstruction: PP_WIZARD_PROMPT,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 8192 },
+      },
+    });
+    plan = JSON.parse(response.text ?? '{}');
+  } catch (err) {
+    return void res.status(502).json({ error: 'AI analysis failed', detail: String(err) });
+  }
+
+  res.json({ plan });
 });
 
 export default router;

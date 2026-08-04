@@ -1,0 +1,158 @@
+Virginia’s statewide baseline is the 2021 Virginia Uniform Statewide Building Code (USBC) for permits issued on or after January 18, 2025. For roof work, the code path depends first on building type:
+
+Detached one- and two-family homes and qualifying townhouses → 2021 Virginia Residential Code (VRC)
+Commercial buildings, multifamily outside VRC scope, mixed use, and other non-VRC buildings → 2021 Virginia Construction Code (VCC), using the IBC framework as amended
+Repair, reroofing, recover, or alteration of existing structures → 2021 Virginia Existing Building Code (VEBC), plus the applicable VRC/VCC new-work requirements
+This is the comprehensive statewide map for asphalt shingles, cedar shingles/shakes, and standing-seam metal. Local building departments enforce the USBC, so permit scope, inspection sequence, wind design inputs, and any locally authorized overlay still need AHJ confirmation.
+
+1. Governing code framework
+Data Table
+9 rows
+
+Export CSV
+Subject	Residential code path	Commercial / non-VRC code path	Existing-building work
+Roof framing and sheathing	VRC Chapters 8: R801–R803	VCC/IBC structural chapters and roof-deck provisions	VEBC repair provisions plus applicable new-work requirements
+Weather protection / flashing / drainage	R903	IBC §1503	Applies when repaired/replaced work is installed
+Fire classification	R902	IBC §1505	Verify current required classification for the work
+Roof covering / material installation	R905	IBC §1507	Material-specific new-work provisions apply
+Ventilation / unvented roofs	R806	VCC energy/roof assembly provisions	Depends on roof/insulation design
+Wind, snow, structural design	R301, R802	IBC Chapter 16, including §1609 wind	Triggered where work affects load path or roof assembly
+Reroofing / recover	VEBC §706	VEBC §706	Primary reroof decision section
+Repairs	VEBC §§501–502	VEBC §§501–502	Applies to deck, framing, connections, and repair work
+Permit / inspection administration	Local USBC enforcement	Local USBC enforcement	Confirm with AHJ before work begins
+2. Roof construction requirements that apply to all systems
+Data Table
+11 rows
+
+Export CSV
+Construction issue	Primary code references	What it controls
+Roof design loads	VRC R301, R802; VCC/IBC Chapter 16, especially §1609	Wind speed, exposure, roof height, topographic effects, snow/ice, roof live load, and load path
+Roof framing	VRC R802	Rafters, ceiling joists, ridge boards/beams, collar ties, rafter ties, uplift connections, and framing capacity
+Roof sheathing / decking	VRC R803; VCC/IBC §1504.1	Deck material, structural adequacy, attachment, support, deterioration, and compatibility with the proposed roof system
+Weather protection	VRC R903.1; VCC/IBC §1503.1	Roof assembly must provide weather protection; roof covering alone is not the entire water-control system
+Flashing	VRC R903.2; VCC/IBC §1503.2	Flashing at wall intersections, roof changes, valleys, chimneys, skylights, penetrations, and other water-entry points
+Drainage	VRC R903.4; VCC/IBC §1503.4	Roof drainage, scuppers/gutters where required, and prevention of water accumulation
+Fire classification	VRC R902.1 and Table R902.1; VCC/IBC §1505	Class A/B/C roof-covering requirements based on occupancy, location, exposure, and assembly
+Ventilation / unvented assembly	VRC R806	Intake/exhaust ventilation, net-free vent area, ventilation distribution, and compliant unvented-roof assemblies
+Energy / insulation changes	Virginia Energy Conservation Code and applicable VRC/VCC provisions	Added roof insulation, cathedral ceilings, unvented roofs, condensation control, and thermal-envelope changes
+Manufacturer instructions	Material-specific VRC/VCC sections plus applicable adopted-code provisions	Installation must follow the actual product instructions where the code requires it; product/version must be identified
+Structural repair	VEBC §502	New repair members and connections must comply with requirements for comparable new construction
+3. Re-roofing, tear-off, and recover rules
+For existing structures, VEBC §706 is the primary reroofing section.
+
+Data Table
+6 rows
+
+Export CSV
+Existing condition	General code consequence
+One sound existing roof covering with an adequate base	Recover may be permitted if the new system is approved for recover and manufacturer requirements are met
+Two or more existing roof-covering applications	Additional recover is generally prohibited; tear-off is required
+Water-soaked, deteriorated, or inadequate existing roof base	Tear-off and repair/replacement of deficient substrate are required before new covering
+Deteriorated decking, framing, or fastener substrate	Repair to compliant structural condition before roofing proceeds
+Proposed recover over wood shake, tile, or specialty system	Do not assume it is permitted; verify VEBC exceptions, manufacturer listing, deck condition, and AHJ acceptance
+New roof system adds significant dead load, insulation, PV, or changes uplift behavior	Structural/load-path review may be required
+A recover assembly is never a shortcut around wet, rotten, delaminated, structurally inadequate, or poorly attached decking.
+
+4. Asphalt-shingle roof requirements
+Data Table
+10 rows
+
+Export CSV
+Topic	Key Virginia residential reference	Core requirement
+Material section	VRC R905.2	Governs asphalt-shingle installation
+Minimum slope	R905.2	Generally permitted at slopes of 2:12 or greater; lower permitted slopes require the enhanced underlayment configuration specified by the code
+Underlayment	R905.1.1, R905.2.7	Underlayment type and installation must meet the general and asphalt-specific rules
+Ice barrier	R905.1.2	Required in areas with an established history of eave ice-dam backup; extends from the eave edge to at least 24 inches inside the exterior wall line
+Drip edge	R905.2.8.5	Required at eaves and gables; installed over underlayment at eaves and under underlayment at rakes
+Valleys	R905.2.8.2	Valley lining and installation sequence must meet the asphalt-shingle valley requirements
+Fasteners	R905.2.6	Fastener type, placement, and number; site wind criteria and manufacturer instructions may require enhanced fastening
+Flashing	R903.2, R905.2 details	Required at roof-to-wall interfaces, penetrations, changes in slope/direction, valleys, and other water-entry locations
+Wind resistance	VRC R301.2.1, R905.2; VCC/IBC §1504.3, §1609	Use the product’s tested/listed fastening and wind-resistance requirements for the actual site design conditions
+Fire classification	R902.1 / Table R902.1	Verify roof-covering listing and required Class A/B/C assembly
+For a production checklist, include these field checks:
+
+Deck condition, thickness, attachment, and repair needs
+Number of existing roof layers
+Slope and low-slope underlayment trigger
+Ice-barrier locality/AHJ trigger
+Drip-edge placement sequence
+Valley method and liner sequence
+Fastener count, nail line, and high-wind pattern
+Starter, hip/ridge, and sealant requirements
+Flashing at walls, chimneys, valleys, skylights, and penetrations
+Intake/exhaust ventilation or compliant unvented-roof design
+5. Cedar shingle and cedar shake requirements
+Cedar shingles and cedar shakes are separate systems and should not be treated interchangeably.
+
+Data Table
+2 rows
+
+Export CSV
+System	VRC reference	VCC/IBC reference	Major requirements
+Wood / cedar shingles	R905.8	§1507.8	Generally minimum 3:12 slope; underlayment, corrosion-resistant fasteners, exposure, and fire classification requirements
+Wood / cedar shakes	R905.9	§1507.9	Generally minimum 4:12 slope; underlayment/interlayment, corrosion-resistant fasteners, exposure, deck configuration, valley details, and fire classification requirements
+For both cedar systems, verify:
+
+Shingle versus shake classification
+Minimum slope
+Product listing and fire classification
+Whether treatment is required to meet the required roof classification
+Deck type: solid decking versus spaced sheathing, where the installed/approved system allows it
+Underlayment and interlayment requirements
+Corrosion-resistant fastener type, length, placement, and exposure
+Headlap, sidelap, keyway, exposure, and course alignment
+Valley, hip, ridge, penetration, wall, and flashing details
+Compatibility of replacement material with existing system geometry
+Local fire-area, historic-district, architectural-review, or WUI-related limitations
+Cedar is not code-compliant simply because it is cedar. The actual shake/shingle product, listing, treatment, assembly, fire rating, fasteners, deck, and installation method matter.
+
+6. Standing-seam metal roof requirements
+Standing seam is a panel profile, not a standalone code category. The exact panel system, tested assembly, clip pattern, substrate, slope listing, and manufacturer instructions control.
+
+Data Table
+7 rows
+
+Export CSV
+Topic	VRC reference	VCC/IBC reference	Core requirement
+Metal roof panels	R905.10	§1507.4	Governs metal panel systems, including many standing-seam systems
+Metal shingles, if applicable	Material-specific VRC section/product listing	§1507.5	Do not apply standing-seam panel rules to metal-shingle systems
+Underlayment	R905.1.1 and R905.10	IBC §1507 material section	Must meet the approved panel-system and slope requirements
+Wind uplift	R301.2.1 and manufacturer system	IBC §1504.3, §1609	Requires tested/calculated assembly performance—not merely panel gauge
+Flashing / drainage	R903.2–R903.4	IBC §1503	All edges, transitions, penetrations, curbs, walls, valleys, and drainage points require compatible details
+Thermal movement	Manufacturer system requirements	Manufacturer system requirements	Clip spacing, panel length, expansion provisions, and attachment cannot be improvised
+Corrosion / material compatibility	Product instructions and applicable code	Product instructions and applicable code	Verify dissimilar-metal contact, treated-lumber compatibility, fastener material, and flashing compatibility
+Standing-seam preconstruction checks should include:
+
+Exact panel system and manufacturer
+Minimum approved slope for that panel system
+Panel width, length, gauge, seam type, and clip type
+Clip and fastener spacing
+Tested uplift assembly for site wind criteria
+Deck/substrate type and condition
+Underlayment type and sequencing
+Eave, rake, ridge, hip, valley, wall, penetration, and snow-retention details
+Thermal movement design
+Dissimilar-metal and treated-wood corrosion controls
+7. Local/AHJ items that must be confirmed
+The USBC is statewide, but these variables must be confirmed with the specific local building department:
+
+Data Table
+9 rows
+
+Export CSV
+AHJ verification item	Why it matters
+Permit requirement and scope description	Determines whether replacement, recover, deck work, structural repair, or insulation changes alter permit path
+Required inspection sequence	Locality may require inspection of deck repair, dry-in, underlayment, flashing, final roof, or structural work before concealment
+Design wind criteria	Verify wind speed, exposure category, roof height, topographic effects, risk category, and coastal conditions
+Snow/ice conditions	Mountain and western Virginia conditions can affect structural and ice-barrier analysis
+Ice-barrier enforcement	Confirm established local history and AHJ interpretation; it is not an automatic whole-state requirement
+Fire-area / WUI / historic overlay	Especially relevant for cedar and visible metal systems
+Product approvals or engineering	Often important for standing seam, high-wind work, unusual substrates, recover assemblies, or nonstandard systems
+Energy/condensation requirements	Important for insulation additions, cathedral ceilings, compact roofs, and unvented roof assemblies
+Permit inspection hold points	Confirm what must remain visible before the next construction phase
+Official sources
+Virginia DHCD — 2021 Code Archive
+2021 Virginia Existing Building Code
+Virginia Code § 36-99 — USBC enforcement
+Virginia Register — USBC regulation action, 13VAC5-63
+This is the right structure for a Virginia AHJ Pack: occupancy path → existing-work path → material system → wind/slope/fire/deck inputs → local verification items.
