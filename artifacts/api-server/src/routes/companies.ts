@@ -14,9 +14,9 @@ import {
   ResearchJurisdictionCodesBody,
   ResearchJurisdictionCodesResponse,
 } from '@workspace/api-zod';
-import { companiesTable, companyJurisdictionPacksTable, db, userProfilesTable } from '@workspace/db';
+import { attestationsTable, companiesTable, companyJurisdictionPacksTable, db, inspectionsTable, pinsTable, userProfilesTable } from '@workspace/db';
 import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { ObjectStorageService } from '../lib/objectStorage';
@@ -808,5 +808,203 @@ router.get(
     res.json({ html });
   },
 );
+
+// ---------------------------------------------------------------------------
+// Sample Proof Package — provision / info endpoints
+//
+// GET  /api/sample-package/info     — returns { pinId, inspectionId } or nulls
+// POST /api/sample-package/provision — idempotently creates a real pin +
+//   inspection seeded with demo data, stores the pinId in reportBranding, and
+//   returns { pinId, inspectionId } so the UI can redirect to /leads/:pinId.
+// GET  /api/sample-package          — (legacy) returns branded sample HTML
+// ---------------------------------------------------------------------------
+
+router.get('/sample-package/info', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const [company] = await db
+    .select({ reportBranding: companiesTable.reportBranding })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, req.user.companyId));
+
+  const branding = (company?.reportBranding ?? {}) as Record<string, unknown>;
+  const samplePinId = typeof branding.samplePinId === 'string' ? branding.samplePinId : null;
+
+  if (!samplePinId) {
+    res.json({ pinId: null, inspectionId: null });
+    return;
+  }
+
+  // Verify the pin still exists (could have been deleted)
+  const [pin] = await db
+    .select({ id: pinsTable.id })
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, samplePinId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) {
+    res.json({ pinId: null, inspectionId: null });
+    return;
+  }
+
+  // Fetch the linked inspection
+  const [inspection] = await db
+    .select({ id: inspectionsTable.id })
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.pinId, samplePinId), eq(inspectionsTable.companyId, req.user.companyId)));
+
+  res.json({ pinId: pin.id, inspectionId: inspection?.id ?? null });
+});
+
+router.post('/sample-package/provision', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const companyId = req.user.companyId;
+
+  // Check if a sample already exists
+  const [company] = await db
+    .select({ reportBranding: companiesTable.reportBranding })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+
+  const branding = (company?.reportBranding ?? {}) as Record<string, unknown>;
+  const existingPinId = typeof branding.samplePinId === 'string' ? branding.samplePinId : null;
+
+  if (existingPinId) {
+    const [existingPin] = await db
+      .select({ id: pinsTable.id })
+      .from(pinsTable)
+      .where(and(eq(pinsTable.id, existingPinId), eq(pinsTable.companyId, companyId)));
+
+    if (existingPin) {
+      // Already provisioned — check inspection and backfill attestation if missing
+      const [existingInspection] = await db
+        .select({ id: inspectionsTable.id })
+        .from(inspectionsTable)
+        .where(and(eq(inspectionsTable.pinId, existingPinId), eq(inspectionsTable.companyId, companyId)));
+
+      if (existingInspection) {
+        // Backfill stage_signoff attestation if not yet present (idempotent — do nothing on conflict)
+        const [existingAttestation] = await db
+          .select({ id: attestationsTable.id })
+          .from(attestationsTable)
+          .where(
+            and(
+              eq(attestationsTable.inspectionId, existingInspection.id),
+              eq(attestationsTable.companyId, companyId),
+              eq(attestationsTable.attestationType, 'stage_signoff'),
+            ),
+          );
+        if (!existingAttestation) {
+          await db.insert(attestationsTable).values({
+            companyId,
+            inspectionId: existingInspection.id,
+            userId: req.user.id,
+            attestationType: 'stage_signoff',
+          });
+        }
+      }
+
+      res.json({ pinId: existingPin.id, inspectionId: existingInspection?.id ?? null });
+      return;
+    }
+  }
+
+  // Provision: create pin + inspection with seeded demo data.
+  // Springfield, IL — 39.7817° N, 89.6501° W
+  const [pin] = await db
+    .insert(pinsTable)
+    .values({
+      userId: req.user.id,
+      companyId,
+      latitude: 39.7817,
+      longitude: -89.6501,
+      address: '1234 Maple Street, Springfield, IL 62704',
+      workflow: 'insurance',
+      customerName: 'Jordan Example',
+    })
+    .returning();
+
+  const [inspection] = await db
+    .insert(inspectionsTable)
+    .values({
+      companyId,
+      inspectorUserId: req.user.id,
+      pinId: pin.id,
+      status: 'validating',
+      phase: 'forensic',
+      damageType: 'hail',
+      insuredName: 'Jordan Example',
+      address: '1234 Maple Street, Springfield, IL 62704',
+      latitude: 39.7817,
+      longitude: -89.6501,
+      carrierName: 'Acme Mutual Insurance',
+      policyNumber: 'HO-88213467',
+      claimNumber: 'CLM-2026-004821',
+      dateOfLoss: 'June 14, 2026',
+      roofDamageFound: true,
+      collateralDamageFound: true,
+    })
+    .returning();
+
+  // Seed a stage_signoff attestation so the Proof Package Builder wizard
+  // unlocks immediately — the gate checks for this attestation type.
+  await db.insert(attestationsTable).values({
+    companyId,
+    inspectionId: inspection.id,
+    userId: req.user.id,
+    attestationType: 'stage_signoff',
+  });
+
+  // Persist the sample pin ID in reportBranding (extra field, non-destructive).
+  // Use sql template to bypass the narrowed jsonb column type inferred by Drizzle.
+  const newBrandingJson = JSON.stringify({ ...branding, samplePinId: pin.id });
+  await db
+    .update(companiesTable)
+    .set({ reportBranding: sql`${newBrandingJson}::jsonb` })
+    .where(eq(companiesTable.id, companyId));
+
+  res.json({ pinId: pin.id, inspectionId: inspection.id });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sample-package — company-branded sample proof package HTML.
+// Accessible to any authenticated member of the company (no super-admin gate).
+// Used by the Sample Proof Package Client card in the Insurance Pipeline.
+// ---------------------------------------------------------------------------
+router.get('/sample-package', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = req.user.companyId;
+
+  const [company] = await db
+    .select({
+      name: companiesTable.name,
+      reportBranding: companiesTable.reportBranding,
+      logoUrl: companiesTable.logoUrl,
+    })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+
+  if (!company) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  const theme = resolveReportTheme(company.reportBranding);
+  const logoSignedUrl = company.logoUrl
+    ? await objectStorageService.tryGetSignedObjectUrl(company.logoUrl, 900)
+    : null;
+
+  const html = buildSampleProofPackageHtml({
+    theme,
+    logoUrl: logoSignedUrl,
+    companyName: company.name,
+  });
+
+  res.json({ html });
+});
 
 export default router;

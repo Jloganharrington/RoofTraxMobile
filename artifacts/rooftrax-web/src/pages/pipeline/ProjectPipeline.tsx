@@ -25,7 +25,7 @@ interface ProjStage {
 
 const PROJ_STAGES: ProjStage[] = [
   { key: 'pm_handoff',        label: 'Project Manager Handoff', statuses: ['project_pm_handoff'],    accent: 'border-blue-400',    textAccent: 'text-blue-400' },
-  { key: 'materials_orders',  label: 'Materials Orders',        statuses: ['project_materials'],     accent: 'border-violet-400',  textAccent: 'text-violet-400' },
+  { key: 'materials_orders',  label: 'Materials Ordered',        statuses: ['project_materials'],     accent: 'border-violet-400',  textAccent: 'text-violet-400' },
   { key: 'project_scheduled', label: 'Project Scheduled',       statuses: ['project_scheduled'],     accent: 'border-amber-400',   textAccent: 'text-amber-400' },
   { key: 'project_complete',  label: 'Project Complete',        statuses: ['project_complete'],      accent: 'border-emerald-400', textAccent: 'text-emerald-400' },
   { key: 'final_payment',     label: 'Final Payment Received',  statuses: ['project_final_payment'], accent: 'border-green-400',   textAccent: 'text-green-400' },

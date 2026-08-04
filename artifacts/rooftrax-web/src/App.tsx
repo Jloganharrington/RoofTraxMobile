@@ -16,6 +16,7 @@ import Estimate from '@/pages/inspections/Estimate';
 import PhotoCuration from '@/pages/inspections/PhotoCuration';
 import Pipeline from '@/pages/pipeline/Pipeline';
 import InsurancePipeline from '@/pages/pipeline/InsurancePipeline';
+import SamplePackagePage from '@/pages/pipeline/SamplePackagePage';
 import ProjectPipeline from '@/pages/pipeline/ProjectPipeline';
 import RetailPipeline from '@/pages/pipeline/RetailPipeline';
 import Leads from '@/pages/leads/Leads';
@@ -58,6 +59,9 @@ function Router() {
       </Route>
       <Route path="/insurance-pipeline">
         <ProtectedRoute><InsurancePipeline /></ProtectedRoute>
+      </Route>
+      <Route path="/sample-package">
+        <ProtectedRoute><SamplePackagePage /></ProtectedRoute>
       </Route>
       <Route path="/project-pipeline">
         <ProtectedRoute><ProjectPipeline /></ProtectedRoute>

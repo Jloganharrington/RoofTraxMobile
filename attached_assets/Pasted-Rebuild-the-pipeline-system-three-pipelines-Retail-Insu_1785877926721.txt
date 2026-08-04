@@ -1,0 +1,80 @@
+Rebuild the pipeline system: three pipelines (Retail, Insurance, Project), with stage-exit tasks performed INLINE on the pipeline kanban cards — not in the lead profile. Retail and Insurance converge into Project. Several transitions auto-advance on system events instead of manual tasks.
+
+=== CORE MODEL ===
+
+1. Stage convention: a stage name describes the lead's CURRENT true state; the inline task on the card is the action that EXITS the stage. Never name a stage after work not yet done.
+
+2. Schema:
+   - pipeline_stages (seeded config): id, pipeline ('retail'|'insurance'|'project'), key, label, sortOrder, exitTask (jsonb: { type, config }), autoAdvance (jsonb nullable: { eventType, outcomeRules }), isLoopStage (bool), isTerminal (bool).
+   - leads gain: pipeline, stageKey, stageEnteredAt, loopNextActionAt (nullable), lossReason (nullable), sourcePipeline (nullable — set at Project entry: 'retail'|'insurance').
+   - stage_transitions (audit): id, leadId, fromStage, toStage, trigger ('task'|'auto_event'|'manual_move'), taskPayload (jsonb), userId nullable, eventId nullable, createdAt. Every transition writes a row and a claim_event/lead_event.
+
+3. Exit task widget types (rendered on the kanban card):
+   - assign_user: dropdown of team members filtered by role
+   - datetime: date/time picker
+   - date_range: start/end picker
+   - confirm: single-tap confirm button
+   - money_confirm: $ confirm button (records amount + date)
+   - outcome_buttons: 2-3 buttons, each mapping to a target stage
+   - button_link: button that routes to another surface (proposal builder, Claim Hub) — stage exits via auto-advance event, not the click
+   - fields: 1-3 small inline fields + save (e.g., claim number + filing date)
+   - upload: file upload (signed contract)
+   All widgets submit without leaving the pipeline view; card animates to the next column on success.
+
+4. Auto-advance: a worker listens for the named events and advances matching leads, writing stage_transitions with trigger auto_event. Card shows a status badge ("Awaiting e-sign", "Awaiting field sync") instead of a task widget while waiting.
+
+5. Loop stages (isLoopStage): require loopNextActionAt on entry; cards sort by it within the column; cards past their date get an amber "overdue" border; cards >14 days in a loop stage get a red age badge showing days-in-stage.
+
+=== RETAIL PIPELINE ===
+Stages in order (key — label — exit task / auto):
+1. pin_dropped — Pin Dropped — assign_user (sales rep)
+2. appt_needed — Appt. Needed — datetime (schedule appt)
+3. appt_scheduled — Appt. Scheduled — confirm ("Confirm Appt"); confirmed state shows as checkmark on card, not a separate stage
+4. appt_complete — Appt. Complete — button_link → proposal builder; auto-advance on event proposal_generated
+5. proposal_provided — Proposal Provided — outcome_buttons: Won → contract_pending / Follow-Up → follow_up / Lost → archived_lost
+6. follow_up — Follow-Up — LOOP STAGE: datetime (next follow-up, sets loopNextActionAt) + same outcome_buttons as stage 5
+7. contract_pending — Contract Pending — button_link → contract generation; auto-advance on event contract_signed (e-sign) OR upload widget (wet-signed)
+8. contract_signed — Contract Signed — money_confirm ("Collect Deposit")
+9. deposit_received — Deposit Received — assign_user (project manager) → on completion, CONVERGE: lead moves to Project pipeline stage pm_handoff, sourcePipeline='retail'
+10. archived_lost — Archived (Lost) — TERMINAL; entering requires lossReason dropdown: price | timing | competitor | no_response | other
+
+=== INSURANCE PIPELINE ===
+1. pin_dropped — Pin Dropped — assign_user (rep/inspector)
+2. phase1_scheduled — Phase 1 Scheduled — datetime; then auto-advance on event preliminary_record_synced with outcomeRules: damage_confirmed → phase1_complete, no_damage → archived_no_damage
+3. phase1_complete — Phase 1 Complete — status badge "Awaiting FIPSA"; auto-advance on event fipsa_signed
+4. fipsa_signed — FIPSA Signed — datetime (schedule Phase 2)
+5. phase2_scheduled — Phase 2 Scheduled — status badge "Awaiting field sync"; auto-advance on event forensic_record_attested
+6. phase2_complete — Phase 2 Complete — button_link → Claim Hub; auto-advance on event report_attested (the signed package blob)
+7. package_ready — Package Ready — button_link "Deliver Package"; auto-advance on event package_delivered
+8. claim_filed — Claim Filed (Homeowner) — fields: claim number (text) + filing date (date). Label and all copy must reflect that the HOMEOWNER filed; the user records it. Never render language implying the contractor files or submits claims.
+9. claim_review — Claim Review — outcome_buttons: Approved → claim_approved / Partial → supplement_dispute / Denied → supplement_dispute
+10. supplement_dispute — Supplement / Dispute — LOOP STAGE: button_link → Claim Hub supplement flow, datetime for next action (loopNextActionAt), outcome_buttons: Resolved-Approved → claim_approved / Still in Review → claim_review / Withdrawn → archived_no_damage
+11. claim_approved — Claim Approved — button_link → contract generation (PRSIA/CFR)
+12. contract_pending — Contract Pending — auto-advance on contract_signed OR upload
+13. contract_signed — Contract Signed — money_confirm ("Collect Deposit")
+14. deposit_received — Deposit Received — assign_user (PM) → CONVERGE to Project pm_handoff, sourcePipeline='insurance'
+15. archived_no_damage — Archived (No Damage Found) — TERMINAL; reason auto-populated from Phase 1 outcome or supplement withdrawal
+
+Rename the Insurance Pipeline subtitle: remove "through adjuster decision and claim settlement" — use "Insurance restoration leads from inspection through project handoff."
+
+=== PROJECT PIPELINE ===
+Cards carry a source badge (R/I from sourcePipeline). Insurance-sourced cards additionally show a CFR supplement-clock badge: days remaining in the 21-day supplement window counted from PM handoff, amber at ≤7, red at 0.
+1. pm_handoff — PM Handoff — confirm ("Accept Handoff", records date)
+2. pre_production — Pre-Production — fields: supplier + ETA ("Order Materials")
+3. materials_ordered — Materials Ordered — date_range ("Schedule Project")
+4. scheduled — Scheduled — confirm ("Start Project")
+5. in_production — In Production — confirm ("Mark Complete")
+6. complete — Complete — button_link → Completion Package generation (Completion Certificate + final invoice); auto-advance on event completion_package_generated
+7. final_invoiced — Final Invoiced — money_confirm ("Record Final Payment")
+8. closed_warranty — Closed / Warranty — TERMINAL; card stores warranty start date (completion date) and disappears from default view into a filterable Closed board
+
+=== MIGRATION ===
+Map existing stages: Inspection Scheduled → phase1_scheduled; Generate Contract → claim_approved; Contract Signed → contract_signed; Deposit Received → deposit_received; Claim Filed → claim_filed. Leads in unmapped states land in the nearest earlier stage with a needsStageReview flag shown as a badge. Existing card status chips (Measurements Received, Full Approval Received) remain as card metadata, not stages.
+
+=== ACCEPTANCE ===
+- Every stage exit is performable from the kanban card in ≤2 clicks without opening the lead profile.
+- Auto-advance stages show waiting badges and move on their events (test each event type).
+- Loop stages enforce loopNextActionAt and render overdue/age indicators.
+- Converged Project cards show source badge; insurance-sourced show CFR clock.
+- archived_lost cannot be entered without a lossReason.
+- The strings "Submit Claim", "file a claim" (as a user action), and "claim settlement" appear nowhere in pipeline UI copy.

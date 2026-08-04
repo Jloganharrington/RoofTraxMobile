@@ -388,3 +388,51 @@ export const discontinuedProductsTable = pgTable('discontinued_products', {
 });
 
 export type DiscontinuedProduct = typeof discontinuedProductsTable.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Lead Files — documents, photos, and attachments linked to a pin/lead.
+// ---------------------------------------------------------------------------
+
+export const LEAD_FILE_CATEGORIES = [
+  'photos',
+  'contracts',
+  'estimates',
+  'insurance_docs',
+  'measurement_reports',
+  'permits',
+  'correspondence',
+  'other',
+] as const;
+export type LeadFileCategory = typeof LEAD_FILE_CATEGORIES[number];
+
+export const leadFilesTable = pgTable('lead_files', {
+  id: varchar('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+  userId: varchar('user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  objectPath: text('object_path').notNull(),
+  /** Display name — editable by the rep */
+  fileName: varchar('file_name', { length: 500 }).notNull(),
+  /** Original filename at upload time */
+  originalName: varchar('original_name', { length: 500 }).notNull(),
+  fileSize: integer('file_size').notNull().default(0),
+  mimeType: varchar('mime_type', { length: 200 }).notNull().default(''),
+  category: varchar('category', { enum: LEAD_FILE_CATEGORIES })
+    .notNull()
+    .default('other'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type LeadFile = typeof leadFilesTable.$inferSelect;

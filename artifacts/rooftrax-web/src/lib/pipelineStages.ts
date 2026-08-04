@@ -17,6 +17,7 @@ export const INSURANCE_STAGES = [
   { key: 'claim_filed',                label: 'Claim Filed',                   phase: 'claims'     },
   { key: 'adjuster_review',            label: 'Adjuster Review',               phase: 'claims'     },
   { key: 'claim_approved',             label: 'Claim Approved',                phase: 'outcome'    },
+  { key: 'selections',                 label: 'Selections',                    phase: 'outcome'    },
   { key: 'claim_denied',               label: 'Claim Denied',                  phase: 'outcome'    },
   { key: 'public_adjuster',            label: 'Public Adjuster',               phase: 'outcome'    },
   { key: 'appraisal',                  label: 'Appraisal',                     phase: 'outcome'    },
@@ -111,6 +112,12 @@ export const STAGE_PROFILE_STATUSES: Record<string, string[]> = {
     'ACV Received',
     'Ready for Production',
   ],
+  selections: [
+    'Material Selections Pending',
+    'Selections In Progress',
+    'Selections Complete',
+    'Awaiting Material Order',
+  ],
   claim_denied: [
     'Below Deductible',
     'Claim Denied - Reviewing Options',
@@ -144,6 +151,7 @@ export const STAGE_DEFAULT_PROFILE_STATUS: Record<string, string> = {
   create_claim_proof_package: 'Gathering Documentation',
   adjuster_review:            'Awaiting Initial Estimate',
   claim_approved:             'Full Approval Received',
+  selections:                 'Material Selections Pending',
   claim_denied:               'Claim Denied - Reviewing Options',
   public_adjuster:            'PA Engaged',
   appraisal:                  'Appraisal Clause Invoked',

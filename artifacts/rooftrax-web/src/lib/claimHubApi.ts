@@ -299,6 +299,43 @@ export interface PipelineInspection {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Sample Proof Package
+// ---------------------------------------------------------------------------
+
+export interface SamplePackageInfo {
+  pinId: string | null;
+  inspectionId: string | null;
+}
+
+export const getSamplePackageInfoQueryKey = () => ['sample-package', 'info'] as const;
+
+export function useGetSamplePackageInfo() {
+  return useQuery({
+    queryKey: getSamplePackageInfoQueryKey(),
+    queryFn: () => customFetch<SamplePackageInfo>('/api/sample-package/info'),
+    staleTime: 5 * 60 * 1000, // 5 min — rarely changes
+  });
+}
+
+export function useProvisionSamplePackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => customFetch<SamplePackageInfo>('/api/sample-package/provision', { method: 'POST' }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(getSamplePackageInfoQueryKey(), data);
+    },
+  });
+}
+
+/** @deprecated — kept for branding preview compatibility */
+export function useGetSamplePackage() {
+  return useQuery({
+    queryKey: ['sample-package', 'html'] as const,
+    queryFn: () => customFetch<{ html: string }>('/api/sample-package'),
+  });
+}
+
 export const getPipelineQueryKey = () => ['pipeline'] as const;
 
 export function useGetPipeline(
@@ -603,5 +640,106 @@ export function useRecheckAhj(inspectionId: string, leadId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: getLeadQueryKey(leadId) });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lead Files
+// ---------------------------------------------------------------------------
+
+export type LeadFileCategory =
+  | 'photos'
+  | 'contracts'
+  | 'estimates'
+  | 'insurance_docs'
+  | 'measurement_reports'
+  | 'permits'
+  | 'correspondence'
+  | 'other';
+
+export const LEAD_FILE_CATEGORIES: LeadFileCategory[] = [
+  'photos',
+  'contracts',
+  'estimates',
+  'insurance_docs',
+  'measurement_reports',
+  'permits',
+  'correspondence',
+  'other',
+];
+
+export interface LeadFileRecord {
+  id: string;
+  pinId: string;
+  objectPath: string;
+  fileName: string;
+  originalName: string;
+  fileSize: number;
+  mimeType: string;
+  category: LeadFileCategory;
+  uploaderName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getLeadFilesQueryKey = (pinId: string) =>
+  ['lead_files', pinId] as const;
+
+export function useGetLeadFiles(pinId: string) {
+  return useQuery({
+    queryKey: getLeadFilesQueryKey(pinId),
+    queryFn: () =>
+      customFetch<{ files: LeadFileRecord[] }>(`/api/leads/${pinId}/files`),
+    enabled: !!pinId && !pinId.startsWith('ins-'),
+  });
+}
+
+export function useRegisterLeadFile(pinId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      objectPath: string;
+      fileName: string;
+      mimeType: string;
+      fileSize: number;
+      category: LeadFileCategory;
+    }) =>
+      customFetch<{ file: LeadFileRecord }>(`/api/leads/${pinId}/files`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(pinId) }),
+  });
+}
+
+export function useRenameLeadFile(pinId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      fileId,
+      fileName,
+      category,
+    }: {
+      fileId: string;
+      fileName?: string;
+      category?: LeadFileCategory;
+    }) =>
+      customFetch(`/api/leads/${pinId}/files/${fileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fileName, category }),
+      }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(pinId) }),
+  });
+}
+
+export function useDeleteLeadFile(pinId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fileId: string) =>
+      customFetch(`/api/leads/${pinId}/files/${fileId}`, { method: 'DELETE' }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(pinId) }),
   });
 }

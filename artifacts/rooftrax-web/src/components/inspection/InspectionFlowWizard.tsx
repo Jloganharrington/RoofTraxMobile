@@ -13,6 +13,12 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   useGetInspection,
   getGetInspectionQueryKey,
   useGetInspectionEstimate,
@@ -103,8 +109,22 @@ type InspEnv = {
     collateralDamageFound?: boolean | null;
     interiorDamageFound?: boolean | null;
     attestations?: Array<{ attestationType: string | null; createdAt?: string }>;
-    photos?: Array<{ id: string }>;
+    photos?: Array<{ id: string; url?: string | null; subjectType?: string | null }>;
     products?: Array<{ id: string; identificationMethod?: string | null }>;
+    // Extended fields present in the full API response
+    damageType?: string | null;
+    insuredName?: string | null;
+    dateOfLoss?: string | null;
+    claimNumber?: string | null;
+    policyNumber?: string | null;
+    slopes?: Array<{ id: string; materialType?: string | null }>;
+    testSquares?: Array<{ id: string }>;
+    damageInstances?: Array<{ id: string }>;
+    repairabilityAssessment?: {
+      verdict?: string | null;
+      overallRating?: string | null;
+      [k: string]: unknown;
+    } | null;
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -115,11 +135,13 @@ type InspEnv = {
 // ---------------------------------------------------------------------------
 
 function AwaitingFieldCapture({
-  inspectionId,
+  inspectionId: _inspectionId,
   inspection,
+  onReviewRecord,
 }: {
   inspectionId: string;
   inspection: InspEnv["inspection"] | undefined;
+  onReviewRecord: () => void;
 }) {
   const status = inspection?.status ?? null;
 
@@ -180,16 +202,19 @@ function AwaitingFieldCapture({
         </p>
       )}
 
-      <a
-        href={`/rooftrax-web/inspections/${inspectionId}`}
-        target="_blank"
-        rel="noopener noreferrer"
+      <p className="text-xs text-muted-foreground max-w-xs">
+        Use the RoofTrax mobile app to complete the field capture, then return
+        here to build the Proof Package.
+      </p>
+
+      <button
+        type="button"
+        onClick={onReviewRecord}
         className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-primary hover:bg-muted transition-colors"
       >
         <FileText className="h-3.5 w-3.5" />
-        View Field Record
-        <ExternalLink className="h-3 w-3" />
-      </a>
+        Review Field Record
+      </button>
     </div>
   );
 }
@@ -292,24 +317,35 @@ function ReadinessProgressBar({
 }
 
 // ---------------------------------------------------------------------------
-// FieldReviewModal — Step 1 read-only field record review
+// FieldReviewModal — multi-tab read-only field record view
 // ---------------------------------------------------------------------------
 
 function FieldReviewModal({
   open,
   onOpenChange,
-  inspectionId,
   inspection,
+  readiness,
   onReviewed,
   isRecording,
+  alreadyReviewed,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  inspectionId: string;
   inspection: InspEnv["inspection"] | undefined;
+  readiness: { overallPass: boolean; items: ReadinessItem[] } | undefined;
   onReviewed: () => void;
   isRecording: boolean;
+  /** When true the "Mark Reviewed" CTA is hidden (gate view or step already done) */
+  alreadyReviewed: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState("overview");
+
+  const photos = (inspection?.photos ?? []) as Array<{
+    id: string;
+    url: string;
+    subjectType?: string | null;
+  }>;
+
   const hasAttestation = inspection?.attestations?.some(
     (a) => a.attestationType === "stage_signoff",
   );
@@ -318,136 +354,238 @@ function FieldReviewModal({
   )?.createdAt;
 
   const damageFlagRow = (label: string, value: boolean | null | undefined) => (
-    <div className="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
+    <div className="flex items-center justify-between py-2.5 border-b last:border-0 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      {value ? (
-        <Badge
-          variant="outline"
-          className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300"
-        >
+      {value === true ? (
+        <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 dark:text-amber-300">
           Found
         </Badge>
+      ) : value === false ? (
+        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+          <CheckCircle2 className="h-3 w-3" /> Clear
+        </span>
       ) : (
-        <span className="text-xs text-muted-foreground">—</span>
+        <span className="text-xs text-muted-foreground">Not assessed</span>
       )}
     </div>
   );
 
+  const propRow = (label: string, value: string | null | undefined, capitalize = false) =>
+    value ? (
+      <div key={label} className="flex items-center justify-between px-3 py-2 text-sm border-b last:border-0">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={cn("font-medium text-right max-w-[55%] truncate", capitalize && "capitalize")}>
+          {value}
+        </span>
+      </div>
+    ) : null;
+
+  const rap = inspection?.repairabilityAssessment;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Field Record Review</DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Read-only summary of the attested field record. Review before
-            marking the step complete.
+      {/* Fixed-height flex dialog so footer always stays visible */}
+      <DialogContent className="max-w-2xl h-[82vh] flex flex-col gap-0 p-0 overflow-hidden">
+
+        {/* ── Header ──────────────────────────────────────────────────── */}
+        <div className="px-6 pt-5 pb-4 border-b shrink-0">
+          <DialogTitle className="text-base">Field Record</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+            {inspection?.address ?? "Read-only summary of the attested field record"}
           </DialogDescription>
-        </DialogHeader>
-
-        {/* Attestation banner */}
-        <div
-          className={cn(
-            "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium",
-            hasAttestation
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
-              : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800",
-          )}
-        >
-          {hasAttestation ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-          )}
-          {hasAttestation
-            ? attestedAt
-              ? `Field record attested ${format(new Date(attestedAt), "MMM d, yyyy 'at' h:mm a")}`
-              : "Field record attested"
-            : "Field record not yet attested"}
         </div>
 
-        {/* Overview */}
-        <div className="rounded-lg border divide-y divide-border/50">
-          {(
-            [
-              ["Status", String(inspection?.status ?? "—").replace(/_/g, " ")],
-              ["Phase", String(inspection?.phase ?? "—").replace(/_/g, " ")],
-              inspection?.scheduledFor
-                ? [
-                    "Scheduled",
-                    format(new Date(String(inspection.scheduledFor)), "MMM d, yyyy"),
-                  ]
-                : null,
-              inspection?.updatedAt
-                ? [
-                    "Last updated",
-                    format(new Date(String(inspection.updatedAt)), "MMM d, yyyy 'at' h:mm a"),
-                  ]
-                : null,
-            ].filter((r): r is [string, string] => r !== null)
-          ).map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between px-3 py-2 text-sm"
-              >
-                <span className="text-muted-foreground capitalize">{label}</span>
-                <span className="font-medium capitalize">{value}</span>
+        {/* ── Tabs ────────────────────────────────────────────────────── */}
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex-1 flex flex-col min-h-0"
+        >
+          <TabsList className="mx-6 mt-3 mb-0 w-auto self-start shrink-0">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="damage">Damage Scope</TabsTrigger>
+            <TabsTrigger value="photos" className="gap-1.5">
+              Photos
+              {photos.length > 0 && (
+                <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-semibold leading-tight">
+                  {photos.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="readiness">Readiness</TabsTrigger>
+          </TabsList>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+
+            {/* ── Overview ──────────────────────────────────────────── */}
+            <TabsContent value="overview" className="mt-0 space-y-4">
+              {/* Attestation banner */}
+              <div className={cn(
+                "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium",
+                hasAttestation
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                  : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800",
+              )}>
+                {hasAttestation
+                  ? <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  : <AlertTriangle className="h-4 w-4 shrink-0" />}
+                {hasAttestation
+                  ? attestedAt
+                    ? `Attested ${format(new Date(attestedAt), "MMM d, yyyy 'at' h:mm a")}`
+                    : "Field record attested"
+                  : "Field record not yet attested"}
               </div>
-            ))}
-        </div>
 
-        {/* Damage scope */}
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Damage Scope
-          </p>
-          <div className="rounded-lg border px-3">
-            {damageFlagRow("Roof damage", inspection?.roofDamageFound)}
-            {damageFlagRow("Siding damage", inspection?.sidingDamageFound)}
-            {damageFlagRow("Collateral damage", inspection?.collateralDamageFound)}
-            {damageFlagRow("Interior damage", inspection?.interiorDamageFound)}
+              {/* Property details */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Property</p>
+                <div className="rounded-lg border divide-y divide-border/50">
+                  {propRow("Address", inspection?.address)}
+                  {propRow("Status", (inspection?.status as string | undefined)?.replace(/_/g, " "), true)}
+                  {propRow("Phase", (inspection?.phase as string | undefined)?.replace(/_/g, " "), true)}
+                  {propRow("Damage Type", (inspection?.damageType as string | undefined)?.replace(/_/g, " "), true)}
+                  {propRow("Insured Name", inspection?.insuredName as string | undefined)}
+                  {propRow("Date of Loss", inspection?.dateOfLoss as string | undefined)}
+                  {propRow("Claim #", inspection?.claimNumber as string | undefined)}
+                  {propRow("Policy #", inspection?.policyNumber as string | undefined)}
+                  {inspection?.scheduledFor
+                    ? propRow("Scheduled", format(new Date(String(inspection.scheduledFor)), "MMM d, yyyy"))
+                    : null}
+                  {inspection?.updatedAt
+                    ? propRow("Last Sync", format(new Date(String(inspection.updatedAt)), "MMM d, yyyy 'at' h:mm a"))
+                    : null}
+                </div>
+              </div>
+
+              {/* Evidence counts */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Evidence Summary</p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {([
+                    ["Photos",          photos.length],
+                    ["Products",        inspection?.products?.length ?? 0],
+                    ["Test Squares",    inspection?.testSquares?.length ?? 0],
+                    ["Damage Events",   inspection?.damageInstances?.length ?? 0],
+                    ["Slopes",          inspection?.slopes?.length ?? 0],
+                  ] as [string, number][]).map(([label, count]) => (
+                    <div key={label} className="rounded-lg border bg-muted/20 p-3 text-center">
+                      <p className="text-2xl font-bold tabular-nums">{count}</p>
+                      <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ── Damage Scope ──────────────────────────────────────── */}
+            <TabsContent value="damage" className="mt-0 space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Damage Flags</p>
+                <div className="rounded-lg border px-3">
+                  {damageFlagRow("Roof damage", inspection?.roofDamageFound)}
+                  {damageFlagRow("Siding damage", inspection?.sidingDamageFound)}
+                  {damageFlagRow("Collateral damage", inspection?.collateralDamageFound)}
+                  {damageFlagRow("Interior damage", inspection?.interiorDamageFound)}
+                </div>
+              </div>
+
+              {rap && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Repairability Assessment
+                  </p>
+                  <div className="rounded-lg border divide-y divide-border/50">
+                    {rap.verdict && (
+                      <div className="flex items-center justify-between px-3 py-2.5 text-sm">
+                        <span className="text-muted-foreground">Verdict</span>
+                        <span className="font-medium capitalize">{String(rap.verdict).replace(/_/g, " ")}</span>
+                      </div>
+                    )}
+                    {rap.overallRating && (
+                      <div className="flex items-center justify-between px-3 py-2.5 text-sm">
+                        <span className="text-muted-foreground">Overall Rating</span>
+                        <span className="font-medium capitalize">{String(rap.overallRating).replace(/_/g, " ")}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Photos ────────────────────────────────────────────── */}
+            <TabsContent value="photos" className="mt-0">
+              {photos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+                  <Camera className="h-10 w-10 opacity-20" />
+                  <p className="text-sm">No photos captured yet</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {photos.map((photo) => (
+                    <img
+                      key={photo.id}
+                      src={`/api/storage/objects/${photo.url}`}
+                      alt=""
+                      className="rounded-lg aspect-square object-cover w-full bg-muted"
+                      onError={(e) => {
+                        const el = e.target as HTMLImageElement;
+                        el.style.display = "none";
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Readiness ─────────────────────────────────────────── */}
+            <TabsContent value="readiness" className="mt-0">
+              {!readiness ? (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+                </div>
+              ) : (
+                <div className="rounded-lg border divide-y divide-border/50">
+                  {readiness.items.map((item) => (
+                    <div key={item.key} className="flex items-start gap-3 px-3 py-2.5 text-sm">
+                      {item.state === "pass"
+                        ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                        : item.state === "warning"
+                          ? <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          : <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />}
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "font-medium leading-snug",
+                          item.state !== "pass" ? "text-foreground" : "text-muted-foreground",
+                        )}>
+                          {item.label}
+                        </p>
+                        {item.detail && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
           </div>
-        </div>
+        </Tabs>
 
-        {/* Evidence summary */}
-        <div className="rounded-lg border divide-y divide-border/50">
-          <div className="flex items-center justify-between px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Photos captured</span>
-            <span className="font-medium">{inspection?.photos?.length ?? 0}</span>
-          </div>
-          <div className="flex items-center justify-between px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Products identified</span>
-            <span className="font-medium">{inspection?.products?.length ?? 0}</span>
-          </div>
-        </div>
-
-        {/* Link to full record */}
-        <a
-          href={`/rooftrax-web/inspections/${inspectionId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
-        >
-          <ExternalLink className="h-3 w-3" />
-          Open Full Field Record
-        </a>
-
-        <DialogFooter className="pt-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isRecording}
-          >
+        {/* ── Footer ──────────────────────────────────────────────────── */}
+        <div className="border-t px-6 py-4 flex items-center justify-end gap-2 shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isRecording}>
             Close
           </Button>
-          <Button disabled={isRecording} onClick={onReviewed}>
-            {isRecording ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-            )}
-            {isRecording ? "Saving…" : "Mark Reviewed"}
-          </Button>
-        </DialogFooter>
+          {!alreadyReviewed && (
+            <Button disabled={isRecording} onClick={onReviewed}>
+              {isRecording
+                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                : <CheckCircle2 className="h-4 w-4 mr-2" />}
+              {isRecording ? "Saving…" : "Mark Reviewed"}
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -802,12 +940,24 @@ export function InspectionFlowWizard({
   // ── Gate: Awaiting Field Capture ─────────────────────────────────────────
   if (showGate) {
     return (
-      <div className="rounded-xl border bg-card">
-        <AwaitingFieldCapture
-          inspectionId={inspectionId}
+      <>
+        <div className="rounded-xl border bg-card">
+          <AwaitingFieldCapture
+            inspectionId={inspectionId}
+            inspection={inspection}
+            onReviewRecord={() => setReviewModalOpen(true)}
+          />
+        </div>
+        <FieldReviewModal
+          open={reviewModalOpen}
+          onOpenChange={setReviewModalOpen}
           inspection={inspection}
+          readiness={readiness}
+          alreadyReviewed={true}
+          isRecording={false}
+          onReviewed={() => setReviewModalOpen(false)}
         />
-      </div>
+      </>
     );
   }
 
@@ -1273,12 +1423,12 @@ export function InspectionFlowWizard({
       <FieldReviewModal
         open={reviewModalOpen}
         onOpenChange={setReviewModalOpen}
-        inspectionId={inspectionId}
         inspection={inspection}
+        readiness={readiness}
+        alreadyReviewed={s1Complete}
         isRecording={recordEvent.isPending}
         onReviewed={() => {
           if (s1Complete) {
-            // Already reviewed — just close
             setReviewModalOpen(false);
             return;
           }

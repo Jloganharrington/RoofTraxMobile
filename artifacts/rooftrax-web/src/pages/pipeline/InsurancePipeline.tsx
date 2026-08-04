@@ -2,7 +2,7 @@
  * Insurance Pipeline — Kanban accordion view.
  * Each stage is a collapsible section; cards are laid out in a responsive grid inside.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { Shell } from "@/components/layout/Shell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,7 +33,8 @@ const INS_STAGES: InsStage[] = [
   { key: 'claim_filed',             label: 'Claim Filed w/ Proof Package',  statuses: ['submitted'],                   accent: 'border-emerald-400', textAccent: 'text-emerald-400' },
   { key: 'claim_review',            label: 'Claim Review',                  statuses: [],                              accent: 'border-rose-400',    textAccent: 'text-rose-400' },
   { key: 'claim_approved',          label: 'Claim Approved',                statuses: [],                              accent: 'border-green-400',   textAccent: 'text-green-400' },
-  { key: 'contract_pending',        label: 'Contract Pending',              statuses: [],                              accent: 'border-teal-400',    textAccent: 'text-teal-400' },
+  { key: 'selections',              label: 'Selections',                    statuses: [],                              accent: 'border-lime-400',    textAccent: 'text-lime-400' },
+  { key: 'contract_signed',         label: 'Contract Signed',               statuses: [],                              accent: 'border-teal-400',    textAccent: 'text-teal-400' },
   { key: 'no_damage_found',         label: 'No Damage Found',               statuses: [],                              accent: 'border-zinc-400',    textAccent: 'text-zinc-400' },
 ];
 
@@ -44,6 +45,51 @@ const INS_STAGES: InsStage[] = [
 function formatDamageType(dt: string | null | undefined): string {
   if (!dt) return '';
   return dt.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// Sample claim card — hardcoded demo entry, always pinned to
+// "Proof Package Generated" stage so prospects can see a finished package.
+// ---------------------------------------------------------------------------
+
+function SampleClaimCard() {
+  return (
+    <Link href="/sample-package">
+      <div className="group relative rounded-xl border-2 border-dashed border-amber-400/60 bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-50/70 dark:hover:bg-amber-950/30 p-3 cursor-pointer transition-all hover:shadow-md space-y-2 h-full">
+        {/* SAMPLE badge */}
+        <div className="absolute -top-2.5 left-3">
+          <span className="text-[9px] font-black tracking-widest px-2 py-0.5 rounded-full bg-amber-400 text-amber-900">
+            SAMPLE
+          </span>
+        </div>
+
+        {/* Address */}
+        <div className="flex items-start gap-2 mt-1">
+          <MapPin className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+          <span className="text-xs font-medium leading-tight line-clamp-2 flex-1">
+            1234 Maple Street, Springfield, IL 62704
+          </span>
+        </div>
+
+        {/* Package + damage */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+            <Package className="h-2.5 w-2.5" />
+            Package
+          </span>
+          <span className="text-[10px] text-muted-foreground">Hail</span>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-1 border-t border-amber-300/40">
+          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium truncate max-w-[110px]">
+            Jordan Example
+          </span>
+          <span className="text-[10px] text-muted-foreground italic">demo</span>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -110,9 +156,11 @@ interface AccordionSectionProps {
   isLoading: boolean;
   open: boolean;
   onToggle: () => void;
+  /** Optional nodes prepended to the card grid (e.g. the hardcoded sample card). */
+  prefixSlot?: ReactNode;
 }
 
-function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onToggle }: AccordionSectionProps) {
+function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onToggle, prefixSlot }: AccordionSectionProps) {
   return (
     <div className={cn("rounded-2xl border bg-card overflow-hidden border-l-4", stage.accent)}>
       {/* Header */}
@@ -140,10 +188,11 @@ function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onTo
               <Skeleton className="h-24 w-full rounded-xl opacity-70" />
               <Skeleton className="h-24 w-full rounded-xl opacity-40" />
             </div>
-          ) : cards.length === 0 ? (
+          ) : cards.length === 0 && !prefixSlot ? (
             <p className="text-xs text-muted-foreground/40 italic py-5 text-center">No claims in this stage</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
+              {prefixSlot}
               {cards.map((insp) => (
                 <ClaimCard key={insp.id} inspection={insp} />
               ))}
@@ -241,6 +290,7 @@ export default function InsurancePipeline() {
               isLoading={isLoading}
               open={openStages.has(stage.key)}
               onToggle={() => toggle(stage.key)}
+              prefixSlot={stage.key === 'proof_package_generated' ? <SampleClaimCard key="__sample" /> : undefined}
             />
           ))}
         </div>

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { useGetInspection, getGetInspectionQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "@/components/layout/Shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2, ArrowLeft, CheckCircle2, Camera, Sparkles,
-  Lock, AlertTriangle, Link2, X, ChevronDown, ChevronUp,
+  Lock, AlertTriangle, Link2, X, ChevronDown, ChevronUp, Upload,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -29,6 +30,7 @@ import {
   type ExhibitSelection,
   type ExhibitCaption,
 } from "@/lib/curationApi";
+import { customFetch } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -170,6 +172,8 @@ function ClassSelector({
 export default function PhotoCuration() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: inspectionEnv, isLoading: inspectionLoading } =
     useGetInspection(id, { query: { enabled: !!id, queryKey: getGetInspectionQueryKey(id) } });
@@ -185,6 +189,73 @@ export default function PhotoCuration() {
   const updateCaption = useUpdateCaption(id);
   const approveCaptions = useApproveCaptions(id);
   const lockCaptions = useLockCaptions(id);
+
+  // Web photo upload state
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+
+  /** Upload one or more image files from a web browser file picker. */
+  async function handleFileUpload(files: FileList | null) {
+    if (!files || files.length === 0 || !id) return;
+    setUploading(true);
+    setUploadProgress({ done: 0, total: files.length });
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        // 1. Request a presigned upload URL
+        const { uploadURL, objectPath } = await customFetch<{ uploadURL: string; objectPath: string }>(
+          '/api/storage/uploads/request-url',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+          },
+        );
+
+        // 2. PUT the file binary directly to the presigned URL (no auth header)
+        const putRes = await fetch(uploadURL, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!putRes.ok) throw new Error(`Storage PUT failed: ${putRes.status}`);
+
+        // 3. Register the photo on the inspection (whole-inspection overview photo)
+        await customFetch(`/api/inspections/${id}/photos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: objectPath, subjectType: 'inspection' }),
+        });
+
+        succeeded++;
+      } catch (err) {
+        console.error('Photo upload failed', err);
+        failed++;
+      }
+      setUploadProgress({ done: i + 1, total: files.length });
+    }
+
+    setUploading(false);
+    setUploadProgress(null);
+
+    // Refresh curation data to show the new photos
+    await queryClient.invalidateQueries({ queryKey: ['curation', id] });
+
+    if (succeeded > 0) {
+      toast({
+        title: `${succeeded} photo${succeeded !== 1 ? 's' : ''} uploaded`,
+        description: failed > 0 ? `${failed} failed — check file types and try again.` : undefined,
+      });
+    } else {
+      toast({ title: 'Upload failed', description: 'No photos were uploaded. Try again.', variant: 'destructive' });
+    }
+
+    // Reset input so the same files can be re-selected if needed
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
 
   // Pair builder state
   // `isPairing` = user clicked "Start pair" and we are in pair-selection mode.
@@ -297,6 +368,16 @@ export default function PhotoCuration() {
 
   return (
     <Shell>
+      {/* Hidden file input — triggered programmatically by the Upload button */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        onChange={(e) => handleFileUpload(e.target.files)}
+      />
+
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -319,7 +400,7 @@ export default function PhotoCuration() {
         {/* Step 1 — Exhibit Selection */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Camera className="h-5 w-5" />
@@ -332,33 +413,79 @@ export default function PhotoCuration() {
                 </CardDescription>
               </div>
               {!isFinalized && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    propose.mutate(undefined, {
-                      onSuccess: () => toast({ title: "AI proposal applied" }),
-                      onError: () =>
-                        toast({ title: "Proposal failed", variant: "destructive" }),
-                    })
-                  }
-                  disabled={propose.isPending}
-                >
-                  {propose.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Sparkles className="h-4 w-4 mr-2" />
+                <div className="flex items-center gap-2">
+                  {/* Upload progress pill */}
+                  {uploading && uploadProgress && (
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {uploadProgress.done}/{uploadProgress.total}
+                    </span>
                   )}
-                  AI Propose
-                </Button>
+                  {/* Web file upload */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Upload Photos
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      propose.mutate(undefined, {
+                        onSuccess: () => toast({ title: "AI proposal applied" }),
+                        onError: () =>
+                          toast({ title: "Proposal failed", variant: "destructive" }),
+                      })
+                    }
+                    disabled={propose.isPending || (curation?.photos ?? []).length === 0}
+                  >
+                    {propose.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-2" />
+                    )}
+                    AI Propose
+                  </Button>
+                </div>
               )}
             </div>
           </CardHeader>
           <CardContent>
             {(curation?.photos ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No photos found for this inspection.
-              </p>
+              <div className="flex flex-col items-center gap-4 py-12 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                  <Camera className="h-7 w-7 text-muted-foreground/60" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">No photos yet</p>
+                  <p className="text-xs text-muted-foreground max-w-xs">
+                    Upload photos from your computer or let the mobile app sync them automatically.
+                  </p>
+                </div>
+                {!isFinalized && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Upload Photos
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {(curation?.photos ?? []).map((photo) => {

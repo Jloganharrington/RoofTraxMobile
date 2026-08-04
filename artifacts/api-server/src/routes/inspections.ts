@@ -98,6 +98,8 @@ import {
   detrimentEntriesTable,
   reportAttestationsTable,
   roofFacetsTable,
+  leadFilesTable,
+  objectOwnershipTable,
 } from '@workspace/db';
 import type {
   Role,
@@ -8507,6 +8509,199 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
     : null;
 
   res.json({ lead: { ...updated, repName } });
+});
+
+// ── Lead Files ──────────────────────────────────────────────────────────────
+
+/** Load pin and verify same-company, returning 404 if absent. */
+async function loadPinInCompany(pinId: string, companyId: string) {
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, companyId)))
+    .limit(1);
+  return pin ?? null;
+}
+
+router.get('/leads/:pinId/files', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const { pinId } = req.params as { pinId: string };
+
+  const pin = await loadPinInCompany(pinId, req.user.companyId);
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  if (pin.userId !== req.user.id && !isManagerOrAdmin(req.user.role)) {
+    return void res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const rows = await db
+    .select({
+      id:           leadFilesTable.id,
+      pinId:        leadFilesTable.pinId,
+      objectPath:   leadFilesTable.objectPath,
+      fileName:     leadFilesTable.fileName,
+      originalName: leadFilesTable.originalName,
+      fileSize:     leadFilesTable.fileSize,
+      mimeType:     leadFilesTable.mimeType,
+      category:     leadFilesTable.category,
+      createdAt:    leadFilesTable.createdAt,
+      updatedAt:    leadFilesTable.updatedAt,
+      uploaderFirstName: usersTable.firstName,
+      uploaderLastName:  usersTable.lastName,
+    })
+    .from(leadFilesTable)
+    .leftJoin(usersTable, eq(usersTable.id, leadFilesTable.userId))
+    .where(and(eq(leadFilesTable.pinId, pinId), eq(leadFilesTable.companyId, req.user.companyId)))
+    .orderBy(leadFilesTable.createdAt);
+
+  const files = rows.map(r => ({
+    ...r,
+    uploaderName: [r.uploaderFirstName, r.uploaderLastName].filter(Boolean).join(' ') || null,
+    uploaderFirstName: undefined,
+    uploaderLastName:  undefined,
+  }));
+
+  res.json({ files });
+});
+
+router.post('/leads/:pinId/files', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const { pinId } = req.params as { pinId: string };
+
+  const pin = await loadPinInCompany(pinId, req.user.companyId);
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  if (pin.userId !== req.user.id && !isManagerOrAdmin(req.user.role)) {
+    return void res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { objectPath, fileName, mimeType, fileSize, category } = req.body as {
+    objectPath: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+    category?: string;
+  };
+
+  if (!objectPath || !fileName) {
+    return void res.status(400).json({ error: 'objectPath and fileName are required' });
+  }
+
+  // Verify the objectPath was uploaded by someone in this company
+  const [ownership] = await db
+    .select()
+    .from(objectOwnershipTable)
+    .where(eq(objectOwnershipTable.objectPath, objectPath))
+    .limit(1);
+
+  if (!ownership || ownership.companyId !== req.user.companyId) {
+    return void res.status(403).json({ error: 'Object not owned by your company' });
+  }
+
+  const validCategories = [
+    'photos', 'contracts', 'estimates', 'insurance_docs',
+    'measurement_reports', 'permits', 'correspondence', 'other',
+  ] as const;
+  const safeCategory = (validCategories as readonly string[]).includes(category ?? '')
+    ? (category as typeof validCategories[number])
+    : 'other';
+
+  const [file] = await db
+    .insert(leadFilesTable)
+    .values({
+      pinId,
+      companyId: req.user.companyId,
+      userId:    req.user.id,
+      objectPath,
+      fileName,
+      originalName: fileName,
+      fileSize:  fileSize ?? 0,
+      mimeType:  mimeType ?? '',
+      category:  safeCategory,
+    })
+    .returning();
+
+  res.status(201).json({ file });
+});
+
+router.patch('/leads/:pinId/files/:fileId', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const { pinId, fileId } = req.params as { pinId: string; fileId: string };
+
+  const pin = await loadPinInCompany(pinId, req.user.companyId);
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  const [fileRow] = await db
+    .select()
+    .from(leadFilesTable)
+    .where(and(
+      eq(leadFilesTable.id, fileId),
+      eq(leadFilesTable.pinId, pinId),
+      eq(leadFilesTable.companyId, req.user.companyId),
+    ))
+    .limit(1);
+
+  if (!fileRow) return void res.status(404).json({ error: 'File not found' });
+
+  // Owner or manager can rename
+  if (fileRow.userId !== req.user.id && !isManagerOrAdmin(req.user.role)) {
+    return void res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const { fileName, category } = req.body as { fileName?: string; category?: string };
+  if (!fileName && !category) {
+    return void res.status(400).json({ error: 'fileName or category required' });
+  }
+
+  const validCategories = [
+    'photos', 'contracts', 'estimates', 'insurance_docs',
+    'measurement_reports', 'permits', 'correspondence', 'other',
+  ] as const;
+
+  const updates: Record<string, unknown> = {};
+  if (fileName) updates.fileName = fileName;
+  if (category && (validCategories as readonly string[]).includes(category)) {
+    updates.category = category;
+  }
+
+  const [updated] = await db
+    .update(leadFilesTable)
+    .set(updates)
+    .where(eq(leadFilesTable.id, fileId))
+    .returning();
+
+  res.json({ file: updated });
+});
+
+router.delete('/leads/:pinId/files/:fileId', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+  const { pinId, fileId } = req.params as { pinId: string; fileId: string };
+
+  const pin = await loadPinInCompany(pinId, req.user.companyId);
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  const [fileRow] = await db
+    .select()
+    .from(leadFilesTable)
+    .where(and(
+      eq(leadFilesTable.id, fileId),
+      eq(leadFilesTable.pinId, pinId),
+      eq(leadFilesTable.companyId, req.user.companyId),
+    ))
+    .limit(1);
+
+  if (!fileRow) return void res.status(404).json({ error: 'File not found' });
+
+  // Owner or manager can delete
+  if (fileRow.userId !== req.user.id && !isManagerOrAdmin(req.user.role)) {
+    return void res.status(403).json({ error: 'Forbidden' });
+  }
+
+  // Delete the file record and its ownership entry (object becomes unreachable)
+  await db.delete(leadFilesTable).where(eq(leadFilesTable.id, fileId));
+  await db.delete(objectOwnershipTable).where(eq(objectOwnershipTable.objectPath, fileRow.objectPath));
+
+  res.status(204).end();
 });
 
 router.get('/leads', async (req: Request, res: Response) => {
