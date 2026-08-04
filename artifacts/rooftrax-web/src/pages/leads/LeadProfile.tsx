@@ -44,7 +44,8 @@ import {
   AlertCircle,
   ExternalLink,
 } from 'lucide-react';
-import { useGetLead, useUpdateLead, useGetReadiness, type FullLead } from '@/lib/claimHubApi';
+import { useGetLead, useUpdateLead, type FullLead } from '@/lib/claimHubApi';
+import { InspectionFlowWizard } from '@/components/inspection/InspectionFlowWizard';
 import {
   INSURANCE_STAGES,
   RETAIL_STAGES,
@@ -265,87 +266,7 @@ const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
 // ---------------------------------------------------------------------------
 
 function InspectionFlowTab({ inspectionId }: { inspectionId: string }) {
-  const { data: readiness, isLoading } = useGetReadiness(inspectionId);
-  const [, navigate] = useLocation();
-
-  return (
-    <div className="space-y-6">
-      {/* Open inspection CTA */}
-      <div className="flex items-center justify-between rounded-xl border bg-card px-5 py-4">
-        <div>
-          <p className="text-sm font-semibold">Full Inspection Workflow</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Field capture, AI Sections, Estimate, and Proof Package
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(`/inspections/${inspectionId}`)}
-          className="gap-1.5 shrink-0"
-        >
-          Open <ExternalLink className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      {/* Stage 0 Readiness */}
-      <div className="rounded-xl border bg-card p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold">Stage 0 Readiness</h3>
-            {!isLoading && readiness && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {readiness.overallPass
-                  ? 'All checks passed — ready to generate.'
-                  : 'Some checks need attention before generating.'}
-              </p>
-            )}
-          </div>
-          {!isLoading && readiness && (
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-              readiness.overallPass
-                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-            }`}>
-              {readiness.overallPass ? 'Ready' : 'Attention needed'}
-            </span>
-          )}
-        </div>
-
-        {isLoading ? (
-          <div className="space-y-3 pt-1">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </div>
-        ) : readiness ? (
-          <div className="divide-y divide-border/50">
-            {readiness.items.map(item => (
-              <div key={item.key} className="flex items-start gap-3 py-3">
-                <div className="shrink-0 mt-0.5">
-                  {item.state === 'pass' ? (
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
-                  ) : item.state === 'warning' ? (
-                    <AlertCircle className="h-4 w-4 text-amber-500" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-destructive" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium leading-tight">{item.label}</p>
-                  {item.detail && (
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{item.detail}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground py-2">No readiness data available.</p>
-        )}
-      </div>
-    </div>
-  );
+  return <InspectionFlowWizard inspectionId={inspectionId} />;
 }
 
 function DashboardTab({

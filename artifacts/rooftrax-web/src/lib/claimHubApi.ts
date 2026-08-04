@@ -469,6 +469,24 @@ export function useGetRetailPipeline(
 }
 
 // ---------------------------------------------------------------------------
+// Submit claim
+// ---------------------------------------------------------------------------
+
+export function useSubmitClaim(inspectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      customFetch<{ submission: Record<string, unknown> }>(
+        `/api/inspections/${inspectionId}/submission`,
+        { method: 'POST', body: JSON.stringify({}) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getGetInspectionQueryKey(inspectionId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
 
