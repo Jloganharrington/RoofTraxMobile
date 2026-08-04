@@ -36,6 +36,7 @@ import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage'
 import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
+import { runAhjCheck } from '../lib/ahjLookup';
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -298,6 +299,13 @@ router.post(
       } catch (err) {
         req.log.warn({ err }, 'Auto-email on sign — SMTP setup failed, skipping');
       }
+    }
+
+    // ── Non-blocking AHJ jurisdiction check ───────────────────────────────────
+    // Fire after signing is persisted. Never awaited — failures are swallowed
+    // inside runAhjCheck so the 201 response is never at risk.
+    if (inspection.address) {
+      void runAhjCheck(inspectionId, inspection.address, actor.companyId, req.log);
     }
 
     res.status(201).json({

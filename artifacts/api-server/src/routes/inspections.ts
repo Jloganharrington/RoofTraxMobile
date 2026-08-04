@@ -8132,6 +8132,7 @@ router.get('/leads/:leadId', async (req: Request, res: Response) => {
       depreciationAmount: null,
       inspectionNotes:   null,
       inspectionId: inspectionId,
+      ahjCheck: inspection.ahjCheck ?? null,
       repName,
       userId: inspection.inspectorUserId,
       companyId: inspection.companyId,

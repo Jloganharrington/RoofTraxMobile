@@ -605,6 +605,25 @@ export interface RepairabilityAssessmentV3 {
 /** Any currently-writable stored shape (legacy v1 rows also still exist). */
 export type StoredRepairabilityAssessment = RepairabilityAssessment | RepairabilityAssessmentV3;
 
+/**
+ * Result of the non-blocking AHJ jurisdiction check fired when the FIPSA is
+ * signed. Stored on inspections.ahj_check.
+ */
+export interface AhjCheck {
+  /** Official name of the governing municipality/county (e.g. "Fairfax County"). */
+  jurisdiction: string;
+  /** Whether the company's AHJ Packs library has a pack for this jurisdiction. */
+  packPresent: boolean;
+  /** ISO timestamp of when the check completed. */
+  checkedAt: string;
+  /** Gemini model used for the lookup. */
+  model: string;
+  /** AI confidence in the jurisdiction determination. */
+  confidence: 'high' | 'medium' | 'low';
+  /** Brief AI explanation of why this entity is the AHJ for the address. */
+  summary: string;
+}
+
 // REPORT_DATA v2 — pre-existing / non-storm conditions the inspector
 // explicitly EXCLUDES from the claim. A credibility asset, not a concession.
 export interface ExistingCondition {
@@ -844,6 +863,10 @@ export const inspectionsTable = pgTable('inspections', {
   // Recomputed and stored when the field record is attested or any material
   // input changes. Never use the stored value for gating — always recompute.
   triggerFlags: jsonb('trigger_flags'),
+  // AHJ jurisdiction check fired non-blocking when the FIPSA is signed.
+  // Null until the first check completes. packPresent = false flags the
+  // jurisdiction as missing from the company's AHJ Packs library.
+  ahjCheck: jsonb('ahj_check').$type<AhjCheck | null>(),
   // Frozen exhibit-badge map built at first compile (Task #122).
   // Structure: { counters: { R, S, I, F, C, T }, assignments: { selectionId → badge } }
   // Subsequent recompiles read this frozen map — nothing ever renumbers.

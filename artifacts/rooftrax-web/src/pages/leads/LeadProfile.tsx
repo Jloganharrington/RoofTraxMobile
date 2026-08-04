@@ -42,6 +42,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   ExternalLink,
 } from 'lucide-react';
 import { useGetLead, useUpdateLead, type FullLead } from '@/lib/claimHubApi';
@@ -682,6 +683,12 @@ export default function LeadProfile() {
                 {lead?.address && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                     <MapPin className="h-3 w-3" />{lead.address}
+                  </p>
+                )}
+                {lead?.ahjCheck && !lead.ahjCheck.packPresent && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-0.5 mt-1 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    <span>AHJ pack missing — <span className="font-semibold">{lead.ahjCheck.jurisdiction}</span> not in library</span>
                   </p>
                 )}
               </div>

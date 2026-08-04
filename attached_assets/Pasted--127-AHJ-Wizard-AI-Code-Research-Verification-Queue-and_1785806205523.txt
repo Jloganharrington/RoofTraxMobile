@@ -1,0 +1,67 @@
+# #127 - AHJ Wizard — AI Code Research, Verification Queue, and Pack Assembly
+
+## What & Why
+Hand-authoring AHJ Packs doesn't scale past Virginia. The AHJ Wizard ingests a jurisdiction's adopted construction code, runs a master-contractor extraction pass across a fixed category sweep (fire separation, structural, ventilation, energy — the chapters that never say "roofing" but govern it), and produces candidate pack items. The non-negotiable: **the wizard's output is never a live pack.** Every candidate is born unverified; a human confirms each citation against the stored source before the item can enter an ahj_pack version. A fabricated code citation in a proof package is the worst defect this system can produce, so the architecture is ingest → extract → verify (human) → activate, with the same verification discipline as standards_entries.
+
+## Done looks like
+
+### DB schema (new tables)
+**code_sources** — registered source documents per jurisdiction:
+- id, companyId, jurisdiction, title (e.g. "2021 Virginia Residential Code"), edition, effectiveDate, sourceUrl, acquisitionBasis (enum: licensed_corpus | official_public_view | print_reference), licensingNote (text), storedCorpus (boolean — whether full text is stored for retrieval), accessedAt, createdBy.
+- If acquisitionBasis is not licensed_corpus, storedCorpus must be false — the wizard operates citation-only against the official source and the DB stores only locators and our own summaries. This gate is enforced at ingestion, not policy-documented.
+
+**wizard_runs** — one row per extraction run:
+- id, companyId, jurisdiction, packType, codeSourceIds (jsonb array), promptVersion, model, categorySweep (jsonb — categories executed), startedAt, completedAt, stats (jsonb: itemsEmitted, gapsEmitted, byCategory), status (running | complete | failed).
+
+**ahj_candidate_items** — the verification queue:
+- id, companyId, wizardRunId, packType, jurisdiction, status (enum: draft | verified | edited_verified | rejected), candidateKey, citation, edition, provisionSummary, classification (code_compliance | code_upgrade), factualTrigger (jsonb: { type: 'flag' | 'documented_condition', expression }), scopeConnection, sourceLocator (jsonb: { codeSourceId, section, pageOrParagraph }), amendmentNote, confidence, gapsContext (jsonb, nullable — populated for gap-derived items), verifiedBy, verifiedAt, editDiff (jsonb, nullable — original vs verified values when edited), rejectionReason, createdAt.
+
+### Ingestion (api-server)
+- POST /ahj-wizard/sources — register a code source with acquisitionBasis. If licensed_corpus: accept document upload, chunk and store for retrieval (chunking preserves section identifiers as metadata; a chunk never splits mid-section where detectable). If official_public_view: store metadata + URL only.
+- Licensing gate: the UI requires selecting acquisitionBasis and entering licensingNote before ingestion proceeds. ICC/state licensing procurement itself is out of scope — the system enforces that the basis is recorded and that corpus storage matches the declared basis.
+
+### Extraction runs (api-server)
+- POST /ahj-wizard/runs — body: { jurisdiction, packType, codeSourceIds }. Orchestrates one extraction pass per category in the sweep (14 categories per the extraction prompt v1.0), supplying per-pass source text (retrieval from stored corpus, or curated section text pasted by the operator in citation-only mode).
+- Each pass runs the versioned extraction system prompt (AHJ_Wizard_Extraction_Prompt, stored in the BP library or config with its own version). promptVersion recorded on the run.
+- Response items land in ahj_candidate_items as status draft. Gaps land as draft items flagged gapsContext with empty citation — they render in the queue as "verifier: locate this" tasks, never as citable items.
+- Dedupe within a run: identical citation + packType collapses to one item, categories merged into a note.
+- The existing content lint runs on provisionSummary and scopeConnection (contractor-lane rules apply — no claims-side language).
+
+### Verification queue UI (rooftrax-web, /settings/library/ahj-wizard)
+- Run list: jurisdiction, packType, date, promptVersion, item counts by status.
+- Item queue per run, filterable by category/status/confidence. Each item opens a side-by-side view: left, the source text at sourceLocator (rendered from stored corpus, or an external link + operator-pasted excerpt in citation-only mode); right, the candidate item's fields, all editable.
+- Actions per item: **Verify** (citation checked word-for-word against source — sets verifiedBy/verifiedAt), **Edit & Verify** (stores editDiff), **Reject** (requires rejectionReason). Trigger mapping is confirmed as part of verification: the verifier explicitly confirms or corrects factualTrigger — a correct citation with a wrong trigger renders in the wrong claims.
+- Bulk actions limited to Reject; verification is always per-item.
+
+### Pack assembly
+- "Assemble Pack" action on a run (or across runs for a jurisdiction): takes all verified/edited_verified items for the jurisdiction + packType and creates a new ahj_packs version (existing #121 table and versioning — new version row, never mutate). Items map to the pack's { key, citationText, edition, trigger, active } shape; classification and scopeConnection carry into the item jsonb.
+- Draft/rejected items never enter a pack. The assembly action fails with a list if zero verified items exist.
+- Existing readiness item 8 (AHJ pack present) and the de-selection workflow are unchanged — the wizard feeds the same pack structure the compiler already consumes.
+
+### Virginia golden-set eval
+- A fixture file of known-correct Virginia citations (from litigated packages): VEBC governing-code identification, VRC R908.3 / R908.3.1.1, R905.2.1, R503.2.1.1, R302.2.2, R905.2.8.2, R908.5, R905.1 (manufacturer instructions), R703.11.1, R703 WRB provisions, decking permit threshold.
+- After a Virginia run, an eval report scores recall against the golden set: found (exact citation match) / found-as-gap / missed, per item. Report stored on the wizard_run.
+- Acceptance: a Virginia ahj_roof + ahj_siding run recovers 100% of the golden set as items or gaps (misses fail acceptance), and emits at least the fire-separation item (R302.2.2) from the category sweep — the canary for "finds provisions that don't say roofing."
+
+### Guards (restate, enforce)
+- No candidate item is citable, renderable, or pack-eligible at status draft. Enforced at pack assembly and at compile (a pack version can only contain verified items by construction).
+- Claims-side content (insurance statutes, prompt notice, matching law, licensing regulation) is excluded by the extraction prompt AND by a lint deny-list on candidate items — belt and suspenders.
+- Every rendered pack item traces to: code_source (with acquisitionBasis), sourceLocator, verifiedBy, verifiedAt. This is the provenance chain a dispute request gets answered from.
+
+## Out of scope
+- ICC / state code licensing procurement (the licensing gate records the basis; obtaining licensed corpus access is a business task).
+- Amendment diffing between code cycles (next-cycle re-run replaces packs wholesale; diff tooling is future).
+- Multi-jurisdiction batch runs.
+- Auto-activation of any item under any confidence level.
+- Jurisdiction-metadata layer (matching-state flags, adoption watch dates) — future companion, never renders in packs.
+
+## Dependencies
+- Requires #121 (ahj_packs table + versioning, content lint) — complete.
+- Extraction prompt v1.0 (AHJ_Wizard_Extraction_Prompt.md) seeded to config/library before first run.
+- Licensing basis decision for Virginia sources before first ingestion.
+
+## Relevant existing files
+- lib/db/src/schema/inspections.ts (ahj_packs schema from #121)
+- artifacts/api-server/src/routes/report-settings.ts (library management routes)
+- artifacts/api-server/src/lib/ (content lint)
+- artifacts/rooftrax-web/src/pages/settings/ (library UI)

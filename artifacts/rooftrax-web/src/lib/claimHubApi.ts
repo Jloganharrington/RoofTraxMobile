@@ -399,6 +399,15 @@ export interface FullLead {
   inspectionNotes: string | null;
   // Linked inspection (set for pin leads that have a converted inspection, and always set for ins- leads)
   inspectionId: string | null;
+  // AHJ jurisdiction check — populated non-blocking after FIPSA signing
+  ahjCheck: {
+    jurisdiction: string;
+    packPresent: boolean;
+    checkedAt: string;
+    model: string;
+    confidence: 'high' | 'medium' | 'low';
+    summary: string;
+  } | null;
   // Meta
   repName: string | null;
   userId: string;
