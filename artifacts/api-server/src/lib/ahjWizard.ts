@@ -20,7 +20,7 @@ import goldenSet from '../../fixtures/virginia-golden-set.json';
 // Versioned extraction prompt
 // ---------------------------------------------------------------------------
 
-export const AHJ_WIZARD_PROMPT_VERSION = '1.0';
+export const AHJ_WIZARD_PROMPT_VERSION = '1.1';
 
 /**
  * The 14 categories the wizard sweeps. These map to chapters and provisions
@@ -45,6 +45,21 @@ export const AHJ_WIZARD_CATEGORIES = [
 ] as const;
 
 export type AhjWizardCategory = (typeof AHJ_WIZARD_CATEGORIES)[number];
+
+/**
+ * Categories where provisions are material-specific — the extraction prompt
+ * must walk EVERY material subsection (R905.2 asphalt, R905.7 wood shingle,
+ * R905.8 shake, R905.10 metal panel, etc.) and tag each item individually.
+ * A run that returns only ["all"] items from these categories fails the
+ * material canary eval. One controlled list — route + prompt both reference
+ * this export rather than duplicating the set.
+ */
+export const MATERIAL_SENSITIVE_CATEGORIES: AhjWizardCategory[] = [
+  'underlayment',
+  'ice_water_shield',
+  'valley_construction',
+  'ridge_hip',
+];
 
 const CATEGORY_DESCRIPTIONS: Record<AhjWizardCategory, string> = {
   fire_separation: 'Fire separation, compartmentation, and assembly ratings — chapters governing fire-rated assemblies that intersect with roof/attic/garage adjacency requirements',
@@ -132,7 +147,8 @@ OUTPUT FORMAT: Return a single valid JSON object with two arrays:
         "subsection": "<subsection if applicable, else null>"
       },
       "amendmentNote": "<Virginia amendment note if applicable, else null>",
-      "confidence": <0.0-1.0 numeric confidence score>
+      "confidence": <0.0-1.0 numeric confidence score>,
+      "materialApplicability": ["all"]
     }
   ],
   "gaps": [
@@ -154,6 +170,7 @@ RULES:
 4. candidateKey must be unique within the response (citation + "_" + category slug).
 5. provisionSummary and scopeConnection must stay in the AHJ code extraction lane — no coverage or claims language.
 6. Do not fabricate citations. If you cannot find a relevant provision in the provided text, report a gap instead.
+7. materialApplicability: default to ["all"] for provisions that apply regardless of installed material (fire separation, structural loading, ventilation, energy code, permits, reroofing limits, sheathing spans). For categories covering material-specific installation methods — underlayment (category: underlayment), ice barrier (ice_water_shield), valley construction (valley_construction), ridge/hip (ridge_hip) — walk EVERY material subsection present in the source text (R905.2 asphalt, R905.7 wood shingle, R905.8 shake, R905.10 metal panel, R905.11 standing seam, etc.) and emit a SEPARATE candidate item for each, tagged with its specific material(s). Valid codes: all, asphalt_shingle, cedar_shake, wood_shingle, standing_seam_metal, metal_panel, vinyl_siding, aluminum_siding, fiber_cement, wood_siding. Do NOT tag ["all"] for items that clearly apply to only one material type.
 
 CODE SECTION TEXT:
 ---
@@ -176,6 +193,8 @@ export interface ExtractedCandidate {
   sourceLocator: Record<string, unknown>;
   amendmentNote: string | null;
   confidence: number;
+  /** Which installed materials this provision applies to. ["all"] for material-agnostic. */
+  materialApplicability: string[];
 }
 
 export interface ExtractedGap {
@@ -245,6 +264,9 @@ export async function runCategoryExtraction(opts: {
         sourceLocator: (c.sourceLocator as Record<string, unknown>) ?? {},
         amendmentNote: c.amendmentNote ? String(c.amendmentNote) : null,
         confidence: typeof c.confidence === 'number' ? Math.max(0, Math.min(1, c.confidence)) : 0.5,
+        materialApplicability: Array.isArray(c.materialApplicability)
+          ? (c.materialApplicability as unknown[]).map(String).filter(Boolean)
+          : ['all'],
       }));
 
     result.gaps = (parsed.gaps ?? [])
@@ -310,12 +332,15 @@ export interface GoldenEvalReport {
   recall: number;
   passed: boolean;
   canaryFound: boolean;
+  /** False when all material-canary items are still tagged ["all"], or no canary items were found. */
+  materialCanaryPassed: boolean;
   details: Array<{
     id: string;
     citation: string;
     result: 'found' | 'found_as_gap' | 'missed';
     matchedCandidateKey?: string;
     isCanary: boolean;
+    isMaterialCanary?: boolean;
   }>;
   failureReasons: string[];
 }
@@ -326,6 +351,8 @@ type GoldenItem = {
   description: string;
   classification: string;
   isCanary: boolean;
+  /** When true, the matched candidate must have non-["all"] materialApplicability. */
+  isMaterialCanary?: boolean;
 };
 
 /**
@@ -333,7 +360,7 @@ type GoldenItem = {
  * Acceptance: 100% recall (zero misses), R302.2.2 canary must be 'found' (not a gap).
  */
 export function scoreVirginiaGoldenSet(
-  candidates: Array<{ citation: string | null; candidateKey: string }>,
+  candidates: Array<{ citation: string | null; candidateKey: string; materialApplicability?: string[] }>,
   gaps: Array<{ gapsContext: Record<string, unknown>; description: string }>,
 ): GoldenEvalReport {
   const golden = goldenSet.goldenItems as GoldenItem[];
@@ -359,6 +386,7 @@ export function scoreVirginiaGoldenSet(
         result: 'found',
         matchedCandidateKey: matchedCandidate.candidateKey,
         isCanary: item.isCanary,
+        isMaterialCanary: item.isMaterialCanary,
       });
       continue;
     }
@@ -375,6 +403,7 @@ export function scoreVirginiaGoldenSet(
         citation: item.citation,
         result: 'found_as_gap',
         isCanary: item.isCanary,
+        isMaterialCanary: item.isMaterialCanary,
       });
       if (item.isCanary) {
         failureReasons.push(
@@ -384,7 +413,7 @@ export function scoreVirginiaGoldenSet(
       continue;
     }
 
-    details.push({ id: item.id, citation: item.citation, result: 'missed', isCanary: item.isCanary });
+    details.push({ id: item.id, citation: item.citation, result: 'missed', isCanary: item.isCanary, isMaterialCanary: item.isMaterialCanary });
     failureReasons.push(`Golden citation ${item.citation} was missed entirely`);
   }
 
@@ -402,7 +431,42 @@ export function scoreVirginiaGoldenSet(
     failureReasons.push(`Canary citation ${canaryCitation} was missed`);
   }
 
-  const passed = missed === 0 && canaryFound;
+  // ---------------------------------------------------------------------------
+  // Material canary check
+  // Only runs when candidates include materialApplicability data (v1.1+ runs).
+  // ---------------------------------------------------------------------------
+  const hasMaterialData = candidates.some((c) => c.materialApplicability !== undefined);
+  let materialCanaryPassed = true;
+
+  if (hasMaterialData) {
+    // Rule 1: a run where EVERY item is tagged ["all"] fails.
+    const allTaggedAll = candidates.every(
+      (c) => !c.materialApplicability || (c.materialApplicability.length === 1 && c.materialApplicability[0] === 'all'),
+    );
+    if (allTaggedAll) {
+      materialCanaryPassed = false;
+      failureReasons.push(
+        'All extracted items are tagged ["all"] — material-specific provisions were not differentiated (R905.2, R905.7, R905.8 must have specific material codes)',
+      );
+    }
+
+    // Rule 2: each golden item marked isMaterialCanary must have a non-["all"] matched candidate.
+    const materialCanaryDetails = details.filter((d) => d.isMaterialCanary && d.result === 'found');
+    for (const d of materialCanaryDetails) {
+      const matched = d.matchedCandidateKey
+        ? candidates.find((c) => c.candidateKey === d.matchedCandidateKey)
+        : null;
+      const tags = matched?.materialApplicability ?? ['all'];
+      if (tags.length === 1 && tags[0] === 'all') {
+        materialCanaryPassed = false;
+        failureReasons.push(
+          `Material canary ${d.citation} was found but still tagged ["all"] — should carry a specific material code (e.g. asphalt_shingle, wood_shingle, cedar_shake)`,
+        );
+      }
+    }
+  }
+
+  const passed = missed === 0 && canaryFound && materialCanaryPassed;
 
   return {
     jurisdiction: goldenSet.jurisdiction,
@@ -413,6 +477,7 @@ export function scoreVirginiaGoldenSet(
     recall,
     passed,
     canaryFound,
+    materialCanaryPassed,
     details,
     failureReasons,
   };

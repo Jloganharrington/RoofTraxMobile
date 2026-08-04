@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   useListPriceBookItems,
   useCreatePriceBookItem,
@@ -117,8 +117,18 @@ function ItemDialog({
   const [unit, setUnit] = useState(initial.unit);
   const generateDesc = useGenerateItemDescription();
 
-  // Reset fields when dialog opens with new initial values
-  const resetKey = initial.editingId ?? "new";
+  // Sync fields whenever the dialog opens or switches to a different item.
+  // useState initializers only run on first mount, so without this the fields
+  // always show the values from when PriceBookList first rendered (empty).
+  useEffect(() => {
+    if (open) {
+      setName(initial.name);
+      setDescription(initial.description);
+      setUnitPrice(initial.unitPrice);
+      setUnit(initial.unit);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial.editingId]);
 
   const handleGenerate = async () => {
     const trimmed = name.trim();
@@ -266,6 +276,16 @@ function PackageDialog({
   const [assignments, setAssignments] = useState<Record<string, number>>(
     initial.assignments,
   );
+
+  // Sync fields whenever the dialog opens or switches to a different package.
+  useEffect(() => {
+    if (open) {
+      setName(initial.name);
+      setCondition(initial.condition);
+      setAssignments(initial.assignments);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial.editingId]);
 
   const resetKey = initial.editingId ?? "new";
 

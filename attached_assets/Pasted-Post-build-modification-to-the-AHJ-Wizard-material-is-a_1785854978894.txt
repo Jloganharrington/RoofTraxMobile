@@ -1,0 +1,13 @@
+Post-build modification to the AHJ Wizard: material is an item-level dimension, not a pack-level split. Pack types remain exactly ahj_roof and ahj_siding — do not create per-material pack types.
+
+1. Schema: add materialApplicability (jsonb array of material codes) to both ahj_packs items and ahj_candidate_items. Values: ["all"] for material-agnostic provisions (reroofing limits, fire separation, sheathing spans, ventilation, permits), or specific codes: asphalt_shingle, cedar_shake, wood_shingle, standing_seam_metal, metal_panel, vinyl_siding, aluminum_siding, fiber_cement, wood_siding. This vocabulary must match the field app's material_set values — one controlled list, referenced not duplicated.
+
+2. Extraction prompt (bump to v1.1): add materialApplicability to the output item schema with the rule: category 4 (roof assembly & covering) and category 11 (wall covering & WRB) passes must walk EVERY material subsection present in the source (each R905.x covering type, each R703 cladding type) and tag each item with its specific material(s) — including materials the tenant does not currently service. All other categories default to ["all"] unless the provision text is explicitly material-limited.
+
+3. Migration for existing data: all existing ahj_candidate_items and pack items get materialApplicability = ["all"] plus a needsMaterialReview flag. Then re-run ONLY categories 4 and 11 for any jurisdiction already extracted (partial run support: a wizard_run scoped to a category subset, deduping against existing verified items by citation). Verifiers clear needsMaterialReview during normal verification.
+
+4. Per-claim filtering chain (compiler + pack de-selection UI): (a) pack selected by jurisdiction + system; (b) items auto-filtered by materialApplicability against the claim's material set, where material set = installed materials UNION specified replacement materials (code governs the new work — a cedar-to-asphalt replacement needs the asphalt covering provisions); (c) factualTrigger evaluation; (d) user de-selection of what remains. Material-filtered items are hidden with a "show all materials" reveal and are excluded mechanically — a recorded de-selection exists only for items the user actively unchecks.
+
+5. Virginia golden-set eval: add the material canary — the run must emit R905.2 (asphalt) and R905.7/R905.8 (wood shingles/shakes) as separate items with different materialApplicability tags, and at least one ["all"] item from R908. A run where every item tags ["all"] fails the eval.
+
+6. Verification UI: show the materialApplicability chips on each candidate item, editable during verification; verifying an item with needsMaterialReview requires the verifier to confirm or change the tags.

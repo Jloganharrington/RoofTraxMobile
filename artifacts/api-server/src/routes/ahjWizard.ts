@@ -27,6 +27,7 @@ import {
   scoreVirginiaGoldenSet,
   AHJ_WIZARD_PROMPT_VERSION,
   AHJ_WIZARD_CATEGORIES,
+  MATERIAL_SENSITIVE_CATEGORIES,
   type AhjWizardCategory,
 } from '../lib/ahjWizard';
 
@@ -239,6 +240,13 @@ async function runExtractionBackground(opts: {
             confidence: cand.confidence,
             lintNote: lintNote ?? undefined,
             category: result.category,
+            materialApplicability: cand.materialApplicability,
+            // Flag for verifier when the AI returned ["all"] for a material-sensitive
+            // category — verifier must confirm or correct before marking verified.
+            needsMaterialReview:
+              MATERIAL_SENSITIVE_CATEGORIES.includes(result.category as AhjWizardCategory) &&
+              cand.materialApplicability.length === 1 &&
+              cand.materialApplicability[0] === 'all',
           });
           totalItems++;
           byCategory[result.category] = (byCategory[result.category] ?? 0) + 1;
@@ -268,7 +276,11 @@ async function runExtractionBackground(opts: {
     let evalReport: ReturnType<typeof scoreVirginiaGoldenSet> | null = null;
     if (jurisdiction.toLowerCase().includes('virginia')) {
       const candidateRows = await db
-        .select({ citation: ahjCandidateItemsTable.citation, candidateKey: ahjCandidateItemsTable.candidateKey })
+        .select({
+          citation: ahjCandidateItemsTable.citation,
+          candidateKey: ahjCandidateItemsTable.candidateKey,
+          materialApplicability: ahjCandidateItemsTable.materialApplicability,
+        })
         .from(ahjCandidateItemsTable)
         .where(
           and(
@@ -286,7 +298,11 @@ async function runExtractionBackground(opts: {
           ),
         );
       evalReport = scoreVirginiaGoldenSet(
-        candidateRows.map((r) => ({ citation: r.citation, candidateKey: r.candidateKey })),
+        candidateRows.map((r) => ({
+          citation: r.citation,
+          candidateKey: r.candidateKey,
+          materialApplicability: r.materialApplicability as string[] | undefined,
+        })),
         gapRows.map((r) => ({
           gapsContext: (r.gapsContext as Record<string, unknown>) ?? {},
           description: r.description ?? '',
@@ -560,6 +576,9 @@ const ItemPatchBody = z.discriminatedUnion('action', [
     amendmentNote: z.string().optional(),
     /** Required when promoting a gap marker (must not be gap_identified). */
     classification: z.string().optional(),
+    /** Confirm or correct which materials this provision applies to. Required when needsMaterialReview=true. */
+    materialApplicability: z.array(z.string().min(1)).min(1).optional(),
+    needsMaterialReview: z.boolean().optional(),
   }),
   z.object({
     action: z.literal('edit_verify'),
@@ -570,6 +589,8 @@ const ItemPatchBody = z.discriminatedUnion('action', [
     scopeConnection: z.string().optional(),
     amendmentNote: z.string().optional(),
     classification: z.string().optional(),
+    materialApplicability: z.array(z.string().min(1)).min(1).optional(),
+    needsMaterialReview: z.boolean().optional(),
   }),
   z.object({
     action: z.literal('reject'),
@@ -627,6 +648,16 @@ router.patch('/ahj-wizard/items/:id', async (req: Request, res: Response) => {
     }
   }
 
+  // needsMaterialReview gate — verifier must confirm or correct material tags
+  // before marking the item verified. They must explicitly send materialApplicability
+  // (even if they keep ["all"]) so the confirmation is intentional, not accidental.
+  if (item.needsMaterialReview && !body.data.materialApplicability?.length) {
+    return void res.status(422).json({
+      error: 'This item has unconfirmed material applicability. Provide materialApplicability to confirm or correct the tags before verifying.',
+      hint: 'Valid codes: all, asphalt_shingle, cedar_shake, wood_shingle, standing_seam_metal, metal_panel, vinyl_siding, aluminum_siding, fiber_cement, wood_siding',
+    });
+  }
+
   const { factualTrigger, action } = body.data;
   const editDiff: Record<string, unknown> = {};
 
@@ -665,6 +696,18 @@ router.patch('/ahj-wizard/items/:id', async (req: Request, res: Response) => {
   if (body.data.classification !== undefined) {
     if (item.classification !== body.data.classification) editDiff['classification'] = { from: item.classification, to: body.data.classification };
     updates.classification = body.data.classification;
+  }
+  if (body.data.materialApplicability !== undefined) {
+    const prev = JSON.stringify(item.materialApplicability);
+    const next = JSON.stringify(body.data.materialApplicability);
+    if (prev !== next) editDiff['materialApplicability'] = { from: item.materialApplicability, to: body.data.materialApplicability };
+    updates.materialApplicability = body.data.materialApplicability;
+    // Explicitly providing materialApplicability clears the review flag
+    updates.needsMaterialReview = false;
+  }
+  if (body.data.needsMaterialReview !== undefined) {
+    // Allow an explicit override (e.g. super-admin re-flagging an item for re-review)
+    updates.needsMaterialReview = body.data.needsMaterialReview;
   }
 
   if (action === 'edit_verify' && Object.keys(editDiff).length > 0) {
@@ -833,6 +876,7 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
     active: true,
     classification: item.classification,
     scopeConnection: item.scopeConnection ?? undefined,
+    materialApplicability: (item.materialApplicability as string[] | null) ?? ['all'],
   }));
 
   // Find next version

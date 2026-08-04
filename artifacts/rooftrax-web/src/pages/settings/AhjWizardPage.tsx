@@ -95,6 +95,7 @@ interface WizardRun {
       found: number;
       missed: number;
       canaryFound: boolean;
+      materialCanaryPassed: boolean;
       failureReasons?: string[];
     };
   };
@@ -120,6 +121,8 @@ interface CandidateItem {
   verifiedBy: string | null;
   verifiedAt: string | null;
   rejectionReason: string | null;
+  materialApplicability: string[];
+  needsMaterialReview: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,13 +462,15 @@ function RunLauncherForm({ sources, onLaunched }: { sources: CodeSource[]; onLau
 
 function EvalBadge({ eval: ev }: { eval?: WizardRun["stats"]["evalReport"] }) {
   if (!ev) return null;
+  const matFailed = ev.materialCanaryPassed === false;
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
         ev.passed ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
       }`}
     >
       VA eval: {Math.round(ev.recall * 100)}% recall {ev.passed ? "✓" : "✗"}
+      {matFailed && <span title="Material canary failed — all items tagged [all]">🟡 mat</span>}
     </span>
   );
 }
@@ -529,6 +534,23 @@ function RunList({ onSelect }: { onSelect: (run: WizardRun) => void }) {
 }
 
 // ---------------------------------------------------------------------------
+// Material applicability code vocabulary (mirrors MATERIAL_APPLICABILITY_CODES in lib/db)
+// ---------------------------------------------------------------------------
+
+const MATERIAL_CODES: { value: string; label: string }[] = [
+  { value: "all", label: "All materials" },
+  { value: "asphalt_shingle", label: "Asphalt shingle" },
+  { value: "cedar_shake", label: "Cedar shake" },
+  { value: "wood_shingle", label: "Wood shingle" },
+  { value: "standing_seam_metal", label: "Standing seam metal" },
+  { value: "metal_panel", label: "Metal panel" },
+  { value: "vinyl_siding", label: "Vinyl siding" },
+  { value: "aluminum_siding", label: "Aluminum siding" },
+  { value: "fiber_cement", label: "Fiber cement" },
+  { value: "wood_siding", label: "Wood siding" },
+];
+
+// ---------------------------------------------------------------------------
 // Item verification drawer
 // ---------------------------------------------------------------------------
 
@@ -555,6 +577,21 @@ function ItemDrawer({ item, onClose, onPatched }: {
   );
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
+  const [materialTags, setMaterialTags] = useState<string[]>(
+    item.materialApplicability?.length ? item.materialApplicability : ["all"]
+  );
+
+  const toggleMaterial = (code: string) => {
+    if (code === "all") {
+      setMaterialTags(["all"]);
+    } else {
+      setMaterialTags((prev) => {
+        const without = prev.filter((v) => v !== "all" && v !== code);
+        const added = prev.includes(code) ? without : [...without, code];
+        return added.length === 0 ? ["all"] : added;
+      });
+    }
+  };
 
   const parseTrigger = (): Record<string, unknown> => {
     try { return JSON.parse(triggerText); } catch { return { raw: triggerText }; }
@@ -579,6 +616,9 @@ function ItemDrawer({ item, onClose, onPatched }: {
     const payload: Record<string, unknown> = {
       action,
       factualTrigger: parseTrigger(),
+      // Always include materialApplicability so the server can clear needsMaterialReview.
+      // The server also requires it when needsMaterialReview=true.
+      materialApplicability: materialTags,
     };
     if (editMode || action === "edit_verify") {
       if (citation) payload.citation = citation;
@@ -623,6 +663,18 @@ function ItemDrawer({ item, onClose, onPatched }: {
             <ConfidencePill value={item.confidence} />
           </SheetTitle>
         </SheetHeader>
+
+        {item.needsMaterialReview && !isDone && (
+          <div className="mt-4 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3 flex gap-2">
+            <span className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">⚠</span>
+            <div>
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Material review required</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                This item is in a material-sensitive category (e.g. underlayment, ice barrier, valley, ridge/hip) but the AI tagged it <code className="text-[10px]">["all"]</code>. Review the source and confirm or correct the material codes below before verifying.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Left: source text / gap context */}
@@ -727,6 +779,46 @@ function ItemDrawer({ item, onClose, onPatched }: {
                   className="h-8 text-sm"
                 />
               </div>
+
+              {/* Material applicability */}
+              <div className="space-y-1.5">
+                <Label className="text-[11px] flex items-center gap-1.5">
+                  Material Applicability
+                  {item.needsMaterialReview && !isDone && (
+                    <span className="text-amber-600 dark:text-amber-400 text-[10px] font-semibold">⚠ needs review</span>
+                  )}
+                </Label>
+                {!isDone && (editMode || item.needsMaterialReview) ? (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {MATERIAL_CODES.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => toggleMaterial(value)}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-colors cursor-pointer ${
+                          materialTags.includes(value)
+                            ? "bg-indigo-100 border-indigo-400 text-indigo-800 dark:bg-indigo-950 dark:border-indigo-600 dark:text-indigo-300"
+                            : "bg-transparent border-zinc-300 text-zinc-500 hover:border-zinc-500 dark:border-zinc-600 dark:text-zinc-400 dark:hover:border-zinc-400"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {(materialTags.length ? materialTags : ["all"]).map((code) => (
+                      <span
+                        key={code}
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                      >
+                        {code.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {isGap && !isDone && (
                 <div className="space-y-1">
                   <Label className="text-[11px]">
@@ -1081,6 +1173,21 @@ function RunItemQueue({ run, onBack }: { run: WizardRun; onBack: () => void }) {
                     <ConfidencePill value={item.confidence} />
                     {item.lintNote && (
                       <AlertTriangle className="h-3 w-3 text-amber-500" />
+                    )}
+                    {item.needsMaterialReview && item.status === "draft" && (
+                      <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+                        ⚠ mat. review
+                      </span>
+                    )}
+                    {!item.needsMaterialReview && item.materialApplicability?.some(c => c !== "all") && (
+                      item.materialApplicability.slice(0, 2).map(code => (
+                        <span
+                          key={code}
+                          className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800"
+                        >
+                          {code.replace(/_/g, " ")}
+                        </span>
+                      ))
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">

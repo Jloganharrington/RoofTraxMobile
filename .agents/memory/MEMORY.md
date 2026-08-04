@@ -37,3 +37,4 @@
 - [Roof overview diagram rendering](measurements-overview-image.md) — ImageMagick v7 binary is `magick` not `convert`; mobile getApiBaseUrl() has no trailing slash; clear diagram cache on PDF replace.
 - [Facet inventory single-stage flow](facet-routing-two-stage.md) — routing scrapped; single AI call extracts count/areas/pitches; inspector decides walking order; mobile confirm card replaces State B/C.
 - [Estimate price-book snapshot integrity](estimate-price-snapshots.md) — catalog-referencing lines must be server-hydrated (price/desc/unit from DB); advisory steps join all three stage mirrors but get no gate rules.
+- [AHJ material applicability item dimension](ahj-material-applicability.md) — per-item jsonb materialApplicability + needsMaterialReview; PATCH gate; v1.1 prompt; material canary in Virginia eval.

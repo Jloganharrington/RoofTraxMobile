@@ -55,6 +55,21 @@ export const AHJ_CANDIDATE_CLASSIFICATIONS = [
 ] as const;
 export type AhjCandidateClassification = (typeof AHJ_CANDIDATE_CLASSIFICATIONS)[number];
 
+// One controlled vocabulary for material codes — matches the field app's material_set values.
+export const MATERIAL_APPLICABILITY_CODES = [
+  'all',
+  'asphalt_shingle',
+  'cedar_shake',
+  'wood_shingle',
+  'standing_seam_metal',
+  'metal_panel',
+  'vinyl_siding',
+  'aluminum_siding',
+  'fiber_cement',
+  'wood_siding',
+] as const;
+export type MaterialApplicabilityCode = (typeof MATERIAL_APPLICABILITY_CODES)[number];
+
 // ---------------------------------------------------------------------------
 // code_sources — registered jurisdiction code corpus metadata
 // ---------------------------------------------------------------------------
@@ -202,6 +217,20 @@ export const ahjCandidateItemsTable = pgTable('ahj_candidate_items', {
   /** Required when status = 'rejected'. */
   rejectionReason: text('rejection_reason'),
   category: text('category').notNull(),
+  /**
+   * Which installed materials this provision applies to.
+   * ["all"] for material-agnostic provisions (fire separation, structural,
+   * ventilation, permits, reroofing limits). Specific codes for provisions
+   * that live inside a per-material chapter (e.g. R905.2 → asphalt_shingle).
+   * One controlled list — matches the field app's material_set vocabulary.
+   */
+  materialApplicability: jsonb('material_applicability').notNull().default(['all']),
+  /**
+   * Set true when extraction auto-tagged ["all"] for a material-sensitive
+   * category (underlayment, ice barrier, valley, ridge/hip). Verifier must
+   * confirm or correct the tags before marking the item verified.
+   */
+  needsMaterialReview: boolean('needs_material_review').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
