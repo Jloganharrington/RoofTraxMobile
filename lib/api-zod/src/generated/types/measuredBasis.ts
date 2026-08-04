@@ -5,14 +5,17 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MeasuredBasisLinearFeetByType } from './measuredBasisLinearFeetByType';
 
 export interface MeasuredBasis {
   /** @nullable */
-  totalRoofSqft?: number | null;
+  roofAreaSqft?: number | null;
   /** @nullable */
-  totalRoofSquares?: number | null;
+  roofSquares?: number | null;
   /** @nullable */
-  adjustedRoofSquares?: number | null;
+  wasteAdjustedSquares?: number | null;
   /** @nullable */
   damagedSidingFacetCount?: number | null;
+  linearFeetByType?: MeasuredBasisLinearFeetByType;
+  totalLinearFeet?: number;
 }

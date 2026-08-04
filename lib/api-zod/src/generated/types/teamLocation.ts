@@ -15,4 +15,5 @@ export interface TeamLocation {
   latitude: number;
   longitude: number;
   updatedAt: Date;
+  isClockedIn: boolean;
 }

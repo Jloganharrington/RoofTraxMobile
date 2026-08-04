@@ -3,8 +3,8 @@ import {
   PingLocationResponse,
   ListTeamLocationsResponse,
 } from '@workspace/api-zod';
-import { db, userLocationsTable, userProfilesTable, usersTable } from '@workspace/db';
-import { and, eq } from 'drizzle-orm';
+import { db, userLocationsTable, userProfilesTable, usersTable, canvassingSessionsTable } from '@workspace/db';
+import { and, eq, isNull, isNotNull } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { isManagerOrAdmin } from '../lib/permissions';
@@ -61,9 +61,17 @@ router.get('/location/team', async (req: Request, res: Response) => {
       latitude: userLocationsTable.latitude,
       longitude: userLocationsTable.longitude,
       updatedAt: userLocationsTable.updatedAt,
+      isClockedIn: isNotNull(canvassingSessionsTable.id),
     })
     .from(userLocationsTable)
     .innerJoin(usersTable, eq(usersTable.id, userLocationsTable.userId))
+    .leftJoin(
+      canvassingSessionsTable,
+      and(
+        eq(canvassingSessionsTable.userId, userLocationsTable.userId),
+        isNull(canvassingSessionsTable.endedAt),
+      ),
+    )
     .where(eq(usersTable.companyId, req.user.companyId));
 
   res.json(ListTeamLocationsResponse.parse({ locations: rows }));

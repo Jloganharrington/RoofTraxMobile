@@ -1317,7 +1317,8 @@ export const ListTeamLocationsResponse = zod.object({
   "lastName": zod.string().nullable(),
   "latitude": zod.number(),
   "longitude": zod.number(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "isClockedIn": zod.boolean()
 }))
 })
 
@@ -1875,7 +1876,9 @@ export const ListInspectionsResponse = zod.object({
   "roofAreaSqft": zod.number().nullable(),
   "roofSquares": zod.number().nullable(),
   "wasteAdjustedSquares": zod.number().nullable(),
-  "damagedSidingFacetCount": zod.number()
+  "damagedSidingFacetCount": zod.number(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullable(),
@@ -2486,7 +2489,9 @@ export const CreateInspectionResponse = zod.object({
   "roofAreaSqft": zod.number().nullable(),
   "roofSquares": zod.number().nullable(),
   "wasteAdjustedSquares": zod.number().nullable(),
-  "damagedSidingFacetCount": zod.number()
+  "damagedSidingFacetCount": zod.number(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullable(),
@@ -3079,7 +3084,9 @@ export const GetInspectionResponse = zod.object({
   "roofAreaSqft": zod.number().nullable(),
   "roofSquares": zod.number().nullable(),
   "wasteAdjustedSquares": zod.number().nullable(),
-  "damagedSidingFacetCount": zod.number()
+  "damagedSidingFacetCount": zod.number(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullable(),
@@ -3999,7 +4006,9 @@ export const UpdateInspectionResponse = zod.object({
   "roofAreaSqft": zod.number().nullable(),
   "roofSquares": zod.number().nullable(),
   "wasteAdjustedSquares": zod.number().nullable(),
-  "damagedSidingFacetCount": zod.number()
+  "damagedSidingFacetCount": zod.number(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullable(),
@@ -4151,10 +4160,12 @@ export const GetInspectionEstimateResponse = zod.object({
   "estimate": zod.union([zod.object({
   "wastePercent": zod.number(),
   "measuredBasis": zod.object({
-  "totalRoofSqft": zod.number().nullish(),
-  "totalRoofSquares": zod.number().nullish(),
-  "adjustedRoofSquares": zod.number().nullish(),
-  "damagedSidingFacetCount": zod.number().nullish()
+  "roofAreaSqft": zod.number().nullish(),
+  "roofSquares": zod.number().nullish(),
+  "wasteAdjustedSquares": zod.number().nullish(),
+  "damagedSidingFacetCount": zod.number().nullish(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }).optional(),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullish(),
@@ -4224,10 +4235,12 @@ export const SaveInspectionEstimateResponse = zod.object({
   "estimate": zod.union([zod.object({
   "wastePercent": zod.number(),
   "measuredBasis": zod.object({
-  "totalRoofSqft": zod.number().nullish(),
-  "totalRoofSquares": zod.number().nullish(),
-  "adjustedRoofSquares": zod.number().nullish(),
-  "damagedSidingFacetCount": zod.number().nullish()
+  "roofAreaSqft": zod.number().nullish(),
+  "roofSquares": zod.number().nullish(),
+  "wasteAdjustedSquares": zod.number().nullish(),
+  "damagedSidingFacetCount": zod.number().nullish(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }).optional(),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullish(),
@@ -5579,7 +5592,9 @@ export const SubmitInspectionResponse = zod.object({
   "roofAreaSqft": zod.number().nullable(),
   "roofSquares": zod.number().nullable(),
   "wasteAdjustedSquares": zod.number().nullable(),
-  "damagedSidingFacetCount": zod.number()
+  "damagedSidingFacetCount": zod.number(),
+  "linearFeetByType": zod.record(zod.string(), zod.number()).optional(),
+  "totalLinearFeet": zod.number().optional()
 }),
   "lines": zod.array(zod.object({
   "priceBookItemId": zod.string().nullable(),

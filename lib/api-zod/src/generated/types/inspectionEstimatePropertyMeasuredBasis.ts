@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { InspectionEstimatePropertyMeasuredBasisLinearFeetByType } from './inspectionEstimatePropertyMeasuredBasisLinearFeetByType';
 
 export type InspectionEstimatePropertyMeasuredBasis = {
   /** @nullable */
@@ -14,4 +15,6 @@ export type InspectionEstimatePropertyMeasuredBasis = {
   /** @nullable */
   wasteAdjustedSquares: number | null;
   damagedSidingFacetCount: number;
+  linearFeetByType?: InspectionEstimatePropertyMeasuredBasisLinearFeetByType;
+  totalLinearFeet?: number;
 };

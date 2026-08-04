@@ -236,7 +236,15 @@ export default function TeamScreen() {
                   </Text>
                   <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
                     {member.pinCount} pins
-                    {location ? ' · location shared' : ''}
+                    {location ? (
+                      <>
+                        {' · '}
+                        <Text style={{ color: location.isClockedIn ? colors.success : colors.mutedForeground }}>
+                          ●
+                        </Text>
+                        {location.isClockedIn ? ' clocked in' : ' location shared'}
+                      </>
+                    ) : null}
                   </Text>
                 </View>
                 {!isSelf && (

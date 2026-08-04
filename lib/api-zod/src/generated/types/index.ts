@@ -137,6 +137,7 @@ export * from './inspectionEstimatePropertyLinesItemEvidenceLinksItemLinkSource'
 export * from './inspectionEstimatePropertyLinesItemEvidenceLinksItemReviewStatus';
 export * from './inspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType';
 export * from './inspectionEstimatePropertyMeasuredBasis';
+export * from './inspectionEstimatePropertyMeasuredBasisLinearFeetByType';
 export * from './inspectionLatestAgreement';
 export * from './inspectionListEnvelope';
 export * from './inspectionPenetration';
@@ -172,6 +173,7 @@ export * from './locationPingSuccess';
 export * from './logoutBrowserSessionParams';
 export * from './logoutSuccess';
 export * from './measuredBasis';
+export * from './measuredBasisLinearFeetByType';
 export * from './measurement';
 export * from './measurementEnvelope';
 export * from './measurementsAnalysisResult';

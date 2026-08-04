@@ -842,6 +842,7 @@ export interface TeamLocation {
   latitude: number;
   longitude: number;
   updatedAt: string;
+  isClockedIn: boolean;
 }
 
 export interface TeamLocationListEnvelope {
@@ -1223,6 +1224,8 @@ export type InspectionLatestAgreement = {
   signerName: string;
 } | null;
 
+export type InspectionEstimatePropertyMeasuredBasisLinearFeetByType = {[key: string]: number};
+
 export type InspectionEstimatePropertyMeasuredBasis = {
   /** @nullable */
   roofAreaSqft: number | null;
@@ -1231,6 +1234,8 @@ export type InspectionEstimatePropertyMeasuredBasis = {
   /** @nullable */
   wasteAdjustedSquares: number | null;
   damagedSidingFacetCount: number;
+  linearFeetByType?: InspectionEstimatePropertyMeasuredBasisLinearFeetByType;
+  totalLinearFeet?: number;
 };
 
 export type InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType = typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType[keyof typeof InspectionEstimatePropertyLinesItemEvidenceLinksItemTargetType];
@@ -3035,15 +3040,19 @@ export interface EstimateLineItem {
   linkedDamageInstanceIds?: string[];
 }
 
+export type MeasuredBasisLinearFeetByType = {[key: string]: number};
+
 export interface MeasuredBasis {
   /** @nullable */
-  totalRoofSqft?: number | null;
+  roofAreaSqft?: number | null;
   /** @nullable */
-  totalRoofSquares?: number | null;
+  roofSquares?: number | null;
   /** @nullable */
-  adjustedRoofSquares?: number | null;
+  wasteAdjustedSquares?: number | null;
   /** @nullable */
   damagedSidingFacetCount?: number | null;
+  linearFeetByType?: MeasuredBasisLinearFeetByType;
+  totalLinearFeet?: number;
 }
 
 export interface InspectionEstimate {

@@ -4949,7 +4949,7 @@ components:
 
     TeamLocation:
       type: object
-      required: [userId, firstName, lastName, latitude, longitude, updatedAt]
+      required: [userId, firstName, lastName, latitude, longitude, updatedAt, isClockedIn]
       properties:
         userId:
           type: string
@@ -4964,6 +4964,8 @@ components:
         updatedAt:
           type: string
           format: date-time
+        isClockedIn:
+          type: boolean
     TeamLocationListEnvelope:
       type: object
       required: [locations]
