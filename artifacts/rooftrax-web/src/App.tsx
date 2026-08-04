@@ -1,6 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
+import {
+  Calendar, MapPin, FileText, BarChart2, Receipt,
+  ShieldCheck, Settings, Plug, Bell,
+} from 'lucide-react';
 
 import Home from '@/pages/Home';
 import LibraryPage from '@/pages/settings/LibraryPage';
@@ -18,6 +22,7 @@ import Leads from '@/pages/leads/Leads';
 import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
 import PriceBookList from '@/pages/price-book/PriceBookList';
+import { ComingSoon } from '@/pages/ComingSoon';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 
 const queryClient = new QueryClient({
@@ -94,6 +99,62 @@ function Router() {
       </Route>
       <Route path="/settings/library/ahj-wizard">
         <ProtectedRoute><AhjWizardPage /></ProtectedRoute>
+      </Route>
+
+      {/* Coming-soon routes — all tabs stay inside the portal */}
+      <Route path="/team-calendar">
+        <ProtectedRoute>
+          <ComingSoon icon={Calendar} title="Team Calendar"
+            description="Schedule inspections, track rep availability, and manage your team's field calendar in one shared view." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/map">
+        <ProtectedRoute>
+          <ComingSoon icon={MapPin} title="Map View"
+            description="See your team's active inspections and leads plotted on a live territory map." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/templates">
+        <ProtectedRoute>
+          <ComingSoon icon={FileText} title="Templates"
+            description="Build and manage reusable templates for inspection reports, proposals, and customer communications." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/reports">
+        <ProtectedRoute>
+          <ComingSoon icon={BarChart2} title="Reports"
+            description="Company-wide performance dashboards, claim conversion rates, and pipeline analytics at a glance." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/commission-report">
+        <ProtectedRoute>
+          <ComingSoon icon={Receipt} title="Commission Reports"
+            description="Track rep earnings, commission tiers, and payout history across your entire team." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/user-authorization">
+        <ProtectedRoute>
+          <ComingSoon icon={ShieldCheck} title="User Authorization"
+            description="Control access levels, assign roles, and manage exactly what each team member can see and do." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute>
+          <ComingSoon icon={Settings} title="Settings"
+            description="Company profile, billing, branding, and platform preferences — all in one place." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/integrations">
+        <ProtectedRoute>
+          <ComingSoon icon={Plug} title="Integrations"
+            description="Connect your CRM, accounting software, and field tools to keep all your data in sync." />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/notifications">
+        <ProtectedRoute>
+          <ComingSoon icon={Bell} title="Notifications"
+            description="Configure automated alerts for claim milestones, team activity, and pipeline changes." />
+        </ProtectedRoute>
       </Route>
 
       <Route component={NotFound} />

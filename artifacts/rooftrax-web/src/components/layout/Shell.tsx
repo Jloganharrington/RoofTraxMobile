@@ -74,8 +74,8 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Team Management",   path: "/team",               icon: Users },
       { label: "User Authorization",path: "/user-authorization", icon: ShieldCheck },
-      { label: "Settings",          path: "/settings",           icon: Settings,   soon: true },
-      { label: "Integrations",      path: "/integrations",       icon: Plug,        soon: true },
+      { label: "Settings",          path: "/settings",           icon: Settings },
+      { label: "Integrations",      path: "/integrations",       icon: Plug },
       { label: "Notifications",     path: "/notifications",      icon: Bell },
     ],
   },
