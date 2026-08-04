@@ -67,7 +67,7 @@ function buildTabs(isInsurance: boolean, hasInspection: boolean) {
     { id: 'dashboard', label: 'Lead Dashboard', icon: <User className="h-4 w-4" /> },
   ];
   if (hasInspection) {
-    tabs.push({ id: 'inspection_flow', label: 'Inspection', icon: <FileText className="h-4 w-4" /> });
+    tabs.push({ id: 'inspection_flow', label: 'Proof Package Builder', icon: <FileText className="h-4 w-4" /> });
   }
   if (isInsurance) {
     tabs.push({ id: 'insurance', label: 'Insurance', icon: <Shield className="h-4 w-4" /> });
