@@ -281,44 +281,72 @@ function DashboardTab({
   isInsurance: boolean;
   lead: FullLead;
 }) {
+  const workflowLabel = lead.workflow === 'insurance' ? 'Insurance' : 'Retail';
+  const workflowColors = lead.workflow === 'insurance'
+    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
       {/* ── Left: Property & Contact ─────────────────────────────────── */}
       <div className="space-y-6">
 
-        {/* Property photo — constrained to half column width */}
-        <div className="w-1/2">
-          {lead.photoUrl ? (
-            <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
-              <img src={lead.photoUrl} alt="Property" className="w-full h-full object-cover" />
+        {/* Photo + Address/AHJ/Type row */}
+        <div className="flex gap-4 items-start">
+
+          {/* Photo — half column */}
+          <div className="w-1/2 shrink-0">
+            {lead.photoUrl ? (
+              <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
+                <img src={lead.photoUrl} alt="Property" className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="rounded-xl border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <MapPin className="h-6 w-6 opacity-20" />
+                <p className="text-xs">No photo</p>
+              </div>
+            )}
+          </div>
+
+          {/* Address + AHJ + Lead type */}
+          <div className="flex-1 space-y-3 min-w-0 pt-0.5">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Address</p>
+              <p className="text-sm text-foreground/80 leading-snug break-words">
+                {lead.address ?? <span className="italic text-muted-foreground">No address</span>}
+              </p>
             </div>
-          ) : (
-            <div className="rounded-xl border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <MapPin className="h-6 w-6 opacity-20" />
-              <p className="text-xs">No photo</p>
+
+            {lead.ahjCheck?.jurisdiction && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">AHJ</p>
+                <p className="text-sm text-foreground/80 leading-snug">{lead.ahjCheck.jurisdiction}</p>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Lead Type</p>
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${workflowColors}`}>
+                {workflowLabel}
+              </span>
             </div>
-          )}
+          </div>
         </div>
 
-        <FieldGroup title="Property">
-          {/* Address is read-only (set at pin creation) */}
-          <div className="sm:col-span-2 bg-muted/40 rounded-lg px-3 py-2 text-sm text-foreground/70 leading-snug">
-            {lead.address ?? <span className="italic text-muted-foreground">No address</span>}
-          </div>
-          <div className="sm:col-span-2 flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="nonOwnerOccupied"
-              checked={form.nonOwnerOccupied}
-              onChange={e => onCheck('nonOwnerOccupied', e.target.checked)}
-              className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-            />
-            <Label htmlFor="nonOwnerOccupied" className="text-sm font-normal cursor-pointer">
-              Non-owner occupied property
-            </Label>
-          </div>
-        </FieldGroup>
+        {/* Non-owner occupied */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="nonOwnerOccupied"
+            checked={form.nonOwnerOccupied}
+            onChange={e => onCheck('nonOwnerOccupied', e.target.checked)}
+            className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+          />
+          <Label htmlFor="nonOwnerOccupied" className="text-sm font-normal cursor-pointer">
+            Non-owner occupied property
+          </Label>
+        </div>
 
         {form.nonOwnerOccupied && (
           <FieldGroup title="Mailing Address">
@@ -398,11 +426,6 @@ function DashboardTab({
             )}
           </FieldGroup>
         )}
-
-        <FieldGroup title="Internal Notes">
-          <TextareaField label="Notes" name="notes" value={form.notes} onChange={onField} rows={7}
-            placeholder="Add notes about this lead…" />
-        </FieldGroup>
       </div>
     </div>
   );
