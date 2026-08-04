@@ -42,7 +42,15 @@ import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
 import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2, Trash2 } from "lucide-react";
-import { parseMdLibrary, parseMdBoilerplate, type ParsedStandard, type ParsedDetriment, type ParsedBpSection } from "@/lib/parseMdLibrary";
+import {
+  parseMdLibrary,
+  parseMdBoilerplate,
+  parseStandardsFile,
+  parseDetrimentFile,
+  type ParsedStandard,
+  type ParsedDetriment,
+  type ParsedBpSection,
+} from "@/lib/parseMdLibrary";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +73,7 @@ interface StandardsEntry {
   verified_at: string | null;
   authority_limit: string | null;
   locator_template: string | null;
+  human_entered_provisions_only: boolean;
   version: number;
 }
 
@@ -452,6 +461,320 @@ function BoilerplateTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Standards .md import button
+// ---------------------------------------------------------------------------
+
+function StandardsMdImportButton({ onDone }: { onDone: () => void }) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<ReturnType<typeof parseStandardsFile> | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
+  const [done, setDone] = useState(false);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = typeof evt.target?.result === "string" ? evt.target.result : "";
+      setResult(parseStandardsFile(text));
+      setOpen(true);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleImport = async () => {
+    if (!result) return;
+    const total = result.entries.length;
+    setImporting(true);
+    setProgress({ done: 0, total, errors: 0 });
+    let errors = 0;
+    for (const entry of result.entries) {
+      try {
+        await customFetch(
+          `/api/report-settings/standards-entries/${encodeURIComponent(entry.entryKey)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceType: entry.sourceType,
+              citationText: entry.citationText,
+              authorityLimit: entry.authorityLimit,
+              locatorTemplate: entry.locatorTemplate,
+              markVerified: entry.verificationStatus === "verified",
+              verifiedAt: entry.verifiedAt ?? undefined,
+              humanEnteredProvisionsOnly: entry.humanEnteredProvisionsOnly,
+            }),
+          }
+        );
+      } catch { errors++; }
+      setProgress((p) => ({ ...p, done: p.done + 1, errors }));
+    }
+    setImporting(false);
+    setDone(true);
+    onDone();
+    if (errors === 0) {
+      toast({ title: "Import complete", description: `${total} standard${total !== 1 ? "s" : ""} saved.` });
+    } else {
+      toast({ title: "Import finished with errors", description: `${total - errors} saved, ${errors} failed.`, variant: "destructive" });
+    }
+  };
+
+  const reset = () => {
+    setResult(null); setImporting(false);
+    setProgress({ done: 0, total: 0, errors: 0 }); setDone(false);
+  };
+
+  const entries = result?.entries ?? [];
+  const rejected = result?.rejected ?? [];
+  const warnings = result?.warnings ?? [];
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".md,.txt,text/plain,text/markdown" className="hidden" onChange={handleFile} />
+      <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+        <Upload className="h-3.5 w-3.5 mr-1.5" />
+        Import .md
+      </Button>
+
+      <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); setOpen(false); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Standards Entries</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {warnings.length > 0 && (
+              <div className="rounded-md bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 p-3">
+                <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-1">Warnings:</p>
+                {warnings.map((w, i) => <p key={i} className="text-xs text-yellow-700 dark:text-yellow-400 font-mono pl-2">— {w}</p>)}
+              </div>
+            )}
+
+            {rejected.length > 0 && (
+              <div className="rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-3 space-y-1">
+                <p className="text-xs font-medium text-red-800 dark:text-red-300">
+                  {rejected.length} block{rejected.length !== 1 ? "s" : ""} rejected (missing required fields):
+                </p>
+                {rejected.map((r) => (
+                  <p key={r.blockIndex} className="text-xs text-red-700 dark:text-red-400 font-mono pl-2">
+                    Block {r.blockIndex}{r.entryKey ? ` (${r.entryKey})` : ""}: missing {r.missingKeys.join(", ")}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No valid entries found in this file.</p>
+            ) : (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">{entries.length} valid entr{entries.length !== 1 ? "ies" : "y"} to import:</p>
+                <div className="divide-y divide-border/50 rounded-md border">
+                  {entries.map((e) => (
+                    <div key={e.entryKey} className="flex items-center gap-2 px-3 py-2">
+                      <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                      <span className="text-xs font-mono font-medium">{e.entryKey}</span>
+                      <span className="text-xs text-muted-foreground truncate">{e.sourceType}</span>
+                      {e.verificationStatus === "verified" && (
+                        <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px] h-4 ml-auto shrink-0">Verified</Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(importing || done) && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{done ? "Complete" : "Saving…"}</span>
+                  <span>{progress.done} / {progress.total}{progress.errors > 0 ? ` (${progress.errors} errors)` : ""}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-primary transition-all duration-200"
+                    style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            {!importing && !done && (
+              <>
+                <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Cancel</Button>
+                <Button onClick={() => void handleImport()} disabled={entries.length === 0}>
+                  Import {entries.length} entr{entries.length !== 1 ? "ies" : "y"}
+                </Button>
+              </>
+            )}
+            {importing && <Button disabled><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</Button>}
+            {done && <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Close</Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detriment .md import button
+// ---------------------------------------------------------------------------
+
+function DetrimentMdImportButton({ onDone }: { onDone: () => void }) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [result, setResult] = useState<ReturnType<typeof parseDetrimentFile> | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
+  const [done, setDone] = useState(false);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = typeof evt.target?.result === "string" ? evt.target.result : "";
+      setResult(parseDetrimentFile(text));
+      setOpen(true);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleImport = async () => {
+    if (!result) return;
+    const total = result.entries.length;
+    setImporting(true);
+    setProgress({ done: 0, total, errors: 0 });
+    let errors = 0;
+    for (const entry of result.entries) {
+      try {
+        await customFetch(
+          `/api/report-settings/detriment-entries/${encodeURIComponent(entry.entryKey)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              applicabilityConditions: entry.applicabilityConditions,
+              statement: entry.statement,
+              requiredSupport: entry.requiredSupport || undefined,
+              limitation: entry.limitation || undefined,
+            }),
+          }
+        );
+      } catch { errors++; }
+      setProgress((p) => ({ ...p, done: p.done + 1, errors }));
+    }
+    setImporting(false);
+    setDone(true);
+    onDone();
+    if (errors === 0) {
+      toast({ title: "Import complete", description: `${total} detriment${total !== 1 ? "s" : ""} saved.` });
+    } else {
+      toast({ title: "Import finished with errors", description: `${total - errors} saved, ${errors} failed.`, variant: "destructive" });
+    }
+  };
+
+  const reset = () => {
+    setResult(null); setImporting(false);
+    setProgress({ done: 0, total: 0, errors: 0 }); setDone(false);
+  };
+
+  const entries = result?.entries ?? [];
+  const rejected = result?.rejected ?? [];
+  const warnings = result?.warnings ?? [];
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".md,.txt,text/plain,text/markdown" className="hidden" onChange={handleFile} />
+      <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+        <Upload className="h-3.5 w-3.5 mr-1.5" />
+        Import .md
+      </Button>
+
+      <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); setOpen(false); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Detriment Entries</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {warnings.length > 0 && (
+              <div className="rounded-md bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 p-3">
+                <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-1">Warnings:</p>
+                {warnings.map((w, i) => <p key={i} className="text-xs text-yellow-700 dark:text-yellow-400 font-mono pl-2">— {w}</p>)}
+              </div>
+            )}
+
+            {rejected.length > 0 && (
+              <div className="rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-3 space-y-1">
+                <p className="text-xs font-medium text-red-800 dark:text-red-300">
+                  {rejected.length} block{rejected.length !== 1 ? "s" : ""} rejected (missing required fields):
+                </p>
+                {rejected.map((r) => (
+                  <p key={r.blockIndex} className="text-xs text-red-700 dark:text-red-400 font-mono pl-2">
+                    Block {r.blockIndex}{r.entryKey ? ` (${r.entryKey})` : ""}: missing {r.missingKeys.join(", ")}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No valid entries found in this file.</p>
+            ) : (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">{entries.length} valid entr{entries.length !== 1 ? "ies" : "y"} to import:</p>
+                <div className="divide-y divide-border/50 rounded-md border">
+                  {entries.map((e) => (
+                    <div key={e.entryKey} className="flex items-center gap-2 px-3 py-2">
+                      <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+                      <span className="text-xs font-mono font-medium">{e.entryKey}</span>
+                      {e.applicabilityConditions.length > 0 && (
+                        <span className="text-xs text-muted-foreground truncate">{e.applicabilityConditions.join(", ")}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(importing || done) && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>{done ? "Complete" : "Saving…"}</span>
+                  <span>{progress.done} / {progress.total}{progress.errors > 0 ? ` (${progress.errors} errors)` : ""}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div className="h-full rounded-full bg-primary transition-all duration-200"
+                    style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            {!importing && !done && (
+              <>
+                <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Cancel</Button>
+                <Button onClick={() => void handleImport()} disabled={entries.length === 0}>
+                  Import {entries.length} entr{entries.length !== 1 ? "ies" : "y"}
+                </Button>
+              </>
+            )}
+            {importing && <Button disabled><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</Button>}
+            {done && <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Close</Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Standards tab
 // ---------------------------------------------------------------------------
 
@@ -502,7 +825,7 @@ function StandardsTab() {
   };
 
   const openNew = () => {
-    setEditing({ id: "", entry_key: newKey, source_type: null, citation_text: null, verification_status: "verify_before_ship", verified_at: null, authority_limit: null, locator_template: null, version: 0 });
+    setEditing({ id: "", entry_key: newKey, source_type: null, citation_text: null, verification_status: "verify_before_ship", verified_at: null, authority_limit: null, locator_template: null, human_entered_provisions_only: false, version: 0 });
     setForm({});
     setIsNew(true);
   };
@@ -511,12 +834,13 @@ function StandardsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Input placeholder="New entry key, e.g. ASTM-D3161" value={newKey} onChange={(e) => setNewKey(e.target.value)} className="max-w-xs" />
         <Button size="sm" onClick={openNew} disabled={!newKey.trim()}>
           <Plus className="h-3.5 w-3.5 mr-1.5" />
           Add
         </Button>
+        <StandardsMdImportButton onDone={() => qc.invalidateQueries({ queryKey: ["standards-entries"] })} />
       </div>
       <div className="space-y-2">
         {(data?.entries ?? []).map((entry) => (
@@ -580,6 +904,16 @@ function StandardsTab() {
               <Label>Locator Template</Label>
               <Input value={form.locator_template ?? ""} onChange={(e) => setForm(f => ({ ...f, locator_template: e.target.value }))} placeholder="Formatted reference for generated content" />
             </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="std-human-provisions"
+                checked={form.human_entered_provisions_only ?? false}
+                onChange={(e) => setForm(f => ({ ...f, human_entered_provisions_only: e.target.checked }))}
+                className="h-4 w-4 rounded border-border"
+              />
+              <Label htmlFor="std-human-provisions" className="font-normal cursor-pointer">Human-entered provisions only</Label>
+            </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setEditing(null); setIsNew(false); }}>Cancel</Button>
@@ -587,7 +921,14 @@ function StandardsTab() {
               variant="secondary"
               onClick={() => {
                 const key = isNew ? newKey : editing!.entry_key;
-                saveMutation.mutate({ entryKey: key, body: { ...form, markVerified: true } });
+                saveMutation.mutate({ entryKey: key, body: {
+                  sourceType: form.source_type ?? undefined,
+                  citationText: form.citation_text ?? undefined,
+                  authorityLimit: form.authority_limit ?? undefined,
+                  locatorTemplate: form.locator_template ?? undefined,
+                  humanEnteredProvisionsOnly: form.human_entered_provisions_only ?? false,
+                  markVerified: true,
+                }});
               }}
               disabled={saveMutation.isPending}
             >
@@ -597,7 +938,13 @@ function StandardsTab() {
             <Button
               onClick={() => {
                 const key = isNew ? newKey : editing!.entry_key;
-                saveMutation.mutate({ entryKey: key, body: { ...form } });
+                saveMutation.mutate({ entryKey: key, body: {
+                  sourceType: form.source_type ?? undefined,
+                  citationText: form.citation_text ?? undefined,
+                  authorityLimit: form.authority_limit ?? undefined,
+                  locatorTemplate: form.locator_template ?? undefined,
+                  humanEnteredProvisionsOnly: form.human_entered_provisions_only ?? false,
+                }});
               }}
               disabled={saveMutation.isPending}
             >
@@ -701,11 +1048,12 @@ function DetrimentTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Input placeholder="Entry key, e.g. DET-AS-01" value={newKey} onChange={(e) => setNewKey(e.target.value)} className="max-w-xs" />
         <Button size="sm" onClick={openNew} disabled={!newKey.trim()}>
           <Plus className="h-3.5 w-3.5 mr-1.5" />Add
         </Button>
+        <DetrimentMdImportButton onDone={() => qc.invalidateQueries({ queryKey: ["detriment-entries"] })} />
       </div>
 
       <div className="space-y-2">

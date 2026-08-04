@@ -1535,6 +1535,7 @@ export const standardsEntriesTable = pgTable('standards_entries', {
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
   authorityLimit: text('authority_limit'),
   locatorTemplate: text('locator_template'),
+  humanEnteredProvisionsOnly: boolean('human_entered_provisions_only').notNull().default(false),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   createdBy: varchar('created_by').references(() => usersTable.id, { onDelete: 'set null' }),

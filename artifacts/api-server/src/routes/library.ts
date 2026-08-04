@@ -178,8 +178,13 @@ const StandardsEntryBody = z.object({
   citationText: z.string().optional(),
   authorityLimit: z.string().optional(),
   locatorTemplate: z.string().optional(),
-  /** Pass true to mark this entry as verified (sets verifiedAt to now). */
+  /** Pass true to mark this entry as verified. */
   markVerified: z.boolean().optional(),
+  /** Explicit verified date (ISO string). Used by the .md importer. If omitted
+   *  and markVerified is true, defaults to now(). */
+  verifiedAt: z.string().optional(),
+  /** Whether this entry's provisions were authored by a human (not AI-generated). */
+  humanEnteredProvisionsOnly: z.boolean().optional(),
 });
 
 router.put('/report-settings/standards-entries/:entryKey', async (req: Request, res: Response) => {
@@ -210,7 +215,12 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
     : body.data.markVerified
     ? 'verified'
     : 'verify_before_ship';
-  const verifiedAt = verificationStatus === 'verified' ? new Date() : null;
+
+  // Use caller-supplied verifiedAt if present; otherwise default to now().
+  let verifiedAt: Date | null = null;
+  if (verificationStatus === 'verified') {
+    verifiedAt = body.data.verifiedAt ? new Date(body.data.verifiedAt) : new Date();
+  }
 
   const [inserted] = await db
     .insert(standardsEntriesTable)
@@ -223,6 +233,7 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
       verifiedAt,
       authorityLimit: body.data.authorityLimit ?? null,
       locatorTemplate: body.data.locatorTemplate ?? null,
+      humanEnteredProvisionsOnly: body.data.humanEnteredProvisionsOnly ?? false,
       version: nextVersion,
       createdBy: actor.userId,
     })

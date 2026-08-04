@@ -1,0 +1,22 @@
+The standards .md importer is dumping the entire file text into Citation Text and leaving Source Type, Authority Limit, and Locator Template empty. Replace the plain-text extraction with a field parser for the import format:
+
+1. Read the uploaded file as text. Drop any line starting with '#' (comments).
+2. Split the document on the delimiter line '=== ENTRY ===' — each resulting non-empty block is one standards entry.
+3. Within each block, parse line-by-line: split each line on the FIRST occurrence of ': ' into key and value. Keys are exactly: EntryKey, Title, SourceType, CitationText, AuthorityLimit, LocatorTemplate, VerificationAction, VerifiedAt, HumanEnteredProvisionsOnly.
+4. Map to columns:
+   - EntryKey → entryKey
+   - SourceType → sourceType
+   - CitationText → citationText
+   - AuthorityLimit → authorityLimit
+   - LocatorTemplate → locatorTemplate
+   - VerificationAction: 'mark_verified' → verificationStatus = 'verified' (set verifiedAt from the VerifiedAt field); 'save_only' → verificationStatus = 'verify_before_ship' (verifiedAt null)
+   - HumanEnteredProvisionsOnly ('true'/'false') → humanEnteredProvisionsOnly boolean
+   - VerifiedAt is optional — only present on verified entries
+5. Store values verbatim, including literal {placeholder} braces (STD-MFR-01 and others are per-use templates — braces are content, not template syntax to evaluate).
+6. Upsert by entryKey per the existing versioning rule: create a new version row, never mutate.
+7. Validation: reject any block missing EntryKey, SourceType, CitationText, AuthorityLimit, or LocatorTemplate, and show which block and which key failed — do not silently import partial entries. Reject unknown keys with a warning listing them.
+8. After import, the edit modal for each entry must show all four fields populated separately.
+
+Apply the same parser to the detriment library import if it shares the extraction code path — the detriment modal has the same symptom (entire entry dumped into Statement). Detriment format will use the same 'Field: value' convention; the applicabilityConditions field will be a comma-separated list of condition codes mapped to the multi-select chips.
+
+Test: import the standards file, open STD-WTR-01 in the modal, and confirm Source Type = "ANSI standard", Authority Limit and Locator Template each contain only their own text, verificationStatus = verified with verifiedAt = 2026-07-31, and humanEnteredProvisionsOnly = true.
