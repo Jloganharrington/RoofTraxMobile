@@ -59,14 +59,14 @@ const insurance: ServerStageDef[] = [
 ];
 
 const project: ServerStageDef[] = [
-  { pipeline: 'project', key: 'work_scheduled',          label: 'Work Scheduled',           isLoopStage: true,  isTerminal: false, order: 0 },
-  { pipeline: 'project', key: 'materials_ordered',       label: 'Materials Ordered',        isLoopStage: false, isTerminal: false, order: 1 },
-  { pipeline: 'project', key: 'work_started',            label: 'Work In Progress',         isLoopStage: false, isTerminal: false, order: 2 },
-  { pipeline: 'project', key: 'replacement_complete',    label: 'Replacement Complete',     isLoopStage: false, isTerminal: false, order: 3 },
-  { pipeline: 'project', key: 'certificate_of_completion', label: 'Certificate of Completion', isLoopStage: false, isTerminal: false, order: 4 },
-  { pipeline: 'project', key: 'final_payment_pending',   label: 'Final Payment Pending',    isLoopStage: true,  isTerminal: false, order: 5, autoAdvance: { eventType: 'final_payment_received' } },
-  { pipeline: 'project', key: 'final_payment_received',  label: 'Final Payment Received',   isLoopStage: false, isTerminal: false, order: 6 },
-  { pipeline: 'project', key: 'archived_complete',       label: 'Archived – Complete',      isLoopStage: false, isTerminal: true,  order: 7 },
+  { pipeline: 'project', key: 'pm_handoff',       label: 'PM Handoff',        isLoopStage: false, isTerminal: false, order: 0 },
+  { pipeline: 'project', key: 'pre_production',   label: 'Pre-Production',    isLoopStage: false, isTerminal: false, order: 1 },
+  { pipeline: 'project', key: 'materials_ordered',label: 'Materials Ordered', isLoopStage: false, isTerminal: false, order: 2 },
+  { pipeline: 'project', key: 'scheduled',        label: 'Scheduled',         isLoopStage: false, isTerminal: false, order: 3 },
+  { pipeline: 'project', key: 'in_production',    label: 'In Production',     isLoopStage: false, isTerminal: false, order: 4 },
+  { pipeline: 'project', key: 'complete',         label: 'Complete',          isLoopStage: false, isTerminal: false, order: 5, autoAdvance: { eventType: 'completion_package_generated' } },
+  { pipeline: 'project', key: 'final_invoiced',   label: 'Final Invoiced',    isLoopStage: true,  isTerminal: false, order: 6 },
+  { pipeline: 'project', key: 'closed_warranty',  label: 'Closed (Warranty)', isLoopStage: false, isTerminal: true,  order: 7 },
 ];
 
 /** All stage definitions, keyed by `${pipeline}:${key}` */

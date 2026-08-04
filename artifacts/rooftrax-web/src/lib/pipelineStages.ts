@@ -511,14 +511,33 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
   // PROJECT (8 stages)
   // ══════════════════════════════════════════════════════════════════════════
 
-  'project:work_scheduled': define({
+  'project:pm_handoff': define({
     pipeline: 'project',
-    key: 'work_scheduled',
-    label: 'Work Scheduled',
-    phase: 'production',
-    isLoopStage: true,
+    key: 'pm_handoff',
+    label: 'PM Handoff',
+    phase: 'handoff',
+    isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Order Materials' } },
+    exitTask: { type: 'Confirm', config: { label: 'Accept Handoff' } },
+  }),
+
+  'project:pre_production': define({
+    pipeline: 'project',
+    key: 'pre_production',
+    label: 'Pre-Production',
+    phase: 'production',
+    isLoopStage: false,
+    isTerminal: false,
+    exitTask: {
+      type: 'Fields',
+      config: {
+        label: 'Order Materials',
+        fields: [
+          { name: 'supplierName', label: 'Supplier Name', type: 'text' },
+          { name: 'etaDate',      label: 'ETA Date',      type: 'date' },
+        ],
+      },
+    },
   }),
 
   'project:materials_ordered': define({
@@ -528,64 +547,57 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     phase: 'production',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Mark Work Started' } },
+    exitTask: { type: 'DateRange', config: { label: 'Schedule Project' } },
   }),
 
-  'project:work_started': define({
+  'project:scheduled': define({
     pipeline: 'project',
-    key: 'work_started',
-    label: 'Work In Progress',
+    key: 'scheduled',
+    label: 'Scheduled',
     phase: 'production',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Mark Replacement Complete' } },
+    exitTask: { type: 'Confirm', config: { label: 'Start Project' } },
   }),
 
-  'project:replacement_complete': define({
+  'project:in_production': define({
     pipeline: 'project',
-    key: 'replacement_complete',
-    label: 'Replacement Complete',
+    key: 'in_production',
+    label: 'In Production',
     phase: 'production',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Upload', config: { label: 'Upload Certificate of Completion' } },
+    exitTask: { type: 'Confirm', config: { label: 'Mark Complete' } },
   }),
 
-  'project:certificate_of_completion': define({
+  'project:complete': define({
     pipeline: 'project',
-    key: 'certificate_of_completion',
-    label: 'Certificate of Completion',
+    key: 'complete',
+    label: 'Complete',
     phase: 'closeout',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Request Final Payment' } },
+    exitTask: {
+      type: 'ButtonLink',
+      config: { label: 'Open Completion Package', href: '/rooftrax-web/leads/:leadId' },
+    },
+    autoAdvance: { eventType: 'completion_package_generated' },
   }),
 
-  'project:final_payment_pending': define({
+  'project:final_invoiced': define({
     pipeline: 'project',
-    key: 'final_payment_pending',
-    label: 'Final Payment Pending',
+    key: 'final_invoiced',
+    label: 'Final Invoiced',
     phase: 'closeout',
     isLoopStage: true,
     isTerminal: false,
     exitTask: { type: 'MoneyConfirm', config: { label: 'Record Final Payment', moneyField: 'finalPaymentAmount' } },
-    autoAdvance: { eventType: 'final_payment_received' },
   }),
 
-  'project:final_payment_received': define({
+  'project:closed_warranty': define({
     pipeline: 'project',
-    key: 'final_payment_received',
-    label: 'Final Payment Received',
-    phase: 'closeout',
-    isLoopStage: false,
-    isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Archive as Complete' } },
-  }),
-
-  'project:archived_complete': define({
-    pipeline: 'project',
-    key: 'archived_complete',
-    label: 'Archived – Complete',
+    key: 'closed_warranty',
+    label: 'Closed (Warranty)',
     phase: 'closed',
     isLoopStage: false,
     isTerminal: true,

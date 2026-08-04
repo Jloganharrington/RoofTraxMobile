@@ -110,7 +110,7 @@ import type {
   EvidenceLink,
   InspectionEstimate,
 } from '@workspace/db';
-import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '../lib/permissions';
@@ -8178,6 +8178,109 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
     retailStage:     deriveRetailStage(r),
     createdAt:       r.createdAt.toISOString(),
   }));
+
+  res.json({ leads });
+});
+
+// ---------------------------------------------------------------------------
+// GET /project-pipeline
+// Returns all pins whose pipelineStage is in the 8-stage project pipeline.
+// Includes sourcePipeline, stageEnteredAt, loopNextActionAt, and pmHandoffAt
+// (the timestamp when the lead first entered pm_handoff, from stage_transitions).
+// ---------------------------------------------------------------------------
+
+const PROJECT_STAGE_KEYS = [
+  'pm_handoff',
+  'pre_production',
+  'materials_ordered',
+  'scheduled',
+  'in_production',
+  'complete',
+  'final_invoiced',
+  'closed_warranty',
+] as const;
+
+router.get('/project-pipeline', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const companyId = req.user.companyId;
+
+  const pins = await db
+    .select({
+      id:              pinsTable.id,
+      address:         pinsTable.address,
+      pipelineStage:   pinsTable.pipelineStage,
+      sourcePipeline:  pinsTable.sourcePipeline,
+      workflow:        pinsTable.workflow,
+      stageEnteredAt:  pinsTable.stageEnteredAt,
+      loopNextActionAt: pinsTable.loopNextActionAt,
+      damageType:      pinsTable.damageType,
+      customerName:    pinsTable.customerName,
+      createdAt:       pinsTable.createdAt,
+      repFirstName:    usersTable.firstName,
+      repLastName:     usersTable.lastName,
+    })
+    .from(pinsTable)
+    .leftJoin(usersTable, eq(usersTable.id, pinsTable.userId))
+    .where(
+      and(
+        eq(pinsTable.companyId, companyId),
+        inArray(pinsTable.pipelineStage, [...PROJECT_STAGE_KEYS]),
+      ),
+    )
+    .orderBy(desc(pinsTable.stageEnteredAt));
+
+  // Fetch pmHandoffAt: earliest stage_transitions row where toStage='pm_handoff'
+  // for each pin (records when the lead first converged into the project pipeline).
+  const pinIds = pins.map((p) => p.id);
+  const pmTransitions = pinIds.length > 0
+    ? await db
+        .select({
+          leadId:    stageTransitionsTable.leadId,
+          createdAt: stageTransitionsTable.createdAt,
+        })
+        .from(stageTransitionsTable)
+        .where(
+          and(
+            inArray(stageTransitionsTable.leadId, pinIds),
+            eq(stageTransitionsTable.toStage, 'pm_handoff'),
+          ),
+        )
+        .orderBy(asc(stageTransitionsTable.createdAt))
+    : [];
+
+  const pmHandoffAtMap = new Map<string, Date>();
+  for (const t of pmTransitions) {
+    if (t.leadId && !pmHandoffAtMap.has(t.leadId)) {
+      pmHandoffAtMap.set(t.leadId, t.createdAt as Date);
+    }
+  }
+
+  const leads = pins.map((p) => {
+    // For pins currently in pm_handoff, fall back to stageEnteredAt if no
+    // transition row exists yet (e.g. manually seeded via direct DB update).
+    const pmHandoffAt =
+      pmHandoffAtMap.get(p.id)?.toISOString() ??
+      (p.pipelineStage === 'pm_handoff' ? (p.stageEnteredAt?.toISOString() ?? null) : null);
+
+    return {
+      id:               p.id,
+      address:          p.address,
+      pipelineStage:    p.pipelineStage ?? '',
+      // sourcePipeline is set explicitly on leads that converged from a pipeline;
+      // fall back to workflow (always set at pin creation) for older pins.
+      sourcePipeline:   p.sourcePipeline ?? p.workflow ?? null,
+      stageEnteredAt:   p.stageEnteredAt?.toISOString() ?? null,
+      loopNextActionAt: p.loopNextActionAt?.toISOString() ?? null,
+      pmHandoffAt,
+      damageType:       p.damageType,
+      customerName:     p.customerName,
+      repName:          p.repFirstName
+        ? [p.repFirstName, p.repLastName].filter(Boolean).join(' ')
+        : null,
+      createdAt:        p.createdAt.toISOString(),
+    };
+  });
 
   res.json({ leads });
 });

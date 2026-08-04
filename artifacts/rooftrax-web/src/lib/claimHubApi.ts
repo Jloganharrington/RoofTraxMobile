@@ -350,6 +350,57 @@ export function useGetPipeline(
 }
 
 // ---------------------------------------------------------------------------
+// Project Pipeline
+// ---------------------------------------------------------------------------
+
+export interface ProjectPipelineLead {
+  id: string;
+  address: string | null;
+  pipelineStage: string;
+  /** 'retail' | 'insurance' — which pipeline the lead converged from */
+  sourcePipeline: string | null;
+  /** ISO timestamp when the lead entered its current pipelineStage */
+  stageEnteredAt: string | null;
+  loopNextActionAt: string | null;
+  /**
+   * ISO timestamp when the lead first entered pm_handoff.
+   * Used to compute the 21-day CFR supplement clock for insurance-sourced leads.
+   */
+  pmHandoffAt: string | null;
+  damageType: string | null;
+  customerName: string | null;
+  repName: string | null;
+  createdAt: string;
+}
+
+export const getProjectPipelineQueryKey = () => ['project-pipeline'] as const;
+
+export function useGetProjectPipeline(
+  options?: Omit<UseQueryOptions<{ leads: ProjectPipelineLead[] }>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getProjectPipelineQueryKey(),
+    queryFn: () => customFetch<{ leads: ProjectPipelineLead[] }>('/api/project-pipeline'),
+    ...options,
+  });
+}
+
+export function useAdvanceProjectStage(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AdvanceStagePayload) =>
+      customFetch<{ lead: FullLead }>(`/api/leads/${leadId}/advance-stage`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getProjectPipelineQueryKey() });
+      qc.invalidateQueries({ queryKey: getLeadQueryKey(leadId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Leads — full profile type + hooks
 // ---------------------------------------------------------------------------
 

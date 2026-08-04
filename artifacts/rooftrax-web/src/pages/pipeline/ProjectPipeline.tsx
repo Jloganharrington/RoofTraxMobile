@@ -1,40 +1,61 @@
 /**
- * Project Pipeline — Kanban accordion view.
- * Stages: PM Handoff → Materials → Scheduled → Complete → Final Payment → Archive
+ * Project Pipeline — 8-stage kanban (accordion) for converged Retail + Insurance projects.
+ *
+ * Stages (in order):
+ *   pm_handoff → pre_production → materials_ordered → scheduled →
+ *   in_production → complete → final_invoiced → closed_warranty (terminal)
+ *
+ * Cards carry a source badge (R = retail / I = insurance). Insurance-sourced
+ * cards show a CFR supplement clock counting down from the 21-day window that
+ * starts at pm_handoff entry. The closed_warranty column is hidden by default
+ * and revealed by the "Show Closed" toggle.
  */
-import { useMemo, useState } from "react";
-import { Link } from "wouter";
-import { Shell } from "@/components/layout/Shell";
-import { Skeleton } from "@/components/ui/skeleton";
-import { differenceInDays } from "date-fns";
-import { ChevronDown, ChevronRight, MapPin, Clock, Package } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useGetPipeline, type PipelineInspection } from "@/lib/claimHubApi";
+import { useMemo, useState } from 'react';
+import { Link } from 'wouter';
+import { Shell } from '@/components/layout/Shell';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StageCard } from '@/components/pipeline/StageCard';
+import { cn } from '@/lib/utils';
+import { ChevronDown, ChevronRight, ExternalLink, MapPin } from 'lucide-react';
+import {
+  useGetProjectPipeline,
+  useAdvanceProjectStage,
+  type ProjectPipelineLead,
+} from '@/lib/claimHubApi';
 
 // ---------------------------------------------------------------------------
 // Stage definitions
 // ---------------------------------------------------------------------------
 
-interface ProjStage {
+interface ProjStageDef {
   key: string;
   label: string;
-  statuses: string[];
   accent: string;
   textAccent: string;
+  isTerminal: boolean;
+  /** Stage key this stage's exit task advances to (undefined for terminal) */
+  toStage?: string;
 }
 
-const PROJ_STAGES: ProjStage[] = [
-  { key: 'pm_handoff',        label: 'Project Manager Handoff', statuses: ['project_pm_handoff'],    accent: 'border-blue-400',    textAccent: 'text-blue-400' },
-  { key: 'materials_orders',  label: 'Materials Ordered',        statuses: ['project_materials'],     accent: 'border-violet-400',  textAccent: 'text-violet-400' },
-  { key: 'project_scheduled', label: 'Project Scheduled',       statuses: ['project_scheduled'],     accent: 'border-amber-400',   textAccent: 'text-amber-400' },
-  { key: 'project_complete',  label: 'Project Complete',        statuses: ['project_complete'],      accent: 'border-emerald-400', textAccent: 'text-emerald-400' },
-  { key: 'final_payment',     label: 'Final Payment Received',  statuses: ['project_final_payment'], accent: 'border-green-400',   textAccent: 'text-green-400' },
-  { key: 'archive',           label: 'Archive',                 statuses: ['project_archived'],      accent: 'border-zinc-400',    textAccent: 'text-zinc-400' },
+const ALL_PROJ_STAGES: ProjStageDef[] = [
+  { key: 'pm_handoff',        label: 'PM Handoff',       accent: 'border-blue-400',    textAccent: 'text-blue-400',    isTerminal: false, toStage: 'pre_production'   },
+  { key: 'pre_production',    label: 'Pre-Production',   accent: 'border-violet-400',  textAccent: 'text-violet-400',  isTerminal: false, toStage: 'materials_ordered' },
+  { key: 'materials_ordered', label: 'Materials Ordered',accent: 'border-amber-400',   textAccent: 'text-amber-400',   isTerminal: false, toStage: 'scheduled'        },
+  { key: 'scheduled',         label: 'Scheduled',        accent: 'border-orange-400',  textAccent: 'text-orange-400',  isTerminal: false, toStage: 'in_production'    },
+  { key: 'in_production',     label: 'In Production',    accent: 'border-emerald-400', textAccent: 'text-emerald-400', isTerminal: false, toStage: 'complete'         },
+  { key: 'complete',          label: 'Complete',         accent: 'border-green-400',   textAccent: 'text-green-400',   isTerminal: false, toStage: 'final_invoiced'   },
+  { key: 'final_invoiced',    label: 'Final Invoiced',   accent: 'border-teal-400',    textAccent: 'text-teal-400',    isTerminal: false, toStage: 'closed_warranty'  },
+  { key: 'closed_warranty',   label: 'Closed (Warranty)',accent: 'border-zinc-400',    textAccent: 'text-zinc-400',    isTerminal: true                               },
 ];
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function daysSinceIso(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24);
+}
 
 function formatDamageType(dt: string | null | undefined): string {
   if (!dt) return '';
@@ -42,52 +63,359 @@ function formatDamageType(dt: string | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
-// Claim card
+// Source badge — "R" (retail, green) or "I" (insurance, blue)
 // ---------------------------------------------------------------------------
 
-function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
-  const daysInStage = inspection.updatedAt
-    ? differenceInDays(new Date(), new Date(inspection.updatedAt as string))
-    : null;
-  const hasPackage = (inspection.compiledReportVersions ?? []).length > 0;
+function SourceBadge({ source }: { source: string | null }) {
+  if (!source) return null;
+  const isIns = source === 'insurance';
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center justify-center text-[9px] font-black w-4 h-4 rounded-full shrink-0',
+        isIns
+          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+          : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+      )}
+      title={isIns ? 'Insurance pipeline' : 'Retail pipeline'}
+    >
+      {isIns ? 'I' : 'R'}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CFR supplement clock — 21-day window from pm_handoff entry
+// ---------------------------------------------------------------------------
+
+function CfrClock({ pmHandoffAt }: { pmHandoffAt: string | null }) {
+  const elapsed = daysSinceIso(pmHandoffAt);
+  if (elapsed === null) return null;
+  const remaining = 21 - Math.floor(elapsed);
+  const isExpired = remaining <= 0;
+  const isWarning = !isExpired && remaining <= 7;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center text-[9px] font-semibold px-1.5 py-0.5 rounded',
+        isExpired
+          ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+          : isWarning
+            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+            : 'bg-muted text-muted-foreground',
+      )}
+      title="Days remaining in 21-day CFR supplement window from PM Handoff"
+    >
+      CFR&nbsp;{isExpired ? 'expired' : `${remaining}d`}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Exit-task widgets
+// ---------------------------------------------------------------------------
+
+function ConfirmWidget({
+  label,
+  onConfirm,
+  isPending,
+}: {
+  label: string;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onConfirm(); }}
+      disabled={isPending}
+      className="w-full mt-2 text-[11px] font-medium px-2 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+    >
+      {isPending ? 'Saving…' : label}
+    </button>
+  );
+}
+
+function FieldsWidget({
+  fields,
+  submitLabel,
+  onSubmit,
+  isPending,
+}: {
+  fields: Array<{ name: string; label: string; type: 'text' | 'date' }>;
+  submitLabel: string;
+  onSubmit: (values: Record<string, string>) => void;
+  isPending: boolean;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(
+    () => Object.fromEntries(fields.map((f) => [f.name, ''])),
+  );
+  const set = (name: string, val: string) =>
+    setValues((prev) => ({ ...prev, [name]: val }));
 
   return (
-    <Link href={inspection.pinId ? `/leads/${inspection.pinId}` : `/leads/ins-${inspection.id}`}>
-      <div className="group rounded-xl border bg-card hover:bg-card/80 p-3 cursor-pointer transition-all hover:shadow-md space-y-2 h-full">
-        <div className="flex items-start gap-2">
-          <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-          <span className="text-xs font-medium leading-tight line-clamp-2 flex-1">
-            {inspection.address ?? 'Unknown address'}
-          </span>
+    <form
+      onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); onSubmit(values); }}
+      onClick={(e) => e.stopPropagation()}
+      className="mt-2 space-y-1.5"
+    >
+      {fields.map((f) => (
+        <div key={f.name}>
+          <label className="text-[10px] text-muted-foreground block mb-0.5">{f.label}</label>
+          <input
+            type={f.type}
+            value={values[f.name]}
+            onChange={(e) => set(f.name, e.target.value)}
+            className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder={f.type === 'text' ? f.label : undefined}
+          />
         </div>
+      ))}
+      <button
+        type="submit"
+        disabled={isPending}
+        className="w-full text-[11px] font-medium px-2 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+      >
+        {isPending ? 'Saving…' : submitLabel}
+      </button>
+    </form>
+  );
+}
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {hasPackage && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-              <Package className="h-2.5 w-2.5" />
-              Package
-            </span>
-          )}
-          {inspection.damageType && (
-            <span className="text-[10px] text-muted-foreground">
-              {formatDamageType(inspection.damageType)}
-            </span>
-          )}
-        </div>
+function DateRangeWidget({
+  submitLabel,
+  onSubmit,
+  isPending,
+}: {
+  submitLabel: string;
+  onSubmit: (startDate: string, endDate: string) => void;
+  isPending: boolean;
+}) {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate]     = useState('');
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); onSubmit(startDate, endDate); }}
+      onClick={(e) => e.stopPropagation()}
+      className="mt-2 space-y-1.5"
+    >
+      <div>
+        <label className="text-[10px] text-muted-foreground block mb-0.5">Start Date</label>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <div>
+        <label className="text-[10px] text-muted-foreground block mb-0.5">End Date</label>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={isPending}
+        className="w-full text-[11px] font-medium px-2 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+      >
+        {isPending ? 'Saving…' : submitLabel}
+      </button>
+    </form>
+  );
+}
 
-        <div className="flex items-center justify-between pt-1 border-t border-border/50">
-          <span className="text-[10px] text-muted-foreground truncate max-w-[110px]">
-            {inspection.repName ?? <span className="italic opacity-50">No rep</span>}
-          </span>
-          {daysInStage !== null && (
-            <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
-              {daysInStage === 0 ? 'today' : `${daysInStage}d`}
+function MoneyConfirmWidget({
+  submitLabel,
+  fieldLabel,
+  onConfirm,
+  isPending,
+}: {
+  submitLabel: string;
+  fieldLabel: string;
+  onConfirm: (amount: string) => void;
+  isPending: boolean;
+}) {
+  const [amount, setAmount] = useState('');
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); onConfirm(amount); }}
+      onClick={(e) => e.stopPropagation()}
+      className="mt-2 space-y-1.5"
+    >
+      <div>
+        <label className="text-[10px] text-muted-foreground block mb-0.5">{fieldLabel}</label>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-full text-[11px] border border-input rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          placeholder="0.00"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={isPending}
+        className="w-full text-[11px] font-medium px-2 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+      >
+        {isPending ? 'Saving…' : submitLabel}
+      </button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Project card
+// ---------------------------------------------------------------------------
+
+function ProjectCard({
+  lead,
+  stageKey,
+  toStage,
+}: {
+  lead: ProjectPipelineLead;
+  stageKey: string;
+  toStage?: string;
+}) {
+  const advance   = useAdvanceProjectStage(lead.id);
+  const isIns     = lead.sourcePipeline === 'insurance';
+
+  return (
+    <div className="relative">
+      {/* Navigate to lead detail on card body click */}
+      <Link href={`/leads/${lead.id}`} className="block">
+        <StageCard stageEnteredAt={lead.stageEnteredAt} className="h-full">
+          {/* Address + source badge */}
+          <div className="flex items-start gap-1.5">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+            <span className="text-xs font-medium leading-tight line-clamp-2 flex-1 min-w-0">
+              {lead.address ?? 'Unknown address'}
+            </span>
+            <SourceBadge source={lead.sourcePipeline} />
+          </div>
+
+          {/* Customer name */}
+          {lead.customerName && (
+            <p className="text-[10px] text-muted-foreground truncate mt-1">
+              {lead.customerName}
+            </p>
+          )}
+
+          {/* CFR clock for insurance leads that have entered pm_handoff */}
+          {isIns && lead.pmHandoffAt && (
+            <div className="mt-1">
+              <CfrClock pmHandoffAt={lead.pmHandoffAt} />
             </div>
           )}
-        </div>
+
+          {/* Damage type */}
+          {lead.damageType && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {formatDamageType(lead.damageType)}
+            </p>
+          )}
+
+          {/* Footer: rep + link icon */}
+          <div className="flex items-center gap-1 pt-1.5 mt-1 border-t border-border/40">
+            <span className="text-[10px] text-muted-foreground truncate flex-1">
+              {lead.repName ?? <span className="italic opacity-50">No rep</span>}
+            </span>
+            <ExternalLink className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+          </div>
+        </StageCard>
+      </Link>
+
+      {/* Exit-task widget — rendered below the card so clicks don't trigger Link navigation */}
+      <div className="mt-1.5 px-0.5">
+        {stageKey === 'pm_handoff' && toStage && (
+          <ConfirmWidget
+            label="Accept Handoff"
+            isPending={advance.isPending}
+            onConfirm={() =>
+              advance.mutate({
+                toStage,
+                trigger: 'task',
+                taskPayload: { pmHandoffAt: new Date().toISOString() },
+              })
+            }
+          />
+        )}
+
+        {stageKey === 'pre_production' && toStage && (
+          <FieldsWidget
+            fields={[
+              { name: 'supplierName', label: 'Supplier Name', type: 'text' },
+              { name: 'etaDate',      label: 'ETA Date',      type: 'date' },
+            ]}
+            submitLabel="Order Materials"
+            isPending={advance.isPending}
+            onSubmit={(values) =>
+              advance.mutate({ toStage, trigger: 'task', taskPayload: values })
+            }
+          />
+        )}
+
+        {stageKey === 'materials_ordered' && toStage && (
+          <DateRangeWidget
+            submitLabel="Schedule Project"
+            isPending={advance.isPending}
+            onSubmit={(startDate, endDate) =>
+              advance.mutate({
+                toStage,
+                trigger: 'task',
+                taskPayload: { startDate, endDate },
+              })
+            }
+          />
+        )}
+
+        {stageKey === 'scheduled' && toStage && (
+          <ConfirmWidget
+            label="Start Project"
+            isPending={advance.isPending}
+            onConfirm={() => advance.mutate({ toStage, trigger: 'task' })}
+          />
+        )}
+
+        {stageKey === 'in_production' && toStage && (
+          <ConfirmWidget
+            label="Mark Complete"
+            isPending={advance.isPending}
+            onConfirm={() => advance.mutate({ toStage, trigger: 'task' })}
+          />
+        )}
+
+        {stageKey === 'complete' && (
+          <Link
+            href={`/leads/${lead.id}`}
+            className="block w-full text-[11px] font-medium px-2 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-center"
+          >
+            Open Completion Package
+          </Link>
+        )}
+
+        {stageKey === 'final_invoiced' && toStage && (
+          <MoneyConfirmWidget
+            submitLabel="Record Final Payment"
+            fieldLabel="Payment Amount ($)"
+            isPending={advance.isPending}
+            onConfirm={(amount) =>
+              advance.mutate({
+                toStage,
+                trigger: 'task',
+                taskPayload: { finalPaymentAmount: amount },
+              })
+            }
+          />
+        )}
+        {/* closed_warranty: terminal — no exit widget */}
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -96,24 +424,26 @@ function ClaimCard({ inspection }: { inspection: PipelineInspection }) {
 // ---------------------------------------------------------------------------
 
 interface AccordionSectionProps {
-  stage: ProjStage;
-  stageNumber: number;
-  cards: PipelineInspection[];
+  stage: ProjStageDef;
+  cards: ProjectPipelineLead[];
   isLoading: boolean;
   open: boolean;
   onToggle: () => void;
 }
 
-function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onToggle }: AccordionSectionProps) {
+function AccordionSection({ stage, cards, isLoading, open, onToggle }: AccordionSectionProps) {
   return (
-    <div className={cn("rounded-2xl border bg-card overflow-hidden border-l-4", stage.accent)}>
+    <div className={cn('rounded-2xl border bg-card overflow-hidden border-l-4', stage.accent)}>
       <button
         type="button"
         onClick={onToggle}
         className="w-full flex items-center gap-2.5 px-4 py-3.5 hover:bg-muted/20 transition-colors text-left"
       >
-        <span className={cn("text-sm font-semibold flex-1", stage.textAccent)}>{stage.label}</span>
-        <span className={cn("text-sm font-bold tabular-nums mr-1", stage.textAccent)}>
+        <span className={cn('text-sm font-semibold flex-1', stage.textAccent)}>{stage.label}</span>
+        {stage.isTerminal && (
+          <span className="text-[10px] font-medium text-muted-foreground/50 mr-1">terminal</span>
+        )}
+        <span className={cn('text-sm font-bold tabular-nums mr-1', stage.textAccent)}>
           {isLoading ? '—' : cards.length}
         </span>
         {open
@@ -125,17 +455,24 @@ function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onTo
       {open && (
         <div className="px-4 pb-4 pt-2 border-t border-border/30 bg-muted/10">
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
-              <Skeleton className="h-24 w-full rounded-xl" />
-              <Skeleton className="h-24 w-full rounded-xl opacity-70" />
-              <Skeleton className="h-24 w-full rounded-xl opacity-40" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-2">
+              <Skeleton className="h-28 w-full rounded-xl" />
+              <Skeleton className="h-28 w-full rounded-xl opacity-70" />
+              <Skeleton className="h-28 w-full rounded-xl opacity-40" />
             </div>
           ) : cards.length === 0 ? (
-            <p className="text-xs text-muted-foreground/40 italic py-5 text-center">No projects in this stage</p>
+            <p className="text-xs text-muted-foreground/40 italic py-5 text-center">
+              No projects in this stage
+            </p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
-              {cards.map((insp) => (
-                <ClaimCard key={insp.id} inspection={insp} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-2">
+              {cards.map((lead) => (
+                <ProjectCard
+                  key={lead.id}
+                  lead={lead}
+                  stageKey={stage.key}
+                  toStage={stage.toStage}
+                />
               ))}
             </div>
           )}
@@ -150,29 +487,30 @@ function AccordionSection({ stage, stageNumber: _n, cards, isLoading, open, onTo
 // ---------------------------------------------------------------------------
 
 export default function ProjectPipeline() {
-  const { data, isLoading } = useGetPipeline();
-  const inspections = data?.inspections ?? [];
+  const { data, isLoading } = useGetProjectPipeline();
+  const leads = data?.leads ?? [];
 
-  const statusToStageKey = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const stage of PROJ_STAGES) {
-      for (const s of stage.statuses) map.set(s, stage.key);
-    }
-    return map;
-  }, []);
+  const [showClosed, setShowClosed] = useState(false);
+
+  const visibleStages = showClosed
+    ? ALL_PROJ_STAGES
+    : ALL_PROJ_STAGES.filter((s) => s.key !== 'closed_warranty');
 
   const grouped = useMemo(() => {
-    const map = new Map<string, PipelineInspection[]>();
-    for (const stage of PROJ_STAGES) map.set(stage.key, []);
-    for (const insp of inspections) {
-      const stageKey = statusToStageKey.get(insp.status) ?? null;
-      if (stageKey) map.get(stageKey)?.push(insp);
+    const map = new Map<string, ProjectPipelineLead[]>();
+    for (const s of ALL_PROJ_STAGES) map.set(s.key, []);
+    for (const lead of leads) {
+      map.get(lead.pipelineStage)?.push(lead);
     }
     return map;
-  }, [inspections, statusToStageKey]);
+  }, [leads]);
 
+  const activeCount = leads.filter((l) => l.pipelineStage !== 'closed_warranty').length;
+  const closedCount = grouped.get('closed_warranty')?.length ?? 0;
+
+  // All non-terminal stages open by default; closed_warranty collapsed until toggled.
   const [openStages, setOpenStages] = useState<Set<string>>(
-    () => new Set(PROJ_STAGES.map((s) => s.key))
+    () => new Set(ALL_PROJ_STAGES.filter((s) => !s.isTerminal).map((s) => s.key)),
   );
 
   const toggle = (key: string) => {
@@ -184,22 +522,46 @@ export default function ProjectPipeline() {
     });
   };
 
-  const totalProjects = inspections.length;
-
   return (
     <Shell>
       <div className="space-y-4 max-w-6xl">
-        <div className="flex items-start justify-between">
+        {/* Header */}
+        <div className="flex items-start justify-between flex-wrap gap-2">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Project Pipeline</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {isLoading ? 'Loading…' : `${totalProjects} project${totalProjects !== 1 ? 's' : ''} across all stages`}
+              {isLoading
+                ? 'Loading…'
+                : `${activeCount} active project${activeCount !== 1 ? 's' : ''}${
+                    closedCount > 0 ? ` · ${closedCount} closed` : ''
+                  }`}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Show Closed toggle */}
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showClosed}
+                onChange={(e) => {
+                  setShowClosed(e.target.checked);
+                  if (e.target.checked) {
+                    setOpenStages((prev) => new Set([...prev, 'closed_warranty']));
+                  }
+                }}
+                className="rounded border-border"
+              />
+              Show Closed
+              {closedCount > 0 && (
+                <span className="text-[10px] tabular-nums bg-muted px-1.5 py-0.5 rounded-full">
+                  {closedCount}
+                </span>
+              )}
+            </label>
+            <span className="text-muted-foreground/30 text-xs">·</span>
             <button
               type="button"
-              onClick={() => setOpenStages(new Set(PROJ_STAGES.map((s) => s.key)))}
+              onClick={() => setOpenStages(new Set(visibleStages.map((s) => s.key)))}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Expand all
@@ -215,10 +577,10 @@ export default function ProjectPipeline() {
           </div>
         </div>
 
-        {/* Stage menu — horizontal scrollable pills showing count per stage */}
+        {/* Stage pills — horizontal scrollable overview */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
-          {PROJ_STAGES.map(stage => {
-            const count = grouped.get(stage.key)?.length ?? 0;
+          {visibleStages.map((stage) => {
+            const count  = grouped.get(stage.key)?.length ?? 0;
             const active = openStages.has(stage.key);
             return (
               <button
@@ -235,10 +597,12 @@ export default function ProjectPipeline() {
               >
                 {stage.label}
                 {count > 0 && (
-                  <span className={cn(
-                    'min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold',
-                    active ? 'bg-foreground/15' : 'bg-foreground/10',
-                  )}>
+                  <span
+                    className={cn(
+                      'min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold',
+                      active ? 'bg-foreground/15' : 'bg-foreground/10',
+                    )}
+                  >
                     {count}
                   </span>
                 )}
@@ -247,12 +611,12 @@ export default function ProjectPipeline() {
           })}
         </div>
 
+        {/* Stage accordions */}
         <div className="space-y-2">
-          {PROJ_STAGES.map((stage, idx) => (
+          {visibleStages.map((stage) => (
             <AccordionSection
               key={stage.key}
               stage={stage}
-              stageNumber={idx + 1}
               cards={grouped.get(stage.key) ?? []}
               isLoading={isLoading}
               open={openStages.has(stage.key)}
