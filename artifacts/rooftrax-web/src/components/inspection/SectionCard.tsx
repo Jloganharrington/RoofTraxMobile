@@ -54,12 +54,12 @@ export const SECTION_META: Record<
   },
   causation: {
     label: "Causation",
-    upstream: ["findings"],
+    upstream: [],
     hasCausationGate: true,
   },
   detriment_application: {
     label: "Detriment Application",
-    upstream: ["causation"],
+    upstream: [],
     hasCausationGate: true,
   },
   rap_narrative: {

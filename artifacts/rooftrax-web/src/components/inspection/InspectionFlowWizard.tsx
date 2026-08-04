@@ -12,6 +12,7 @@
  */
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Tabs,
   TabsContent,
@@ -23,6 +24,7 @@ import {
   getGetInspectionQueryKey,
   useGetInspectionEstimate,
   getGetInspectionEstimateQueryKey,
+  customFetch,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +65,7 @@ import {
   ChevronDown,
   Clock,
   FileText,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -75,7 +78,9 @@ import {
   useDeliverPackage,
   useGetEvents,
   useRecordClaimEvent,
+  getSectionsQueryKey,
   type ReadinessItem,
+  type SectionType,
 } from "@/lib/claimHubApi";
 import { useGetCuration } from "@/lib/curationApi";
 import {
@@ -732,16 +737,21 @@ function StagePanel({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main wizard
-// ---------------------------------------------------------------------------
-
+/** The five sections that generate independently — no upstream section required. */
+const INDEPENDENT_SECTION_TYPES: SectionType[] = [
+  "findings",
+  "causation",
+  "detriment_application",
+  "rap_narrative",
+  "estimate_justifications",
+];
 export function InspectionFlowWizard({
   inspectionId,
 }: {
   inspectionId: string;
 }) {
   const { toast } = useToast();
+  const qc = useQueryClient();
 
   // ── Data fetching ────────────────────────────────────────────────────────
   const { data: readiness, isLoading: loadingReadiness } =
@@ -776,7 +786,10 @@ export function InspectionFlowWizard({
   const deliverPackage = useDeliverPackage(inspectionId);
   const recordEvent = useRecordClaimEvent(inspectionId);
 
-  // ── Attestation dialog ───────────────────────────────────────────────────
+  // ── Generate All Ready ───────────────────────────────────────────────────
+  const [generatingAll, setGeneratingAll] = useState(false);
+
+  // Attestation dialog ───────────────────────────────────────────────────
   const [attestDialogOpen, setAttestDialogOpen] = useState(false);
   const [attestAcknowledged, setAttestAcknowledged] = useState(false);
 
@@ -871,6 +884,37 @@ export function InspectionFlowWizard({
     sections.length > 0 && sections.every((s) => s.state === "locked");
   const canCompile =
     !compileReport.isPending && (!hasRealSections || allSectionsLocked);
+
+  // Independent sections not yet started — eligible for "Generate All Ready"
+  const notStartedIndependent = INDEPENDENT_SECTION_TYPES.filter((t) => {
+    const s = sections.find((sec) => sec.sectionType === t);
+    return !s || s.state === "not_started";
+  });
+  const showGenerateAllReady =
+    !!readiness?.overallPass && notStartedIndependent.length > 0;
+
+  const handleGenerateAll = async () => {
+    setGeneratingAll(true);
+    try {
+      await Promise.all(
+        notStartedIndependent.map((sType) =>
+          customFetch(
+            `/api/inspections/${inspectionId}/sections/${sType}/generate`,
+            { method: "POST" },
+          ),
+        ),
+      );
+    } catch {
+      toast({
+        title: "Generate All failed",
+        description: "One or more sections failed to generate. Check each section for details.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingAll(false);
+      qc.invalidateQueries({ queryKey: getSectionsQueryKey(inspectionId) });
+    }
+  };
 
   const pkgCompiled = compiledVersions.length > 0;
   const isAttested = attestationData?.attested === true;
@@ -1125,6 +1169,26 @@ export function InspectionFlowWizard({
               Stage readiness must pass before generating sections.
             </p>
           </div>
+        )}
+
+        {/* Generate All Ready button */}
+        {showGenerateAllReady && (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={generatingAll}
+            onClick={handleGenerateAll}
+            className="w-full"
+          >
+            {generatingAll ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+            ) : (
+              <Zap className="h-3.5 w-3.5 mr-2" />
+            )}
+            {generatingAll
+              ? `Generating ${notStartedIndependent.length} section(s)…`
+              : `Generate All Ready (${notStartedIndependent.length})`}
+          </Button>
         )}
 
         {loadingSections ? (

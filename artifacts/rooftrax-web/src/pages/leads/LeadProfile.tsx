@@ -87,6 +87,7 @@ import {
 // Tab config
 // ---------------------------------------------------------------------------
 
+
 type TabId = 'dashboard' | 'inspection_flow' | 'insurance' | 'financials' | 'communication' | 'scope' | 'files';
 
 function buildTabs(isInsurance: boolean, hasInspection: boolean) {
