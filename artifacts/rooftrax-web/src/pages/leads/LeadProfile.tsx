@@ -151,8 +151,9 @@ function TextareaField({ label, name, value, onChange, rows = 4, placeholder }: 
 
 interface FormState {
   ownerFirstName: string; ownerLastName: string; ownerEmail: string;
+  hasSecondOwner: boolean;
   owner2FirstName: string; owner2LastName: string;
-  customerName: string; customerPhone: string;
+  customerPhone: string;
   notes: string; statusNotes: string; pipelineStage: string; profileStatus: string;
   // Property
   nonOwnerOccupied: boolean;
@@ -190,9 +191,9 @@ function initForm(lead: FullLead): FormState {
     ownerFirstName:       toStr(lead.ownerFirstName),
     ownerLastName:        toStr(lead.ownerLastName),
     ownerEmail:           toStr(lead.ownerEmail),
+    hasSecondOwner:       !!(lead.owner2FirstName || lead.owner2LastName),
     owner2FirstName:      toStr(lead.owner2FirstName),
     owner2LastName:       toStr(lead.owner2LastName),
-    customerName:         toStr(lead.customerName),
     customerPhone:        toStr(lead.customerPhone),
     notes:                toStr(lead.notes),
     statusNotes:          toStr(lead.statusNotes),
@@ -247,7 +248,7 @@ function initForm(lead: FullLead): FormState {
 const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
   dashboard:       [
     'ownerFirstName','ownerLastName','ownerEmail','owner2FirstName','owner2LastName',
-    'customerName','customerPhone',
+    'hasSecondOwner','customerPhone',
     'nonOwnerOccupied','mailingAddress','mailingCity','mailingState','mailingZip',
     'mailerSentDate','claimFiledDate','policyHolder','coverageType',
     'approvedRcvAmount','approvedAcvAmount','depreciationAmount','inspectionNotes',
@@ -329,17 +330,30 @@ function DashboardTab({
         )}
 
         <FieldGroup title="Primary Contact">
-          <Field label="First Name"   name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
-          <Field label="Last Name"    name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
-          <Field label="Email"        name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
-          <Field label="Phone"        name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
-          <Field label="Display Name" name="customerName"   value={form.customerName}   onChange={onField} span2 placeholder="Shown on cards and reports" />
+          <Field label="First Name" name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
+          <Field label="Last Name"  name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
+          <Field label="Email"      name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
+          <Field label="Phone"      name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
+          <div className="sm:col-span-2 flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="hasSecondOwner"
+              checked={form.hasSecondOwner}
+              onChange={e => onCheck('hasSecondOwner', e.target.checked)}
+              className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+            />
+            <Label htmlFor="hasSecondOwner" className="text-sm font-normal cursor-pointer">
+              Second owner
+            </Label>
+          </div>
         </FieldGroup>
 
-        <FieldGroup title="Secondary Owner">
-          <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
-          <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
-        </FieldGroup>
+        {form.hasSecondOwner && (
+          <FieldGroup title="Second Owner">
+            <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
+            <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
+          </FieldGroup>
+        )}
       </div>
 
       {/* ── Right: Lead Info ─────────────────────────────────────────── */}
