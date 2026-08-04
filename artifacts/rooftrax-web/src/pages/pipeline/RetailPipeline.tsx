@@ -1,6 +1,7 @@
 /**
  * Retail Pipeline — 10-stage inline exit-task kanban.
  * Every stage exit is performable from the card in ≤2 clicks.
+ * archived_lost leads are hidden by default — toggle "Show Lost" to reveal them.
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'wouter';
@@ -402,6 +403,13 @@ export default function RetailPipeline() {
   const { data, isLoading } = useGetRetailPipeline();
   const leads = data?.leads ?? [];
 
+  // archived_lost hidden by default; toggle to reveal
+  const [showLost, setShowLost] = useState(false);
+
+  const visibleCols = showLost
+    ? RETAIL_STAGE_COLS
+    : RETAIL_STAGE_COLS.filter((c) => c.key !== 'archived_lost');
+
   const grouped = useMemo(() => {
     const map = new Map<string, RetailLead[]>();
     for (const col of RETAIL_STAGE_COLS) map.set(col.key, []);
@@ -415,6 +423,11 @@ export default function RetailPipeline() {
     }
     return map;
   }, [leads]);
+
+  const lostCount = grouped.get('archived_lost')?.length ?? 0;
+  const activeCount = leads.filter(
+    (l) => (l.stageKey ?? l.retailStage) !== 'archived_lost',
+  ).length;
 
   // Start with all non-terminal stages open
   const [openStages, setOpenStages] = useState<Set<string>>(
@@ -435,19 +448,40 @@ export default function RetailPipeline() {
   return (
     <Shell>
       <div className="space-y-4 max-w-6xl">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between flex-wrap gap-2">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Retail Pipeline</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {isLoading
                 ? 'Loading…'
-                : `${leads.length} lead${leads.length !== 1 ? 's' : ''} across all stages`}
+                : `${activeCount} active lead${activeCount !== 1 ? 's' : ''}${lostCount > 0 ? ` · ${lostCount} lost` : ''}`}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Show Lost toggle */}
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showLost}
+                onChange={(e) => {
+                  setShowLost(e.target.checked);
+                  if (e.target.checked) {
+                    setOpenStages((prev) => new Set([...prev, 'archived_lost']));
+                  }
+                }}
+                className="rounded border-border"
+              />
+              Show Lost
+              {lostCount > 0 && (
+                <span className="text-[10px] tabular-nums bg-muted px-1.5 py-0.5 rounded-full">
+                  {lostCount}
+                </span>
+              )}
+            </label>
+            <span className="text-muted-foreground/30 text-xs">·</span>
             <button
               type="button"
-              onClick={() => setOpenStages(new Set(RETAIL_STAGE_COLS.map((c) => c.key)))}
+              onClick={() => setOpenStages(new Set(visibleCols.map((c) => c.key)))}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Expand all
@@ -465,7 +499,7 @@ export default function RetailPipeline() {
 
         {/* Stage pill nav */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
-          {RETAIL_STAGE_COLS.map((col) => {
+          {visibleCols.map((col) => {
             const count = grouped.get(col.key)?.length ?? 0;
             const active = openStages.has(col.key);
             return (
@@ -504,7 +538,7 @@ export default function RetailPipeline() {
 
         {/* Kanban columns */}
         <div className="space-y-2">
-          {RETAIL_STAGE_COLS.map((col) => (
+          {visibleCols.map((col) => (
             <AccordionSection
               key={col.key}
               col={col}
