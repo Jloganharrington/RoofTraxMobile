@@ -1250,7 +1250,7 @@ export default function LibraryPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">BP/AHJ Library</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Proof Package Data</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Manage the per-tenant boilerplate, standards citations, detriment entries, and AHJ
               jurisdiction packs used by the AI generation pipeline.

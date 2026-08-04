@@ -13,6 +13,7 @@ import {
   FileText,
   BarChart2,
   Receipt,
+  BookOpen,
   Users,
   ShieldCheck,
   Settings,
@@ -61,10 +62,11 @@ const NAV_SECTIONS: NavSection[] = [
   {
     heading: "Data & Tools",
     items: [
-      { label: "Price Book",        path: "/price-book",        icon: DollarSign },
-      { label: "Templates",         path: "/templates",         icon: FileText },
-      { label: "Reports",           path: "/reports",           icon: BarChart2 },
-      { label: "Commission Report", path: "/commission-report", icon: Receipt },
+      { label: "Price Book",         path: "/price-book",        icon: DollarSign },
+      { label: "Templates",          path: "/templates",         icon: FileText },
+      { label: "Reports",            path: "/reports",           icon: BarChart2 },
+      { label: "Commission Report",  path: "/commission-report", icon: Receipt },
+      { label: "Proof Package Data", path: "/settings/library",  icon: BookOpen },
     ],
   },
   {
