@@ -20,6 +20,7 @@ import agreementRouter from "./agreement";
 import portalRouter from "./portal";
 import libraryRouter from "./library";
 import ahjWizardRouter from "./ahjWizard";
+import pipelineEventsRouter from "./pipelineEvents";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(agreementRouter);
 router.use(portalRouter);
 router.use(libraryRouter);
 router.use(ahjWizardRouter);
+router.use(pipelineEventsRouter);
 
 export default router;

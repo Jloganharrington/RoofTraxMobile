@@ -207,6 +207,16 @@ export const pinsTable = pgTable('pins', {
   depreciationAmount: varchar('depreciation_amount'),
   inspectionNotes:    text('inspection_notes'),
 
+  // ── Pipeline tracking ──────────────────────────────────────────────────────
+  /** Timestamp when the pin entered its current pipelineStage */
+  stageEnteredAt:   timestamp('stage_entered_at',    { withTimezone: true }),
+  /** For loop stages: when the next action is due */
+  loopNextActionAt: timestamp('loop_next_action_at', { withTimezone: true }),
+  /** Reason for archiving as lost (required when pipelineStage = 'archived_lost') */
+  lossReason:       varchar('loss_reason'),
+  /** Which pipeline this pin belongs to ('retail' | 'insurance') */
+  sourcePipeline:   varchar('source_pipeline'),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -293,11 +303,7 @@ export type InsertPin = typeof pinsTable.$inferInsert;
 export type UserLocation = typeof userLocationsTable.$inferSelect;
 export type ObjectOwnership = typeof objectOwnershipTable.$inferSelect;
 
-// ---------------------------------------------------------------------------
-// Price Book
-// ---------------------------------------------------------------------------
-// Inspection conditions that can trigger a package recommendation. `null`
-// means the package is always available for manual selection.
+export const STAGE_TRANSITION_TRIGGERS = ['task', 'auto_event', 'manual_move'] as const;
 export const INSPECTION_CONDITIONS = [
   'roof_damage',
   'siding_damage',
@@ -442,3 +448,30 @@ export const leadFilesTable = pgTable('lead_files', {
 });
 
 export type LeadFile = typeof leadFilesTable.$inferSelect;
+
+export const stageTransitionsTable = pgTable('stage_transitions', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  /** The pin id this transition belongs to */
+  leadId: varchar('lead_id').notNull(),
+  /** Stage the pin was in before the move (null for first assignment) */
+  fromStage: varchar('from_stage'),
+  /** Stage the pin moved into */
+  toStage: varchar('to_stage').notNull(),
+  /** What initiated the move */
+  trigger: varchar('trigger', { enum: STAGE_TRANSITION_TRIGGERS }).notNull(),
+  /** Arbitrary widget/task data submitted alongside the move */
+  taskPayload: jsonb('task_payload'),
+  /** User who initiated the move (null for auto_event triggers) */
+  userId: varchar('user_id').references(() => usersTable.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type StageTransitionTrigger = (typeof STAGE_TRANSITION_TRIGGERS)[number];
+
+export type InsertStageTransition = typeof stageTransitionsTable.$inferInsert;
+
+export type StageTransition = typeof stageTransitionsTable.$inferSelect;

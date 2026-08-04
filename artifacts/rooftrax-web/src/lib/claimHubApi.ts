@@ -434,6 +434,11 @@ export interface FullLead {
   approvedAcvAmount: string | null;
   depreciationAmount: string | null;
   inspectionNotes: string | null;
+  // Pipeline tracking
+  stageEnteredAt:   string | null;
+  loopNextActionAt: string | null;
+  lossReason:       string | null;
+  sourcePipeline:   string | null;
   // Linked inspection (set for pin leads that have a converted inspection, and always set for ins- leads)
   inspectionId: string | null;
   // AHJ jurisdiction check — populated non-blocking after FIPSA signing
@@ -483,10 +488,14 @@ export function useUpdateLead(leadId: string) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Retail Pipeline
-// ---------------------------------------------------------------------------
-
+export interface AdvanceStagePayload {
+  toStage: string;
+  trigger: 'task' | 'auto_event' | 'manual_move';
+  taskPayload?: Record<string, unknown>;
+  lossReason?: string;
+  /** ISO datetime for loop-stage next-action due date */
+  loopNextActionAt?: string;
+}
 export interface RetailLead {
   id: string;
   address: string | null;
@@ -731,6 +740,21 @@ export function useDeleteLeadFile(leadId: string) {
   });
 }
 
+export function useAdvanceLeadStage(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AdvanceStagePayload) =>
+      customFetch<{ lead: FullLead }>(`/api/leads/${leadId}/advance-stage`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(getLeadQueryKey(leadId), data);
+      qc.invalidateQueries({ queryKey: getLeadsQueryKey() });
+    },
+  });
+}
+
 export function useRecheckAhj(inspectionId: string, leadId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -744,4 +768,3 @@ export function useRecheckAhj(inspectionId: string, leadId: string) {
     },
   });
 }
-

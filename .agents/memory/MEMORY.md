@@ -1,5 +1,8 @@
 # Memory Index
 
+- [Pipeline stage vocabulary](pipeline-stage-vocabulary.md) — 30-stage map (10 retail/15 insurance/8 project); server-side copy in api-server/src/lib/pipelineStages.ts; UI copy in rooftrax-web/src/lib/pipelineStages.ts; kept in sync manually.
+- [Pipeline advance-stage endpoint](pipeline-advance-stage.md) — PATCH /leads/:leadId/advance-stage shares advancePinStage() helper with POST /events/pipeline; import both from pipelineEvents.ts.
+
 - [drizzle push blocks on new unique constraints](drizzle-push-unique-constraint.md) — non-interactive push has an unavoidable TTY prompt; apply the DDL via SQL matching the schema file.
 
 - [Orval zod schema naming](orval-zod-naming.md) — request-body zod consts are always operationId+"Body", regardless of the component schema's ref name.
