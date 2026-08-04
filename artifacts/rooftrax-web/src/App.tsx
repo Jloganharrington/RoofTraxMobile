@@ -24,6 +24,7 @@ import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
 import PriceBookList from '@/pages/price-book/PriceBookList';
 import { ComingSoon } from '@/pages/ComingSoon';
+import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 
 const queryClient = new QueryClient({
@@ -143,10 +144,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/settings">
-        <ProtectedRoute>
-          <ComingSoon icon={Settings} title="Settings"
-            description="Company profile, billing, branding, and platform preferences — all in one place." />
-        </ProtectedRoute>
+        <ProtectedRoute><SettingsPage /></ProtectedRoute>
       </Route>
       <Route path="/integrations">
         <ProtectedRoute>

@@ -694,6 +694,8 @@ export interface MyProfile {
   role: string;
   department: string | null;
   companyId: string;
+  companyLogoUrl?: string | null;
+  betaBugReporting?: boolean;
 }
 
 export const getMyProfileQueryKey = () => ['my-profile'] as const;

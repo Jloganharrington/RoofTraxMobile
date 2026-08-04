@@ -809,6 +809,76 @@ router.get(
   },
 );
 
+// PATCH /companies/:companyId/name — update company display name.
+// Restricted to super admins of the same company.
+router.patch('/companies/:companyId/name', async (req: Request, res: Response) => {
+  const companyId = await requireSameCompanySuperAdmin(req, res);
+  if (!companyId) return;
+
+  const { name } = req.body as { name?: unknown };
+  if (typeof name !== 'string' || !name.trim()) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  const trimmed = name.trim();
+  if (trimmed.length > 200) {
+    res.status(400).json({ error: 'Company name is too long (max 200 characters)' });
+    return;
+  }
+
+  const [updated] = await db
+    .update(companiesTable)
+    .set({ name: trimmed })
+    .where(eq(companiesTable.id, companyId))
+    .returning({ id: companiesTable.id, name: companiesTable.name });
+
+  if (!updated) {
+    res.status(404).json({ error: 'Company not found' });
+    return;
+  }
+
+  res.json({ ok: true, company: { id: updated.id, name: updated.name } });
+});
+
+// PATCH /companies/:companyId/platform-preferences — update platform feature
+// flags. Restricted to managers and above.
+router.patch('/companies/:companyId/platform-preferences', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+
+  const role = actorProfile?.role ?? 'field_rep';
+  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
+    res.status(403).json({ error: 'Only managers and admins can update platform preferences' });
+    return;
+  }
+
+  const { betaBugReporting } = req.body as { betaBugReporting?: unknown };
+  if (typeof betaBugReporting !== 'boolean') {
+    res.status(400).json({ error: 'betaBugReporting must be a boolean' });
+    return;
+  }
+
+  await db
+    .update(companiesTable)
+    .set({ betaBugReporting })
+    .where(eq(companiesTable.id, companyId));
+
+  res.json({ ok: true, preferences: { betaBugReporting } });
+});
+
 // ---------------------------------------------------------------------------
 // Sample Proof Package — provision / info endpoints
 //
