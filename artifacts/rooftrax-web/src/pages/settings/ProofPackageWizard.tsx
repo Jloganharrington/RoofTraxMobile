@@ -385,7 +385,7 @@ export function ProofPackageWizard() {
 
   // ── Analyze ───────────────────────────────────────────────────────────
   const analyze = useCallback(async () => {
-    if (files.length === 0) return;
+    if (files.length === 0 && !pastedText.trim()) return;
     setStep("analyzing");
 
     try {
