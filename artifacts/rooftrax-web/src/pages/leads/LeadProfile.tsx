@@ -9,7 +9,7 @@
  * The sticky header exposes a pipeline-stage dropdown (with auto-save) and,
  * for insurance leads, a profile sub-status dropdown.
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { Shell } from '@/components/layout/Shell';
 import { Button } from '@/components/ui/button';
@@ -47,18 +47,13 @@ import {
   AlertTriangle,
   ExternalLink,
   RefreshCw,
-  Camera,
-  Ruler,
   Upload,
-  Trash2,
-  Pencil,
   Download,
-  Plus,
+  Pencil,
+  Trash2,
   File,
-  X,
-  Check,
+  ImageIcon,
 } from 'lucide-react';
-import { customFetch } from '@workspace/api-client-react';
 import {
   useGetLead,
   useUpdateLead,
@@ -71,9 +66,10 @@ import {
   useDeleteLeadFile,
   LEAD_FILE_CATEGORIES,
   type FullLead,
-  type LeadFileRecord,
   type LeadFileCategory,
+  type LeadFileRow,
 } from '@/lib/claimHubApi';
+import { customFetch } from '@workspace/api-client-react';
 import { InspectionFlowWizard } from '@/components/inspection/InspectionFlowWizard';
 import {
   INSURANCE_STAGES,
@@ -536,353 +532,309 @@ function ScopeTab({ form, onField }: { form: FormState; onField: (n: string, v: 
   );
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  site_photos:          'Site Photos',
+  contracts:            'Contracts',
+  estimates:            'Estimates',
+  insurance_documents:  'Insurance Documents',
+  measurement_reports:  'Measurement Reports',
+  permits:              'Permits',
+  correspondence:       'Correspondence',
+  general:              'General',
+};
+
 // ---------------------------------------------------------------------------
 // Files Tab
 // ---------------------------------------------------------------------------
 
-const CATEGORY_META: Record<LeadFileCategory, { label: string; Icon: React.ElementType }> = {
-  photos:              { label: 'Site Photos',           Icon: Camera },
-  contracts:           { label: 'Contracts',             Icon: FileText },
-  estimates:           { label: 'Estimates',             Icon: FileText },
-  insurance_docs:      { label: 'Insurance Documents',   Icon: Shield },
-  measurement_reports: { label: 'Measurement Reports',   Icon: Ruler },
-  permits:             { label: 'Permits',               Icon: Clipboard },
-  correspondence:      { label: 'Correspondence',        Icon: MessageSquare },
-  other:               { label: 'General',               Icon: FolderOpen },
-};
 
-function fileIcon(mimeType: string) {
-  if (mimeType.startsWith('image/')) return <Camera className="h-4 w-4 text-muted-foreground" />;
-  if (mimeType === 'application/pdf') return <FileText className="h-4 w-4 text-red-500" />;
-  if (mimeType.startsWith('video/')) return <File className="h-4 w-4 text-purple-500" />;
-  return <File className="h-4 w-4 text-muted-foreground" />;
-}
-
-function formatBytes(bytes: number) {
+function formatBytes(bytes: number): string {
   if (bytes === 0) return '—';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function fileDownloadUrl(objectPath: string) {
-  // objectPath is like /objects/<uuid>; serve via API proxy
-  return `/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
+function LeadFileIcon({ mimeType }: { mimeType: string }) {
+  if (mimeType.startsWith('image/')) return <ImageIcon className="h-4 w-4 shrink-0" />;
+  if (mimeType === 'application/pdf' || mimeType.includes('word') || mimeType.includes('text'))
+    return <FileText className="h-4 w-4 shrink-0" />;
+  return <File className="h-4 w-4 shrink-0" />;
 }
 
-function FilesTab({ pinId }: { pinId: string }) {
+
+function FilesTab({ leadId, canManage }: { leadId: string; canManage: boolean }) {
   const { toast } = useToast();
-  const { data, isLoading, refetch } = useGetLeadFiles(pinId);
-  const registerFile = useRegisterLeadFile(pinId);
-  const renameFile   = useRenameLeadFile(pinId);
-  const deleteFile   = useDeleteLeadFile(pinId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploading, setUploading]     = useState(false);
-  const [renamingId, setRenamingId]   = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [uploadCategory, setUploadCategory] = useState<LeadFileCategory>('general');
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  // Sections collapsed by user; non-empty sections start expanded
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [expanded, setExpanded]       = useState<Set<LeadFileCategory>>(
-    new Set(LEAD_FILE_CATEGORIES),
-  );
-  const fileInputRef    = useRef<HTMLInputElement>(null);
-  const pendingCategory = useRef<LeadFileCategory>('other');
 
-  // ins- IDs have no pin; nothing to show
-  if (pinId.startsWith('ins-')) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground space-y-3">
-        <FolderOpen className="h-10 w-10 opacity-30" />
-        <p className="text-sm font-medium">Files not available for this lead type</p>
-        <p className="text-xs max-w-xs">
-          File storage is available on pin-based leads created from the pipeline.
-        </p>
-      </div>
-    );
-  }
+  const { data, isLoading } = useGetLeadFiles(leadId);
+  const registerFile = useRegisterLeadFile(leadId);
+  const renameFileMutation = useRenameLeadFile(leadId);
+  const deleteFileMutation = useDeleteLeadFile(leadId);
 
   const files = data?.files ?? [];
-  const byCategory = Object.fromEntries(
-    LEAD_FILE_CATEGORIES.map(cat => [cat, files.filter(f => f.category === cat)]),
-  ) as Record<LeadFileCategory, LeadFileRecord[]>;
 
-  function toggleSection(cat: LeadFileCategory) {
-    setExpanded(prev => {
+  const filesByCategory = useMemo(() => {
+    const grouped = Object.fromEntries(
+      LEAD_FILE_CATEGORIES.map(c => [c, [] as LeadFileRow[]]),
+    ) as Record<string, LeadFileRow[]>;
+    for (const f of files) {
+      grouped[f.category]?.push(f);
+    }
+    return grouped;
+  }, [files]);
+
+  function toggleSection(cat: string) {
+    setCollapsedSections(prev => {
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat); else next.add(cat);
       return next;
     });
   }
 
-  function triggerUpload(cat: LeadFileCategory) {
-    pendingCategory.current = cat;
-    fileInputRef.current?.click();
-  }
-
-  async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const list = e.target.files;
-    if (!list || list.length === 0) return;
-    e.target.value = '';
-
-    const category = pendingCategory.current;
+  const handleUpload = useCallback(async (rawFiles: FileList | null) => {
+    if (!rawFiles || rawFiles.length === 0) return;
     setUploading(true);
-    let failed = 0;
+    setUploadProgress({ done: 0, total: rawFiles.length });
+    let ok = 0, fail = 0;
 
-    for (const file of Array.from(list)) {
+    for (let i = 0; i < rawFiles.length; i++) {
+      const f = rawFiles[i];
       try {
-        // 1. Request presigned GCS URL
         const { uploadURL, objectPath } = await customFetch<{
-          uploadURL: string;
-          objectPath: string;
+          uploadURL: string; objectPath: string;
         }>('/api/storage/uploads/request-url', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: file.name,
-            size: file.size,
-            contentType: file.type || 'application/octet-stream',
+            name: f.name,
+            size: f.size,
+            contentType: f.type || 'application/octet-stream',
           }),
         });
 
-        // 2. PUT directly to GCS (no auth headers — it's a presigned URL)
-        const upload = await fetch(uploadURL, {
+        const putRes = await fetch(uploadURL, {
           method: 'PUT',
-          headers: { 'Content-Type': file.type || 'application/octet-stream' },
-          body: file,
+          headers: { 'Content-Type': f.type || 'application/octet-stream' },
+          body: f,
         });
-        if (!upload.ok) throw new Error(`GCS upload failed: ${upload.status}`);
+        if (!putRes.ok) throw new Error(`PUT ${putRes.status}`);
 
-        // 3. Register in our DB
         await registerFile.mutateAsync({
           objectPath,
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          fileSize: file.size,
-          category,
+          fileName: f.name,
+          originalName: f.name,
+          fileSize: f.size,
+          mimeType: f.type || 'application/octet-stream',
+          category: uploadCategory,
         });
-      } catch {
-        failed++;
+        ok++;
+      } catch (err) {
+        console.error('Lead file upload failed', err);
+        fail++;
       }
+      setUploadProgress({ done: i + 1, total: rawFiles.length });
     }
 
     setUploading(false);
-    await refetch();
-    if (failed > 0) {
-      toast({ title: `${failed} file(s) failed to upload`, variant: 'destructive' });
-    } else {
-      toast({ title: `${list.length} file(s) uploaded` });
-    }
-  }
+    setUploadProgress(null);
+    setShowUploadPanel(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
-  function startRename(file: LeadFileRecord) {
-    setRenamingId(file.id);
-    setRenameValue(file.fileName);
-  }
+    if (ok > 0) toast({ title: `${ok} file${ok !== 1 ? 's' : ''} uploaded` });
+    if (fail > 0) toast({ title: `${fail} upload${fail !== 1 ? 's' : ''} failed`, variant: 'destructive' });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadCategory, registerFile, toast]);
 
   async function commitRename(fileId: string) {
-    const trimmed = renameValue.trim();
-    if (!trimmed) { setRenamingId(null); return; }
+    if (!renameValue.trim()) { setRenamingId(null); return; }
     try {
-      await renameFile.mutateAsync({ fileId, fileName: trimmed });
+      await renameFileMutation.mutateAsync({ fileId, fileName: renameValue.trim() });
     } catch {
       toast({ title: 'Rename failed', variant: 'destructive' });
     }
     setRenamingId(null);
   }
 
-  async function handleDelete(file: LeadFileRecord) {
+  async function handleDelete(fileId: string) {
     try {
-      await deleteFile.mutateAsync(file.id);
-      toast({ title: 'File deleted' });
+      await deleteFileMutation.mutateAsync(fileId);
     } catch {
       toast({ title: 'Delete failed', variant: 'destructive' });
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-3 py-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-14 w-full" />
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2">
-      {/* Hidden file input — shared across all category upload buttons */}
+    <div className="space-y-3">
+      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
-        className="hidden"
-        onChange={handleFilesSelected}
+        className="sr-only"
+        onChange={e => handleUpload(e.target.files)}
       />
 
-      {/* Upload progress banner */}
-      {uploading && (
-        <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Uploading…
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
-          ))}
-        </div>
-      )}
-
-      {!isLoading &&
-        LEAD_FILE_CATEGORIES.map(cat => {
-          const { label, Icon } = CATEGORY_META[cat];
-          const catFiles = byCategory[cat];
-          const isExpanded = expanded.has(cat);
-
-          return (
-            <div key={cat} className="rounded-lg border bg-card overflow-hidden">
-              {/* Section header */}
-              <button
-                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
-                onClick={() => toggleSection(cat)}
-              >
-                <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="flex-1 text-sm font-medium">{label}</span>
-                {catFiles.length > 0 && (
-                  <Badge variant="secondary" className="text-xs mr-2">
-                    {catFiles.length}
-                  </Badge>
-                )}
-                {isExpanded ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-              </button>
-
-              {/* Section body */}
-              {isExpanded && (
-                <div className="border-t">
-                  {catFiles.length === 0 ? (
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <p className="text-xs text-muted-foreground">No files yet</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => triggerUpload(cat)}
-                        disabled={uploading}
-                      >
-                        <Plus className="h-3 w-3" />
-                        Upload
-                      </Button>
-                    </div>
-                  ) : (
-                    <div>
-                      {catFiles.map(file => (
-                        <div
-                          key={file.id}
-                          className="flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0 hover:bg-muted/20 group"
-                        >
-                          {/* MIME icon */}
-                          <div className="shrink-0">{fileIcon(file.mimeType)}</div>
-
-                          {/* Name / rename input */}
-                          <div className="flex-1 min-w-0">
-                            {renamingId === file.id ? (
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  className="h-7 text-xs"
-                                  value={renameValue}
-                                  onChange={e => setRenameValue(e.target.value)}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') commitRename(file.id);
-                                    if (e.key === 'Escape') setRenamingId(null);
-                                  }}
-                                  autoFocus
-                                />
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7"
-                                  onClick={() => commitRename(file.id)}
-                                >
-                                  <Check className="h-3.5 w-3.5 text-green-600" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7"
-                                  onClick={() => setRenamingId(null)}
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <>
-                                <p className="text-xs font-medium truncate">{file.fileName}</p>
-                                <p className="text-[10px] text-muted-foreground">
-                                  {formatBytes(file.fileSize)}
-                                  {file.uploaderName ? ` · ${file.uploaderName}` : ''}
-                                  {' · '}
-                                  {new Date(file.createdAt).toLocaleDateString()}
-                                </p>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Actions — visible on row hover */}
-                          {renamingId !== file.id && (
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                              <a
-                                href={fileDownloadUrl(file.objectPath)}
-                                download={file.fileName}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors"
-                                title="Download"
-                              >
-                                <Download className="h-3.5 w-3.5 text-muted-foreground" />
-                              </a>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Rename"
-                                onClick={() => startRename(file)}
-                              >
-                                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Delete"
-                                onClick={() => handleDelete(file)}
-                                disabled={deleteFile.isPending}
-                              >
-                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
+      {/* Upload panel */}
+      {canManage && (
+        <div>
+          {!showUploadPanel ? (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowUploadPanel(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Files
+              </Button>
+            </div>
+          ) : (
+            <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+              <p className="text-sm font-medium">Upload files</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">Category</Label>
+                  <Select
+                    value={uploadCategory}
+                    onValueChange={v => setUploadCategory(v as LeadFileCategory)}
+                  >
+                    <SelectTrigger className="h-8 text-xs w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LEAD_FILE_CATEGORIES.map(c => (
+                        <SelectItem key={c} value={c} className="text-xs">
+                          {CATEGORY_LABELS[c]}
+                        </SelectItem>
                       ))}
-
-                      {/* Add more to this category */}
-                      <div className="flex justify-end px-4 py-2 border-t bg-muted/20">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => triggerUpload(cat)}
-                          disabled={uploading}
-                        >
-                          <Upload className="h-3 w-3" />
-                          Add files
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading
+                    ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    : <Upload className="h-4 w-4 mr-2" />
+                  }
+                  {uploading
+                    ? (uploadProgress
+                        ? `${uploadProgress.done} / ${uploadProgress.total}`
+                        : 'Uploading…')
+                    : 'Choose Files'
+                  }
+                </Button>
+                {!uploading && (
+                  <Button variant="ghost" size="sm" onClick={() => setShowUploadPanel(false)}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+              {uploading && uploadProgress && (
+                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${(uploadProgress.done / uploadProgress.total) * 100}%` }}
+                  />
                 </div>
               )}
             </div>
-          );
-        })}
+          )}
+        </div>
+      )}
+
+      {/* Category sections */}
+      {LEAD_FILE_CATEGORIES.map(cat => {
+        const catFiles = filesByCategory[cat] ?? [];
+        const isEmpty = catFiles.length === 0;
+        const isCollapsed = collapsedSections.has(cat);
+
+        return (
+          <div key={cat} className="border rounded-lg overflow-hidden">
+            {/* Section header */}
+            <div
+              className={`flex items-center justify-between px-4 py-2.5 ${
+                isEmpty ? 'text-muted-foreground' : ''
+              } ${!isEmpty ? 'cursor-pointer hover:bg-muted/30 transition-colors' : ''}`}
+              onClick={() => !isEmpty && toggleSection(cat)}
+              role={!isEmpty ? 'button' : undefined}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium">
+                {CATEGORY_LABELS[cat]}
+                {!isEmpty && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal">
+                    {catFiles.length}
+                  </Badge>
+                )}
+              </span>
+              {!isEmpty && (
+                isCollapsed
+                  ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  : <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
+
+            {/* File rows (non-empty, expanded) */}
+            {!isEmpty && !isCollapsed && (
+              <div className="divide-y border-t">
+                {catFiles.map(file => (
+                  <LeadFileRow
+                    key={file.id}
+                    file={file}
+                    canManage={canManage}
+                    isRenaming={renamingId === file.id}
+                    renameValue={renameValue}
+                    onRenameValueChange={setRenameValue}
+                    onStartRename={() => { setRenamingId(file.id); setRenameValue(file.fileName); }}
+                    onCommitRename={() => commitRename(file.id)}
+                    onCancelRename={() => setRenamingId(null)}
+                    onDelete={() => handleDelete(file.id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {isEmpty && (
+              <div className="px-4 pb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>No files in this section.</span>
+                {canManage && (
+                  <button
+                    className="underline underline-offset-2 hover:text-foreground transition-colors"
+                    onClick={() => {
+                      setUploadCategory(cat);
+                      setShowUploadPanel(true);
+                    }}
+                  >
+                    Upload to this section
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default function LeadProfile() {
   const { id } = useParams<{ id: string }>();
@@ -1200,7 +1152,15 @@ export default function LeadProfile() {
               {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} />}
               {activeTab === 'communication'   && <CommunicationTab  form={form} onField={handleField} />}
               {activeTab === 'scope'           && <ScopeTab          form={form} onField={handleField} />}
-              {activeTab === 'files'           && <FilesTab pinId={id!} />}
+              {activeTab === 'files'           && lead && (
+                <FilesTab
+                  leadId={id!}
+                  canManage={
+                    lead.userId === (profileData?.profile?.userId ?? '') ||
+                    ['manager', 'admin', 'super_admin'].includes(profileData?.profile?.role ?? '')
+                  }
+                />
+              )}
 
               {activeTab !== 'files' && activeTab !== 'inspection_flow' && (
                 <div className="mt-8 flex justify-end border-t pt-6">
@@ -1217,5 +1177,86 @@ export default function LeadProfile() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+interface FileRowProps {
+  file: LeadFileRow;
+  canManage: boolean;
+  isRenaming: boolean;
+  renameValue: string;
+  onRenameValueChange: (v: string) => void;
+  onStartRename: () => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onDelete: () => void;
+}
+
+function LeadFileRow({
+  file, canManage,
+  isRenaming, renameValue, onRenameValueChange,
+  onStartRename, onCommitRename, onCancelRename,
+  onDelete,
+}: FileRowProps) {
+  const downloadPath = `/api/storage/objects${file.objectPath.replace(/^\/objects/, '')}`;
+
+  return (
+    <div className="flex items-start gap-3 px-4 py-3">
+      <div className="mt-0.5 text-muted-foreground">
+        <LeadFileIcon mimeType={file.mimeType} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {isRenaming ? (
+          <Input
+            className="h-7 text-sm py-0.5"
+            value={renameValue}
+            onChange={e => onRenameValueChange(e.target.value)}
+            onBlur={onCommitRename}
+            onKeyDown={e => {
+              if (e.key === 'Enter') onCommitRename();
+              if (e.key === 'Escape') onCancelRename();
+            }}
+            autoFocus
+          />
+        ) : (
+          <p className="text-sm font-medium truncate leading-snug">{file.fileName}</p>
+        )}
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {file.uploaderName}
+          {' · '}
+          {new Date(file.createdAt).toLocaleDateString()}
+          {' · '}
+          {formatBytes(file.fileSize)}
+        </p>
+      </div>
+
+      {canManage && !isRenaming && (
+        <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+          <a
+            href={downloadPath}
+            download={file.fileName}
+            className="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Download"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </a>
+          <button
+            className="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Rename"
+            onClick={onStartRename}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            className="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+            title="Delete"
+            onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

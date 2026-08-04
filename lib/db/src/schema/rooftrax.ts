@@ -394,41 +394,47 @@ export type DiscontinuedProduct = typeof discontinuedProductsTable.$inferSelect;
 // ---------------------------------------------------------------------------
 
 export const LEAD_FILE_CATEGORIES = [
-  'photos',
+  'site_photos',
   'contracts',
   'estimates',
-  'insurance_docs',
+  'insurance_documents',
   'measurement_reports',
   'permits',
   'correspondence',
-  'other',
+  'general',
 ] as const;
-export type LeadFileCategory = typeof LEAD_FILE_CATEGORIES[number];
 
+export type LeadFileCategory = (typeof LEAD_FILE_CATEGORIES)[number];
+
+/**
+ * Files attached to a lead (pin or ins- inspection). `leadId` is the raw
+ * lead identifier used throughout the UI — either a pin UUID or the
+ * "ins-{inspectionId}" form. No FK constraint so both formats can coexist.
+ */
 export const leadFilesTable = pgTable('lead_files', {
   id: varchar('id')
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  pinId: varchar('pin_id')
-    .notNull()
-    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  leadId: varchar('lead_id').notNull(),
   companyId: varchar('company_id')
     .notNull()
-    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+    .references(() => companiesTable.id),
   userId: varchar('user_id')
     .notNull()
     .references(() => usersTable.id),
   objectPath: text('object_path').notNull(),
-  /** Display name — editable by the rep */
-  fileName: varchar('file_name', { length: 500 }).notNull(),
-  /** Original filename at upload time */
-  originalName: varchar('original_name', { length: 500 }).notNull(),
-  fileSize: integer('file_size').notNull().default(0),
-  mimeType: varchar('mime_type', { length: 200 }).notNull().default(''),
+  // Display name — can be edited by the rep without re-uploading.
+  fileName: text('file_name').notNull(),
+  // Original file name at upload time — immutable audit trail.
+  originalName: text('original_name').notNull(),
+  fileSize: integer('file_size').notNull(),
+  mimeType: varchar('mime_type').notNull(),
   category: varchar('category', { enum: LEAD_FILE_CATEGORIES })
     .notNull()
-    .default('other'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    .default('general'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow()

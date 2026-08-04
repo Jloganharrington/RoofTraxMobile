@@ -253,6 +253,29 @@ export class ObjectStorageService {
   }
 
   /**
+   * Delete an object entity from GCS by its `/objects/...` path.
+   * Silently succeeds if the object is already gone (404 from GCS is fine).
+   */
+  async deleteObjectEntity(objectPath: string): Promise<void> {
+    try {
+      const objectFile = await this.getObjectEntityFile(objectPath);
+      const signedUrl = await signObjectURL({
+        bucketName: objectFile.bucket.name,
+        objectName: objectFile.name,
+        method: 'DELETE',
+        ttlSec: 60,
+      });
+      await fetch(signedUrl, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return; // already gone — not an error
+      throw err;
+    }
+  }
+
+  /**
    * Upload a Buffer directly from the server (no client presigned URL needed).
    * Uses the same signed-PUT-URL path that the client upload flow uses, so
    * it works in the Replit sidecar environment without direct GCS credentials.

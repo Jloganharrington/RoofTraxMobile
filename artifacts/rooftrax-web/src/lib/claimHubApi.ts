@@ -629,6 +629,108 @@ export interface AhjCheckResult {
   summary: string;
 }
 
+// ---------------------------------------------------------------------------
+// Lead Files
+// ---------------------------------------------------------------------------
+
+export const LEAD_FILE_CATEGORIES = [
+  'site_photos',
+  'contracts',
+  'estimates',
+  'insurance_documents',
+  'measurement_reports',
+  'permits',
+  'correspondence',
+  'general',
+] as const;
+
+export type LeadFileCategory = (typeof LEAD_FILE_CATEGORIES)[number];
+
+export interface LeadFileRow {
+  id: string;
+  leadId: string;
+  userId: string;
+  objectPath: string;
+  fileName: string;
+  originalName: string;
+  fileSize: number;
+  mimeType: string;
+  category: LeadFileCategory;
+  uploaderName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getLeadFilesQueryKey = (leadId: string) =>
+  ['lead', leadId, 'files'] as const;
+
+export function useGetLeadFiles(
+  leadId: string,
+  options?: Omit<UseQueryOptions<{ files: LeadFileRow[] }>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getLeadFilesQueryKey(leadId),
+    queryFn: () => customFetch<{ files: LeadFileRow[] }>(`/api/leads/${leadId}/files`),
+    enabled: !!leadId,
+    ...options,
+  });
+}
+
+export function useRegisterLeadFile(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      objectPath: string;
+      fileName: string;
+      originalName: string;
+      fileSize: number;
+      mimeType: string;
+      category: LeadFileCategory;
+    }) =>
+      customFetch<{ file: LeadFileRow }>(`/api/leads/${leadId}/files`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(leadId) }),
+  });
+}
+
+export function useRenameLeadFile(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fileId, fileName }: { fileId: string; fileName: string }) =>
+      customFetch<{ file: LeadFileRow }>(`/api/leads/${leadId}/files/${fileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ fileName }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(leadId) }),
+  });
+}
+
+export function useDeleteLeadFile(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fileId: string) =>
+      customFetch<{ deleted: boolean }>(`/api/leads/${leadId}/files/${fileId}`, {
+        method: 'DELETE',
+      }),
+    onMutate: async (fileId: string) => {
+      await qc.cancelQueries({ queryKey: getLeadFilesQueryKey(leadId) });
+      const prev = qc.getQueryData<{ files: LeadFileRow[] }>(getLeadFilesQueryKey(leadId));
+      qc.setQueryData(
+        getLeadFilesQueryKey(leadId),
+        (old: { files: LeadFileRow[] } | undefined) =>
+          old ? { files: old.files.filter((f) => f.id !== fileId) } : old,
+      );
+      return { prev };
+    },
+    onError: (_err, _fileId, context) => {
+      if (context?.prev) qc.setQueryData(getLeadFilesQueryKey(leadId), context.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(leadId) }),
+  });
+}
+
 export function useRecheckAhj(inspectionId: string, leadId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -643,103 +745,3 @@ export function useRecheckAhj(inspectionId: string, leadId: string) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Lead Files
-// ---------------------------------------------------------------------------
-
-export type LeadFileCategory =
-  | 'photos'
-  | 'contracts'
-  | 'estimates'
-  | 'insurance_docs'
-  | 'measurement_reports'
-  | 'permits'
-  | 'correspondence'
-  | 'other';
-
-export const LEAD_FILE_CATEGORIES: LeadFileCategory[] = [
-  'photos',
-  'contracts',
-  'estimates',
-  'insurance_docs',
-  'measurement_reports',
-  'permits',
-  'correspondence',
-  'other',
-];
-
-export interface LeadFileRecord {
-  id: string;
-  pinId: string;
-  objectPath: string;
-  fileName: string;
-  originalName: string;
-  fileSize: number;
-  mimeType: string;
-  category: LeadFileCategory;
-  uploaderName: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const getLeadFilesQueryKey = (pinId: string) =>
-  ['lead_files', pinId] as const;
-
-export function useGetLeadFiles(pinId: string) {
-  return useQuery({
-    queryKey: getLeadFilesQueryKey(pinId),
-    queryFn: () =>
-      customFetch<{ files: LeadFileRecord[] }>(`/api/leads/${pinId}/files`),
-    enabled: !!pinId && !pinId.startsWith('ins-'),
-  });
-}
-
-export function useRegisterLeadFile(pinId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: {
-      objectPath: string;
-      fileName: string;
-      mimeType: string;
-      fileSize: number;
-      category: LeadFileCategory;
-    }) =>
-      customFetch<{ file: LeadFileRecord }>(`/api/leads/${pinId}/files`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(pinId) }),
-  });
-}
-
-export function useRenameLeadFile(pinId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      fileId,
-      fileName,
-      category,
-    }: {
-      fileId: string;
-      fileName?: string;
-      category?: LeadFileCategory;
-    }) =>
-      customFetch(`/api/leads/${pinId}/files/${fileId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ fileName, category }),
-      }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(pinId) }),
-  });
-}
-
-export function useDeleteLeadFile(pinId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (fileId: string) =>
-      customFetch(`/api/leads/${pinId}/files/${fileId}`, { method: 'DELETE' }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(pinId) }),
-  });
-}
