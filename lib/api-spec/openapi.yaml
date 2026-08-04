@@ -5608,6 +5608,12 @@ components:
                       type: [number, "null"]
                     damagedSidingFacetCount:
                       type: number
+                    linearFeetByType:
+                      type: object
+                      additionalProperties:
+                        type: number
+                    totalLinearFeet:
+                      type: number
                 lines:
                   type: array
                   items:
@@ -7721,14 +7727,20 @@ components:
     MeasuredBasis:
       type: object
       properties:
-        totalRoofSqft:
+        roofAreaSqft:
           type: [number, "null"]
-        totalRoofSquares:
+        roofSquares:
           type: [number, "null"]
-        adjustedRoofSquares:
+        wasteAdjustedSquares:
           type: [number, "null"]
         damagedSidingFacetCount:
           type: [integer, "null"]
+        linearFeetByType:
+          type: object
+          additionalProperties:
+            type: number
+        totalLinearFeet:
+          type: number
     InspectionEstimate:
       type: object
       required: [wastePercent, lines, subtotalCents, updatedAt]

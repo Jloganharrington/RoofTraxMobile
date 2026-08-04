@@ -21,16 +21,28 @@ export function computeMeasuredBasis(input: {
   slopeAreasSqft: Array<number | null | undefined>;
   damagedSidingFacetCount: number;
   wastePercent: number;
+  linearMeasurements?: Array<{ measurementType: string; value: number }>;
 }): InspectionEstimate['measuredBasis'] {
   const measured = input.slopeAreasSqft.filter(
     (a): a is number => typeof a === 'number' && isFinite(a) && a >= 0,
   );
+
+  // Build linear feet summary from any supplied measurements.
+  const linearFeetByType: Record<string, number> = {};
+  for (const m of input.linearMeasurements ?? []) {
+    linearFeetByType[m.measurementType] =
+      round2((linearFeetByType[m.measurementType] ?? 0) + m.value);
+  }
+  const totalLinearFeet = round2(Object.values(linearFeetByType).reduce((s, v) => s + v, 0));
+
   if (measured.length === 0) {
     return {
       roofAreaSqft: null,
       roofSquares: null,
       wasteAdjustedSquares: null,
       damagedSidingFacetCount: input.damagedSidingFacetCount,
+      linearFeetByType,
+      totalLinearFeet,
     };
   }
   const roofAreaSqft = round2(measured.reduce((sum, a) => sum + a, 0));
@@ -41,6 +53,8 @@ export function computeMeasuredBasis(input: {
     roofSquares,
     wasteAdjustedSquares,
     damagedSidingFacetCount: input.damagedSidingFacetCount,
+    linearFeetByType,
+    totalLinearFeet,
   };
 }
 

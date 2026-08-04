@@ -380,6 +380,11 @@ export interface InspectionEstimate {
     roofSquares: number | null;
     wasteAdjustedSquares: number | null;
     damagedSidingFacetCount: number;
+    /** LF values keyed by measurement type (ridge_lf, hip_lf, etc.). Present when
+     *  linear measurements have been applied; absent on legacy blobs. */
+    linearFeetByType?: Record<string, number>;
+    /** Sum of all linear measurement values (convenience for auto-fill). */
+    totalLinearFeet?: number;
   };
   lines: EstimateLineItem[];
   subtotalCents: number;

@@ -68,11 +68,21 @@ export function EstimatePanel({ inspectionId }: EstimatePanelProps) {
   const applyPriceBookItem = (index: number, itemId: string) => {
     const item = priceBookItems.find((i) => i.id === itemId);
     if (!item) return;
+    const mb = initEstimate?.measuredBasis;
+    // Auto-fill quantity from field measurements when the unit matches.
+    let quantity: number | undefined;
+    const unit = (item.unit ?? "").toUpperCase();
+    if (unit === "SQ" && mb?.wasteAdjustedSquares != null) {
+      quantity = mb.wasteAdjustedSquares;
+    } else if (unit === "LF" && mb?.totalLinearFeet != null && mb.totalLinearFeet > 0) {
+      quantity = mb.totalLinearFeet;
+    }
     updateLine(index, {
       priceBookItemId: item.id,
       description: item.name,
       unit: item.unit,
       unitPriceCents: item.unitPrice,
+      ...(quantity !== undefined ? { quantity } : {}),
     });
   };
 
@@ -308,16 +318,32 @@ export function EstimatePanel({ inspectionId }: EstimatePanelProps) {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between border-b pb-2">
                     <span className="text-muted-foreground">Roof Area</span>
-                    <span className="font-medium">{basis.totalRoofSqft || 0} sqft</span>
+                    <span className="font-medium">{basis.roofAreaSqft ?? 0} sqft</span>
                   </div>
                   <div className="flex justify-between border-b pb-2">
                     <span className="text-muted-foreground">Total Squares</span>
-                    <span className="font-medium">{basis.totalRoofSquares || 0} SQ</span>
+                    <span className="font-medium">{basis.roofSquares ?? 0} SQ</span>
                   </div>
-                  <div className="flex justify-between pb-2">
+                  <div className="flex justify-between border-b pb-2">
                     <span className="text-muted-foreground">Adjusted Squares</span>
-                    <span className="font-medium">{basis.adjustedRoofSquares || 0} SQ</span>
+                    <span className="font-medium">{basis.wasteAdjustedSquares ?? 0} SQ</span>
                   </div>
+                  {basis.totalLinearFeet != null && basis.totalLinearFeet > 0 && (
+                    <div className="flex justify-between pb-2">
+                      <span className="text-muted-foreground">Total Linear Feet</span>
+                      <span className="font-medium">{basis.totalLinearFeet} LF</span>
+                    </div>
+                  )}
+                  {basis.linearFeetByType && Object.keys(basis.linearFeetByType).length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      {Object.entries(basis.linearFeetByType).map(([type, val]) => (
+                        <div key={type} className="flex justify-between text-xs text-muted-foreground pl-2">
+                          <span>{type.replace(/_lf$/, "").replace(/_/g, " ")}</span>
+                          <span>{val} LF</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No measurements provided.</p>

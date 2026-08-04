@@ -3839,18 +3839,53 @@ const PutEstimateBody = z.object({
 });
 
 // GET /inspections/:inspectionId/estimate — the stored estimate or null.
+// The measuredBasis in the response always reflects current field measurements
+// (LF values are re-fetched on every GET so they stay fresh even if measurements
+// were updated after the estimate was last saved).
 router.get('/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  const [inspection, measurements] = await Promise.all([
+    loadInspectionInCompany(inspectionId, actor.companyId),
+    db
+      .select({ measurementType: measurementsTable.measurementType, value: measurementsTable.value })
+      .from(measurementsTable)
+      .where(
+        and(
+          eq(measurementsTable.inspectionId, inspectionId),
+          eq(measurementsTable.companyId, actor.companyId),
+          eq(measurementsTable.subjectType, 'inspection'),
+        ),
+      ),
+  ]);
   if (!inspection) {
     res.status(404).json({ error: 'Inspection not found' });
     return;
   }
 
-  res.json({ estimate: inspection.estimate ?? null });
+  const stored = inspection.estimate ?? null;
+  if (!stored) {
+    res.json({ estimate: null });
+    return;
+  }
+
+  // Augment stored measuredBasis with fresh LF data.
+  const linearFeetByType: Record<string, number> = {};
+  for (const m of measurements) {
+    const cur = linearFeetByType[m.measurementType] ?? 0;
+    linearFeetByType[m.measurementType] = Math.round((cur + m.value) * 100) / 100;
+  }
+  const totalLinearFeet =
+    Math.round(Object.values(linearFeetByType).reduce((s, v) => s + v, 0) * 100) / 100;
+
+  res.json({
+    estimate: {
+      ...stored,
+      measuredBasis: { ...stored.measuredBasis, linearFeetByType, totalLinearFeet },
+    },
+  });
 });
 
 // PUT /inspections/:inspectionId/estimate — save (full replace) the estimate.
@@ -3972,7 +4007,7 @@ router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
     }
   }
 
-  const [slopes, sidingFacets] = await Promise.all([
+  const [slopes, sidingFacets, linearMeasurements] = await Promise.all([
     db
       .select({ areaSqft: inspectionSlopesTable.areaSqft })
       .from(inspectionSlopesTable)
@@ -3989,6 +4024,16 @@ router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
         and(
           eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
           eq(inspectionSidingFacetsTable.companyId, actor.companyId),
+        ),
+      ),
+    db
+      .select({ measurementType: measurementsTable.measurementType, value: measurementsTable.value })
+      .from(measurementsTable)
+      .where(
+        and(
+          eq(measurementsTable.inspectionId, inspectionId),
+          eq(measurementsTable.companyId, actor.companyId),
+          eq(measurementsTable.subjectType, 'inspection'),
         ),
       ),
   ]);
@@ -4019,6 +4064,7 @@ router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
       slopeAreasSqft: slopes.map((s) => s.areaSqft),
       damagedSidingFacetCount: sidingFacets.length,
       wastePercent: parsed.data.wastePercent,
+      linearMeasurements,
     }),
     lines,
     subtotalCents,
