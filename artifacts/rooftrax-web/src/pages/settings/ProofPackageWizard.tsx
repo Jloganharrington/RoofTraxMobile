@@ -441,7 +441,7 @@ export function ProofPackageWizard() {
       });
       setStep("upload");
     }
-  }, [files, toast]);
+  }, [files, pastedText, toast]);
 
   // ── Apply ─────────────────────────────────────────────────────────────
   const apply = useCallback(async () => {
