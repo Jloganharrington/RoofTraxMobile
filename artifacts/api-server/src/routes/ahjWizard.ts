@@ -769,12 +769,55 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
     );
 
   if (verifiedItems.length === 0) {
+    // Diagnose why — give the caller an actionable explanation.
+    const allItems = await db
+      .select({
+        status: ahjCandidateItemsTable.status,
+        classification: ahjCandidateItemsTable.classification,
+      })
+      .from(ahjCandidateItemsTable)
+      .where(
+        and(
+          inArray(ahjCandidateItemsTable.wizardRunId, runIds),
+          eq(ahjCandidateItemsTable.companyId, actor.companyId),
+          eq(ahjCandidateItemsTable.jurisdiction, jurisdiction),
+          eq(ahjCandidateItemsTable.packType, packType),
+        ),
+      );
+
+    const totalItems = allItems.length;
+    const gapCount = allItems.filter(i => i.classification === 'gap_identified').length;
+    const realCount = totalItems - gapCount;
+    const unverifiedRealCount = allItems.filter(
+      i => i.classification !== 'gap_identified' && i.status === 'draft',
+    ).length;
+
+    if (totalItems === 0) {
+      return void res.status(422).json({
+        error: 'No items found for this jurisdiction and pack type',
+        details: ['Run the extraction wizard first to generate candidate items.'],
+      });
+    }
+
+    if (gapCount === totalItems) {
+      return void res.status(422).json({
+        error: 'All extracted items are gap markers — no real code provisions were found in the source',
+        details: [
+          `The extraction produced ${gapCount} gap marker${gapCount !== 1 ? 's' : ''} (provisions the AI expected but could not locate in the supplied source text) and 0 citable code provisions.`,
+          'Upload a source document that contains the full adopted code text (not just a table of contents or index), then start a new wizard run.',
+        ],
+        diagnostic: { totalItems, gapCount, realCount },
+      });
+    }
+
     return void res.status(422).json({
-      error: 'No verified items found for this jurisdiction and pack type',
+      error: 'No verified items ready to assemble',
       details: [
-        'Use the verification queue to mark items as Verified or Edit & Verify before assembling.',
+        `${unverifiedRealCount} item${unverifiedRealCount !== 1 ? 's' : ''} still need${unverifiedRealCount === 1 ? 's' : ''} verification.`,
+        'Open the verification queue, review each item against the source, and mark them Verified or Edit & Verify.',
         'Draft and rejected items are never included in packs.',
       ],
+      diagnostic: { totalItems, gapCount, realCount, unverifiedRealCount },
     });
   }
 
