@@ -26,6 +26,7 @@ import PriceBookList from '@/pages/price-book/PriceBookList';
 import { ComingSoon } from '@/pages/ComingSoon';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -138,10 +139,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/user-authorization">
-        <ProtectedRoute>
-          <ComingSoon icon={ShieldCheck} title="User Authorization"
-            description="Control access levels, assign roles, and manage exactly what each team member can see and do." />
-        </ProtectedRoute>
+        <ProtectedRoute><UserAuthorizationPage /></ProtectedRoute>
       </Route>
       <Route path="/settings">
         <ProtectedRoute><SettingsPage /></ProtectedRoute>
