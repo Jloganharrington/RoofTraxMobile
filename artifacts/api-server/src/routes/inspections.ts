@@ -111,6 +111,7 @@ import { and, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'd
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '../lib/permissions';
+import { runAhjCheck } from '../lib/ahjLookup';
 import { getRole, LeadProfileBody, toDateOrNull } from './pins';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { buildProofPackageHtml, type ProofPackageData } from '../lib/proofPackageTemplate';
@@ -8495,6 +8496,46 @@ router.get('/leads', async (req: Request, res: Response) => {
   );
 
   res.json({ leads });
+});
+
+// ── POST /inspections/:id/ahj-check ──────────────────────────────────────────
+// Lets managers re-trigger the AHJ jurisdiction check on demand — without
+// voiding and re-collecting the FIPSA. Gated to manager+ so field reps cannot
+// spam the Gemini API. Awaited (not fire-and-forget) so the caller can show a
+// loading state and refresh the badge immediately on completion.
+router.post('/inspections/:id/ahj-check', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  if (!isManagerOrAdmin(actor.role)) {
+    res.status(403).json({ error: 'Only managers and above may re-trigger the AHJ check' });
+    return;
+  }
+
+  const inspectionId = String(req.params.id);
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found' });
+    return;
+  }
+
+  if (!inspection.address) {
+    res.status(422).json({ error: 'Inspection has no address — AHJ check cannot run' });
+    return;
+  }
+
+  // Await the check so the response carries the fresh result. runAhjCheck
+  // swallows its own errors and writes the result to the DB on success.
+  await runAhjCheck(inspectionId, inspection.address, actor.companyId, req.log);
+
+  // Re-fetch the (potentially updated) inspection to return the latest ahjCheck.
+  const [updated] = await db
+    .select({ ahjCheck: inspectionsTable.ahjCheck })
+    .from(inspectionsTable)
+    .where(eq(inspectionsTable.id, inspectionId))
+    .limit(1);
+
+  res.json({ ahjCheck: updated?.ahjCheck ?? null });
 });
 
 export default router;

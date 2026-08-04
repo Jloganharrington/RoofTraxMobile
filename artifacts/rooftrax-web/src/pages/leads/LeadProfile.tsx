@@ -44,8 +44,9 @@ import {
   AlertCircle,
   AlertTriangle,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
-import { useGetLead, useUpdateLead, type FullLead } from '@/lib/claimHubApi';
+import { useGetLead, useUpdateLead, useGetMyProfile, useRecheckAhj, type FullLead } from '@/lib/claimHubApi';
 import { InspectionFlowWizard } from '@/components/inspection/InspectionFlowWizard';
 import {
   INSURANCE_STAGES,
@@ -536,6 +537,7 @@ export default function LeadProfile() {
 
   const { data, isLoading, error } = useGetLead(id!);
   const { mutateAsync: updateLead, isPending: saving } = useUpdateLead(id!);
+  const { data: profileData } = useGetMyProfile();
 
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
   const [form, setForm] = useState<FormState | null>(null);
@@ -557,6 +559,17 @@ export default function LeadProfile() {
     // Pin leads may have a linked inspection populated by the API
     return lead.inspectionId ?? null;
   }, [lead]);
+
+  // Re-check AHJ button — only for ins- leads (which have a direct inspection)
+  const isInsLead = id?.startsWith('ins-') ?? false;
+  const userRole = profileData?.profile?.role ?? '';
+  const canRecheckAhj = isInsLead && (
+    userRole === 'manager' || userRole === 'admin' || userRole === 'super_admin'
+  );
+  const { mutateAsync: recheckAhj, isPending: ahjChecking } = useRecheckAhj(
+    inspectionId ?? '',
+    id ?? '',
+  );
 
   // Rebuild tabs whenever pipeline type or inspection presence changes
   const tabs = useMemo(() => buildTabs(isInsurance, !!inspectionId), [isInsurance, inspectionId]);
@@ -685,11 +698,49 @@ export default function LeadProfile() {
                     <MapPin className="h-3 w-3" />{lead.address}
                   </p>
                 )}
+                {/* AHJ check result badge */}
                 {lead?.ahjCheck && !lead.ahjCheck.packPresent && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-0.5 mt-1 flex items-center gap-1.5">
                     <AlertTriangle className="h-3 w-3 shrink-0" />
                     <span>AHJ pack missing — <span className="font-semibold">{lead.ahjCheck.jurisdiction}</span> not in library</span>
                   </p>
+                )}
+                {/* Re-check AHJ button — manager+ only, ins- leads only */}
+                {canRecheckAhj && (
+                  <div className="mt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[11px] px-2 gap-1"
+                      disabled={ahjChecking}
+                      onClick={async () => {
+                        try {
+                          const result = await recheckAhj();
+                          if (result.ahjCheck) {
+                            toast({
+                              title: 'AHJ check complete',
+                              description: result.ahjCheck.packPresent
+                                ? `Pack found for ${result.ahjCheck.jurisdiction}`
+                                : `No pack — ${result.ahjCheck.jurisdiction} not in library`,
+                            });
+                          } else {
+                            toast({
+                              title: 'AHJ check failed',
+                              description: 'Could not determine jurisdiction. Try again.',
+                              variant: 'destructive',
+                            });
+                          }
+                        } catch {
+                          toast({ title: 'Error', description: 'AHJ re-check failed.', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      {ahjChecking
+                        ? <><Loader2 className="h-3 w-3 animate-spin" />Checking…</>
+                        : <><RefreshCw className="h-3 w-3" />Re-check AHJ</>
+                      }
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

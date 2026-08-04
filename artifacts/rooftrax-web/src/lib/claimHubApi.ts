@@ -529,3 +529,54 @@ export function useGetLeads(
     ...options,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Current user profile (role gating)
+// ---------------------------------------------------------------------------
+
+export interface MyProfile {
+  userId: string;
+  role: string;
+  department: string | null;
+  companyId: string;
+}
+
+export const getMyProfileQueryKey = () => ['my-profile'] as const;
+
+export function useGetMyProfile(
+  options?: Omit<UseQueryOptions<{ profile: MyProfile }>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getMyProfileQueryKey(),
+    queryFn: () => customFetch<{ profile: MyProfile }>('/api/profile'),
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AHJ re-check
+// ---------------------------------------------------------------------------
+
+export interface AhjCheckResult {
+  jurisdiction: string;
+  packPresent: boolean;
+  checkedAt: string;
+  model: string;
+  confidence: 'high' | 'medium' | 'low';
+  summary: string;
+}
+
+export function useRecheckAhj(inspectionId: string, leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      customFetch<{ ahjCheck: AhjCheckResult | null }>(
+        `/api/inspections/${inspectionId}/ahj-check`,
+        { method: 'POST', body: JSON.stringify({}) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getLeadQueryKey(leadId) });
+    },
+  });
+}
