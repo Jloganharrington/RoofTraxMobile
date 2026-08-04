@@ -297,6 +297,14 @@ export interface PipelineInspection {
   repName: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Pin pipeline stage key — present for pin-based leads */
+  stageKey: string | null;
+  /** ISO timestamp when the pin entered its current stage */
+  stageEnteredAt: string | null;
+  /** ISO timestamp for next loop action (supplement/dispute next action, scheduled inspections) */
+  loopNextActionAt: string | null;
+  /** Source pipeline when this lead converges (e.g. 'insurance' on pm_handoff) */
+  sourcePipeline: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +554,25 @@ export interface AdvanceStagePayload {
   lossReason?: string;
   /** ISO datetime for loop-stage next-action due date */
   loopNextActionAt?: string;
+}
+
+/**
+ * Insurance-pipeline-specific advance hook.
+ * Calls PATCH /api/leads/:leadId/advance-stage and invalidates the pipeline
+ * query so the kanban board refreshes immediately.
+ */
+export function useAdvanceInsuranceStage(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AdvanceStagePayload) =>
+      customFetch<{ lead: FullLead }>(`/api/leads/${leadId}/advance-stage`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getPipelineQueryKey() });
+    },
+  });
 }
 export interface RetailLead {
   id: string;

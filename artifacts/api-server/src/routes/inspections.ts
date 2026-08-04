@@ -7771,9 +7771,15 @@ router.get('/pipeline', async (req: Request, res: Response) => {
       inspectorUserId: inspectionsTable.inspectorUserId,
       repFirstName: usersTable.firstName,
       repLastName: usersTable.lastName,
+      // Pin stage fields — present when the inspection has a linked pin
+      pinStageKey:         pinsTable.pipelineStage,
+      pinStageEnteredAt:   pinsTable.stageEnteredAt,
+      pinLoopNextActionAt: pinsTable.loopNextActionAt,
+      pinSourcePipeline:   pinsTable.sourcePipeline,
     })
     .from(inspectionsTable)
     .leftJoin(usersTable, eq(usersTable.id, inspectionsTable.inspectorUserId))
+    .leftJoin(pinsTable, eq(pinsTable.id, inspectionsTable.pinId))
     .where(eq(inspectionsTable.companyId, actor.companyId))
     .orderBy(desc(inspectionsTable.updatedAt));
 
@@ -7795,19 +7801,27 @@ router.get('/pipeline', async (req: Request, res: Response) => {
       : null,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
+    stageKey:         r.pinStageKey         ?? null,
+    stageEnteredAt:   r.pinStageEnteredAt   ? r.pinStageEnteredAt.toISOString()   : null,
+    loopNextActionAt: r.pinLoopNextActionAt ? r.pinLoopNextActionAt.toISOString() : null,
+    sourcePipeline:   r.pinSourcePipeline   ?? null,
   }));
 
   // Include insurance-workflow pins that have no linked inspection yet.
   // These surface in the Insurance Pipeline's "Pin Dropped" column (status = 'pin_dropped').
   const unlinkedPinRows = await db
     .select({
-      id:           pinsTable.id,
-      address:      pinsTable.address,
-      damageType:   pinsTable.damageType,
-      createdAt:    pinsTable.createdAt,
-      updatedAt:    pinsTable.updatedAt,
-      repFirstName: usersTable.firstName,
-      repLastName:  usersTable.lastName,
+      id:               pinsTable.id,
+      address:          pinsTable.address,
+      damageType:       pinsTable.damageType,
+      pipelineStage:    pinsTable.pipelineStage,
+      stageEnteredAt:   pinsTable.stageEnteredAt,
+      loopNextActionAt: pinsTable.loopNextActionAt,
+      sourcePipeline:   pinsTable.sourcePipeline,
+      createdAt:        pinsTable.createdAt,
+      updatedAt:        pinsTable.updatedAt,
+      repFirstName:     usersTable.firstName,
+      repLastName:      usersTable.lastName,
     })
     .from(pinsTable)
     .leftJoin(usersTable, eq(usersTable.id, pinsTable.userId))
@@ -7838,6 +7852,10 @@ router.get('/pipeline', async (req: Request, res: Response) => {
     repName:                p.repFirstName ? [p.repFirstName, p.repLastName].filter(Boolean).join(' ') : null,
     createdAt:              p.createdAt.toISOString(),
     updatedAt:              p.updatedAt.toISOString(),
+    stageKey:               p.pipelineStage    ?? 'pin_dropped',
+    stageEnteredAt:         p.stageEnteredAt   ? p.stageEnteredAt.toISOString()   : null,
+    loopNextActionAt:       p.loopNextActionAt ? p.loopNextActionAt.toISOString() : null,
+    sourcePipeline:         p.sourcePipeline   ?? null,
   }));
 
   res.json({ inspections: [...inspections, ...pinDroppedItems] });

@@ -10,6 +10,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, pinsTable, stageTransitionsTable } from '@workspace/db';
 import {
+  SERVER_STAGES,
   SERVER_STAGES_ARRAY,
   findServerStageByKey,
   STAGES_BY_PIPELINE,
@@ -105,17 +106,20 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
   const { eventType, leadId, payload } = parsed.data;
   const payloadObj = payload ?? {};
 
-  // Collect all stage keys whose autoAdvance eventType + outcomeRules match
-  const matchingStageKeys = new Set<string>();
+  // Collect matching pipeline:key pairs to avoid cross-pipeline key collision
+  // (e.g. 'contract_signed' exists in both retail and insurance — tracking the
+  // full `${pipeline}:${key}` string ensures retail events don't advance
+  // insurance pins and vice-versa).
+  const matchingPipelineStageKeys = new Set<string>();
   for (const stageDef of SERVER_STAGES_ARRAY) {
     if (!stageDef.autoAdvance) continue;
     if (stageDef.autoAdvance.eventType !== eventType) continue;
     const rules = stageDef.autoAdvance.outcomeRules ?? {};
     const rulesMatch = Object.entries(rules).every(([k, v]) => payloadObj[k] === v);
-    if (rulesMatch) matchingStageKeys.add(stageDef.key);
+    if (rulesMatch) matchingPipelineStageKeys.add(`${stageDef.pipeline}:${stageDef.key}`);
   }
 
-  if (matchingStageKeys.size === 0) {
+  if (matchingPipelineStageKeys.size === 0) {
     return void res.json({
       advanced: false, toStage: null, results: [],
       reason: 'No stages match this event',
@@ -129,12 +133,17 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
     .from(pinsTable)
     .where(and(eq(pinsTable.companyId, req.user.companyId), eq(pinsTable.status, 'active')));
 
-  const pinsToAdvance = allActive.filter(
-    (p) =>
-      p.pipelineStage !== null &&
-      matchingStageKeys.has(p.pipelineStage) &&
-      (!leadId || p.id === leadId),
-  );
+  const pinsToAdvance = allActive.filter((p) => {
+    if (!p.pipelineStage) return false;
+    if (leadId && p.id !== leadId) return false;
+    // Match on pipeline:key to prevent cross-pipeline advances.
+    // Pins handed off to the project pipeline still carry their original
+    // workflow ('retail'|'insurance'), so we also check 'project' prefix.
+    return (
+      matchingPipelineStageKeys.has(`${p.workflow}:${p.pipelineStage}`) ||
+      matchingPipelineStageKeys.has(`project:${p.pipelineStage}`)
+    );
+  });
 
   if (pinsToAdvance.length === 0) {
     return void res.json({
@@ -147,7 +156,17 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
 
   for (const pin of pinsToAdvance) {
     const currentKey = pin.pipelineStage!;
-    const currentDef = findServerStageByKey(currentKey);
+    // Scope stage definition lookup to the pin's workflow/pipeline to avoid
+    // cross-pipeline ambiguity when the same key exists in multiple pipelines
+    // (e.g. 'contract_signed' exists in both retail and insurance).
+    const pinPipeline = (pin.workflow as PipelineId | undefined) ?? 'retail';
+    // Prefer the pin's own workflow pipeline; fall back to project (for handed-off
+    // pins whose workflow is still retail/insurance but stage is a project key),
+    // then cross-pipeline key search as a last resort.
+    const currentDef =
+      SERVER_STAGES[`${pinPipeline}:${currentKey}`] ??
+      SERVER_STAGES[`project:${currentKey}`] ??
+      findServerStageByKey(currentKey);
     if (!currentDef) continue;
 
     // Resolve the target stage
