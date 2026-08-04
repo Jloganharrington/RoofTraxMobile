@@ -72,7 +72,7 @@ export function EstimatePanel({ inspectionId }: EstimatePanelProps) {
       priceBookItemId: item.id,
       description: item.name,
       unit: item.unit,
-      unitPriceCents: item.unitPrice * 100,
+      unitPriceCents: item.unitPrice,
     });
   };
 
