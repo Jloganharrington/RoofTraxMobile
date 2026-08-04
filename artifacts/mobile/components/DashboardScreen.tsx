@@ -21,6 +21,7 @@ import {
 import type { ActivityScope, ActivityMetrics } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
+import { useMyPinUpdates, relativeTime, MY_PIN_UPDATES_KEY, type PinUpdate } from '@/lib/pinUpdates';
 import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
@@ -87,9 +88,12 @@ export default function DashboardScreen() {
     return first ? `Hi, ${first}` : 'Dashboard';
   }, [user?.firstName]);
 
+  const pinUpdates = useMyPinUpdates();
+
   async function refreshAll() {
     await queryClient.invalidateQueries({ queryKey: getGetActivityStatsQueryKey(statsParams) });
     await queryClient.invalidateQueries({ queryKey: getGetCurrentCanvassingSessionQueryKey() });
+    await queryClient.invalidateQueries({ queryKey: MY_PIN_UPDATES_KEY });
   }
 
   async function toggleClock() {
@@ -189,6 +193,11 @@ export default function DashboardScreen() {
           <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
         </Pressable>
       ) : null}
+
+      {/* My Pin Updates */}
+      {!isManager && (
+        <PinUpdatesCard updates={pinUpdates.data?.updates ?? []} loading={pinUpdates.isLoading} colors={colors} />
+      )}
 
       {/* Today's metrics (B1) */}
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Today</Text>
@@ -315,6 +324,64 @@ export default function DashboardScreen() {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+  );
+}
+
+// ── Stage-to-icon + colour mapping ──────────────────────────────────────────
+const UPDATE_META: Record<string, { icon: IconName; color: string }> = {
+  appt_scheduled:   { icon: 'calendar',  color: '#16a34a' }, // green
+  appt_complete:    { icon: 'check',     color: '#2563eb' }, // blue
+  phase1_scheduled: { icon: 'calendar',  color: '#16a34a' }, // green
+  fipsa_signed:     { icon: 'file-text', color: '#7c3aed' }, // purple
+};
+
+function PinUpdatesCard({
+  updates,
+  loading,
+  colors,
+}: {
+  updates: PinUpdate[];
+  loading: boolean;
+  colors: ReturnType<typeof useColors>;
+}) {
+  if (loading) return null; // silent while loading — metrics fill the space
+  if (updates.length === 0) return null; // nothing to show yet
+
+  return (
+    <>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>My Pin Updates</Text>
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, gap: 0, padding: 0 }]}>
+        {updates.slice(0, 5).map((u, idx) => {
+          const meta = UPDATE_META[u.toStage] ?? { icon: 'bell' as IconName, color: colors.primary };
+          const title = u.customerName?.trim() || u.address?.trim() || 'Unknown lead';
+          const sub   = u.customerName?.trim() ? (u.address?.trim() ?? '') : '';
+          return (
+            <View
+              key={u.id}
+              style={[
+                styles.updateRow,
+                { borderTopColor: colors.border, borderTopWidth: idx === 0 ? 0 : 1 },
+              ]}
+            >
+              <View style={[styles.updateIcon, { backgroundColor: meta.color + '20' }]}>
+                <Icon name={meta.icon} size={15} color={meta.color} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.updateLabel, { color: colors.foreground }]} numberOfLines={1}>
+                  {u.label}
+                </Text>
+                <Text style={[styles.updateTitle, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {title}{sub ? ` · ${sub}` : ''}
+                </Text>
+              </View>
+              <Text style={[styles.updateTime, { color: colors.mutedForeground }]}>
+                {relativeTime(u.createdAt)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </>
   );
 }
 
@@ -445,4 +512,22 @@ const styles = StyleSheet.create({
   compareValues: { flexDirection: 'row', alignItems: 'baseline' },
   compareMe: { fontSize: 17, fontWeight: '800' },
   compareFoot: { borderTopWidth: 1, paddingTop: 10, marginTop: 2 },
+  updateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  updateIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  updateLabel: { fontSize: 13, fontWeight: '600' },
+  updateTitle: { fontSize: 12, marginTop: 1 },
+  updateTime: { fontSize: 12, flexShrink: 0 },
 });

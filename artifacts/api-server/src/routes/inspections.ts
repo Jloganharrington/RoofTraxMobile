@@ -9752,4 +9752,56 @@ router.post('/inspections/:id/ahj-check', async (req: Request, res: Response) =>
   res.json({ ahjCheck: updated?.ahjCheck ?? null });
 });
 
+// ── My Pin Updates ──────────────────────────────────────────────────────────
+// Returns the most recent stage transitions into notification-worthy stages
+// for pins owned by the authenticated rep. Used by the mobile dashboard.
+
+const NOTIFY_STAGES = [
+  'appt_scheduled',   // Retail: appointment set
+  'appt_complete',    // Retail: appointment completed
+  'phase1_scheduled', // Insurance: appointment set
+  'fipsa_signed',     // Insurance: FIPSA signed
+] as const;
+
+const NOTIFY_STAGE_LABELS: Record<string, string> = {
+  appt_scheduled:   'Appointment set',
+  appt_complete:    'Appointment completed',
+  phase1_scheduled: 'Appointment set',
+  fipsa_signed:     'FIPSA signed',
+};
+
+router.get('/leads/my-pin-updates', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const rows = await db
+    .select({
+      id:           stageTransitionsTable.id,
+      leadId:       stageTransitionsTable.leadId,
+      toStage:      stageTransitionsTable.toStage,
+      createdAt:    stageTransitionsTable.createdAt,
+      address:      pinsTable.address,
+      customerName: pinsTable.customerName,
+      workflow:     pinsTable.workflow,
+    })
+    .from(stageTransitionsTable)
+    .innerJoin(
+      pinsTable,
+      and(
+        eq(pinsTable.id, stageTransitionsTable.leadId),
+        eq(pinsTable.userId, req.user.id),
+        eq(pinsTable.companyId, req.user.companyId),
+      ),
+    )
+    .where(inArray(stageTransitionsTable.toStage, [...NOTIFY_STAGES]))
+    .orderBy(desc(stageTransitionsTable.createdAt))
+    .limit(20);
+
+  const updates = rows.map(r => ({
+    ...r,
+    label: NOTIFY_STAGE_LABELS[r.toStage] ?? r.toStage,
+  }));
+
+  res.json({ updates });
+});
+
 export default router;
