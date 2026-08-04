@@ -94,9 +94,26 @@ export interface ParsedDetrimentFile {
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalize a raw key from the .md file to PascalCase so lookups are
+ * robust regardless of how the author formatted the key:
+ *   "SourceType"    → "SourceType"
+ *   "Source Type"   → "SourceType"
+ *   "source_type"   → "SourceType"
+ *   "Authority limit" → "AuthorityLimit"
+ */
+function normKey(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[_\s]+(.)/g, (_, c: string) => c.toUpperCase()) // collapse separators
+    .replace(/^[a-z]/, (c) => c.toUpperCase());                // ensure PascalCase
+}
+
+/**
  * Split a file into raw key→value maps, one per entry block.
  * Lines starting with '#' are dropped. Blocks delimited by '=== ENTRY ==='.
  * Each non-empty line within a block is split on the FIRST ': '.
+ * Keys are normalised to PascalCase (see normKey) so "Source Type" and
+ * "SourceType" both resolve to the same lookup key.
  */
 function splitEntryBlocks(text: string): Array<Record<string, string>> {
   const cleaned = text
@@ -113,7 +130,7 @@ function splitEntryBlocks(text: string): Array<Record<string, string>> {
       for (const line of block.split(/\r?\n/)) {
         const idx = line.indexOf(': ');
         if (idx > 0) {
-          const key = line.slice(0, idx).trim();
+          const key = normKey(line.slice(0, idx));
           const value = line.slice(idx + 2); // keep trailing content verbatim
           if (key) map[key] = value;
         }

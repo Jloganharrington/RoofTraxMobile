@@ -3,7 +3,7 @@
  * Super-admin only. Accessible at /settings/library.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { Shell } from "@/components/layout/Shell";
@@ -818,9 +818,15 @@ function StandardsTab() {
     onError: (err) => toast({ title: "Delete failed", description: String(err), variant: "destructive" }),
   });
 
+  // Guaranteed post-render sync so the dialog portal always sees the current entry.
+  useEffect(() => {
+    if (editing) setForm({ ...editing });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.id, isNew]);
+
   const openEdit = (entry: StandardsEntry) => {
     setEditing(entry);
-    setForm(entry);
+    setForm({ ...entry }); // sync immediately (batched); effect double-checks after portal mount
     setIsNew(false);
   };
 
@@ -1027,6 +1033,12 @@ function DetrimentTab() {
     },
     onError: (err) => toast({ title: "Delete failed", description: String(err), variant: "destructive" }),
   });
+
+  // Guaranteed post-render sync so the dialog portal always sees the current entry.
+  useEffect(() => {
+    if (editing) setForm({ ...editing } as Partial<DetrimentEntry & { entry_key: string }>);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.id, isNew]);
 
   const openNew = () => {
     setEditing({ id: "", entry_key: "", applicability_conditions: [], statement: "", required_support: null, limitation: null, version: 0 });

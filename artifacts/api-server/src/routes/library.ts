@@ -163,7 +163,8 @@ router.get('/report-settings/standards-entries', async (req: Request, res: Respo
   const rows = await db.execute(sql`
     SELECT DISTINCT ON (entry_key)
       id, entry_key, source_type, citation_text, verification_status,
-      verified_at, authority_limit, locator_template, version, created_at, created_by
+      verified_at, authority_limit, locator_template,
+      human_entered_provisions_only, version, created_at, created_by
     FROM standards_entries
     WHERE company_id = ${actor.companyId}
     ORDER BY entry_key, version DESC, created_at DESC
