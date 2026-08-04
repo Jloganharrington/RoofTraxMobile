@@ -31,3 +31,8 @@ psql "$DATABASE_URL" -f data-migrations/001_backfill_object_ownership.sql
   (`companies.founder_user_id`) to `super_admin`, but only when the company has
   no super_admin yet (breaks the chicken-and-egg where only a super_admin can
   promote anyone). Creates the founder's profile row first if it is missing.
+- **015_project_pipeline_stage_key_rename.sql** — remaps pins stuck in the old
+  project pipeline stage vocabulary (work_scheduled, work_started,
+  replacement_complete, certificate_of_completion, final_payment_pending,
+  final_payment_received, archived_complete) to their equivalent new keys so
+  they reappear on the Project Pipeline board.
