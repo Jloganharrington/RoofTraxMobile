@@ -520,6 +520,32 @@ router.get('/ahj-wizard/runs', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /ahj-wizard/runs/:id
+// ---------------------------------------------------------------------------
+
+router.delete('/ahj-wizard/runs/:id', async (req: Request, res: Response) => {
+  const actor = await requireSuperAdmin(req, res);
+  if (!actor) return;
+
+  const runId = String(req.params.id);
+  const [run] = await db
+    .select({ id: wizardRunsTable.id, status: wizardRunsTable.status })
+    .from(wizardRunsTable)
+    .where(and(eq(wizardRunsTable.id, runId), eq(wizardRunsTable.companyId, actor.companyId)))
+    .limit(1);
+
+  if (!run) return void res.status(404).json({ error: 'Run not found' });
+  if (run.status === 'running') {
+    return void res.status(409).json({ error: 'Cannot delete a run that is still in progress' });
+  }
+
+  // Candidate items cascade-delete automatically via FK onDelete: cascade
+  await db.delete(wizardRunsTable).where(eq(wizardRunsTable.id, runId));
+
+  res.status(204).send();
+});
+
+// ---------------------------------------------------------------------------
 // GET /ahj-wizard/runs/:id/items
 // ---------------------------------------------------------------------------
 

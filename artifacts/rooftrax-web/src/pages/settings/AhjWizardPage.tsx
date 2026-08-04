@@ -57,6 +57,7 @@ import {
   Filter,
   ArrowRight,
   BookOpen,
+  Trash2,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -476,12 +477,27 @@ function EvalBadge({ eval: ev }: { eval?: WizardRun["stats"]["evalReport"] }) {
 }
 
 function RunList({ onSelect }: { onSelect: (run: WizardRun) => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
   const { data, isLoading } = useQuery<{ runs: WizardRun[] }>({
     queryKey: ["ahj-runs"],
     queryFn: () => customFetch<{ runs: WizardRun[] }>("/api/ahj-wizard/runs"),
     refetchInterval: (query) => {
       const runs = query.state.data?.runs ?? [];
       return runs.some((r) => r.status === "running") ? 4000 : false;
+    },
+  });
+
+  const deleteRun = useMutation({
+    mutationFn: (runId: string) =>
+      customFetch(`/api/ahj-wizard/runs/${runId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ahj-runs"] });
+      toast({ title: "Run deleted" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -496,12 +512,20 @@ function RunList({ onSelect }: { onSelect: (run: WizardRun) => void }) {
     );
   }
 
+  function handleDelete(e: React.MouseEvent, run: WizardRun) {
+    e.stopPropagation();
+    if (run.status === "running") return;
+    if (!window.confirm(`Delete the "${run.jurisdiction}" run and all its extracted items? This cannot be undone.`)) return;
+    deleteRun.mutate(run.id);
+  }
+
   return (
     <div className="space-y-2">
       {runs.map((run) => {
         const counts = run.itemCounts ?? {};
         const total = Object.values(counts).reduce((a, b) => a + b, 0);
         const verified = (counts.verified ?? 0) + (counts.edited_verified ?? 0);
+        const isDeleting = deleteRun.isPending && deleteRun.variables === run.id;
         return (
           <div
             key={run.id}
@@ -525,6 +549,14 @@ function RunList({ onSelect }: { onSelect: (run: WizardRun) => void }) {
                 {total > 0 && <span>{verified}/{total} verified</span>}
               </div>
             </div>
+            <button
+              onClick={(e) => handleDelete(e, run)}
+              disabled={run.status === "running" || isDeleting}
+              className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+              title="Delete run"
+            >
+              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </button>
             <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
           </div>
         );
