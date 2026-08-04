@@ -8740,7 +8740,16 @@ router.post('/inspections/:inspectionId/events', async (req: Request, res: Respo
 // GET /retail-pipeline
 // Pins grouped into retail pipeline stages. Stage is derived server-side
 // from doorKnockResult, contactOutcome, and linked inspection status.
+// Leads that have been advanced to a project-pipeline stage are excluded so
+// that converged leads (e.g. deposit_received → pm_handoff) disappear from
+// this board and appear only on the Project Pipeline board.
 // ---------------------------------------------------------------------------
+
+// Project-stage keys — leads with any of these are excluded from the Retail board.
+const RETAIL_EXCLUDE_STAGE_KEYS = new Set([
+  'pm_handoff', 'pre_production', 'materials_ordered', 'scheduled',
+  'in_production', 'complete', 'final_invoiced', 'closed_warranty',
+]);
 
 router.get('/retail-pipeline', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
@@ -8749,19 +8758,23 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
 
   const rows = await db
     .select({
-      id:             pinsTable.id,
-      address:        pinsTable.address,
-      workflow:       pinsTable.workflow,
-      damageType:     pinsTable.damageType,
+      id:              pinsTable.id,
+      address:         pinsTable.address,
+      workflow:        pinsTable.workflow,
+      damageType:      pinsTable.damageType,
       doorKnockResult: pinsTable.doorKnockResult,
-      contactOutcome: pinsTable.contactOutcome,
-      customerName:   pinsTable.customerName,
-      customerPhone:  pinsTable.customerPhone,
-      retailData:     pinsTable.retailData,
-      createdAt:      pinsTable.createdAt,
-      repFirstName:   usersTable.firstName,
-      repLastName:    usersTable.lastName,
-      inspectionId:   inspectionsTable.id,
+      contactOutcome:  pinsTable.contactOutcome,
+      customerName:    pinsTable.customerName,
+      customerPhone:   pinsTable.customerPhone,
+      retailData:      pinsTable.retailData,
+      createdAt:       pinsTable.createdAt,
+      pipelineStage:   pinsTable.pipelineStage,
+      stageEnteredAt:  pinsTable.stageEnteredAt,
+      loopNextActionAt: pinsTable.loopNextActionAt,
+      lossReason:      pinsTable.lossReason,
+      repFirstName:    usersTable.firstName,
+      repLastName:     usersTable.lastName,
+      inspectionId:    inspectionsTable.id,
       inspectionStatus: inspectionsTable.status,
     })
     .from(pinsTable)
@@ -8781,32 +8794,57 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
     )
     .orderBy(desc(pinsTable.createdAt));
 
-  function deriveRetailStage(r: typeof rows[number]): string {
+  // Compat remap: old retail stage keys → new spec keys.
+  // Applies to rows that were advanced using the old vocabulary before the
+  // rename. Run 016_retail_pipeline_stage_key_rename.sql to backfill the DB;
+  // this remap handles any remaining rows until the migration has been applied
+  // to all environments.
+  const OLD_RETAIL_KEY_MAP: Record<string, string> = {
+    contact_made:       'appt_needed',
+    appt_confirmed:     'appt_complete',
+    estimate_provided:  'proposal_provided',
+    followup_required:  'follow_up',
+    contract_sent:      'contract_pending',
+  };
+
+  // Legacy fallback: derive stage from old fields for pins that have no
+  // pipelineStage column value at all (null).
+  function deriveRetailStageLegacy(r: typeof rows[number]): string {
     if (r.doorKnockResult === 'no_answer') return 'archived_lost';
     if (r.inspectionId) {
       const s = r.inspectionStatus;
       if (s === 'submitted' || s === 'package_ready') return 'contract_signed';
-      return 'estimate_provided';
+      return 'proposal_provided';
     }
     if (r.doorKnockResult === 'appointment' || r.contactOutcome === 'call_to_schedule') return 'appt_scheduled';
-    if (r.doorKnockResult === 'no_appointment') return 'followup_required';
+    if (r.doorKnockResult === 'no_appointment') return 'follow_up';
     return 'pin_dropped';
   }
 
-  const leads = rows.map(r => ({
-    id:              r.id,
-    address:         r.address,
-    customerName:    r.customerName,
-    customerPhone:   r.customerPhone,
-    damageType:      r.damageType,
-    doorKnockResult: r.doorKnockResult,
-    contactOutcome:  r.contactOutcome,
-    workflow:        r.workflow,
-    repName:         r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
-    inspectionId:    r.inspectionId ?? null,
-    retailStage:     deriveRetailStage(r),
-    createdAt:       r.createdAt.toISOString(),
-  }));
+  const leads = rows
+    // Exclude leads that have been advanced into a project-pipeline stage.
+    // These appear on the Project Pipeline board instead.
+    .filter(r => !r.pipelineStage || !RETAIL_EXCLUDE_STAGE_KEYS.has(r.pipelineStage))
+    .map(r => ({
+      id:              r.id,
+      address:         r.address,
+      customerName:    r.customerName,
+      customerPhone:   r.customerPhone,
+      damageType:      r.damageType,
+      doorKnockResult: r.doorKnockResult,
+      contactOutcome:  r.contactOutcome,
+      workflow:        r.workflow,
+      repName:         r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
+      inspectionId:    r.inspectionId ?? null,
+      // stageKey is the canonical field; retailStage is a backwards-compat alias.
+      // Apply compat remap so old key values appear in the correct new column.
+      stageKey:        OLD_RETAIL_KEY_MAP[r.pipelineStage ?? ''] ?? r.pipelineStage ?? deriveRetailStageLegacy(r),
+      retailStage:     OLD_RETAIL_KEY_MAP[r.pipelineStage ?? ''] ?? r.pipelineStage ?? deriveRetailStageLegacy(r),
+      stageEnteredAt:  r.stageEnteredAt ? r.stageEnteredAt.toISOString() : null,
+      loopNextActionAt: r.loopNextActionAt ? r.loopNextActionAt.toISOString() : null,
+      lossReason:      r.lossReason ?? null,
+      createdAt:       r.createdAt.toISOString(),
+    }));
 
   res.json({ leads });
 });
@@ -9257,6 +9295,8 @@ const AdvanceStageBody = z.object({
   lossReason:  z.string().optional(),
   /** ISO datetime for loop-stage next-action date */
   loopNextActionAt: z.string().datetime({ offset: true }).optional(),
+  /** Set when converging from one pipeline to another (e.g. retail → project) */
+  sourcePipeline: z.string().optional(),
 });
 
 router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response) => {
@@ -9288,7 +9328,7 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
     return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
   }
 
-  const { toStage, trigger, taskPayload, lossReason, loopNextActionAt } = parsed.data;
+  const { toStage, trigger, taskPayload, lossReason, loopNextActionAt, sourcePipeline } = parsed.data;
 
   // Validate target stage exists in the vocabulary
   if (!ALL_STAGE_KEYS.has(toStage)) {
@@ -9296,7 +9336,6 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
   }
 
   // Enforce lossReason on archived_lost
-  const stageDef = findServerStageByKey(toStage);
   if (toStage === 'archived_lost' && !lossReason) {
     return void res.status(422).json({ error: 'lossReason is required when archiving as lost' });
   }
@@ -9311,6 +9350,11 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
     loopNextActionAt: loopNextActionAt ? new Date(loopNextActionAt) : undefined,
     userId:           req.user.id,
   });
+
+  // Cross-pipeline convergence: stamp sourcePipeline when provided (e.g. retail → project)
+  if (sourcePipeline) {
+    await db.update(pinsTable).set({ sourcePipeline }).where(eq(pinsTable.id, leadId));
+  }
 
   // Re-fetch the updated pin
   const [updated] = await db
@@ -9666,6 +9710,7 @@ router.get('/leads', async (req: Request, res: Response) => {
 
   res.json({ leads });
 });
+
 
 // ── POST /inspections/:id/ahj-check ──────────────────────────────────────────
 // Lets managers re-trigger the AHJ jurisdiction check on demand — without

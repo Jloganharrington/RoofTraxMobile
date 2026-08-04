@@ -3,7 +3,7 @@
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
-import { getLeadQueryKey, getLeadsQueryKey, type FullLead } from '@/lib/claimHubApi';
+import { getLeadQueryKey, getLeadsQueryKey, getRetailPipelineQueryKey, type FullLead } from '@/lib/claimHubApi';
 
 export type AdvanceTrigger = 'task' | 'manual_move';
 
@@ -13,6 +13,8 @@ export interface AdvanceStagePayload {
   taskPayload?: Record<string, unknown>;
   lossReason?: string;
   loopNextActionAt?: string; // ISO datetime
+  /** Cross-pipeline convergence: stamp sourcePipeline on the pin */
+  sourcePipeline?: string;
 }
 
 export interface WidgetProps {
@@ -37,6 +39,7 @@ export function useAdvanceStage(leadId: string) {
     onSuccess: (data) => {
       qc.setQueryData(getLeadQueryKey(leadId), data);
       qc.invalidateQueries({ queryKey: getLeadsQueryKey() });
+      qc.invalidateQueries({ queryKey: getRetailPipelineQueryKey() });
     },
   });
 }

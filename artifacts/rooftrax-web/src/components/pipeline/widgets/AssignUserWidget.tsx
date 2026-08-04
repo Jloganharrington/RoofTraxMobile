@@ -16,7 +16,8 @@ interface RepUser {
 }
 
 export function AssignUserWidget({ leadId, toStage, config, onSuccess }: WidgetProps) {
-  const label = (config.label as string | undefined) ?? 'Assign Rep';
+  const label          = (config.label          as string | undefined) ?? 'Assign Rep';
+  const sourcePipeline = (config.sourcePipeline as string | undefined);
   const [selectedId, setSelectedId] = useState('');
   const { mutate, isPending } = useAdvanceStage(leadId);
 
@@ -36,8 +37,9 @@ export function AssignUserWidget({ leadId, toStage, config, onSuccess }: WidgetP
     mutate(
       {
         toStage,
-        trigger:     'task',
-        taskPayload: { assignedUserId: selectedId, assignedUserName: repName },
+        trigger:        'task',
+        taskPayload:    { assignedUserId: selectedId, assignedUserName: repName },
+        sourcePipeline,
       },
       { onSuccess: (data) => onSuccess?.(data.lead) },
     );

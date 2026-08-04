@@ -36,3 +36,8 @@ psql "$DATABASE_URL" -f data-migrations/001_backfill_object_ownership.sql
   replacement_complete, certificate_of_completion, final_payment_pending,
   final_payment_received, archived_complete) to their equivalent new keys so
   they reappear on the Project Pipeline board.
+- **016_retail_pipeline_stage_key_rename.sql** — remaps pins stuck in the old
+  retail pipeline stage vocabulary (contact_made, appt_confirmed,
+  estimate_provided, followup_required, contract_sent) to their equivalent new
+  keys (appt_needed, appt_complete, proposal_provided, follow_up,
+  contract_pending) so they reappear on the Retail Pipeline board.

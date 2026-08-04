@@ -172,7 +172,7 @@ export interface ExitTask {
 
 export const ALL_STAGES: Record<string, StageDefinition> = {
   // ══════════════════════════════════════════════════════════════════════════
-  // RETAIL (10 stages)
+  // RETAIL (10 stages) — spec-exact keys from task #206
   // ══════════════════════════════════════════════════════════════════════════
 
   'retail:pin_dropped': define({
@@ -182,17 +182,17 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     phase: 'new',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Mark Contact Made' } },
+    exitTask: { type: 'AssignUser', config: { label: 'Assign Sales Rep', toStage: 'appt_needed' } },
   }),
 
-  'retail:contact_made': define({
+  'retail:appt_needed': define({
     pipeline: 'retail',
-    key: 'contact_made',
-    label: 'Contact Made',
+    key: 'appt_needed',
+    label: 'Appt. Needed',
     phase: 'new',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Datetime', config: { label: 'Schedule Appointment', setsNextAction: true } },
+    exitTask: { type: 'Datetime', config: { label: 'Schedule Appt.', setsNextAction: true, toStage: 'appt_scheduled' } },
   }),
 
   'retail:appt_scheduled': define({
@@ -202,24 +202,28 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     phase: 'active',
     isLoopStage: true,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Confirm Appointment' } },
-    autoAdvance: { eventType: 'appointment_confirmed' },
+    // Soft confirm — visual only, stage does not change
+    exitTask: { type: 'Confirm', config: { label: 'Confirm Appt.', softConfirm: true } },
   }),
 
-  'retail:appt_confirmed': define({
+  'retail:appt_complete': define({
     pipeline: 'retail',
-    key: 'appt_confirmed',
-    label: 'Appt. Confirmed',
+    key: 'appt_complete',
+    label: 'Appt. Complete',
     phase: 'active',
-    isLoopStage: true,
+    isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Provide Estimate' } },
+    exitTask: {
+      type: 'ButtonLink',
+      config: { label: 'Open Proposal Builder', href: '/leads/:leadId', awaitingBadge: 'Awaiting proposal' },
+    },
+    autoAdvance: { eventType: 'proposal_generated' },
   }),
 
-  'retail:estimate_provided': define({
+  'retail:proposal_provided': define({
     pipeline: 'retail',
-    key: 'estimate_provided',
-    label: 'Estimate Provided',
+    key: 'proposal_provided',
+    label: 'Proposal Provided',
     phase: 'active',
     isLoopStage: false,
     isTerminal: false,
@@ -227,18 +231,20 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
       type: 'OutcomeButtons',
       config: {
         label: 'Next Step',
+        requiresLossReason: true,
         outcomes: [
-          { key: 'followup',       label: 'Needs Follow-Up', toStage: 'followup_required' },
-          { key: 'contract_sent',  label: 'Send Contract',   toStage: 'contract_sent'     },
+          { key: 'won',       label: 'Won — Contract',  toStage: 'contract_pending' },
+          { key: 'follow_up', label: 'Follow-Up',        toStage: 'follow_up'        },
+          { key: 'lost',      label: 'Lost',             toStage: 'archived_lost'    },
         ],
       },
     },
   }),
 
-  'retail:followup_required': define({
+  'retail:follow_up': define({
     pipeline: 'retail',
-    key: 'followup_required',
-    label: 'Follow-Up Required',
+    key: 'follow_up',
+    label: 'Follow Up',
     phase: 'active',
     isLoopStage: true,
     isTerminal: false,
@@ -246,22 +252,29 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
       type: 'OutcomeButtons',
       config: {
         label: 'Outcome',
+        requiresLossReason: true,
+        datetimeFirst: true,
+        datetimeLabel: 'Next Follow-Up',
         outcomes: [
-          { key: 'send_contract', label: 'Send Contract', toStage: 'contract_sent'  },
-          { key: 'lost',          label: 'Mark Lost',     toStage: 'archived_lost'  },
+          { key: 'won',       label: 'Won — Contract',  toStage: 'contract_pending' },
+          { key: 'follow_up', label: 'Follow-Up Again', toStage: 'follow_up'        },
+          { key: 'lost',      label: 'Lost',            toStage: 'archived_lost'    },
         ],
       },
     },
   }),
 
-  'retail:contract_sent': define({
+  'retail:contract_pending': define({
     pipeline: 'retail',
-    key: 'contract_sent',
-    label: 'Contract Sent',
+    key: 'contract_pending',
+    label: 'Contract Pending',
     phase: 'closing',
     isLoopStage: true,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Mark Contract Signed' } },
+    exitTask: {
+      type: 'ButtonLink',
+      config: { label: 'Generate Contract', href: '/leads/:leadId', awaitingBadge: 'Awaiting signature' },
+    },
     autoAdvance: { eventType: 'contract_signed', outcomeRules: { pipeline: 'retail' } },
   }),
 
@@ -272,8 +285,7 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     phase: 'closing',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'MoneyConfirm', config: { label: 'Record Deposit', moneyField: 'depositAmount' } },
-    autoAdvance: { eventType: 'deposit_received', outcomeRules: { pipeline: 'retail' } },
+    exitTask: { type: 'MoneyConfirm', config: { label: 'Collect Deposit', moneyField: 'depositAmount', toStage: 'deposit_received' } },
   }),
 
   'retail:deposit_received': define({
@@ -283,7 +295,7 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     phase: 'closing',
     isLoopStage: false,
     isTerminal: false,
-    exitTask: { type: 'Confirm', config: { label: 'Move to Project Pipeline' } },
+    exitTask: { type: 'AssignUser', config: { label: 'Assign Project Manager', roleFilter: 'manager', toStage: 'pm_handoff', sourcePipeline: 'retail' } },
   }),
 
   'retail:archived_lost': define({
@@ -293,7 +305,7 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     phase: 'closed',
     isLoopStage: false,
     isTerminal: true,
-    exitTask: { type: 'Fields', config: { label: 'Archive Lead', fields: [{ name: 'lossReason', label: 'Loss Reason', type: 'text' }] } },
+    exitTask: { type: 'Confirm', config: { label: 'Archived' } },
   }),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -409,8 +421,8 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
       config: {
         label: 'Adjuster Outcome',
         outcomes: [
-          { key: 'approved', label: 'Claim Approved', toStage: 'claim_approved'  },
-          { key: 'denied',   label: 'Claim Denied',   toStage: 'claim_denied'    },
+          { key: 'approved', label: 'Claim Approved',  toStage: 'claim_approved'  },
+          { key: 'denied',   label: 'Claim Denied',    toStage: 'claim_denied'    },
           { key: 'pa',       label: 'Public Adjuster', toStage: 'public_adjuster' },
           { key: 'appraise', label: 'Appraisal',       toStage: 'appraisal'       },
         ],
@@ -496,7 +508,7 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
     },
   }),
 
-  // Insurance terminal (archived_lost shared with retail key name but pipeline-scoped)
+  // Insurance terminal
   'insurance:archived_lost': define({
     pipeline: 'insurance',
     key: 'archived_lost',
@@ -508,7 +520,7 @@ export const ALL_STAGES: Record<string, StageDefinition> = {
   }),
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PROJECT (8 stages)
+  // PROJECT (8 stages) — authoritative keys from task #208
   // ══════════════════════════════════════════════════════════════════════════
 
   'project:pm_handoff': define({
@@ -639,4 +651,22 @@ export interface ExitTaskConfig {
   setsNextAction?: boolean;
   /** For MoneyConfirm: currency display label */
   moneyField?: string;
+  /** The stage to advance to (used inline in config for clarity) */
+  toStage?: string;
+  /** Whether this confirm is visual-only (no stage change) */
+  softConfirm?: boolean;
+  /** Badge text shown while awaiting an async event (ButtonLink stages) */
+  awaitingBadge?: string;
+  /** For OutcomeButtons: require a loss reason before transitioning to archived_lost */
+  requiresLossReason?: boolean;
+  /** For OutcomeButtons: show a datetime picker above the outcome buttons */
+  datetimeFirst?: boolean;
+  /** Label for the datetimeFirst picker */
+  datetimeLabel?: string;
+  /** For AssignUser: role filter (e.g. 'manager') */
+  roleFilter?: string;
+  /** For cross-pipeline convergence: stamp sourcePipeline when advancing */
+  sourcePipeline?: string;
+  /** Extra arbitrary payload to merge into taskPayload on advance */
+  taskPayload?: Record<string, unknown>;
 }

@@ -27,14 +27,14 @@ export interface ServerStageDef {
 }
 
 const retail: ServerStageDef[] = [
-  { pipeline: 'retail', key: 'pin_dropped',       label: 'Pin Dropped',         isLoopStage: false, isTerminal: false, order: 0 },
-  { pipeline: 'retail', key: 'contact_made',       label: 'Contact Made',        isLoopStage: false, isTerminal: false, order: 1 },
-  { pipeline: 'retail', key: 'appt_scheduled',     label: 'Appt. Scheduled',     isLoopStage: true,  isTerminal: false, order: 2, autoAdvance: { eventType: 'appointment_confirmed' } },
-  { pipeline: 'retail', key: 'appt_confirmed',     label: 'Appt. Confirmed',     isLoopStage: true,  isTerminal: false, order: 3 },
-  { pipeline: 'retail', key: 'estimate_provided',  label: 'Estimate Provided',   isLoopStage: false, isTerminal: false, order: 4, outcomes: [{ key: 'followup', toStage: 'followup_required' }, { key: 'contract_sent', toStage: 'contract_sent' }] },
-  { pipeline: 'retail', key: 'followup_required',  label: 'Follow-Up Required',  isLoopStage: true,  isTerminal: false, order: 5, outcomes: [{ key: 'send_contract', toStage: 'contract_sent' }, { key: 'lost', toStage: 'archived_lost' }] },
-  { pipeline: 'retail', key: 'contract_sent',      label: 'Contract Sent',       isLoopStage: true,  isTerminal: false, order: 6, autoAdvance: { eventType: 'contract_signed', outcomeRules: { pipeline: 'retail' } } },
-  { pipeline: 'retail', key: 'contract_signed',    label: 'Contract Signed',     isLoopStage: false, isTerminal: false, order: 7, autoAdvance: { eventType: 'deposit_received', outcomeRules: { pipeline: 'retail' } } },
+  { pipeline: 'retail', key: 'pin_dropped',        label: 'Pin Dropped',         isLoopStage: false, isTerminal: false, order: 0 },
+  { pipeline: 'retail', key: 'appt_needed',        label: 'Appt. Needed',        isLoopStage: false, isTerminal: false, order: 1 },
+  { pipeline: 'retail', key: 'appt_scheduled',     label: 'Appt. Scheduled',     isLoopStage: true,  isTerminal: false, order: 2 },
+  { pipeline: 'retail', key: 'appt_complete',      label: 'Appt. Complete',      isLoopStage: false, isTerminal: false, order: 3, autoAdvance: { eventType: 'proposal_generated' } },
+  { pipeline: 'retail', key: 'proposal_provided',  label: 'Proposal Provided',   isLoopStage: false, isTerminal: false, order: 4, outcomes: [{ key: 'won', toStage: 'contract_pending' }, { key: 'follow_up', toStage: 'follow_up' }, { key: 'lost', toStage: 'archived_lost' }] },
+  { pipeline: 'retail', key: 'follow_up',          label: 'Follow Up',           isLoopStage: true,  isTerminal: false, order: 5, outcomes: [{ key: 'won', toStage: 'contract_pending' }, { key: 'follow_up', toStage: 'follow_up' }, { key: 'lost', toStage: 'archived_lost' }] },
+  { pipeline: 'retail', key: 'contract_pending',   label: 'Contract Pending',    isLoopStage: true,  isTerminal: false, order: 6, autoAdvance: { eventType: 'contract_signed', outcomeRules: { pipeline: 'retail' } } },
+  { pipeline: 'retail', key: 'contract_signed',    label: 'Contract Signed',     isLoopStage: false, isTerminal: false, order: 7 },
   { pipeline: 'retail', key: 'deposit_received',   label: 'Deposit Received',    isLoopStage: false, isTerminal: false, order: 8 },
   { pipeline: 'retail', key: 'archived_lost',      label: 'Archived – Lost',     isLoopStage: false, isTerminal: true,  order: 9 },
 ];

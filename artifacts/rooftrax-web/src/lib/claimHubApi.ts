@@ -585,7 +585,13 @@ export interface RetailLead {
   workflow: string | null;
   repName: string | null;
   inspectionId: string | null;
+  /** Canonical stage key from the DB pipelineStage column */
+  stageKey: string;
+  /** Backwards-compat alias for stageKey */
   retailStage: string;
+  stageEnteredAt: string | null;
+  loopNextActionAt: string | null;
+  lossReason: string | null;
   createdAt: string;
 }
 
