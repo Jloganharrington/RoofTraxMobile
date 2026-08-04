@@ -1,0 +1,29 @@
+Claim pipeline redesign — gating, stepper order, and slot-based photo curation:
+
+1. GATING: A claim whose field capture is incomplete (no attested forensic record synced) shows a full-screen "Awaiting Field Capture" state instead of the pipeline: property header, capture status (not started / in progress / synced-unattested), last sync time, and a link to the mobile record if partial data exists. The pipeline stepper renders only once an attested field record exists.
+
+2. READINESS: Replace the readiness checklist with a progress bar (n of m checks passing). Failing/warning items render as an expandable detail beneath the bar, keeping the existing per-item failure reasons. Bar reaches 100% = Stage 0 ready.
+
+3. STEP ORDER: 1 Review Field Data → 2 Photo Curation → 3 Estimate → 4 AI Report Sections → 5 Compile & Attest → 6 Deliver. (Estimate is an input to generation — Stage 0 requires ≥1 line item and Estimate Justifications generates from line items.) Steps 2 and 3 both unlock when step 1 completes.
+
+4. STEP 1 — Review Field Capture Data: opens a modal rendering the attested field record as a read-only structured review: grouped by inspection stage (arrival, interview, property profile, elevations, roof/siding examination, product ID, RAP, attestation), showing field values, selections, and a photo gallery per stage. Attestation status banner at top (inspector, date). Closing the modal with "Mark Reviewed" completes step 1 and records claim_event field_record_reviewed with the user id.
+
+5. STEP 2 — Photo Curation becomes slot-based (Exhibit Manifest):
+   a. On entry, derive the exhibit slot manifest DETERMINISTICALLY from claim flags — no AI in slot derivation:
+      - always: front_elevation, collateral (1-2), damage_closeup per affected system, edge_assembly, facet_overview per damaged facet
+      - peril includes hail: test_square per tested facet, spatter, comparison_recency
+      - interior_scope_present: interior_trace chain (opening / path / terminus)
+      - RAP record present: rap1_baseline + up to 2 rap_outcome (priority delamination, crease)
+      - created_opening AND mitigation_performed: mitigation_before / mitigation_after
+      - pre-existing conditions documented: comparison_covered_vs_unrelated
+      - comparison slots are only included when eligible candidates exist for BOTH sides
+   b. Each slot card shows: slot name, required/optional, and the AI-proposed photo (candidates filtered by the field app's structured tags for that slot class; AI ranks within the filtered set only).
+   c. Interactions: tap photo = confirm slot (1 click). Tap "Swap" = filtered candidate grid, tap a photo = replace and confirm (2 clicks). Optional slots have "Not applicable" (records slot_skipped). Comparison cards show the proposed pair stacked vertically with comparison type label (recency / cause_differentiation / covered_vs_unrelated); tapping Confirm on a comparison card IS the photoComparisonConfirmed gate act for that pair.
+   d. Step 2 completes when all required slots are confirmed. Badge assignment fires on completion (existing exhibit finalization behavior). Every confirm/swap/skip is a claim_event.
+   e. Layout: single-column card stack, tap targets sized for tablet.
+
+6. Remove the serial dependency chain in AI Report Sections: Findings, Causation, Detriment Application, RAP Narrative, and Estimate Justifications generate independently and in parallel once Stage 0 passes; only Summary of Findings (requires those five approved) and Closing Statement (requires Summary) keep dependencies. Add a "Generate All Ready" button that queues every independent section.
+
+7. Step 6 rename: step "Deliver", action "Deliver Package". Remove "Submit Claim" everywhere (UI, routes, events, emails); event type package_delivered. Step 6 status shows "Blocked — compile and attest required" until the signed blob exists.
+
+8. Readiness copy: RAP failure text becomes "No repairability assessment recorded and no gate reason on file."
