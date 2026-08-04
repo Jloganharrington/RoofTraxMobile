@@ -10,10 +10,11 @@
  */
 
 import { ai } from '@workspace/integrations-gemini-ai';
-import { db, inspectionsTable, ahjPacksTable } from '@workspace/db';
+import { db, inspectionsTable, ahjPacksTable, agentPromptsTable } from '@workspace/db';
 import { and, eq, ilike } from 'drizzle-orm';
 
 const MODEL = 'gemini-3.1-pro-preview';
+const AGENT_KEY = 'ahj_fipsa_lookup';
 
 // ── Gemini AHJ research ───────────────────────────────────────────────────────
 
@@ -23,14 +24,13 @@ interface AhjLookupResult {
   summary: string;
 }
 
-async function lookupAhjForAddress(address: string): Promise<AhjLookupResult> {
-  const prompt = `You are a building code compliance expert. Identify the Authority Having Jurisdiction (AHJ) for a property.
+/** Built-in default prompt — used when no company-specific prompt is configured. */
+export const DEFAULT_AHJ_FIPSA_PROMPT =
+  `You are a building code compliance expert. Identify the Authority Having Jurisdiction (AHJ) for a property.
 
 The AHJ is the local government entity — a city, incorporated town, municipality, county, or township — that has the legal authority to issue building permits and enforce the adopted construction code for the property.
 
-Property address: ${address}
-
-Search for this address and determine the correct AHJ. Use the official government name (e.g. "Fairfax County", "City of Richmond", "Prince William County", "Town of Herndon").
+Search for the address provided and determine the correct AHJ. Use the official government name (e.g. "Fairfax County", "City of Richmond", "Prince William County", "Town of Herndon").
 
 Respond ONLY with a JSON object in this exact shape — no markdown fences, no extra text:
 {
@@ -38,6 +38,26 @@ Respond ONLY with a JSON object in this exact shape — no markdown fences, no e
   "confidence": "high" | "medium" | "low",
   "summary": "<1-2 sentences explaining why this entity is the AHJ for this address>"
 }`;
+
+async function loadCompanyPrompt(companyId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ systemPrompt: agentPromptsTable.systemPrompt })
+    .from(agentPromptsTable)
+    .where(
+      and(
+        eq(agentPromptsTable.companyId, companyId),
+        eq(agentPromptsTable.agentKey, AGENT_KEY),
+      ),
+    )
+    .limit(1);
+  return row?.systemPrompt ?? null;
+}
+
+async function lookupAhjForAddress(
+  address: string,
+  systemPrompt: string,
+): Promise<AhjLookupResult> {
+  const prompt = `${systemPrompt}\n\nProperty address: ${address}`;
 
   const response = await ai.models.generateContent({
     model: MODEL,
@@ -118,7 +138,14 @@ export async function runAhjCheck(
   try {
     log?.info({ inspectionId, address }, 'AHJ check: starting');
 
-    const { jurisdiction, confidence, summary } = await lookupAhjForAddress(address);
+    // Load company-specific prompt, fall back to built-in default.
+    const customPrompt = await loadCompanyPrompt(companyId);
+    const systemPrompt = customPrompt ?? DEFAULT_AHJ_FIPSA_PROMPT;
+    if (customPrompt) {
+      log?.info({ inspectionId }, 'AHJ check: using company custom prompt');
+    }
+
+    const { jurisdiction, confidence, summary } = await lookupAhjForAddress(address, systemPrompt);
     const packPresent = await checkPackPresent(jurisdiction, companyId);
 
     await db

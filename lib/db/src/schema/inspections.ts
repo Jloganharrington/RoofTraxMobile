@@ -1611,6 +1611,51 @@ export const ahjPacksTable = pgTable('ahj_packs', {
 });
 
 // =============================================================================
+// AI AGENT PROMPTS
+// =============================================================================
+
+/**
+ * Known agent keys — each maps to one AI activation trigger.
+ * Extend this list as new agent-driven features are added.
+ */
+export const AGENT_PROMPT_KEYS = [
+  'ahj_fipsa_lookup',      // AHJ jurisdiction check fired when FIPSA is signed
+  'ahj_wizard_extraction', // AHJ Wizard per-category code extraction pass
+] as const;
+export type AgentPromptKey = (typeof AGENT_PROMPT_KEYS)[number];
+
+/**
+ * Per-company custom system prompts for AI agent activations.
+ * One row per (companyId, agentKey). When a row exists the stored
+ * system_prompt replaces the built-in default for that company.
+ * Deleting a row reverts the agent to its built-in default.
+ */
+export const agentPromptsTable = pgTable(
+  'agent_prompts',
+  {
+    id: varchar('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id, { onDelete: 'cascade' }),
+    agentKey: varchar('agent_key').notNull(),
+    systemPrompt: text('system_prompt').notNull(),
+    updatedBy: varchar('updated_by').references(() => usersTable.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex('agent_prompts_company_key_uidx').on(t.companyId, t.agentKey)],
+);
+
+export type AgentPrompt = typeof agentPromptsTable.$inferSelect;
+
+// =============================================================================
 // CLAIM SECTIONS (Task #121 — full lifecycle in Task #122)
 // =============================================================================
 

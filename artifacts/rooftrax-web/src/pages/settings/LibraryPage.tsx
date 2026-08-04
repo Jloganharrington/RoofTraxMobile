@@ -41,7 +41,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { format } from "date-fns";
-import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2, Trash2 } from "lucide-react";
+import { CheckCircle, AlertTriangle, Plus, Edit3, ShieldCheck, Upload, FileText, Loader2, Trash2, Bot } from "lucide-react";
 import {
   parseMdLibrary,
   parseMdBoilerplate,
@@ -1299,6 +1299,150 @@ function AhjPacksTab() {
 }
 
 // ---------------------------------------------------------------------------
+// AI Agent Prompts tab
+// ---------------------------------------------------------------------------
+
+interface AgentPromptRow {
+  id: string;
+  agentKey: string;
+  systemPrompt: string;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const AGENT_DEFINITIONS: Record<string, { name: string; description: string }> = {
+  ahj_fipsa_lookup: {
+    name: "FIPSA AHJ Lookup",
+    description:
+      "Determines the Authority Having Jurisdiction (AHJ) for a property address when the homeowner signs the FIPSA. Uses Gemini with Google Search grounding to identify the governing municipality or county, then flags if no AHJ Pack exists in the library.",
+  },
+  ahj_wizard_extraction: {
+    name: "AHJ Wizard — Code Extraction",
+    description:
+      "System prompt for each category-sweep pass in the AHJ Wizard. Runs once per category (14 passes per wizard run) against the supplied jurisdiction source text. Governs extraction discipline, trigger vocabulary, output format, and the absolute rules that prevent fabricated citations.",
+  },
+};
+
+function AgentPromptsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["agent-prompts"],
+    queryFn: () =>
+      customFetch<{ prompts: AgentPromptRow[] }>("/api/report-settings/agent-prompts"),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({ agentKey, systemPrompt }: { agentKey: string; systemPrompt: string }) =>
+      customFetch(`/api/report-settings/agent-prompts/${agentKey}`, {
+        method: "PUT",
+        body: JSON.stringify({ systemPrompt }),
+      }),
+    onSuccess: (_data, { agentKey }) => {
+      void qc.invalidateQueries({ queryKey: ["agent-prompts"] });
+      toast({ title: "Prompt saved", description: AGENT_DEFINITIONS[agentKey]?.name });
+      setDrafts(prev => { const next = { ...prev }; delete next[agentKey]; return next; });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to save prompt.", variant: "destructive" }),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (agentKey: string) =>
+      customFetch(`/api/report-settings/agent-prompts/${agentKey}`, { method: "DELETE" }),
+    onSuccess: (_data, agentKey) => {
+      void qc.invalidateQueries({ queryKey: ["agent-prompts"] });
+      toast({ title: "Reset to built-in default", description: AGENT_DEFINITIONS[agentKey]?.name });
+      setDrafts(prev => { const next = { ...prev }; delete next[agentKey]; return next; });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to reset prompt.", variant: "destructive" }),
+  });
+
+  const promptsByKey = Object.fromEntries((data?.prompts ?? []).map(p => [p.agentKey, p]));
+
+  if (isLoading) {
+    return <div className="space-y-4">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-48 w-full" />)}</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Customize the system prompt for each AI agent activation. When a custom prompt is saved it
+        replaces the built-in default for your company. Reset to revert to the built-in default.
+      </p>
+
+      {Object.entries(AGENT_DEFINITIONS).map(([key, def]) => {
+        const existing = promptsByKey[key];
+        const isDirty = drafts[key] !== undefined;
+        const currentText = isDirty ? drafts[key] : (existing?.systemPrompt ?? "");
+
+        return (
+          <Card key={key}>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2">
+                  <Bot className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                  <div>
+                    <CardTitle className="text-base">{def.name}</CardTitle>
+                    <CardDescription className="mt-1 text-xs">{def.description}</CardDescription>
+                  </div>
+                </div>
+                {existing ? (
+                  <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 shrink-0 whitespace-nowrap">
+                    Custom active
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground shrink-0 whitespace-nowrap">
+                    Built-in default
+                  </Badge>
+                )}
+              </div>
+              {existing && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  Last updated {format(new Date(existing.updatedAt), "MMM d, yyyy h:mm a")}
+                </p>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                rows={14}
+                className="font-mono text-xs resize-y"
+                placeholder="Paste your custom system prompt here…"
+                value={currentText}
+                onChange={e => setDrafts(prev => ({ ...prev, [key]: e.target.value }))}
+              />
+              <div className="flex gap-2 justify-end">
+                {existing && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => resetMutation.mutate(key)}
+                    disabled={resetMutation.isPending}
+                  >
+                    {resetMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
+                    Reset to default
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => saveMutation.mutate({ agentKey: key, systemPrompt: currentText })}
+                  disabled={!isDirty || !currentText.trim() || saveMutation.isPending}
+                >
+                  {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
+                  Save prompt
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Bulk import dialog
 // ---------------------------------------------------------------------------
 
@@ -1636,6 +1780,7 @@ export default function LibraryPage() {
                 <TabsTrigger value="standards">Standards</TabsTrigger>
                 <TabsTrigger value="detriment">Detriment Library</TabsTrigger>
                 <TabsTrigger value="ahj">AHJ Packs</TabsTrigger>
+                <TabsTrigger value="ai-agents">AI Agents</TabsTrigger>
               </TabsList>
               <TabsContent value="boilerplate">
                 <BoilerplateTab />
@@ -1648,6 +1793,9 @@ export default function LibraryPage() {
               </TabsContent>
               <TabsContent value="ahj">
                 <AhjPacksTab />
+              </TabsContent>
+              <TabsContent value="ai-agents">
+                <AgentPromptsTab />
               </TabsContent>
             </Tabs>
           </CardContent>

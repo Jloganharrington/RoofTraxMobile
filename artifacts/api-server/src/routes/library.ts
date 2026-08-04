@@ -14,8 +14,10 @@ import {
   standardsEntriesTable,
   detrimentEntriesTable,
   ahjPacksTable,
+  agentPromptsTable,
   BOILERPLATE_SECTION_KEYS,
   AHJ_PACK_TYPES,
+  AGENT_PROMPT_KEYS,
 } from '@workspace/db';
 
 const router = Router();
@@ -443,6 +445,79 @@ router.patch('/report-settings/ahj-packs/:packId', async (req: Request, res: Res
     .returning();
 
   res.status(200).json({ pack: inserted });
+});
+
+// ---------------------------------------------------------------------------
+// AI Agent Prompts
+// ---------------------------------------------------------------------------
+
+// GET /report-settings/agent-prompts
+// Returns all configured custom prompts for the company.
+router.get('/report-settings/agent-prompts', async (req: Request, res: Response) => {
+  const actor = await requireLibrarySuperAdmin(req, res);
+  if (!actor) return;
+  const prompts = await db
+    .select()
+    .from(agentPromptsTable)
+    .where(eq(agentPromptsTable.companyId, actor.companyId))
+    .orderBy(agentPromptsTable.agentKey);
+  res.json({ prompts });
+});
+
+const AgentPromptBody = z.object({
+  systemPrompt: z.string().min(1).max(20_000),
+});
+
+// PUT /report-settings/agent-prompts/:agentKey
+// Upsert a custom prompt. Rejects unknown agent keys.
+router.put('/report-settings/agent-prompts/:agentKey', async (req: Request, res: Response) => {
+  const actor = await requireLibrarySuperAdmin(req, res);
+  if (!actor) return;
+  const agentKey = String(req.params.agentKey);
+  if (!(AGENT_PROMPT_KEYS as readonly string[]).includes(agentKey)) {
+    res.status(400).json({ error: `Unknown agent key: ${agentKey}` });
+    return;
+  }
+  const body = AgentPromptBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const [row] = await db
+    .insert(agentPromptsTable)
+    .values({
+      companyId: actor.companyId,
+      agentKey,
+      systemPrompt: body.data.systemPrompt,
+      updatedBy: actor.userId,
+    })
+    .onConflictDoUpdate({
+      target: [agentPromptsTable.companyId, agentPromptsTable.agentKey],
+      set: {
+        systemPrompt: body.data.systemPrompt,
+        updatedBy: actor.userId,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  res.json({ prompt: row });
+});
+
+// DELETE /report-settings/agent-prompts/:agentKey
+// Removes the custom prompt — agent reverts to built-in default.
+router.delete('/report-settings/agent-prompts/:agentKey', async (req: Request, res: Response) => {
+  const actor = await requireLibrarySuperAdmin(req, res);
+  if (!actor) return;
+  const agentKey = String(req.params.agentKey);
+  await db
+    .delete(agentPromptsTable)
+    .where(
+      and(
+        eq(agentPromptsTable.companyId, actor.companyId),
+        eq(agentPromptsTable.agentKey, agentKey),
+      ),
+    );
+  res.status(204).end();
 });
 
 export default router;
