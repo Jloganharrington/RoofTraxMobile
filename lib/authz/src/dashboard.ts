@@ -14,10 +14,9 @@ export interface WidgetEntry {
   readonly requiresWorkflow?: readonly WorkflowAssignment[];
 }
 
-// Capability is the union of all 13 widget keys, derived from the catalog
+// Capability is the union of all 12 widget keys, derived from the catalog
 // definition below. Keep this list in sync with WIDGET_CATALOG.
 const WIDGET_KEYS = [
-  'quick_add',
   'my_day',
   'my_activity',
   'recent_activity',

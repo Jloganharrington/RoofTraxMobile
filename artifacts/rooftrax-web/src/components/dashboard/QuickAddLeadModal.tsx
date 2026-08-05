@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useCreatePin, useGetMyProfile, getGetMyProfileQueryKey } from "@workspace/api-client-react";
+import { useCreatePin, useGetMyProfile, getGetMyProfileQueryKey, searchAddress } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListPinsQueryKey } from "@workspace/api-client-react";
 import {
@@ -21,32 +21,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useGetLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import { Loader2 } from "lucide-react";
-
-// ---------------------------------------------------------------------------
-// Nominatim forward geocoder (US-biased, per workspace memory)
-// ---------------------------------------------------------------------------
-async function geocodeAddress(
-  address: string,
-): Promise<{ lat: number; lng: number } | null> {
-  const params = new URLSearchParams({
-    format: "json",
-    q: address,
-    countrycodes: "us",
-    limit: "1",
-  });
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?${params}`,
-      { headers: { "Accept-Language": "en", "User-Agent": "RoofTrax/1.0" } },
-    );
-    if (!res.ok) return null;
-    const results = (await res.json()) as Array<{ lat: string; lon: string }>;
-    if (!results.length) return null;
-    return { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Field component — keeps JSX below tidy
@@ -173,13 +147,21 @@ export function QuickAddLeadModal({ open, onOpenChange }: QuickAddLeadModalProps
 
     if (!valid) return;
 
-    // Forward-geocode the address
+    // Forward-geocode via the authenticated backend endpoint (/api/geocode/search).
+    // Do NOT call Nominatim directly from the browser — route through the server,
+    // which applies viewbox bias and satisfies Nominatim's usage policy.
     setIsGeocoding(true);
     setGeocodeError("");
-    const coords = await geocodeAddress(address.trim());
+    let geocoded: { latitude: number; longitude: number } | null = null;
+    try {
+      const result = await searchAddress({ q: address.trim() });
+      geocoded = result.results[0] ?? null;
+    } catch {
+      geocoded = null;
+    }
     setIsGeocoding(false);
 
-    if (!coords) {
+    if (!geocoded) {
       setGeocodeError(
         'Address not found \u2014 try a more specific address (e.g. "123 Main St, Denver CO").',
       );
@@ -189,8 +171,8 @@ export function QuickAddLeadModal({ open, onOpenChange }: QuickAddLeadModalProps
     createPin.mutate(
       {
         data: {
-          latitude: coords.lat,
-          longitude: coords.lng,
+          latitude: geocoded.latitude,
+          longitude: geocoded.longitude,
           workflow,
           customerName: name.trim() || undefined,
           customerPhone: phone.trim() || undefined,
@@ -236,7 +218,7 @@ export function QuickAddLeadModal({ open, onOpenChange }: QuickAddLeadModalProps
         <DialogHeader>
           <DialogTitle className="text-base font-black uppercase tracking-wide"
             style={{ fontFamily: "var(--app-font-condensed)" }}>
-            New Lead
+            Add New Lead
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
             Fill in the details below. Address is used to place the lead on the map.

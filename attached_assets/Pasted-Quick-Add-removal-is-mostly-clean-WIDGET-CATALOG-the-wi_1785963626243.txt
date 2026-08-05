@@ -1,0 +1,53 @@
+Quick Add removal is mostly clean — WIDGET_CATALOG, the widgets barrel, and
+DashboardGrid's registry are all correctly updated. Two leftovers, both in
+lib/authz/src/dashboard.ts and its test:
+
+1. WIDGET_KEYS (line 19-33 of dashboard.ts) still lists 'quick_add' as its
+   first entry, and the comment above it still says "union of all 13 widget
+   keys" / WIDGET_CATALOG's own comment still says "Exactly 12 entries" —
+   both stale now that quick_add is gone from the catalog. Remove
+   'quick_add' from WIDGET_KEYS, and fix both comments to say 12.
+   This isn't cosmetic: Capability currently still accepts 'quick_add' as a
+   valid value even though no catalog entry can ever produce it, which
+   defeats the type union's purpose (catching a stale key at compile time).
+
+2. lib/authz/src/__tests__/dashboard.test.ts Case 1 (field_rep + canvasser +
+   retail) still asserts the result equals
+   ['quick_add', 'my_day', 'my_activity', 'recent_activity'] — this now
+   fails at runtime, it just wasn't run before reporting done. Fix it to
+   ['my_day', 'my_activity', 'recent_activity']. Grep the rest of that file
+   for any other 'quick_add' reference (there may be one in the order-
+   preservation case) and fix those too.
+
+Then, separately, the still-open geocoding fix from before — untouched by
+this commit:
+
+QuickAddLeadModal.tsx's geocodeAddress() function (still at
+artifacts/rooftrax-web/src/components/dashboard/QuickAddLeadModal.tsx) calls
+nominatim.openstreetmap.org directly from the browser. Replace it with
+useSearchAddress from @workspace/api-client-react (backed by the existing
+GET /geocode/search server endpoint and artifacts/api-server/src/lib/geocode.ts's
+searchAddress()) — same import source the modal already uses for
+useCreatePin. Take the first result, pass its latitude/longitude to
+createPin exactly as now, delete geocodeAddress() entirely, no fallback to
+the direct fetch.
+
+Why this matters, not style: the server version applies a viewbox bias when
+given a nearby coordinate — it exists because an unbiased Nominatim query on
+a partial address returns wrong-city results, which the hand-rolled client
+version is fully exposed to. And hitting Nominatim directly from every
+user's browser is what their usage policy asks apps not to do; route
+through the existing authenticated backend endpoint instead.
+
+STOP after all three fixes. Run the actual test suite this time
+(pnpm --filter @workspace/authz test) and paste the real output — don't
+report done without having run it, that's what let the broken assertion
+through last time. Also confirm:
+  - typecheck clean
+  - grep shows zero remaining 'quick_add' references anywhere in
+    lib/authz/src or the rooftrax-web dashboard components
+  - the sidebar "+ New Lead" button still opens the modal and still creates
+    a pin successfully
+  - a deliberately ambiguous/partial address now resolves through
+    /api/geocode/search (network tab), not a direct request to
+    nominatim.openstreetmap.org

@@ -269,7 +269,7 @@ export function Shell({ children }: ShellProps) {
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
           >
             <Plus className="h-3.5 w-3.5 flex-shrink-0" />
-            New Lead
+            Add New Lead
           </button>
         </div>
 

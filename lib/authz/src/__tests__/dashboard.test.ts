@@ -14,9 +14,8 @@ describe('resolveCapabilities + selectWidgetsFor', () => {
   describe('field_rep + canvasser + retail', () => {
     const input = { role: 'field_rep', department: 'canvasser', workflow: 'retail' } as const;
 
-    it('gets exactly quick_add, my_day, my_activity, recent_activity', () => {
+    it('gets exactly my_day, my_activity, recent_activity', () => {
       expect(keys(input)).toEqual([
-        'quick_add',
         'my_day',
         'my_activity',
         'recent_activity',
