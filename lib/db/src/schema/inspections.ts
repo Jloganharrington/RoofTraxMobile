@@ -1901,16 +1901,15 @@ export const reportAttestationsTable = pgTable(
     }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    // Primary-package: prevent double-attestation of the same blob version.
-    // Managed as a partial unique index via SQL migration; Drizzle does not
-    // support WHERE clauses on uniqueIndex, so the constraint is applied only
-    // in the migration SQL (018_claim_supplements.sql).
-    // This index definition is intentionally omitted to avoid Drizzle's
-    // constraint management conflicting with the partial-index SQL.
-    // The application layer enforces uniqueness via a pre-insert check.
-    uniqueIndex('report_attestations_inspection_version_idx').on(t.inspectionId, t.blobVersionIndex),
-  ],
+  // Uniqueness on (inspection_id, blob_version_index) is deliberately NOT
+  // declared here. 018_claim_supplements.sql replaces it with two partial
+  // unique indexes — primary-package (supplement_id IS NULL) and per-supplement
+  // — which Drizzle cannot express, since uniqueIndex takes no WHERE clause.
+  // Declaring it here makes `drizzle-kit push` (run by scripts/post-merge.sh on
+  // every merge) recreate the non-partial index and drop the partials, which
+  // breaks supplement attestation: supplements restart blob_version_index at 0,
+  // so the first one collides with the primary package's index 0.
+  // The application layer enforces uniqueness via a pre-insert check.
 );
 
 export type ReportAttestation = typeof reportAttestationsTable.$inferSelect;
