@@ -1,32 +1,11 @@
-import { useLocation } from "wouter";
-import { useEffect } from "react";
-import { useGetCurrentAuthUser } from "@workspace/api-client-react";
-import { ShieldCheck, ChevronRight, Loader2, ArrowRight } from "lucide-react";
+import { ShieldCheck, ChevronRight, ArrowRight } from "lucide-react";
 
 export default function Home() {
-  const { data: authEnvelope, isLoading } = useGetCurrentAuthUser();
-  const [, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (!isLoading && authEnvelope?.user) {
-      // Resume the pipeline the user last visited; default to insurance on first visit.
-      const last = localStorage.getItem('rt_last_pipeline') ?? '/insurance-pipeline';
-      setLocation(last);
-    }
-  }, [isLoading, authEnvelope, setLocation]);
-
   const handleLogin = () => {
-    const last = localStorage.getItem('rt_last_pipeline') ?? '/insurance-pipeline';
-    window.location.href = `/api/login?returnTo=/rooftrax-web${last}`;
+    // After login the OIDC callback returns the user to "/", which RootRoute
+    // will now render as Dashboard — no pipeline-specific returnTo needed.
+    window.location.href = `/api/login?returnTo=/rooftrax-web/`;
   };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

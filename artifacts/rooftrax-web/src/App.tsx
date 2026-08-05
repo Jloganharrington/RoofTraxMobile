@@ -4,7 +4,9 @@ import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import {
   Calendar, MapPin, FileText, BarChart2, Receipt,
   ShieldCheck, Settings, Plug, Bell,
+  Loader2,
 } from 'lucide-react';
+import { useGetCurrentAuthUser } from '@workspace/api-client-react';
 
 import Home from '@/pages/Home';
 import Dashboard from '@/pages/Dashboard';
@@ -38,6 +40,28 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Splits "/" between authenticated and unauthenticated users.
+ * - Authenticated  → render Dashboard; URL stays "/"
+ * - Unauthenticated → render marketing Home
+ * No redirect, no setLocation. Auth resolution is synchronous from React Query
+ * cache on every subsequent render, so there is no flash of wrong content
+ * after the first load.
+ */
+function RootRoute() {
+  const { data: authEnvelope, isLoading } = useGetCurrentAuthUser();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return authEnvelope?.user ? <Dashboard /> : <Home />;
+}
+
 function NotFound() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-zinc-950">
@@ -54,11 +78,12 @@ function NotFound() {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      {/* "/" serves Dashboard for authenticated users, marketing Home for unauthenticated */}
+      <Route path="/" component={RootRoute} />
 
-      {/* Protected Routes */}
+      {/* /dashboard redirects to "/" — sidebar nav already targets "/" */}
       <Route path="/dashboard">
-        <ProtectedRoute><Dashboard /></ProtectedRoute>
+        <Redirect to="/" />
       </Route>
 
       <Route path="/pipeline">
