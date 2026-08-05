@@ -880,6 +880,82 @@ router.patch('/companies/:companyId/platform-preferences', async (req: Request, 
 });
 
 // ---------------------------------------------------------------------------
+// Lead Sources — per-company configurable list of non-canvassing sources
+//
+// GET  /companies/:companyId/lead-sources  — returns { leadSources: string[] }
+// PATCH /companies/:companyId/lead-sources — saves the list (manager+)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_LEAD_SOURCES = ["Angi's", 'Yelp', 'Call-In', 'Website'];
+const MAX_LEAD_SOURCES = 50;
+const MAX_SOURCE_LENGTH = 100;
+
+router.get('/companies/:companyId/lead-sources', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  const [company] = await db
+    .select({ leadSources: companiesTable.leadSources })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, companyId));
+
+  if (!company) { res.status(404).json({ error: 'Company not found' }); return; }
+
+  const sources: string[] = Array.isArray(company.leadSources)
+    ? (company.leadSources as string[])
+    : DEFAULT_LEAD_SOURCES;
+
+  res.json({ leadSources: sources });
+});
+
+router.patch('/companies/:companyId/lead-sources', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.user.companyId !== companyId) { res.status(403).json({ error: 'Forbidden' }); return; }
+
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+
+  const role = actorProfile?.role ?? 'field_rep';
+  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
+    res.status(403).json({ error: 'Only managers and admins can update lead sources' });
+    return;
+  }
+
+  const { leadSources } = req.body as { leadSources?: unknown };
+  if (!Array.isArray(leadSources)) {
+    res.status(400).json({ error: 'leadSources must be an array' });
+    return;
+  }
+  if (leadSources.length > MAX_LEAD_SOURCES) {
+    res.status(400).json({ error: `Maximum ${MAX_LEAD_SOURCES} lead sources allowed` });
+    return;
+  }
+  const cleaned: string[] = [];
+  for (const item of leadSources) {
+    if (typeof item !== 'string' || !item.trim()) continue;
+    const trimmed = item.trim();
+    if (trimmed.length > MAX_SOURCE_LENGTH) {
+      res.status(400).json({ error: `Lead source name too long (max ${MAX_SOURCE_LENGTH} chars)` });
+      return;
+    }
+    cleaned.push(trimmed);
+  }
+
+  await db
+    .update(companiesTable)
+    .set({ leadSources: cleaned })
+    .where(eq(companiesTable.id, companyId));
+
+  res.json({ leadSources: cleaned });
+});
+
+// ---------------------------------------------------------------------------
 // Sample Proof Package — provision / info endpoints
 //
 // GET  /api/sample-package/info     — returns { pinId, inspectionId } or nulls

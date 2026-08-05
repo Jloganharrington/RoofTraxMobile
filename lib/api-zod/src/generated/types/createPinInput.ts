@@ -22,4 +22,5 @@ export interface CreatePinInput {
   contactOutcome?: ContactOutcome;
   customerName?: string;
   customerPhone?: string;
+  externalLeadSource?: string;
 }

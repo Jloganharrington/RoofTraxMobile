@@ -4788,6 +4788,11 @@ components:
           type: string
         customerPhone:
           type: string
+        externalLeadSource:
+          type: string
+          description: >-
+            Non-canvassing lead source (e.g. "Angi's", "Yelp", "Call-In",
+            "Website"). Omit or set to null for canvassed leads.
 
     UpdatePinInput:
       type: object

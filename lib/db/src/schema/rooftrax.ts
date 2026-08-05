@@ -217,6 +217,21 @@ export const pinsTable = pgTable('pins', {
   /** Which pipeline this pin belongs to ('retail' | 'insurance') */
   sourcePipeline:   varchar('source_pipeline'),
 
+  // ── Lead sourcing & file handler ──────────────────────────────────────────
+  /**
+   * Non-canvassing lead source (e.g. "Angi's", "Yelp", "Call-In", "Website").
+   * Null means the lead was acquired by canvassing — the creating user IS the
+   * canvasser. Set at pin-creation time by the mobile app and editable from the
+   * lead profile in the web app.
+   */
+  externalLeadSource: varchar('external_lead_source'),
+  /**
+   * Display name of the assigned Project Manager. Denormalised for easy display
+   * without an extra join; updated when the PM is assigned through the Project
+   * pipeline or via the lead profile.
+   */
+  projectManagerName: varchar('project_manager_name'),
+
   /** True when the pin was seeded/created as demo or test data */
   isDemo:            boolean('is_demo').default(false).notNull(),
   /**

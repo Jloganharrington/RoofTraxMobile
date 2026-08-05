@@ -1,5 +1,7 @@
 # Memory Index
 
+- [Lead source + PM tracker](lead-source-pm-tracker.md) — externalLeadSource + projectManagerName on pins; leadSources jsonb on companies; tracker in LeadProfile DashboardTab; lead-sources routes on companies; lead source picker in mobile pin-new.
+
 - [IICRC citation placeholder runtime](iicrc-citation-placeholder.md) — STD-WTR-01/02 flagged humanEnteredProvisionsOnly; generator injects directive + placeholder tokens; SectionCard blocks approve until filled.
 
 - [Pipeline stage vocabulary](pipeline-stage-vocabulary.md) — 30-stage map (10 retail/15 insurance/8 project); server-side copy in api-server/src/lib/pipelineStages.ts; UI copy in rooftrax-web/src/lib/pipelineStages.ts; kept in sync manually.

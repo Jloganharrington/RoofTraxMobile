@@ -83,6 +83,14 @@ export const companiesTable = pgTable('companies', {
       accentColor: string;
     } | null>()
     .default(null),
+  // ── Lead source configuration ─────────────────────────────────────────────
+  // Company-configured non-canvassing lead sources (e.g. "Angi's", "Yelp",
+  // "Call-In", "Website"). Null means the built-in defaults are in effect;
+  // an empty array means all custom sources have been removed.
+  leadSources: jsonb('lead_sources')
+    .$type<string[] | null>()
+    .default(null),
+
   // ── Proof Package (report) settings — super admin curated ────────────────
   // Contractor licenses printed in Exhibit B (Statement of Qualifications).
   contractorLicenses: jsonb('contractor_licenses')

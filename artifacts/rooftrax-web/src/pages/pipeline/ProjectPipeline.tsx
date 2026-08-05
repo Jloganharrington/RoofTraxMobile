@@ -140,11 +140,13 @@ function FieldsWidget({
   fields,
   submitLabel,
   onSubmit,
+  onClose,
   isPending,
 }: {
   fields: Array<{ name: string; label: string; type: 'text' | 'date' }>;
   submitLabel: string;
   onSubmit: (values: Record<string, string>) => void;
+  onClose?: () => void;
   isPending: boolean;
 }) {
   const [values, setValues] = useState<Record<string, string>>(
@@ -159,6 +161,13 @@ function FieldsWidget({
       onClick={(e) => e.stopPropagation()}
       className="mt-2 space-y-1.5"
     >
+      {onClose && (
+        <div className="flex justify-end -mt-0.5 mb-0.5">
+          <button type="button" onClick={onClose} className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+            <span className="sr-only">Close</span>✕
+          </button>
+        </div>
+      )}
       {fields.map((f) => (
         <div key={f.name}>
           <label className="text-[10px] text-muted-foreground block mb-0.5">{f.label}</label>
@@ -185,10 +194,12 @@ function FieldsWidget({
 function DateRangeWidget({
   submitLabel,
   onSubmit,
+  onClose,
   isPending,
 }: {
   submitLabel: string;
   onSubmit: (startDate: string, endDate: string) => void;
+  onClose?: () => void;
   isPending: boolean;
 }) {
   const [startDate, setStartDate] = useState('');
@@ -199,6 +210,13 @@ function DateRangeWidget({
       onClick={(e) => e.stopPropagation()}
       className="mt-2 space-y-1.5"
     >
+      {onClose && (
+        <div className="flex justify-end -mt-0.5 mb-0.5">
+          <button type="button" onClick={onClose} className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+            <span className="sr-only">Close</span>✕
+          </button>
+        </div>
+      )}
       <div>
         <label className="text-[10px] text-muted-foreground block mb-0.5">Start Date</label>
         <input
@@ -232,11 +250,13 @@ function MoneyConfirmWidget({
   submitLabel,
   fieldLabel,
   onConfirm,
+  onClose,
   isPending,
 }: {
   submitLabel: string;
   fieldLabel: string;
   onConfirm: (amount: string) => void;
+  onClose?: () => void;
   isPending: boolean;
 }) {
   const [amount, setAmount] = useState('');
@@ -246,6 +266,13 @@ function MoneyConfirmWidget({
       onClick={(e) => e.stopPropagation()}
       className="mt-2 space-y-1.5"
     >
+      {onClose && (
+        <div className="flex justify-end -mt-0.5 mb-0.5">
+          <button type="button" onClick={onClose} className="text-muted-foreground/40 hover:text-muted-foreground transition-colors">
+            <span className="sr-only">Close</span>✕
+          </button>
+        </div>
+      )}
       <div>
         <label className="text-[10px] text-muted-foreground block mb-0.5">{fieldLabel}</label>
         <input
@@ -269,6 +296,11 @@ function MoneyConfirmWidget({
   );
 }
 
+/** Full-width action button style for project pipeline (below-card position). */
+const PROJ_BTN =
+  'w-full text-[11px] font-medium px-2 py-1.5 rounded-md ' +
+  'bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-center';
+
 // ---------------------------------------------------------------------------
 // Project card
 // ---------------------------------------------------------------------------
@@ -284,6 +316,13 @@ function ProjectCard({
 }) {
   const advance   = useAdvanceProjectStage(lead.id);
   const isIns     = lead.sourcePipeline === 'insurance';
+  const [widgetOpen, setWidgetOpen] = useState(false);
+
+  const openWidget  = () => setWidgetOpen(true);
+  const closeWidget = () => setWidgetOpen(false);
+  const handleAdvance = (payload: Parameters<typeof advance.mutate>[0]) => {
+    advance.mutate(payload, { onSuccess: closeWidget });
+  };
 
   return (
     <div className="relative">
@@ -332,6 +371,8 @@ function ProjectCard({
 
       {/* Exit-task widget — rendered below the card so clicks don't trigger Link navigation */}
       <div className="mt-1.5 px-0.5">
+
+        {/* Simple confirm buttons — always visible, no data entry needed */}
         {stageKey === 'pm_handoff' && toStage && (
           <ConfirmWidget
             label="Accept Handoff"
@@ -341,34 +382,6 @@ function ProjectCard({
                 toStage,
                 trigger: 'task',
                 taskPayload: { pmHandoffAt: new Date().toISOString() },
-              })
-            }
-          />
-        )}
-
-        {stageKey === 'pre_production' && toStage && (
-          <FieldsWidget
-            fields={[
-              { name: 'supplierName', label: 'Supplier Name', type: 'text' },
-              { name: 'etaDate',      label: 'ETA Date',      type: 'date' },
-            ]}
-            submitLabel="Order Materials"
-            isPending={advance.isPending}
-            onSubmit={(values) =>
-              advance.mutate({ toStage, trigger: 'task', taskPayload: values })
-            }
-          />
-        )}
-
-        {stageKey === 'materials_ordered' && toStage && (
-          <DateRangeWidget
-            submitLabel="Schedule Project"
-            isPending={advance.isPending}
-            onSubmit={(startDate, endDate) =>
-              advance.mutate({
-                toStage,
-                trigger: 'task',
-                taskPayload: { startDate, endDate },
               })
             }
           />
@@ -393,26 +406,89 @@ function ProjectCard({
         {stageKey === 'complete' && (
           <Link
             href={`/leads/${lead.id}`}
-            className="block w-full text-[11px] font-medium px-2 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-center"
+            className={`block mt-2 ${PROJ_BTN}`}
           >
             Open Completion Package
           </Link>
         )}
 
-        {stageKey === 'final_invoiced' && toStage && (
-          <MoneyConfirmWidget
-            submitLabel="Record Final Payment"
-            fieldLabel="Payment Amount ($)"
-            isPending={advance.isPending}
-            onConfirm={(amount) =>
-              advance.mutate({
-                toStage,
-                trigger: 'task',
-                taskPayload: { finalPaymentAmount: amount },
-              })
-            }
-          />
+        {/* Form-requiring stages — trigger button → inline expansion */}
+        {stageKey === 'pre_production' && toStage && (
+          widgetOpen ? (
+            <FieldsWidget
+              fields={[
+                { name: 'supplierName', label: 'Supplier Name', type: 'text' },
+                { name: 'etaDate',      label: 'ETA Date',      type: 'date' },
+              ]}
+              submitLabel="Order Materials"
+              isPending={advance.isPending}
+              onClose={closeWidget}
+              onSubmit={(values) =>
+                handleAdvance({ toStage, trigger: 'task', taskPayload: values })
+              }
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={openWidget}
+              className={`mt-2 ${PROJ_BTN}`}
+            >
+              Order Materials
+            </button>
+          )
         )}
+
+        {stageKey === 'materials_ordered' && toStage && (
+          widgetOpen ? (
+            <DateRangeWidget
+              submitLabel="Schedule Project"
+              isPending={advance.isPending}
+              onClose={closeWidget}
+              onSubmit={(startDate, endDate) =>
+                handleAdvance({
+                  toStage,
+                  trigger: 'task',
+                  taskPayload: { startDate, endDate },
+                })
+              }
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={openWidget}
+              className={`mt-2 ${PROJ_BTN}`}
+            >
+              Schedule Project
+            </button>
+          )
+        )}
+
+        {stageKey === 'final_invoiced' && toStage && (
+          widgetOpen ? (
+            <MoneyConfirmWidget
+              submitLabel="Record Final Payment"
+              fieldLabel="Payment Amount ($)"
+              isPending={advance.isPending}
+              onClose={closeWidget}
+              onConfirm={(amount) =>
+                handleAdvance({
+                  toStage,
+                  trigger: 'task',
+                  taskPayload: { finalPaymentAmount: amount },
+                })
+              }
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={openWidget}
+              className={`mt-2 ${PROJ_BTN}`}
+            >
+              Record Final Payment
+            </button>
+          )
+        )}
+
         {/* closed_warranty: terminal — no exit widget */}
       </div>
     </div>

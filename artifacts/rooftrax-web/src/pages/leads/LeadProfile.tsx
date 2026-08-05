@@ -64,6 +64,7 @@ import {
   useRegisterLeadFile,
   useRenameLeadFile,
   useDeleteLeadFile,
+  useGetLeadSources,
   LEAD_FILE_CATEGORIES,
   type FullLead,
   type LeadFileCategory,
@@ -174,6 +175,8 @@ function TextareaField({ label, name, value, onChange, rows = 4, placeholder }: 
 // ---------------------------------------------------------------------------
 
 interface FormState {
+  externalLeadSource: string;
+  projectManagerName: string;
   ownerFirstName: string; ownerLastName: string; ownerEmail: string;
   hasSecondOwner: boolean;
   owner2FirstName: string; owner2LastName: string;
@@ -212,6 +215,8 @@ function toDateStr(v: string | null | undefined): string {
 
 function initForm(lead: FullLead): FormState {
   return {
+    externalLeadSource:   toStr(lead.externalLeadSource),
+    projectManagerName:   toStr(lead.projectManagerName),
     ownerFirstName:       toStr(lead.ownerFirstName),
     ownerLastName:        toStr(lead.ownerLastName),
     ownerEmail:           toStr(lead.ownerEmail),
@@ -271,6 +276,7 @@ function initForm(lead: FullLead): FormState {
 
 const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
   dashboard:       [
+    'externalLeadSource','projectManagerName',
     'ownerFirstName','ownerLastName','ownerEmail','owner2FirstName','owner2LastName',
     'hasSecondOwner','customerPhone',
     'nonOwnerOccupied','mailingAddress','mailingCity','mailingState','mailingZip',
@@ -297,18 +303,21 @@ function InspectionFlowTab({ inspectionId }: { inspectionId: string }) {
 }
 
 function DashboardTab({
-  form, onField, onCheck, isInsurance, lead,
+  form, onField, onCheck, isInsurance, lead, isManager,
 }: {
   form: FormState;
   onField: (n: string, v: string) => void;
   onCheck: (n: string, v: boolean) => void;
   isInsurance: boolean;
   lead: FullLead;
+  isManager: boolean;
 }) {
   const workflowLabel = lead.workflow === 'insurance' ? 'Insurance' : 'Retail';
   const workflowColors = lead.workflow === 'insurance'
     ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
     : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+
+  const { data: sourcesData } = useGetLeadSources(lead.companyId);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -354,6 +363,61 @@ function DashboardTab({
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${workflowColors}`}>
                 {workflowLabel}
               </span>
+            </div>
+
+            {/* ── File Handler Progression Tracker ── */}
+            <div className="pt-2.5 border-t border-border/40 space-y-2">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60">File Handlers</p>
+
+              {/* Lead Source */}
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">Lead Source</p>
+                {isManager ? (
+                  <select
+                    value={form.externalLeadSource}
+                    onChange={e => onField('externalLeadSource', e.target.value)}
+                    className="w-full text-[11px] border border-input rounded px-1.5 py-0.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">Canvassing</option>
+                    {(sourcesData?.leadSources ?? ["Angi's", 'Yelp', 'Call-In', 'Website']).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-xs font-medium">
+                    {form.externalLeadSource || 'Canvassing'}
+                  </p>
+                )}
+                {!form.externalLeadSource && lead.repName && (
+                  <p className="text-[10px] text-muted-foreground">by {lead.repName}</p>
+                )}
+              </div>
+
+              {/* Sales Rep */}
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">Sales Rep</p>
+                <p className="text-xs font-medium">
+                  {lead.repName ?? <span className="italic opacity-40 text-[11px]">—</span>}
+                </p>
+              </div>
+
+              {/* Project Manager */}
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">Project Manager</p>
+                {isManager ? (
+                  <input
+                    type="text"
+                    value={form.projectManagerName}
+                    onChange={e => onField('projectManagerName', e.target.value)}
+                    placeholder="Assign PM…"
+                    className="w-full text-[11px] border border-input rounded px-1.5 py-0.5 bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                ) : (
+                  <p className="text-xs font-medium">
+                    {form.projectManagerName || <span className="italic opacity-40 text-[11px]">—</span>}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -871,6 +935,7 @@ export default function LeadProfile() {
   // Re-check AHJ button — only for ins- leads (which have a direct inspection)
   const isInsLead = id?.startsWith('ins-') ?? false;
   const userRole = profileData?.profile?.role ?? '';
+  const isManager = ['manager', 'admin', 'super_admin'].includes(userRole);
   const canRecheckAhj = isInsLead && (
     userRole === 'manager' || userRole === 'admin' || userRole === 'super_admin'
   );
@@ -1146,7 +1211,7 @@ export default function LeadProfile() {
             </div>
           ) : (
             <>
-              {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} />}
+              {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} isManager={isManager} />}
               {activeTab === 'inspection_flow' && inspectionId && <InspectionFlowTab inspectionId={inspectionId} />}
               {activeTab === 'insurance'       && isInsurance && <InsuranceTab  form={form} onField={handleField} />}
               {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} />}

@@ -1004,7 +1004,8 @@ export const CreatePinBody = zod.object({
 }).optional(),
   "contactOutcome": zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']).optional(),
   "customerName": zod.string().optional(),
-  "customerPhone": zod.string().optional()
+  "customerPhone": zod.string().optional(),
+  "externalLeadSource": zod.string().optional()
 })
 
 

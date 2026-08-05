@@ -14,16 +14,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { differenceInDays, isPast, format } from 'date-fns';
 import {
+  Calendar,
   ChevronDown,
   ChevronRight,
-  MapPin,
-  Clock,
-  Package,
-  Loader2,
-  ExternalLink,
-  AlertCircle,
   CheckCircle2,
+  Clock,
+  DollarSign,
+  ExternalLink,
+  FileText,
+  Loader2,
+  MapPin,
+  Package,
   RefreshCw,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -204,6 +208,12 @@ const INS_STAGES: InsStage[] = [
 ];
 
 const STAGE_BY_KEY = new Map(INS_STAGES.map((s) => [s.key, s]));
+
+/** Compact trigger button — matches RetailPipeline style */
+const COMPACT_BTN =
+  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ' +
+  'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 ' +
+  'text-white text-[11px] font-semibold transition-colors whitespace-nowrap select-none';
 
 // ---------------------------------------------------------------------------
 // Legacy insurance stage keys → nearest new display column
@@ -436,7 +446,7 @@ function ContractPendingWidget({
 }
 
 // ---------------------------------------------------------------------------
-// InsuranceCard — renders the exit-task widget appropriate to the stage
+// InsuranceCard — trigger-button → inline-expansion pattern (mirrors Retail)
 // ---------------------------------------------------------------------------
 
 function InsuranceCard({
@@ -450,6 +460,7 @@ function InsuranceCard({
 }) {
   const id = leadId(inspection);
   const hasPackage = (inspection.compiledReportVersions ?? []).length > 0;
+  const [widgetOpen, setWidgetOpen] = useState(false);
 
   const daysInStage = inspection.stageEnteredAt
     ? differenceInDays(new Date(), new Date(inspection.stageEnteredAt))
@@ -457,7 +468,143 @@ function InsuranceCard({
     ? differenceInDays(new Date(), new Date(inspection.updatedAt))
     : null;
 
-  function renderWidget() {
+  const openWidget    = () => setWidgetOpen(true);
+  const closeWidget   = () => setWidgetOpen(false);
+  const handleAdvance = () => { setWidgetOpen(false); onSuccess(); };
+
+  /**
+   * Compact trigger shown in the card footer.
+   * Only for stages that require data entry before advancing.
+   * Hidden while the inline form is open.
+   */
+  function renderFooterTrigger(): ReactNode {
+    if (widgetOpen) return null;
+    switch (stage.key) {
+      case 'pin_dropped':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <UserPlus className="h-3 w-3 shrink-0" />Assign Rep
+          </button>
+        );
+      case 'fipsa_signed':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <Calendar className="h-3 w-3 shrink-0" />Schedule Phase 2
+          </button>
+        );
+      case 'claim_filed':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <FileText className="h-3 w-3 shrink-0" />Record Filing
+          </button>
+        );
+      case 'claim_review':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <ChevronRight className="h-3 w-3 shrink-0" />Log Outcome
+          </button>
+        );
+      case 'contract_signed':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <DollarSign className="h-3 w-3 shrink-0" />Collect Deposit
+          </button>
+        );
+      case 'deposit_received':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <UserPlus className="h-3 w-3 shrink-0" />Assign PM
+          </button>
+        );
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Inline expanded form — rendered above the footer when widgetOpen is true.
+   * Widgets render in light-mode (no onClose passed); a wrapper X handles collapse.
+   */
+  function renderWidgetForm(): ReactNode {
+    if (!widgetOpen) return null;
+    switch (stage.key) {
+      case 'pin_dropped':
+        return (
+          <AssignUserWidget
+            leadId={id}
+            toStage="phase1_scheduled"
+            config={{ label: 'Assign Rep / Inspector' }}
+            onSuccess={handleAdvance}
+          />
+        );
+      case 'fipsa_signed':
+        return (
+          <DatetimeWidget
+            leadId={id}
+            toStage="phase2_scheduled"
+            config={{ label: 'Schedule Phase 2 Inspection', setsNextAction: true }}
+            onSuccess={handleAdvance}
+          />
+        );
+      case 'claim_filed':
+        return (
+          <FieldsWidget
+            leadId={id}
+            toStage="claim_review"
+            config={{
+              label: "Record Homeowner's Claim Filing",
+              fields: [
+                { name: 'claimNumber', label: 'Claim Number', type: 'text' },
+                { name: 'filingDate',  label: 'Filing Date',  type: 'date' },
+              ],
+            }}
+            onSuccess={handleAdvance}
+          />
+        );
+      case 'claim_review':
+        return (
+          <OutcomeButtonsWidget
+            leadId={id}
+            toStage="claim_review"
+            config={{
+              label: 'Review Outcome',
+              outcomes: [
+                { key: 'approved', label: 'Approved',          toStage: 'claim_approved'     },
+                { key: 'partial',  label: 'Partial / Dispute', toStage: 'supplement_dispute' },
+                { key: 'denied',   label: 'Denied',            toStage: 'supplement_dispute' },
+              ],
+            }}
+            onSuccess={handleAdvance}
+          />
+        );
+      case 'contract_signed':
+        return (
+          <MoneyConfirmWidget
+            leadId={id}
+            toStage="deposit_received"
+            config={{ label: 'Collect Deposit', moneyField: 'depositAmount' }}
+            onSuccess={handleAdvance}
+          />
+        );
+      case 'deposit_received':
+        return (
+          <AssignUserWidget
+            leadId={id}
+            toStage="pm_handoff"
+            config={{ label: 'Assign Project Manager' }}
+            onSuccess={handleAdvance}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Always-visible content: auto-advance waiting badges, navigation button-links,
+   * and composite loop widgets. These are already button-like — no trigger needed.
+   */
+  function renderAlwaysVisible(): ReactNode {
     if (stage.isTerminal) {
       return (
         <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -466,32 +613,10 @@ function InsuranceCard({
         </div>
       );
     }
-
     if (stage.isAutoAdvance && stage.key !== 'contract_pending') {
       return <WaitingBadge label={stage.waitingLabel ?? 'Awaiting event'} />;
     }
-
     switch (stage.key) {
-      case 'pin_dropped':
-        return (
-          <AssignUserWidget
-            leadId={id}
-            toStage="phase1_scheduled"
-            config={{ label: 'Assign Rep / Inspector' }}
-            onSuccess={onSuccess}
-          />
-        );
-
-      case 'fipsa_signed':
-        return (
-          <DatetimeWidget
-            leadId={id}
-            toStage="phase2_scheduled"
-            config={{ label: 'Schedule Phase 2 Inspection', setsNextAction: true }}
-            onSuccess={onSuccess}
-          />
-        );
-
       case 'package_ready':
         return (
           <ButtonLinkWidget
@@ -501,43 +626,6 @@ function InsuranceCard({
             onSuccess={onSuccess}
           />
         );
-
-      case 'claim_filed':
-        return (
-          <FieldsWidget
-            leadId={id}
-            toStage="claim_review"
-            config={{
-              label: "Record Homeowner's Claim Filing",
-              fields: [
-                { name: 'claimNumber', label: 'Claim Number',  type: 'text' },
-                { name: 'filingDate',  label: 'Filing Date',   type: 'date' },
-              ],
-            }}
-            onSuccess={onSuccess}
-          />
-        );
-
-      case 'claim_review':
-        return (
-          <OutcomeButtonsWidget
-            leadId={id}
-            toStage="claim_review"
-            config={{
-              label: 'Review Outcome',
-              outcomes: [
-                { key: 'approved', label: 'Approved',         toStage: 'claim_approved'    },
-                { key: 'partial',  label: 'Partial / Dispute', toStage: 'supplement_dispute' },
-                { key: 'denied',   label: 'Denied',            toStage: 'supplement_dispute' },
-              ],
-            }}
-            onSuccess={onSuccess}
-          />
-        );
-
-      case 'supplement_dispute':
-        return <SupplementDisputeWidget inspection={inspection} onSuccess={onSuccess} />;
-
       case 'claim_approved':
         return (
           <ButtonLinkWidget
@@ -547,30 +635,10 @@ function InsuranceCard({
             onSuccess={onSuccess}
           />
         );
-
       case 'contract_pending':
         return <ContractPendingWidget inspection={inspection} onSuccess={onSuccess} />;
-
-      case 'contract_signed':
-        return (
-          <MoneyConfirmWidget
-            leadId={id}
-            toStage="deposit_received"
-            config={{ label: 'Collect Deposit', moneyField: 'depositAmount' }}
-            onSuccess={onSuccess}
-          />
-        );
-
-      case 'deposit_received':
-        return (
-          <AssignUserWidget
-            leadId={id}
-            toStage="pm_handoff"
-            config={{ label: 'Assign Project Manager' }}
-            onSuccess={onSuccess}
-          />
-        );
-
+      case 'supplement_dispute':
+        return <SupplementDisputeWidget inspection={inspection} onSuccess={onSuccess} />;
       case 'phase2_complete':
         return (
           <div className="mt-2 space-y-1.5">
@@ -583,11 +651,14 @@ function InsuranceCard({
             />
           </div>
         );
-
       default:
         return null;
     }
   }
+
+  const footerTrigger = renderFooterTrigger();
+  const widgetForm    = renderWidgetForm();
+  const alwaysVisible = renderAlwaysVisible();
 
   return (
     <StageCard
@@ -620,21 +691,39 @@ function InsuranceCard({
         )}
       </div>
 
-      {/* Footer */}
+      {/* Inline expanded form (above footer, same as RetailCard) */}
+      {widgetForm && (
+        <div className="mt-2.5 pt-2 border-t border-border/40 relative">
+          <button
+            type="button"
+            onClick={closeWidget}
+            className="absolute top-0 right-0 p-0.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          {widgetForm}
+        </div>
+      )}
+
+      {/* Footer: rep name · days-in-stage · trigger button */}
       <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-border/40">
         <span className="text-[10px] text-muted-foreground truncate max-w-[90px]">
           {inspection.repName ?? <span className="italic opacity-50">No rep</span>}
         </span>
-        {daysInStage !== null && daysInStage >= 1 && (
-          <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-            <Clock className="h-2.5 w-2.5" />
-            {daysInStage}d
-          </div>
-        )}
+        <div className="flex items-center gap-1.5">
+          {daysInStage !== null && daysInStage >= 1 && (
+            <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+              <Clock className="h-2.5 w-2.5" />
+              {daysInStage}d
+            </div>
+          )}
+          {footerTrigger}
+        </div>
       </div>
 
-      {/* Exit-task widget */}
-      {renderWidget()}
+      {/* Always-visible widgets (waiting badges, nav buttons, composites) */}
+      {alwaysVisible}
     </StageCard>
   );
 }

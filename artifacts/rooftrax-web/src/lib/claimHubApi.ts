@@ -544,6 +544,9 @@ export interface FullLead {
     confidence: 'high' | 'medium' | 'low';
     summary: string;
   } | null;
+  // Lead sourcing & file handler
+  externalLeadSource: string | null;
+  projectManagerName: string | null;
   // Meta
   repName: string | null;
   userId: string;
@@ -873,6 +876,48 @@ export function useRecheckAhj(inspectionId: string, leadId: string) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: getLeadQueryKey(leadId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lead Sources — company-level configurable non-canvassing source list
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_LEAD_SOURCES = ["Angi's", 'Yelp', 'Call-In', 'Website'] as const;
+
+const getLeadSourcesQueryKey = (companyId: string) =>
+  ['lead-sources', companyId] as const;
+
+export function useGetLeadSources(
+  companyId: string,
+  options?: Omit<UseQueryOptions<{ leadSources: string[] }>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery({
+    queryKey: getLeadSourcesQueryKey(companyId),
+    queryFn: () =>
+      customFetch<{ leadSources: string[] }>(
+        `/api/companies/${companyId}/lead-sources`,
+      ),
+    enabled: !!companyId,
+    ...options,
+  });
+}
+
+export function useUpdateLeadSources(companyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (leadSources: string[]) =>
+      customFetch<{ leadSources: string[] }>(
+        `/api/companies/${companyId}/lead-sources`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadSources }),
+        },
+      ),
+    onSuccess: (data) => {
+      qc.setQueryData(getLeadSourcesQueryKey(companyId), data);
     },
   });
 }

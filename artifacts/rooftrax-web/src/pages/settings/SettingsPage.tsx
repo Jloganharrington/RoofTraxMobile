@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { useGetCurrentAuthUser } from "@workspace/api-client-react";
-import { useGetMyProfile } from "@/lib/claimHubApi";
+import { useGetMyProfile, useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import { useLocation } from "wouter";
 import {
   Building2,
@@ -32,6 +32,7 @@ import {
   Bot,
   Bug,
   Lock,
+  Megaphone,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -223,6 +224,20 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
     setLicenses((prev) =>
       prev.map((l, i) => (i === idx ? { ...l, [field]: value } : l))
     );
+
+  // ── Lead Sources ────────────────────────────────────────────────────────────
+  const { data: leadSourcesData, isLoading: loadingLeadSources } = useGetLeadSources(companyId);
+  const updateLeadSourcesMutation = useUpdateLeadSources(companyId);
+  const [localLeadSources, setLocalLeadSources] = useState<string[]>([]);
+  const [newSourceInput, setNewSourceInput] = useState('');
+
+  useEffect(() => {
+    if (leadSourcesData?.leadSources) {
+      setLocalLeadSources(leadSourcesData.leadSources);
+    } else if (!loadingLeadSources) {
+      setLocalLeadSources([...DEFAULT_LEAD_SOURCES]);
+    }
+  }, [leadSourcesData, loadingLeadSources]);
 
   if (loadingCompany || loadingFipsa || loadingReport) {
     return (
@@ -433,6 +448,103 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
           >
             {reportMutation.isPending ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</> : "Save"}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Lead Sources */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Megaphone className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Lead Sources</CardTitle>
+          </div>
+          <CardDescription>
+            Non-canvassing lead sources reps can select when entering a lead from the mobile app.
+            "Canvassing" is always available — only add sources for inbound or third-party leads.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loadingLeadSources ? (
+            <div className="space-y-2">
+              {[1,2,3,4].map(i => <div key={i} className="h-9 rounded-md bg-muted animate-pulse" />)}
+            </div>
+          ) : (
+            <>
+              {localLeadSources.length === 0 && (
+                <p className="text-sm text-muted-foreground">No lead sources configured.</p>
+              )}
+              <div className="space-y-2">
+                {localLeadSources.map((src, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      value={src}
+                      onChange={(e) =>
+                        setLocalLeadSources((prev) =>
+                          prev.map((s, i) => (i === idx ? e.target.value : s))
+                        )
+                      }
+                      className="h-8 text-sm flex-1"
+                      maxLength={100}
+                    />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive shrink-0"
+                      onClick={() =>
+                        setLocalLeadSources((prev) => prev.filter((_, i) => i !== idx))
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add new source */}
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  value={newSourceInput}
+                  onChange={(e) => setNewSourceInput(e.target.value)}
+                  placeholder="New source name…"
+                  className="h-8 text-sm flex-1"
+                  maxLength={100}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newSourceInput.trim()) {
+                      setLocalLeadSources((prev) => [...prev, newSourceInput.trim()]);
+                      setNewSourceInput('');
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!newSourceInput.trim()}
+                  onClick={() => {
+                    if (newSourceInput.trim()) {
+                      setLocalLeadSources((prev) => [...prev, newSourceInput.trim()]);
+                      setNewSourceInput('');
+                    }
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              <Button
+                size="sm"
+                disabled={updateLeadSourcesMutation.isPending}
+                onClick={() => updateLeadSourcesMutation.mutate(localLeadSources, {
+                  onSuccess: () => toast({ title: "Lead sources saved" }),
+                  onError: (err) => toast({ title: "Failed to save", description: String(err), variant: "destructive" }),
+                })}
+              >
+                {updateLeadSourcesMutation.isPending
+                  ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</>
+                  : "Save Lead Sources"}
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

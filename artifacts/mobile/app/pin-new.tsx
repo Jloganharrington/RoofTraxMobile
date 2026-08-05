@@ -13,12 +13,14 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   useCreatePin,
   useReverseGeocodeCoordinates,
   getReverseGeocodeCoordinatesQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
 import type {
   ContactOutcome,
@@ -29,6 +31,8 @@ import type {
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { uploadFile } from '@/lib/upload';
+
+const DEFAULT_LEAD_SOURCES = ["Angi's", 'Yelp', 'Call-In', 'Website'];
 
 const DAMAGE_TYPES: { value: DamageType; label: string }[] = [
   { value: 'roof', label: 'Roof' },
@@ -96,7 +100,7 @@ export default function PinNewScreen() {
     latitude: string;
     longitude: string;
   }>();
-  const { role, workflowAssignment } = useProfile();
+  const { role, workflowAssignment, companyId } = useProfile();
   const createPin = useCreatePin();
   const geocodeParams = { latitude: Number(latitude), longitude: Number(longitude) };
   const geocode = useReverseGeocodeCoordinates(geocodeParams, {
@@ -110,6 +114,16 @@ export default function PinNewScreen() {
   const [workflow, setWorkflow] = useState<PinWorkflow>(
     workflowAssignment === 'retail' ? 'retail' : 'insurance',
   );
+  const [leadSource, setLeadSource] = useState<string | null>(null); // null = Canvassing
+
+  const { data: sourcesData } = useQuery({
+    queryKey: ['lead-sources', companyId],
+    queryFn: () =>
+      customFetch<{ leadSources: string[] }>(`/api/companies/${companyId}/lead-sources`),
+    enabled: !!companyId,
+  });
+  const leadSources: string[] = sourcesData?.leadSources ?? DEFAULT_LEAD_SOURCES;
+
   const [damageType, setDamageType] = useState<DamageType | null>(null);
   const [doorKnockResult, setDoorKnockResult] = useState<DoorKnockResult | null>(null);
   const [contactOutcome, setContactOutcome] = useState<ContactOutcome | null>(null);
@@ -192,6 +206,7 @@ export default function PinNewScreen() {
             !isRetail && contactOutcome === 'call_to_schedule' ? customerName.trim() : undefined,
           customerPhone:
             !isRetail && contactOutcome === 'call_to_schedule' ? customerPhone.trim() : undefined,
+          externalLeadSource: leadSource ?? undefined,
           retailData: isRetail
             ? {
                 ownerName1,
@@ -256,6 +271,43 @@ export default function PinNewScreen() {
           />
         </>
       )}
+
+      {/* Lead Source */}
+      <Text style={[styles.label, { color: colors.foreground }]}>Lead Source</Text>
+      <View style={styles.choiceRow}>
+        {/* "Canvassing" = null */}
+        <Pressable
+          onPress={() => setLeadSource(null)}
+          style={[
+            styles.choiceChip,
+            {
+              backgroundColor: leadSource === null ? colors.primary : colors.muted,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Text style={{ color: leadSource === null ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+            Canvassing
+          </Text>
+        </Pressable>
+        {leadSources.map((src) => (
+          <Pressable
+            key={src}
+            onPress={() => setLeadSource(src)}
+            style={[
+              styles.choiceChip,
+              {
+                backgroundColor: leadSource === src ? colors.primary : colors.muted,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text style={{ color: leadSource === src ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+              {src}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       {!isRetail ? (
         <>

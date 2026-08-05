@@ -80,6 +80,7 @@ router.post('/pins', async (req: Request, res: Response) => {
     contactOutcome,
     customerName,
     customerPhone,
+    externalLeadSource,
   } = parsed.data;
 
   if (contactOutcome === 'call_to_schedule' && (!customerName || !customerPhone)) {
@@ -114,6 +115,7 @@ router.post('/pins', async (req: Request, res: Response) => {
       contactOutcome,
       customerName,
       customerPhone,
+      externalLeadSource: externalLeadSource ?? null,
       // Initialise every new pin to 'pin_dropped' so it immediately appears in
       // the correct pipeline column without relying on the legacy status fallback.
       pipelineStage: 'pin_dropped',
@@ -238,6 +240,8 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 
 export const LeadProfileBody = z.object({
+  externalLeadSource:   z.string().nullable().optional(),
+  projectManagerName:   z.string().nullable().optional(),
   ownerFirstName:       z.string().nullable().optional(),
   ownerLastName:        z.string().nullable().optional(),
   ownerEmail:           z.string().nullable().optional(),
@@ -400,6 +404,8 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
       ...(d.profileStatus        !== undefined && { profileStatus:        d.profileStatus }),
       ...(d.statusNotes          !== undefined && { statusNotes:          d.statusNotes }),
       ...(d.statusLastUpdated    !== undefined && { statusLastUpdated:    d.statusLastUpdated ? new Date(d.statusLastUpdated) : null }),
+      ...(d.externalLeadSource   !== undefined && { externalLeadSource:   d.externalLeadSource }),
+      ...(d.projectManagerName   !== undefined && { projectManagerName:   d.projectManagerName }),
     })
     .where(eq(pinsTable.id, pinId))
     .returning();
