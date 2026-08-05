@@ -3812,6 +3812,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /dashboard/manifest:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardManifest
+      summary: Returns the ordered list of widgets this user is permitted to see
+      description: >-
+        Resolves the caller's role, department, and workflow server-side from
+        their profile row and returns the filtered, ordered widget manifest.
+        Returns metadata only (key, title, size). Widget payload data is never
+        included here — each widget fetches its own data independently.
+        Role/department/workflow are never read from the request; client-supplied
+        values are silently ignored.
+      responses:
+        "200":
+          description: Widget manifest for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardManifestEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -7597,6 +7623,34 @@ components:
       properties:
         stats:
           $ref: "#/components/schemas/ActivityStats"
+
+    DashboardWidgetMeta:
+      type: object
+      description: >-
+        Manifest metadata for a single dashboard widget. Contains key, title,
+        and size only — never widget payload data (rows, values, etc.).
+      required: [key, title, size]
+      properties:
+        key:
+          type: string
+          description: Stable identifier matching the WIDGET_CATALOG key.
+        title:
+          type: string
+          description: Display label for the widget header.
+        size:
+          type: string
+          enum: [sm, md, lg]
+          description: Layout hint for skeleton sizing before data loads.
+
+    DashboardManifestEnvelope:
+      type: object
+      required: [widgets]
+      properties:
+        widgets:
+          type: array
+          description: Ordered list of widgets this user is permitted to see.
+          items:
+            $ref: "#/components/schemas/DashboardWidgetMeta"
 
     WeatherCandidate:
       type: object

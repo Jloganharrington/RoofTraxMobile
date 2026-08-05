@@ -61,6 +61,7 @@ import type {
   CurateInspectionPhotosRequest,
   CurationResultEnvelope,
   DamageInstanceEnvelope,
+  DashboardManifestEnvelope,
   DeleteCompanyJurisdictionPack200,
   DeletePriceBookItem200,
   DeleteSuccess,
@@ -7408,6 +7409,84 @@ export function useGetPortalReportHtml<TData = Awaited<ReturnType<typeof getPort
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPortalReportHtmlQueryOptions(accessCode,versionIndex,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDashboardManifestUrl = () => {
+
+
+
+
+  return `/api/dashboard/manifest`
+}
+
+/**
+ * Resolves the caller's role, department, and workflow server-side from their profile row and returns the filtered, ordered widget manifest. Returns metadata only (key, title, size). Widget payload data is never included here — each widget fetches its own data independently. Role/department/workflow are never read from the request; client-supplied values are silently ignored.
+ * @summary Returns the ordered list of widgets this user is permitted to see
+ */
+export const getDashboardManifest = async ( options?: RequestInit): Promise<DashboardManifestEnvelope> => {
+
+  return customFetch<DashboardManifestEnvelope>(getGetDashboardManifestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardManifestQueryKey = () => {
+    return [
+    `/api/dashboard/manifest`
+    ] as const;
+    }
+
+
+export const getGetDashboardManifestQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardManifest>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardManifest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardManifestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardManifest>>> = ({ signal }) => getDashboardManifest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardManifest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardManifestQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardManifest>>>
+export type GetDashboardManifestQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Returns the ordered list of widgets this user is permitted to see
+ */
+
+export function useGetDashboardManifest<TData = Awaited<ReturnType<typeof getDashboardManifest>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardManifest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardManifestQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

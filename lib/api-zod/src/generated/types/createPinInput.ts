@@ -22,5 +22,6 @@ export interface CreatePinInput {
   contactOutcome?: ContactOutcome;
   customerName?: string;
   customerPhone?: string;
+  /** Non-canvassing lead source (e.g. "Angi's", "Yelp", "Call-In", "Website"). Omit or set to null for canvassed leads. */
   externalLeadSource?: string;
 }

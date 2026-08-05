@@ -747,6 +747,7 @@ export interface CreatePinInput {
   contactOutcome?: ContactOutcome;
   customerName?: string;
   customerPhone?: string;
+  /** Non-canvassing lead source (e.g. "Angi's", "Yelp", "Call-In", "Website"). Omit or set to null for canvassed leads. */
   externalLeadSource?: string;
 }
 
@@ -2923,6 +2924,35 @@ export interface ActivityStats {
 
 export interface ActivityStatsEnvelope {
   stats: ActivityStats;
+}
+
+/**
+ * Layout hint for skeleton sizing before data loads.
+ */
+export type DashboardWidgetMetaSize = typeof DashboardWidgetMetaSize[keyof typeof DashboardWidgetMetaSize];
+
+
+export const DashboardWidgetMetaSize = {
+  sm: 'sm',
+  md: 'md',
+  lg: 'lg',
+} as const;
+
+/**
+ * Manifest metadata for a single dashboard widget. Contains key, title, and size only — never widget payload data (rows, values, etc.).
+ */
+export interface DashboardWidgetMeta {
+  /** Stable identifier matching the WIDGET_CATALOG key. */
+  key: string;
+  /** Display label for the widget header. */
+  title: string;
+  /** Layout hint for skeleton sizing before data loads. */
+  size: DashboardWidgetMetaSize;
+}
+
+export interface DashboardManifestEnvelope {
+  /** Ordered list of widgets this user is permitted to see. */
+  widgets: DashboardWidgetMeta[];
 }
 
 export type WeatherCandidateType = typeof WeatherCandidateType[keyof typeof WeatherCandidateType];

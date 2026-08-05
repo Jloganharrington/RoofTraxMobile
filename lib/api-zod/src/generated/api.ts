@@ -1005,7 +1005,7 @@ export const CreatePinBody = zod.object({
   "contactOutcome": zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']).optional(),
   "customerName": zod.string().optional(),
   "customerPhone": zod.string().optional(),
-  "externalLeadSource": zod.string().optional()
+  "externalLeadSource": zod.string().optional().describe('Non-canvassing lead source (e.g. \"Angi\'s\", \"Yelp\", \"Call-In\", \"Website\"). Omit or set to null for canvassed leads.')
 })
 
 
@@ -6284,6 +6284,19 @@ export const GetPortalReportHtmlParams = zod.object({
 
 export const GetPortalReportHtmlResponse = zod.object({
   "html": zod.string()
+})
+
+
+/**
+ * Resolves the caller's role, department, and workflow server-side from their profile row and returns the filtered, ordered widget manifest. Returns metadata only (key, title, size). Widget payload data is never included here — each widget fetches its own data independently. Role/department/workflow are never read from the request; client-supplied values are silently ignored.
+ * @summary Returns the ordered list of widgets this user is permitted to see
+ */
+export const GetDashboardManifestResponse = zod.object({
+  "widgets": zod.array(zod.object({
+  "key": zod.string().describe('Stable identifier matching the WIDGET_CATALOG key.'),
+  "title": zod.string().describe('Display label for the widget header.'),
+  "size": zod.enum(['sm', 'md', 'lg']).describe('Layout hint for skeleton sizing before data loads.')
+}).describe('Manifest metadata for a single dashboard widget. Contains key, title, and size only — never widget payload data (rows, values, etc.).')).describe('Ordered list of widgets this user is permitted to see.')
 })
 
 
