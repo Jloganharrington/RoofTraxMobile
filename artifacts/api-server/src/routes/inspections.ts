@@ -116,7 +116,7 @@ import type {
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '../lib/permissions';
+import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '@workspace/authz';
 import { runAhjCheck } from '../lib/ahjLookup';
 import { getRole, LeadProfileBody, toDateOrNull } from './pins';
 import { advancePinStage } from './pipelineEvents';

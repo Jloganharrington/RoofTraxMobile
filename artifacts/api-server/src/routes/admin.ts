@@ -9,7 +9,7 @@ import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canSetRoleDeptSpec, canSetWorkflow, isManagerOrAdmin } from '../lib/permissions';
+import { canSetRoleDeptSpec, canSetWorkflow, isManagerOrAdmin } from '@workspace/authz';
 
 const router: IRouter = Router();
 

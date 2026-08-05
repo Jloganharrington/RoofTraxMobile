@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { logger } from '../lib/logger';
-import { canAccessInspectionModule } from '../lib/permissions';
+import { canAccessInspectionModule } from '@workspace/authz';
 import {
   aggregateByDate,
   normalizeEvents,

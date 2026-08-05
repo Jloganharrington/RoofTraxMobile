@@ -3,7 +3,7 @@ import { db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canAccessInspectionModule } from '../lib/permissions';
+import { canAccessInspectionModule } from '@workspace/authz';
 import { crmSeamStatus, getCompanyCrmConfig } from '../lib/crm';
 
 const router: IRouter = Router();

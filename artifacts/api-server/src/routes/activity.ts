@@ -9,7 +9,7 @@ import {
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { isManagerOrAdmin } from '../lib/permissions';
+import { isManagerOrAdmin } from '@workspace/authz';
 
 const router: IRouter = Router();
 

@@ -16,7 +16,7 @@ import {
   STAGES_BY_PIPELINE,
   type PipelineId,
 } from '../lib/pipelineStages';
-import { isManagerOrAdmin } from '../lib/permissions';
+import { isManagerOrAdmin } from '@workspace/authz';
 import { getRole } from './pins';
 
 const router = Router();

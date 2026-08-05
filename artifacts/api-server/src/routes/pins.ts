@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
-import { canDeletePin, canEditPin, isManagerOrAdmin } from '../lib/permissions';
+import { canDeletePin, canEditPin, isManagerOrAdmin } from '@workspace/authz';
 
 const router: IRouter = Router();
 

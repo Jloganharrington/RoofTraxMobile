@@ -13,16 +13,13 @@ import {
 
 import { companiesTable, usersTable } from './auth';
 
-export const ROLES = ['field_rep', 'manager', 'admin', 'super_admin'] as const;
-// Which line(s) of business a user works. `insurance_retail` replaces the
-// former separate `insurance` and `both` values — every insurance-capable
-// rep can also see retail pins, so there is no longer a pure-insurance mode.
-export const WORKFLOW_ASSIGNMENTS = ['retail', 'insurance_retail'] as const;
-// Which dashboard/module a user lands in. `canvasser` is the existing
-// door-knocking flow; `inspector_canvasser` additionally gets the forensic
-// inspection module (content ships in a later phase — this only stores and
-// gates the assignment).
-export const DEPARTMENTS = ['canvasser', 'inspector_canvasser'] as const;
+// Vocabulary lives in @workspace/authz. Import for use in column definitions
+// below, then re-export so every existing `import { Role } from '@workspace/db'`
+// keeps working unchanged.
+import { DEPARTMENTS, ROLES, WORKFLOW_ASSIGNMENTS } from '@workspace/authz';
+export { DEPARTMENTS, ROLES, WORKFLOW_ASSIGNMENTS } from '@workspace/authz';
+export type { Department, Role, WorkflowAssignment } from '@workspace/authz';
+
 export const PIN_WORKFLOWS = ['retail', 'insurance'] as const;
 export const DAMAGE_TYPES = ['roof', 'siding', 'roof_and_siding'] as const;
 export const DOOR_KNOCK_RESULTS = [
@@ -39,9 +36,6 @@ export const CONTACT_OUTCOMES = [
   'call_to_schedule',
 ] as const;
 
-export type Role = (typeof ROLES)[number];
-export type WorkflowAssignment = (typeof WORKFLOW_ASSIGNMENTS)[number];
-export type Department = (typeof DEPARTMENTS)[number];
 export type PinWorkflow = (typeof PIN_WORKFLOWS)[number];
 export type DamageType = (typeof DAMAGE_TYPES)[number];
 export type DoorKnockResult = (typeof DOOR_KNOCK_RESULTS)[number];

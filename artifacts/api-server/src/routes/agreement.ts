@@ -31,7 +31,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
 
-import { canAccessInspectionModule, canWriteInspection } from '../lib/permissions';
+import { canAccessInspectionModule, canWriteInspection } from '@workspace/authz';
 import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage';
 import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';

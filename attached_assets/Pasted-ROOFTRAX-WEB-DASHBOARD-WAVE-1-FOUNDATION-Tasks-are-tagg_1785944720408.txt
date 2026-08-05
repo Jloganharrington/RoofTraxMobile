@@ -1,0 +1,306 @@
+ROOFTRAX-WEB DASHBOARD — WAVE 1 FOUNDATION
+
+Tasks are tagged [LOCKED] or [REASONING OK].
+[LOCKED]      = implement exactly as written. Do not redesign, rename, "improve",
+                or consolidate. If the spec appears wrong, STOP and report instead
+                of deviating.
+[REASONING OK]= goal is stated; choose your own implementation.
+
+STOP AFTER EACH TASK. Report what you changed and paste the verification output
+for that task. Do not begin the next task until told to continue. Do not batch
+tasks together.
+
+═══════════════════════════════════════════════════════════════════
+HARD BOUNDARIES — apply to every task, never violate
+═══════════════════════════════════════════════════════════════════
+1. Do NOT modify anything under artifacts/mobile/. That app is frozen for app
+   store release. If a change seems to require touching it, STOP and report.
+2. Do NOT modify lib/db/src/schema/inspections.ts.
+3. Do NOT hand-write or hand-edit any file under lib/api-client-react/src/generated/
+   or lib/api-zod/src/generated/. Those are orval output. Edit
+   lib/api-spec/openapi.yaml and regenerate.
+4. Do NOT add authorization logic in React that is not also enforced server-side.
+   Hiding a UI element is not access control.
+5. Do NOT rename or reorder existing values in ROLES, WORKFLOW_ASSIGNMENTS, or
+   PIN_WORKFLOWS. ROLES is a rank ladder and code compares on its order.
+
+═══════════════════════════════════════════════════════════════════
+TASK 1 [LOCKED] — Create lib/authz and invert vocabulary ownership
+═══════════════════════════════════════════════════════════════════
+Create a new workspace package at lib/authz, modeled exactly on lib/protocol:
+  - package name: "@workspace/authz"
+  - "private": true, "type": "module"
+  - exports: { ".": "./src/index.ts" }
+  - devDependencies: vitest, @types/node (catalog:)
+  - script: "test": "vitest run"
+
+CRITICAL CONSTRAINT: lib/authz must have ZERO runtime dependencies. It must not
+import @workspace/db, drizzle-orm, express, react, or any DB/HTTP/UI library —
+not even as a type-only import. It is a pure logic package consumed by BOTH the
+Express server and a browser bundle. A runtime import of @workspace/db would pull
+the pg driver into the web bundle.
+
+1a. MOVE the vocabulary out of lib/db/src/schema/rooftrax.ts into
+    lib/authz/src/vocabulary.ts:
+        ROLES, DEPARTMENTS, WORKFLOW_ASSIGNMENTS
+    and their derived types (Role, Department, WorkflowAssignment).
+    Leave PIN_WORKFLOWS, DAMAGE_TYPES, DOOR_KNOCK_RESULTS in rooftrax.ts.
+
+1b. In lib/db/src/schema/rooftrax.ts, import those three from "@workspace/authz"
+    and RE-EXPORT them, so every existing `import { Role } from '@workspace/db'`
+    keeps working. Add @workspace/authz to lib/db's package.json dependencies.
+    Dependency direction must be db -> authz. Never authz -> db.
+
+1c. Add 'office' to DEPARTMENTS. Final value must be exactly:
+        ['canvasser', 'inspector_canvasser', 'office'] as const
+    Additive only — do not reorder or rename the existing two.
+
+1d. MOVE artifacts/api-server/src/lib/permissions.ts to lib/authz/src/permissions.ts
+    VERBATIM. All nine exported functions must keep identical names, signatures,
+    and logic:
+        roleRank, isManagerOrAdmin, canManageUser, canSetRoleDeptSpec,
+        canEditPin, canDeletePin, canWriteInspection, canSetWorkflow,
+        canAccessInspectionModule
+    This task is a MOVE, not a refactor. Do not change behavior. Do not "clean up"
+    or merge functions. Change the type import to the local vocabulary module.
+    NOTE: canAccessInspectionModule(role, department) now receives a department
+    value it has never seen ('office'). Make it return false for 'office' and add
+    a test for that. This is the ONLY behavioral addition permitted in this task.
+
+1e. MOVE artifacts/api-server/src/lib/__tests__/permissions.test.ts to
+    lib/authz/src/__tests__/permissions.test.ts. Do NOT edit any existing
+    assertion — the suite passing unchanged is the proof the move was clean.
+
+1f. Update the 9 api-server route files that import permissions to import from
+    "@workspace/authz": activity.ts, admin.ts, agreement.ts, crm.ts,
+    inspections.ts, location.ts, pins.ts, pipelineEvents.ts, weather.ts.
+    Add @workspace/authz to artifacts/api-server/package.json dependencies.
+
+HOW TO VERIFY TASK 1 — run all of these and paste the output:
+  pnpm --filter @workspace/authz test
+      -> all pre-existing assertions pass with zero edits, plus the new
+         'office' -> false case
+  cd artifacts/api-server && npx tsc --noEmit
+      -> no NEW errors vs before the change (capture the baseline first)
+  cd artifacts/mobile && npx tsc --noEmit
+      -> unchanged; proves the mobile app is unaffected
+  grep -rn "@workspace/db\|drizzle\|express\|from 'react'" lib/authz/src/
+      -> MUST return zero matches. Paste the empty result.
+  git diff --stat
+      -> must show zero files changed under artifacts/mobile/
+
+═══════════════════════════════════════════════════════════════════
+TASK 2 [LOCKED] — Capability resolver + widget catalog
+═══════════════════════════════════════════════════════════════════
+In lib/authz/src/dashboard.ts, add:
+
+2a. A pure function, no I/O, no async:
+      resolveCapabilities(input: {
+        role: Role; department: Department; workflow: WorkflowAssignment
+      }): Set<Capability>
+
+2b. WIDGET_CATALOG — an ORDERED array of plain data objects. Each entry:
+      { key, title, size, minRole?, requiresDepartment?, requiresWorkflow? }
+    minRole compares by roleRank (>=). requiresDepartment/requiresWorkflow are
+    arrays; the user's value must be included.
+
+    Wave 1 catalog — use these exact keys, in this order:
+      quick_add            all users
+      my_day               all users
+      my_activity          all users
+      recent_activity      all users
+      pending_inspections  requiresDepartment: ['inspector_canvasser','office']
+      claim_blockers       requiresWorkflow: ['insurance_retail']
+      action_required      minRole: 'manager'
+      sales_funnel         minRole: 'manager'
+      insurance_claims     minRole: 'manager', requiresWorkflow:['insurance_retail']
+      canvassing_heatmap   minRole: 'manager'
+      knock_to_lead        minRole: 'manager'
+      production_pipeline  minRole: 'manager'
+      live_team            minRole: 'manager'
+
+    Do NOT add revenue, commission, quota, A/R aging, or crew widgets. Those depend
+    on tables that do not exist in this repo (there are no payments, invoices,
+    commissions, quotas, or crew tables). Do not create those tables.
+
+2c. selectWidgetsFor(input) -> filtered ordered array of catalog entries.
+
+HOW TO VERIFY TASK 2 — write lib/authz/src/__tests__/dashboard.test.ts covering
+exactly these cases, and paste the run output:
+  - field_rep + canvasser + retail
+        -> gets quick_add, my_day, my_activity, recent_activity ONLY
+        -> does NOT get action_required, sales_funnel, canvassing_heatmap
+  - field_rep + inspector_canvasser + insurance_retail
+        -> additionally gets pending_inspections and claim_blockers
+        -> still does NOT get any minRole:'manager' widget
+  - manager + office + insurance_retail
+        -> gets action_required, sales_funnel, insurance_claims, live_team,
+           pending_inspections
+  - manager + canvasser + retail
+        -> gets action_required but NOT insurance_claims (workflow gate)
+        -> does NOT get pending_inspections (department gate)
+  - admin and super_admin
+        -> get a superset of everything manager gets (assert this
+           programmatically, not by listing keys)
+  - the returned array preserves WIDGET_CATALOG order in every case
+
+═══════════════════════════════════════════════════════════════════
+TASK 3 [LOCKED] — GET /dashboard/manifest, openapi-first
+═══════════════════════════════════════════════════════════════════
+ORDER MATTERS. Do it in this sequence:
+  1. Add the endpoint + response schema to lib/api-spec/openapi.yaml
+  2. Run the orval generation script to regenerate the client and zod packages
+  3. THEN implement the route
+
+The route resolves the caller's profile server-side (role, department, workflow)
+and returns selectWidgetsFor(...) output. It must return manifest metadata ONLY —
+key, title, size. NO widget payload data. Widgets fetch their own data separately.
+
+Never read role/department/workflow from the request body or query string. Always
+load them from the authenticated user's profile row, the same way
+/activity-stats does.
+
+HOW TO VERIFY TASK 3 — write an api-server route test that mints sessions directly
+(follow the existing pattern in artifacts/api-server/src/routes/__tests__/) and
+paste the output:
+  - unauthenticated request -> 401
+  - field_rep session -> 200, and the returned key list contains NONE of:
+        action_required, sales_funnel, canvassing_heatmap, knock_to_lead,
+        production_pipeline, live_team, insurance_claims
+  - manager session -> 200, and the list DOES contain action_required
+  - a request that attempts to pass role=admin as a query param or body field
+        -> the response is IDENTICAL to that user's normal manifest
+           (proves client input cannot escalate)
+  - no manifest entry contains a data/rows/values field
+
+═══════════════════════════════════════════════════════════════════
+TASK 4 [LOCKED — SECURITY] — Independent enforcement on data endpoints
+═══════════════════════════════════════════════════════════════════
+Every per-widget data endpoint must independently re-check capability server-side
+before returning data. Omission from the manifest is NOT access control — an
+attacker calls the data URL directly.
+
+Implement a single reusable guard used by every widget data route, which loads the
+caller's profile, computes capabilities, and returns 403 if the widget key is not
+permitted for that user.
+
+For this task implement exactly ONE data endpoint to prove the pattern:
+GET the action_required widget's data (manager+). Return an empty//placeholder
+payload shape if the underlying query isn't built yet — this task is about the
+guard, not the data.
+
+HOW TO VERIFY TASK 4 — paste this test's output:
+  - manager session calls the action_required data endpoint -> 200
+  - field_rep session calls the SAME endpoint directly -> 403
+        (not 200-with-empty, not 404 — it must be 403)
+  - unauthenticated -> 401
+State explicitly in your report that the field_rep case returned 403.
+
+═══════════════════════════════════════════════════════════════════
+TASK 5 [REASONING OK] — Dashboard shell + widget registry
+═══════════════════════════════════════════════════════════════════
+GOAL: a Dashboard page in rooftrax-web that fetches the manifest, renders a
+responsive grid of widget cards in manifest order, and lets each widget fetch its
+own data independently so a slow or failing widget degrades alone instead of
+blanking the page.
+
+Mirror the existing barrel-export registry pattern already used in
+artifacts/rooftrax-web/src/components/pipeline/widgets/index.ts.
+
+Two constraints that are NOT optional:
+  - A manifest key with no matching registered component must be skipped silently.
+    It must never crash or blank the dashboard. (This lets the server ship a widget
+    before the client has it.)
+  - Render skeletons sized from the manifest's `size` so layout does not jump.
+
+Design, styling, grid behavior, and loading/error treatment are yours. Match the
+existing rooftrax-web visual language.
+
+VERIFY: temporarily add a fake key to the manifest response, confirm the dashboard
+still renders every other widget, then remove it. Report what you observed.
+
+═══════════════════════════════════════════════════════════════════
+TASK 6 [LOCKED] — Split the "/" route
+═══════════════════════════════════════════════════════════════════
+Today "/" renders Home, and Home redirects authenticated users to /inspections.
+That is why the sidebar "Dashboard" button appears to do nothing.
+
+Required behavior at "/":
+  - authenticated  -> render the Dashboard. NO redirect, URL stays "/"
+  - unauthenticated-> render the existing marketing Home page unchanged
+  - REMOVE the setLocation("/inspections") redirect from Home entirely
+
+Do not change the sidebar's Dashboard path — it already points to "/" and is
+correct. Do not delete or restyle the marketing content.
+
+HOW TO VERIFY TASK 6:
+  - logged in, click sidebar "Dashboard" -> dashboard renders, URL is "/"
+  - logged in, load "/" directly -> dashboard renders, no flash of marketing
+    content, no redirect
+  - logged out, load "/" -> marketing page renders
+  - confirm /inspections is still reachable from the sidebar
+  Paste a screenshot of the logged-in "/" and the logged-out "/".
+
+═══════════════════════════════════════════════════════════════════
+TASK 7 [REASONING OK] — Gate the sidebar and make ProtectedRoute role-aware
+═══════════════════════════════════════════════════════════════════
+GOAL: stop advertising doors that won't open. Today NAV_SECTIONS in
+components/layout/Shell.tsx is a flat const rendered wholesale, so a field rep
+sees "Team Management", "User Authorization", and "Settings". ProtectedRoute only
+checks that a user is logged in — it has no role awareness, so those pages render
+for anyone authenticated.
+
+Use the SAME @workspace/authz resolver from Task 1/2 for both the sidebar
+filtering and the route guard. Do not write a second parallel role model in React
+— that is the specific failure mode being avoided here.
+
+A user who reaches a route they lack capability for should get a clear "you don't
+have access" state, not a blank page or an infinite redirect loop.
+
+Server-side enforcement already exists and stays authoritative. This task is UI
+affordance only.
+
+VERIFY: log in as field_rep and as manager, report which sidebar items each sees,
+and confirm a field_rep navigating directly to /user-authorization by URL gets the
+no-access state rather than a rendered page.
+
+═══════════════════════════════════════════════════════════════════
+TASK 8 [REASONING OK] — Action Required / Blockers widget
+═══════════════════════════════════════════════════════════════════
+GOAL: the first real widget, and the highest-value one — it surfaces what managers
+and owners genuinely cannot see anywhere today.
+
+Every other surface shows current state. This shows what is STUCK and AGING.
+Source it from data that already exists:
+  - pipeline stages flagged isLoopStage (appt_scheduled, follow_up,
+    contract_pending, supplement_dispute) that are past their loopNextActionAt
+  - the CFR 21-day clock on insurance-sourced project cards
+  - claims blocked mid-flight (FIPSA unsigned, capture incomplete, package
+    uncompiled)
+
+Rank by cost of delay, not alphabetically or by recency. Show who owns each item
+and how long it has been stuck.
+
+Where practical, let the user resolve an item inline rather than navigating away —
+reuse the existing widgets in components/pipeline/widgets/ so the interaction
+contract matches the kanban cards.
+
+Do not invent new database tables for this widget.
+
+VERIFY: describe what your query returns against the current dev data, and confirm
+via the Task 4 guard that a field_rep gets 403 on its data endpoint.
+
+═══════════════════════════════════════════════════════════════════
+FINAL INTEGRATION CHECK — run after Task 8, paste all output
+═══════════════════════════════════════════════════════════════════
+  pnpm --filter @workspace/authz test
+  cd artifacts/api-server && npx vitest run
+  cd artifacts/api-server && npx tsc --noEmit
+  cd artifacts/mobile && npx tsc --noEmit
+  cd artifacts/rooftrax-web && npx tsc --noEmit
+  git diff --stat origin/main -- artifacts/mobile/
+      -> MUST be empty. Paste the empty result as proof.
+
+Then re-run the acceptance fixture to prove nothing regressed:
+  npx tsx artifacts/api-server/src/scripts/seed-acceptance-claim.ts
+      -> must still report PASSED: 42  FAILED: 0

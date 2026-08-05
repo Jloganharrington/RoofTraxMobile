@@ -10,6 +10,9 @@
   "include": ["src"],
   "references": [
     {
+      "path": "../../lib/authz"
+    },
+    {
       "path": "../../lib/db"
     },
     {
