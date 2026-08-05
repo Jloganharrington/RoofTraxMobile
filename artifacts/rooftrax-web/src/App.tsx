@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 
 import Home from '@/pages/Home';
+import Dashboard from '@/pages/Dashboard';
 import LibraryPage from '@/pages/settings/LibraryPage';
 import AhjWizardPage from '@/pages/settings/AhjWizardPage';
 import InspectionList from '@/pages/inspections/InspectionList';
@@ -56,6 +57,10 @@ function Router() {
       <Route path="/" component={Home} />
 
       {/* Protected Routes */}
+      <Route path="/dashboard">
+        <ProtectedRoute><Dashboard /></ProtectedRoute>
+      </Route>
+
       <Route path="/pipeline">
         <ProtectedRoute><Pipeline /></ProtectedRoute>
       </Route>
