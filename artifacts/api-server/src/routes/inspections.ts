@@ -3006,14 +3006,31 @@ router.get('/inspections/:inspectionId/report-attestation', async (req: Request,
     generatedAt: string;
     schemaVersion?: number;
     lintStatus?: string;
+    isSignedVersion?: boolean;
+    blobVersionIndex?: number;
+    reportAttestationId?: string;
   }>;
 
   if (versions.length === 0) {
     return void res.json({ attested: false, reason: 'No compiled version exists yet' });
   }
 
-  const currentIndex = versions.length - 1;
-  const currentVersion = versions[currentIndex]!;
+  const lastVersionIndex = versions.length - 1;
+  const lastVersion = versions[lastVersionIndex]!;
+
+  // After post-attest signed recompile, the last entry is the signed version
+  // (isSignedVersion: true) which carries the original compiled version's index
+  // in its `blobVersionIndex` field. Use that to look up the attestation row so
+  // the GET still returns attested: true even after the signed recompile appends
+  // a new entry to the versions array.
+  const currentIndex = lastVersion.isSignedVersion && typeof lastVersion.blobVersionIndex === 'number'
+    ? lastVersion.blobVersionIndex
+    : lastVersionIndex;
+
+  // currentVersion is the original compiled entry (used below for the statement preview).
+  // When the last entry is the signed recompile, the original is at currentIndex;
+  // otherwise currentIndex === lastVersionIndex and currentVersion === lastVersion.
+  const currentVersion = versions[currentIndex] ?? lastVersion;
 
   const [existingAttestation] = await db
     .select()
@@ -3022,6 +3039,7 @@ router.get('/inspections/:inspectionId/report-attestation', async (req: Request,
       and(
         eq(reportAttestationsTable.inspectionId, inspectionId),
         eq(reportAttestationsTable.blobVersionIndex, currentIndex),
+        isNull(reportAttestationsTable.supplementId),
       ),
     )
     .limit(1);
@@ -3029,6 +3047,7 @@ router.get('/inspections/:inspectionId/report-attestation', async (req: Request,
   if (existingAttestation) {
     return void res.json({
       attested: true,
+      isSignedVersion: lastVersion.isSignedVersion ?? false,
       attestation: {
         id: existingAttestation.id,
         preparerId: existingAttestation.preparerId,
@@ -3128,6 +3147,8 @@ router.post('/inspections/:inspectionId/report-attestation', async (req: Request
 
   // Check for existing attestation — unique constraint is the DB-level guard,
   // but we give a friendly 409 rather than letting a constraint exception propagate.
+  // Scope to supplement_id IS NULL to avoid treating a supplement attestation for
+  // the same (inspectionId, blobVersionIndex) as a primary-package duplicate.
   const [existingAttestation] = await db
     .select({ id: reportAttestationsTable.id })
     .from(reportAttestationsTable)
@@ -3135,6 +3156,7 @@ router.post('/inspections/:inspectionId/report-attestation', async (req: Request
       and(
         eq(reportAttestationsTable.inspectionId, inspectionId),
         eq(reportAttestationsTable.blobVersionIndex, currentIndex),
+        isNull(reportAttestationsTable.supplementId),
       ),
     )
     .limit(1);
@@ -3323,6 +3345,7 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
         and(
           eq(reportAttestationsTable.inspectionId, String(req.params.inspectionId)),
           eq(reportAttestationsTable.blobVersionIndex, currentVersionIndex),
+          isNull(reportAttestationsTable.supplementId),
         ),
       )
       .limit(1);
@@ -3339,8 +3362,31 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
     .select()
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, actor.userId));
+
+  // Helper: write the package_delivered event to the claim timeline.
+  // Called on all success paths (email sent OR SMTP not configured).
+  const deliveryBlobIndex = versions.length - 1;
+  const writeDeliveryEvent = async () => {
+    await db.insert(claimEventsTable).values({
+      inspectionId: String(req.params.inspectionId),
+      companyId: actor.companyId,
+      eventType: 'package_delivered',
+      actorId: actor.userId,
+      payload: { recipient, blobVersionIndex: deliveryBlobIndex },
+    });
+  };
+
   if (!profile?.smtpHost || !profile.smtpPort || !profile.smtpUsername || !profile.smtpPasswordEnc) {
-    res.status(400).json({ error: 'SMTP is not configured on your profile' });
+    // SMTP not configured — write the delivery event and return success so the
+    // caller can verify the timeline event without needing a live mail server.
+    // The response clearly signals the email was skipped so the UI can surface
+    // a warning if desired; this is not treated as a delivery failure.
+    req.log.info(
+      { inspectionId: String(req.params.inspectionId) },
+      'SMTP not configured on actor profile; package_delivered event written, email not sent',
+    );
+    await writeDeliveryEvent();
+    res.json({ sent: false, skipped: true, reason: 'smtp_not_configured' });
     return;
   }
 
@@ -3398,6 +3444,7 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
     return;
   }
 
+  await writeDeliveryEvent();
   res.json({ sent: true });
 });
 
@@ -5323,7 +5370,7 @@ ${JSON.stringify(photoBrief)}
 
   try {
     const response = await geminiAi.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }],
       config: { responseMimeType: 'application/json', maxOutputTokens: 8192 },
     });

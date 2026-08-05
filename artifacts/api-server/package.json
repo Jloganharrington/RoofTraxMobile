@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed-acceptance": "tsx src/scripts/seed-acceptance-claim.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",
