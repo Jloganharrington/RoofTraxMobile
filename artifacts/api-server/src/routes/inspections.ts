@@ -102,6 +102,8 @@ import {
   leadFilesTable,
   objectOwnershipTable,
   stageTransitionsTable,
+  claimSupplementsTable,
+  SUPPLEMENT_REASONS,
 } from '@workspace/db';
 import type {
   Role,
@@ -121,6 +123,7 @@ import { advancePinStage } from './pipelineEvents';
 import { ALL_STAGE_KEYS, findServerStageByKey } from '../lib/pipelineStages';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { buildProofPackageHtml, type ProofPackageData } from '../lib/proofPackageTemplate';
+import { buildSupplementHtml } from '../lib/supplementTemplate';
 
 // The reportData snapshot baked into schemaVersion-6 blobs. It reuses the
 // template's input shapes, minus the render-time-only fields (signed URLs,
@@ -5070,7 +5073,7 @@ router.post('/inspections/:inspectionId/report/compile', async (req: Request, re
       db.select({ state: companyJurisdictionPacksTable.state })
         .from(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, actor.companyId)),
       db.select({ sectionType: claimSectionsTable.sectionType, libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot })
-        .from(claimSectionsTable).where(eq(claimSectionsTable.inspectionId, inspectionId)),
+        .from(claimSectionsTable).where(and(eq(claimSectionsTable.inspectionId, inspectionId), isNull(claimSectionsTable.supplementId))),
       db.select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus })
         .from(standardsEntriesTable).where(eq(standardsEntriesTable.companyId, actor.companyId)),
     ]);
@@ -5740,6 +5743,7 @@ ${JSON.stringify(photoBrief)}
         and(
           eq(claimSectionsTable.inspectionId, inspectionId),
           eq(claimSectionsTable.state, 'locked'),
+          isNull(claimSectionsTable.supplementId),
         ),
       ),
     db
@@ -8589,7 +8593,7 @@ router.get('/inspections/:inspectionId/readiness', async (req: Request, res: Res
       libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot,
     })
       .from(claimSectionsTable)
-      .where(eq(claimSectionsTable.inspectionId, inspectionId)),
+      .where(and(eq(claimSectionsTable.inspectionId, inspectionId), isNull(claimSectionsTable.supplementId))),
     db.select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus })
       .from(standardsEntriesTable)
       .where(eq(standardsEntriesTable.companyId, actor.companyId)),
@@ -8658,10 +8662,11 @@ router.get('/inspections/:inspectionId/sections', async (req: Request, res: Resp
 
   // Read from claim_sections. Rows are created by Task #122's generation pipeline.
   // Until then, return all section types as not_started (matching the pre-Task#122 stub).
+  // Scope to supplement_id IS NULL — supplement sections are served by their own routes.
   const rows = await db
     .select()
     .from(claimSectionsTable)
-    .where(eq(claimSectionsTable.inspectionId, inspectionId));
+    .where(and(eq(claimSectionsTable.inspectionId, inspectionId), isNull(claimSectionsTable.supplementId)));
 
   const rowsByType = new Map(rows.map(r => [r.sectionType, r]));
 
@@ -8733,6 +8738,7 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
         and(
           eq(claimSectionsTable.inspectionId, inspectionId),
           inArray(claimSectionsTable.sectionType, [...DAG_UPSTREAM_SECTION_TYPES]),
+          isNull(claimSectionsTable.supplementId),
         ),
       );
     const upstreamByType = new Map(upstreamRows.map((r) => [r.sectionType, r.state]));
@@ -8794,17 +8800,20 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
             and(
               eq(claimSectionsTable.inspectionId, inspectionId),
               inArray(claimSectionsTable.sectionType, [...DAG_UPSTREAM_SECTION_TYPES]),
+              isNull(claimSectionsTable.supplementId),
             ),
           )
       : Promise.resolve([] as { sectionType: string; contentHtml: string | null; state: string }[]),
     // Check if a section row already exists (for stale propagation)
+    // Scope to supplement_id IS NULL — primary sections only.
     db
       .select({ id: claimSectionsTable.id, state: claimSectionsTable.state })
       .from(claimSectionsTable)
       .where(
         and(
           eq(claimSectionsTable.inspectionId, inspectionId),
-          eq(claimSectionsTable.sectionType, sectionType),
+          sql`${claimSectionsTable.sectionType} = ${sectionType}`,
+          isNull(claimSectionsTable.supplementId),
         ),
       )
       .limit(1),
@@ -8881,6 +8890,7 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
               eq(claimSectionsTable.inspectionId, inspectionId),
               eq(claimSectionsTable.sectionType, downstreamType),
               inArray(claimSectionsTable.state, ['approved', 'locked']),
+              isNull(claimSectionsTable.supplementId),
             ),
           );
       }
@@ -8969,6 +8979,7 @@ router.patch(
         and(
           eq(claimSectionsTable.inspectionId, inspectionId),
           eq(claimSectionsTable.sectionType, sectionType),
+          isNull(claimSectionsTable.supplementId),
         ),
       )
       .limit(1);
@@ -9072,6 +9083,7 @@ router.post('/inspections/:inspectionId/sections/:sectionType/approve', async (r
       and(
         eq(claimSectionsTable.inspectionId, inspectionId),
         eq(claimSectionsTable.sectionType, sectionType),
+        isNull(claimSectionsTable.supplementId),
       ),
     )
     .limit(1);
@@ -9193,6 +9205,7 @@ router.post('/inspections/:inspectionId/sections/:sectionType/auto-approve', asy
       and(
         eq(claimSectionsTable.inspectionId, inspectionId),
         eq(claimSectionsTable.sectionType, sectionType),
+        isNull(claimSectionsTable.supplementId),
       ),
     )
     .limit(1);
@@ -9270,6 +9283,7 @@ router.post('/inspections/:inspectionId/sections/:sectionType/lock', async (req:
       and(
         eq(claimSectionsTable.inspectionId, inspectionId),
         eq(claimSectionsTable.sectionType, sectionType),
+        isNull(claimSectionsTable.supplementId),
       ),
     )
     .limit(1);
@@ -9330,6 +9344,7 @@ router.post('/inspections/:inspectionId/sections/:sectionType/lock', async (req:
             eq(claimSectionsTable.inspectionId, inspectionId),
             eq(claimSectionsTable.sectionType, downstreamType),
             inArray(claimSectionsTable.state, ['approved', 'locked']),
+            isNull(claimSectionsTable.supplementId),
           ),
         );
     }
@@ -10580,5 +10595,1187 @@ router.get('/leads/my-pin-updates', async (req: Request, res: Response) => {
 
   res.json({ updates });
 });
+
+// ===========================================================================
+// SUPPLEMENT FLOW (Task #252)
+// ===========================================================================
+// Each supplement is its own versioned document: separate blob chain, separate
+// attestation, separate delivery. The original primary package blob is NEVER
+// modified, re-rendered, or re-attested when a supplement is issued.
+//
+// Route map:
+//   POST   /inspections/:id/supplements                       — create
+//   GET    /inspections/:id/supplements                       — list
+//   GET    /inspections/:id/supplements/:suppId               — get detail
+//   PATCH  /inspections/:id/supplements/:suppId               — update reason
+//   GET    /inspections/:id/supplements/:suppId/sections      — list sections
+//   POST   /inspections/:id/supplements/:suppId/sections/:t/generate
+//   POST   /inspections/:id/supplements/:suppId/sections/:t/approve
+//   POST   /inspections/:id/supplements/:suppId/sections/:t/lock
+//   POST   /inspections/:id/supplements/:suppId/compile       — compile blob
+//   GET    /inspections/:id/supplements/:suppId/attest        — attestation state
+//   POST   /inspections/:id/supplements/:suppId/attest        — sign off
+//   POST   /inspections/:id/supplements/:suppId/deliver       — deliver gate
+// ===========================================================================
+
+const SUPPLEMENT_SECTION_TYPES_SET = new Set<string>([
+  'findings',
+  'estimate_justifications',
+  'closing_statement',
+]);
+
+/** Load a supplement scoped to the inspection + company. Returns null if not found. */
+async function loadSupplement(
+  inspectionId: string,
+  suppId: string,
+  companyId: string,
+) {
+  const [supp] = await db
+    .select()
+    .from(claimSupplementsTable)
+    .where(
+      and(
+        eq(claimSupplementsTable.id, suppId),
+        eq(claimSupplementsTable.inspectionId, inspectionId),
+        eq(claimSupplementsTable.companyId, companyId),
+      ),
+    )
+    .limit(1);
+  return supp ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements
+// Creates a new supplement document for a delivered (package_ready) inspection.
+// Body: { supplementReason: 'concealed_conditions_exposed' | 'carrier_response' | 'scope_correction' }
+// ---------------------------------------------------------------------------
+router.post('/inspections/:inspectionId/supplements', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+  if (!inspection) return;
+
+  const body = req.body as { supplementReason?: string } | null;
+  const reason = body?.supplementReason as string | undefined;
+  if (!reason || !SUPPLEMENT_REASONS.includes(reason as typeof SUPPLEMENT_REASONS[number])) {
+    return void res.status(400).json({
+      error: `supplementReason is required and must be one of: ${SUPPLEMENT_REASONS.join(', ')}`,
+    });
+  }
+
+  // Gate: inspection must have at least one compiled + attested primary package.
+  const versions = (inspection.compiledReportVersions ?? []) as Array<{
+    path: string;
+    isSignedVersion?: boolean;
+    reportAttestationId?: string;
+    generatedAt?: string;
+  }>;
+  const signedVersion = versions.slice().reverse().find((v) => v.isSignedVersion && v.reportAttestationId);
+  if (!signedVersion) {
+    // Fall back to legacy: any attestation row for this inspection
+    const [legacyAtt] = await db
+      .select({ id: reportAttestationsTable.id })
+      .from(reportAttestationsTable)
+      .where(
+        and(
+          eq(reportAttestationsTable.inspectionId, inspectionId),
+          isNull(reportAttestationsTable.supplementId),
+        ),
+      )
+      .limit(1);
+    if (!legacyAtt) {
+      return void res.status(422).json({
+        error: 'The primary package must be compiled and attested before issuing a supplement.',
+        code: 'PRIMARY_PACKAGE_NOT_ATTESTED',
+      });
+    }
+  }
+
+  // Auto-assign supplement number (SUPP-1, SUPP-2, …)
+  const existing = await db
+    .select({ supplementNumber: claimSupplementsTable.supplementNumber })
+    .from(claimSupplementsTable)
+    .where(
+      and(
+        eq(claimSupplementsTable.inspectionId, inspectionId),
+        eq(claimSupplementsTable.companyId, actor.companyId),
+      ),
+    );
+  const nextNum = existing.length + 1;
+  const supplementNumber = `SUPP-${nextNum}`;
+
+  // Resolve original attestation id (prefer signed version)
+  let originalAttestationId: string | null = signedVersion?.reportAttestationId ?? null;
+  if (!originalAttestationId) {
+    const [legacyAtt] = await db
+      .select({ id: reportAttestationsTable.id })
+      .from(reportAttestationsTable)
+      .where(
+        and(
+          eq(reportAttestationsTable.inspectionId, inspectionId),
+          isNull(reportAttestationsTable.supplementId),
+        ),
+      )
+      .orderBy(desc(reportAttestationsTable.preparedAt))
+      .limit(1);
+    originalAttestationId = legacyAtt?.id ?? null;
+  }
+
+  const [supplement] = await db
+    .insert(claimSupplementsTable)
+    .values({
+      inspectionId,
+      companyId: actor.companyId,
+      supplementNumber,
+      supplementReason: reason as typeof SUPPLEMENT_REASONS[number],
+      compiledReportVersions: [],
+      originalPackageBlobVersion: inspection.compiledReportPath ?? null,
+      originalAttestationId,
+      createdBy: actor.userId,
+    })
+    .returning();
+
+  // Emit supplement_created claim event.
+  await db.insert(claimEventsTable).values({
+    inspectionId,
+    companyId: actor.companyId,
+    eventType: 'supplement_created',
+    actorId: actor.userId,
+    payload: {
+      supplementId: supplement!.id,
+      supplementNumber,
+      supplementReason: reason,
+      originalPackageBlobVersion: inspection.compiledReportPath ?? null,
+      originalAttestationId,
+    },
+  });
+
+  res.status(201).json({ supplement });
+});
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/supplements
+// ---------------------------------------------------------------------------
+router.get('/inspections/:inspectionId/supplements', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const supplements = await db
+    .select()
+    .from(claimSupplementsTable)
+    .where(
+      and(
+        eq(claimSupplementsTable.inspectionId, inspectionId),
+        eq(claimSupplementsTable.companyId, actor.companyId),
+      ),
+    )
+    .orderBy(claimSupplementsTable.createdAt);
+
+  res.json({ supplements });
+});
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/supplements/:suppId
+// ---------------------------------------------------------------------------
+router.get('/inspections/:inspectionId/supplements/:suppId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+  if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+  // Load sections and events alongside
+  const [sections, events] = await Promise.all([
+    db
+      .select()
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.supplementId, suppId),
+        ),
+      )
+      .orderBy(claimSectionsTable.createdAt),
+    db
+      .select()
+      .from(claimEventsTable)
+      .where(
+        and(
+          eq(claimEventsTable.inspectionId, inspectionId),
+          inArray(claimEventsTable.eventType, [
+            'supplement_created',
+            'supplement_attested',
+            'supplement_delivered',
+          ]),
+        ),
+      )
+      .orderBy(claimEventsTable.createdAt),
+  ]);
+
+  const relevantEvents = events.filter(
+    (e) => (e.payload as { supplementId?: string } | null)?.supplementId === suppId,
+  );
+
+  res.json({ supplement: supp, sections, events: relevantEvents });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /inspections/:inspectionId/supplements/:suppId
+// Update supplementReason (only before compile).
+// ---------------------------------------------------------------------------
+router.patch('/inspections/:inspectionId/supplements/:suppId', async (req: Request, res: Response) => {
+  const actor = await requireInspectionModuleAccess(req, res);
+  if (!actor) return;
+
+  const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+  const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+  if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+  const versions = (supp.compiledReportVersions as unknown[]) ?? [];
+  if (versions.length > 0) {
+    return void res.status(409).json({
+      error: 'Supplement reason cannot be changed after compile. Issue a new supplement instead.',
+    });
+  }
+
+  const body = req.body as { supplementReason?: string } | null;
+  const reason = body?.supplementReason as string | undefined;
+  if (!reason || !SUPPLEMENT_REASONS.includes(reason as typeof SUPPLEMENT_REASONS[number])) {
+    return void res.status(400).json({
+      error: `supplementReason must be one of: ${SUPPLEMENT_REASONS.join(', ')}`,
+    });
+  }
+
+  const [updated] = await db
+    .update(claimSupplementsTable)
+    .set({ supplementReason: reason as typeof SUPPLEMENT_REASONS[number] })
+    .where(eq(claimSupplementsTable.id, suppId))
+    .returning();
+
+  res.json({ supplement: updated });
+});
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/supplements/:suppId/sections
+// ---------------------------------------------------------------------------
+router.get(
+  '/inspections/:inspectionId/supplements/:suppId/sections',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    const rows = await db
+      .select()
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.supplementId, suppId),
+        ),
+      )
+      .orderBy(claimSectionsTable.createdAt);
+
+    const rowsByType = new Map(rows.map((r) => [r.sectionType, r]));
+    const supplementSectionTypes = ['findings', 'estimate_justifications', 'closing_statement'] as const;
+
+    const sections = supplementSectionTypes.map((sectionType) => {
+      const row = rowsByType.get(sectionType);
+      return {
+        sectionType,
+        state: row?.state ?? 'not_started',
+        contentHtml: row?.contentHtml ?? null,
+        gateFlags: row?.gateFlags ?? null,
+        lintStatus: row?.lintStatus ?? null,
+        lintFindings: row?.lintFindings ?? null,
+        generatedAt: row?.generatedAt ?? null,
+        lockedAt: row?.lockedAt ?? null,
+        lockedBy: row?.lockedBy ?? null,
+        libraryVersionSnapshot: row?.libraryVersionSnapshot ?? null,
+        id: row?.id ?? null,
+      };
+    });
+
+    res.json({ sections });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements/:suppId/sections/:sectionType/generate
+// AI generation for supplement sections. Reuses existing section generation
+// infrastructure scoped to the supplement.
+// ---------------------------------------------------------------------------
+router.post(
+  '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/generate',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId, sectionType: rawType } = req.params as {
+      inspectionId: string; suppId: string; sectionType: string;
+    };
+
+    if (!SUPPLEMENT_SECTION_TYPES_SET.has(rawType)) {
+      return void res.status(400).json({
+        error: `Unknown supplement section type. Valid types: ${[...SUPPLEMENT_SECTION_TYPES_SET].join(', ')}`,
+      });
+    }
+    const sectionType = rawType as 'findings' | 'estimate_justifications' | 'closing_statement';
+
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    // Check for existing locked row — block re-generation.
+    const [existingRow] = await db
+      .select({ id: claimSectionsTable.id, state: claimSectionsTable.state })
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.supplementId, suppId),
+          sql`${claimSectionsTable.sectionType} = ${sectionType}`,
+        ),
+      )
+      .limit(1);
+
+    if (existingRow?.state === 'locked') {
+      return void res.status(409).json({
+        error: 'Section is locked. Unlock it before regenerating.',
+        state: 'locked',
+        sectionId: existingRow.id,
+      });
+    }
+
+    // Load generation data.
+    const [
+      children,
+      detrimentEntries,
+      boilerplateVersions,
+      ahjPackVersionRows,
+      standardsEntriesRows,
+    ] = await Promise.all([
+      hydrateInspectionChildren(inspectionId, actor.companyId),
+      db
+        .select({
+          entryKey: detrimentEntriesTable.entryKey,
+          statement: detrimentEntriesTable.statement,
+          requiredSupport: detrimentEntriesTable.requiredSupport,
+          limitation: detrimentEntriesTable.limitation,
+          applicabilityConditions: detrimentEntriesTable.applicabilityConditions,
+        })
+        .from(detrimentEntriesTable)
+        .where(eq(detrimentEntriesTable.companyId, actor.companyId)),
+      db
+        .select({ sectionKey: boilerplateSectionsTable.sectionKey, version: boilerplateSectionsTable.version })
+        .from(boilerplateSectionsTable)
+        .where(eq(boilerplateSectionsTable.companyId, actor.companyId)),
+      db
+        .select({ packType: ahjPacksTable.packType, version: ahjPacksTable.version })
+        .from(ahjPacksTable)
+        .where(eq(ahjPacksTable.companyId, actor.companyId)),
+      db
+        .select({
+          entryKey: standardsEntriesTable.entryKey,
+          verificationStatus: standardsEntriesTable.verificationStatus,
+          version: standardsEntriesTable.version,
+          humanEnteredProvisionsOnly: standardsEntriesTable.humanEnteredProvisionsOnly,
+        })
+        .from(standardsEntriesTable)
+        .where(eq(standardsEntriesTable.companyId, actor.companyId)),
+    ]);
+
+    // Generate via existing pipeline (passing supplement context via approvedSections).
+    // Supplement context: pass supplementReason and number so the AI knows this is
+    // a supplement and can tailor the content accordingly.
+    const supplementContext = new Map<string, string>([
+      ['supplement_context', `This is ${supp.supplementNumber} (reason: ${supp.supplementReason}). Focus only on the supplemental analysis, not the original inspection findings.`],
+    ]);
+
+    let generationResult;
+    try {
+      generationResult = await generateSectionContent({
+        inspectionId,
+        sectionType: sectionType as import('../lib/sectionGeneration').GeneratableSectionType,
+        inspection: inspection as unknown as Record<string, unknown>,
+        children,
+        detrimentEntries: detrimentEntries.map((d) => ({
+          ...d,
+          requiredSupport: d.requiredSupport ?? null,
+          limitation: d.limitation ?? null,
+        })),
+        approvedSections: supplementContext,
+        standardsEntries: standardsEntriesRows.map((e) => ({
+          entryKey: e.entryKey,
+          verificationStatus: e.verificationStatus,
+          version: e.version ?? 1,
+          verifiedAt: null,
+          humanEnteredProvisionsOnly: e.humanEnteredProvisionsOnly ?? false,
+        })),
+        boilerplateVersions: boilerplateVersions.map((b) => ({
+          sectionKey: b.sectionKey,
+          version: b.version ?? 1,
+        })),
+        ahjPackVersions: ahjPackVersionRows.map((p) => ({
+          packType: p.packType,
+          version: p.version ?? 1,
+        })),
+      });
+    } catch (err) {
+      req.log.error({ err, inspectionId, suppId, sectionType }, 'Supplement section AI generation failed');
+      return void res.status(502).json({ error: 'Section generation failed. Please try again.' });
+    }
+
+    const now = new Date();
+    const upsertValues = {
+      inspectionId,
+      companyId: actor.companyId,
+      supplementId: suppId,
+      sectionType,
+      state: 'generated' as const,
+      contentHtml: generationResult.contentHtml,
+      lintStatus: generationResult.lintResult.lintStatus,
+      lintFindings: generationResult.lintResult.findings,
+      gateFlags: {},
+      generatedAt: now,
+      staledBy: null,
+      libraryVersionSnapshot: generationResult.libraryVersionSnapshot,
+    };
+
+    let sectionId: string;
+    if (existingRow) {
+      await db
+        .update(claimSectionsTable)
+        .set({ ...upsertValues, lockedAt: null, lockedBy: null })
+        .where(eq(claimSectionsTable.id, existingRow.id));
+      sectionId = existingRow.id;
+    } else {
+      const [inserted] = await db
+        .insert(claimSectionsTable)
+        .values(upsertValues)
+        .returning({ id: claimSectionsTable.id });
+      sectionId = inserted!.id;
+    }
+
+    res.json({
+      sectionType,
+      supplementId: suppId,
+      state: 'generated',
+      sectionId,
+      contentHtml: generationResult.contentHtml,
+      lintStatus: generationResult.lintResult.lintStatus,
+      lintFindings: generationResult.lintResult.findings,
+      libraryVersionSnapshot: generationResult.libraryVersionSnapshot,
+      generatedAt: now.toISOString(),
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements/:suppId/sections/:sectionType/approve
+// Advance supplement section: generated → approved.
+// ---------------------------------------------------------------------------
+router.post(
+  '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/approve',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId, sectionType: rawType } = req.params as {
+      inspectionId: string; suppId: string; sectionType: string;
+    };
+
+    if (!SUPPLEMENT_SECTION_TYPES_SET.has(rawType)) {
+      return void res.status(400).json({ error: 'Unknown supplement section type' });
+    }
+
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    const [row] = await db
+      .select()
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.supplementId, suppId),
+          sql`${claimSectionsTable.sectionType} = ${rawType}`,
+        ),
+      )
+      .limit(1);
+
+    if (!row) {
+      return void res.status(404).json({ error: 'Section not found. Generate it first.' });
+    }
+    if (row.state === 'not_started' || row.state === 'generating') {
+      return void res.status(409).json({ error: 'Section must be generated before it can be approved.' });
+    }
+    if (row.state === 'locked') {
+      return void res.status(409).json({ error: 'Section is locked and cannot be re-approved.' });
+    }
+    if (row.lintStatus === 'blocked') {
+      return void res.status(422).json({
+        error: 'Section has blocked lint findings. Resolve them before approving.',
+        lintFindings: row.lintFindings,
+      });
+    }
+
+    await db
+      .update(claimSectionsTable)
+      .set({ state: 'approved', updatedAt: new Date() })
+      .where(eq(claimSectionsTable.id, row.id));
+
+    res.json({ sectionType: rawType, supplementId: suppId, state: 'approved', sectionId: row.id });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements/:suppId/sections/:sectionType/lock
+// Advance supplement section: approved → locked. Manager/admin only.
+// ---------------------------------------------------------------------------
+router.post(
+  '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/lock',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    if (!isManagerOrAdmin(actor.role)) {
+      return void res.status(403).json({ error: 'Only a manager or admin can lock a section.' });
+    }
+
+    const { inspectionId, suppId, sectionType: rawType } = req.params as {
+      inspectionId: string; suppId: string; sectionType: string;
+    };
+
+    if (!SUPPLEMENT_SECTION_TYPES_SET.has(rawType)) {
+      return void res.status(400).json({ error: 'Unknown supplement section type' });
+    }
+
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    const [row] = await db
+      .select()
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.supplementId, suppId),
+          sql`${claimSectionsTable.sectionType} = ${rawType}`,
+        ),
+      )
+      .limit(1);
+
+    if (!row) return void res.status(404).json({ error: 'Section not found. Generate it first.' });
+    if (row.state !== 'approved') {
+      return void res.status(409).json({ error: 'Section must be approved before it can be locked.' });
+    }
+
+    const now = new Date();
+    await db
+      .update(claimSectionsTable)
+      .set({ state: 'locked', lockedAt: now, lockedBy: actor.userId, updatedAt: now })
+      .where(eq(claimSectionsTable.id, row.id));
+
+    res.json({ sectionType: rawType, supplementId: suppId, state: 'locked', sectionId: row.id });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements/:suppId/compile
+// Compiles the supplement into an HTML blob, uploads to object storage, and
+// appends to the supplement's compiledReportVersions chain.
+// Gate: at least one supplement section must be locked.
+// ---------------------------------------------------------------------------
+router.post(
+  '/inspections/:inspectionId/supplements/:suppId/compile',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+    const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+    if (!inspection) return;
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    // Gate: at least one section must be locked.
+    const lockedRows = await db
+      .select({
+        sectionType: claimSectionsTable.sectionType,
+        contentHtml: claimSectionsTable.contentHtml,
+        id: claimSectionsTable.id,
+        libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot,
+      })
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.supplementId, suppId),
+          eq(claimSectionsTable.state, 'locked'),
+        ),
+      );
+
+    if (lockedRows.length === 0) {
+      return void res.status(422).json({
+        error: 'At least one supplement section must be locked before compiling.',
+        code: 'NO_LOCKED_SECTIONS',
+      });
+    }
+
+    // Load company + inspector info.
+    const [[companyRow], [inspectorUser], [inspectorProfile]] = await Promise.all([
+      db.select().from(companiesTable).where(eq(companiesTable.id, actor.companyId)).limit(1),
+      db.select().from(usersTable).where(eq(usersTable.id, inspection.inspectorUserId)).limit(1),
+      db.select().from(userProfilesTable).where(eq(userProfilesTable.userId, inspection.inspectorUserId)).limit(1),
+    ]);
+
+    const inspectorName =
+      [inspectorUser?.firstName, inspectorUser?.lastName].filter(Boolean).join(' ') ||
+      inspectorUser?.email ||
+      'Inspector';
+
+    // Build attestation HTML from the inspector's profile (same pattern as primary compile).
+    const attestationHtml = sanitizeHtml(
+      `<p>${escHtml(inspectorName)} certifies that this supplement accurately documents the conditions described herein and that the analysis is based on direct inspection and professional judgment.</p>`,
+      { allowedTags: ['p', 'strong', 'em', 'br'], allowedAttributes: {} },
+    );
+
+    // Determine original package compiled date (from the stored blob version).
+    const primaryVersions = (inspection.compiledReportVersions ?? []) as Array<{
+      path: string;
+      generatedAt?: string;
+      isSignedVersion?: boolean;
+      reportAttestationId?: string;
+    }>;
+    const originalCompiledAt =
+      primaryVersions
+        .slice()
+        .reverse()
+        .find((v) => v.isSignedVersion && v.reportAttestationId)?.generatedAt ??
+      primaryVersions[0]?.generatedAt ??
+      null;
+
+    // Get signed URL for inspector signature.
+    let signatureUrl: string | null = null;
+    if (inspectorProfile?.signatureUrl) {
+      try {
+        signatureUrl = await objectStorageService.getSignedDownloadUrl(inspectorProfile.signatureUrl, 3600);
+      } catch {
+        // Non-fatal — render without signature.
+      }
+    }
+
+    const generatedAt = new Date().toISOString();
+
+    const suppHtml = buildSupplementHtml({
+      supplementNumber: supp.supplementNumber,
+      supplementReason: supp.supplementReason,
+      compiledAt: generatedAt,
+      originalPackageCompiledAt: originalCompiledAt,
+      property: {
+        address: inspection.address ?? '',
+        claimNumber: inspection.claimNumber ?? '',
+        policyNumber: inspection.policyNumber ?? '',
+        insuredName: inspection.insuredName ?? '',
+        carrier: inspection.carrierName ?? '',
+        dateOfLoss: inspection.dateOfLoss
+          ? new Date(inspection.dateOfLoss).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+          : '',
+      },
+      company: {
+        legalName: (companyRow as { legalName?: string } | undefined)?.legalName ?? '',
+        brand: (companyRow as { brand?: string } | undefined)?.brand ?? '',
+      },
+      inspectorName,
+      sections: lockedRows.map((r) => ({
+        sectionType: r.sectionType,
+        contentHtml: r.contentHtml ?? '',
+      })),
+      attestationHtml,
+      signatureUrl,
+    });
+
+    // Build generationSnapshot.
+    const sectionVersions: Record<string, string> = {};
+    for (const row of lockedRows) {
+      sectionVersions[row.sectionType] = row.id;
+    }
+    const generationSnapshot = {
+      protocolVersion: '7.0',
+      sectionVersions,
+      compiledAt: generatedAt,
+      compiledBy: actor.userId,
+      originalPackageBlobVersion: supp.originalPackageBlobVersion,
+      originalAttestationId: supp.originalAttestationId,
+      supplementId: suppId,
+      supplementNumber: supp.supplementNumber,
+    };
+
+    const compiledData = {
+      schemaVersion: 7,
+      documentType: 'supplement',
+      supplementId: suppId,
+      supplementNumber: supp.supplementNumber,
+      supplementReason: supp.supplementReason,
+      inspectionId,
+      generatedAt,
+      generationSnapshot,
+      html: suppHtml,
+    };
+
+    const compiledPath = await objectStorageService.uploadObjectBuffer(
+      Buffer.from(JSON.stringify(compiledData), 'utf-8'),
+      'application/json',
+    );
+
+    const versionEntry = JSON.stringify({
+      path: compiledPath,
+      generatedAt,
+      schemaVersion: 7,
+      documentType: 'supplement',
+    });
+
+    await db
+      .update(claimSupplementsTable)
+      .set({
+        compiledReportVersions: sql`${claimSupplementsTable.compiledReportVersions} || ${versionEntry}::jsonb`,
+      })
+      .where(eq(claimSupplementsTable.id, suppId));
+
+    // Emit compiled claim event.
+    await db.insert(claimEventsTable).values({
+      inspectionId,
+      companyId: actor.companyId,
+      eventType: 'compiled',
+      actorId: actor.userId,
+      payload: { supplementId: suppId, supplementNumber: supp.supplementNumber, compiledPath },
+    });
+
+    const [updatedSupp] = await db
+      .select()
+      .from(claimSupplementsTable)
+      .where(eq(claimSupplementsTable.id, suppId))
+      .limit(1);
+
+    res.json({ supplement: updatedSupp, compiledPath });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /inspections/:inspectionId/supplements/:suppId/attest
+// Returns attestation state for the supplement's current compiled blob.
+// ---------------------------------------------------------------------------
+router.get(
+  '/inspections/:inspectionId/supplements/:suppId/attest',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    const versions = (supp.compiledReportVersions as Array<{
+      path: string;
+      isSignedVersion?: boolean;
+      reportAttestationId?: string;
+      generatedAt?: string;
+    }>) ?? [];
+    if (versions.length === 0) {
+      return void res.json({ attested: false, reason: 'Supplement has not been compiled yet.' });
+    }
+
+    // Find the last non-signed (review) blob — signed blobs are appended after
+    // attestation, so using length-1 would point to the signed copy, not the
+    // review blob that should be attested.
+    const reviewVersionIdx = versions.reduce<number>(
+      (last, v, i) => (!v.isSignedVersion ? i : last),
+      -1,
+    );
+    const currentIndex = reviewVersionIdx >= 0 ? reviewVersionIdx : versions.length - 1;
+
+    const [existingAttestation] = await db
+      .select()
+      .from(reportAttestationsTable)
+      .where(
+        and(
+          eq(reportAttestationsTable.inspectionId, inspectionId),
+          eq(reportAttestationsTable.supplementId, suppId),
+          eq(reportAttestationsTable.blobVersionIndex, currentIndex),
+        ),
+      )
+      .limit(1);
+
+    if (existingAttestation) {
+      return void res.json({
+        attested: true,
+        attestation: {
+          id: existingAttestation.id,
+          preparerId: existingAttestation.preparerId,
+          preparedAt: existingAttestation.preparedAt,
+          blobVersionIndex: existingAttestation.blobVersionIndex,
+          attestationBlockKey: existingAttestation.attestationBlockKey,
+          statementHash: existingAttestation.statementHash,
+          statementText: existingAttestation.statementText,
+        },
+      });
+    }
+
+    // Build preview statement.
+    const [preparer, inspector] = await Promise.all([
+      db
+        .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+        .from(usersTable)
+        .where(eq(usersTable.id, actor.userId))
+        .limit(1),
+      db
+        .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+        .from(usersTable)
+        .where(eq(usersTable.id, inspection.inspectorUserId))
+        .limit(1),
+    ]);
+
+    const preparerRow = preparer[0] ?? { firstName: null, lastName: null };
+    const inspectorRow = inspector[0] ?? { firstName: null, lastName: null };
+    const isSameIdentity = actor.userId === inspection.inspectorUserId;
+    const currentVersion = versions[currentIndex] as { generatedAt?: string } | undefined;
+
+    const statementText = buildReportAttestationStatement({
+      preparerFirstName: preparerRow.firstName,
+      preparerLastName: preparerRow.lastName,
+      address: inspection.address ?? null,
+      claimNumber: inspection.claimNumber ?? null,
+      compiledAt: currentVersion?.generatedAt ?? new Date().toISOString(),
+      isSameIdentity,
+      inspectorFirstName: inspectorRow.firstName,
+      inspectorLastName: inspectorRow.lastName,
+    }).replace(
+      'proof package',
+      `supplement ${supp.supplementNumber}`,
+    );
+
+    res.json({
+      attested: false,
+      blobVersionIndex: currentIndex,
+      statementText,
+      preparerName: [preparerRow.firstName, preparerRow.lastName].filter(Boolean).join(' ') || null,
+      isSameIdentity,
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements/:suppId/attest
+// Sign off on the supplement's current compiled blob.
+// Body: { acknowledged: true }
+// ---------------------------------------------------------------------------
+router.post(
+  '/inspections/:inspectionId/supplements/:suppId/attest',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+    const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
+    if (!inspection) return;
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    const versions = (supp.compiledReportVersions as Array<{
+      path: string;
+      isSignedVersion?: boolean;
+      reportAttestationId?: string;
+      generatedAt?: string;
+    }>) ?? [];
+    if (versions.length === 0) {
+      return void res.status(422).json({
+        error: 'Supplement has not been compiled. Compile it before attesting.',
+        code: 'NOT_COMPILED',
+      });
+    }
+
+    const body = req.body as { acknowledged?: boolean } | null;
+    if (body?.acknowledged !== true) {
+      return void res.status(422).json({
+        error: 'acknowledged: true is required. The preparer must explicitly confirm the attestation statement.',
+      });
+    }
+
+    // Find the last non-signed (review) blob index — signed blobs are appended
+    // after post-attest recompile, so length-1 would point to the signed copy.
+    const reviewVersionIdx = versions.reduce<number>(
+      (last, v, i) => (!v.isSignedVersion ? i : last),
+      -1,
+    );
+    const currentIndex = reviewVersionIdx >= 0 ? reviewVersionIdx : versions.length - 1;
+
+    // Check for existing attestation — application-level uniqueness guard.
+    const [existingAttestation] = await db
+      .select({ id: reportAttestationsTable.id })
+      .from(reportAttestationsTable)
+      .where(
+        and(
+          eq(reportAttestationsTable.inspectionId, inspectionId),
+          eq(reportAttestationsTable.supplementId, suppId),
+          eq(reportAttestationsTable.blobVersionIndex, currentIndex),
+        ),
+      )
+      .limit(1);
+
+    if (existingAttestation) {
+      return void res.status(409).json({
+        error: 'This compiled supplement version has already been attested.',
+        attestationId: existingAttestation.id,
+      });
+    }
+
+    const [preparer, inspector] = await Promise.all([
+      db
+        .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+        .from(usersTable)
+        .where(eq(usersTable.id, actor.userId))
+        .limit(1),
+      db
+        .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+        .from(usersTable)
+        .where(eq(usersTable.id, inspection.inspectorUserId))
+        .limit(1),
+    ]);
+
+    const preparerRow = preparer[0] ?? { firstName: null, lastName: null };
+    const inspectorRow = inspector[0] ?? { firstName: null, lastName: null };
+    const isSameIdentity = actor.userId === inspection.inspectorUserId;
+    const currentVersion = versions[currentIndex] as { generatedAt?: string } | undefined;
+
+    const statementText = buildReportAttestationStatement({
+      preparerFirstName: preparerRow.firstName,
+      preparerLastName: preparerRow.lastName,
+      address: inspection.address ?? null,
+      claimNumber: inspection.claimNumber ?? null,
+      compiledAt: currentVersion?.generatedAt ?? new Date().toISOString(),
+      isSameIdentity,
+      inspectorFirstName: inspectorRow.firstName,
+      inspectorLastName: inspectorRow.lastName,
+    }).replace(
+      'proof package',
+      `supplement ${supp.supplementNumber}`,
+    );
+
+    const statementHash = createHash('sha256').update(statementText, 'utf8').digest('hex');
+    const attestationBlockKey = 'attestation_block_b';
+    const now = new Date();
+
+    const [attestation] = await db
+      .insert(reportAttestationsTable)
+      .values({
+        inspectionId,
+        companyId: actor.companyId,
+        supplementId: suppId,
+        preparerId: actor.userId,
+        preparedAt: now,
+        blobVersionIndex: currentIndex,
+        statementText,
+        statementHash,
+        attestationBlockKey,
+      })
+      .returning();
+
+    // Emit supplement_attested claim event.
+    await db.insert(claimEventsTable).values({
+      inspectionId,
+      companyId: actor.companyId,
+      eventType: 'supplement_attested',
+      actorId: actor.userId,
+      payload: {
+        supplementId: suppId,
+        supplementNumber: supp.supplementNumber,
+        attestationId: attestation!.id,
+        blobVersionIndex: currentIndex,
+        statementHash,
+      },
+    });
+
+    // Post-attest signed recompile — stamp attestation into generationSnapshot.
+    try {
+      const reviewFile = await objectStorageService.getObjectEntityFile(
+        (versions[currentIndex] as { path: string }).path,
+      );
+      const [reviewBuffer] = await reviewFile.download();
+      const reviewData = JSON.parse(reviewBuffer.toString('utf-8')) as Record<string, unknown>;
+      const signedData = {
+        ...reviewData,
+        generationSnapshot: {
+          ...(reviewData.generationSnapshot as Record<string, unknown> | null ?? {}),
+          reportAttestationId: attestation!.id,
+          preparedAt: now.toISOString(),
+          attestedBy: actor.userId,
+          attestationBlockKey,
+        },
+      };
+      const signedPath = await objectStorageService.uploadObjectBuffer(
+        Buffer.from(JSON.stringify(signedData), 'utf-8'),
+        'application/json',
+      );
+      const signedEntry = JSON.stringify({
+        path: signedPath,
+        generatedAt: now.toISOString(),
+        schemaVersion: 7,
+        documentType: 'supplement',
+        isSignedVersion: true,
+        reportAttestationId: attestation!.id,
+        blobVersionIndex: currentIndex,
+      });
+      await db
+        .update(claimSupplementsTable)
+        .set({
+          compiledReportVersions: sql`${claimSupplementsTable.compiledReportVersions} || ${signedEntry}::jsonb`,
+        })
+        .where(eq(claimSupplementsTable.id, suppId));
+    } catch (signErr) {
+      req.log.error(
+        { err: signErr, inspectionId, suppId },
+        'Supplement post-attest signed recompile failed',
+      );
+    }
+
+    res.status(201).json({
+      attested: true,
+      attestation: {
+        id: attestation!.id,
+        preparerId: attestation!.preparerId,
+        preparedAt: attestation!.preparedAt,
+        blobVersionIndex: attestation!.blobVersionIndex,
+        attestationBlockKey: attestation!.attestationBlockKey,
+        statementHash: attestation!.statementHash,
+        statementText: attestation!.statementText,
+      },
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /inspections/:inspectionId/supplements/:suppId/deliver
+// Deliver gate: supplement must have its own signed blob (post-attest recompile).
+// Verifies the original primary package blob is still on record (unchanged).
+// Emits supplement_delivered claim event.
+// ---------------------------------------------------------------------------
+router.post(
+  '/inspections/:inspectionId/supplements/:suppId/deliver',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
+    if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
+
+    const versions = (supp.compiledReportVersions as Array<{
+      path: string;
+      isSignedVersion?: boolean;
+      reportAttestationId?: string;
+    }>) ?? [];
+
+    // Deliver gate: supplement must have a signed blob.
+    const latestVersion = versions[versions.length - 1];
+    if (!latestVersion?.isSignedVersion || !latestVersion.reportAttestationId) {
+      // Fallback: check attestation row.
+      const currentVersionIndex = versions.length - 1;
+      if (currentVersionIndex < 0) {
+        return void res.status(422).json({
+          error: 'Supplement has not been compiled. Compile and attest before delivering.',
+          code: 'NOT_COMPILED',
+        });
+      }
+      const [att] = await db
+        .select({ id: reportAttestationsTable.id })
+        .from(reportAttestationsTable)
+        .where(
+          and(
+            eq(reportAttestationsTable.inspectionId, inspectionId),
+            eq(reportAttestationsTable.supplementId, suppId),
+            eq(reportAttestationsTable.blobVersionIndex, currentVersionIndex),
+          ),
+        )
+        .limit(1);
+      if (!att) {
+        return void res.status(422).json({
+          error: 'Supplement attestation required. Attest the compiled supplement before delivering.',
+          code: 'ATTESTATION_REQUIRED',
+        });
+      }
+    }
+
+    // Verify the original primary package blob path is still tracked (unchanged,
+    // since object-storage blobs are immutable write-once artifacts).
+    if (supp.originalPackageBlobVersion) {
+      const primaryVersions = (inspection.compiledReportVersions as Array<{ path: string }>) ?? [];
+      const originalStillPresent = primaryVersions.some(
+        (v) => v.path === supp.originalPackageBlobVersion,
+      );
+      if (!originalStillPresent) {
+        return void res.status(422).json({
+          error: 'Original primary package blob is no longer in the inspection version history. Cannot deliver supplement.',
+          code: 'ORIGINAL_BLOB_MISSING',
+        });
+      }
+    }
+
+    // Emit supplement_delivered claim event.
+    await db.insert(claimEventsTable).values({
+      inspectionId,
+      companyId: actor.companyId,
+      eventType: 'supplement_delivered',
+      actorId: actor.userId,
+      payload: {
+        supplementId: suppId,
+        supplementNumber: supp.supplementNumber,
+        originalPackageBlobVersion: supp.originalPackageBlobVersion,
+        originalAttestationId: supp.originalAttestationId,
+      },
+    });
+
+    res.json({
+      delivered: true,
+      supplementId: suppId,
+      supplementNumber: supp.supplementNumber,
+    });
+  },
+);
 
 export default router;

@@ -88,6 +88,7 @@ import {
   SECTION_ORDER,
   SECTION_META,
 } from "@/components/inspection/SectionCard";
+import { SupplementsPanel } from "@/components/inspection/SupplementsPanel";
 import { EstimatePanel } from "@/pages/inspections/EstimatePanel";
 import { ExhibitManifest } from "@/components/inspection/ExhibitManifest";
 
@@ -1448,6 +1449,13 @@ export function InspectionFlowWizard({
           </div>
         )}
       </StagePanel>
+
+      {/* ── Step 7: Supplements ───────────────────────────────────────── */}
+      {s6Complete && (
+        <div className="rounded-lg border border-dashed border-border p-4 mt-2">
+          <SupplementsPanel inspectionId={inspectionId} />
+        </div>
+      )}
 
       {/* ── Field Review Modal ────────────────────────────────────────── */}
       <FieldReviewModal

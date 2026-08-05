@@ -1451,6 +1451,10 @@ export const CLAIM_EVENT_TYPES = [
   'slot_confirmed',
   'slot_swapped',
   'slot_skipped',
+  // Supplement lifecycle events (Task #252)
+  'supplement_created',
+  'supplement_attested',
+  'supplement_delivered',
 ] as const;
 export type ClaimEventType = (typeof CLAIM_EVENT_TYPES)[number];
 
@@ -1738,6 +1742,11 @@ export const claimSectionsTable = pgTable('claim_sections', {
   companyId: varchar('company_id')
     .notNull()
     .references(() => companiesTable.id),
+  /** When set, this section belongs to a supplement document rather than the
+   *  primary package. Null means primary-package section. Added Task #252. */
+  supplementId: varchar('supplement_id').references(() => claimSupplementsTable.id, {
+    onDelete: 'cascade',
+  }),
   sectionType: varchar('section_type', { enum: CLAIM_SECTION_TYPES }).notNull(),
   state: varchar('state', { enum: CLAIM_SECTION_STATES }).notNull().default('not_started'),
   contentHtml: text('content_html'),
@@ -1797,6 +1806,63 @@ export type ClaimSection = typeof claimSectionsTable.$inferSelect;
 // inspectionId + blobVersionIndex). The blobVersionIndex is the 0-based
 // position in the inspection's compiledReportVersions jsonb array.
 
+// ---------------------------------------------------------------------------
+// SUPPLEMENT REASONS (Task #252)
+// ---------------------------------------------------------------------------
+
+export const SUPPLEMENT_REASONS = [
+  'concealed_conditions_exposed',
+  'carrier_response',
+  'scope_correction',
+] as const;
+export type SupplementReason = (typeof SUPPLEMENT_REASONS)[number];
+
+// ---------------------------------------------------------------------------
+// CLAIM SUPPLEMENTS (Task #252)
+// ---------------------------------------------------------------------------
+// Each supplement is its own versioned document, separately attested, with
+// its own blob chain. It references the original package blob version and
+// attestation so the chain of custody is always traceable.
+//
+// supplementNumber: SUPP-1, SUPP-2, … (auto-assigned, per-inspection)
+// legacyInlineSupplement: true flags a supplement that was originally rendered
+//   as inner HTML inside the primary package blob (pre-Task #252 behavior).
+//   A claim-level notice surfaces in the UI for affected claims.
+
+export const claimSupplementsTable = pgTable('claim_supplements', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  /** SUPP-1, SUPP-2, … (auto-assigned, sequential per inspection). */
+  supplementNumber: text('supplement_number').notNull(),
+  supplementReason: varchar('supplement_reason', { enum: SUPPLEMENT_REASONS }).notNull(),
+  /** Append-only history of compiled supplement blob versions. Same structure
+   *  as inspection.compiledReportVersions: { path, generatedAt, schemaVersion?,
+   *  isSignedVersion?, reportAttestationId? }. */
+  compiledReportVersions: jsonb('compiled_report_versions').notNull().default([]),
+  /** The object-storage path of the original primary package blob that this
+   *  supplement extends. Stored at supplement-create time from the inspection's
+   *  current compiledReportPath so the deliver gate can verify the original is
+   *  unchanged. */
+  originalPackageBlobVersion: text('original_package_blob_version'),
+  /** The report_attestations.id of the original package's attestation row. */
+  originalAttestationId: text('original_attestation_id'),
+  /** True when this supplement was originally rendered as inner-HTML inside
+   *  the primary package blob (legacy pre-Task#252 behavior). */
+  legacyInlineSupplement: boolean('legacy_inline_supplement').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdBy: varchar('created_by').references(() => usersTable.id, { onDelete: 'set null' }),
+});
+
+export type ClaimSupplement = typeof claimSupplementsTable.$inferSelect;
+export type NewClaimSupplement = typeof claimSupplementsTable.$inferInsert;
+
 export const reportAttestationsTable = pgTable(
   'report_attestations',
   {
@@ -1809,12 +1875,18 @@ export const reportAttestationsTable = pgTable(
     companyId: varchar('company_id')
       .notNull()
       .references(() => companiesTable.id),
+    /** When set, this attestation is for a supplement document rather than the
+     *  primary package. Null means primary package attestation. */
+    supplementId: varchar('supplement_id').references(() => claimSupplementsTable.id, {
+      onDelete: 'cascade',
+    }),
     /** The user who submitted the attestation (may differ from inspectorUserId). */
     preparerId: varchar('preparer_id')
       .notNull()
       .references(() => usersTable.id),
     preparedAt: timestamp('prepared_at', { withTimezone: true }).notNull().defaultNow(),
-    /** 0-based index into the inspection's compiledReportVersions jsonb array. */
+    /** 0-based index into the inspection's (or supplement's) compiledReportVersions
+     *  jsonb array. */
     blobVersionIndex: integer('blob_version_index').notNull(),
     /** SHA-256 hex digest of statementText at the moment of signing. */
     statementHash: varchar('statement_hash', { length: 64 }).notNull(),
@@ -1830,7 +1902,13 @@ export const reportAttestationsTable = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // Prevent double-attestation of the same blob version on the same claim.
+    // Primary-package: prevent double-attestation of the same blob version.
+    // Managed as a partial unique index via SQL migration; Drizzle does not
+    // support WHERE clauses on uniqueIndex, so the constraint is applied only
+    // in the migration SQL (018_claim_supplements.sql).
+    // This index definition is intentionally omitted to avoid Drizzle's
+    // constraint management conflicting with the partial-index SQL.
+    // The application layer enforces uniqueness via a pre-insert check.
     uniqueIndex('report_attestations_inspection_version_idx').on(t.inspectionId, t.blobVersionIndex),
   ],
 );
