@@ -1,6 +1,5 @@
 // Dashboard widget registry barrel — mirrors the pattern in
 // components/pipeline/widgets/index.ts. Add new widgets here as they are built.
-export { QuickAddWidget }          from './QuickAddWidget';
 export { MyDayWidget }             from './MyDayWidget';
 export { MyActivityWidget }        from './MyActivityWidget';
 export { RecentActivityWidget }    from './RecentActivityWidget';

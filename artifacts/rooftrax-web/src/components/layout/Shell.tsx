@@ -25,8 +25,10 @@ import {
   Loader2,
   Search,
   X,
+  Plus,
 } from "lucide-react";
 import { useSearch } from "@/lib/claimHubApi";
+import { QuickAddLeadModal } from "@/components/dashboard/QuickAddLeadModal";
 
 interface ShellProps {
   children: ReactNode;
@@ -207,6 +209,7 @@ export function Shell({ children }: ShellProps) {
   const { data: authEnvelope, isLoading } = useGetCurrentAuthUser();
   const { data: profileEnvelope } = useGetMyProfile();
   const [location] = useLocation();
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -258,6 +261,17 @@ export function Shell({ children }: ShellProps) {
 
         {/* Search */}
         <SearchBar />
+
+        {/* + New Lead */}
+        <div className="px-3 pt-2 pb-1">
+          <button
+            onClick={() => setNewLeadOpen(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5 flex-shrink-0" />
+            New Lead
+          </button>
+        </div>
 
         {/* Nav sections */}
         <nav className="flex-1 overflow-y-auto py-3">
@@ -330,6 +344,8 @@ export function Shell({ children }: ShellProps) {
           {children}
         </div>
       </main>
+
+      <QuickAddLeadModal open={newLeadOpen} onOpenChange={setNewLeadOpen} />
     </div>
   );
 }

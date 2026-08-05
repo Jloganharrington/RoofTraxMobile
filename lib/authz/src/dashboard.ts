@@ -35,11 +35,10 @@ const WIDGET_KEYS = [
 export type Capability = (typeof WIDGET_KEYS)[number];
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
-// Exactly 13 entries in spec order. Do NOT add revenue / commission / quota /
+// Exactly 12 entries in spec order. Do NOT add revenue / commission / quota /
 // A-R aging / crew widgets — those tables do not exist in this schema.
 
 export const WIDGET_CATALOG: readonly WidgetEntry[] = [
-  { key: 'quick_add',           title: 'Quick Add',           size: 'sm' },
   { key: 'my_day',              title: 'My Day',              size: 'md' },
   { key: 'my_activity',         title: 'My Activity',         size: 'md' },
   { key: 'recent_activity',     title: 'Recent Activity',     size: 'md' },

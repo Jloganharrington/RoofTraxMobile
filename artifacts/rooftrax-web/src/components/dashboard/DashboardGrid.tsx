@@ -8,7 +8,6 @@ import * as Widgets from './widgets';
 // Keys not present here are skipped silently — they never crash the dashboard.
 
 const WIDGET_REGISTRY: Record<string, ComponentType> = {
-  quick_add:            Widgets.QuickAddWidget,
   my_day:               Widgets.MyDayWidget,
   my_activity:          Widgets.MyActivityWidget,
   recent_activity:      Widgets.RecentActivityWidget,
