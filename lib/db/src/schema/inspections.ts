@@ -1558,7 +1558,10 @@ export const standardsEntriesTable = pgTable('standards_entries', {
   companyId: varchar('company_id')
     .notNull()
     .references(() => companiesTable.id),
-  entryKey: varchar('entry_key').notNull(), // e.g. 'ASTM-D3161'
+  entryKey: varchar('entry_key').notNull(), // e.g. 'STD-WTR-01' (short key only)
+  /** Full display label for this entry, e.g. 'IICRC S500 Standard for Professional Water Damage Restoration'.
+   *  Separate from entryKey so the short key stays a stable machine identifier. */
+  title: text('title'),
   sourceType: varchar('source_type'), // e.g. 'ASTM', 'IRC', 'IBC', 'IICRC'
   citationText: text('citation_text'),
   verificationStatus: varchar('verification_status', {

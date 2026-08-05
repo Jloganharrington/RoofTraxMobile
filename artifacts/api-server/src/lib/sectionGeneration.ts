@@ -580,6 +580,49 @@ Return ONLY a valid HTML fragment (no wrapper tags, no markdown).`;
 }
 
 // ---------------------------------------------------------------------------
+// IICRC citation placeholder helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Token pattern the generator embeds for each human-entered standards entry.
+ * The UI parses these tokens and renders fill-in forms; approval is blocked
+ * while any unfilled token remains in the section content.
+ */
+export const IICRC_PLACEHOLDER_RE = /\{\{IICRC_CITATION_PLACEHOLDER:([A-Z0-9_-]+)\}\}/g;
+
+/**
+ * Build the placeholder directive block injected into every prompt when at
+ * least one standards entry has `humanEnteredProvisionsOnly = true`.
+ * The AI is instructed to emit the token verbatim — never reproduce licensed
+ * IICRC provision text.
+ */
+function buildIicrcDirectiveBlock(iicrcEntryKeys: string[]): string {
+  if (iicrcEntryKeys.length === 0) return '';
+  const tokens = iicrcEntryKeys
+    .map((k) => `  {{IICRC_CITATION_PLACEHOLDER:${k}}}`)
+    .join('\n');
+  return `
+IICRC CITATION PROTOCOL (MANDATORY):
+The following IICRC standards are referenced for this claim. Their licensed provision text must NOT be reproduced, paraphrased, or summarized. Where you would normally cite these standards, insert the exact placeholder token shown below and nothing else:
+${tokens}
+Do not write any IICRC, S500, S520, or IICRC-standard content. Insert only the token.
+`.trim();
+}
+
+/**
+ * Extract all IICRC placeholder keys still present (unfilled) in a content string.
+ */
+export function extractUnfilledIicrcPlaceholders(content: string): string[] {
+  const keys: string[] = [];
+  let m: RegExpExecArray | null;
+  const re = new RegExp(IICRC_PLACEHOLDER_RE.source, 'g');
+  while ((m = re.exec(content)) !== null) {
+    if (m[1] && !keys.includes(m[1])) keys.push(m[1]);
+  }
+  return keys;
+}
+
+// ---------------------------------------------------------------------------
 // Main export types
 // ---------------------------------------------------------------------------
 
@@ -662,6 +705,15 @@ export async function generateSectionContent(
   const conditionSet = buildFieldConditionSet(inspection, children);
   const filteredDetriments = filterDetrimentEntries(detrimentEntries, conditionSet);
 
+  // ── IICRC filter ──────────────────────────────────────────────────────────
+  // Partition standards entries: IICRC-licensed entries must never be fed to
+  // the AI as citation text. Instead we build a directive that instructs the
+  // AI to emit a placeholder token wherever it would cite those standards.
+  const iicrcEntryKeys = standardsEntries
+    .filter((e) => e.humanEnteredProvisionsOnly === true)
+    .map((e) => e.entryKey);
+  const iicrcDirective = buildIicrcDirectiveBlock(iicrcEntryKeys);
+
   let rapMode: string | null = null;
   const ra = inspection.repairabilityAssessment as StoredRepairabilityAssessment | null;
   if (ra) {
@@ -671,7 +723,7 @@ export async function generateSectionContent(
     }
   }
 
-  // Build section-specific prompt
+  // Build section-specific prompt, then append the IICRC directive when needed.
   let prompt: string;
   switch (sectionType) {
     case 'findings':
@@ -735,6 +787,19 @@ export async function generateSectionContent(
       throw new Error(`Unknown section type: ${sectionType as string}`);
   }
 
+  // Append IICRC directive after the main prompt body (before the final
+  // "Return ONLY…" instruction so the model reads it last).
+  if (iicrcDirective) {
+    prompt = prompt.replace(
+      /\nReturn ONLY a valid HTML fragment \(no wrapper tags, no markdown\)\./,
+      `\n${iicrcDirective}\n\nReturn ONLY a valid HTML fragment (no wrapper tags, no markdown).`,
+    );
+    // If the replace didn't match (shouldn't happen), just append.
+    if (!prompt.includes(iicrcDirective)) {
+      prompt = `${prompt}\n\n${iicrcDirective}`;
+    }
+  }
+
   // Call Gemini
   const response = await geminiAi.models.generateContent({
     model: 'gemini-2.5-flash',
@@ -744,7 +809,9 @@ export async function generateSectionContent(
 
   const rawHtml = (response.text ?? '').replace(/^```html\s*/i, '').replace(/\s*```$/, '').trim();
 
-  // Sanitize LLM output — treat as untrusted to prevent prompt-injection XSS
+  // Sanitize LLM output — treat as untrusted to prevent prompt-injection XSS.
+  // Placeholder tokens ({{IICRC_CITATION_PLACEHOLDER:...}}) are plain text
+  // inside HTML text nodes and survive sanitization unchanged.
   const contentHtml = sanitizeSectionHtml(rawHtml);
 
   // Contractor-lane lint
@@ -758,6 +825,23 @@ export async function generateSectionContent(
   ];
   const lintResult = lintReportFragments(lintInputs);
 
+  // ── IICRC placeholder lint findings ────────────────────────────────────────
+  // Any unfilled {{IICRC_CITATION_PLACEHOLDER:KEY}} token in the sanitized
+  // output surfaces as a `needs_review` lint finding. The UI uses these to
+  // block the Approve button until the reviewer fills in every placeholder.
+  const unfilledKeys = extractUnfilledIicrcPlaceholders(contentHtml);
+  for (const key of unfilledKeys) {
+    lintResult.findings.push({
+      fragmentRef: `section.${sectionType}`,
+      ruleId: 'iicrc_citation_unfilled',
+      matchedText: `{{IICRC_CITATION_PLACEHOLDER:${key}}}`,
+      severity: 'needs_review',
+    });
+    if (lintResult.lintStatus === 'passed') {
+      lintResult.lintStatus = 'needs_review';
+    }
+  }
+
   // Build library version snapshot for auditability
   const bpVersions: Record<string, number> = {};
   for (const bp of boilerplateVersions) bpVersions[bp.sectionKey] = bp.version;
@@ -765,10 +849,15 @@ export async function generateSectionContent(
   const ahjPackVersionsRecord: Record<string, number> = {};
   for (const p of ahjPackVersions) ahjPackVersionsRecord[p.packType] = p.version;
 
-  // Collect standards entry keys referenced in the generated content
-  // (heuristic: check if any entryKey appears in the raw HTML)
+  // Collect standards entry keys referenced in the generated content.
+  // Include both heuristic-matched keys from normal entries AND IICRC placeholder
+  // keys (which appear as tokens, not as the raw key string in the HTML).
   const referencedStandardsKeys = standardsEntries
-    .filter((e) => rawHtml.toLowerCase().includes(e.entryKey.toLowerCase()))
+    .filter(
+      (e) =>
+        rawHtml.toLowerCase().includes(e.entryKey.toLowerCase()) ||
+        (e.humanEnteredProvisionsOnly === true && unfilledKeys.includes(e.entryKey)),
+    )
     .map((e) => e.entryKey);
 
   return {

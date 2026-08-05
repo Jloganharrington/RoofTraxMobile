@@ -8274,7 +8274,12 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
       .from(ahjPacksTable)
       .where(eq(ahjPacksTable.companyId, actor.companyId)),
     db
-      .select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus, version: standardsEntriesTable.version })
+      .select({
+        entryKey: standardsEntriesTable.entryKey,
+        verificationStatus: standardsEntriesTable.verificationStatus,
+        version: standardsEntriesTable.version,
+        humanEnteredProvisionsOnly: standardsEntriesTable.humanEnteredProvisionsOnly,
+      })
       .from(standardsEntriesTable)
       .where(eq(standardsEntriesTable.companyId, actor.companyId)),
     // For DAG-last sections: load approved/locked upstream sections' content
@@ -8334,9 +8339,11 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
       })),
       approvedSections,
       standardsEntries: standardsEntriesRows.map((e) => ({
-        ...e,
+        entryKey: e.entryKey,
+        verificationStatus: e.verificationStatus,
         version: e.version ?? 1,
         verifiedAt: null,
+        humanEnteredProvisionsOnly: e.humanEnteredProvisionsOnly ?? false,
       })),
       boilerplateVersions: boilerplateVersions.map((b) => ({
         sectionKey: b.sectionKey,
@@ -8420,6 +8427,117 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
     generatedAt: now.toISOString(),
   });
 });
+
+// ---------------------------------------------------------------------------
+// PATCH /inspections/:inspectionId/sections/:sectionType/fill-iicrc-citations
+// Reviewer submits citation text + locator for each {{IICRC_CITATION_PLACEHOLDER:KEY}}
+// token in the section content. Storing the fills server-side clears the
+// corresponding `iicrc_citation_unfilled` lint findings, which unblocks the
+// approve route. The placeholder tokens remain in the HTML — compile (Task #253)
+// will substitute the filled text when baking the PDF.
+// ---------------------------------------------------------------------------
+router.patch(
+  '/inspections/:inspectionId/sections/:sectionType/fill-iicrc-citations',
+  async (req: Request, res: Response) => {
+    const actor = await requireInspectionModuleAccess(req, res);
+    if (!actor) return;
+
+    const inspectionId = req.params.inspectionId as string;
+    const rawType = req.params.sectionType as string;
+
+    if (!GENERATABLE_SECTION_TYPES.includes(rawType as GeneratableSectionType)) {
+      return void res.status(400).json({ error: 'Unknown section type' });
+    }
+    const sectionType = rawType as GeneratableSectionType;
+
+    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
+    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
+
+    const body = req.body as Record<string, unknown>;
+    const citations = body.citations as Record<string, { citationText?: string; locator?: string }> | undefined;
+    if (!citations || typeof citations !== 'object') {
+      return void res.status(400).json({ error: 'citations object required' });
+    }
+
+    const [sectionRow] = await db
+      .select()
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          eq(claimSectionsTable.sectionType, sectionType),
+        ),
+      )
+      .limit(1);
+
+    if (!sectionRow) {
+      return void res.status(404).json({ error: 'Section not found — generate it first' });
+    }
+    if (sectionRow.state === 'locked') {
+      return void res.status(409).json({ error: 'Section is locked and cannot be modified' });
+    }
+
+    // Validate: each citation key must be an actual placeholder in the content.
+    const { extractUnfilledIicrcPlaceholders } = await import('../lib/sectionGeneration');
+    const currentContent = sectionRow.contentHtml ?? '';
+    const unfilledKeys = extractUnfilledIicrcPlaceholders(currentContent);
+
+    const validatedCitations: Record<string, { citationText: string; locator: string }> = {};
+    for (const [entryKey, fill] of Object.entries(citations)) {
+      if (!unfilledKeys.includes(entryKey)) continue; // ignore unknown/already-filled keys
+      if (!fill.citationText?.trim() || !fill.locator?.trim()) {
+        return void res.status(422).json({
+          error: `citationText and locator are both required for placeholder ${entryKey}`,
+        });
+      }
+      validatedCitations[entryKey] = {
+        citationText: fill.citationText.trim(),
+        locator: fill.locator.trim(),
+      };
+    }
+
+    // Merge with any previously stored fills (supports partial submission).
+    const existingGateFlags = (sectionRow.gateFlags as Record<string, unknown> | null) ?? {};
+    const existingFills = (existingGateFlags.iicrcCitations as Record<string, unknown>) ?? {};
+    const mergedFills = { ...existingFills, ...validatedCitations };
+
+    // Remove iicrc_citation_unfilled findings for the now-filled keys and
+    // recompute lintStatus.
+    const existingFindings = (sectionRow.lintFindings as Array<{ ruleId: string; matchedText: string; severity: string; fragmentRef: string }>) ?? [];
+    const filledKeys = new Set(Object.keys(mergedFills));
+    const remainingFindings = existingFindings.filter(
+      (f) =>
+        !(
+          f.ruleId === 'iicrc_citation_unfilled' &&
+          filledKeys.has(f.matchedText.replace('{{IICRC_CITATION_PLACEHOLDER:', '').replace('}}', ''))
+        ),
+    );
+
+    const hasBlocked = remainingFindings.some((f) => f.severity === 'blocked');
+    const hasNeedsReview = remainingFindings.some((f) => f.severity === 'needs_review');
+    const newLintStatus = hasBlocked ? 'blocked' : hasNeedsReview ? 'needs_review' : 'passed';
+
+    await db
+      .update(claimSectionsTable)
+      .set({
+        gateFlags: { ...existingGateFlags, iicrcCitations: mergedFills },
+        lintFindings: remainingFindings,
+        lintStatus: newLintStatus,
+      })
+      .where(eq(claimSectionsTable.id, sectionRow.id));
+
+    const remainingUnfilled = extractUnfilledIicrcPlaceholders(currentContent).filter(
+      (k) => !filledKeys.has(k),
+    );
+
+    res.json({
+      sectionType,
+      sectionId: sectionRow.id,
+      filledCount: Object.keys(validatedCitations).length,
+      remainingUnfilled,
+    });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // POST /inspections/:inspectionId/sections/:sectionType/approve
@@ -8506,6 +8624,24 @@ router.post('/inspections/:inspectionId/sections/:sectionType/approve', async (r
     newGateFlags.photoComparisonConfirmed = true;
   }
 
+  // ── IICRC citation placeholder gate ──────────────────────────────────────
+  // A section that still carries unfilled {{IICRC_CITATION_PLACEHOLDER:…}}
+  // tokens cannot be approved — the reviewer must supply the licensed citation
+  // text via the UI fill-in fields before approval. The lintFindings column
+  // is the authoritative signal (set by the generator at generation time).
+  const lintFindings = (sectionRow.lintFindings as Array<{ ruleId: string }> | null) ?? [];
+  const unfilledIicrcFindings = lintFindings.filter(
+    (f) => f.ruleId === 'iicrc_citation_unfilled',
+  );
+  if (unfilledIicrcFindings.length > 0) {
+    return void res.status(422).json({
+      error: 'Section contains unfilled IICRC citation placeholders and cannot be approved',
+      detail:
+        'Open the section in the reviewer UI, enter the citation text and locator for each IICRC placeholder, and re-submit approval.',
+      unfilledCount: unfilledIicrcFindings.length,
+    });
+  }
+
   await db
     .update(claimSectionsTable)
     .set({
@@ -8563,6 +8699,20 @@ router.post('/inspections/:inspectionId/sections/:sectionType/auto-approve', asy
   }
   if (sectionRow.state === 'locked') {
     return void res.status(409).json({ error: 'Section is already locked and cannot be changed' });
+  }
+
+  // ── IICRC citation placeholder gate (same as approve route) ──────────────
+  const autoLintFindings = (sectionRow.lintFindings as Array<{ ruleId: string }> | null) ?? [];
+  const autoUnfilledIicrc = autoLintFindings.filter(
+    (f) => f.ruleId === 'iicrc_citation_unfilled',
+  );
+  if (autoUnfilledIicrc.length > 0) {
+    return void res.status(422).json({
+      error: 'Section contains unfilled IICRC citation placeholders and cannot be approved',
+      detail:
+        'Use the fill-iicrc-citations endpoint to record citation text and locator for each placeholder before approving.',
+      unfilledCount: autoUnfilledIicrc.length,
+    });
   }
 
   const existingGateFlags = (sectionRow.gateFlags as Record<string, unknown> | null) ?? {};

@@ -42,11 +42,20 @@ export type SectionState =
   | 'approved'
   | 'locked';
 
+export interface ClaimSectionLintFinding {
+  ruleId: string;
+  fragmentRef: string;
+  matchedText: string;
+  severity: 'blocked' | 'needs_review';
+}
+
 export interface ClaimSection {
   sectionType: SectionType;
   state: SectionState;
   content?: string | null;
-  gateFlags?: Record<string, boolean | null>;
+  gateFlags?: Record<string, unknown> | null;
+  lintStatus?: string | null;
+  lintFindings?: ClaimSectionLintFinding[] | null;
   generatedAt?: string | null;
   approvedAt?: string | null;
   lockedAt?: string | null;
@@ -171,6 +180,35 @@ export function useLockSection(inspectionId: string) {
       customFetch<{ section: ClaimSection }>(
         `/api/inspections/${inspectionId}/sections/${sectionType}/lock`,
         { method: 'POST' },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: getSectionsQueryKey(inspectionId) }),
+  });
+}
+
+export interface IicrcCitationFill {
+  citationText: string;
+  locator: string;
+}
+
+/** Submit filled IICRC citation text + locator for placeholder tokens in a
+ *  generated section. Clears `iicrc_citation_unfilled` lint findings server-side,
+ *  which unblocks the approve route. */
+export function useFillIicrcCitations(inspectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sectionType,
+      citations,
+    }: {
+      sectionType: SectionType;
+      citations: Record<string, IicrcCitationFill>;
+    }) =>
+      customFetch<{ filledCount: number; remainingUnfilled: string[] }>(
+        `/api/inspections/${inspectionId}/sections/${sectionType}/fill-iicrc-citations`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ citations }),
+        },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: getSectionsQueryKey(inspectionId) }),
   });

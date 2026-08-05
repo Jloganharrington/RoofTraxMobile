@@ -162,10 +162,11 @@ router.get('/report-settings/standards-entries', async (req: Request, res: Respo
   const actor = await requireLibrarySuperAdmin(req, res);
   if (!actor) return;
 
-  // Latest version per entry key.
+  // Latest version per entry key. Include `title` so it is never dropped on
+  // subsequent PUT calls that carry only the fields they want to update.
   const rows = await db.execute(sql`
     SELECT DISTINCT ON (entry_key)
-      id, entry_key, source_type, citation_text, verification_status,
+      id, entry_key, title, source_type, citation_text, verification_status,
       verified_at, authority_limit, locator_template,
       human_entered_provisions_only, version, created_at, created_by
     FROM standards_entries
@@ -178,6 +179,9 @@ router.get('/report-settings/standards-entries', async (req: Request, res: Respo
 
 // PUT /report-settings/standards-entries/:entryKey
 const StandardsEntryBody = z.object({
+  /** Full display label for the entry, e.g. 'IICRC S500 Standard…'.
+   *  Separate from the URL :entryKey param which holds the short key only. */
+  title: z.string().optional(),
   sourceType: z.string().optional(),
   citationText: z.string().optional(),
   authorityLimit: z.string().optional(),
@@ -203,14 +207,22 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
   const body = StandardsEntryBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
 
-  // Next version.
-  const result = await db.execute(sql`
-    SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+  // Load the current latest version so we can carry forward any fields the
+  // caller did not explicitly provide (e.g. `title` preserved across updates
+  // that only change citationText).
+  const latestResult = await db.execute(sql`
+    SELECT COALESCE(MAX(version), 0) + 1 AS next_version,
+           (ARRAY_AGG(title ORDER BY version DESC))[1] AS current_title,
+           (ARRAY_AGG(human_entered_provisions_only ORDER BY version DESC))[1] AS current_human_only
     FROM standards_entries
     WHERE company_id = ${actor.companyId}
       AND entry_key = ${entryKey}
   `);
-  const nextVersion = Number(result.rows[0]?.next_version ?? 1);
+  const nextVersion = Number(latestResult.rows[0]?.next_version ?? 1);
+  // Carry forward `title` and `humanEnteredProvisionsOnly` when not supplied
+  // so partial updates never silently wipe migration-stamped values.
+  const inheritedTitle = (latestResult.rows[0]?.current_title as string | null) ?? null;
+  const inheritedHumanOnly = (latestResult.rows[0]?.current_human_only as boolean | null) ?? false;
 
   // IICRC entries are always verify_before_ship regardless of markVerified.
   const isIicrc = entryKey.toUpperCase().startsWith('IICRC');
@@ -231,13 +243,22 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
     .values({
       companyId: actor.companyId,
       entryKey,
+      // Prefer explicitly supplied title; fall back to the inherited value so a
+      // partial update (e.g. updating citationText only) never blanks the title
+      // that was set by the initial import or migration.
+      title: body.data.title !== undefined ? body.data.title : inheritedTitle,
       sourceType: body.data.sourceType ?? null,
       citationText: body.data.citationText ?? null,
       verificationStatus: verificationStatus as 'verified' | 'verify_before_ship',
       verifiedAt,
       authorityLimit: body.data.authorityLimit ?? null,
       locatorTemplate: body.data.locatorTemplate ?? null,
-      humanEnteredProvisionsOnly: body.data.humanEnteredProvisionsOnly ?? false,
+      // Likewise carry forward humanEnteredProvisionsOnly — a partial update
+      // must never accidentally reset a manually-flagged IICRC entry to false.
+      humanEnteredProvisionsOnly:
+        body.data.humanEnteredProvisionsOnly !== undefined
+          ? body.data.humanEnteredProvisionsOnly
+          : inheritedHumanOnly,
       version: nextVersion,
       createdBy: actor.userId,
     })
