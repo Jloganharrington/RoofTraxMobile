@@ -53,3 +53,4 @@
 - [Report attestation signed-recompile index shift](report-attestation-signed-recompile.md) — GET /report-attestation must use isSignedVersion entry's stored blobVersionIndex, not versions.length-1, or attested:false after post-attest recompile.
 - [Compile route model + caption prerequisites](compile-model-and-caption-prereqs.md) — compile uses gemini-2.5-flash; comparison_set_captions must be generated + approved before compile or 422; order: finalize→captions→approve→compile.
 - [Component zone photo gate + interior photo subjectId](component-zone-photo-gate.md) — every component needs a zone photo even for not_observed; interior photos need a subjectId from a prior interior-observation entity POST.
+- [Dashboard Wave 1 architecture](dashboard-wave1-architecture.md) — lib/authz owns vocabulary+permissions+dashboard (WIDGET_CATALOG, resolveCapabilities, selectWidgetsFor); guard at api-server/src/lib/dashboardGuard.ts; manifest route never reads role from request.

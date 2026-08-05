@@ -4,6 +4,7 @@ import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
 import { selectWidgetsFor } from '@workspace/authz';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
+import { requireWidgetCapability } from '../lib/dashboardGuard';
 
 const router: IRouter = Router();
 
@@ -34,5 +35,22 @@ router.get('/dashboard/manifest', async (req: Request, res: Response) => {
   const body = GetDashboardManifestResponse.parse({ widgets });
   res.json(body);
 });
+
+// ── Widget data endpoints ────────────────────────────────────────────────────
+// Every widget data route MUST use requireWidgetCapability(key) as its first
+// middleware. Omission from the manifest is NOT access control — an attacker
+// can call this URL directly. The guard re-checks the capability server-side
+// on every request, independent of the manifest.
+
+// GET /dashboard/widgets/action_required
+// Payload is a placeholder — this endpoint proves the guard pattern (Task 4).
+// Real query implementation follows in Task 8.
+router.get(
+  '/dashboard/widgets/action_required',
+  requireWidgetCapability('action_required'),
+  (_req: Request, res: Response) => {
+    res.json({ items: [] });
+  },
+);
 
 export default router;
