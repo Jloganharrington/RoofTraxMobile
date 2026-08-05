@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "_RqRG7GstlpRYI9M6rXgg"
+uri = "file://docs/system-audit-2026-08-05.md"
+type = "text"
+title = "RoofTrax System Audit — 2026-08-05"
+description = "Full 9-area platform audit: Data Foundation, Libraries, Generation Pipeline, Photo Curation, Compile/Attest/Deliver, Pipelines, Claim Hub/Stepper, Field App, Navigation. Classifications: BUILT-VERIFIED · BUILT-UNWIRED · PARTIAL · MISSING · DRIFT · STALE · UNVERIFIED."

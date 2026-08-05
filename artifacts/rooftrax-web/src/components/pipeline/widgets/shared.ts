@@ -25,6 +25,11 @@ export interface WidgetProps {
   config: Record<string, unknown>;
   /** Called after a successful advance — parent can close inline widget */
   onSuccess?: (lead: FullLead) => void;
+  /**
+   * Inline card mode: when provided, the widget renders a close (×) button
+   * so the user can collapse the expanded form back to the trigger button.
+   */
+  onClose?: () => void;
 }
 
 /** Returns a mutation that calls PATCH /api/leads/:leadId/advance-stage */

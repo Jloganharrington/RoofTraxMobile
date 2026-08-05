@@ -17,12 +17,17 @@ type LegacyHomeownerRightsContent = {
 
 import { escHtml, type ReportTheme, resolveReportTheme } from './reportTemplate';
 
-// ── Proof Package (Phase 2 forensic report) — A–M exhibit template ─────────
+// ── Proof Package (Phase 2 forensic report) — sequential section template ───
 // Server-side renderer for the paged "sheet" Proof Package: cover, summary &
-// contents, canonical exhibits A–M in fixed letters (an exhibit that doesn't
-// apply is OMITTED — letters never re-shift), supplemental sections carried
-// over from the prior design (RAP/VAP scorecards, evidence-to-scope index,
-// evidence manifest, portal access), and the certification page.
+// contents, numbered sections (01, 02, … auto-assigned — no A–M letter scheme),
+// supplemental sections carried over from the prior design (RAP/VAP scorecards,
+// evidence-to-scope index, evidence manifest, portal access), and the
+// certification page.
+//
+// Badge authority: the exhibitBadgeMap (class-prefixed S/R/I/F/C/T-#, frozen
+// per-class counters, assigned at exhibit finalization) is the ONLY badge
+// authority for photos. The template CONSUMES badges from that map and never
+// assigns, re-letters, or re-orders them.
 //
 // All content is rendered server-side; a tiny inline script only fills page
 // numbers and the contents page references after layout (they depend on the
@@ -189,36 +194,40 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     : '<span>LOGO</span>';
 
   const sheets: Sheet[] = [];
-  const toc: Array<{ letter: string; title: string }> = [];
-  const addExhibit = (letter: string, title: string, pages: Sheet[]) => {
-    toc.push({ letter, title });
+  const toc: Array<{ n: string; title: string }> = [];
+  let _secSeq = 0;
+  /** Returns what the next addSection call will assign, without incrementing. */
+  const peekN = () => String(_secSeq + 1).padStart(2, '0');
+  const addSection = (title: string, pages: Sheet[]): string => {
+    const n = String(++_secSeq).padStart(2, '0');
+    toc.push({ n, title });
     sheets.push(...pages);
+    return n;
   };
 
   const impacted = data.areasImpacted.filter((a) => a.impacted);
-  const num = (letter: string) =>
-    String('ABCDEFGHIJKLM'.indexOf(letter) + 1).padStart(2, '0');
 
-  const exHead = (letter: string, title: string, subtitle?: string) =>
-    `<div class="eyebrow" data-exhibit-anchor="${esc(letter)}">${num(letter)} — Exhibit ${esc(letter)}</div>
-     <h2 class="section-title">Exhibit ${esc(letter)} — ${esc(title)}</h2>
+  const sectionHead = (n: string, title: string, subtitle?: string) =>
+    `<div class="eyebrow" data-exhibit-anchor="sec-${esc(n)}">${n} — ${esc(title)}</div>
+     <h2 class="section-title">${esc(title)}</h2>
      <div class="section-rule"></div>
      ${subtitle ? `<p class="micro" style="margin-bottom:10px;">${esc(subtitle)}</p>` : ''}`;
-  const contHead = (letter: string, title: string) =>
-    `<div class="eyebrow">${num(letter)} — Exhibit ${esc(letter)} (cont'd)</div>
+  const sectionContHead = (n: string, title: string) =>
+    `<div class="eyebrow">${n} — ${esc(title)} (cont'd)</div>
      <h2 class="section-title">${esc(title)} (cont'd)</h2><div class="section-rule"></div>`;
 
-  // ── Exhibit A — Homeowner Information (state pack) ────────────────────
+  // ── Section: Homeowner Information (state pack) ───────────────────────
   const hr = data.statePack.homeownerRights;
   if (hr) {
+    const hrN = peekN();
     const pages = chunk(hr.sections, 2).map((sectionPair, ci, all): Sheet => {
       const isFirst = ci === 0;
       const isLast = ci === all.length - 1;
       const head = isFirst
-        ? exHead('A', hr.title) +
+        ? sectionHead(hrN, hr.title) +
           `<p style="font-style:italic; font-size:13px; margin-top:-4px;">${esc(hr.subtitle)}</p>
            <p style="font-size:12px; color:var(--slate);">${esc(fillTokens(hr.preparedByNote, data.company))}</p>`
-        : contHead('A', 'Homeowner Information');
+        : sectionContHead(hrN, 'Homeowner Information');
       const body = sectionPair
         .map(
           (section) =>
@@ -232,66 +241,73 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
         ? `<div class="note-box info" style="margin-top:10px; font-size:13px;">${hr.complaintBlock.map((l) => esc(l)).join('<br>')}</div>
            <p style="margin-top:10px; font-style:italic; font-size:12px; color:var(--slate);">${esc(fillTokens(hr.closingDisclaimer, data.company))}</p>`
         : '';
-      return { runheadTitle: 'Exhibit A', bodyHtml: head + body + tail };
+      return { runheadTitle: 'Homeowner Information', bodyHtml: head + body + tail };
     });
-    if (pages.length) addExhibit('A', 'Homeowner Information', pages);
+    if (pages.length) addSection('Homeowner Information', pages);
   }
 
-  // ── Exhibit B — Statement of Qualifications ───────────────────────────
-  addExhibit('B', 'Statement of Qualifications', [
-    {
-      runheadTitle: 'Exhibit B',
-      bodyHtml:
-        exHead('B', 'Statement of Qualifications', 'Licensure & professional basis for the findings.') +
-        `<p>${esc(data.company.qualificationsText)}</p>
-         <p class="micro" style="margin-top:12px;">Licensure</p>
-         <table class="score-table"><thead><tr><th>State</th><th>License #</th><th>Classification</th></tr></thead><tbody>
-         ${data.company.licenses.map((l) => `<tr><td>${esc(l.state)}</td><td>${esc(l.number)}</td><td>${esc(l.classification)}</td></tr>`).join('')}
-         </tbody></table>`,
-    },
-  ]);
+  // ── Section: Statement of Qualifications ─────────────────────────────
+  {
+    const bN = peekN();
+    addSection('Statement of Qualifications', [
+      {
+        runheadTitle: 'Statement of Qualifications',
+        bodyHtml:
+          sectionHead(bN, 'Statement of Qualifications', 'Licensure & professional basis for the findings.') +
+          `<p>${esc(data.company.qualificationsText)}</p>
+           <p class="micro" style="margin-top:12px;">Licensure</p>
+           <table class="score-table"><thead><tr><th>State</th><th>License #</th><th>Classification</th></tr></thead><tbody>
+           ${data.company.licenses.map((l) => `<tr><td>${esc(l.state)}</td><td>${esc(l.number)}</td><td>${esc(l.classification)}</td></tr>`).join('')}
+           </tbody></table>`,
+      },
+    ]);
+  }
 
-  // ── Exhibit C — Inspection Methodology ────────────────────────────────
+  // ── Section: Inspection Methodology ──────────────────────────────────
   const m = data.methodology;
-  addExhibit('C', 'Inspection Methodology', [
-    {
-      runheadTitle: 'Exhibit C',
-      bodyHtml:
-        exHead('C', 'Inspection Methodology', 'Conditions, protocol, and the auto-logged capture record.') +
-        `<div class="kv-grid">
-           <div class="kv-row"><span class="k">Inspected</span><span class="v">${esc(m.inspectedAt)}</span></div>
-           <div class="kv-row"><span class="k">Inspector</span><span class="v sans">${esc(data.inspectorName)}</span></div>
-           <div class="kv-row"><span class="k">Conditions</span><span class="v sans">${esc(m.conditions)}</span></div>
-           ${m.equipment.length ? `<div class="kv-row"><span class="k">Equipment</span><span class="v sans">${esc(m.equipment.join(', '))}</span></div>` : ''}
-         </div>
-         <p style="margin-top:12px;">Damage is documented wide/mid/close with a scale reference in the close photo. Full-resolution originals are preserved unaltered with capture time (UTC), GPS, and a SHA-256 recorded at capture for chain of custody.</p>
-         <p class="micro" style="margin-top:12px;">Auto-Logged Capture Record</p>
-         <div class="stat-grid">
-           <div class="stat"><div class="n">${m.capture.elevations}</div><div class="l">Elevations</div></div>
-           <div class="stat"><div class="n">${m.capture.slopes}</div><div class="l">Slopes</div></div>
-           <div class="stat"><div class="n">${m.capture.testSquares}</div><div class="l">Test squares</div></div>
-           <div class="stat"><div class="n">${m.capture.totalHits}</div><div class="l">Impacts recorded</div></div>
-           <div class="stat"><div class="n">${m.capture.damageInstances}</div><div class="l">Damage instances</div></div>
-           <div class="stat"><div class="n">${m.capture.photos}</div><div class="l">Evidence photos</div></div>
-         </div>`,
-    },
-  ]);
+  {
+    const cN = peekN();
+    addSection('Inspection Methodology', [
+      {
+        runheadTitle: 'Inspection Methodology',
+        bodyHtml:
+          sectionHead(cN, 'Inspection Methodology', 'Conditions, protocol, and the auto-logged capture record.') +
+          `<div class="kv-grid">
+             <div class="kv-row"><span class="k">Inspected</span><span class="v">${esc(m.inspectedAt)}</span></div>
+             <div class="kv-row"><span class="k">Inspector</span><span class="v sans">${esc(data.inspectorName)}</span></div>
+             <div class="kv-row"><span class="k">Conditions</span><span class="v sans">${esc(m.conditions)}</span></div>
+             ${m.equipment.length ? `<div class="kv-row"><span class="k">Equipment</span><span class="v sans">${esc(m.equipment.join(', '))}</span></div>` : ''}
+           </div>
+           <p style="margin-top:12px;">Damage is documented wide/mid/close with a scale reference in the close photo. Full-resolution originals are preserved unaltered with capture time (UTC), GPS, and a SHA-256 recorded at capture for chain of custody.</p>
+           <p class="micro" style="margin-top:12px;">Auto-Logged Capture Record</p>
+           <div class="stat-grid">
+             <div class="stat"><div class="n">${m.capture.elevations}</div><div class="l">Elevations</div></div>
+             <div class="stat"><div class="n">${m.capture.slopes}</div><div class="l">Slopes</div></div>
+             <div class="stat"><div class="n">${m.capture.testSquares}</div><div class="l">Test squares</div></div>
+             <div class="stat"><div class="n">${m.capture.totalHits}</div><div class="l">Impacts recorded</div></div>
+             <div class="stat"><div class="n">${m.capture.damageInstances}</div><div class="l">Damage instances</div></div>
+             <div class="stat"><div class="n">${m.capture.photos}</div><div class="l">Evidence photos</div></div>
+           </div>`,
+      },
+    ]);
+  }
 
-  // ── Exhibit D — Storm Event Verification ──────────────────────────────
+  // ── Section: Storm Event Verification ────────────────────────────────
   if (data.storm) {
     const s = data.storm;
-    addExhibit('D', 'Storm Event Verification', [
+    const dN = peekN();
+    addSection('Storm Event Verification', [
       {
-        runheadTitle: 'Exhibit D',
+        runheadTitle: 'Storm Event Verification',
         bodyHtml:
-          exHead('D', 'Storm Event Verification', 'Certified weather for the date of loss establishing the causal event.') +
+          sectionHead(dN, 'Storm Event Verification', 'Certified weather for the date of loss establishing the causal event.') +
           `<div class="kv-grid">
              <div class="kv-row"><span class="k">Confirmed event</span><span class="v sans">${esc(s.type)}</span></div>
              <div class="kv-row"><span class="k">Date &amp; local time</span><span class="v">${esc(s.dateLocalTime)}</span></div>
              ${s.hailSize ? `<div class="kv-row"><span class="k">Max hail size</span><span class="v">${esc(s.hailSize)}</span></div>` : ''}
              ${s.windSpeed ? `<div class="kv-row"><span class="k">Max wind speed</span><span class="v">${esc(s.windSpeed)}</span></div>` : ''}
              ${s.distance ? `<div class="kv-row"><span class="k">Distance from property</span><span class="v">${esc(s.distance)}</span></div>` : ''}
-             ${s.coordinates ? `<div class="kv-row"><span class="k">Report location</span><span class="v">${esc(s.coordinates)}</span></div>` : ''}
+             ${s.coordinates ? `<div class="kv-row"><span class="k">Report location</span><span class="v sans">${esc(s.coordinates)}</span></div>` : ''}
              <div class="kv-row"><span class="k">Verification source</span><span class="v sans">${esc(s.source)}</span></div>
            </div>
            ${s.narrative ? `<p class="micro" style="margin-top:14px;">Event Summary</p><p>${esc(s.narrative)}</p>` : ''}
@@ -300,8 +316,9 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     ]);
   }
 
-  // ── Exhibit E — Damage Documentation & Photo Index ────────────────────
+  // ── Section: Damage Documentation & Photo Index ───────────────────────
   if (data.photos.length > 0 || impacted.length > 0) {
+    const eDamageN = peekN();
     const pages: Sheet[] = [];
     const areaTables = impacted
       .map((area) => {
@@ -314,9 +331,9 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
       })
       .join('');
     pages.push({
-      runheadTitle: 'Exhibit E',
+      runheadTitle: 'Damage Documentation & Photo Index',
       bodyHtml:
-        exHead('E', 'Damage Documentation & Photo Index', 'Documented damage by area, with a photo-to-subject index and content hashes.') +
+        sectionHead(eDamageN, 'Damage Documentation & Photo Index', 'Documented damage by area, with a photo-to-subject index and content hashes.') +
         (areaTables ||
           '<p>Damage documentation for the impacted areas is presented in the photographic evidence that follows.</p>'),
     });
@@ -330,8 +347,9 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
         )
         .join('');
       pages.push({
-        runheadTitle: 'Exhibit E',
-        bodyHtml: `<div class="eyebrow">${num('E')} — Exhibit E (cont'd)</div><h2 class="section-title">Photo Index — Chain of Custody${ci > 0 ? " (cont'd)" : ''}</h2><div class="section-rule"></div>
+        runheadTitle: 'Damage Documentation & Photo Index',
+        bodyHtml: `${sectionContHead(eDamageN, 'Damage Documentation & Photo Index')}
+          <p class="micro">Photo Index — Chain of Custody${ci > 0 ? " (cont'd)" : ''}</p>
           ${ci === 0 ? '<p>Each photo is preserved full-resolution and unaltered; the SHA-256 was recorded at capture and verified against the stored bytes at package generation.</p>' : ''}
           <table class="score-table"><thead><tr><th>Photo</th><th>Stage</th><th>Documents</th><th>Caption</th><th class="num">SHA-256</th></tr></thead><tbody>${idxRows}</tbody></table>`,
       });
@@ -354,27 +372,28 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
         )
         .join('');
       pages.push({
-        runheadTitle: 'Exhibit E',
-        bodyHtml: `<div class="eyebrow">${num('E')} — Exhibit E (cont'd)</div><h2 class="section-title">Photographic Evidence</h2><div class="section-rule"></div>
-          <span class="exhibit-ribbon">EXHIBIT E${photoChunks.length > 1 ? ` · Page ${ci + 1} of ${photoChunks.length}` : ''}</span>
+        runheadTitle: 'Damage Documentation & Photo Index',
+        bodyHtml: `${sectionContHead(eDamageN, 'Damage Documentation & Photo Index')}
+          <span class="exhibit-ribbon">PHOTOGRAPHIC EVIDENCE${photoChunks.length > 1 ? ` · Page ${ci + 1} of ${photoChunks.length}` : ''}</span>
           <div class="photo-grid">${cells}</div>`,
       });
     });
-    addExhibit('E', 'Damage Documentation & Photo Index', pages);
+    addSection('Damage Documentation & Photo Index', pages);
   }
 
-  // ── Exhibit F — Repairability Assessment (AI narrative) ───────────────
+  // ── Section: Repairability Assessment (AI narrative) ──────────────────
   if (data.aiSections.forensicSummary || data.aiSections.repairabilityText) {
     const paras = (text: string) =>
       text
         .split('\n')
         .map((p) => (p.trim() ? `<p>${esc(p)}</p>` : ''))
         .join('');
-    addExhibit('F', 'Repairability Assessment', [
+    const fN = peekN();
+    addSection('Repairability Assessment', [
       {
-        runheadTitle: 'Exhibit F',
+        runheadTitle: 'Repairability Assessment',
         bodyHtml:
-          exHead('F', 'Repairability Assessment', 'Forensic summary and matching & uniformity analysis.') +
+          sectionHead(fN, 'Repairability Assessment', 'Forensic summary and matching & uniformity analysis.') +
           (data.aiSections.forensicSummary
             ? `<p class="micro">Forensic Inspection Summary</p>${paras(data.aiSections.forensicSummary)}`
             : '') +
@@ -385,13 +404,14 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     ]);
   }
 
-  // ── Exhibit G — Manufacturer Documentation ────────────────────────────
+  // ── Section: Manufacturer Documentation ──────────────────────────────
   if (data.product) {
-    addExhibit('G', 'Manufacturer Documentation', [
+    const gN = peekN();
+    addSection('Manufacturer Documentation', [
       {
-        runheadTitle: 'Exhibit G',
+        runheadTitle: 'Manufacturer Documentation',
         bodyHtml:
-          exHead('G', 'Manufacturer Documentation', 'Product identification & discontinuation.') +
+          sectionHead(gN, 'Manufacturer Documentation', 'Product identification & discontinuation.') +
           `<div class="kv-grid">
              <div class="kv-row"><span class="k">Identified product</span><span class="v sans">${esc(data.product.name)}</span></div>
              <div class="kv-row"><span class="k">Identification</span><span class="v sans">${esc(data.product.identification)}</span></div>
@@ -402,14 +422,15 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     ]);
   }
 
-  // ── Exhibit H — Measurement Report ────────────────────────────────────
+  // ── Section: Measurement Report ───────────────────────────────────────
   if (data.measurement) {
     const mm = data.measurement;
-    addExhibit('H', 'Measurement Report', [
+    const hN = peekN();
+    addSection('Measurement Report', [
       {
-        runheadTitle: 'Exhibit H',
+        runheadTitle: 'Measurement Report',
         bodyHtml:
-          exHead('H', 'Measurement Report', 'Verifiable roof quantities from recorded field measurements.') +
+          sectionHead(hN, 'Measurement Report', 'Verifiable roof quantities from recorded field measurements.') +
           (mm.slopes.length
             ? `<p class="micro">Slope Areas</p>
                <table class="score-table"><thead><tr><th>Slope</th><th class="num">Area (sq ft)</th><th class="num">Squares</th></tr></thead><tbody>
@@ -427,7 +448,7 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     ]);
   }
 
-  // ── Exhibit I — Applicable Codes & Regulations ────────────────────────
+  // ── Section: Applicable Codes & Regulations ───────────────────────────
   // v7 blobs carry citations grouped into sections (General / Roofing /
   // Siding); legacy v6 blobs carry a single flat list.
   const citationSections = (
@@ -448,23 +469,25 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
           s.citations.map(citeHtml).join(''),
       )
       .join('');
-    addExhibit('I', 'Applicable Codes & Regulations', [
+    const iN = peekN();
+    addSection('Applicable Codes & Regulations', [
       {
-        runheadTitle: 'Exhibit I',
+        runheadTitle: 'Applicable Codes & Regulations',
         bodyHtml:
-          exHead('I', 'Applicable Codes & Regulations', 'Code provisions cross-referenced from the scope element each governs.') + cites,
+          sectionHead(iN, 'Applicable Codes & Regulations', 'Code provisions cross-referenced from the scope element each governs.') + cites,
       },
     ]);
   }
 
-  // ── Exhibit J — Scope of Work & Pricing Basis ─────────────────────────
+  // ── Section: Scope of Work & Pricing Basis ────────────────────────────
   if (data.scope && data.scope.lineItems.length > 0) {
     const sc = data.scope;
-    addExhibit('J', 'Scope of Work & Pricing Basis', [
+    const jN = peekN();
+    addSection('Scope of Work & Pricing Basis', [
       {
-        runheadTitle: 'Exhibit J',
+        runheadTitle: 'Scope of Work & Pricing Basis',
         bodyHtml:
-          exHead('J', 'Scope of Work & Pricing Basis', 'Fixed incurred cost + documented adders.') +
+          sectionHead(jN, 'Scope of Work & Pricing Basis', 'Fixed incurred cost + documented adders.') +
           `${
             sc.basePricePerSquare != null || sc.squares != null
               ? `<div class="kv-grid">
@@ -480,7 +503,7 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
       },
     ]);
 
-    // ── Exhibit K — Conditions & Adders ─────────────────────────────────
+    // ── Section: Conditions & Adders ────────────────────────────────────
     const adders = sc.lineItems.filter((li) => li.isAdder);
     if (adders.length > 0) {
       const adderHtml = adders
@@ -496,23 +519,25 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
           </div></div>`,
         )
         .join('');
-      addExhibit('K', 'Conditions & Adders', [
+      const kN = peekN();
+      addSection('Conditions & Adders', [
         {
-          runheadTitle: 'Exhibit K',
+          runheadTitle: 'Conditions & Adders',
           bodyHtml:
-            exHead('K', 'Conditions & Adders', 'Each conditional item paired with its documented triggering condition.') +
+            sectionHead(kN, 'Conditions & Adders', 'Each conditional item paired with its documented triggering condition.') +
             `<p>The items below are conditional adders. Each is included only because the noted condition was documented during the inspection; none is priced by default.</p>${adderHtml}`,
         },
       ]);
     }
 
-    // ── Exhibit L — Contract Exhibit ────────────────────────────────────
+    // ── Section: Contract Exhibit ────────────────────────────────────────
     if (sc.subtotal > 0) {
-      addExhibit('L', 'Contract Exhibit', [
+      const lN = peekN();
+      addSection('Contract Exhibit', [
         {
-          runheadTitle: 'Exhibit L',
+          runheadTitle: 'Contract Exhibit',
           bodyHtml:
-            exHead('L', 'Contract Exhibit', 'Executed fixed-price agreement — evidence of actual incurred cost.') +
+            sectionHead(lN, 'Contract Exhibit', 'Executed fixed-price agreement — evidence of actual incurred cost.') +
             `<p>The insured has entered a fixed-price agreement with the contractor to restore the property to its pre-loss, code-compliant condition. The agreed price below is the insured's actual incurred cost — the amount the insured is contractually obligated to pay — and is the basis for the documented loss.</p>
              <div class="kv-grid" style="margin-top:8px;">
                <div class="kv-row"><span class="k">Insured</span><span class="v sans">${esc(data.property.insuredName)}</span></div>
@@ -526,21 +551,24 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     }
   }
 
-  // ── Exhibit M — Repairability Conclusion ──────────────────────────────
-  addExhibit('M', 'Repairability Conclusion', [
-    {
-      runheadTitle: 'Exhibit M',
-      bodyHtml:
-        exHead('M', 'Repairability Conclusion', 'Signed, dated professional finding on contractor letterhead.') +
-        `<div class="attestation-body">${data.attestationHtml}</div>
-         <div class="sig-block">
-           <div><div class="sig-slot">${data.signatureUrl ? `<img src="${esc(data.signatureUrl)}" alt="Inspector signature">` : '<span>SIGNATURE ON FILE</span>'}</div>
-             <div class="sig-line">Signed — <span class="role">${esc(data.inspectorName)}</span></div></div>
-           <div><div class="sig-slot" style="border-style:solid; background:transparent;"></div>
-             <div class="sig-line">Date — ${esc(data.property.phase2Date)}</div></div>
-         </div>`,
-    },
-  ]);
+  // ── Section: Repairability Conclusion ─────────────────────────────────
+  {
+    const mN = peekN();
+    addSection('Repairability Conclusion', [
+      {
+        runheadTitle: 'Repairability Conclusion',
+        bodyHtml:
+          sectionHead(mN, 'Repairability Conclusion', 'Signed, dated professional finding on contractor letterhead.') +
+          `<div class="attestation-body">${data.attestationHtml}</div>
+           <div class="sig-block">
+             <div><div class="sig-slot">${data.signatureUrl ? `<img src="${esc(data.signatureUrl)}" alt="Inspector signature">` : '<span>SIGNATURE ON FILE</span>'}</div>
+               <div class="sig-line">Signed — <span class="role">${esc(data.inspectorName)}</span></div></div>
+             <div><div class="sig-slot" style="border-style:solid; background:transparent;"></div>
+               <div class="sig-line">Date — ${esc(data.property.phase2Date)}</div></div>
+           </div>`,
+      },
+    ]);
+  }
 
   // ── Supplemental sections (carried over from the prior design) ────────
   const supplemental: Array<{ title: string; inner: string }> = [];
@@ -600,7 +628,7 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
     toc
       .map(
         (t) =>
-          `<div class="toc-row" data-toc-for="${esc(t.letter)}"><span class="n">Exhibit ${esc(t.letter)}</span><span class="t">${esc(t.title)}</span><span class="p">p.—</span></div>`,
+          `<div class="toc-row" data-toc-for="sec-${esc(t.n)}"><span class="n">Section ${esc(t.n)}</span><span class="t">${esc(t.title)}</span><span class="p">p.—</span></div>`,
       )
       .join('') +
     supplemental
@@ -646,7 +674,7 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
   // ── Opening Statement pages (v7 jurisdiction packs) ───────────────────
   // The applicable code book titles in effect for the jurisdiction, each
   // with its statement text. Rendered as front matter right after the
-  // Summary & Contents page, before the lettered exhibits.
+  // Summary & Contents page, before the numbered sections.
   const openingStatements = data.statePack.openingStatements ?? [];
   const openingSheets: Sheet[] = openingStatements.length
     ? chunk(openingStatements, 3).map((group, i, all) => ({
@@ -878,7 +906,7 @@ ${sheetsHtml}
  * Render a sample Proof Package with placeholder data, styled with the given
  * theme and (optionally) a freshly-signed company logo URL. Used by the
  * branding-preview endpoint so a super admin can see their palette + logo on
- * the real A–M template without compiling a real inspection.
+ * the real section template without compiling a real inspection.
  *
  * Reuses buildProofPackageHtml so the preview can never drift from the real
  * package's markup or styling.

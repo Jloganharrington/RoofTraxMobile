@@ -40,9 +40,9 @@ export interface ExhibitSelection {
 }
 
 export type ComparisonPairType =
-  | 'pre_post_loss'
-  | 'condition_differentiation'
-  | 'directional_comparison';
+  | 'recency'
+  | 'covered_vs_unrelated'
+  | 'cause_differentiation';
 
 export interface ComparisonPair {
   id: string;

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import {
   Calendar, MapPin, FileText, BarChart2, Receipt,
   ShieldCheck, Settings, Plug, Bell,
@@ -11,7 +11,6 @@ import LibraryPage from '@/pages/settings/LibraryPage';
 import AhjWizardPage from '@/pages/settings/AhjWizardPage';
 import InspectionList from '@/pages/inspections/InspectionList';
 import ClaimHub from '@/pages/ClaimHub';
-import Summary from '@/pages/inspections/Summary';
 import Estimate from '@/pages/inspections/Estimate';
 import PhotoCuration from '@/pages/inspections/PhotoCuration';
 import Pipeline from '@/pages/pipeline/Pipeline';
@@ -85,9 +84,9 @@ function Router() {
       <Route path="/inspections/:id">
         <ProtectedRoute><ClaimHub /></ProtectedRoute>
       </Route>
-      {/* Legacy deep-link routes kept for backward compat */}
+      {/* Legacy deep-link: /inspections/:id/summary → ClaimHub (F-10) */}
       <Route path="/inspections/:id/summary">
-        <ProtectedRoute><Summary /></ProtectedRoute>
+        {(params) => <Redirect to={`/inspections/${params.id}`} />}
       </Route>
       <Route path="/inspections/:id/estimate">
         <ProtectedRoute><Estimate /></ProtectedRoute>

@@ -139,7 +139,7 @@ export type ComponentType = (typeof COMPONENT_TYPES)[number];
 export const COMPONENT_ZONES = ['eave_edge', 'ridge_hip', 'shingle_gauge'] as const;
 export type ComponentZone = (typeof COMPONENT_ZONES)[number];
 
-export const COMPONENT_STATUSES = ['present', 'absent', 'not_determined'] as const;
+export const COMPONENT_STATUSES = ['present', 'not_observed', 'undetermined'] as const;
 export type ComponentStatus = (typeof COMPONENT_STATUSES)[number];
 
 // C4 — Penetration inventory. Each roof penetration the inspector logs is a
@@ -1393,9 +1393,9 @@ export const exhibitSelectionsTable = pgTable('inspection_exhibit_selections', {
 });
 
 export const COMPARISON_PAIR_TYPES = [
-  'pre_post_loss',
-  'condition_differentiation',
-  'directional_comparison',
+  'recency',
+  'covered_vs_unrelated',
+  'cause_differentiation',
 ] as const;
 export type ComparisonPairType = (typeof COMPARISON_PAIR_TYPES)[number];
 

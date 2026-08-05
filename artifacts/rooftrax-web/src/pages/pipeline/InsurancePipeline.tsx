@@ -5,7 +5,7 @@
  * Auto-advance stages show a waiting badge instead of a task widget.
  * supplement_dispute is a loop stage with composite widgets.
  */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Shell } from '@/components/layout/Shell';
@@ -775,19 +775,28 @@ export default function InsurancePipeline() {
   const qc = useQueryClient();
   const inspections = data?.inspections ?? [];
 
+  // Persist last-visited pipeline so the home redirect can resume here.
+  useEffect(() => { localStorage.setItem('rt_last_pipeline', '/insurance-pipeline'); }, []);
+
+  // Demo leads filter (persistent across page loads)
+  const [hideDemos, setHideDemos] = useState(
+    () => localStorage.getItem('rt_hide_demos') === 'true',
+  );
+  const visibleInspections = hideDemos ? inspections.filter((i) => !i.isDemo) : inspections;
+
   // Group by stage key (resolved from pin stageKey or legacy status)
   const grouped = useMemo(() => {
     const map = new Map<string, PipelineInspection[]>();
     for (const stage of INS_STAGES) map.set(stage.key, []);
 
-    for (const insp of inspections) {
+    for (const insp of visibleInspections) {
       const key = resolveStageKey(insp);
       if (key && map.has(key)) {
         map.get(key)!.push(insp);
       }
     }
     return map;
-  }, [inspections]);
+  }, [visibleInspections]);
 
   // Default: all stages open
   const [openStages, setOpenStages] = useState<Set<string>>(
@@ -807,7 +816,8 @@ export default function InsurancePipeline() {
     qc.invalidateQueries({ queryKey: getPipelineQueryKey() });
   }
 
-  const totalLeads = inspections.filter((i) => resolveStageKey(i) !== null).length;
+  const demoCount  = inspections.filter((i) => i.isDemo).length;
+  const totalLeads = visibleInspections.filter((i) => resolveStageKey(i) !== null).length;
 
   return (
     <Shell>
@@ -823,7 +833,28 @@ export default function InsurancePipeline() {
               {isLoading ? 'Loading…' : `${totalLeads} lead${totalLeads !== 1 ? 's' : ''} across all stages`}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* Hide demo toggle */}
+            {demoCount > 0 && (
+              <>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={hideDemos}
+                    onChange={(e) => {
+                      setHideDemos(e.target.checked);
+                      localStorage.setItem('rt_hide_demos', String(e.target.checked));
+                    }}
+                    className="rounded border-border"
+                  />
+                  Hide demo
+                  <span className="text-[10px] tabular-nums bg-muted px-1.5 py-0.5 rounded-full">
+                    {demoCount}
+                  </span>
+                </label>
+                <span className="text-muted-foreground/30 text-xs">·</span>
+              </>
+            )}
             <button
               type="button"
               onClick={() => refetch()}

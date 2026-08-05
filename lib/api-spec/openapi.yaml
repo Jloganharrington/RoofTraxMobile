@@ -6703,7 +6703,7 @@ components:
       enum: [gutter_apron, drip_edge, ice_and_water_shield, underlayment, starter, decking, ventilation, flashing, layer_count]
     ComponentStatus:
       type: string
-      enum: [present, absent, not_determined]
+      enum: [present, not_observed, undetermined]
     ComponentZone:
       type: string
       description: >-

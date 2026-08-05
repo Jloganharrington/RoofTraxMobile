@@ -1507,7 +1507,7 @@ export const ListInspectionsResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
@@ -2120,7 +2120,7 @@ export const CreateInspectionResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
@@ -2715,7 +2715,7 @@ export const GetInspectionResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
@@ -3637,7 +3637,7 @@ export const UpdateInspectionResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
@@ -4648,7 +4648,7 @@ export const CreateInspectionComponentBody = zod.object({
   "id": zod.string().optional().describe('Optional client-generated id for offline-first creation. When supplied, creation is idempotent (upsert).'),
   "slopeId": zod.string().nullish(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]).optional(),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]).optional(),
   "layerCount": zod.number().nullish(),
   "notes": zod.string().nullish()
 })
@@ -4660,7 +4660,7 @@ export const CreateInspectionComponentResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
@@ -4677,7 +4677,7 @@ export const UpdateInspectionComponentParams = zod.object({
 })
 
 export const UpdateInspectionComponentBody = zod.object({
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]).optional(),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]).optional(),
   "layerCount": zod.number().nullish(),
   "notes": zod.string().nullish()
 }).describe('Partial component update — only supplied fields change.')
@@ -4689,7 +4689,7 @@ export const UpdateInspectionComponentResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()
@@ -5223,7 +5223,7 @@ export const SubmitInspectionResponse = zod.object({
   "inspectionId": zod.string(),
   "slopeId": zod.string().nullable(),
   "componentType": zod.enum(['gutter_apron', 'drip_edge', 'ice_and_water_shield', 'underlayment', 'starter', 'decking', 'ventilation', 'flashing', 'layer_count']),
-  "status": zod.union([zod.enum(['present', 'absent', 'not_determined']),zod.null()]),
+  "status": zod.union([zod.enum(['present', 'not_observed', 'undetermined']),zod.null()]),
   "layerCount": zod.number().nullable(),
   "notes": zod.string().nullable(),
   "createdAt": zod.coerce.date()

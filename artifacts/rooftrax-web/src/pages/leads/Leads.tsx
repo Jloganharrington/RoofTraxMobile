@@ -62,9 +62,16 @@ export default function Leads() {
 
   const leads: UnifiedLead[] = data?.leads ?? [];
 
+  // Demo leads filter (persistent across page loads, synced with pipeline pages)
+  const [hideDemos, setHideDemos] = useState(
+    () => localStorage.getItem('rt_hide_demos') === 'true',
+  );
+  const visibleLeads = hideDemos ? leads.filter((l) => !l.isDemo) : leads;
+  const demoCount = leads.filter((l) => l.isDemo).length;
+
   const filtered = useMemo(() => {
     const term = search.toLowerCase().trim();
-    return leads.filter((lead) => {
+    return visibleLeads.filter((lead) => {
       const matchesPipeline =
         activeTab === 'all' || lead.pipeline === activeTab;
 
@@ -76,16 +83,16 @@ export default function Leads() {
 
       return matchesPipeline && matchesSearch;
     });
-  }, [leads, search, activeTab]);
+  }, [visibleLeads, search, activeTab]);
 
-  // Count per tab
+  // Count per tab (from visible leads only)
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: leads.length };
-    for (const lead of leads) {
+    const c: Record<string, number> = { all: visibleLeads.length };
+    for (const lead of visibleLeads) {
       c[lead.pipeline] = (c[lead.pipeline] ?? 0) + 1;
     }
     return c;
-  }, [leads]);
+  }, [visibleLeads]);
 
   return (
     <Shell>
@@ -99,14 +106,34 @@ export default function Leads() {
             </p>
           </div>
 
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search name, address, or stage…"
-              className="pl-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Hide demo toggle */}
+            {demoCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={hideDemos}
+                  onChange={(e) => {
+                    setHideDemos(e.target.checked);
+                    localStorage.setItem('rt_hide_demos', String(e.target.checked));
+                  }}
+                  className="rounded border-border"
+                />
+                Hide demo
+                <span className="text-[10px] tabular-nums bg-muted px-1.5 py-0.5 rounded-full">
+                  {demoCount}
+                </span>
+              </label>
+            )}
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search name, address, or stage…"
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 

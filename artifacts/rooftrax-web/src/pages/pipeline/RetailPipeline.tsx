@@ -3,20 +3,20 @@
  * Every stage exit is performable from the card in ≤2 clicks.
  * archived_lost leads are hidden by default — toggle "Show Lost" to reveal them.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Shell } from '@/components/layout/Shell';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { differenceInDays } from 'date-fns';
 import {
+  Calendar,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  MapPin,
-  Clock,
-  Phone,
-  CheckCircle2,
+  DollarSign,
+  FileText,
+  User,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -30,7 +30,6 @@ import {
   DatetimeWidget,
   MoneyConfirmWidget,
   OutcomeButtonsWidget,
-  ButtonLinkWidget,
 } from '@/components/pipeline/widgets';
 
 // ---------------------------------------------------------------------------
@@ -40,164 +39,85 @@ import {
 interface RetailStageCol {
   key: string;
   label: string;
+  /** `border-*` class used for the stage pill nav */
   accent: string;
+  /** `text-*` class for stage label coloring */
   textAccent: string;
+  /** `bg-*` class for the 3 px accent pip in accordion section headers */
+  pipBg: string;
   isLoopStage: boolean;
   isTerminal: boolean;
 }
 
 const RETAIL_STAGE_COLS: RetailStageCol[] = [
-  { key: 'pin_dropped',       label: 'Pin Dropped',       accent: 'border-slate-400',   textAccent: 'text-slate-400',   isLoopStage: false, isTerminal: false },
-  { key: 'appt_needed',       label: 'Appt. Needed',      accent: 'border-sky-500',     textAccent: 'text-sky-400',     isLoopStage: false, isTerminal: false },
-  { key: 'appt_scheduled',    label: 'Appt. Scheduled',   accent: 'border-blue-500',    textAccent: 'text-blue-400',    isLoopStage: true,  isTerminal: false },
-  { key: 'appt_complete',     label: 'Appt. Complete',    accent: 'border-indigo-500',  textAccent: 'text-indigo-400',  isLoopStage: false, isTerminal: false },
-  { key: 'proposal_provided', label: 'Proposal Provided', accent: 'border-violet-500',  textAccent: 'text-violet-400',  isLoopStage: false, isTerminal: false },
-  { key: 'follow_up',         label: 'Follow Up',         accent: 'border-amber-500',   textAccent: 'text-amber-400',   isLoopStage: true,  isTerminal: false },
-  { key: 'contract_pending',  label: 'Contract Pending',  accent: 'border-orange-500',  textAccent: 'text-orange-400',  isLoopStage: true,  isTerminal: false },
-  { key: 'contract_signed',   label: 'Contract Signed',   accent: 'border-teal-500',    textAccent: 'text-teal-400',    isLoopStage: false, isTerminal: false },
-  { key: 'deposit_received',  label: 'Deposit Received',  accent: 'border-emerald-500', textAccent: 'text-emerald-400', isLoopStage: false, isTerminal: false },
-  { key: 'archived_lost',     label: 'Archived – Lost',   accent: 'border-red-700',     textAccent: 'text-red-400',     isLoopStage: false, isTerminal: true  },
+  { key: 'pin_dropped',       label: 'Pin Dropped',       accent: 'border-slate-400',   textAccent: 'text-slate-400',   pipBg: 'bg-slate-400',   isLoopStage: false, isTerminal: false },
+  { key: 'appt_needed',       label: 'Appt. Needed',      accent: 'border-sky-500',     textAccent: 'text-sky-400',     pipBg: 'bg-sky-500',     isLoopStage: false, isTerminal: false },
+  { key: 'appt_scheduled',    label: 'Appt. Scheduled',   accent: 'border-blue-500',    textAccent: 'text-blue-400',    pipBg: 'bg-blue-500',    isLoopStage: true,  isTerminal: false },
+  { key: 'appt_complete',     label: 'Appt. Complete',    accent: 'border-indigo-500',  textAccent: 'text-indigo-400',  pipBg: 'bg-indigo-500',  isLoopStage: false, isTerminal: false },
+  { key: 'proposal_provided', label: 'Proposal Provided', accent: 'border-violet-500',  textAccent: 'text-violet-400',  pipBg: 'bg-violet-500',  isLoopStage: false, isTerminal: false },
+  { key: 'follow_up',         label: 'Follow Up',         accent: 'border-amber-500',   textAccent: 'text-amber-400',   pipBg: 'bg-amber-500',   isLoopStage: true,  isTerminal: false },
+  { key: 'contract_pending',  label: 'Contract Pending',  accent: 'border-orange-500',  textAccent: 'text-orange-400',  pipBg: 'bg-orange-500',  isLoopStage: true,  isTerminal: false },
+  { key: 'contract_signed',   label: 'Contract Signed',   accent: 'border-teal-500',    textAccent: 'text-teal-400',    pipBg: 'bg-teal-500',    isLoopStage: false, isTerminal: false },
+  { key: 'deposit_received',  label: 'Deposit Received',  accent: 'border-emerald-500', textAccent: 'text-emerald-400', pipBg: 'bg-emerald-500', isLoopStage: false, isTerminal: false },
+  { key: 'archived_lost',     label: 'Archived – Lost',   accent: 'border-red-700',     textAccent: 'text-red-400',     pipBg: 'bg-red-700',     isLoopStage: false, isTerminal: true  },
 ];
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDamage(dt: string | null | undefined): string {
-  if (!dt) return '';
-  return dt.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+/** Base Tailwind classes for compact action trigger buttons in card footers */
+const COMPACT_BTN =
+  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ' +
+  'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 ' +
+  'text-white text-[11px] font-semibold transition-colors whitespace-nowrap select-none';
+
+const REP_COLORS = [
+  'bg-orange-500', 'bg-sky-500', 'bg-violet-500', 'bg-teal-500',
+  'bg-rose-500', 'bg-amber-500', 'bg-emerald-500', 'bg-indigo-500',
+];
+
+/** Picks a stable avatar background color derived from the rep's name. */
+function getRepColor(name: string | null): string {
+  if (!name) return 'bg-slate-600';
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) & 0xffff;
+  return REP_COLORS[h % REP_COLORS.length];
 }
 
-// ---------------------------------------------------------------------------
-// Exit widgets per stage
-// ---------------------------------------------------------------------------
-
-function PinDroppedWidget({ lead, onAdvance }: { lead: RetailLead; onAdvance: () => void }) {
-  return (
-    <AssignUserWidget
-      leadId={lead.id}
-      toStage="appt_needed"
-      config={{ label: 'Assign Sales Rep' }}
-      onSuccess={onAdvance}
-    />
-  );
+/** Optional status hint shown on the card body for certain stages. */
+function getStageStatus(stage: string): string | null {
+  if (stage === 'appt_complete')    return 'Awaiting proposal';
+  if (stage === 'contract_pending') return 'Awaiting signature';
+  return null;
 }
 
-function ApptNeededWidget({ lead, onAdvance }: { lead: RetailLead; onAdvance: () => void }) {
-  return (
-    <DatetimeWidget
-      leadId={lead.id}
-      toStage="appt_scheduled"
-      config={{ label: 'Schedule Appt.', setsNextAction: true }}
-      onSuccess={onAdvance}
-    />
-  );
-}
-
-function ApptScheduledWidget() {
-  const [confirmed, setConfirmed] = useState(false);
-  if (confirmed) {
-    return (
-      <div className="flex items-center gap-1.5 mt-2 text-xs text-green-600 font-medium">
-        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-        Confirmed
-      </div>
-    );
-  }
-  return (
-    <Button size="sm" className="w-full mt-2" onClick={() => setConfirmed(true)}>
-      Confirm Appt.
-    </Button>
-  );
-}
-
-function ApptCompleteWidget({ lead }: { lead: RetailLead }) {
-  return (
-    <div className="mt-2 space-y-1.5">
-      <div className="text-[11px] rounded px-2 py-1 bg-amber-50 text-amber-700 font-medium border border-amber-200">
-        Awaiting proposal
-      </div>
-      <ButtonLinkWidget
-        leadId={lead.id}
-        toStage=""
-        config={{ label: 'Open Proposal Builder', href: `/leads/${lead.id}` }}
-      />
-    </div>
-  );
-}
-
+/** Outcome options shared by ProposalProvided and FollowUp stages */
 const PROPOSAL_OUTCOMES = [
   { key: 'won',       label: 'Won — Contract',  toStage: 'contract_pending' },
   { key: 'follow_up', label: 'Follow-Up',        toStage: 'follow_up'        },
   { key: 'lost',      label: 'Lost',             toStage: 'archived_lost'    },
 ];
 
-function ProposalProvidedWidget({ lead, onAdvance }: { lead: RetailLead; onAdvance: () => void }) {
-  return (
-    <OutcomeButtonsWidget
-      leadId={lead.id}
-      toStage=""
-      config={{
-        label: 'Next Step',
-        requiresLossReason: true,
-        outcomes: PROPOSAL_OUTCOMES,
-      }}
-      onSuccess={onAdvance}
-    />
-  );
-}
-
-function FollowUpWidget({ lead, onAdvance }: { lead: RetailLead; onAdvance: () => void }) {
-  return (
-    <OutcomeButtonsWidget
-      leadId={lead.id}
-      toStage=""
-      config={{
-        label: 'Outcome',
-        requiresLossReason: true,
-        datetimeFirst: true,
-        datetimeLabel: 'Next Follow-Up',
-        outcomes: PROPOSAL_OUTCOMES,
-      }}
-      onSuccess={onAdvance}
-    />
-  );
-}
-
-function ContractPendingWidget({ lead }: { lead: RetailLead }) {
-  return (
-    <div className="mt-2 space-y-1.5">
-      <div className="text-[11px] rounded px-2 py-1 bg-orange-50 text-orange-700 font-medium border border-orange-200">
-        Awaiting signature
+/**
+ * Compact local button for appt_scheduled — tracks confirmed state without
+ * advancing the stage (appointment completion is logged in-field by the rep).
+ */
+function ApptScheduledButton() {
+  const [confirmed, setConfirmed] = useState(false);
+  if (confirmed) {
+    return (
+      <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
+        <CheckCircle2 className="h-3 w-3 shrink-0" />
+        Confirmed
       </div>
-      <ButtonLinkWidget
-        leadId={lead.id}
-        toStage=""
-        config={{ label: 'Generate Contract', href: `/leads/${lead.id}` }}
-      />
-    </div>
-  );
-}
-
-function ContractSignedWidget({ lead, onAdvance }: { lead: RetailLead; onAdvance: () => void }) {
+    );
+  }
   return (
-    <MoneyConfirmWidget
-      leadId={lead.id}
-      toStage="deposit_received"
-      config={{ label: 'Collect Deposit', moneyField: 'depositAmount' }}
-      onSuccess={onAdvance}
-    />
-  );
-}
-
-function DepositReceivedWidget({ lead, onAdvance }: { lead: RetailLead; onAdvance: () => void }) {
-  return (
-    <AssignUserWidget
-      leadId={lead.id}
-      toStage="pm_handoff"
-      config={{ label: 'Assign Project Manager', sourcePipeline: 'retail' }}
-      onSuccess={onAdvance}
-    />
+    <button type="button" onClick={() => setConfirmed(true)} className={COMPACT_BTN}>
+      <CheckCircle2 className="h-3 w-3 shrink-0" />
+      Confirm Appt.
+    </button>
   );
 }
 
@@ -214,94 +134,225 @@ function RetailCard({
   colDef: RetailStageCol;
   onAdvance: () => void;
 }) {
-  const stage = lead.stageKey ?? lead.retailStage;
+  const stage       = lead.stageKey ?? lead.retailStage;
+  const [widgetOpen, setWidgetOpen] = useState(false);
+  const repInitial  = lead.repName ? lead.repName.trim()[0].toUpperCase() : '?';
+  const avatarColor = getRepColor(lead.repName);
+  const stageStatus = getStageStatus(stage);
 
-  const daysAgo = lead.createdAt
-    ? differenceInDays(new Date(), new Date(lead.createdAt))
-    : null;
+  const openWidget    = () => setWidgetOpen(true);
+  const closeWidget   = () => setWidgetOpen(false);
+  const handleAdvance = () => { setWidgetOpen(false); onAdvance(); };
 
-  function renderWidget(): React.ReactNode {
+  /** Compact trigger shown in footer right (hidden while form is open). */
+  function renderFooterAction(): ReactNode {
+    if (widgetOpen) return null;
     switch (stage) {
-      case 'pin_dropped':      return <PinDroppedWidget lead={lead} onAdvance={onAdvance} />;
-      case 'appt_needed':      return <ApptNeededWidget lead={lead} onAdvance={onAdvance} />;
-      case 'appt_scheduled':   return <ApptScheduledWidget />;
-      case 'appt_complete':    return <ApptCompleteWidget lead={lead} />;
-      case 'proposal_provided':return <ProposalProvidedWidget lead={lead} onAdvance={onAdvance} />;
-      case 'follow_up':        return <FollowUpWidget lead={lead} onAdvance={onAdvance} />;
-      case 'contract_pending': return <ContractPendingWidget lead={lead} />;
-      case 'contract_signed':  return <ContractSignedWidget lead={lead} onAdvance={onAdvance} />;
-      case 'deposit_received': return <DepositReceivedWidget lead={lead} onAdvance={onAdvance} />;
-      case 'archived_lost':    return null;
-      default:                 return null;
+      case 'pin_dropped':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <UserPlus className="h-3 w-3 shrink-0" />Assign Rep
+          </button>
+        );
+      case 'appt_needed':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <Calendar className="h-3 w-3 shrink-0" />Schedule
+          </button>
+        );
+      case 'appt_scheduled':
+        return <ApptScheduledButton />;
+      case 'appt_complete':
+        return (
+          <Link href={`/leads/${lead.id}`}>
+            <span className={COMPACT_BTN}>
+              <FileText className="h-3 w-3 shrink-0" />Proposal Builder
+            </span>
+          </Link>
+        );
+      case 'proposal_provided':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <ChevronRight className="h-3 w-3 shrink-0" />Next Step
+          </button>
+        );
+      case 'follow_up':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <ChevronRight className="h-3 w-3 shrink-0" />Log Outcome
+          </button>
+        );
+      case 'contract_pending':
+        return (
+          <Link href={`/leads/${lead.id}`}>
+            <span className={COMPACT_BTN}>
+              <FileText className="h-3 w-3 shrink-0" />Generate
+            </span>
+          </Link>
+        );
+      case 'contract_signed':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <DollarSign className="h-3 w-3 shrink-0" />Collect Deposit
+          </button>
+        );
+      case 'deposit_received':
+        return (
+          <button type="button" onClick={openWidget} className={COMPACT_BTN}>
+            <UserPlus className="h-3 w-3 shrink-0" />Assign PM
+          </button>
+        );
+      default:
+        return null;
     }
   }
+
+  /** Inline expanded form — shown only when widgetOpen is true. */
+  function renderWidgetForm(): ReactNode {
+    if (!widgetOpen) return null;
+    switch (stage) {
+      case 'pin_dropped':
+        return (
+          <AssignUserWidget
+            leadId={lead.id}
+            toStage="appt_needed"
+            config={{ label: 'Assign Sales Rep' }}
+            onSuccess={handleAdvance}
+            onClose={closeWidget}
+          />
+        );
+      case 'appt_needed':
+        return (
+          <DatetimeWidget
+            leadId={lead.id}
+            toStage="appt_scheduled"
+            config={{ label: 'Schedule Appt.', setsNextAction: true }}
+            onSuccess={handleAdvance}
+            onClose={closeWidget}
+          />
+        );
+      case 'proposal_provided':
+        return (
+          <OutcomeButtonsWidget
+            leadId={lead.id}
+            toStage=""
+            config={{ label: 'Next Step', requiresLossReason: true, outcomes: PROPOSAL_OUTCOMES }}
+            onSuccess={handleAdvance}
+            onClose={closeWidget}
+          />
+        );
+      case 'follow_up':
+        return (
+          <OutcomeButtonsWidget
+            leadId={lead.id}
+            toStage=""
+            config={{
+              label: 'Outcome',
+              requiresLossReason: true,
+              datetimeFirst: true,
+              datetimeLabel: 'Next Follow-Up',
+              outcomes: PROPOSAL_OUTCOMES,
+            }}
+            onSuccess={handleAdvance}
+            onClose={closeWidget}
+          />
+        );
+      case 'contract_signed':
+        return (
+          <MoneyConfirmWidget
+            leadId={lead.id}
+            toStage="deposit_received"
+            config={{ label: 'Collect Deposit', moneyField: 'depositAmount' }}
+            onSuccess={handleAdvance}
+            onClose={closeWidget}
+          />
+        );
+      case 'deposit_received':
+        return (
+          <AssignUserWidget
+            leadId={lead.id}
+            toStage="pm_handoff"
+            config={{ label: 'Assign Project Manager', sourcePipeline: 'retail' }}
+            onSuccess={handleAdvance}
+            onClose={closeWidget}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
+  const footerAction = renderFooterAction();
+  const widgetForm   = renderWidgetForm();
 
   return (
     <StageCard
       stageEnteredAt={lead.stageEnteredAt}
       loopNextActionAt={lead.loopNextActionAt}
       isLoopStage={colDef.isLoopStage}
+      needsStageReview={lead.needsStageReview}
     >
-      {/* Name — links to lead profile */}
-      {lead.customerName ? (
-        <Link href={`/leads/${lead.id}`}>
-          <p className="text-xs font-semibold truncate hover:underline cursor-pointer pr-5">
-            {lead.customerName}
+      {/* Name + rep avatar */}
+      <div className="flex items-start gap-2">
+        <Link href={`/leads/${lead.id}`} className="flex-1 min-w-0 block">
+          <p
+            className={cn(
+              'text-sm font-bold leading-tight truncate pr-1 transition-colors',
+              lead.customerName
+                ? 'text-white hover:text-blue-300'
+                : 'text-white/30 italic font-normal',
+            )}
+          >
+            {lead.customerName ?? 'No name'}
           </p>
         </Link>
-      ) : (
-        <Link href={`/leads/${lead.id}`}>
-          <p className="text-xs font-semibold truncate text-muted-foreground italic hover:underline cursor-pointer pr-5">
-            No name
-          </p>
-        </Link>
-      )}
+        <div
+          className={cn(
+            'shrink-0 w-[22px] h-[22px] rounded-full flex items-center justify-center',
+            'text-[10px] font-bold text-white leading-none select-none',
+            avatarColor,
+          )}
+        >
+          {repInitial}
+        </div>
+      </div>
 
       {/* Address */}
-      <div className="flex items-start gap-1 mt-1">
-        <MapPin className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-        <span className="text-[11px] text-muted-foreground leading-tight line-clamp-2 flex-1">
-          {lead.address ?? 'Unknown address'}
-        </span>
-      </div>
+      <p className="text-[11px] text-white/50 mt-1 leading-snug line-clamp-2">
+        {lead.address ?? 'Unknown address'}
+      </p>
 
-      {/* Phone */}
-      {lead.customerPhone && (
-        <div className="flex items-center gap-1 mt-0.5">
-          <Phone className="h-3 w-3 text-muted-foreground shrink-0" />
-          <span className="text-[11px] text-muted-foreground">{lead.customerPhone}</span>
-        </div>
+      {/* Stage status hint (e.g. "Awaiting proposal") */}
+      {stageStatus && (
+        <p className={cn('text-[11px] font-semibold mt-1.5', colDef.textAccent)}>
+          {stageStatus}
+        </p>
       )}
-
-      {/* Damage type */}
-      {lead.damageType && (
-        <span className="mt-1 inline-block text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-          {formatDamage(lead.damageType)}
-        </span>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border/40">
-        <span className="text-[10px] text-muted-foreground truncate max-w-[90px]">
-          {lead.repName ?? <span className="italic opacity-40">No rep</span>}
-        </span>
-        {daysAgo !== null && daysAgo > 0 && (
-          <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-            <Clock className="h-2.5 w-2.5" />
-            {daysAgo}d
-          </div>
-        )}
-      </div>
 
       {/* Loss reason for archived leads */}
       {stage === 'archived_lost' && lead.lossReason && (
-        <span className="mt-2 inline-block text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 capitalize">
+        <span className="mt-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 capitalize">
           {lead.lossReason.replace(/_/g, ' ')}
         </span>
       )}
 
-      {/* Exit-task widget */}
-      {renderWidget()}
+      {/* Inline expanded widget form */}
+      {widgetForm && (
+        <div className="mt-2.5 pt-2 border-t border-white/[0.08]">
+          {widgetForm}
+        </div>
+      )}
+
+      {/* Footer: rep source + action trigger */}
+      <div className="flex items-center justify-between mt-3 gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <User className="h-3 w-3 text-white/30 shrink-0" />
+          <span className="text-[10px] text-white/40 truncate">
+            {lead.repName ?? 'Unassigned'}
+          </span>
+        </div>
+        {footerAction}
+      </div>
     </StageCard>
   );
 }
@@ -338,20 +389,23 @@ function AccordionSection({
   }, [cards, col.key]);
 
   return (
-    <div className={cn('rounded-2xl border bg-card overflow-hidden border-l-4', col.accent)}>
+    <div className="rounded-xl overflow-hidden bg-[#13162a] border border-white/[0.06]">
+      {/* Section header */}
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center gap-2.5 px-4 py-3.5 hover:bg-muted/20 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors text-left"
       >
-        <span className={cn('text-sm font-semibold flex-1', col.textAccent)}>{col.label}</span>
+        {/* Colored accent pip */}
+        <div className={cn('w-[3px] h-5 rounded-full shrink-0', col.pipBg)} />
+        <span className={cn('text-sm font-bold flex-1', col.textAccent)}>{col.label}</span>
         {col.isLoopStage && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium mr-1">
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-semibold mr-1">
             loop
           </span>
         )}
         {col.isTerminal && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium mr-1">
+          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.07] text-white/40 font-semibold mr-1">
             terminal
           </span>
         )}
@@ -359,21 +413,20 @@ function AccordionSection({
           {isLoading ? '—' : cards.length}
         </span>
         {open
-          ? <ChevronDown className="h-4 w-4 text-muted-foreground/60 shrink-0" />
-          : <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />
-        }
+          ? <ChevronDown className="h-4 w-4 text-white/30 shrink-0" />
+          : <ChevronRight className="h-4 w-4 text-white/30 shrink-0" />}
       </button>
 
       {open && (
-        <div className="px-4 pb-4 pt-2 border-t border-border/30 bg-muted/10">
+        <div className="px-4 pb-4 pt-2 border-t border-white/[0.04]">
           {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-2">
-              <Skeleton className="h-36 w-full rounded-xl" />
-              <Skeleton className="h-36 w-full rounded-xl opacity-70" />
-              <Skeleton className="h-36 w-full rounded-xl opacity-40" />
+              <Skeleton className="h-36 w-full rounded-xl opacity-30" />
+              <Skeleton className="h-36 w-full rounded-xl opacity-20" />
+              <Skeleton className="h-36 w-full rounded-xl opacity-10" />
             </div>
           ) : sorted.length === 0 ? (
-            <p className="text-xs text-muted-foreground/40 italic py-5 text-center">
+            <p className="text-xs text-white/20 italic py-5 text-center">
               No leads in this stage
             </p>
           ) : (
@@ -403,6 +456,15 @@ export default function RetailPipeline() {
   const { data, isLoading } = useGetRetailPipeline();
   const leads = data?.leads ?? [];
 
+  // Persist last-visited pipeline so the home redirect can resume here.
+  useEffect(() => { localStorage.setItem('rt_last_pipeline', '/retail-pipeline'); }, []);
+
+  // Demo leads filter (persistent across page loads)
+  const [hideDemos, setHideDemos] = useState(
+    () => localStorage.getItem('rt_hide_demos') === 'true',
+  );
+  const visibleLeads = hideDemos ? leads.filter((l) => !l.isDemo) : leads;
+
   // archived_lost hidden by default; toggle to reveal
   const [showLost, setShowLost] = useState(false);
 
@@ -413,7 +475,7 @@ export default function RetailPipeline() {
   const grouped = useMemo(() => {
     const map = new Map<string, RetailLead[]>();
     for (const col of RETAIL_STAGE_COLS) map.set(col.key, []);
-    for (const lead of leads) {
+    for (const lead of visibleLeads) {
       const key = lead.stageKey ?? lead.retailStage;
       if (map.has(key)) {
         map.get(key)!.push(lead);
@@ -422,12 +484,13 @@ export default function RetailPipeline() {
       // should already have excluded these, but drop silently as a safety net.
     }
     return map;
-  }, [leads]);
+  }, [visibleLeads]);
 
   const lostCount = grouped.get('archived_lost')?.length ?? 0;
-  const activeCount = leads.filter(
+  const activeCount = visibleLeads.filter(
     (l) => (l.stageKey ?? l.retailStage) !== 'archived_lost',
   ).length;
+  const demoCount = leads.filter((l) => l.isDemo).length;
 
   // Start with all non-terminal stages open
   const [openStages, setOpenStages] = useState<Set<string>>(
@@ -458,6 +521,25 @@ export default function RetailPipeline() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
+            {/* Hide demo toggle */}
+            {demoCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hideDemos}
+                  onChange={(e) => {
+                    setHideDemos(e.target.checked);
+                    localStorage.setItem('rt_hide_demos', String(e.target.checked));
+                  }}
+                  className="rounded border-border"
+                />
+                Hide demo
+                <span className="text-[10px] tabular-nums bg-muted px-1.5 py-0.5 rounded-full">
+                  {demoCount}
+                </span>
+              </label>
+            )}
+            {demoCount > 0 && <span className="text-muted-foreground/30 text-xs">·</span>}
             {/* Show Lost toggle */}
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
               <input

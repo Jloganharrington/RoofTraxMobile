@@ -1,0 +1,70 @@
+Run a full-system audit of the RoofTrax platform (rooftrax-web, api-server, db schema, field-app integration points). Do not fix anything during the audit. Produce a single artifact: docs/system-audit-{date}.md, with every item classified as one of: BUILT-VERIFIED (works, evidence cited), BUILT-UNWIRED (code exists but nothing calls it / no UI reaches it), PARTIAL (started, gaps listed), MISSING (specced, not built), DRIFT (built differently than specced — describe the difference), or STALE (exists but serves no current flow). Every classification must cite evidence: file path, route, DB query result, or screenshot-able UI state. No item may be classified from memory or assumption — if you cannot verify it, mark it UNVERIFIED and say what check is needed.
+
+Audit the following areas against these specific checkpoints:
+
+=== 1. DATA FOUNDATION ===
+- Schema vs. DB parity: run a full drizzle diff; list every column/table in schema not in DB and vice versa. (Recent history: pipeline columns were hand-applied — verify the migration file now exists and is a no-op.)
+- Claim/lead object model: pins, inspections, and their relationship; stageKey population across all seeded leads (count in All Leads must equal sum across pipeline columns + archived).
+- Trigger flag engine: deriveClaimFlags exists and enforces validation rules — verify each rule with a test query or unit test reference: discontinued_verified requires product_id_class=identified; compatibility_assessed requires identified; lab_recommended carries no product-specific conclusions; product_id_class is exactly {identified, lab_recommended} (no field_approximated, no unknown, no probable anywhere in code or DB enums); discontinued_status is exactly {discontinued_verified, discontinued_not_verified, not_applicable} with underlying fields discontinued + ordinary_availability.
+- stage_transitions audit table populated by all three transition triggers (task, auto_event, manual_move).
+
+=== 2. LIBRARIES ===
+- BP library: list every sectionKey in the enum and whether content is uploaded per key. Expected: opening_statement, inspection_method, caption_patterns, rap_field_protocol, attestation_block_a, attestation_block_b, attestation_block_c, uniform_inspection_procedure, product_id_methodology, scope_block, std_rpr_01_source_record. Flag: is aluminum_siding_protocol in the enum yet?
+- Versioning: confirm library edits create new version rows (test one edit), never mutate.
+- Standards entries: list all entries with entryKey, sourceType, verificationStatus, verifiedAt, humanEnteredProvisionsOnly. Expected verified: STD-RPR-01, STD-WTR-01, STD-WTR-02 (both IICRC entries must have humanEnteredProvisionsOnly=true). Expected verify_before_ship: STD-RPR-02, STD-RFG-01, STD-RFG-02, STD-PRD-01, STD-MFR-01. Verify the importer parses SourceType, AuthorityLimit, LocatorTemplate into separate columns (open one entry, confirm fields are not concatenated into CitationText).
+- Detriment entries: count (expected 19: DET-AS-01..08, DET-VS-01..03, DET-CS-01..02, DET-SM-01..03, DET-IN-01..03), each with structured applicabilityConditions. List the condition-code vocabulary currently in chips vs. the 22-code expanded taxonomy — classify the taxonomy expansion itself (MISSING/PARTIAL).
+- AHJ packs + wizard: pack versions present per jurisdiction; materialApplicability field exists on pack items and candidate items; wizard verification queue is a hard gate (verify a draft candidate item cannot enter a pack — cite the enforcement code path); gaps channel handling exists; extraction promptVersion recorded on runs; Virginia golden-set eval implemented and last run results.
+
+=== 3. GENERATION PIPELINE ===
+- Stage 0 readiness: list all checks and their exact pass conditions. Verify: RAP check is record-OR-gate-reason (peril-agnostic); product ID check passes on lab_recommended; AHJ address failure is warning not blocker; no-unverified-standards check evaluates against planned section references, not global library state.
+- Section types and DAG: list all 7 section types; verify Findings/Causation/Detriment/RAP-Narrative/Estimate-Justifications have NO inter-dependencies (parallel generation) and only Summary (needs 5 approved) and Closing (needs Summary) are gated. Verify "Generate All Ready" exists. Verify stale-propagation: editing an approved upstream section flips Summary/Closing to in_review with staledBy.
+- Section lifecycle: draft → ai_generated → in_review → approved → locked states enforced; hard gates present: causationReviewConfirmed + reviewerUserId in approve request (not a company-settings check); photoComparisonConfirmed wired to curation card confirms; RAP fallback confirmation renders only when mode=fallback_slope.
+- Generation workers: detriment Applicability filtering happens IN CODE before prompt assembly (cite the filter); entries with humanEnteredProvisionsOnly excluded from prompt context with placeholder emission; content lint active on generated output.
+- IICRC deadlock: verify a claim with interior_scope_present and verified IICRC entries passes readiness and can compile.
+
+=== 4. PHOTO CURATION ===
+- Slot-based manifest: derivation is deterministic from flags (cite the derivation function and its rule list: always-slots, hail slots, interior trace, RAP slots, mitigation slots, comparison slots only when both-side candidates exist).
+- Comparison type enum is exactly {recency, cause_differentiation, covered_vs_unrelated} — no pre_loss_post_loss remnants.
+- Slot confirm/swap/skip interactions ≤2 clicks; all recorded as events.
+- Badge assignment fires at exhibit finalization; class-prefixed scheme (S/R/I/F/C/T-#) with frozen per-class counters; verify compile does not touch photo-slot badges (test: finalize → compile → check assignments unchanged). Confirm no A–M letter scheme remnants.
+- Caption staleness: exhibit change after captions locked flips captions + findings to in_review with staledBy.
+- Captions section generates per-slot using caption_patterns; caption format "Photo — Exhibit {badge} — ...".
+
+=== 5. COMPILE / ATTEST / DELIVER ===
+- Compiler determinism: same locked inputs produce identical output (verify snapshot contents: section versions, library versions, protocol version, AHJ pack version, flag state, standardsCited array with per-entry verificationStatus+verifiedAt, exhibitBadgeMap).
+- Attestation: report attestation uses attestation_block_b in ALL cases with internal preparer_is_inspector branch (verify block_a cannot render at report level — cite the selection code); attest action writes reportAttestations then triggers automatic final recompile producing a NEW blob version (no mutation of existing blobs); Deliver gates on signed-blob existence (422 otherwise).
+- Blob immutability: compiledReportVersions append-only; pre-attestation review blob retained.
+- Scope blocks: full variant in Opening position, footer variant through body, no duplicate full+closing in one document.
+- Conditional-marker handling: what happens to HTML-comment IF/ELSE blocks in BP content at compile (attestation_block_b preparer branch, block_c product_id_class branch, inspection_method material blocks)? Classify: rendered-correctly / rendered-as-literal-text / both-branches-render.
+- Supplement flow: exists? Supplements as new versioned docs appending badges within class, separately attested.
+
+=== 6. PIPELINES ===
+- Three pipelines with stage sets matching the rebuild spec (list actual stages vs. spec per pipeline); inline exit-task widgets per stage (list widget type per stage); auto-advance workers and their event wiring (list each eventType and verify at least one fires end-to-end: proposal_generated, contract_signed, preliminary_record_synced with outcome rules, fipsa_signed, forensic_record_attested, report_attested, package_delivered, completion_package_generated).
+- Loop stages: follow_up + supplement_dispute enforce loopNextActionAt, overdue border, 14-day age badge.
+- Convergence: deposit_received + assign PM moves lead to Project with sourcePipeline set; Project cards show R/I source badge; insurance-sourced cards show CFR 21-day clock from PM handoff.
+- Compliance strings: grep the entire frontend + email templates for "Submit Claim", "submit a claim", "file a claim" (as contractor action), "claim settlement" — expected zero hits in UI copy.
+- Landing: authenticated landing behavior (last-visited pipeline, default insurance).
+
+=== 7. CLAIM HUB / STEPPER ===
+- Stepper order: Review Field Data → Photo Curation → Estimate → AI Sections → Compile & Attest → Deliver (Estimate BEFORE sections); steps 2+3 co-unlock after step 1.
+- Awaiting Field Capture full-screen gate for claims without attested records (with sync status).
+- Readiness rendered as progress bar with expandable failing items.
+- Review Field Data modal: structured per-stage rendering, Mark Reviewed records field_record_reviewed event.
+- Step 6 status reflects gate state; RAP failure copy reads "No repairability assessment recorded and no gate reason on file."
+
+=== 8. FIELD APP INTEGRATION ===
+- Outbox sync path: patchInspection items land in DB; selection object (RAP selection confirmations) reaches RapReportSection and renders (verify the wiring from the earlier fix: extractRap reads selection, prose methodology statement renders for damaged_target and fallback modes, legacy undefined renders nothing).
+- Events emitted on sync that pipelines consume (preliminary_record_synced, forensic_record_attested) — do these exist yet or is pipeline auto-advance unwired to real field events?
+- Field-app backlog items (classify each MISSING/PARTIAL, do not build): pre-existing marking instruction (§4.7), underlayment check (§5.5), lab-sample variant (§6), Stage 6.7 binary product-ID reword + characteristics checklist + library version stamp, confirmation-method fields (mat fracture/crease/coating/cedar crush), explicit damage-location booleans at Stage 5, eave labels Present/Not Observed/Undetermined.
+
+=== 9. NAVIGATION & DEAD SURFACE ===
+- Update docs/route-inventory.md (create if the earlier audit never wrote it): every route, nav entry point, data dependencies, disposition. Flag any page unreachable from nav/Lead Profile/deep-link.
+- Duplicate surfaces: does the old AI Sections tab coexist with the stepper? If both exist, flag which is canonical.
+- Orphaned hooks/components since last audit.
+
+=== OUTPUT ===
+End the artifact with three prioritized lists:
+1. BUILD LIST — everything MISSING, ordered by what blocks the first end-to-end package (field sync → curation → generation → compile → attest → deliver on one real claim).
+2. WIRE LIST — everything BUILT-UNWIRED with the connection needed.
+3. FIX LIST — every DRIFT item with current-vs-specced behavior.
+Also state plainly: can one claim currently travel the entire path from attested field record to delivered signed package? If not, name the first breaking point.

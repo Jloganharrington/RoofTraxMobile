@@ -3174,8 +3174,9 @@ router.post('/inspections/:inspectionId/report-attestation', async (req: Request
   const { createHash } = await import('node:crypto');
   const statementHash = createHash('sha256').update(statementText, 'utf8').digest('hex');
 
-  // Block 'a' = same person signs both; Block 'b' = split preparer/inspector.
-  const attestationBlockKey = isSameIdentity ? 'attestation_block_a' : 'attestation_block_b';
+  // Spec F-8: always use attestation_block_b; the isSameIdentity distinction
+  // is captured in statementText above but must not alter the block key.
+  const attestationBlockKey = 'attestation_block_b';
 
   const now = new Date();
   const [attestation] = await db
@@ -3205,6 +3206,50 @@ router.post('/inspections/:inspectionId/report-attestation', async (req: Request
       statementHash,
     },
   });
+
+  // Spec F-8: post-attest signed recompile — load the review blob, stamp the
+  // attestation into generationSnapshot, and publish a new isSignedVersion
+  // version entry. Non-fatal: storage failure only blocks the new delivery
+  // path; the legacy attestation-row gate still covers pre-recompile claims.
+  try {
+    const reviewFile = await objectStorageService.getObjectEntityFile(currentVersion.path);
+    const [reviewBuffer] = await reviewFile.download();
+    const reviewData = JSON.parse(reviewBuffer.toString('utf-8')) as Record<string, unknown>;
+    const signedData = {
+      ...reviewData,
+      generationSnapshot: {
+        ...(reviewData.generationSnapshot as Record<string, unknown> | null ?? {}),
+        reportAttestationId: attestation!.id,
+        preparedAt: now.toISOString(),
+        attestedBy: actor.userId,
+        attestationBlockKey,
+      },
+    };
+    const signedPath = await objectStorageService.uploadObjectBuffer(
+      Buffer.from(JSON.stringify(signedData), 'utf-8'),
+      'application/json',
+    );
+    const signedEntry = JSON.stringify({
+      path: signedPath,
+      generatedAt: now.toISOString(),
+      schemaVersion: (reviewData.schemaVersion as number | undefined) ?? 7,
+      isSignedVersion: true,
+      reportAttestationId: attestation!.id,
+      blobVersionIndex: currentIndex,
+    });
+    await db
+      .update(inspectionsTable)
+      .set({
+        compiledReportPath: signedPath,
+        compiledReportVersions: sql`${inspectionsTable.compiledReportVersions} || ${signedEntry}::jsonb`,
+      })
+      .where(eq(inspectionsTable.id, inspectionId));
+  } catch (signErr) {
+    req.log.error(
+      { err: signErr, inspectionId },
+      'Post-attest signed recompile failed — delivery falls back to attestation-row check',
+    );
+  }
 
   res.status(201).json({
     attested: true,
@@ -3252,29 +3297,38 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
     return;
   }
 
-  // Variant B attestation gate — the package must be signed before delivery.
-  const versions = (inspection.compiledReportVersions ?? []) as Array<{ path: string }>;
+  // Delivery gate (F-8): accept either a post-attest signed blob (new flow) or a
+  // legacy attestation row for the current version index (pre-recompile claims).
+  const versions = (inspection.compiledReportVersions ?? []) as Array<{
+    path: string;
+    isSignedVersion?: boolean;
+    reportAttestationId?: string;
+  }>;
   if (versions.length === 0) {
     res.status(422).json({ error: 'No compiled report exists. Compile and attest the report before delivering.' });
     return;
   }
-  const currentVersionIndex = versions.length - 1;
-  const [attestation] = await db
-    .select({ id: reportAttestationsTable.id })
-    .from(reportAttestationsTable)
-    .where(
-      and(
-        eq(reportAttestationsTable.inspectionId, String(req.params.inspectionId)),
-        eq(reportAttestationsTable.blobVersionIndex, currentVersionIndex),
-      ),
-    )
-    .limit(1);
-  if (!attestation) {
-    res.status(422).json({
-      error: 'Report attestation required. Attest the compiled report (Variant B) before delivering.',
-      code: 'ATTESTATION_REQUIRED',
-    });
-    return;
+  const latestVersion = versions[versions.length - 1]!;
+  if (!latestVersion.isSignedVersion || !latestVersion.reportAttestationId) {
+    // Legacy path: signed blob absent — check attestation row for current version.
+    const currentVersionIndex = versions.length - 1;
+    const [attestation] = await db
+      .select({ id: reportAttestationsTable.id })
+      .from(reportAttestationsTable)
+      .where(
+        and(
+          eq(reportAttestationsTable.inspectionId, String(req.params.inspectionId)),
+          eq(reportAttestationsTable.blobVersionIndex, currentVersionIndex),
+        ),
+      )
+      .limit(1);
+    if (!attestation) {
+      res.status(422).json({
+        error: 'Report attestation required. Attest the compiled report before delivering.',
+        code: 'ATTESTATION_REQUIRED',
+      });
+      return;
+    }
   }
 
   const [profile] = await db
@@ -6820,7 +6874,7 @@ router.post('/:inspectionId/curation/pairs', async (req: Request, res: Response)
   const { beforePhotoId, afterPhotoId, pairType, notes } = z.object({
     beforePhotoId: z.string().min(1),
     afterPhotoId: z.string().min(1),
-    pairType: z.enum(['pre_post_loss', 'condition_differentiation', 'directional_comparison']),
+    pairType: z.enum(['recency', 'covered_vs_unrelated', 'cause_differentiation']),
     notes: z.string().max(1000).optional(),
   }).parse(req.body);
 
@@ -7308,7 +7362,7 @@ router.get('/:inspectionId/exhibit-slots', async (req: Request, res: Response) =
           label: 'Comparison — Recency of Damage',
           required: false,
           kind: 'comparison',
-          comparisonType: 'directional_comparison',
+          comparisonType: 'recency',
           beforeCandidates: recencyBefore.slice(0, 15),
           afterCandidates: recencyAfter.slice(0, 15),
         });
@@ -7383,9 +7437,32 @@ router.get('/:inspectionId/exhibit-slots', async (req: Request, res: Response) =
         label: 'Comparison — Covered vs. Pre-existing',
         required: false,
         kind: 'comparison',
-        comparisonType: 'condition_differentiation',
+        comparisonType: 'covered_vs_unrelated',
         beforeCandidates: coveredCandidates.slice(0, 15),
         afterCandidates: unrelatedCandidates.slice(0, 15),
+      });
+    }
+  }
+
+  // ── Cause differentiation: storm-localized damage vs. general wear ─────────
+  {
+    const causeBefore = photos.filter((p) =>
+      p.subjectType === 'test_square' ||
+      p.subjectType === 'test_square_hit' ||
+      (p.stage === 'test_squares' && (p.triadRole === 'close' || !p.triadRole)),
+    );
+    const causeAfter = photos.filter((p) =>
+      p.triadRole === 'wide' || p.triadRole === 'mid' || p.preliminaryRole === 'roof_overview',
+    );
+    if (causeBefore.length > 0 && causeAfter.length > 0) {
+      slotDefs.push({
+        slotKey: 'comparison_cause_differentiation',
+        label: 'Comparison — Cause Differentiation',
+        required: false,
+        kind: 'comparison',
+        comparisonType: 'cause_differentiation',
+        beforeCandidates: causeBefore.slice(0, 15),
+        afterCandidates: causeAfter.slice(0, 15),
       });
     }
   }
@@ -7776,6 +7853,8 @@ router.get('/pipeline', async (req: Request, res: Response) => {
       pinStageEnteredAt:   pinsTable.stageEnteredAt,
       pinLoopNextActionAt: pinsTable.loopNextActionAt,
       pinSourcePipeline:   pinsTable.sourcePipeline,
+      pinIsDemo:           pinsTable.isDemo,
+      pinNeedsStageReview: pinsTable.needsStageReview,
     })
     .from(inspectionsTable)
     .leftJoin(usersTable, eq(usersTable.id, inspectionsTable.inspectorUserId))
@@ -7805,6 +7884,8 @@ router.get('/pipeline', async (req: Request, res: Response) => {
     stageEnteredAt:   r.pinStageEnteredAt   ? r.pinStageEnteredAt.toISOString()   : null,
     loopNextActionAt: r.pinLoopNextActionAt ? r.pinLoopNextActionAt.toISOString() : null,
     sourcePipeline:   r.pinSourcePipeline   ?? null,
+    isDemo:           r.pinIsDemo           ?? false,
+    needsStageReview: r.pinNeedsStageReview ?? false,
   }));
 
   // Include insurance-workflow pins that have no linked inspection yet.
@@ -7818,6 +7899,8 @@ router.get('/pipeline', async (req: Request, res: Response) => {
       stageEnteredAt:   pinsTable.stageEnteredAt,
       loopNextActionAt: pinsTable.loopNextActionAt,
       sourcePipeline:   pinsTable.sourcePipeline,
+      isDemo:           pinsTable.isDemo,
+      needsStageReview: pinsTable.needsStageReview,
       createdAt:        pinsTable.createdAt,
       updatedAt:        pinsTable.updatedAt,
       repFirstName:     usersTable.firstName,
@@ -7856,6 +7939,8 @@ router.get('/pipeline', async (req: Request, res: Response) => {
     stageEnteredAt:         p.stageEnteredAt   ? p.stageEnteredAt.toISOString()   : null,
     loopNextActionAt:       p.loopNextActionAt ? p.loopNextActionAt.toISOString() : null,
     sourcePipeline:         p.sourcePipeline   ?? null,
+    isDemo:                 p.isDemo,
+    needsStageReview:       p.needsStageReview,
   }));
 
   // Exclude leads that have advanced to a project-pipeline stage.
@@ -8800,6 +8885,8 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
       stageEnteredAt:  pinsTable.stageEnteredAt,
       loopNextActionAt: pinsTable.loopNextActionAt,
       lossReason:      pinsTable.lossReason,
+      isDemo:          pinsTable.isDemo,
+      needsStageReview: pinsTable.needsStageReview,
       repFirstName:    usersTable.firstName,
       repLastName:     usersTable.lastName,
       inspectionId:    inspectionsTable.id,
@@ -8871,6 +8958,8 @@ router.get('/retail-pipeline', async (req: Request, res: Response) => {
       stageEnteredAt:  r.stageEnteredAt ? r.stageEnteredAt.toISOString() : null,
       loopNextActionAt: r.loopNextActionAt ? r.loopNextActionAt.toISOString() : null,
       lossReason:      r.lossReason ?? null,
+      isDemo:          r.isDemo,
+      needsStageReview: r.needsStageReview,
       createdAt:       r.createdAt.toISOString(),
     }));
 
@@ -8912,6 +9001,8 @@ router.get('/project-pipeline', async (req: Request, res: Response) => {
       damageType:      pinsTable.damageType,
       customerName:    pinsTable.customerName,
       createdAt:       pinsTable.createdAt,
+      isDemo:          pinsTable.isDemo,
+      needsStageReview: pinsTable.needsStageReview,
       repFirstName:    usersTable.firstName,
       repLastName:     usersTable.lastName,
     })
@@ -8974,6 +9065,8 @@ router.get('/project-pipeline', async (req: Request, res: Response) => {
         ? [p.repFirstName, p.repLastName].filter(Boolean).join(' ')
         : null,
       createdAt:        p.createdAt.toISOString(),
+      isDemo:           p.isDemo,
+      needsStageReview: p.needsStageReview,
     };
   });
 
@@ -9636,6 +9729,7 @@ router.get('/leads', async (req: Request, res: Response) => {
       ownerFirstName:  pinsTable.ownerFirstName,
       ownerLastName:   pinsTable.ownerLastName,
       retailData:      pinsTable.retailData,
+      isDemo:          pinsTable.isDemo,
       createdAt:       pinsTable.createdAt,
       repFirstName:    usersTable.firstName,
       repLastName:     usersTable.lastName,
@@ -9712,6 +9806,7 @@ router.get('/leads', async (req: Request, res: Response) => {
       repName:    r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
       detailPath: `/leads/${r.id}`,
       createdAt:  r.createdAt.toISOString(),
+      isDemo:     r.isDemo,
     };
   });
 
@@ -9729,6 +9824,7 @@ router.get('/leads', async (req: Request, res: Response) => {
       repName:    r.repFirstName ? [r.repFirstName, r.repLastName].filter(Boolean).join(' ') : null,
       detailPath: r.pinId ? `/leads/${r.pinId}` : `/leads/ins-${r.id}`,
       createdAt:  r.createdAt.toISOString(),
+      isDemo:     false, // standalone inspections are not pinned demo seeds
     }));
 
   // Sort merged list newest-first

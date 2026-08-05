@@ -6,22 +6,21 @@
  *
  * config.href: URL pattern. `:leadId` is replaced with the actual leadId.
  */
-import { Button } from '@/components/ui/button';
 import { ExternalLink } from 'lucide-react';
 import { Link } from 'wouter';
 import { type WidgetProps } from './shared';
 
 export function ButtonLinkWidget({ leadId, config }: WidgetProps) {
-  const label = (config.label as string | undefined) ?? 'Open';
-  const hrefTemplate = (config.href as string | undefined) ?? '#';
-  const href = hrefTemplate.replace(':leadId', leadId);
+  const label        = (config.label as string | undefined) ?? 'Open';
+  const hrefTemplate = (config.href  as string | undefined) ?? '#';
+  const href         = hrefTemplate.replace(':leadId', leadId);
 
   return (
-    <Button asChild size="sm" variant="outline" className="w-full mt-2">
-      <Link href={href}>
-        <ExternalLink className="mr-2 h-3 w-3" />
+    <Link href={href}>
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold transition-colors whitespace-nowrap cursor-pointer select-none">
+        <ExternalLink className="h-3 w-3 shrink-0" />
         {label}
-      </Link>
-    </Button>
+      </span>
+    </Link>
   );
 }

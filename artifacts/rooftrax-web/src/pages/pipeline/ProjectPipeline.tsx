@@ -10,7 +10,7 @@
  * starts at pm_handoff entry. The closed_warranty column is hidden by default
  * and revealed by the "Show Closed" toggle.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Shell } from '@/components/layout/Shell';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -490,6 +490,15 @@ export default function ProjectPipeline() {
   const { data, isLoading } = useGetProjectPipeline();
   const leads = data?.leads ?? [];
 
+  // Persist last-visited pipeline so the home redirect can resume here.
+  useEffect(() => { localStorage.setItem('rt_last_pipeline', '/project-pipeline'); }, []);
+
+  // Demo leads filter (persistent across page loads)
+  const [hideDemos, setHideDemos] = useState(
+    () => localStorage.getItem('rt_hide_demos') === 'true',
+  );
+  const visibleLeads = hideDemos ? leads.filter((l) => !l.isDemo) : leads;
+
   const [showClosed, setShowClosed] = useState(false);
 
   const visibleStages = showClosed
@@ -499,13 +508,14 @@ export default function ProjectPipeline() {
   const grouped = useMemo(() => {
     const map = new Map<string, ProjectPipelineLead[]>();
     for (const s of ALL_PROJ_STAGES) map.set(s.key, []);
-    for (const lead of leads) {
+    for (const lead of visibleLeads) {
       map.get(lead.pipelineStage)?.push(lead);
     }
     return map;
-  }, [leads]);
+  }, [visibleLeads]);
 
-  const activeCount = leads.filter((l) => l.pipelineStage !== 'closed_warranty').length;
+  const demoCount  = leads.filter((l) => l.isDemo).length;
+  const activeCount = visibleLeads.filter((l) => l.pipelineStage !== 'closed_warranty').length;
   const closedCount = grouped.get('closed_warranty')?.length ?? 0;
 
   // All non-terminal stages open by default; closed_warranty collapsed until toggled.
@@ -538,6 +548,25 @@ export default function ProjectPipeline() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
+            {/* Hide demo toggle */}
+            {demoCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hideDemos}
+                  onChange={(e) => {
+                    setHideDemos(e.target.checked);
+                    localStorage.setItem('rt_hide_demos', String(e.target.checked));
+                  }}
+                  className="rounded border-border"
+                />
+                Hide demo
+                <span className="text-[10px] tabular-nums bg-muted px-1.5 py-0.5 rounded-full">
+                  {demoCount}
+                </span>
+              </label>
+            )}
+            {demoCount > 0 && <span className="text-muted-foreground/30 text-xs">·</span>}
             {/* Show Closed toggle */}
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
               <input

@@ -11,6 +11,6 @@ export type ComponentStatus = typeof ComponentStatus[keyof typeof ComponentStatu
 
 export const ComponentStatus = {
   present: 'present',
-  absent: 'absent',
-  not_determined: 'not_determined',
+  not_observed: 'not_observed',
+  undetermined: 'undetermined',
 } as const;

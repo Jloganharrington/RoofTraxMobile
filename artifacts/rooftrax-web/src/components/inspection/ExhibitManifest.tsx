@@ -425,9 +425,9 @@ function ComparisonSlotCard({
     : (slot.afterCandidates[0] ?? null);
 
   const pairTypeLabel: Record<string, string> = {
-    pre_post_loss: "Before / After Loss",
-    condition_differentiation: "Covered vs. Pre-existing",
-    directional_comparison: "Recency Comparison",
+    recency: "Recency Comparison",
+    covered_vs_unrelated: "Covered vs. Pre-existing",
+    cause_differentiation: "Cause Differentiation",
   };
 
   async function handleConfirmPair() {

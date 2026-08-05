@@ -9,12 +9,15 @@ export default function Home() {
 
   useEffect(() => {
     if (!isLoading && authEnvelope?.user) {
-      setLocation("/inspections");
+      // Resume the pipeline the user last visited; default to insurance on first visit.
+      const last = localStorage.getItem('rt_last_pipeline') ?? '/insurance-pipeline';
+      setLocation(last);
     }
   }, [isLoading, authEnvelope, setLocation]);
 
   const handleLogin = () => {
-    window.location.href = `/api/login?returnTo=/rooftrax-web/inspections`;
+    const last = localStorage.getItem('rt_last_pipeline') ?? '/insurance-pipeline';
+    window.location.href = `/api/login?returnTo=/rooftrax-web${last}`;
   };
 
   if (isLoading) {

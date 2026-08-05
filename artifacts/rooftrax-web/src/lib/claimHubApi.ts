@@ -74,6 +74,7 @@ export interface UnifiedLead {
   repName: string | null;
   detailPath: string;
   createdAt: string;
+  isDemo: boolean;
 }
 
 /** @deprecated Use UnifiedLead — kept temporarily to avoid type errors during migration */
@@ -305,6 +306,8 @@ export interface PipelineInspection {
   loopNextActionAt: string | null;
   /** Source pipeline when this lead converges (e.g. 'insurance' on pm_handoff) */
   sourcePipeline: string | null;
+  isDemo: boolean;
+  needsStageReview: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -333,14 +336,6 @@ export function useProvisionSamplePackage() {
     onSuccess: (data) => {
       queryClient.setQueryData(getSamplePackageInfoQueryKey(), data);
     },
-  });
-}
-
-/** @deprecated — kept for branding preview compatibility */
-export function useGetSamplePackage() {
-  return useQuery({
-    queryKey: ['sample-package', 'html'] as const,
-    queryFn: () => customFetch<{ html: string }>('/api/sample-package'),
   });
 }
 
@@ -379,6 +374,8 @@ export interface ProjectPipelineLead {
   customerName: string | null;
   repName: string | null;
   createdAt: string;
+  isDemo: boolean;
+  needsStageReview: boolean;
 }
 
 export const getProjectPipelineQueryKey = () => ['project-pipeline'] as const;
@@ -592,6 +589,8 @@ export interface RetailLead {
   stageEnteredAt: string | null;
   loopNextActionAt: string | null;
   lossReason: string | null;
+  isDemo: boolean;
+  needsStageReview: boolean;
   createdAt: string;
 }
 
@@ -823,21 +822,6 @@ export function useDeleteLeadFile(leadId: string) {
       if (context?.prev) qc.setQueryData(getLeadFilesQueryKey(leadId), context.prev);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: getLeadFilesQueryKey(leadId) }),
-  });
-}
-
-export function useAdvanceLeadStage(leadId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: AdvanceStagePayload) =>
-      customFetch<{ lead: FullLead }>(`/api/leads/${leadId}/advance-stage`, {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: (data) => {
-      qc.setQueryData(getLeadQueryKey(leadId), data);
-      qc.invalidateQueries({ queryKey: getLeadsQueryKey() });
-    },
   });
 }
 

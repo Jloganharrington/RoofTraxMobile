@@ -69,8 +69,8 @@ const LINEAR_LABELS: Record<(typeof WHOLE_ROOF_LINEAR_TYPES)[number], string> = 
 
 const STATUS_LABELS: Record<ComponentStatusValue, string> = {
   present: 'Present',
-  absent: 'Absent',
-  not_determined: 'Not determined',
+  not_observed: 'Not observed',
+  undetermined: 'Undetermined',
 };
 
 const EAVE_STATUS_ITEMS: Array<{ type: ComponentTypeValue; label: string; hint: string }> = [
@@ -88,7 +88,7 @@ const DECKING_OPTIONS: Array<{ label: string; status: ComponentStatusValue }> = 
 ];
 
 const VENTILATION_OPTIONS: Array<{ label: string; status: ComponentStatusValue }> = [
-  { label: 'None', status: ComponentStatus.absent },
+  { label: 'None', status: ComponentStatus.not_observed },
   { label: 'Box Vents', status: ComponentStatus.present },
   { label: 'Alum Ridge', status: ComponentStatus.present },
   { label: 'SOS Ridge', status: ComponentStatus.present },

@@ -56,9 +56,9 @@ const CLASS_COLORS: Record<ExhibitClass, string> = {
 };
 
 const PAIR_TYPE_LABELS: Record<ComparisonPairType, string> = {
-  pre_post_loss: "Pre/Post Loss",
-  condition_differentiation: "Condition Differentiation",
-  directional_comparison: "Directional Comparison",
+  recency: "Recency",
+  covered_vs_unrelated: "Covered vs. Pre-existing",
+  cause_differentiation: "Cause Differentiation",
 };
 
 const CAPTION_STATE_LABELS: Record<string, string> = {
@@ -262,7 +262,7 @@ export default function PhotoCuration() {
   // First photo click sets pairFirst; second click submits the pair.
   const [isPairing, setIsPairing] = useState(false);
   const [pairFirst, setPairFirst] = useState<PhotoBrief | null>(null);
-  const [pairType, setPairType] = useState<ComparisonPairType>("pre_post_loss");
+  const [pairType, setPairType] = useState<ComparisonPairType>("recency");
   const [pairNotes, setPairNotes] = useState("");
   const [expandedCaptionId, setExpandedCaptionId] = useState<string | null>(null);
   const [editingCaption, setEditingCaption] = useState<Record<string, string>>({});
@@ -556,7 +556,7 @@ export default function PhotoCuration() {
               <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
                 <p className="text-sm font-medium">Build a pair</p>
                 <div className="flex flex-wrap gap-2">
-                  {(["pre_post_loss", "condition_differentiation", "directional_comparison"] as ComparisonPairType[]).map(
+                  {(["recency", "covered_vs_unrelated", "cause_differentiation"] as ComparisonPairType[]).map(
                     (pt) => (
                       <button
                         key={pt}

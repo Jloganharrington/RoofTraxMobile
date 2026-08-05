@@ -1,0 +1,15 @@
+Verification pass — do not fix anything, report only. The five remediation tracks (A: badge/attest, B: IICRC/vocabulary, C: cause_differentiation, D: supplement flow, E: routes) report complete. Independently verify each with evidence, then run the end-to-end acceptance:
+
+1. Track A evidence: grep output proving zero A–M badge scheme remnants; the attestation block-selection code path (must be block_b always, internal preparer branch); a compile→attest test run showing a NEW signed blob version whose generationSnapshot contains reportAttestationId + preparedAt + standardsCited, with the review blob unchanged and badge assignments byte-identical between blobs; deliver 422s without the signed blob and succeeds with it.
+
+2. Track B evidence: DB query showing STD-WTR-01 and STD-WTR-02 with humanEnteredProvisionsOnly=true; an assembled prompt payload for an interior-water claim section asserting 'S500', 'S520', 'IICRC' appear nowhere in it; the placeholder present in generated output; an edge-assembly caption rendering the Present / Not Observed / Undetermined vocabulary.
+
+3. Track C evidence: the comparison enum containing exactly recency | cause_differentiation | covered_vs_unrelated; grep showing zero pre_loss remnants; manifest derivation test output (slot present with both-side candidates, absent otherwise); a generated cause_differentiation caption set in the Class 6 three-caption structure.
+
+4. Track D evidence: issue a supplement on a claim with a delivered package — original blob hash-identical before/after, supplement has its own signed blob + own reportAttestations row, supplement photo takes the next in-class badge with nothing renumbered, timeline shows supplement_created / supplement_attested / supplement_delivered, supplement deliver blocked until its own attestation.
+
+5. Track E evidence: /inspections/:id/summary redirects to the stepper with id mapping; route smoke check output (every inventory route renders or documented-redirects); confirmation that section approval exists on exactly one surface.
+
+6. END-TO-END ACCEPTANCE: walk one test claim through the entire path — attested field record → field data review → curation including one confirmed cause_differentiation pair → estimate line → parallel generation of the five independent sections → approve/lock all with hard-gate confirmations → Summary + Closing → compile → attest → deliver. Report each step's result and, if it breaks anywhere, the exact failing point and error.
+
+Output: a pass/fail table per item with the evidence inline, and the end-to-end result. Anything that cannot be evidenced is FAIL, not "assumed complete."

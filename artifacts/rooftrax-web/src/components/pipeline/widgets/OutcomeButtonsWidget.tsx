@@ -8,12 +8,16 @@
  * config.datetimeFirst: boolean — when true, shows a datetime picker above the
  *   outcome buttons (used by the follow_up loop stage).
  * config.datetimeLabel: string — label for the datetime picker.
+ *
+ * When onClose is provided the widget is in inline-card mode and renders
+ * a × button to collapse back to the trigger.
  */
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { useAdvanceStage, type WidgetProps } from './shared';
 
 interface Outcome {
@@ -30,7 +34,7 @@ const LOSS_REASONS = [
   { value: 'other',       label: 'Other' },
 ];
 
-export function OutcomeButtonsWidget({ leadId, toStage: _toStage, config, onSuccess }: WidgetProps) {
+export function OutcomeButtonsWidget({ leadId, toStage: _toStage, config, onSuccess, onClose }: WidgetProps) {
   const label              = (config.label              as string    | undefined) ?? 'Choose Outcome';
   const outcomes           = (config.outcomes           as Outcome[] | undefined) ?? [];
   const requiresLossReason = (config.requiresLossReason as boolean   | undefined) ?? false;
@@ -43,9 +47,10 @@ export function OutcomeButtonsWidget({ leadId, toStage: _toStage, config, onSucc
   const [datetime, setDatetime]       = useState('');
   const { mutate } = useAdvanceStage(leadId);
 
+  const dark = !!onClose;
+
   function handleOutcome(outcome: Outcome) {
     if (requiresLossReason && outcome.toStage === 'archived_lost') {
-      // Show inline loss-reason picker before advancing
       setLossOutcome(outcome);
       return;
     }
@@ -86,17 +91,31 @@ export function OutcomeButtonsWidget({ leadId, toStage: _toStage, config, onSucc
   // Inline loss-reason picker
   if (lossOutcome) {
     return (
-      <form onSubmit={handleLossSubmit} className="mt-2 space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Reason for loss</p>
+      <form onSubmit={handleLossSubmit} className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className={cn('text-xs font-medium', dark ? 'text-white/50' : 'text-muted-foreground')}>
+            Reason for loss
+          </p>
+          {onClose && (
+            <button type="button" onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
         <select
           value={lossReason}
           onChange={(e) => setLossReason(e.target.value)}
-          className="w-full h-8 rounded-md border border-input bg-background px-2 text-sm"
+          className={cn(
+            'w-full h-8 rounded-md border px-2 text-sm',
+            dark ? 'border-white/15 bg-white/5 text-white' : 'border-input bg-background',
+          )}
           required
         >
-          <option value="">Select reason…</option>
+          <option value="" className={cn(dark && 'bg-slate-800')}>Select reason…</option>
           {LOSS_REASONS.map((r) => (
-            <option key={r.value} value={r.value}>{r.label}</option>
+            <option key={r.value} value={r.value} className={cn(dark && 'bg-slate-800')}>
+              {r.label}
+            </option>
           ))}
         </select>
         <div className="flex gap-1.5">
@@ -104,7 +123,7 @@ export function OutcomeButtonsWidget({ leadId, toStage: _toStage, config, onSucc
             type="button"
             size="sm"
             variant="ghost"
-            className="flex-1 text-muted-foreground"
+            className={cn('flex-1', dark ? 'text-white/40 hover:text-white/60' : 'text-muted-foreground')}
             onClick={() => setLossOutcome(null)}
             disabled={pending !== null}
           >
@@ -126,25 +145,39 @@ export function OutcomeButtonsWidget({ leadId, toStage: _toStage, config, onSucc
   }
 
   return (
-    <div className="mt-2 space-y-1.5">
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className={cn('text-xs font-medium', dark ? 'text-white/50' : 'text-muted-foreground')}>
+          {label}
+        </p>
+        {onClose && (
+          <button type="button" onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       {datetimeFirst && (
         <div className="space-y-1 mb-2">
-          <Label className="text-xs text-muted-foreground">{datetimeLabel}</Label>
+          <Label className={cn('text-xs', dark ? 'text-white/50' : 'text-muted-foreground')}>
+            {datetimeLabel}
+          </Label>
           <Input
             type="datetime-local"
             value={datetime}
             onChange={(e) => setDatetime(e.target.value)}
-            className="h-8 text-sm"
+            className={cn('h-8 text-sm', dark && 'border-white/15 bg-white/5 text-white')}
           />
         </div>
       )}
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       {outcomes.map((outcome) => (
         <Button
           key={outcome.key}
           size="sm"
           variant="outline"
-          className="w-full justify-start text-left"
+          className={cn(
+            'w-full justify-start text-left',
+            dark && 'border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.07] hover:text-white',
+          )}
           disabled={pending !== null}
           onClick={() => handleOutcome(outcome)}
         >

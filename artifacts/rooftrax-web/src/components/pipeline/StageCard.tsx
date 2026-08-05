@@ -1,8 +1,6 @@
 /**
- * StageCard — kanban card wrapper that handles pipeline loop-stage visual states.
- *
- * - Amber border when loopNextActionAt is past (overdue)
- * - Red age badge when the pin has been in this stage >14 days
+ * StageCard — dark kanban card wrapper.
+ * Handles pipeline loop-stage visual states (overdue, aged, stage-review).
  */
 import { type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
@@ -15,6 +13,12 @@ interface StageCardProps {
   loopNextActionAt?: string | Date | null;
   /** Whether this is a loop stage (enables overdue amber styling) */
   isLoopStage?: boolean;
+  /**
+   * When true the stage was automatically assigned during a null-stage
+   * normalisation pass. Renders an orange badge so a manager can confirm
+   * the placement is correct.
+   */
+  needsStageReview?: boolean;
   className?: string;
 }
 
@@ -28,8 +32,8 @@ function daysSince(d: Date): number {
 }
 
 function formatDays(n: number): string {
-  const rounded = Math.floor(n);
-  return rounded === 1 ? '1d' : `${rounded}d`;
+  const r = Math.floor(n);
+  return r === 1 ? '1d' : `${r}d`;
 }
 
 export function StageCard({
@@ -37,22 +41,23 @@ export function StageCard({
   stageEnteredAt,
   loopNextActionAt,
   isLoopStage = false,
+  needsStageReview = false,
   className,
 }: StageCardProps) {
-  const enteredDate  = toDate(stageEnteredAt);
+  const enteredDate    = toDate(stageEnteredAt);
   const nextActionDate = toDate(loopNextActionAt);
+  const now            = new Date();
 
-  const now = new Date();
-  const isOverdue = isLoopStage && nextActionDate !== null && nextActionDate < now;
+  const isOverdue   = isLoopStage && nextActionDate !== null && nextActionDate < now;
   const daysInStage = enteredDate ? daysSince(enteredDate) : null;
-  const isAged = daysInStage !== null && daysInStage > 14;
+  const isAged      = daysInStage !== null && daysInStage > 14;
 
   return (
     <div
       className={cn(
-        'relative rounded-lg border bg-white shadow-sm p-3 transition-colors',
-        isOverdue && 'border-amber-400 bg-amber-50/30',
-        !isOverdue && 'border-border',
+        'relative rounded-xl p-3.5 transition-all',
+        'bg-[#1e2235] border border-white/[0.08]',
+        isOverdue && 'border-amber-500/40 ring-1 ring-amber-500/10',
         className,
       )}
     >
@@ -60,10 +65,10 @@ export function StageCard({
       {daysInStage !== null && daysInStage >= 1 && (
         <span
           className={cn(
-            'absolute top-2 right-2 text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none',
+            'absolute top-2.5 right-2.5 text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none',
             isAged
-              ? 'bg-red-100 text-red-700'
-              : 'bg-muted text-muted-foreground',
+              ? 'bg-red-500/20 text-red-400'
+              : 'bg-white/[0.07] text-white/40',
           )}
           title={enteredDate ? `In stage since ${enteredDate.toLocaleDateString()}` : undefined}
         >
@@ -71,11 +76,14 @@ export function StageCard({
         </span>
       )}
 
-      {/* Overdue label for loop stages */}
+      {/* Stage-review badge */}
+      {needsStageReview && (
+        <p className="text-[10px] font-medium text-orange-400 mb-1.5">Stage review needed</p>
+      )}
+
+      {/* Overdue badge */}
       {isOverdue && (
-        <p className="text-[10px] font-medium text-amber-600 mb-1">
-          Action overdue
-        </p>
+        <p className="text-[10px] font-medium text-amber-400 mb-1.5">Action overdue</p>
       )}
 
       {children}

@@ -1,0 +1,11 @@
+Follow-up to the audit — four items:
+
+1. MIGRATION HYGIENE (do first): The pipeline columns (stage_entered_at, loop_next_action_at, loss_reason, source_pipeline) and the stage_transitions table were hand-applied via DDL, so no migration file exists for them. Generate the proper Drizzle migration reflecting exactly this delta, and verify it is a no-op against the current DB (columns/table already exist) but would fully create them on a fresh database. Confirm drizzle-kit generate produces no unexpected additional diff afterward — if it does, list it before applying anything.
+
+2. LEAD VISIBILITY VERIFICATION: All Leads shows 14 seeded leads. Verify every one of them renders in a pipeline column or an archived stage: query pins grouped by pipeline + stageKey, list any leads with null/unmapped stageKey, and run the stage-mapping migration from the pipeline rebuild for any that were missed (unmapped → nearest earlier stage + needsStageReview flag rendered as a card badge). Acceptance: count in All Leads == sum of leads across all pipeline columns + archived, zero leads invisible.
+
+3. LANDING CONSISTENCY: Home currently redirects to /retail-pipeline while /inspections redirects to /leads. Change authenticated landing to the user's last-visited pipeline (localStorage), defaulting to /insurance-pipeline on first visit. /inspections redirect target stays /leads.
+
+4. ROUTE INVENTORY ARTIFACT: Write the full audit result to docs/route-inventory.md in the repo: every route/page (all 27), its purpose, its navigation entry point (nav pane / Lead Profile / deep-link only / none), its data dependencies (hooks + endpoints), and its disposition (active / redirect / removed / flagged-stale). Include the removed hooks (useGetSamplePackage, useAdvanceLeadStage) and the redirects added, so the next audit diffs against this file instead of starting from zero.
+
+5. DEMO DATA: Add a seeded boolean (or reuse the demo-seeder owner marker) filter — a "Hide demo leads" toggle on All Leads and each pipeline view, defaulting to visible in dev. Do not delete the seeds; they're the test fixtures for the pipeline flows.

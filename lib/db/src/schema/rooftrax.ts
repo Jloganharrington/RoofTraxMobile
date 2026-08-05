@@ -217,6 +217,16 @@ export const pinsTable = pgTable('pins', {
   /** Which pipeline this pin belongs to ('retail' | 'insurance') */
   sourcePipeline:   varchar('source_pipeline'),
 
+  /** True when the pin was seeded/created as demo or test data */
+  isDemo:            boolean('is_demo').default(false).notNull(),
+  /**
+   * Set to true when a null pipelineStage was automatically mapped to
+   * pin_dropped during the stage-normalisation migration. Cards in the
+   * pipeline show a "Stage review needed" badge so managers can confirm the
+   * correct placement.
+   */
+  needsStageReview: boolean('needs_stage_review').default(false).notNull(),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

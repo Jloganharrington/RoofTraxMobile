@@ -596,6 +596,11 @@ export interface StandardsEntryInput {
   verificationStatus: string;
   version: number;
   verifiedAt?: Date | null;
+  /** True for entries whose provision text is human-authored under a licensed
+   * standard (e.g. IICRC S500/S520) and must not be reproduced by the AI
+   * prompt. The generation worker must filter these out of prompt context and
+   * emit a citation placeholder token for human completion. */
+  humanEnteredProvisionsOnly?: boolean;
 }
 
 export interface BoilerplateVersionInput {

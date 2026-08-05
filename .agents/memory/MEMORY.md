@@ -41,3 +41,7 @@
 - [Facet inventory single-stage flow](facet-routing-two-stage.md) — routing scrapped; single AI call extracts count/areas/pitches; inspector decides walking order; mobile confirm card replaces State B/C.
 - [Estimate price-book snapshot integrity](estimate-price-snapshots.md) — catalog-referencing lines must be server-hydrated (price/desc/unit from DB); advisory steps join all three stage mirrors but get no gate rules.
 - [AHJ material applicability item dimension](ahj-material-applicability.md) — per-item jsonb materialApplicability + needsMaterialReview; PATCH gate; v1.1 prompt; material canary in Virginia eval.
+- [Pipeline schema migrations](pipeline-schema-migrations.md) — pipeline rebuild added 4 pins columns + stage_transitions table; must be applied manually via SQL when DB is out of sync; SQL DDL in the file.
+- [Generated schema enum cascade](generated-schema-cascade.md) — changing a DB enum ripples through 4 generated files (lib/db schema, api-zod types+api, api-client-react schemas) + 2 dist --force rebuilds; mobile imports ComponentStatus from api-client-react, not api-zod.
+- [lib/db composite build](lib-db-composite-build.md) — api-server uses TS project references to lib/db; after schema edits run `cd lib/db && npx tsc --build` or tsc sees stale declarations.
+- [Demo + stage-review flags](demo-stage-review-flags.md) — pins.is_demo marks seed data (hide-demo toggle, localStorage rt_hide_demos); pins.needs_stage_review flags auto-mapped null-stage pins; both in 0001_known_cyclops.sql migration.
