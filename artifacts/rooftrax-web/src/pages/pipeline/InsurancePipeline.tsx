@@ -497,7 +497,7 @@ function InsuranceCard({
           <ButtonLinkWidget
             leadId={id}
             toStage="claim_filed"
-            config={{ label: 'Deliver Package to Homeowner', href: '/leads/:leadId?tab=package' }}
+            config={{ label: 'Send to Homeowner', href: '/leads/:leadId?tab=package' }}
             onSuccess={onSuccess}
           />
         );
