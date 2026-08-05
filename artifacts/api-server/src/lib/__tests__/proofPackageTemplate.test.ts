@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildProofPackageHtml, type ProofPackageData } from '../proofPackageTemplate';
+import { buildProofPackageHtml, type ProofPackageData, type ProofPackageComparisonExhibit } from '../proofPackageTemplate';
 
 const baseData: ProofPackageData = {
   reportId: 'ABC12345',
@@ -103,11 +103,58 @@ const baseData: ProofPackageData = {
   signatureUrl: null,
 };
 
+/** A cause_differentiation comparison pair for use in tests. */
+const sampleCauseDiffExhibit: ProofPackageComparisonExhibit = {
+  pairId: 'pair-cd-0001',
+  pairType: 'cause_differentiation',
+  setCaption:
+    'Comparison — localized impact condition (top) and general surface weathering (bottom), south slope.',
+  before: {
+    id: 'photo-before-0001',
+    url: null,
+    stage: 'test_squares',
+    subject: 'South slope — hail impact zone',
+    caption: 'Photo — Exhibit C-1 — conditions documented as localized hail-impact bruising with granule displacement.',
+    sha256: null,
+    area: 'roof',
+    perPhotoCaption:
+      'Photo — Exhibit C-1 — conditions documented as localized hail-impact bruising with granule displacement.',
+  },
+  after: {
+    id: 'photo-after-0001',
+    url: null,
+    stage: 'components',
+    subject: 'South slope — field shingles',
+    caption: 'Photo — Exhibit C-2 — conditions documented as uniform age-related surface wear across field shingles.',
+    sha256: null,
+    area: 'roof',
+    perPhotoCaption:
+      'Photo — Exhibit C-2 — conditions documented as uniform age-related surface wear across field shingles.',
+  },
+};
+
 describe('buildProofPackageHtml', () => {
-  it('renders all applicable exhibits with fixed letters and supplemental pages', () => {
+  it('renders all numbered sections and supplemental pages when all data is present', () => {
     const html = buildProofPackageHtml(baseData);
-    for (const letter of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']) {
-      expect(html).toContain(`Exhibit ${letter} —`);
+    // Template uses sequential numbers (01, 02, …) — not fixed A–M letters.
+    // Verify all 13 sections appear by their section titles.
+    const expectedSections = [
+      'Homeowner Information',
+      'Statement of Qualifications',
+      'Inspection Methodology',
+      'Storm Event Verification',
+      'Damage Documentation',
+      'Repairability Assessment',
+      'Manufacturer Documentation',
+      'Measurement Report',
+      'Applicable Codes',        // "& Regulations" is HTML-escaped in the eyebrow
+      'Scope of Work',           // "& Pricing Basis" is HTML-escaped
+      'Conditions',              // "& Adders" is HTML-escaped
+      'Contract Exhibit',
+      'Repairability Conclusion',
+    ];
+    for (const title of expectedSections) {
+      expect(html).toContain(title);
     }
     // Token substitution.
     expect(html).toContain('Prepared by NuHome Exteriors LLC (VA Class A Contractor License #2705-064938A).');
@@ -121,21 +168,22 @@ describe('buildProofPackageHtml', () => {
     expect(html).toContain('Va. Code § 38.2-1845.1');
   });
 
-  it('omits inapplicable exhibits without shifting letters', () => {
+  it('omits inapplicable sections when optional data is absent', () => {
     const html = buildProofPackageHtml({
       ...baseData,
-      storm: null, // no Exhibit D
-      product: null, // no Exhibit G
-      measurement: null, // no Exhibit H
-      statePack: { ...baseData.statePack, codeCitations: [] }, // no Exhibit I
+      storm: null,        // no Storm Event Verification
+      product: null,      // no Manufacturer Documentation
+      measurement: null,  // no Measurement Report
+      statePack: { ...baseData.statePack, codeCitations: [] }, // no Applicable Codes
     });
-    expect(html).not.toContain('Exhibit D —');
-    expect(html).not.toContain('Exhibit G —');
-    expect(html).not.toContain('Exhibit H —');
-    expect(html).not.toContain('Exhibit I —');
-    // J keeps its letter even with earlier exhibits omitted.
-    expect(html).toContain('Exhibit J —');
-    expect(html).toContain('Exhibit M —');
+    // Omitted sections leave no trace.
+    expect(html).not.toContain('Storm Event Verification');
+    expect(html).not.toContain('Manufacturer Documentation');
+    expect(html).not.toContain('Measurement Report');
+    expect(html).not.toContain('Applicable Codes');
+    // Sections that remain are still rendered (numbers shift but titles are stable).
+    expect(html).toContain('Scope of Work');
+    expect(html).toContain('Repairability Conclusion');
   });
 
   it('escapes untrusted text fields', () => {
@@ -144,6 +192,72 @@ describe('buildProofPackageHtml', () => {
       property: { ...baseData.property, insuredName: '<script>alert(1)</script>' },
     });
     expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  // ── Comparison exhibit (Class C) ────────────────────────────────────────
+
+  it('cause_differentiation pair renders exactly three caption strings in the correct structure', () => {
+    const html = buildProofPackageHtml({
+      ...baseData,
+      comparisonExhibits: [sampleCauseDiffExhibit],
+    });
+
+    // 1. Set caption — the pair-level narrative
+    expect(html).toContain(
+      'Comparison — localized impact condition (top) and general surface weathering (bottom), south slope.',
+    );
+
+    // 2. Top (before) per-photo caption
+    expect(html).toContain(
+      'Photo — Exhibit C-1 — conditions documented as localized hail-impact bruising with granule displacement.',
+    );
+
+    // 3. Bottom (after) per-photo caption
+    expect(html).toContain(
+      'Photo — Exhibit C-2 — conditions documented as uniform age-related surface wear across field shingles.',
+    );
+
+    // Type label appears in the exhibit ribbon
+    expect(html).toContain('COMPARISON EXHIBIT — Cause Differentiation');
+
+    // Role tags for top/bottom orientation
+    expect(html).toContain('Top');
+    expect(html).toContain('Bottom');
+
+    // The unbreakable block is present (page-break-inside guard)
+    expect(html).toContain('page-break-inside:avoid');
+  });
+
+  it('comparison exhibit block is contained within the Damage Documentation section', () => {
+    const html = buildProofPackageHtml({
+      ...baseData,
+      comparisonExhibits: [sampleCauseDiffExhibit],
+    });
+
+    // The comparison ribbon should appear after the section header
+    const sectionIdx = html.indexOf('Damage Documentation');
+    const ribbonIdx = html.indexOf('COMPARISON EXHIBIT');
+    expect(sectionIdx).toBeGreaterThan(-1);
+    expect(ribbonIdx).toBeGreaterThan(sectionIdx);
+  });
+
+  it('renders without comparison exhibits when none provided', () => {
+    const html = buildProofPackageHtml({ ...baseData, comparisonExhibits: [] });
+    expect(html).not.toContain('COMPARISON EXHIBIT');
+    expect(html).not.toContain('page-break-inside:avoid');
+  });
+
+  it('escapes untrusted content in comparison exhibit captions', () => {
+    const injected: ProofPackageComparisonExhibit = {
+      ...sampleCauseDiffExhibit,
+      setCaption: '<script>evil()</script>',
+      before: { ...sampleCauseDiffExhibit.before, perPhotoCaption: '<img onerror=x>' },
+      after: { ...sampleCauseDiffExhibit.after, perPhotoCaption: 'safe' },
+    };
+    const html = buildProofPackageHtml({ ...baseData, comparisonExhibits: [injected] });
+    expect(html).not.toContain('<script>evil()');
+    expect(html).not.toContain('<img onerror');
     expect(html).toContain('&lt;script&gt;');
   });
 });

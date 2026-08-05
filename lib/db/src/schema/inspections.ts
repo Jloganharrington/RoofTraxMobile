@@ -1504,11 +1504,38 @@ export const exhibitCaptionsTable = pgTable('exhibit_captions', {
     .$onUpdate(() => new Date()),
 });
 
-// =============================================================================
-// BOILERPLATE LIBRARY (Task #121)
-// =============================================================================
-
-// Valid section keys for the per-tenant boilerplate library.
+/**
+ * One set-caption row per confirmed comparison pair. Holds the pair-level
+ * narrative that introduces both photos as a unit, generated alongside the two
+ * per-photo captions in a single comparison-specific AI call. State lifecycle
+ * mirrors exhibitCaptionsTable; locked rows are permanently immutable.
+ */
+export const comparisonSetCaptionsTable = pgTable('comparison_set_captions', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  inspectionId: varchar('inspection_id')
+    .notNull()
+    .references(() => inspectionsTable.id, { onDelete: 'cascade' }),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  /** The pair this set caption belongs to. Cascades when the pair is removed. */
+  comparisonPairId: varchar('comparison_pair_id')
+    .notNull()
+    .references(() => comparisonPairsTable.id, { onDelete: 'cascade' }),
+  /** AI-generated or human-edited pair-level caption. Null until generated. */
+  captionText: text('caption_text'),
+  state: varchar('state', { enum: CAPTION_STATES }).notNull().default('pending'),
+  generatedAt: timestamp('generated_at', { withTimezone: true }),
+  lockedAt: timestamp('locked_at', { withTimezone: true }),
+  lockedBy: varchar('locked_by').references(() => usersTable.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
 export const BOILERPLATE_SECTION_KEYS = [
   'opening_statement',
   'inspection_method',

@@ -44,6 +44,28 @@ export type ProofPackagePhoto = {
   area: 'roof' | 'siding' | 'interior' | 'collateral' | 'general';
 };
 
+/** One photo in a comparison exhibit, carrying its own per-photo caption. */
+export type ComparisonExhibitPhoto = ProofPackagePhoto & {
+  /** Per-photo caption stating precisely what this side of the comparison shows. */
+  perPhotoCaption: string;
+};
+
+/**
+ * A Class C (Comparison) exhibit unit: two photos displayed stacked with a
+ * pair-level set caption plus individual per-photo captions.
+ * pairType drives the narrative pattern used during caption generation.
+ */
+export type ProofPackageComparisonExhibit = {
+  pairId: string;
+  pairType: 'recency' | 'cause_differentiation' | 'covered_vs_unrelated';
+  /** Pair-level set caption describing the comparison as a whole. */
+  setCaption: string;
+  /** The "before" / top photo in the stacked pair. */
+  before: ComparisonExhibitPhoto;
+  /** The "after" / bottom photo in the stacked pair. */
+  after: ComparisonExhibitPhoto;
+};
+
 export type ProofPackageScopeLine = {
   description: string;
   qty: number;
@@ -149,6 +171,12 @@ export type ProofPackageData = {
     discontinuedNote: string | null;
   } | null;
   photos: ProofPackagePhoto[];
+  /**
+   * Class C (Comparison) exhibit units. Each entry renders as one unbreakable
+   * block: set caption → stacked photo pair → per-photo captions. Optional —
+   * absent on packages with no confirmed comparison pairs.
+   */
+  comparisonExhibits?: ProofPackageComparisonExhibit[];
   /** Inspector attestation (AI-drafted, sanitized upstream) for certification. */
   attestationHtml: string;
   /** Supplemental pre-built inner-HTML sections (already sanitized/escaped). */
@@ -378,6 +406,47 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
           <div class="photo-grid">${cells}</div>`,
       });
     });
+
+    // Class C (Comparison) exhibit units — one unbreakable block per pair.
+    // Rendered after single-photo pages so they appear as a distinct exhibit
+    // type at the end of the photo evidence section.
+    const compExhibits = data.comparisonExhibits ?? [];
+    compExhibits.forEach((cx) => {
+      const pairTypeLabel: Record<string, string> = {
+        recency: 'Recency Comparison',
+        cause_differentiation: 'Cause Differentiation',
+        covered_vs_unrelated: 'Covered vs. Pre-existing',
+      };
+      const typeLabel = pairTypeLabel[cx.pairType] ?? cx.pairType;
+
+      function compPhoto(p: ComparisonExhibitPhoto, role: 'Top' | 'Bottom') {
+        return `<div class="photo-cell comparison-photo"><div class="photo-frame">
+          ${p.url ? `<img src="${esc(p.url)}" alt="${esc(p.perPhotoCaption || 'Comparison photo')}" loading="lazy">` : '<div class="photo-missing">Photo unavailable</div>'}
+          <div class="frame-corner tl"></div><div class="frame-corner tr"></div><div class="frame-corner bl"></div><div class="frame-corner br"></div>
+          <div class="comparison-role-tag">${esc(role)}</div>
+        </div>
+        <div class="photo-caption">
+          <span class="id">${esc(p.id.slice(0, 8).toUpperCase())}${p.stage ? ` · ${esc(p.stage)}` : ''}</span>
+          <span class="desc">${esc(p.perPhotoCaption || p.subject)}</span>
+        </div></div>`;
+      }
+
+      pages.push({
+        runheadTitle: 'Damage Documentation & Photo Index',
+        bodyHtml: `${sectionContHead(eDamageN, 'Damage Documentation & Photo Index')}
+          <span class="exhibit-ribbon">COMPARISON EXHIBIT — ${esc(typeLabel)}</span>
+          <div class="comparison-exhibit-block" style="page-break-inside:avoid;">
+            <div class="comparison-set-caption" style="margin-bottom:10px; padding:8px 12px; background:var(--ink-faint,#f8f9fb); border-left:3px solid var(--accent,#1a56db); font-size:12px;">
+              ${esc(cx.setCaption)}
+            </div>
+            <div class="photo-grid comparison-photo-stack" style="display:flex; flex-direction:column; gap:12px;">
+              ${compPhoto(cx.before, 'Top')}
+              ${compPhoto(cx.after, 'Bottom')}
+            </div>
+          </div>`,
+      });
+    });
+
     addSection('Damage Documentation & Photo Index', pages);
   }
 

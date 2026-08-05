@@ -90,6 +90,7 @@ import {
   comparisonPairsTable,
   claimEventsTable,
   exhibitCaptionsTable,
+  comparisonSetCaptionsTable,
   type ExhibitClass,
   claimSectionsTable,
   standardsEntriesTable,
@@ -6403,6 +6404,94 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
           })
       : [];
 
+    // ── Class C (Comparison) exhibit units ───────────────────────────────
+    // Fetched live from DB so set captions generated after compile are
+    // included; resolved URLs reuse the freshSignedUrls pool or are
+    // resolved from the photo row if absent (pairs confirmed after compile).
+    const [renderPairs, renderSetCaptions, renderSelections, renderExhibitCaptions] = await Promise.all([
+      db.select().from(comparisonPairsTable)
+        .where(and(eq(comparisonPairsTable.inspectionId, inspection.id), eq(comparisonPairsTable.companyId, opts.companyId))),
+      db.select().from(comparisonSetCaptionsTable)
+        .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspection.id), eq(comparisonSetCaptionsTable.companyId, opts.companyId))),
+      db.select({ id: exhibitSelectionsTable.id, photoId: exhibitSelectionsTable.photoId })
+        .from(exhibitSelectionsTable)
+        .where(and(eq(exhibitSelectionsTable.inspectionId, inspection.id), eq(exhibitSelectionsTable.companyId, opts.companyId))),
+      db.select({ exhibitSelectionId: exhibitCaptionsTable.exhibitSelectionId, captionText: exhibitCaptionsTable.captionText })
+        .from(exhibitCaptionsTable)
+        .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, opts.companyId))),
+    ]);
+
+    const selByPhotoId = new Map(renderSelections.map((s) => [s.photoId, s.id]));
+    const captBySelId = new Map(renderExhibitCaptions.map((c) => [c.exhibitSelectionId, c.captionText ?? '']));
+    const setCaptByPairId = new Map(renderSetCaptions.map((sc) => [sc.comparisonPairId, sc.captionText ?? '']));
+
+    // Sign URLs for pair photos not already in the freshSignedUrls pool.
+    const pairPhotoIds = [...new Set([
+      ...renderPairs.map((p) => p.beforePhotoId),
+      ...renderPairs.map((p) => p.afterPhotoId),
+    ])].filter((id) => !freshSignedUrls.has(id));
+    if (pairPhotoIds.length > 0) {
+      const pairPhotoRows = await db.select({ id: inspectionPhotosTable.id, url: inspectionPhotosTable.url })
+        .from(inspectionPhotosTable)
+        .where(inArray(inspectionPhotosTable.id, pairPhotoIds));
+      await Promise.all(pairPhotoRows.map(async (photo) => {
+        if (photo.url) {
+          const signed = await tryGetPhotoSignedUrl(objectStorageService, photo.url);
+          freshSignedUrls.set(photo.id, signed);
+        }
+      }));
+    }
+
+    // Guard: every confirmed pair must have a generated/approved/locked set caption.
+    // A missing set caption means captions were never generated for this pair, which
+    // would silently omit a comparison exhibit from the rendered report. Fail loudly
+    // so the caller surfaces a blocking error rather than quietly losing the exhibit.
+    const pairsWithoutSetCaption = renderPairs.filter((pair) => !setCaptByPairId.get(pair.id));
+    if (pairsWithoutSetCaption.length > 0) {
+      return {
+        ok: false,
+        error: `${pairsWithoutSetCaption.length} comparison pair(s) are missing set captions — generate captions for all comparison pairs before rendering.`,
+        findings: pairsWithoutSetCaption.map((p) => ({ pairId: p.id, issue: 'missing_set_caption' })),
+      };
+    }
+
+    const comparisonExhibits = renderPairs
+      .map((pair) => {
+        const setCapText = setCaptByPairId.get(pair.id)!; // guard above ensures non-null
+        const beforeSelId = selByPhotoId.get(pair.beforePhotoId);
+        const afterSelId = selByPhotoId.get(pair.afterPhotoId);
+        const beforeCaptionText = beforeSelId ? (captBySelId.get(beforeSelId) ?? '') : '';
+        const afterCaptionText = afterSelId ? (captBySelId.get(afterSelId) ?? '') : '';
+        const beforeEntry = compiledData.photoIndex[pair.beforePhotoId];
+        const afterEntry = compiledData.photoIndex[pair.afterPhotoId];
+        return {
+          pairId: pair.id,
+          pairType: pair.pairType as 'recency' | 'cause_differentiation' | 'covered_vs_unrelated',
+          setCaption: setCapText,
+          before: {
+            id: pair.beforePhotoId,
+            url: freshSignedUrls.get(pair.beforePhotoId) ?? null,
+            stage: beforeEntry?.stage ?? null,
+            subject: [beforeEntry?.zone, beforeEntry?.subjectType].filter(Boolean).join(' · ') || 'Before photo',
+            caption: beforeCaptionText,
+            sha256: null as string | null,
+            area: 'roof' as const,
+            perPhotoCaption: beforeCaptionText,
+          },
+          after: {
+            id: pair.afterPhotoId,
+            url: freshSignedUrls.get(pair.afterPhotoId) ?? null,
+            stage: afterEntry?.stage ?? null,
+            subject: [afterEntry?.zone, afterEntry?.subjectType].filter(Boolean).join(' · ') || 'After photo',
+            caption: afterCaptionText,
+            sha256: null as string | null,
+            area: 'roof' as const,
+            perPhotoCaption: afterCaptionText,
+          },
+        };
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+
     const unlockLogHtml = compiledData.unlockLog?.length
       ? `<p style="font-size:12px;">This record was reopened under manager authorization after its original lock. Each reopen event is disclosed below.</p>
          <table class="detail-table"><thead><tr><th>Reopened by</th><th>When</th><th>Reason</th><th>Previously locked</th></tr></thead><tbody>
@@ -6445,6 +6534,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
       scope: rd.scope,
       product: rd.product,
       photos,
+      comparisonExhibits,
       attestationHtml: carrierVisible('attestationHtml') ? compiledData.attestationHtml : '',
       extras: {
         propertyDetailsHtml: carrierVisible('propertyDetailsHtml') ? compiledData.propertyDetailsHtml : null,
@@ -6616,7 +6706,7 @@ async function checkCurationNotFinalized(
 
 // Shared helper: load full curation state for a given inspection.
 async function loadCurationState(inspectionId: string, companyId: string) {
-  const [photos, selections, pairs, captions] = await Promise.all([
+  const [photos, selections, pairs, captions, setCaptions] = await Promise.all([
     db
       .select()
       .from(inspectionPhotosTable)
@@ -6637,6 +6727,11 @@ async function loadCurationState(inspectionId: string, companyId: string) {
       .from(exhibitCaptionsTable)
       .where(and(eq(exhibitCaptionsTable.inspectionId, inspectionId), eq(exhibitCaptionsTable.companyId, companyId)))
       .orderBy(exhibitCaptionsTable.badgeLabel),
+    db
+      .select()
+      .from(comparisonSetCaptionsTable)
+      .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspectionId), eq(comparisonSetCaptionsTable.companyId, companyId)))
+      .orderBy(comparisonSetCaptionsTable.createdAt),
   ]);
 
   const photoMap = new Map(photos.map((p) => [p.id, p]));
@@ -6686,6 +6781,13 @@ async function loadCurationState(inspectionId: string, companyId: string) {
         : null,
     })),
     captions: captions.map((c) => ({
+      ...c,
+      generatedAt: c.generatedAt?.toISOString() ?? null,
+      lockedAt: c.lockedAt?.toISOString() ?? null,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    setCaptions: setCaptions.map((c) => ({
       ...c,
       generatedAt: c.generatedAt?.toISOString() ?? null,
       lockedAt: c.lockedAt?.toISOString() ?? null,
@@ -7539,9 +7641,32 @@ router.post('/:inspectionId/curation/finalize', async (req: Request, res: Respon
   const alreadyFinalized = selections.every((s) => s.finalizedAt !== null);
   if (alreadyFinalized) { res.status(409).json({ error: 'Badge assignments are already frozen.' }); return; }
 
-  // Fetch photo metadata for class inference (outside transaction — read-only)
+  // Fetch photo metadata for class inference (outside transaction — read-only).
+  // Also find comparison pair photos that lack selection rows so we can
+  // guarantee them selection + caption slots during this finalization pass.
   const photoIds = selections.map((s) => s.photoId);
-  const photos = await db.select().from(inspectionPhotosTable).where(inArray(inspectionPhotosTable.id, photoIds));
+
+  const existingPairs = await db.select()
+    .from(comparisonPairsTable)
+    .where(and(eq(comparisonPairsTable.inspectionId, inspection.id), eq(comparisonPairsTable.companyId, actor.companyId)));
+
+  const existingSelPhotoIdSet = new Set(photoIds);
+  const missingPairPhotoIds: string[] = [];
+  for (const pair of existingPairs) {
+    if (!existingSelPhotoIdSet.has(pair.beforePhotoId)) {
+      missingPairPhotoIds.push(pair.beforePhotoId);
+      existingSelPhotoIdSet.add(pair.beforePhotoId); // deduplicate
+    }
+    if (!existingSelPhotoIdSet.has(pair.afterPhotoId)) {
+      missingPairPhotoIds.push(pair.afterPhotoId);
+      existingSelPhotoIdSet.add(pair.afterPhotoId);
+    }
+  }
+
+  const allPhotoIds = [...photoIds, ...missingPairPhotoIds];
+  const photos = allPhotoIds.length > 0
+    ? await db.select().from(inspectionPhotosTable).where(inArray(inspectionPhotosTable.id, allPhotoIds))
+    : [];
   const photoMap = new Map(photos.map((p) => [p.id, p]));
 
   // Compute badge assignments before the transaction
@@ -7552,6 +7677,14 @@ router.post('/:inspectionId/curation/finalize', async (req: Request, res: Respon
     const cls = (sel.exhibitClass ?? (photo ? inferExhibitClass(photo) : 'R')) as ExhibitClass;
     counters[cls] = (counters[cls] ?? 0) + 1;
     assignments[sel.id] = { cls, badge: `${cls}-${counters[cls]}` };
+  }
+
+  // Assign C-class badges to pair photos that lacked selection rows.
+  // Counters are already primed from the existing-selections loop above.
+  const missingPairAssignments: Array<{ photoId: string; badge: string }> = [];
+  for (const photoId of missingPairPhotoIds) {
+    counters['C'] = (counters['C'] ?? 0) + 1;
+    missingPairAssignments.push({ photoId, badge: `C-${counters['C']}` });
   }
 
   // Wrap all writes in a transaction — partial failure leaves no half-frozen state.
@@ -7579,6 +7712,75 @@ router.post('/:inspectionId/curation/finalize', async (req: Request, res: Respon
           companyId: actor.companyId,
           exhibitSelectionId: sel.id,
           badgeLabel: badge,
+          state: 'pending',
+        });
+      }
+    }
+
+    // Guarantee exhibit selection + caption slot for each pair photo that
+    // was not already in exhibitSelectionsTable. Idempotent: checks for a
+    // concurrent row before inserting.
+    for (let i = 0; i < missingPairAssignments.length; i++) {
+      const { photoId, badge } = missingPairAssignments[i];
+      const [existingSel] = await tx
+        .select({ id: exhibitSelectionsTable.id })
+        .from(exhibitSelectionsTable)
+        .where(and(
+          eq(exhibitSelectionsTable.inspectionId, inspection.id),
+          eq(exhibitSelectionsTable.companyId, actor.companyId),
+          eq(exhibitSelectionsTable.photoId, photoId),
+        ))
+        .limit(1);
+
+      let pairSelId: string;
+      if (existingSel) {
+        // Concurrent finalize or pre-existing row — stamp it as C-class.
+        await tx.update(exhibitSelectionsTable)
+          .set({ exhibitClass: 'C', badgeLabel: badge, finalizedAt: now })
+          .where(eq(exhibitSelectionsTable.id, existingSel.id));
+        pairSelId = existingSel.id;
+      } else {
+        const [newSel] = await tx.insert(exhibitSelectionsTable).values({
+          inspectionId: inspection.id,
+          companyId: actor.companyId,
+          photoId,
+          exhibitClass: 'C' as ExhibitClass,
+          badgeLabel: badge,
+          sortOrder: selections.length + i,
+          finalizedAt: now,
+        }).returning({ id: exhibitSelectionsTable.id });
+        pairSelId = newSel.id;
+      }
+
+      // Caption slot — idempotent
+      const [capExists] = await tx
+        .select({ id: exhibitCaptionsTable.id })
+        .from(exhibitCaptionsTable)
+        .where(eq(exhibitCaptionsTable.exhibitSelectionId, pairSelId))
+        .limit(1);
+      if (!capExists) {
+        await tx.insert(exhibitCaptionsTable).values({
+          inspectionId: inspection.id,
+          companyId: actor.companyId,
+          exhibitSelectionId: pairSelId,
+          badgeLabel: badge,
+          state: 'pending',
+        });
+      }
+    }
+
+    // Create one set-caption slot per confirmed comparison pair (idempotent).
+    for (const pair of existingPairs) {
+      const [setPairExists] = await tx
+        .select({ id: comparisonSetCaptionsTable.id })
+        .from(comparisonSetCaptionsTable)
+        .where(eq(comparisonSetCaptionsTable.comparisonPairId, pair.id))
+        .limit(1);
+      if (!setPairExists) {
+        await tx.insert(comparisonSetCaptionsTable).values({
+          inspectionId: inspection.id,
+          companyId: actor.companyId,
+          comparisonPairId: pair.id,
           state: 'pending',
         });
       }
@@ -7620,32 +7822,73 @@ router.post('/:inspectionId/sections/captions/generate', async (req: Request, re
 
   // Only regenerate unlocked captions — locked captions are permanently immutable.
   const captions = allCaptions.filter((c) => c.state !== 'locked');
-  if (captions.length === 0) {
-    res.status(422).json({ error: 'All captions are locked — nothing to regenerate.' });
-    return;
+
+  // Fetch comparison pairs and their set caption slots.
+  const [allPairs, allSetCaptions] = await Promise.all([
+    db.select().from(comparisonPairsTable)
+      .where(and(eq(comparisonPairsTable.inspectionId, inspection.id), eq(comparisonPairsTable.companyId, actor.companyId))),
+    db.select().from(comparisonSetCaptionsTable)
+      .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspection.id), eq(comparisonSetCaptionsTable.companyId, actor.companyId))),
+  ]);
+
+  // Self-healing: for legacy finalized inspections (or any pair that somehow
+  // lacks a set-caption row), auto-create a pending slot so the caption
+  // generation route is a viable recovery path.  This mirrors what finalization
+  // does for new pairs and is idempotent — each pair gets at most one row.
+  const setCaptionPairIds = new Set(allSetCaptions.map((sc) => sc.comparisonPairId));
+  const pairsNeedingSetCaption = allPairs.filter((p) => !setCaptionPairIds.has(p.id));
+  if (pairsNeedingSetCaption.length > 0) {
+    const inserted = await db.insert(comparisonSetCaptionsTable)
+      .values(pairsNeedingSetCaption.map((p) => ({
+        inspectionId: p.inspectionId,
+        companyId: p.companyId,
+        comparisonPairId: p.id,
+        state: 'pending' as const,
+      })))
+      .returning();
+    allSetCaptions.push(...inserted);
+    req.log.info({ count: inserted.length }, 'Auto-created missing comparison set-caption slots during caption generation');
   }
 
-  // Build photo brief for the AI prompt (unlocked slots only)
+  // Photos that belong to a comparison pair are generated with pair-aware prompts —
+  // exclude them from the generic single-photo generation.
+  const pairPhotoIds = new Set<string>();
+  for (const pair of allPairs) {
+    pairPhotoIds.add(pair.beforePhotoId);
+    pairPhotoIds.add(pair.afterPhotoId);
+  }
+
+  // Build photo brief for the AI prompt (unlocked slots only, excluding comparison pair photos)
   const photoIds = selections.map((s) => s.photoId);
   const photos = await db.select().from(inspectionPhotosTable).where(inArray(inspectionPhotosTable.id, photoIds));
   const photoMap = new Map(photos.map((p) => [p.id, p]));
   const selectionMap = new Map(selections.map((s) => [s.id, s]));
 
-  const exhibitBrief = captions.map((c) => {
+  const singleCaptions = captions.filter((c) => {
     const sel = selectionMap.get(c.exhibitSelectionId);
-    const photo = sel ? photoMap.get(sel.photoId) : undefined;
-    return {
-      exhibitCaptionId: c.id,
-      badge: c.badgeLabel,
-      stage: photo?.stage ?? 'unknown',
-      subjectType: photo?.subjectType ?? 'unknown',
-      triadRole: photo?.triadRole ?? null,
-      preliminaryRole: photo?.preliminaryRole ?? null,
-      exhibitClass: sel?.exhibitClass ?? 'R',
-    };
+    return sel ? !pairPhotoIds.has(sel.photoId) : true;
   });
 
-  const prompt = `You are a technical report writer for a forensic roofing and siding inspection company.
+  const now = new Date();
+  let singleGeneratedCount = 0;
+
+  // ── Single-photo caption generation ───────────────────────────────────
+  if (singleCaptions.length > 0) {
+    const exhibitBrief = singleCaptions.map((c) => {
+      const sel = selectionMap.get(c.exhibitSelectionId);
+      const photo = sel ? photoMap.get(sel.photoId) : undefined;
+      return {
+        exhibitCaptionId: c.id,
+        badge: c.badgeLabel,
+        stage: photo?.stage ?? 'unknown',
+        subjectType: photo?.subjectType ?? 'unknown',
+        triadRole: photo?.triadRole ?? null,
+        preliminaryRole: photo?.preliminaryRole ?? null,
+        exhibitClass: sel?.exhibitClass ?? 'R',
+      };
+    });
+
+    const prompt = `You are a technical report writer for a forensic roofing and siding inspection company.
 
 Generate one concise exhibit caption for each photo below. Each caption MUST:
 1. Start with exactly "Photo — Exhibit {badge} —" (use the badge field provided)
@@ -7663,74 +7906,265 @@ ${JSON.stringify(exhibitBrief, null, 2)}
 
 Return a JSON array exactly: [{ "exhibitCaptionId": "...", "caption": "Photo — Exhibit X-# — ..." }, ...]`;
 
-  let generated: Array<{ exhibitCaptionId: string; caption: string }> = [];
-  try {
-    const response = await geminiAi.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: { responseMimeType: 'application/json', maxOutputTokens: 4096 },
-    });
-    const raw = response.text ?? '';
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
-    generated = JSON.parse(cleaned) as typeof generated;
-  } catch (err) {
-    req.log.error({ err }, 'Caption generation failed');
-    res.status(502).json({ error: 'Caption generation failed. Please try again.' });
-    return;
-  }
+    let generated: Array<{ exhibitCaptionId: string; caption: string }> = [];
+    try {
+      const response = await geminiAi.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: { responseMimeType: 'application/json', maxOutputTokens: 4096 },
+      });
+      const raw = response.text ?? '';
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+      generated = JSON.parse(cleaned) as typeof generated;
+    } catch (err) {
+      req.log.error({ err }, 'Caption generation failed');
+      res.status(502).json({ error: 'Caption generation failed. Please try again.' });
+      return;
+    }
 
-  // Accept only IDs that belong to unlocked caption slots for this inspection.
-  const captionIdSet = new Set(captions.map((c) => c.id));
-  const validGenerated = (Array.isArray(generated) ? generated : []).filter(
-    (g) =>
-      typeof g.exhibitCaptionId === 'string' &&
-      captionIdSet.has(g.exhibitCaptionId) &&
-      typeof g.caption === 'string' &&
-      g.caption.length > 0,
-  );
-
-  // Safety threshold: require ≥50% of unlocked target captions to be returned validly.
-  // A lower match rate indicates a malformed/truncated AI response — fail fast rather than
-  // silently committing a partial update.
-  const targetCount = captions.length;
-  if (validGenerated.length < Math.ceil(targetCount * 0.5)) {
-    req.log.error(
-      { validCount: validGenerated.length, targetCount, rawLength: (generated as unknown[]).length },
-      'Caption generation AI response below 50% valid-ID threshold — aborting commit',
+    // Accept only IDs that belong to unlocked caption slots for this inspection.
+    const captionIdSet = new Set(singleCaptions.map((c) => c.id));
+    const validGenerated = (Array.isArray(generated) ? generated : []).filter(
+      (g) =>
+        typeof g.exhibitCaptionId === 'string' &&
+        captionIdSet.has(g.exhibitCaptionId) &&
+        typeof g.caption === 'string' &&
+        g.caption.length > 0,
     );
-    res.status(502).json({
-      error: `Caption generation produced too few valid results (${validGenerated.length}/${targetCount}). The AI response may be malformed — please retry.`,
-    });
-    return;
+
+    // Safety threshold: require ≥50% of unlocked target captions to be returned validly.
+    if (validGenerated.length < Math.ceil(singleCaptions.length * 0.5)) {
+      req.log.error(
+        { validCount: validGenerated.length, targetCount: singleCaptions.length, rawLength: (generated as unknown[]).length },
+        'Caption generation AI response below 50% valid-ID threshold — aborting commit',
+      );
+      res.status(502).json({
+        error: `Caption generation produced too few valid results (${validGenerated.length}/${singleCaptions.length}). The AI response may be malformed — please retry.`,
+      });
+      return;
+    }
+
+    for (const g of validGenerated) {
+      const sanitized = sanitizeHtml(g.caption, { allowedTags: [], allowedAttributes: {} });
+      const captionText = sanitized.slice(0, 500) || `Photo — Exhibit (see badge) — [caption pending review]`;
+      await db.update(exhibitCaptionsTable)
+        .set({ captionText, state: 'generated', generatedAt: now })
+        .where(and(
+          eq(exhibitCaptionsTable.id, g.exhibitCaptionId),
+          eq(exhibitCaptionsTable.inspectionId, inspection.id),
+          sql`${exhibitCaptionsTable.state} != 'locked'`,
+        ));
+    }
+    singleGeneratedCount = validGenerated.length;
   }
 
-  const now = new Date();
-  for (const g of validGenerated) {
-    const sanitized = sanitizeHtml(g.caption, { allowedTags: [], allowedAttributes: {} });
-    const captionText = sanitized.slice(0, 500) || `Photo — Exhibit (see badge) — [caption pending review]`;
-    // Double-guard: also exclude locked rows in the update predicate (belt-and-suspenders).
-    await db.update(exhibitCaptionsTable)
-      .set({ captionText, state: 'generated', generatedAt: now })
-      .where(and(
-        eq(exhibitCaptionsTable.id, g.exhibitCaptionId),
-        eq(exhibitCaptionsTable.inspectionId, inspection.id),
-        sql`${exhibitCaptionsTable.state} != 'locked'`,
-      ));
+  // ── Comparison pair caption generation (three-caption structure) ───────
+  // For each unlocked comparison pair, generate:
+  //   1. A set caption (pair-level narrative, keyed to comparisonSetCaptionsTable)
+  //   2. A per-photo top (before) caption
+  //   3. A per-photo bottom (after) caption
+  // The prompt branches per comparisonType to produce the correct pattern.
+  let comparisonGeneratedCount = 0;
+
+  type ComparisonBrief = {
+    setCaptionId: string;
+    beforeCaptionId: string;  // guaranteed non-null (finalization creates slot or we skip)
+    afterCaptionId: string;   // guaranteed non-null
+    pairType: string;
+    beforeBadge: string;
+    afterBadge: string;
+    beforePhotoMeta: { stage: string | null; subjectType: string | null };
+    afterPhotoMeta: { stage: string | null; subjectType: string | null };
+    beforeIsLocked: boolean;
+    afterIsLocked: boolean;
+  };
+
+  const comparisonBriefs: ComparisonBrief[] = [];
+  for (const pair of allPairs) {
+    const setCap = allSetCaptions.find((sc) => sc.comparisonPairId === pair.id && sc.state !== 'locked');
+    if (!setCap) continue; // skip locked or missing
+
+    const beforeSel = selections.find((s) => s.photoId === pair.beforePhotoId);
+    const afterSel = selections.find((s) => s.photoId === pair.afterPhotoId);
+    const beforeCaption = beforeSel ? captions.find((c) => c.exhibitSelectionId === beforeSel.id) : undefined;
+    const afterCaption = afterSel ? captions.find((c) => c.exhibitSelectionId === afterSel.id) : undefined;
+
+    // Per-photo caption slots must exist — finalization guarantees them.
+    // If either is missing something went wrong at finalize time; skip and log.
+    if (!beforeCaption?.id || !afterCaption?.id) {
+      req.log.warn(
+        { pairId: pair.id, beforeCaptionId: beforeCaption?.id ?? null, afterCaptionId: afterCaption?.id ?? null },
+        'Comparison pair missing per-photo caption slot(s) — skipping generation; re-run finalize to repair',
+      );
+      continue;
+    }
+
+    const beforePhoto = photoMap.get(pair.beforePhotoId);
+    const afterPhoto = photoMap.get(pair.afterPhotoId);
+
+    comparisonBriefs.push({
+      setCaptionId: setCap.id,
+      beforeCaptionId: beforeCaption.id,
+      afterCaptionId: afterCaption.id,
+      pairType: pair.pairType,
+      beforeBadge: beforeCaption?.badgeLabel ?? '?',
+      afterBadge: afterCaption?.badgeLabel ?? '?',
+      beforePhotoMeta: { stage: beforePhoto?.stage ?? null, subjectType: beforePhoto?.subjectType ?? null },
+      afterPhotoMeta: { stage: afterPhoto?.stage ?? null, subjectType: afterPhoto?.subjectType ?? null },
+      beforeIsLocked: beforeCaption?.state === 'locked',
+      afterIsLocked: afterCaption?.state === 'locked',
+    });
+  }
+
+  if (comparisonBriefs.length > 0) {
+    const comparisonPrompt = `You are a technical report writer for a forensic roofing and siding inspection company writing Class C (Comparison) exhibit captions.
+
+For each comparison pair below, generate EXACTLY THREE caption strings following the pattern for the pair type.
+
+PAIR TYPE PATTERNS (use exactly these patterns — softened wording mandatory):
+- cause_differentiation:
+    setCaption: "Comparison — localized impact condition (top) and general surface weathering (bottom), [facet/component]."
+    beforeCaption (top): State the distinct localized condition documented on this surface. Use "conditions documented as" — never assert causation.
+    afterCaption (bottom): State the uniform condition documented as age-related surface wear. Use "conditions documented as" — never assert causation.
+- recency:
+    setCaption: Pair-level narrative identifying the two timeframes being compared (before / after the documented event date).
+    beforeCaption (top): State what the pre-event condition documents. Use "conditions documented as".
+    afterCaption (bottom): State what the post-event condition documents. Use "conditions documented as".
+- covered_vs_unrelated:
+    setCaption: Pair-level narrative distinguishing the event-attributed condition (top) from the unrelated/pre-existing condition (bottom).
+    beforeCaption (top): State the event-attributed condition. Use "conditions documented as".
+    afterCaption (bottom): State the unrelated or pre-existing condition. Use "conditions documented as".
+
+RULES:
+- Never assert coverage conclusions, policy interpretations, or what a carrier owes.
+- Never use "insurance", "covered", "settlement", "damages owed", "should be replaced".
+- All per-photo captions MUST start with "Photo — Exhibit {badge} —".
+- Set captions do NOT start with "Photo —"; they are pair-level headers.
+- Each caption is 1-2 sentences.
+
+Pairs:
+${JSON.stringify(comparisonBriefs, null, 2)}
+
+Return a JSON array exactly:
+[{
+  "setCaptionId": "...",
+  "setCaption": "Comparison — ...",
+  "beforeCaptionId": "..." or null,
+  "beforeCaption": "Photo — Exhibit X-# — ...",
+  "afterCaptionId": "..." or null,
+  "afterCaption": "Photo — Exhibit X-# — ..."
+}, ...]`;
+
+    type GeneratedComparisonCaption = {
+      setCaptionId: string;
+      setCaption: string;
+      beforeCaptionId: string;
+      beforeCaption: string;
+      afterCaptionId: string;
+      afterCaption: string;
+    };
+
+    let generatedComparisons: GeneratedComparisonCaption[] = [];
+    try {
+      const response = await geminiAi.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: comparisonPrompt }] }],
+        config: { responseMimeType: 'application/json', maxOutputTokens: 4096 },
+      });
+      const raw = response.text ?? '';
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+      generatedComparisons = JSON.parse(cleaned) as GeneratedComparisonCaption[];
+    } catch (err) {
+      req.log.error({ err }, 'Comparison caption generation failed');
+      res.status(502).json({ error: 'Comparison caption generation failed. Please try again.' });
+      return;
+    }
+
+    const validSetCaptionIds = new Set(comparisonBriefs.map((b) => b.setCaptionId));
+    const validCaptionIds = new Set(captions.map((c) => c.id));
+
+    // Safety threshold: require ≥50% of requested pairs to return a valid set caption.
+    // A pair is "valid" when its setCaptionId is recognised AND setCaption is non-empty.
+    const validComparisonResults = (Array.isArray(generatedComparisons) ? generatedComparisons : []).filter(
+      (g) =>
+        typeof g.setCaptionId === 'string' &&
+        validSetCaptionIds.has(g.setCaptionId) &&
+        typeof g.setCaption === 'string' &&
+        g.setCaption.length > 0,
+    );
+    if (validComparisonResults.length < Math.ceil(comparisonBriefs.length * 0.5)) {
+      req.log.error(
+        { validCount: validComparisonResults.length, targetCount: comparisonBriefs.length },
+        'Comparison caption AI response below 50% valid threshold — aborting commit',
+      );
+      res.status(502).json({
+        error: `Comparison caption generation produced too few valid results (${validComparisonResults.length}/${comparisonBriefs.length}). Please retry.`,
+      });
+      return;
+    }
+
+    for (const g of validComparisonResults) {
+      if (typeof g.setCaptionId !== 'string' || !validSetCaptionIds.has(g.setCaptionId)) continue;
+      if (typeof g.setCaption !== 'string' || g.setCaption.length === 0) continue;
+
+      // Save the set caption
+      const sanitizedSet = sanitizeHtml(g.setCaption, { allowedTags: [], allowedAttributes: {} });
+      await db.update(comparisonSetCaptionsTable)
+        .set({ captionText: sanitizedSet.slice(0, 600), state: 'generated', generatedAt: now })
+        .where(and(
+          eq(comparisonSetCaptionsTable.id, g.setCaptionId),
+          eq(comparisonSetCaptionsTable.inspectionId, inspection.id),
+          sql`${comparisonSetCaptionsTable.state} != 'locked'`,
+        ));
+
+      // Save the before (top) per-photo caption if provided and not locked
+      if (g.beforeCaptionId && validCaptionIds.has(g.beforeCaptionId) && typeof g.beforeCaption === 'string' && g.beforeCaption.length > 0) {
+        const sanitizedBefore = sanitizeHtml(g.beforeCaption, { allowedTags: [], allowedAttributes: {} });
+        await db.update(exhibitCaptionsTable)
+          .set({ captionText: sanitizedBefore.slice(0, 500), state: 'generated', generatedAt: now })
+          .where(and(
+            eq(exhibitCaptionsTable.id, g.beforeCaptionId),
+            eq(exhibitCaptionsTable.inspectionId, inspection.id),
+            sql`${exhibitCaptionsTable.state} != 'locked'`,
+          ));
+      }
+
+      // Save the after (bottom) per-photo caption if provided and not locked
+      if (g.afterCaptionId && validCaptionIds.has(g.afterCaptionId) && typeof g.afterCaption === 'string' && g.afterCaption.length > 0) {
+        const sanitizedAfter = sanitizeHtml(g.afterCaption, { allowedTags: [], allowedAttributes: {} });
+        await db.update(exhibitCaptionsTable)
+          .set({ captionText: sanitizedAfter.slice(0, 500), state: 'generated', generatedAt: now })
+          .where(and(
+            eq(exhibitCaptionsTable.id, g.afterCaptionId),
+            eq(exhibitCaptionsTable.inspectionId, inspection.id),
+            sql`${exhibitCaptionsTable.state} != 'locked'`,
+          ));
+      }
+
+      comparisonGeneratedCount++;
+    }
   }
 
   await db.insert(claimEventsTable).values({
     inspectionId: inspection.id,
     companyId: actor.companyId,
     eventType: 'captions_generated',
-    payload: { count: validGenerated.length },
+    payload: { count: singleGeneratedCount, comparisonPairCount: comparisonGeneratedCount },
     actorId: actor.userId,
   });
 
-  const updated = await db.select().from(exhibitCaptionsTable)
-    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
-    .orderBy(exhibitCaptionsTable.badgeLabel);
+  const [updatedCaptions, updatedSetCaptions] = await Promise.all([
+    db.select().from(exhibitCaptionsTable)
+      .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+      .orderBy(exhibitCaptionsTable.badgeLabel),
+    db.select().from(comparisonSetCaptionsTable)
+      .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspection.id), eq(comparisonSetCaptionsTable.companyId, actor.companyId))),
+  ]);
 
-  res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
+  res.json({
+    captions: updatedCaptions.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+    setCaptions: updatedSetCaptions.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+  });
 });
 
 // PATCH /inspections/:inspectionId/sections/captions/:captionId — edit caption text
@@ -7757,6 +8191,8 @@ router.patch('/:inspectionId/sections/captions/:captionId', async (req: Request,
 });
 
 // POST /inspections/:inspectionId/sections/captions/approve — approve all generated captions
+// Approves both per-photo exhibit_captions AND comparison_set_captions so the
+// lock gate sees a consistent approved state for every caption type.
 router.post('/:inspectionId/sections/captions/approve', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -7765,22 +8201,41 @@ router.post('/:inspectionId/sections/captions/approve', async (req: Request, res
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
 
-  await db.update(exhibitCaptionsTable)
-    .set({ state: 'approved' })
-    .where(and(
-      eq(exhibitCaptionsTable.inspectionId, inspection.id),
-      eq(exhibitCaptionsTable.companyId, actor.companyId),
-      inArray(exhibitCaptionsTable.state, ['generated', 'in_review']),
-    ));
+  await Promise.all([
+    db.update(exhibitCaptionsTable)
+      .set({ state: 'approved' })
+      .where(and(
+        eq(exhibitCaptionsTable.inspectionId, inspection.id),
+        eq(exhibitCaptionsTable.companyId, actor.companyId),
+        inArray(exhibitCaptionsTable.state, ['generated', 'in_review']),
+      )),
+    // Comparison set captions are first-class — approve them in lockstep.
+    db.update(comparisonSetCaptionsTable)
+      .set({ state: 'approved' })
+      .where(and(
+        eq(comparisonSetCaptionsTable.inspectionId, inspection.id),
+        eq(comparisonSetCaptionsTable.companyId, actor.companyId),
+        inArray(comparisonSetCaptionsTable.state, ['generated', 'in_review']),
+      )),
+  ]);
 
-  const updated = await db.select().from(exhibitCaptionsTable)
-    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
-    .orderBy(exhibitCaptionsTable.badgeLabel);
+  const [updated, updatedSet] = await Promise.all([
+    db.select().from(exhibitCaptionsTable)
+      .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+      .orderBy(exhibitCaptionsTable.badgeLabel),
+    db.select().from(comparisonSetCaptionsTable)
+      .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspection.id), eq(comparisonSetCaptionsTable.companyId, actor.companyId))),
+  ]);
 
-  res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
+  res.json({
+    captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+    setCaptions: updatedSet.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+  });
 });
 
 // POST /inspections/:inspectionId/sections/captions/lock — lock all approved captions
+// Gate: ALL per-photo captions AND all comparison set captions must be approved
+// (or already locked) before the lock is permitted.
 router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -7789,8 +8244,14 @@ router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: R
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
 
-  const allCaptions = await db.select().from(exhibitCaptionsTable)
-    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)));
+  const [allCaptions, allSetCaptionsForLock, allPairsForLock] = await Promise.all([
+    db.select().from(exhibitCaptionsTable)
+      .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId))),
+    db.select().from(comparisonSetCaptionsTable)
+      .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspection.id), eq(comparisonSetCaptionsTable.companyId, actor.companyId))),
+    db.select({ id: comparisonPairsTable.id }).from(comparisonPairsTable)
+      .where(and(eq(comparisonPairsTable.inspectionId, inspection.id), eq(comparisonPairsTable.companyId, actor.companyId))),
+  ]);
 
   const unapproved = allCaptions.filter((c) => c.state !== 'approved' && c.state !== 'locked');
   if (unapproved.length > 0) {
@@ -7798,14 +8259,49 @@ router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: R
     return;
   }
 
+  // Enforce 1:1 pair → set-caption row existence before checking state.
+  // A missing row means captions were never generated for that pair (e.g. legacy
+  // data predating this feature).  Direct the rep to re-generate captions; the
+  // generate route auto-creates the missing slot, making it self-repairing.
+  const setCaptionPairIdsForLock = new Set(allSetCaptionsForLock.map((sc) => sc.comparisonPairId));
+  const pairsMissingSetCaptionRow = allPairsForLock.filter((p) => !setCaptionPairIdsForLock.has(p.id));
+  if (pairsMissingSetCaptionRow.length > 0) {
+    res.status(422).json({
+      error: `${pairsMissingSetCaptionRow.length} comparison pair(s) have no set caption — re-generate captions to create the missing slots, then approve before locking.`,
+    });
+    return;
+  }
+
+  // Comparison set captions must also be approved — a pending set caption means
+  // the pair-level narrative was never generated, which would silently drop a
+  // comparison exhibit from the compiled report.
+  const unapprovedSetCaptions = allSetCaptionsForLock.filter(
+    (sc) => sc.state !== 'approved' && sc.state !== 'locked',
+  );
+  if (unapprovedSetCaptions.length > 0) {
+    res.status(422).json({
+      error: `${unapprovedSetCaptions.length} comparison pair set caption(s) are not yet approved — generate and approve all set captions before locking.`,
+    });
+    return;
+  }
+
   const now = new Date();
-  await db.update(exhibitCaptionsTable)
-    .set({ state: 'locked', lockedAt: now, lockedBy: actor.userId })
-    .where(and(
-      eq(exhibitCaptionsTable.inspectionId, inspection.id),
-      eq(exhibitCaptionsTable.companyId, actor.companyId),
-      eq(exhibitCaptionsTable.state, 'approved'),
-    ));
+  await Promise.all([
+    db.update(exhibitCaptionsTable)
+      .set({ state: 'locked', lockedAt: now, lockedBy: actor.userId })
+      .where(and(
+        eq(exhibitCaptionsTable.inspectionId, inspection.id),
+        eq(exhibitCaptionsTable.companyId, actor.companyId),
+        eq(exhibitCaptionsTable.state, 'approved'),
+      )),
+    db.update(comparisonSetCaptionsTable)
+      .set({ state: 'locked', lockedAt: now, lockedBy: actor.userId })
+      .where(and(
+        eq(comparisonSetCaptionsTable.inspectionId, inspection.id),
+        eq(comparisonSetCaptionsTable.companyId, actor.companyId),
+        eq(comparisonSetCaptionsTable.state, 'approved'),
+      )),
+  ]);
 
   await db.insert(claimEventsTable).values({
     inspectionId: inspection.id,
@@ -7815,11 +8311,18 @@ router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: R
     actorId: actor.userId,
   });
 
-  const updated = await db.select().from(exhibitCaptionsTable)
-    .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
-    .orderBy(exhibitCaptionsTable.badgeLabel);
+  const [updated, updatedSet] = await Promise.all([
+    db.select().from(exhibitCaptionsTable)
+      .where(and(eq(exhibitCaptionsTable.inspectionId, inspection.id), eq(exhibitCaptionsTable.companyId, actor.companyId)))
+      .orderBy(exhibitCaptionsTable.badgeLabel),
+    db.select().from(comparisonSetCaptionsTable)
+      .where(and(eq(comparisonSetCaptionsTable.inspectionId, inspection.id), eq(comparisonSetCaptionsTable.companyId, actor.companyId))),
+  ]);
 
-  res.json({ captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })) });
+  res.json({
+    captions: updated.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+    setCaptions: updatedSet.map((c) => ({ ...c, generatedAt: c.generatedAt?.toISOString() ?? null, lockedAt: c.lockedAt?.toISOString() ?? null, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() })),
+  });
 });
 
 // ---------------------------------------------------------------------------
