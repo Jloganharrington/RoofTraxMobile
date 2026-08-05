@@ -125,7 +125,7 @@ function Router() {
         <ProtectedRoute><PhotoCuration /></ProtectedRoute>
       </Route>
       <Route path="/team">
-        <ProtectedRoute><TeamList /></ProtectedRoute>
+        <ProtectedRoute minRole="manager"><TeamList /></ProtectedRoute>
       </Route>
       <Route path="/price-book">
         <ProtectedRoute><PriceBookList /></ProtectedRoute>
@@ -154,25 +154,25 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/reports">
-        <ProtectedRoute>
+        <ProtectedRoute minRole="manager">
           <ComingSoon icon={BarChart2} title="Reports"
             description="Company-wide performance dashboards, claim conversion rates, and pipeline analytics at a glance." />
         </ProtectedRoute>
       </Route>
       <Route path="/commission-report">
-        <ProtectedRoute>
+        <ProtectedRoute minRole="manager">
           <ComingSoon icon={Receipt} title="Commission Reports"
             description="Track rep earnings, commission tiers, and payout history across your entire team." />
         </ProtectedRoute>
       </Route>
       <Route path="/user-authorization">
-        <ProtectedRoute><UserAuthorizationPage /></ProtectedRoute>
+        <ProtectedRoute minRole="admin"><UserAuthorizationPage /></ProtectedRoute>
       </Route>
       <Route path="/settings">
-        <ProtectedRoute><SettingsPage /></ProtectedRoute>
+        <ProtectedRoute minRole="manager"><SettingsPage /></ProtectedRoute>
       </Route>
       <Route path="/integrations">
-        <ProtectedRoute>
+        <ProtectedRoute minRole="manager">
           <ComingSoon icon={Plug} title="Integrations"
             description="Connect your CRM, accounting software, and field tools to keep all your data in sync." />
         </ProtectedRoute>

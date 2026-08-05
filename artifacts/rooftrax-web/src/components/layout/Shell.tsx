@@ -1,6 +1,8 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useGetCurrentAuthUser } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, useGetMyProfile } from "@workspace/api-client-react";
+import { roleRank } from "@workspace/authz";
+import type { Role } from "@workspace/authz";
 import {
   LayoutGrid,
   Store,
@@ -39,6 +41,13 @@ interface NavItem {
   path: string;
   icon: React.ElementType;
   soon?: boolean;
+  /**
+   * Minimum role required to see this nav item, checked against the
+   * authenticated user's profile using roleRank from @workspace/authz —
+   * the same resolver used by ProtectedRoute and the server-side guard.
+   * Items without minRole are visible to every authenticated user.
+   */
+  minRole?: Role;
 }
 
 interface NavSection {
@@ -50,13 +59,13 @@ const NAV_SECTIONS: NavSection[] = [
   {
     heading: "Navigation",
     items: [
-      { label: "Dashboard",                path: "/",                     icon: LayoutGrid },
-      { label: "Retail Pipeline",          path: "/retail-pipeline",      icon: Store },
-      { label: "Insurance Pipeline",       path: "/insurance-pipeline",   icon: Shield },
-      { label: "Project Pipeline",         path: "/project-pipeline",     icon: Layers },
-      { label: "All Leads",               path: "/leads",                icon: List },
-      { label: "Team Calendar",           path: "/team-calendar",        icon: Calendar },
-      { label: "Map View",                path: "/map",                  icon: MapPin },
+      { label: "Dashboard",          path: "/",                   icon: LayoutGrid },
+      { label: "Retail Pipeline",    path: "/retail-pipeline",    icon: Store },
+      { label: "Insurance Pipeline", path: "/insurance-pipeline", icon: Shield },
+      { label: "Project Pipeline",   path: "/project-pipeline",   icon: Layers },
+      { label: "All Leads",          path: "/leads",              icon: List },
+      { label: "Team Calendar",      path: "/team-calendar",      icon: Calendar },
+      { label: "Map View",           path: "/map",                icon: MapPin },
     ],
   },
   {
@@ -64,19 +73,19 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Price Book",         path: "/price-book",        icon: DollarSign },
       { label: "Templates",          path: "/templates",         icon: FileText },
-      { label: "Reports",            path: "/reports",           icon: BarChart2 },
-      { label: "Commission Report",  path: "/commission-report", icon: Receipt },
+      { label: "Reports",            path: "/reports",           icon: BarChart2,   minRole: 'manager' },
+      { label: "Commission Report",  path: "/commission-report", icon: Receipt,     minRole: 'manager' },
       { label: "Proof Package Data", path: "/settings/library",  icon: BookOpen },
     ],
   },
   {
     heading: "Admin",
     items: [
-      { label: "Team Management",   path: "/team",               icon: Users },
-      { label: "User Authorization",path: "/user-authorization", icon: ShieldCheck },
-      { label: "Settings",          path: "/settings",           icon: Settings },
-      { label: "Integrations",      path: "/integrations",       icon: Plug },
-      { label: "Notifications",     path: "/notifications",      icon: Bell },
+      { label: "Team Management",    path: "/team",               icon: Users,       minRole: 'manager' },
+      { label: "User Authorization", path: "/user-authorization", icon: ShieldCheck, minRole: 'admin' },
+      { label: "Settings",           path: "/settings",           icon: Settings,    minRole: 'manager' },
+      { label: "Integrations",       path: "/integrations",       icon: Plug,        minRole: 'manager' },
+      { label: "Notifications",      path: "/notifications",      icon: Bell },
     ],
   },
 ];
@@ -196,6 +205,7 @@ function isNavItemActive(path: string, location: string): boolean {
 
 export function Shell({ children }: ShellProps) {
   const { data: authEnvelope, isLoading } = useGetCurrentAuthUser();
+  const { data: profileEnvelope } = useGetMyProfile();
   const [location] = useLocation();
 
   if (isLoading) {
@@ -207,10 +217,29 @@ export function Shell({ children }: ShellProps) {
   }
 
   const user = authEnvelope?.user;
+  const profile = profileEnvelope?.profile;
 
   const handleLogout = () => {
     window.location.href = '/api/logout?returnTo=/rooftrax-web/';
   };
+
+  /**
+   * Filter nav sections using roleRank from @workspace/authz.
+   * Items are hidden (not grayed out) when the user's role rank is below
+   * the item's minRole. While the profile is still loading (profile===undefined),
+   * gated items are hidden to prevent a flash of unauthorized content.
+   * Sections with no visible items are omitted entirely.
+   */
+  const visibleSections = NAV_SECTIONS
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!item.minRole) return true;
+        if (!profile) return false; // hide until role is known
+        return roleRank(profile.role) >= roleRank(item.minRole);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row bg-background">
@@ -232,7 +261,7 @@ export function Shell({ children }: ShellProps) {
 
         {/* Nav sections */}
         <nav className="flex-1 overflow-y-auto py-3">
-          {NAV_SECTIONS.map((section) => (
+          {visibleSections.map((section) => (
             <div key={section.heading} className="mb-4">
               {/* Section heading */}
               <p className="px-4 mb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 select-none">
