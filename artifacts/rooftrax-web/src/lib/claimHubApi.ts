@@ -731,19 +731,43 @@ export function useGetLeads(
 
 export interface MyProfile {
   userId: string;
+
   role: string;
+
   department: string | null;
+
   companyId: string;
+
   companyLogoUrl?: string | null;
+
   betaBugReporting?: boolean;
   // Wave-2B personal profile fields
+
   firstName?: string | null;
+
   lastName?: string | null;
+
   email?: string | null;
+
   profileImageUrl?: string | null;
+
   phone?: string | null;
+
   workflowAssignment?: string | null;
+
   signatureSignedAt?: string | null;
+
+  smtpConfigured?: boolean;
+
+  smtpHost?: string | null;
+
+  smtpPort?: number | null;
+
+  smtpSecure?: boolean | null;
+
+  smtpUsername?: string | null;
+
+  smtpFromEmail?: string | null;
 }
 
 export const getMyProfileQueryKey = () => ['my-profile'] as const;

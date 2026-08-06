@@ -21,6 +21,8 @@ import {
   useGetCurrentAuthUser,
   useUpdateProfileMe,
   getGetMyProfileQueryKey,
+  useUpdateProfileSmtp,
+  useTestProfileSmtp,
 } from "@workspace/api-client-react";
 import { useGetMyProfile, useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import {
@@ -40,11 +42,16 @@ import {
   SunMoon,
   LayoutGrid,
   Mail,
+  CheckCircle2,
+  AlertCircle,
+  Send,
+  XCircle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
 
 interface FipsaSettings {
   contractorLegalName: string | null;
@@ -1249,10 +1256,14 @@ function PlatformPreferencesTab({ companyId }: { companyId: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main SettingsPage
-// ---------------------------------------------------------------------------
-
+interface SmtpFormState {
+  host: string;
+  port: string;
+  secure: boolean;
+  username: string;
+  password: string;
+  fromEmail: string;
+}
 export default function SettingsPage() {
   const { data: authEnvelope, isLoading: loadingAuth } = useGetCurrentAuthUser();
   const { data: profileData, isLoading: loadingProfile } = useGetMyProfile();
@@ -1363,7 +1374,7 @@ export default function SettingsPage() {
             {activeTab === "my_profile"     && <ProfileTab />}
             {activeTab === "appearance"     && <ComingSoonStub label="Appearance" />}
             {activeTab === "dashboard_tab"  && <ComingSoonStub label="Dashboard" />}
-            {activeTab === "email_settings" && <ComingSoonStub label="Email" />}
+            {activeTab === "email_settings" && <EmailSettingsTab />}
 
             {/* Company tabs — gates preserved exactly as before */}
             {activeTab === "company_profile" && isSuperAdmin && (
@@ -1381,3 +1392,303 @@ export default function SettingsPage() {
     </Shell>
   );
 }
+
+interface SmtpFormErrors {
+  host?: string;
+  port?: string;
+  username?: string;
+}
+
+function EmailSettingsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: profileData, isLoading } = useGetMyProfile();
+  const profile = profileData?.profile;
+
+  const [form, setForm] = useState<SmtpFormState>(EMPTY_SMTP);
+  const [errors, setErrors] = useState<SmtpFormErrors>({});
+
+  // Seed form from profile on load (never pre-fill password)
+  useEffect(() => {
+    if (profile) {
+      setForm({
+        host: profile.smtpHost ?? "",
+        port: profile.smtpPort != null ? String(profile.smtpPort) : "",
+        secure: profile.smtpSecure ?? false,
+        username: profile.smtpUsername ?? "",
+        password: "",
+        fromEmail: profile.smtpFromEmail ?? "",
+      });
+    }
+  }, [profile]);
+
+  const updateMutation = useUpdateProfileSmtp({
+    mutation: {
+      onSuccess: (data) => {
+        qc.invalidateQueries({ queryKey: ["my-profile"] });
+        // Refresh password field (write-only, never shown)
+        setForm((prev) => ({ ...prev, password: "" }));
+        toast({ title: "SMTP configuration saved" });
+      },
+      onError: (err) =>
+        toast({ title: "Failed to save SMTP config", description: String(err), variant: "destructive" }),
+    },
+  });
+
+  const testMutation = useTestProfileSmtp({
+    mutation: {
+      onSuccess: (data) => {
+        const result = data as { sent: boolean };
+        if (result.sent) {
+          toast({ title: "Test email sent successfully" });
+        } else {
+          toast({ title: "Test email was not delivered", variant: "destructive" });
+        }
+      },
+      onError: (err) =>
+        toast({ title: "Test email failed", description: String(err), variant: "destructive" }),
+    },
+  });
+
+  function validate(): boolean {
+    const errs: SmtpFormErrors = {};
+    if (!form.host.trim()) errs.host = "Server host is required";
+    const portNum = parseInt(form.port, 10);
+    if (!form.port.trim() || isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      errs.port = "Port must be a number between 1 and 65535";
+    }
+    if (!form.username.trim()) errs.username = "Username is required";
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  function handlePortChange(value: string) {
+    const portNum = parseInt(value, 10);
+    setForm((prev) => ({
+      ...prev,
+      port: value,
+      secure: portNum === 465 ? true : prev.secure,
+    }));
+  }
+
+  function handleSave() {
+    if (!validate()) return;
+    const payload: Record<string, unknown> = {
+      host: form.host.trim(),
+      port: parseInt(form.port, 10),
+      secure: form.secure,
+      username: form.username.trim(),
+    };
+    if (form.fromEmail.trim()) payload.fromEmail = form.fromEmail.trim();
+    if (form.password) payload.password = form.password;
+    updateMutation.mutate({ data: payload as Parameters<typeof updateMutation.mutate>[0]["data"] });
+  }
+
+  function handleClear() {
+    updateMutation.mutate(
+      { data: { clear: true } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ["my-profile"] });
+          setForm(EMPTY_SMTP);
+          setErrors({});
+          toast({ title: "SMTP configuration cleared" });
+        },
+      }
+    );
+  }
+
+  const smtpConfigured = profile?.smtpConfigured ?? false;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Outgoing Mail (SMTP)</CardTitle>
+              <CardDescription>
+                Configure your personal outgoing mail server to send reports and documents by email.
+              </CardDescription>
+            </div>
+            {smtpConfigured ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Configured
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Not configured
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Server + Port */}
+          <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-host">Outgoing Server</Label>
+              <Input
+                id="smtp-host"
+                value={form.host}
+                onChange={(e) => setForm((p) => ({ ...p, host: e.target.value }))}
+                placeholder="smtp.example.com"
+                aria-invalid={!!errors.host}
+              />
+              {errors.host && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <XCircle className="h-3 w-3" />{errors.host}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-port">Port</Label>
+              <Input
+                id="smtp-port"
+                value={form.port}
+                onChange={(e) => handlePortChange(e.target.value)}
+                placeholder="587"
+                inputMode="numeric"
+                aria-invalid={!!errors.port}
+              />
+              {errors.port && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <XCircle className="h-3 w-3" />{errors.port}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Secure toggle */}
+          <div className="flex items-center gap-3 rounded-lg border p-3">
+            <Switch
+              id="smtp-secure"
+              checked={form.secure}
+              onCheckedChange={(v) => setForm((p) => ({ ...p, secure: v }))}
+            />
+            <div>
+              <Label htmlFor="smtp-secure" className="text-sm font-medium cursor-pointer">
+                Secure connection (TLS/SSL)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Enable for port 465. Use STARTTLS for ports 587/25.
+              </p>
+            </div>
+          </div>
+
+          {/* Username + Password */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-username">Username</Label>
+              <Input
+                id="smtp-username"
+                value={form.username}
+                onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
+                placeholder="you@example.com"
+                autoComplete="username"
+                aria-invalid={!!errors.username}
+              />
+              {errors.username && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <XCircle className="h-3 w-3" />{errors.username}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-password">Password</Label>
+              <Input
+                id="smtp-password"
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                placeholder={smtpConfigured ? "••••••••" : "Enter password"}
+                autoComplete="current-password"
+              />
+              {smtpConfigured && !form.password && (
+                <p className="text-xs text-muted-foreground">Leave blank to keep the existing password.</p>
+              )}
+            </div>
+          </div>
+
+          {/* From Email (optional) */}
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-from">
+              From Email <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="smtp-from"
+              value={form.fromEmail}
+              onChange={(e) => setForm((p) => ({ ...p, fromEmail: e.target.value }))}
+              placeholder="Your Name <you@example.com>"
+              type="email"
+            />
+          </div>
+
+          <Separator />
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</>
+              ) : (
+                "Save Configuration"
+              )}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => testMutation.mutate()}
+              disabled={!smtpConfigured || testMutation.isPending}
+              title={!smtpConfigured ? "Save a configuration first" : undefined}
+            >
+              {testMutation.isPending ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Sending…</>
+              ) : (
+                <><Send className="h-3.5 w-3.5 mr-1.5" />Send test email</>
+              )}
+            </Button>
+
+            {smtpConfigured && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive hover:text-destructive ml-auto"
+                onClick={handleClear}
+                disabled={updateMutation.isPending}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Clear configuration
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+const EMPTY_SMTP: SmtpFormState = {
+  host: "",
+  port: "",
+  secure: false,
+  username: "",
+  password: "",
+  fromEmail: "",
+};
