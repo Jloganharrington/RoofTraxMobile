@@ -62,6 +62,8 @@ import type {
   CurateInspectionPhotosRequest,
   CurationResultEnvelope,
   DamageInstanceEnvelope,
+  DashboardLayoutEnvelope,
+  DashboardLayoutInput,
   DashboardManifestEnvelope,
   DeleteCompanyJurisdictionPack200,
   DeletePriceBookItem200,
@@ -7881,4 +7883,226 @@ export function useGetDashboardManifest<TData = Awaited<ReturnType<typeof getDas
 
 
 
+
+export const getGetDashboardLayoutUrl = () => {
+
+
+
+
+  return `/api/dashboard/layout`
+}
+
+/**
+ * Returns the complete capability-resolved widget set for this user, annotated with each widget's current hidden state from the stored layout. Unlike GET /dashboard/manifest (which only returns visible widgets), this endpoint always returns every granted widget so settings UIs can toggle individual widgets back on without a full layout reset. Role/department/workflow are always resolved server-side.
+ * @summary Returns all granted widgets with current visibility and order state
+ */
+export const getDashboardLayout = async ( options?: RequestInit): Promise<DashboardLayoutEnvelope> => {
+
+  return customFetch<DashboardLayoutEnvelope>(getGetDashboardLayoutUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDashboardLayoutQueryKey = () => {
+    return [
+    `/api/dashboard/layout`
+    ] as const;
+    }
+
+
+export const getGetDashboardLayoutQueryOptions = <TData = Awaited<ReturnType<typeof getDashboardLayout>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardLayout>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDashboardLayoutQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDashboardLayout>>> = ({ signal }) => getDashboardLayout({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDashboardLayout>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDashboardLayoutQueryResult = NonNullable<Awaited<ReturnType<typeof getDashboardLayout>>>
+export type GetDashboardLayoutQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Returns all granted widgets with current visibility and order state
+ */
+
+export function useGetDashboardLayout<TData = Awaited<ReturnType<typeof getDashboardLayout>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDashboardLayout>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDashboardLayoutQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPatchDashboardLayoutUrl = () => {
+
+
+
+
+  return `/api/dashboard/layout`
+}
+
+/**
+ * Persists a layout object against the authenticated user's profile. Hidden keys subtract from the capability-resolved set; order sorts it. A layout key that was not granted by the capability resolver can never reach the manifest response — this endpoint only stores preferences, the manifest route enforces security.
+ * @summary Save the authenticated user's widget visibility and order preferences
+ */
+export const patchDashboardLayout = async (dashboardLayoutInput: DashboardLayoutInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getPatchDashboardLayoutUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dashboardLayoutInput)
+  }
+);}
+
+
+
+
+
+export const getPatchDashboardLayoutMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchDashboardLayout>>, TError,{data: BodyType<DashboardLayoutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof patchDashboardLayout>>, TError,{data: BodyType<DashboardLayoutInput>}, TContext> => {
+
+const mutationKey = ['patchDashboardLayout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchDashboardLayout>>, {data: BodyType<DashboardLayoutInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  patchDashboardLayout(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PatchDashboardLayoutMutationResult = NonNullable<Awaited<ReturnType<typeof patchDashboardLayout>>>
+    export type PatchDashboardLayoutMutationBody = BodyType<DashboardLayoutInput>
+    export type PatchDashboardLayoutMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Save the authenticated user's widget visibility and order preferences
+ */
+export const usePatchDashboardLayout = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchDashboardLayout>>, TError,{data: BodyType<DashboardLayoutInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof patchDashboardLayout>>,
+        TError,
+        {data: BodyType<DashboardLayoutInput>},
+        TContext
+      > => {
+      return useMutation(getPatchDashboardLayoutMutationOptions(options));
+    }
+
+export const getDeleteDashboardLayoutUrl = () => {
+
+
+
+
+  return `/api/dashboard/layout`
+}
+
+/**
+ * Nulls the dashboard_layout column on the user's profile row, causing GET /dashboard/manifest to return the full capability-resolved set in catalog order.
+ * @summary Restore the authenticated user's widget layout to defaults
+ */
+export const deleteDashboardLayout = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteDashboardLayoutUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDashboardLayoutMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDashboardLayout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDashboardLayout>>, TError,void, TContext> => {
+
+const mutationKey = ['deleteDashboardLayout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDashboardLayout>>, void> = () => {
+
+
+          return  deleteDashboardLayout(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDashboardLayoutMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDashboardLayout>>>
+
+    export type DeleteDashboardLayoutMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Restore the authenticated user's widget layout to defaults
+ */
+export const useDeleteDashboardLayout = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDashboardLayout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDashboardLayout>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteDashboardLayoutMutationOptions(options));
+    }
 

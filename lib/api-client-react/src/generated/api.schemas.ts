@@ -2986,6 +2986,56 @@ export interface DashboardManifestEnvelope {
   widgets: DashboardWidgetMeta[];
 }
 
+/**
+ * Layout hint for skeleton sizing.
+ */
+export type DashboardLayoutWidgetEntrySize = typeof DashboardLayoutWidgetEntrySize[keyof typeof DashboardLayoutWidgetEntrySize];
+
+
+export const DashboardLayoutWidgetEntrySize = {
+  sm: 'sm',
+  md: 'md',
+  lg: 'lg',
+} as const;
+
+/**
+ * A widget entry with its current visibility state.
+ */
+export interface DashboardLayoutWidgetEntry {
+  /** Stable identifier matching the WIDGET_CATALOG key. */
+  key: string;
+  /** Display label for the widget header. */
+  title: string;
+  /** Layout hint for skeleton sizing. */
+  size: DashboardLayoutWidgetEntrySize;
+  /** True if this widget is currently hidden by the user's stored layout. Granted widgets with hidden:true are excluded from the dashboard manifest but appear here so settings UIs can toggle them back on individually. */
+  hidden: boolean;
+}
+
+/**
+ * Full capability-resolved widget set with visibility state. Used by the settings UI; the dashboard grid should use GET /dashboard/manifest instead.
+ */
+export interface DashboardLayoutEnvelope {
+  /** All granted widgets in display order (visible first per stored order, then hidden ones appended in catalog order). Each row includes a hidden flag indicating current visibility preference. */
+  widgets: DashboardLayoutWidgetEntry[];
+}
+
+/**
+ * User's widget visibility and order preferences. Hidden keys subtract from the capability-resolved set; order keys sort the result. Unknown or uncapable keys are silently ignored at manifest resolution time.
+ */
+export interface DashboardLayoutInput {
+  /**
+     * Widget keys to hide from the dashboard.
+     * @maxItems 50
+     */
+  hidden: string[];
+  /**
+     * Desired display order of widget keys (front of list first).
+     * @maxItems 50
+     */
+  order: string[];
+}
+
 export type WeatherCandidateType = typeof WeatherCandidateType[keyof typeof WeatherCandidateType];
 
 

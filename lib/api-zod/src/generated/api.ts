@@ -6484,3 +6484,42 @@ export const GetDashboardManifestResponse = zod.object({
 })
 
 
+/**
+ * Returns the complete capability-resolved widget set for this user, annotated with each widget's current hidden state from the stored layout. Unlike GET /dashboard/manifest (which only returns visible widgets), this endpoint always returns every granted widget so settings UIs can toggle individual widgets back on without a full layout reset. Role/department/workflow are always resolved server-side.
+ * @summary Returns all granted widgets with current visibility and order state
+ */
+export const GetDashboardLayoutResponse = zod.object({
+  "widgets": zod.array(zod.object({
+  "key": zod.string().describe('Stable identifier matching the WIDGET_CATALOG key.'),
+  "title": zod.string().describe('Display label for the widget header.'),
+  "size": zod.enum(['sm', 'md', 'lg']).describe('Layout hint for skeleton sizing.'),
+  "hidden": zod.boolean().describe('True if this widget is currently hidden by the user\'s stored layout. Granted widgets with hidden:true are excluded from the dashboard manifest but appear here so settings UIs can toggle them back on individually.')
+}).describe('A widget entry with its current visibility state.')).describe('All granted widgets in display order (visible first per stored order, then hidden ones appended in catalog order). Each row includes a hidden flag indicating current visibility preference.')
+}).describe('Full capability-resolved widget set with visibility state. Used by the settings UI; the dashboard grid should use GET \/dashboard\/manifest instead.')
+
+
+/**
+ * Persists a layout object against the authenticated user's profile. Hidden keys subtract from the capability-resolved set; order sorts it. A layout key that was not granted by the capability resolver can never reach the manifest response — this endpoint only stores preferences, the manifest route enforces security.
+ * @summary Save the authenticated user's widget visibility and order preferences
+ */
+export const patchDashboardLayoutBodyHiddenMax = 50;
+
+export const patchDashboardLayoutBodyOrderMax = 50;
+
+
+
+export const PatchDashboardLayoutBody = zod.object({
+  "hidden": zod.array(zod.string()).max(patchDashboardLayoutBodyHiddenMax).describe('Widget keys to hide from the dashboard.'),
+  "order": zod.array(zod.string()).max(patchDashboardLayoutBodyOrderMax).describe('Desired display order of widget keys (front of list first).')
+}).describe('User\'s widget visibility and order preferences. Hidden keys subtract from the capability-resolved set; order keys sort the result. Unknown or uncapable keys are silently ignored at manifest resolution time.')
+
+export const PatchDashboardLayoutResponse = zod.void()
+
+
+/**
+ * Nulls the dashboard_layout column on the user's profile row, causing GET /dashboard/manifest to return the full capability-resolved set in catalog order.
+ * @summary Restore the authenticated user's widget layout to defaults
+ */
+export const DeleteDashboardLayoutResponse = zod.void()
+
+

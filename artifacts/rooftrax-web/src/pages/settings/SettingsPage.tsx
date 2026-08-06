@@ -24,6 +24,10 @@ import {
   getGetMyProfileQueryKey,
   useUpdateProfileSmtp,
   useTestProfileSmtp,
+  useGetDashboardLayout,
+  getGetDashboardManifestQueryKey,
+  usePatchDashboardLayout,
+  useDeleteDashboardLayout,
 } from "@workspace/api-client-react";
 import { useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import {
@@ -49,6 +53,10 @@ import {
   XCircle,
   DollarSign,
   FileText,
+  Eye,
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { PriceBookPanel } from "@/pages/price-book/PriceBookList";
 import { TemplatesPanel } from "@/pages/TemplatesPage";
@@ -1379,7 +1387,7 @@ export default function SettingsPage() {
             {/* Personal tabs — stubs until S2–S4 */}
             {activeTab === "my_profile"     && <ProfileTab />}
             {activeTab === "appearance"     && <ComingSoonStub label="Appearance" />}
-            {activeTab === "dashboard_tab"  && <ComingSoonStub label="Dashboard" />}
+            {activeTab === "dashboard_tab"  && <DashboardSettingsTab />}
             {activeTab === "email_settings" && <EmailSettingsTab />}
 
             {/* Company tabs — all gated at admin+, matching the sidebar filter */}
@@ -1700,3 +1708,201 @@ const EMPTY_SMTP: SmtpFormState = {
   password: "",
   fromEmail: "",
 };
+
+// ---------------------------------------------------------------------------
+// Dashboard Settings Tab — D1: widget visibility & order
+// ---------------------------------------------------------------------------
+
+interface WidgetRow {
+  key: string;
+  title: string;
+  visible: boolean;
+}
+
+function DashboardSettingsTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  // Source from GET /dashboard/layout, which returns ALL granted widgets
+  // (visible + hidden) so users can toggle individual widgets back on
+  // without a full "Restore defaults" reset.
+  const { data: layoutData, isLoading, isError } = useGetDashboardLayout();
+
+  const [rows, setRows] = useState<WidgetRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [initialised, setInitialised] = useState(false);
+
+  useEffect(() => {
+    if (!layoutData || initialised) return;
+    setRows(
+      layoutData.widgets.map((w) => ({ key: w.key, title: w.title, visible: !w.hidden }))
+    );
+    setInitialised(true);
+  }, [layoutData, initialised]);
+
+  const patchMutation = usePatchDashboardLayout();
+  const deleteMutation = useDeleteDashboardLayout();
+
+  const move = (idx: number, direction: "up" | "down") => {
+    const next = [...rows];
+    const target = direction === "up" ? idx - 1 : idx + 1;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setRows(next);
+    setDirty(true);
+  };
+
+  const toggleVisibility = (idx: number) => {
+    const next = rows.map((r, i) => (i === idx ? { ...r, visible: !r.visible } : r));
+    setRows(next);
+    setDirty(true);
+  };
+
+  const handleSave = () => {
+    const order = rows.map((r) => r.key);
+    const hidden = rows.filter((r) => !r.visible).map((r) => r.key);
+    patchMutation.mutate(
+      { data: { order, hidden } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetDashboardManifestQueryKey() });
+          setDirty(false);
+          toast({ title: "Dashboard layout saved" });
+        },
+        onError: () =>
+          toast({ title: "Failed to save layout", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleRestoreDefaults = () => {
+    deleteMutation.mutate(undefined, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetDashboardManifestQueryKey() });
+        setInitialised(false); // re-initialise from refreshed manifest
+        setDirty(false);
+        toast({ title: "Dashboard layout reset to defaults" });
+      },
+      onError: () =>
+        toast({ title: "Failed to reset layout", variant: "destructive" }),
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-12 w-full rounded-md" />
+        ))}
+      </div>
+    );
+  }
+
+  if (isError || !layoutData) {
+    return (
+      <div className="text-sm text-muted-foreground py-8 text-center">
+        Could not load dashboard widgets. Please refresh.
+      </div>
+    );
+  }
+
+  const saving = patchMutation.isPending;
+  const resetting = deleteMutation.isPending;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Widget Visibility &amp; Order</CardTitle>
+          <CardDescription>
+            Choose which widgets appear on your dashboard and arrange them with the
+            up/down buttons. Changes take effect after saving.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No widgets are available for your account.
+            </p>
+          ) : (
+            rows.map((row, idx) => (
+              <div
+                key={row.key}
+                className={`flex items-center gap-3 rounded-md border px-3 py-2.5 transition-opacity ${
+                  row.visible ? "bg-background" : "opacity-50 bg-muted/40"
+                }`}
+              >
+                {/* Visibility toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleVisibility(idx)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={row.visible ? `Hide ${row.title}` : `Show ${row.title}`}
+                >
+                  {row.visible ? (
+                    <Eye className="h-4 w-4" />
+                  ) : (
+                    <EyeOff className="h-4 w-4" />
+                  )}
+                </button>
+
+                {/* Widget name */}
+                <span className="flex-1 text-sm font-medium">{row.title}</span>
+
+                {/* Reorder buttons */}
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => move(idx, "up")}
+                    disabled={idx === 0}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label={`Move ${row.title} up`}
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(idx, "down")}
+                    disabled={idx === rows.length - 1}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label={`Move ${row.title} down`}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Actions */}
+      <div className="flex items-center justify-between gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRestoreDefaults}
+          disabled={resetting || saving}
+          className="text-muted-foreground"
+        >
+          {resetting ? (
+            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Resetting…</>
+          ) : (
+            "Restore defaults"
+          )}
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={!dirty || saving || resetting}
+        >
+          {saving ? (
+            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</>
+          ) : (
+            "Save layout"
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}

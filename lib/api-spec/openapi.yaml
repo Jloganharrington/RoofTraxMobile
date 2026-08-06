@@ -4070,6 +4070,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /dashboard/layout:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardLayout
+      summary: Returns all granted widgets with current visibility and order state
+      description: >-
+        Returns the complete capability-resolved widget set for this user,
+        annotated with each widget's current hidden state from the stored layout.
+        Unlike GET /dashboard/manifest (which only returns visible widgets),
+        this endpoint always returns every granted widget so settings UIs can
+        toggle individual widgets back on without a full layout reset.
+        Role/department/workflow are always resolved server-side.
+      responses:
+        "200":
+          description: Full widget set with visibility state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardLayoutEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Dashboard]
+      operationId: patchDashboardLayout
+      summary: Save the authenticated user's widget visibility and order preferences
+      description: >-
+        Persists a layout object against the authenticated user's profile.
+        Hidden keys subtract from the capability-resolved set; order sorts it.
+        A layout key that was not granted by the capability resolver can never
+        reach the manifest response — this endpoint only stores preferences,
+        the manifest route enforces security.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DashboardLayoutInput"
+      responses:
+        "204":
+          description: Layout saved successfully.
+        "400":
+          description: Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Dashboard]
+      operationId: deleteDashboardLayout
+      summary: Restore the authenticated user's widget layout to defaults
+      description: >-
+        Nulls the dashboard_layout column on the user's profile row, causing
+        GET /dashboard/manifest to return the full capability-resolved set in
+        catalog order.
+      responses:
+        "204":
+          description: Layout reset to defaults.
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -7908,6 +7982,66 @@ components:
           description: Ordered list of widgets this user is permitted to see.
           items:
             $ref: "#/components/schemas/DashboardWidgetMeta"
+
+    DashboardLayoutWidgetEntry:
+      type: object
+      required: [key, title, size, hidden]
+      description: A widget entry with its current visibility state.
+      properties:
+        key:
+          type: string
+          description: Stable identifier matching the WIDGET_CATALOG key.
+        title:
+          type: string
+          description: Display label for the widget header.
+        size:
+          type: string
+          enum: [sm, md, lg]
+          description: Layout hint for skeleton sizing.
+        hidden:
+          type: boolean
+          description: >-
+            True if this widget is currently hidden by the user's stored layout.
+            Granted widgets with hidden:true are excluded from the dashboard manifest
+            but appear here so settings UIs can toggle them back on individually.
+
+    DashboardLayoutEnvelope:
+      type: object
+      required: [widgets]
+      description: >-
+        Full capability-resolved widget set with visibility state. Used by the
+        settings UI; the dashboard grid should use GET /dashboard/manifest instead.
+      properties:
+        widgets:
+          type: array
+          description: >-
+            All granted widgets in display order (visible first per stored order,
+            then hidden ones appended in catalog order). Each row includes a
+            hidden flag indicating current visibility preference.
+          items:
+            $ref: "#/components/schemas/DashboardLayoutWidgetEntry"
+
+    DashboardLayoutInput:
+      type: object
+      required: [hidden, order]
+      additionalProperties: false
+      description: >-
+        User's widget visibility and order preferences. Hidden keys subtract
+        from the capability-resolved set; order keys sort the result. Unknown
+        or uncapable keys are silently ignored at manifest resolution time.
+      properties:
+        hidden:
+          type: array
+          maxItems: 50
+          description: Widget keys to hide from the dashboard.
+          items:
+            type: string
+        order:
+          type: array
+          maxItems: 50
+          description: Desired display order of widget keys (front of list first).
+          items:
+            type: string
 
     WeatherCandidate:
       type: object
