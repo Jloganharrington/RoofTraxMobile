@@ -5,19 +5,22 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GridCellEntry } from './gridCellEntry';
 
 /**
- * User's widget visibility and order preferences. Hidden keys subtract from the capability-resolved set; order keys sort the result. Unknown or uncapable keys are silently ignored at manifest resolution time.
+ * User's widget layout preferences. All fields are optional — omitted fields are preserved from the existing stored layout. Hidden keys subtract from the capability-resolved set; order keys sort the result; gridLayout stores per-widget drag/resize positions. Unknown or uncapable keys are silently ignored at manifest resolution time.
  */
 export interface DashboardLayoutInput {
   /**
      * Widget keys to hide from the dashboard.
      * @maxItems 50
      */
-  hidden: string[];
+  hidden?: string[];
   /**
      * Desired display order of widget keys (front of list first).
      * @maxItems 50
      */
-  order: string[];
+  order?: string[];
+  /** Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults. */
+  gridLayout?: GridCellEntry[] | null;
 }

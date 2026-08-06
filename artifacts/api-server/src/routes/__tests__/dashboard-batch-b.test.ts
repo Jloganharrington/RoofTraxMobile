@@ -60,6 +60,7 @@ async function seedActor(
   });
 
   const sid = await createSession({
+    access_token: 'test-access-token',
     user: {
       id: user.id,
       email: user.email,

@@ -11,11 +11,25 @@ const router: IRouter = Router();
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
+interface GridCell {
+  key: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface StoredLayout {
+  hidden: string[];
+  order: string[];
+  gridLayout?: GridCell[] | null;
+}
+
 interface ProfileAndLayout {
   role: Role;
   department: Department;
   workflow: WorkflowAssignment;
-  layout: { hidden: string[]; order: string[] } | null;
+  layout: StoredLayout | null;
 }
 
 async function loadProfileAndLayout(userId: string): Promise<ProfileAndLayout> {
@@ -28,7 +42,7 @@ async function loadProfileAndLayout(userId: string): Promise<ProfileAndLayout> {
     role: (profile?.role ?? 'field_rep') as Role,
     department: (profile?.department ?? 'canvasser') as Department,
     workflow: (profile?.workflowAssignment ?? 'retail') as WorkflowAssignment,
-    layout: profile?.dashboardLayout ?? null,
+    layout: profile?.dashboardLayout as StoredLayout | null ?? null,
   };
 }
 
@@ -77,6 +91,7 @@ router.get('/dashboard/manifest', async (req: Request, res: Response) => {
 
   const body = GetDashboardManifestResponse.parse({
     widgets: widgets.map((w) => ({ key: w.key, title: w.title, size: w.size })),
+    gridLayout: layout?.gridLayout ?? null,
   });
   res.json(body);
 });
@@ -139,24 +154,37 @@ router.patch('/dashboard/layout', async (req: Request, res: Response) => {
     return;
   }
 
-  // Strict parse: rejects extra fields beyond hidden + order.
+  // Strict parse: rejects extra fields beyond hidden, order, gridLayout.
   const parsed = PatchDashboardLayoutBody.strict().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request body', details: parsed.error.flatten() });
     return;
   }
 
-  const { hidden, order } = parsed.data;
+  // Load existing layout so we can merge — omitted fields are preserved.
+  const { layout: existing } = await loadProfileAndLayout(req.user.id);
+  const base: StoredLayout = existing ?? { hidden: [], order: [] };
+
+  const merged: StoredLayout = {
+    hidden:     parsed.data.hidden     ?? base.hidden,
+    order:      parsed.data.order      ?? base.order,
+    // null means "clear grid positions back to defaults"; undefined means "no change"
+    ...(parsed.data.gridLayout !== undefined
+      ? { gridLayout: parsed.data.gridLayout ?? null }
+      : base.gridLayout != null
+        ? { gridLayout: base.gridLayout }
+        : {}),
+  };
 
   await db
     .insert(userProfilesTable)
     .values({
       userId: req.user.id,
-      dashboardLayout: { hidden, order },
+      dashboardLayout: merged,
     })
     .onConflictDoUpdate({
       target: userProfilesTable.userId,
-      set: { dashboardLayout: { hidden, order } },
+      set: { dashboardLayout: merged },
     });
 
   res.status(204).end();

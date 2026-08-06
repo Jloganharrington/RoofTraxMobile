@@ -8202,6 +8202,34 @@ components:
           enum: [sm, md, lg]
           description: Layout hint for skeleton sizing before data loads.
 
+    GridCellEntry:
+      type: object
+      required: [key, x, y, w, h]
+      description: >-
+        A single widget's position and size within the 12-column resizable
+        dashboard grid. x/y are zero-indexed column/row coordinates; w/h are
+        column-span and row-span respectively.
+      properties:
+        key:
+          type: string
+          description: Widget key — matches WIDGET_CATALOG key.
+        x:
+          type: integer
+          minimum: 0
+          description: Column index (0–11).
+        y:
+          type: integer
+          minimum: 0
+          description: Row index (0-based).
+        w:
+          type: integer
+          minimum: 1
+          description: Width in grid columns (1–12).
+        h:
+          type: integer
+          minimum: 1
+          description: Height in grid rows (minimum 1).
+
     DashboardManifestEnvelope:
       type: object
       required: [widgets]
@@ -8211,6 +8239,14 @@ components:
           description: Ordered list of widgets this user is permitted to see.
           items:
             $ref: "#/components/schemas/DashboardWidgetMeta"
+        gridLayout:
+          type: array
+          nullable: true
+          description: >-
+            Stored per-user grid positions. Null when the user has never saved
+            a custom layout; the frontend derives defaults from widget sizes.
+          items:
+            $ref: "#/components/schemas/GridCellEntry"
 
     DashboardLayoutWidgetEntry:
       type: object
@@ -8252,12 +8288,13 @@ components:
 
     DashboardLayoutInput:
       type: object
-      required: [hidden, order]
       additionalProperties: false
       description: >-
-        User's widget visibility and order preferences. Hidden keys subtract
-        from the capability-resolved set; order keys sort the result. Unknown
-        or uncapable keys are silently ignored at manifest resolution time.
+        User's widget layout preferences. All fields are optional — omitted
+        fields are preserved from the existing stored layout. Hidden keys
+        subtract from the capability-resolved set; order keys sort the result;
+        gridLayout stores per-widget drag/resize positions. Unknown or
+        uncapable keys are silently ignored at manifest resolution time.
       properties:
         hidden:
           type: array
@@ -8271,6 +8308,14 @@ components:
           description: Desired display order of widget keys (front of list first).
           items:
             type: string
+        gridLayout:
+          type: array
+          nullable: true
+          description: >-
+            Per-widget grid positions. Pass null to clear saved positions and
+            revert to catalog-size defaults.
+          items:
+            $ref: "#/components/schemas/GridCellEntry"
 
     ProfileTheme:
       type: string

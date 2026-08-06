@@ -6476,12 +6476,27 @@ export const GetPortalReportHtmlResponse = zod.object({
  * Resolves the caller's role, department, and workflow server-side from their profile row and returns the filtered, ordered widget manifest. Returns metadata only (key, title, size). Widget payload data is never included here — each widget fetches its own data independently. Role/department/workflow are never read from the request; client-supplied values are silently ignored.
  * @summary Returns the ordered list of widgets this user is permitted to see
  */
+export const getDashboardManifestResponseGridLayoutItemXMin = 0;
+
+export const getDashboardManifestResponseGridLayoutItemYMin = 0;
+
+
+
+
+
 export const GetDashboardManifestResponse = zod.object({
   "widgets": zod.array(zod.object({
   "key": zod.string().describe('Stable identifier matching the WIDGET_CATALOG key.'),
   "title": zod.string().describe('Display label for the widget header.'),
   "size": zod.enum(['sm', 'md', 'lg']).describe('Layout hint for skeleton sizing before data loads.')
-}).describe('Manifest metadata for a single dashboard widget. Contains key, title, and size only — never widget payload data (rows, values, etc.).')).describe('Ordered list of widgets this user is permitted to see.')
+}).describe('Manifest metadata for a single dashboard widget. Contains key, title, and size only — never widget payload data (rows, values, etc.).')).describe('Ordered list of widgets this user is permitted to see.'),
+  "gridLayout": zod.array(zod.object({
+  "key": zod.string().describe('Widget key — matches WIDGET_CATALOG key.'),
+  "x": zod.number().min(getDashboardManifestResponseGridLayoutItemXMin).describe('Column index (0–11).'),
+  "y": zod.number().min(getDashboardManifestResponseGridLayoutItemYMin).describe('Row index (0-based).'),
+  "w": zod.number().min(1).describe('Width in grid columns (1–12).'),
+  "h": zod.number().min(1).describe('Height in grid rows (minimum 1).')
+}).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).nullish().describe('Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes.')
 })
 
 
@@ -6507,12 +6522,25 @@ export const patchDashboardLayoutBodyHiddenMax = 50;
 
 export const patchDashboardLayoutBodyOrderMax = 50;
 
+export const patchDashboardLayoutBodyGridLayoutItemXMin = 0;
+
+export const patchDashboardLayoutBodyGridLayoutItemYMin = 0;
+
+
+
 
 
 export const PatchDashboardLayoutBody = zod.object({
-  "hidden": zod.array(zod.string()).max(patchDashboardLayoutBodyHiddenMax).describe('Widget keys to hide from the dashboard.'),
-  "order": zod.array(zod.string()).max(patchDashboardLayoutBodyOrderMax).describe('Desired display order of widget keys (front of list first).')
-}).describe('User\'s widget visibility and order preferences. Hidden keys subtract from the capability-resolved set; order keys sort the result. Unknown or uncapable keys are silently ignored at manifest resolution time.')
+  "hidden": zod.array(zod.string()).max(patchDashboardLayoutBodyHiddenMax).optional().describe('Widget keys to hide from the dashboard.'),
+  "order": zod.array(zod.string()).max(patchDashboardLayoutBodyOrderMax).optional().describe('Desired display order of widget keys (front of list first).'),
+  "gridLayout": zod.array(zod.object({
+  "key": zod.string().describe('Widget key — matches WIDGET_CATALOG key.'),
+  "x": zod.number().min(patchDashboardLayoutBodyGridLayoutItemXMin).describe('Column index (0–11).'),
+  "y": zod.number().min(patchDashboardLayoutBodyGridLayoutItemYMin).describe('Row index (0-based).'),
+  "w": zod.number().min(1).describe('Width in grid columns (1–12).'),
+  "h": zod.number().min(1).describe('Height in grid rows (minimum 1).')
+}).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).nullish().describe('Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults.')
+}).describe('User\'s widget layout preferences. All fields are optional — omitted fields are preserved from the existing stored layout. Hidden keys subtract from the capability-resolved set; order keys sort the result; gridLayout stores per-widget drag\/resize positions. Unknown or uncapable keys are silently ignored at manifest resolution time.')
 
 export const PatchDashboardLayoutResponse = zod.void()
 

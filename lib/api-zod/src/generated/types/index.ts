@@ -134,6 +134,7 @@ export * from './getInspectionReportPreviewUrl200';
 export * from './getPipelineFunnelWidgetParams';
 export * from './getPipelineFunnelWidgetPipeline';
 export * from './getWeatherEventsParams';
+export * from './gridCellEntry';
 export * from './handleBrowserLoginCallbackParams';
 export * from './healthStatus';
 export * from './heatmapPoint';

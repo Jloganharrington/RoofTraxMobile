@@ -2994,9 +2994,39 @@ export interface DashboardWidgetMeta {
   size: DashboardWidgetMetaSize;
 }
 
+/**
+ * A single widget's position and size within the 12-column resizable dashboard grid. x/y are zero-indexed column/row coordinates; w/h are column-span and row-span respectively.
+ */
+export interface GridCellEntry {
+  /** Widget key — matches WIDGET_CATALOG key. */
+  key: string;
+  /**
+     * Column index (0–11).
+     * @minimum 0
+     */
+  x: number;
+  /**
+     * Row index (0-based).
+     * @minimum 0
+     */
+  y: number;
+  /**
+     * Width in grid columns (1–12).
+     * @minimum 1
+     */
+  w: number;
+  /**
+     * Height in grid rows (minimum 1).
+     * @minimum 1
+     */
+  h: number;
+}
+
 export interface DashboardManifestEnvelope {
   /** Ordered list of widgets this user is permitted to see. */
   widgets: DashboardWidgetMeta[];
+  /** Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes. */
+  gridLayout?: GridCellEntry[] | null;
 }
 
 /**
@@ -3034,19 +3064,21 @@ export interface DashboardLayoutEnvelope {
 }
 
 /**
- * User's widget visibility and order preferences. Hidden keys subtract from the capability-resolved set; order keys sort the result. Unknown or uncapable keys are silently ignored at manifest resolution time.
+ * User's widget layout preferences. All fields are optional — omitted fields are preserved from the existing stored layout. Hidden keys subtract from the capability-resolved set; order keys sort the result; gridLayout stores per-widget drag/resize positions. Unknown or uncapable keys are silently ignored at manifest resolution time.
  */
 export interface DashboardLayoutInput {
   /**
      * Widget keys to hide from the dashboard.
      * @maxItems 50
      */
-  hidden: string[];
+  hidden?: string[];
   /**
      * Desired display order of widget keys (front of list first).
      * @maxItems 50
      */
-  order: string[];
+  order?: string[];
+  /** Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults. */
+  gridLayout?: GridCellEntry[] | null;
 }
 
 /**
