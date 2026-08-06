@@ -1,0 +1,104 @@
+ROOFTRAX-WEB SETTINGS — WAVE 2A
+
+Same rules as Wave 1: [LOCKED] = exactly as written; [REASONING OK] = goal
+stated, implementation yours. STOP after each task, paste actual verification
+output (run the commands — don't report done without running them). Hard
+boundaries unchanged: never touch artifacts/mobile/, never hand-edit
+generated client files (openapi.yaml first, then regenerate), server-side
+enforcement for anything role-gated.
+
+════════════════════════════════════════════════════════
+TASK S1 [LOCKED] — Restructure /settings into Personal + Company groups
+════════════════════════════════════════════════════════
+- SettingsPage gains two tab groups rendered with group headings:
+  PERSONAL (all authenticated users): profile, appearance, dashboard, email
+  COMPANY (existing tabs, existing gates): company profile (super_admin),
+  branding (manager+), preferences (manager+)
+- Remove minRole="manager" from the /settings route in App.tsx and from the
+  Settings nav item in Shell.tsx — Settings is now visible to every user.
+  Company-group tabs keep their internal role gates exactly as today
+  (the existing visibleTabs filter pattern — extend it, don't replace it).
+- Personal tabs are stubs in this task ("coming soon" placeholder bodies is
+  fine) — S2-S4 fill them. Do NOT stub with fake data.
+VERIFY: field_rep sees Settings in nav, opens it, sees ONLY the four
+Personal tabs. manager sees Personal + Branding + Preferences. super_admin
+additionally sees Company Profile. Typecheck clean. Paste observed tab lists
+for all three roles.
+
+════════════════════════════════════════════════════════
+TASK S2 [REASONING OK] — Profile + Appearance tabs
+════════════════════════════════════════════════════════
+GOAL: Profile tab = name, phone, email (display), avatar upload (reuse the
+existing object-storage upload + ACL pattern). Appearance tab = Light/Dark/
+System theme selector.
+Theme mechanics [LOCKED within this task]:
+  - Tailwind's `.dark` class variant already exists in index.css — toggle a
+    `dark` class on the document root, don't invent a parallel scheme.
+  - Persist to a new `theme` column on user_profiles (enum light|dark|system,
+    default system) so it follows the user across devices; mirror to
+    localStorage so there's no flash of wrong theme before the profile loads.
+  - Schema change = idempotent SQL in data-migrations/ (next free number —
+    check for collisions, the dir has had duplicate numbers before) PLUS the
+    drizzle schema column. openapi-first for the profile PATCH.
+VERIFY: toggle persists across reload and across a second browser; no flash
+of wrong theme on cold load; field_rep can edit own profile, cannot edit
+anyone else's (server rejects, not just UI).
+
+════════════════════════════════════════════════════════
+TASK S3 [LOCKED] — Dashboard tab: widget visibility + order
+════════════════════════════════════════════════════════
+- New jsonb column user_profiles.dashboard_layout, nullable. Shape:
+  { hidden: string[], order: string[] } — widget KEYS only, never titles.
+- GET /dashboard/manifest applies it AFTER capability filtering: a user can
+  hide/reorder only within widgets their role already grants. Client-supplied
+  layout can NEVER add a widget the resolver didn't grant — the resolver
+  output remains the universe, layout is a view on it.
+- Unknown/stale keys in the stored layout are ignored silently (widget
+  catalog changes shape over time — a stale hidden-key must not 500).
+- Dashboard tab UI: list the user's granted widgets (from the manifest),
+  toggle visibility, reorder (up/down buttons are fine — don't build
+  drag-and-drop unless trivial with what's already installed).
+- openapi-first for the layout PATCH endpoint.
+VERIFY: hide a widget → manifest response no longer includes it → dashboard
+doesn't render it. Reorder → manifest order changes. A field_rep PATCHing a
+layout containing 'action_required' (manager-only) into their order/hidden
+lists gets it silently ignored — paste the manifest response proving it's
+absent either way. Restore-defaults works (null the column).
+
+════════════════════════════════════════════════════════
+TASK S4 [LOCKED — SECURITY] — Email tab: personal SMTP + signature
+════════════════════════════════════════════════════════
+The per-user SMTP columns and server-side send pattern ALREADY EXIST
+(user_profiles.smtp_* — built for mobile report emailing). This task is a
+web UI over the existing pattern plus a signature field. Rules that must
+carry over exactly (.agents/memory/user-supplied-smtp.md is the authority):
+  - Password is WRITE-ONLY. No API response ever returns it — the UI shows
+    only "configured/not configured" + non-secret fields. If an endpoint
+    you need returns the password today, that's a bug — stop and report it.
+  - Any user-supplied host goes through the existing DNS-vetting SSRF guard
+    (smtpGuard) — reject private/loopback/link-local/metadata ranges. Reuse
+    the existing guard, do not write a new one.
+  - Add a "Send test email" button hitting a server endpoint that sends to
+    the user's own from-address only (not an arbitrary recipient field).
+  - New user_profiles.email_signature text column (plain text or minimal
+    HTML — if HTML, sanitize server-side on write with the sanitizer
+    already used for compiled reports).
+VERIFY: password never appears in any network response (paste the settings
+GET response as proof); test-send works against a real mailbox; an attempt
+to save a private-range host (e.g. 10.0.0.1) is rejected with a clear error.
+
+════════════════════════════════════════════════════════
+TASK S5 [LOCKED] — Fold Commission Reports under Reports
+════════════════════════════════════════════════════════
+- Remove the Commission Report nav item from Shell.tsx.
+- /commission-report route becomes a redirect to /reports (keep minRole
+  gate on /reports as-is).
+- /reports remains ComingSoon for now, but retitle its description to name
+  the planned tabs: Operational | Commission. Do NOT build report content
+  in this task, and do NOT fabricate commission figures anywhere — there is
+  no commission data in this schema yet.
+VERIFY: nav shows no Commission Report item; hitting /commission-report
+lands on /reports; field_rep still can't reach /reports.
+
+Run the full-suite check after S5 (authz tests, api-server vitest, all three
+typechecks, git diff --stat -- artifacts/mobile/ empty) and paste output.

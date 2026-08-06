@@ -169,7 +169,7 @@ function Router() {
         <ProtectedRoute minRole="admin"><UserAuthorizationPage /></ProtectedRoute>
       </Route>
       <Route path="/settings">
-        <ProtectedRoute minRole="manager"><SettingsPage /></ProtectedRoute>
+        <ProtectedRoute><SettingsPage /></ProtectedRoute>
       </Route>
       <Route path="/integrations">
         <ProtectedRoute minRole="manager">

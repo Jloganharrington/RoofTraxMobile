@@ -19,7 +19,6 @@ import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
 import { useGetCurrentAuthUser } from "@workspace/api-client-react";
 import { useGetMyProfile, useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
-import { useLocation } from "wouter";
 import {
   Building2,
   Palette,
@@ -33,6 +32,10 @@ import {
   Bug,
   Lock,
   Megaphone,
+  User,
+  SunMoon,
+  LayoutGrid,
+  Mail,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -80,7 +83,9 @@ function displayDollarsToCents(value: string): number | null {
 // Tab navigation
 // ---------------------------------------------------------------------------
 
-type TabId = "profile" | "branding" | "preferences";
+type PersonalTabId = "my_profile" | "appearance" | "dashboard_tab" | "email_settings";
+type CompanyTabId  = "company_profile" | "branding" | "preferences";
+type TabId = PersonalTabId | CompanyTabId;
 
 interface Tab {
   id: TabId;
@@ -88,11 +93,37 @@ interface Tab {
   icon: React.ElementType;
 }
 
-const ALL_TABS: Tab[] = [
-  { id: "profile", label: "Company Profile", icon: Building2 },
-  { id: "branding", label: "Branding", icon: Palette },
-  { id: "preferences", label: "Platform Preferences", icon: Sliders },
+const PERSONAL_TABS: Tab[] = [
+  { id: "my_profile",     label: "Profile",     icon: User       },
+  { id: "appearance",     label: "Appearance",  icon: SunMoon    },
+  { id: "dashboard_tab",  label: "Dashboard",   icon: LayoutGrid },
+  { id: "email_settings", label: "Email",       icon: Mail       },
 ];
+
+const COMPANY_TABS: Tab[] = [
+  { id: "company_profile", label: "Company Profile",     icon: Building2 },
+  { id: "branding",        label: "Branding",             icon: Palette   },
+  { id: "preferences",     label: "Platform Preferences", icon: Sliders   },
+];
+
+// ---------------------------------------------------------------------------
+// Coming Soon stub — placeholder for Personal tabs not yet implemented (S2–S4)
+// ---------------------------------------------------------------------------
+function ComingSoonStub({ label }: { label: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{label}</CardTitle>
+        <CardDescription>This section is coming soon.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">
+          This feature is under development and will be available in a future update.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Company Profile Tab
@@ -995,7 +1026,6 @@ function PlatformPreferencesTab({ companyId }: { companyId: string }) {
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
-  const [, navigate] = useLocation();
   const { data: authEnvelope, isLoading: loadingAuth } = useGetCurrentAuthUser();
   const { data: profileData, isLoading: loadingProfile } = useGetMyProfile();
 
@@ -1005,27 +1035,13 @@ export default function SettingsPage() {
   const isManagerOrAbove =
     role === "manager" || role === "admin" || role === "super_admin";
 
-  // Redirect field reps away
-  useEffect(() => {
-    if (!loadingAuth && !loadingProfile && role && !isManagerOrAbove) {
-      navigate("/");
-    }
-  }, [loadingAuth, loadingProfile, role, isManagerOrAbove, navigate]);
-
-  // Determine visible tabs and default
-  const visibleTabs = ALL_TABS.filter((t) => {
-    if (t.id === "profile") return isSuperAdmin;
+  // Company tabs filtered by role — personal tabs are always shown to all users
+  const visibleCompanyTabs = COMPANY_TABS.filter((t) => {
+    if (t.id === "company_profile") return isSuperAdmin;
     return isManagerOrAbove;
   });
 
-  const [activeTab, setActiveTab] = useState<TabId>("branding");
-
-  // Once we know the role, set a sensible default tab
-  useEffect(() => {
-    if (!loadingProfile && role) {
-      setActiveTab(isSuperAdmin ? "profile" : "branding");
-    }
-  }, [loadingProfile, role, isSuperAdmin]);
+  const [activeTab, setActiveTab] = useState<TabId>("my_profile");
 
   if (loadingAuth || loadingProfile) {
     return (
@@ -1037,10 +1053,6 @@ export default function SettingsPage() {
     );
   }
 
-  if (!isManagerOrAbove) {
-    return null; // redirect in progress
-  }
-
   return (
     <Shell>
       <div className="max-w-4xl mx-auto">
@@ -1048,39 +1060,85 @@ export default function SettingsPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your company profile, branding, and platform preferences.
+            Manage your profile, preferences, and company configuration.
           </p>
         </div>
 
         <div className="flex gap-6">
           {/* Left sidebar nav */}
           <aside className="w-44 flex-shrink-0">
-            <nav className="space-y-0.5 sticky top-0">
-              {visibleTabs.map((tab) => {
-                const Icon = tab.icon;
-                const active = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-left ${
-                      active
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 flex-shrink-0" />
-                    {tab.label}
-                  </button>
-                );
-              })}
+            <nav className="space-y-4 sticky top-0">
+
+              {/* ── Personal group ──────────────────────────────────────── */}
+              <div>
+                <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground select-none">
+                  Personal
+                </p>
+                <div className="space-y-0.5">
+                  {PERSONAL_TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const active = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-left ${
+                          active
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4 flex-shrink-0" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Company group (only when role grants ≥1 tab) ────────── */}
+              {visibleCompanyTabs.length > 0 && (
+                <div>
+                  <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground select-none">
+                    Company
+                  </p>
+                  <div className="space-y-0.5">
+                    {visibleCompanyTabs.map((tab) => {
+                      const Icon = tab.icon;
+                      const active = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors text-left ${
+                            active
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </nav>
           </aside>
 
           {/* Tab content */}
           <div className="flex-1 min-w-0">
-            {activeTab === "profile" && isSuperAdmin && (
+            {/* Personal tabs — stubs until S2–S4 */}
+            {activeTab === "my_profile"     && <ComingSoonStub label="Profile" />}
+            {activeTab === "appearance"     && <ComingSoonStub label="Appearance" />}
+            {activeTab === "dashboard_tab"  && <ComingSoonStub label="Dashboard" />}
+            {activeTab === "email_settings" && <ComingSoonStub label="Email" />}
+
+            {/* Company tabs — gates preserved exactly as before */}
+            {activeTab === "company_profile" && isSuperAdmin && (
               <CompanyProfileTab companyId={companyId} />
             )}
             {activeTab === "branding" && isManagerOrAbove && (
