@@ -55,7 +55,10 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
           pm_commission_cents,
           total_commission_cents,
           total_cost_cents,
-          net_profit_cents
+          net_profit_cents,
+          expected_total_cents,
+          cash_margin_pct,
+          projected_margin_pct
         FROM pin_profitability
         WHERE pin_id   = ${pinId}
           AND company_id = ${req.user.companyId}`,
@@ -82,19 +85,23 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
         totalCostCents:           0,
         netProfitCents:           0,
         marginPct:                null,
+        expectedTotalCents:       0,
+        cashMarginPct:            0,
+        projectedMarginPct:       0,
       },
     });
     return;
   }
 
-  // Helper: pg returns numeric aggregates as strings; coerce to int.
-  const n = (v: unknown): number => (typeof v === 'string' ? parseInt(v, 10) : Number(v ?? 0)) || 0;
+  // Helper: pg returns numeric aggregates and computed pcts as strings; coerce.
+  const n  = (v: unknown): number => (typeof v === 'string' ? parseInt(v, 10)    : Number(v ?? 0)) || 0;
+  const pct = (v: unknown): number => (typeof v === 'string' ? parseFloat(v)      : Number(v ?? 0)) || 0;
 
   const totalPayments = n(row.total_payments_cents);
   const totalCost     = n(row.total_cost_cents);
   const netProfit     = n(row.net_profit_cents);
 
-  // Margin = net_profit / total_payments_received (undefined if no revenue)
+  // Legacy marginPct kept for backward compatibility (cash-only, null when no revenue).
   const marginPct =
     totalPayments > 0 ? Math.round((netProfit / totalPayments) * 10000) / 100 : null;
 
@@ -115,6 +122,10 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
       totalCostCents:           totalCost,
       netProfitCents:           netProfit,
       marginPct,
+      // Migration 027 — view-computed margins
+      expectedTotalCents:  n(row.expected_total_cents),
+      cashMarginPct:       pct(row.cash_margin_pct),
+      projectedMarginPct:  pct(row.projected_margin_pct),
     },
   });
 });

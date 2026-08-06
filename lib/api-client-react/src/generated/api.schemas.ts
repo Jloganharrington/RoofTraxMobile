@@ -4042,6 +4042,12 @@ export interface ProfitabilitySummary {
      * @nullable
      */
   marginPct?: number | null;
+  /** Expected revenue baseline in cents (migration 027). Insurance: GREATEST(contract,rcv). Retail: contract. */
+  expectedTotalCents?: number;
+  /** (payments - costs) / payments * 100. Returns 0 when no payments. */
+  cashMarginPct?: number;
+  /** (expectedTotal - costs) / expectedTotal * 100. Returns 0 when expectedTotal = 0. */
+  projectedMarginPct?: number;
 }
 
 export interface ProfitabilitySummaryEnvelope {

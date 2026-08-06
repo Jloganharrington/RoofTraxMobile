@@ -10536,6 +10536,24 @@ components:
           description: >-
             netProfitCents / totalPaymentsCents as a percentage (0–100),
             rounded to 2 decimal places. Null when totalPaymentsCents = 0.
+            Kept for backward compatibility; prefer cashMarginPct.
+        expectedTotalCents:
+          type: integer
+          description: >-
+            Expected revenue baseline in cents. Insurance leads use
+            GREATEST(contractAmountCents, approvedRcvAmountCents); retail leads
+            use contractAmountCents. Derived from migration-027 view column.
+        cashMarginPct:
+          type: number
+          description: >-
+            (totalPaymentsCents − totalCostCents) / totalPaymentsCents × 100.
+            Returns 0 (not NaN or null) when totalPaymentsCents = 0.
+        projectedMarginPct:
+          type: number
+          description: >-
+            (expectedTotalCents − totalCostCents) / expectedTotalCents × 100.
+            Returns 0 (not NaN or null) when expectedTotalCents = 0. Accounts
+            for insurance leads where approvedRcv exceeds the contract amount.
     ProfitabilitySummaryEnvelope:
       type: object
       required: [profitability]

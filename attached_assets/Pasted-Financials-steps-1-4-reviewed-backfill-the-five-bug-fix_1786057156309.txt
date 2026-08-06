@@ -1,0 +1,45 @@
+Financials steps 1–4 reviewed — backfill, the five bug fixes, invoice
+concurrency, and the vendor_expenses tenancy fix all verified correct.
+Good work, especially using numeric for the cents conversion.
+
+One gap to close. Step 4a specified three rules that were lost when
+computeLeadFinancials became a SQL view. Repo-wide grep returns zero matches
+for expectedTotal, cashMarginPct, and projectedMarginPct.
+
+Add to the pin_profitability view (migration 027, CREATE OR REPLACE):
+
+  expected_total_cents:
+      insurance leads → GREATEST(contract_amount_cents, approved_rcv_cents)
+      retail leads    → contract_amount_cents
+      (contract/approvedRcv are still legacy varchar on pins — reuse
+       _parse_legacy_money_cents from migration 023 to convert.)
+
+  cash_margin_pct:
+      total_payments_cents > 0
+        ? (total_payments_cents - total_cost_cents)::numeric
+            / total_payments_cents * 100
+        : 0
+
+  projected_margin_pct:
+      expected_total_cents > 0
+        ? (expected_total_cents - total_cost_cents)::numeric
+            / expected_total_cents * 100
+        : 0
+
+Both margins are required — cash-only is exactly the defect this pair exists
+to fix: a job that is 60% collected but fully expensed reads as unprofitable
+on cash alone. Guard both against divide-by-zero returning 0, never NaN.
+
+Surface both on the Net Profit card in LeadProfile.tsx, matching the
+reference design ("X% projected margin / Y% cash margin").
+
+VERIFY:
+  - retail lead → expected_total_cents = contract, projected margin uses it
+  - insurance lead where approvedRcv > contract → expected uses approvedRcv
+  - zero-collected lead → both margins 0, not NaN or Infinity
+  - hand-verify one lead's cash and projected margins against the raw numbers
+  - re-run 026's existing checks to confirm the view change broke nothing
+  INTEGRATION:
+  - scripts/seed-acceptance-claim.ts still 42/42
+  - cd artifacts/api-server && npx vitest run — full output
+  - typechecks all three; git diff --stat -- artifacts/mobile/ empty
