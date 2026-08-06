@@ -5,6 +5,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Reorder } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Shell } from "@/components/layout/Shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,8 +56,7 @@ import {
   FileText,
   Eye,
   EyeOff,
-  ChevronUp,
-  ChevronDown,
+  GripVertical,
   Sun,
   Moon,
   Monitor,
@@ -1885,15 +1885,6 @@ function DashboardSettingsTab() {
   const patchMutation = usePatchDashboardLayout();
   const deleteMutation = useDeleteDashboardLayout();
 
-  const move = (idx: number, direction: "up" | "down") => {
-    const next = [...rows];
-    const target = direction === "up" ? idx - 1 : idx + 1;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setRows(next);
-    setDirty(true);
-  };
-
   const toggleVisibility = (idx: number) => {
     const next = rows.map((r, i) => (i === idx ? { ...r, visible: !r.visible } : r));
     setRows(next);
@@ -1967,53 +1958,47 @@ function DashboardSettingsTab() {
               No widgets are available for your account.
             </p>
           ) : (
-            rows.map((row, idx) => (
-              <div
-                key={row.key}
-                className={`flex items-center gap-3 rounded-md border px-3 py-2.5 transition-opacity ${
-                  row.visible ? "bg-background" : "opacity-50 bg-muted/40"
-                }`}
-              >
-                {/* Visibility toggle */}
-                <button
-                  type="button"
-                  onClick={() => toggleVisibility(idx)}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  aria-label={row.visible ? `Hide ${row.title}` : `Show ${row.title}`}
+            <Reorder.Group
+              axis="y"
+              values={rows}
+              onReorder={(next) => { setRows(next); setDirty(true); }}
+              className="space-y-2"
+            >
+              {rows.map((row, idx) => (
+                <Reorder.Item
+                  key={row.key}
+                  value={row}
+                  className={`flex items-center gap-3 rounded-md border px-3 py-2.5 transition-opacity cursor-default select-none ${
+                    row.visible ? "bg-background" : "opacity-50 bg-muted/40"
+                  }`}
                 >
-                  {row.visible ? (
-                    <Eye className="h-4 w-4" />
-                  ) : (
-                    <EyeOff className="h-4 w-4" />
-                  )}
-                </button>
+                  {/* Drag handle */}
+                  <span
+                    className="text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+                    aria-label={`Drag to reorder ${row.title}`}
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </span>
 
-                {/* Widget name */}
-                <span className="flex-1 text-sm font-medium">{row.title}</span>
-
-                {/* Reorder buttons */}
-                <div className="flex items-center gap-0.5">
+                  {/* Visibility toggle */}
                   <button
                     type="button"
-                    onClick={() => move(idx, "up")}
-                    disabled={idx === 0}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                    aria-label={`Move ${row.title} up`}
+                    onClick={() => toggleVisibility(idx)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={row.visible ? `Hide ${row.title}` : `Show ${row.title}`}
                   >
-                    <ChevronUp className="h-4 w-4" />
+                    {row.visible ? (
+                      <Eye className="h-4 w-4" />
+                    ) : (
+                      <EyeOff className="h-4 w-4" />
+                    )}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => move(idx, "down")}
-                    disabled={idx === rows.length - 1}
-                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                    aria-label={`Move ${row.title} down`}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))
+
+                  {/* Widget name */}
+                  <span className="flex-1 text-sm font-medium">{row.title}</span>
+                </Reorder.Item>
+              ))}
+            </Reorder.Group>
           )}
         </CardContent>
       </Card>

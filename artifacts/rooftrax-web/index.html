@@ -20,9 +20,13 @@
     <script>
       (function () {
         var stored = localStorage.getItem('rt_theme');
-        var resolved = stored;
-        if (!resolved || resolved === 'system') {
+        var resolved;
+        if (stored === 'system') {
           resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        } else if (stored === 'light') {
+          resolved = 'light';
+        } else {
+          resolved = 'dark'; // nothing stored, or stored === 'dark'
         }
         if (resolved === 'dark') {
           document.documentElement.classList.add('dark');

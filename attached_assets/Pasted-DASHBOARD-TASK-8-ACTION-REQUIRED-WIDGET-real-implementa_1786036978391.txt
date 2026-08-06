@@ -1,0 +1,138 @@
+DASHBOARD TASK 8 — ACTION REQUIRED WIDGET (real implementation)
+
+Context: this is the last unbuilt piece of the original Wave 1 dashboard plan.
+It was skipped when priorities shifted after Task 7. The endpoint at
+artifacts/api-server/src/routes/dashboard.ts:186 currently returns
+{ items: [] } with a comment saying "Real query implementation follows in
+Task 8." That placeholder is actively misleading — the widget renders
+"Nothing requires your attention" to every manager, which reads as a real
+answer rather than an unbuilt feature. Fixing that is the point of this task.
+
+Same rules as prior waves. openapi-first then regenerate; never hand-edit
+generated files; never touch artifacts/mobile/. STOP when done and paste real
+verification output.
+
+═══════════════════════════════════════════════════════════
+WHAT THIS WIDGET IS FOR [read before designing]
+═══════════════════════════════════════════════════════════
+Every other surface in this app shows CURRENT STATE. The pipelines show where
+each lead sits. This widget answers a different question that nothing else
+answers: WHAT IS STUCK, WHO OWNS IT, AND HOW LONG HAS IT BEEN THAT WAY.
+
+A lead can sit in follow_up indefinitely and nothing tells anyone. That is the
+gap. Rank by cost of delay, not alphabetically and not by recency.
+
+Manager+ only (already gated — requireWidgetCapability('action_required')).
+Company-scoped: a manager sees the whole company (role rank, no reporting
+tree — there is no "their team" in this schema).
+
+═══════════════════════════════════════════════════════════
+1 [LOCKED] Data sources — use ONLY what exists
+═══════════════════════════════════════════════════════════
+Do NOT create new tables or columns for this widget. Derive from:
+
+  a) OVERDUE LOOP STAGES — the primary source.
+     pins.pipelineStage is a loop stage AND pins.loopNextActionAt < now().
+     There are 12 loop stages across the three pipelines; get the authoritative
+     list from artifacts/api-server/src/lib/pipelineStages.ts by filtering
+     isLoopStage === true. Do NOT hardcode a stage list — read it from the
+     stage vocabulary so it stays correct when stages change.
+     Overdue-ness = now() - loopNextActionAt.
+
+  b) STALLED IN STAGE — pins where stageEnteredAt is old and the stage is
+     NOT terminal. Use this to catch leads rotting in a non-loop stage that
+     has no loopNextActionAt set at all. Pick a sane threshold and state what
+     you chose and why in your report.
+
+  c) BLOCKED CLAIMS — inspections that started but cannot progress:
+     - status 'capturing' with no recent activity (field work started, stalled)
+     - status 'validating' sitting unresolved
+     - phase 'preliminary' complete but no signed_agreements row (FIPSA
+       unsigned — the claim cannot proceed to forensic without it)
+     Use the INSPECTION_STATUSES vocabulary ('scheduled','capturing',
+     'validating','submitted','package_ready') and INSPECTION_PHASES
+     ('preliminary','forensic'). Do not invent status values.
+
+  d) NEEDS STAGE REVIEW — pins.needsStageReview === true. These were
+     auto-mapped during a migration and a human was supposed to confirm them.
+
+  There is NO CFR / 21-day-clock field in this schema. Do not build one and
+  do not fake it. If you believe such a deadline should be tracked, say so in
+  your report as a recommendation — do not add schema for it in this task.
+
+═══════════════════════════════════════════════════════════
+2 [LOCKED] Endpoint
+═══════════════════════════════════════════════════════════
+Replace the placeholder handler at dashboard.ts:186. Keep
+requireWidgetCapability('action_required') as the first middleware — do not
+change the guard.
+
+Add the response schema to lib/api-spec/openapi.yaml and regenerate. Each item
+needs at minimum: a stable id, a category (which of the four sources above),
+a human-readable label, the owning user (id + display name), how long it has
+been stuck (server-computed, not a raw timestamp the client has to math), a
+severity/rank value, and a deep link target so clicking navigates to the lead
+or claim.
+
+Company-scope every query by req.user.companyId. A manager must never see
+another company's rows. This is the same tenancy rule as everywhere else.
+
+Cap the returned set (e.g. top 25 by rank) and include a total count so the UI
+can say "showing 25 of 118". Never silently truncate — if you cap, the payload
+must say what was dropped.
+
+═══════════════════════════════════════════════════════════
+3 [REASONING OK] Ranking — this is the judgment call
+═══════════════════════════════════════════════════════════
+"Cost of delay" is yours to define. Considerations, not rules:
+  - Days overdue matters, but not linearly — something 30 days overdue is not
+    30x worse than 1 day.
+  - Stage position matters. A lead stuck at contract_pending or
+    supplement_dispute is closer to money than one stuck at appt_scheduled.
+  - Blocked claims where field work is already DONE (validating, or captured-
+    but-unsigned FIPSA) represent sunk effort about to be wasted — weight
+    accordingly.
+  - needsStageReview is data hygiene, not urgency — it should rank below real
+    operational blockage.
+
+Explain your ranking formula in your report. If it needs tuning later, that is
+fine — state the reasoning so it can be argued with.
+
+═══════════════════════════════════════════════════════════
+4 [REASONING OK] Widget UI
+═══════════════════════════════════════════════════════════
+Update artifacts/rooftrax-web/src/components/dashboard/widgets/
+ActionRequiredWidget.tsx. It already fetches the endpoint and has loading /
+error / empty states — keep that structure.
+
+Show for each item: what is stuck, who owns it, how long. Group or badge by
+category so a manager can scan. Clicking an item navigates to the relevant
+lead or claim.
+
+The empty state ("Nothing requires your attention") is CORRECT and should
+remain — but it must now only appear when the query genuinely returns nothing,
+not because the endpoint is a stub.
+
+Where practical, allow resolving an item inline rather than navigating away —
+reuse the existing widgets in components/pipeline/widgets/ (ConfirmWidget,
+DatetimeWidget, OutcomeButtonsWidget etc.) so the interaction contract matches
+the kanban cards. If inline resolution is not practical for a category, link
+out instead — do not build a second bespoke interaction pattern.
+
+═══════════════════════════════════════════════════════════
+VERIFY — paste real output, run everything
+═══════════════════════════════════════════════════════════
+  - Describe what the query actually returns against current dev data: how
+    many items, which categories, what the top-ranked item is and why it
+    ranked there. If dev data is too thin to be meaningful, SAY SO and seed
+    a few overdue pins to exercise it rather than reporting a green run on an
+    empty table.
+  - As FIELD_REP: call the endpoint directly → 403 (the Task 4 guard still
+    holds). Paste it.
+  - Tenancy: confirm a manager in company A sees zero rows belonging to
+    company B. Paste the scoped query or a test proving it.
+  - Confirm the loop-stage list is read from pipelineStages.ts, not hardcoded
+    — paste the line where you source it.
+  - Screenshot the widget rendering real items on the dashboard.
+  - Typecheck clean: api-server, rooftrax-web, mobile.
+  - git diff --stat -- artifacts/mobile/ → empty.
