@@ -27,6 +27,7 @@ import {
   useTestProfileSmtp,
   useGetDashboardLayout,
   getGetDashboardManifestQueryKey,
+  getGetDashboardLayoutQueryKey,
   usePatchDashboardLayout,
   useDeleteDashboardLayout,
 } from "@workspace/api-client-react";
@@ -1899,6 +1900,7 @@ function DashboardSettingsTab() {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getGetDashboardManifestQueryKey() });
+          qc.invalidateQueries({ queryKey: getGetDashboardLayoutQueryKey() });
           setDirty(false);
           toast({ title: "Dashboard layout saved" });
         },
@@ -1912,7 +1914,8 @@ function DashboardSettingsTab() {
     deleteMutation.mutate(undefined, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetDashboardManifestQueryKey() });
-        setInitialised(false); // re-initialise from refreshed manifest
+        qc.invalidateQueries({ queryKey: getGetDashboardLayoutQueryKey() });
+        setInitialised(false); // re-initialise from refreshed layout
         setDirty(false);
         toast({ title: "Dashboard layout reset to defaults" });
       },
