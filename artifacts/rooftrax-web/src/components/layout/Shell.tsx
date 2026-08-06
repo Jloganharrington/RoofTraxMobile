@@ -74,7 +74,7 @@ const NAV_SECTIONS: NavSection[] = [
     heading: "Data & Tools",
     items: [
       { label: "Price Book",         path: "/price-book",        icon: DollarSign },
-      { label: "Templates",          path: "/templates",         icon: FileText },
+      { label: "Templates",          path: "/templates",         icon: FileText,    minRole: 'admin' },
       { label: "Reports",            path: "/reports",           icon: BarChart2,   minRole: 'manager' },
       { label: "Commission Report",  path: "/commission-report", icon: Receipt,     minRole: 'manager' },
       { label: "Proof Package Data", path: "/settings/library",  icon: BookOpen },
