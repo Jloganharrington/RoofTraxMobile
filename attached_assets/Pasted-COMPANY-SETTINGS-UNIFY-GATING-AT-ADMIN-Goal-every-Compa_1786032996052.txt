@@ -1,0 +1,106 @@
+COMPANY SETTINGS — UNIFY GATING AT ADMIN+
+
+Goal: every Company-group setting is available to admin and super_admin, and
+to nobody below. Right now the client and server disagree, which produces a
+live bug: managers see the Branding and Platform Preferences tabs, open
+them, and every save 403s because the server requires super_admin.
+
+This task LOOSENS server gates from super_admin to admin+. That is
+intentional and approved — do not "fix" it back to super_admin.
+
+═══════════════════════════════════════════════════════════
+1 [LOCKED] Server — relax /companies/* from super_admin to admin+
+═══════════════════════════════════════════════════════════
+In artifacts/api-server/src/routes/companies.ts:
+
+  a) Rename requireSameCompanySuperAdmin → requireSameCompanyAdmin and
+     change its role check from super_admin-only to
+     (role === 'admin' || role === 'super_admin'). Keep the existing
+     same-company check and the 401/403 codes exactly as they are.
+     Guarded routes (all keep working, now at admin+):
+       GET/PATCH /companies/:companyId/fipsa-settings
+       GET/PATCH /companies/:companyId/report-settings
+       GET/PUT/DELETE/POST /companies/:companyId/jurisdiction-packs
+       PATCH /companies/:companyId/name
+
+  b) These routes have INLINE super_admin checks rather than using the
+     helper — convert each to call the renamed helper so there is ONE role
+     rule, not six copies:
+       PATCH /companies/:companyId/logo
+       GET/PATCH /companies/:companyId/ai-settings
+       GET/PATCH /companies/:companyId/report-branding
+       PATCH /companies/:companyId/platform-preferences
+       GET/PATCH /companies/:companyId/lead-sources
+     Preserve each handler's existing same-company scoping and response
+     shapes — this is a guard swap, not a rewrite.
+
+  c) Use roleRank from @workspace/authz for the comparison rather than
+     hand-rolling role === 'admin' || role === 'super_admin'. The rank
+     resolver is the single source of truth for role comparisons in this
+     repo (same one the sidebar, ProtectedRoute, and dashboardGuard use).
+
+  d) Do NOT touch POST /companies (company creation) — leave its current
+     gate alone, that's provisioning, not settings.
+
+═══════════════════════════════════════════════════════════
+2 [LOCKED] Client — all Company tabs at admin+
+═══════════════════════════════════════════════════════════
+In artifacts/rooftrax-web/src/pages/settings/SettingsPage.tsx, the
+visibleCompanyTabs filter currently reads:
+
+    if (t.id === "company_profile") return isSuperAdmin;
+    if (t.id === "price_book")      return true;
+    if (t.id === "templates")       return isAdminOrAbove;
+    return isManagerOrAbove;
+
+Replace the whole filter body with: return isAdminOrAbove;
+Every Company tab — company_profile, branding, preferences, price_book,
+templates — is admin+. No exceptions, no per-tab special cases.
+
+Update the matching render guards so they agree with the filter. Currently:
+    activeTab === "company_profile" && isSuperAdmin   → isAdminOrAbove
+    activeTab === "branding"        && isManagerOrAbove → isAdminOrAbove
+    activeTab === "preferences"     && isManagerOrAbove → isAdminOrAbove
+    activeTab === "templates"       && isAdminOrAbove  → unchanged
+    price_book panel currently has no guard             → add isAdminOrAbove
+A tab must never be renderable by a role that can't see it in the list —
+that's the deep-link path.
+
+PERSONAL tabs are unaffected. Do not gate those.
+
+Also handle the empty case: a manager or field_rep now has ZERO visible
+Company tabs. Make sure the Company group heading hides entirely when it
+has no visible tabs (don't render an empty section), and that the default
+activeTab on load is always a tab the user can actually see — a manager
+landing on Settings must not open to a blank pane.
+
+═══════════════════════════════════════════════════════════
+3 [LOCKED] Price Book — tab gated, estimate reads untouched
+═══════════════════════════════════════════════════════════
+The Price Book TAB becomes admin+ (covered in step 2). Do NOT change
+GET /price-book/items — it stays requireAuthenticated, because
+EstimatePanel.tsx reads it so reps can build estimates. Gating that
+endpoint would break estimating for every rep.
+
+Write endpoints (POST/PATCH/DELETE items and packages) already use
+requireAdminOrAbove — leave them exactly as they are.
+
+═══════════════════════════════════════════════════════════
+VERIFY — paste actual output, run everything
+═══════════════════════════════════════════════════════════
+  - As MANAGER: log in, open Settings → zero Company tabs visible, Company
+    heading not rendered, page opens on a Personal tab with no blank pane.
+    Screenshot it.
+  - As MANAGER: PATCH /api/companies/{id}/report-branding directly →
+    403 (paste the response).
+  - As ADMIN: all five Company tabs visible; actually SAVE on Branding and
+    on Platform Preferences → 200, value persists (paste both). This is the
+    bug being fixed — prove it works now.
+  - As ADMIN: PATCH /api/companies/{id}/name → 200 (was super_admin-only).
+  - As SUPER_ADMIN: everything above still works.
+  - As FIELD_REP: build an estimate in EstimatePanel → price book items
+    still load (proves GET /price-book/items was not gated).
+  - grep companies.ts: zero remaining inline super_admin role checks; one
+    guard helper only.
+  - Typecheck clean: api-server, rooftrax-web, mobile.
+  - git diff --stat -- artifacts/mobile/ → empty.

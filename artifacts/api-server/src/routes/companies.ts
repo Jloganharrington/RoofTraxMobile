@@ -19,6 +19,7 @@ import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
+import { roleRank } from '@workspace/authz';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { buildSampleProofPackageHtml } from '../lib/proofPackageTemplate';
 import { isHexColor, resolveReportTheme } from '../lib/reportTemplate';
@@ -85,34 +86,10 @@ router.get('/companies/:companyId', async (req: Request, res: Response) => {
   res.json(GetCompanyResponse.parse({ company: { id: company.id, name: company.name } }));
 });
 
-// PATCH /companies/:companyId/logo — store a company logo URL.
-// Restricted to managers and admins of the target company so field reps cannot
-// swap their own company's branding.
+// PATCH /companies/:companyId/logo — store a company logo URL. Admin+ only.
 router.patch('/companies/:companyId/logo', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-
-  // Actors may only manage their own company.
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-
-  // Look up the actor's role — only manager / admin / super_admin may set logos.
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = actorProfile?.role ?? 'field_rep';
-  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
-    res.status(403).json({ error: 'Only managers and admins can update the company logo' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const { logoUrl } = req.body as { logoUrl?: unknown };
   if (typeof logoUrl !== 'string' || !logoUrl.trim()) {
@@ -128,19 +105,10 @@ router.patch('/companies/:companyId/logo', async (req: Request, res: Response) =
   res.json({ ok: true });
 });
 
-// GET /companies/:companyId/ai-settings — returns the stored AI settings.
-// Accessible to any authenticated member of that company.
+// GET /companies/:companyId/ai-settings — returns the stored AI settings. Admin+ only.
 router.get('/companies/:companyId/ai-settings', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const [company] = await db
     .select({ aiSettings: companiesTable.aiSettings })
@@ -156,30 +124,10 @@ router.get('/companies/:companyId/ai-settings', async (req: Request, res: Respon
   res.json({ settings: { systemPrompt: settings?.systemPrompt ?? null } });
 });
 
-// PATCH /companies/:companyId/ai-settings — update the custom system prompt.
-// Restricted to managers and admins.
+// PATCH /companies/:companyId/ai-settings — update the custom system prompt. Admin+ only.
 router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = actorProfile?.role ?? 'field_rep';
-  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
-    res.status(403).json({ error: 'Only managers and admins can update AI settings' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const { systemPrompt } = req.body as { systemPrompt?: unknown };
   if (systemPrompt !== null && systemPrompt !== undefined && typeof systemPrompt !== 'string') {
@@ -199,9 +147,11 @@ router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Resp
 
 // ── Report branding (forensic report color palette) ────────────────────────
 
-// Shared authz for FIPSA-settings routes: authenticated super admin of the
-// same company. Returns the actor's companyId, or null after responding.
-async function requireSameCompanySuperAdmin(
+// Shared authz for company-settings routes: authenticated admin (or
+// super_admin) of the same company. Returns the actor's companyId, or null
+// after responding. Uses roleRank from @workspace/authz — the single source
+// of truth for role comparisons across this repo.
+async function requireSameCompanyAdmin(
   req: Request,
   res: Response,
 ): Promise<string | null> {
@@ -218,8 +168,8 @@ async function requireSameCompanySuperAdmin(
     .select({ role: userProfilesTable.role })
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, req.user.id));
-  if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
-    res.status(403).json({ error: 'Super admin role required' });
+  if (roleRank(actorProfile?.role ?? 'field_rep') < roleRank('admin')) {
+    res.status(403).json({ error: 'Admin role required' });
     return null;
   }
   return companyId;
@@ -229,7 +179,7 @@ async function requireSameCompanySuperAdmin(
 // and Documentation Fee printed on generated FIPSA agreements. Super admin
 // only (field reps receive these via their profile fetch instead).
 router.get('/companies/:companyId/fipsa-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanySuperAdmin(req, res);
+  const companyId = await requireSameCompanyAdmin(req, res);
   if (!companyId) return;
 
   const [company] = await db
@@ -260,7 +210,7 @@ router.get('/companies/:companyId/fipsa-settings', async (req: Request, res: Res
 // PATCH /companies/:companyId/fipsa-settings — super admin only. These values
 // are embedded into a legal document, so they are validated and trimmed here.
 router.patch('/companies/:companyId/fipsa-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanySuperAdmin(req, res);
+  const companyId = await requireSameCompanyAdmin(req, res);
   if (!companyId) return;
 
   const parsed = UpdateCompanyFipsaSettingsBody.safeParse(req.body);
@@ -316,29 +266,10 @@ router.patch('/companies/:companyId/fipsa-settings', async (req: Request, res: R
   );
 });
 
-// GET /companies/:companyId/report-branding — returns the stored palette
-// (or null when the default palette is in use). Super admin only — this
-// setting is only surfaced in the super-admin settings UI.
+// GET /companies/:companyId/report-branding — returns the stored palette. Admin+ only.
 router.get('/companies/:companyId/report-branding', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
-    res.status(403).json({ error: 'Super admin role required' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const [company] = await db
     .select({ reportBranding: companiesTable.reportBranding })
@@ -354,28 +285,11 @@ router.get('/companies/:companyId/report-branding', async (req: Request, res: Re
 });
 
 // PATCH /companies/:companyId/report-branding — set or clear the palette.
-// Super admin only. Colors are embedded into rendered report HTML, so only
-// strict #RRGGBB hex values are accepted; anything else is rejected.
+// Admin+ only. Colors are embedded into rendered report HTML so only strict
+// #RRGGBB hex values are accepted; anything else is rejected.
 router.patch('/companies/:companyId/report-branding', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
-    res.status(403).json({ error: 'Super admin role required' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const { branding } = req.body as { branding?: unknown };
 
@@ -413,7 +327,7 @@ router.patch('/companies/:companyId/report-branding', async (req: Request, res: 
 
 // GET /companies/:companyId/report-settings — super admin only.
 router.get('/companies/:companyId/report-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanySuperAdmin(req, res);
+  const companyId = await requireSameCompanyAdmin(req, res);
   if (!companyId) return;
 
   const [company] = await db
@@ -443,7 +357,7 @@ router.get('/companies/:companyId/report-settings', async (req: Request, res: Re
 // PATCH /companies/:companyId/report-settings — super admin only. These
 // values are embedded into the Proof Package, so they are validated + trimmed.
 router.patch('/companies/:companyId/report-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanySuperAdmin(req, res);
+  const companyId = await requireSameCompanyAdmin(req, res);
   if (!companyId) return;
 
   const parsed = UpdateCompanyReportSettingsBody.safeParse(req.body);
@@ -521,7 +435,7 @@ function jurisdictionPackToWire(pack: {
 
 // GET /companies/:companyId/jurisdiction-packs — super admin only.
 router.get('/companies/:companyId/jurisdiction-packs', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanySuperAdmin(req, res);
+  const companyId = await requireSameCompanyAdmin(req, res);
   if (!companyId) return;
 
   const packs = await db
@@ -543,7 +457,7 @@ router.get('/companies/:companyId/jurisdiction-packs', async (req: Request, res:
 router.put(
   '/companies/:companyId/jurisdiction-packs/upsert',
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanySuperAdmin(req, res);
+    const companyId = await requireSameCompanyAdmin(req, res);
     if (!companyId) return;
 
     const parsed = UpsertCompanyJurisdictionPackBody.safeParse(req.body);
@@ -624,7 +538,7 @@ router.put(
 router.delete(
   '/companies/:companyId/jurisdiction-packs/:packId',
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanySuperAdmin(req, res);
+    const companyId = await requireSameCompanyAdmin(req, res);
     if (!companyId) return;
 
     const [deleted] = await db
@@ -653,7 +567,7 @@ router.delete(
 router.post(
   '/companies/:companyId/jurisdiction-packs/:state/code-research',
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanySuperAdmin(req, res);
+    const companyId = await requireSameCompanyAdmin(req, res);
     if (!companyId) return;
 
     const state = String(req.params.state ?? '').trim().toUpperCase();
@@ -743,25 +657,8 @@ Respond with JSON only, in exactly this shape:
 router.get(
   '/companies/:companyId/report-branding/preview',
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
-    const companyId = (req.params.companyId as string).toUpperCase();
-    if (req.user.companyId !== companyId) {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-
-    const [actorProfile] = await db
-      .select({ role: userProfilesTable.role })
-      .from(userProfilesTable)
-      .where(eq(userProfilesTable.userId, req.user.id));
-    if ((actorProfile?.role ?? 'field_rep') !== 'super_admin') {
-      res.status(403).json({ error: 'Super admin role required' });
-      return;
-    }
+    const companyId = await requireSameCompanyAdmin(req, res);
+    if (!companyId) return;
 
     const [company] = await db
       .select({
@@ -812,7 +709,7 @@ router.get(
 // PATCH /companies/:companyId/name — update company display name.
 // Restricted to super admins of the same company.
 router.patch('/companies/:companyId/name', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanySuperAdmin(req, res);
+  const companyId = await requireSameCompanyAdmin(req, res);
   if (!companyId) return;
 
   const { name } = req.body as { name?: unknown };
@@ -840,30 +737,10 @@ router.patch('/companies/:companyId/name', async (req: Request, res: Response) =
   res.json({ ok: true, company: { id: updated.id, name: updated.name } });
 });
 
-// PATCH /companies/:companyId/platform-preferences — update platform feature
-// flags. Restricted to managers and above.
+// PATCH /companies/:companyId/platform-preferences — update platform feature flags. Admin+ only.
 router.patch('/companies/:companyId/platform-preferences', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return;
-  }
-
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = actorProfile?.role ?? 'field_rep';
-  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
-    res.status(403).json({ error: 'Only managers and admins can update platform preferences' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const { betaBugReporting } = req.body as { betaBugReporting?: unknown };
   if (typeof betaBugReporting !== 'boolean') {
@@ -891,10 +768,8 @@ const MAX_LEAD_SOURCES = 50;
 const MAX_SOURCE_LENGTH = 100;
 
 router.get('/companies/:companyId/lead-sources', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const [company] = await db
     .select({ leadSources: companiesTable.leadSources })
@@ -911,21 +786,8 @@ router.get('/companies/:companyId/lead-sources', async (req: Request, res: Respo
 });
 
 router.patch('/companies/:companyId/lead-sources', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) { res.status(403).json({ error: 'Forbidden' }); return; }
-
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = actorProfile?.role ?? 'field_rep';
-  if (role !== 'manager' && role !== 'admin' && role !== 'super_admin') {
-    res.status(403).json({ error: 'Only managers and admins can update lead sources' });
-    return;
-  }
+  const companyId = await requireSameCompanyAdmin(req, res);
+  if (!companyId) return;
 
   const { leadSources } = req.body as { leadSources?: unknown };
   if (!Array.isArray(leadSources)) {

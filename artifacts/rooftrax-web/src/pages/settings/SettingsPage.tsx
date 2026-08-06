@@ -1283,13 +1283,8 @@ export default function SettingsPage() {
 
   const isAdminOrAbove = role === "admin" || role === "super_admin";
 
-  // Company tabs filtered by role — personal tabs are always shown to all users
-  const visibleCompanyTabs = COMPANY_TABS.filter((t) => {
-    if (t.id === "company_profile") return isSuperAdmin;
-    if (t.id === "price_book")      return true;            // all authenticated users
-    if (t.id === "templates")       return isAdminOrAbove;  // admin+
-    return isManagerOrAbove;
-  });
+  // Every Company tab is admin+. No per-tab exceptions.
+  const visibleCompanyTabs = COMPANY_TABS.filter(() => isAdminOrAbove);
 
   const [activeTab, setActiveTab] = useState<TabId>("my_profile");
 
@@ -1387,17 +1382,17 @@ export default function SettingsPage() {
             {activeTab === "dashboard_tab"  && <ComingSoonStub label="Dashboard" />}
             {activeTab === "email_settings" && <EmailSettingsTab />}
 
-            {/* Company tabs */}
-            {activeTab === "company_profile" && isSuperAdmin && (
+            {/* Company tabs — all gated at admin+, matching the sidebar filter */}
+            {activeTab === "company_profile" && isAdminOrAbove && (
               <CompanyProfileTab companyId={companyId} />
             )}
-            {activeTab === "branding" && isManagerOrAbove && (
+            {activeTab === "branding" && isAdminOrAbove && (
               <BrandingTab companyId={companyId} isSuperAdmin={isSuperAdmin} />
             )}
-            {activeTab === "preferences" && isManagerOrAbove && (
+            {activeTab === "preferences" && isAdminOrAbove && (
               <PlatformPreferencesTab companyId={companyId} />
             )}
-            {activeTab === "price_book" && <PriceBookPanel />}
+            {activeTab === "price_book" && isAdminOrAbove && <PriceBookPanel />}
             {activeTab === "templates" && isAdminOrAbove && <TemplatesPanel />}
           </div>
         </div>
