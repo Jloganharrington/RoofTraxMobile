@@ -506,3 +506,46 @@ export type StageTransitionTrigger = (typeof STAGE_TRANSITION_TRIGGERS)[number];
 export type InsertStageTransition = typeof stageTransitionsTable.$inferInsert;
 
 export type StageTransition = typeof stageTransitionsTable.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Company Templates — metadata for document templates stored in object storage
+// ---------------------------------------------------------------------------
+
+export const TEMPLATE_USE_CASES = [
+  'forensic_report',
+  'proof_package',
+  'fipsa_agreement',
+  'estimate_proposal',
+  'homeowner_email',
+  'claim_supplement',
+  'other',
+] as const;
+
+export type TemplateUseCase = (typeof TEMPLATE_USE_CASES)[number];
+
+export const companyTemplatesTable = pgTable('company_templates', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  objectPath: text('object_path').notNull(),
+  mimeType: text('mime_type').notNull(),
+  useCase: text('use_case').notNull(),
+  originalFilename: text('original_filename').notNull(),
+  uploadedByUserId: varchar('uploaded_by_user_id')
+    .notNull()
+    .references(() => usersTable.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type CompanyTemplate = typeof companyTemplatesTable.$inferSelect;
+export type InsertCompanyTemplate = typeof companyTemplatesTable.$inferInsert;

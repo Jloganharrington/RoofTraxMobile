@@ -22,6 +22,7 @@ import libraryRouter from "./library";
 import ahjWizardRouter from "./ahjWizard";
 import pipelineEventsRouter from "./pipelineEvents";
 import dashboardRouter from "./dashboard";
+import templatesRouter from "./templates";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(libraryRouter);
 router.use(ahjWizardRouter);
 router.use(pipelineEventsRouter);
 router.use(dashboardRouter);
+router.use(templatesRouter);
 
 export default router;
