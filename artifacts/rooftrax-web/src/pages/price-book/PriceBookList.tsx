@@ -429,7 +429,7 @@ function PackageDialog({
 
 type Tab = "items" | "packages";
 
-export default function PriceBookList() {
+export function PriceBookPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("items");
@@ -607,7 +607,7 @@ export default function PriceBookList() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <Shell>
+    <>
       {/* Page header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
@@ -830,6 +830,10 @@ export default function PriceBookList() {
         onSave={handleSavePackage}
         saving={pkgSaving}
       />
-    </Shell>
+    </>
   );
+}
+
+export default function PriceBookList() {
+  return <Shell><PriceBookPanel /></Shell>;
 }

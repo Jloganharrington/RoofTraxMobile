@@ -452,6 +452,15 @@ export const ContactOutcome = {
   call_to_schedule: 'call_to_schedule',
 } as const;
 
+export type ProfileTheme = typeof ProfileTheme[keyof typeof ProfileTheme];
+
+
+export const ProfileTheme = {
+  light: 'light',
+  dark: 'dark',
+  system: 'system',
+} as const;
+
 export interface InspectorCertification {
   /** @minLength 1 */
   name: string;
@@ -462,14 +471,6 @@ export interface InspectorCertification {
   /** @nullable */
   expiry?: string | null;
 }
-
-export type ProfileTheme = typeof ProfileTheme[keyof typeof ProfileTheme];
-
-export const ProfileTheme = {
-  light: 'light',
-  dark: 'dark',
-  system: 'system',
-} as const;
 
 export interface Profile {
   userId: string;
@@ -3278,6 +3279,96 @@ export interface PortalEnvelope {
 
 export interface PortalReportHtmlEnvelope {
   html: string;
+}
+
+export type TemplateUseCase = typeof TemplateUseCase[keyof typeof TemplateUseCase];
+
+
+export const TemplateUseCase = {
+  forensic_report: 'forensic_report',
+  proof_package: 'proof_package',
+  fipsa_agreement: 'fipsa_agreement',
+  estimate_proposal: 'estimate_proposal',
+  homeowner_email: 'homeowner_email',
+  claim_supplement: 'claim_supplement',
+  other: 'other',
+} as const;
+
+export interface Template {
+  id: string;
+  companyId: string;
+  name: string;
+  objectPath: string;
+  mimeType: string;
+  useCase: TemplateUseCase;
+  originalFilename: string;
+  uploadedByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplateListEnvelope {
+  templates: Template[];
+}
+
+export interface TemplateEnvelope {
+  template: Template;
+}
+
+export interface TemplateDeleteResult {
+  ok: boolean;
+}
+
+export interface TemplateConflictHolder {
+  id: string;
+  name: string;
+}
+
+export interface TemplateConflictEnvelope {
+  error: string;
+  holder?: TemplateConflictHolder | null;
+}
+
+export type CreateTemplateInputUseCase = typeof CreateTemplateInputUseCase[keyof typeof CreateTemplateInputUseCase];
+
+
+export const CreateTemplateInputUseCase = {
+  forensic_report: 'forensic_report',
+  proof_package: 'proof_package',
+  fipsa_agreement: 'fipsa_agreement',
+  estimate_proposal: 'estimate_proposal',
+  homeowner_email: 'homeowner_email',
+  claim_supplement: 'claim_supplement',
+  other: 'other',
+} as const;
+
+export interface CreateTemplateInput {
+  name: string;
+  objectPath: string;
+  mimeType: string;
+  useCase: CreateTemplateInputUseCase;
+  originalFilename: string;
+}
+
+export type UpdateTemplateInputUseCase = typeof UpdateTemplateInputUseCase[keyof typeof UpdateTemplateInputUseCase];
+
+
+export const UpdateTemplateInputUseCase = {
+  forensic_report: 'forensic_report',
+  proof_package: 'proof_package',
+  fipsa_agreement: 'fipsa_agreement',
+  estimate_proposal: 'estimate_proposal',
+  homeowner_email: 'homeowner_email',
+  claim_supplement: 'claim_supplement',
+  other: 'other',
+} as const;
+
+export interface UpdateTemplateInput {
+  name?: string;
+  useCase?: UpdateTemplateInputUseCase;
+  objectPath?: string;
+  mimeType?: string;
+  originalFilename?: string;
 }
 
 /**

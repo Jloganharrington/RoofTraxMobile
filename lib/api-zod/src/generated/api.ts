@@ -637,6 +637,109 @@ export const UpdateCompanyReportBrandingResponse = zod.object({
 
 
 /**
+ * Admin or super admin of the target company only. Returns all registered templates regardless of use case.
+ * @summary List all document templates for a company
+ */
+export const ListCompanyTemplatesParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const ListCompanyTemplatesResponse = zod.object({
+  "templates": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "objectPath": zod.string(),
+  "mimeType": zod.string(),
+  "useCase": zod.enum(['forensic_report', 'proof_package', 'fipsa_agreement', 'estimate_proposal', 'homeowner_email', 'claim_supplement', 'other']),
+  "originalFilename": zod.string(),
+  "uploadedByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Admin or super admin only. The object must already be in storage (use the storage upload endpoint first). MIME type is validated against the allowlist; content is sniffed against the declared type; files over 20 MB are rejected. HTML is sanitized in-place before the row is inserted. Returns 409 when a non-'other' use case is already taken, with the current holder in the response body.
+ * @summary Register a new document template
+ */
+export const CreateCompanyTemplateParams = zod.object({
+  "companyId": zod.coerce.string()
+})
+
+export const CreateCompanyTemplateBody = zod.object({
+  "name": zod.string(),
+  "objectPath": zod.string(),
+  "mimeType": zod.string(),
+  "useCase": zod.enum(['forensic_report', 'proof_package', 'fipsa_agreement', 'estimate_proposal', 'homeowner_email', 'claim_supplement', 'other']),
+  "originalFilename": zod.string()
+})
+
+export const CreateCompanyTemplateResponse = zod.object({
+  "template": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "objectPath": zod.string(),
+  "mimeType": zod.string(),
+  "useCase": zod.enum(['forensic_report', 'proof_package', 'fipsa_agreement', 'estimate_proposal', 'homeowner_email', 'claim_supplement', 'other']),
+  "originalFilename": zod.string(),
+  "uploadedByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Admin or super admin only. All fields are optional; at least one must be supplied. Replacing objectPath triggers the same MIME allowlist, size cap, and content-sniff checks as POST. The old storage object and its ownership row are deleted after the DB update succeeds. Returns 409 when the new use case is already taken.
+ * @summary Update a template's name, use case, or file
+ */
+export const UpdateCompanyTemplateParams = zod.object({
+  "companyId": zod.coerce.string(),
+  "templateId": zod.coerce.string()
+})
+
+export const UpdateCompanyTemplateBody = zod.object({
+  "name": zod.string().optional(),
+  "useCase": zod.enum(['forensic_report', 'proof_package', 'fipsa_agreement', 'estimate_proposal', 'homeowner_email', 'claim_supplement', 'other']).optional(),
+  "objectPath": zod.string().optional(),
+  "mimeType": zod.string().optional(),
+  "originalFilename": zod.string().optional()
+})
+
+export const UpdateCompanyTemplateResponse = zod.object({
+  "template": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "objectPath": zod.string(),
+  "mimeType": zod.string(),
+  "useCase": zod.enum(['forensic_report', 'proof_package', 'fipsa_agreement', 'estimate_proposal', 'homeowner_email', 'claim_supplement', 'other']),
+  "originalFilename": zod.string(),
+  "uploadedByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Admin or super admin only. Deletes the DB row, the storage object, and the object ownership row. Storage deletion failures are logged but do not affect the HTTP response.
+ * @summary Delete a template and its storage object
+ */
+export const DeleteCompanyTemplateParams = zod.object({
+  "companyId": zod.coerce.string(),
+  "templateId": zod.coerce.string()
+})
+
+export const DeleteCompanyTemplateResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Exchange a mobile OIDC code for a session token
  */
 
@@ -761,11 +864,68 @@ export const GetMyProfileResponse = zod.object({
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
   "fipsaFeeCents": zod.number().nullish(),
-  "firstName": zod.string().nullable().optional(),
-  "lastName": zod.string().nullable().optional(),
-  "email": zod.string().nullable().optional(),
-  "profileImageUrl": zod.string().nullable().optional(),
-  "phone": zod.string().nullable().optional(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "profileImageUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
+})
+})
+
+
+/**
+ * Updates firstName, lastName, phone, and/or profileImageUrl on the
+ * current user's record. All fields optional; omitted fields unchanged.
+ * NEVER accepts role, department, workflowAssignment, or any
+ * smtp/signature field — those have their own guarded endpoints.
+ * Operates on req.user.id only; no target-user parameter of any kind.
+ * @summary Update the current user's personal profile fields
+ */
+export const UpdateProfileMeBody = zod.object({
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "profileImageUrl": zod.string().nullish()
+})
+
+
+
+
+export const UpdateProfileMeResponse = zod.object({
+  "profile": zod.object({
+  "userId": zod.string(),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
+  "companyId": zod.string(),
+  "companyName": zod.string(),
+  "signatureUrl": zod.string().nullable(),
+  "signatureSha256": zod.string().nullable(),
+  "signatureSignedAt": zod.coerce.date().nullable(),
+  "smtpConfigured": zod.boolean().optional(),
+  "smtpHost": zod.string().nullish(),
+  "smtpPort": zod.number().nullish(),
+  "smtpSecure": zod.boolean().nullish(),
+  "smtpUsername": zod.string().nullish(),
+  "smtpFromEmail": zod.string().nullish(),
+  "betaBugReporting": zod.boolean().optional(),
+  "certifications": zod.union([zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})),zod.null()]).optional(),
+  "yearsExperience": zod.number().nullish(),
+  "companyLogoUrl": zod.string().nullish(),
+  "contractorLegalName": zod.string().nullish(),
+  "contractorAddress": zod.string().nullish(),
+  "fipsaFeeCents": zod.number().nullish(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "profileImageUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
   "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
@@ -819,11 +979,11 @@ export const UpdateProfileCredentialsResponse = zod.object({
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
   "fipsaFeeCents": zod.number().nullish(),
-  "firstName": zod.string().nullable().optional(),
-  "lastName": zod.string().nullable().optional(),
-  "email": zod.string().nullable().optional(),
-  "profileImageUrl": zod.string().nullable().optional(),
-  "phone": zod.string().nullable().optional(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "profileImageUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
   "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
@@ -873,11 +1033,11 @@ export const UpdateProfileSignatureResponse = zod.object({
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
   "fipsaFeeCents": zod.number().nullish(),
-  "firstName": zod.string().nullable().optional(),
-  "lastName": zod.string().nullable().optional(),
-  "email": zod.string().nullable().optional(),
-  "profileImageUrl": zod.string().nullable().optional(),
-  "phone": zod.string().nullable().optional(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "profileImageUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
   "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
@@ -944,60 +1104,11 @@ export const UpdateProfileSmtpResponse = zod.object({
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
   "fipsaFeeCents": zod.number().nullish(),
-  "firstName": zod.string().nullable().optional(),
-  "lastName": zod.string().nullable().optional(),
-  "email": zod.string().nullable().optional(),
-  "profileImageUrl": zod.string().nullable().optional(),
-  "phone": zod.string().nullable().optional(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
-})
-})
-
-
-/**
- * @summary Update the current user's personal profile fields
- */
-export const UpdateProfileMeBody = zod.object({
-  "firstName": zod.string().nullable().optional(),
-  "lastName": zod.string().nullable().optional(),
-  "phone": zod.string().nullable().optional(),
-  "profileImageUrl": zod.string().nullable().optional(),
-})
-
-export const UpdateProfileMeResponse = zod.object({
-  "profile": zod.object({
-  "userId": zod.string(),
-  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
-  "department": zod.enum(['canvasser', 'inspector_canvasser']),
-  "companyId": zod.string(),
-  "companyName": zod.string(),
-  "signatureUrl": zod.string().nullable(),
-  "signatureSha256": zod.string().nullable(),
-  "signatureSignedAt": zod.coerce.date().nullable(),
-  "smtpConfigured": zod.boolean().optional(),
-  "smtpHost": zod.string().nullish(),
-  "smtpPort": zod.number().nullish(),
-  "smtpSecure": zod.boolean().nullish(),
-  "smtpUsername": zod.string().nullish(),
-  "smtpFromEmail": zod.string().nullish(),
-  "betaBugReporting": zod.boolean().optional(),
-  "certifications": zod.union([zod.array(zod.object({
-  "name": zod.string().min(1),
-  "issuingBody": zod.string().nullish(),
-  "number": zod.string().nullish(),
-  "expiry": zod.string().nullish()
-})),zod.null()]).optional(),
-  "yearsExperience": zod.number().nullish(),
-  "companyLogoUrl": zod.string().nullish(),
-  "contractorLegalName": zod.string().nullish(),
-  "contractorAddress": zod.string().nullish(),
-  "fipsaFeeCents": zod.number().nullish(),
-  "firstName": zod.string().nullable().optional(),
-  "lastName": zod.string().nullable().optional(),
-  "email": zod.string().nullable().optional(),
-  "profileImageUrl": zod.string().nullable().optional(),
-  "phone": zod.string().nullable().optional(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "profileImageUrl": zod.string().nullish(),
+  "phone": zod.string().nullish(),
   "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })

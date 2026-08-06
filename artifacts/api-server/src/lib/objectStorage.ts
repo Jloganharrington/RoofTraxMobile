@@ -307,6 +307,45 @@ export class ObjectStorageService {
 
     return `/objects/uploads/${objectId}`;
   }
+
+  /**
+   * Read the first `numBytes` bytes of an object entity for content-sniffing,
+   * plus the total object size from GCS metadata.
+   * Used by the template upload validation pipeline.
+   */
+  async readObjectEntityHead(
+    objectPath: string,
+    numBytes: number,
+  ): Promise<{ firstBytes: Buffer; sizeBytes: number }> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    const [metadata] = await objectFile.getMetadata();
+    const sizeBytes = Number(metadata.size ?? 0);
+    const [firstBytes] = await objectFile.download({ start: 0, end: numBytes - 1 });
+    return { firstBytes, sizeBytes };
+  }
+
+  /**
+   * Download the full content of an object entity as a Buffer.
+   * Used by the HTML sanitization pipeline.
+   */
+  async readObjectEntityBytes(objectPath: string): Promise<Buffer> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    const [buffer] = await objectFile.download();
+    return buffer;
+  }
+
+  /**
+   * Overwrite an existing object entity in-place with new bytes.
+   * Used by the HTML sanitization pipeline to store sanitized content.
+   */
+  async overwriteObjectEntityBytes(
+    objectPath: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    await objectFile.save(buffer, { contentType, resumable: false });
+  }
 }
 
 function parseObjectPath(path: string): {

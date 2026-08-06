@@ -1,5 +1,7 @@
 # Memory Index
 
+- [Drizzle query error wrapping](drizzle-query-error-wrapping.md) — pg error code (23505 etc.) lives on `.cause`, not top-level; DrizzleQueryError wraps the pg error.
+
 - [Lead source + PM tracker](lead-source-pm-tracker.md) — externalLeadSource + projectManagerName on pins; leadSources jsonb on companies; tracker in LeadProfile DashboardTab; lead-sources routes on companies; lead source picker in mobile pin-new.
 
 - [IICRC citation placeholder runtime](iicrc-citation-placeholder.md) — STD-WTR-01/02 flagged humanEnteredProvisionsOnly; generator injects directive + placeholder tokens; SectionCard blocks approve until filled.

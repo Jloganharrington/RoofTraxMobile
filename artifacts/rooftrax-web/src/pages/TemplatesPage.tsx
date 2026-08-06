@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Shell } from "@/components/layout/Shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { customFetch, useGetCurrentAuthUser } from "@workspace/api-client-react";
+import {
+  ApiError,
+  customFetch,
+  getListCompanyTemplatesQueryKey,
+  useCreateCompanyTemplate,
+  useDeleteCompanyTemplate,
+  useGetCurrentAuthUser,
+  useListCompanyTemplates,
+  useUpdateCompanyTemplate,
+  type TemplateConflictEnvelope,
+} from "@workspace/api-client-react";
 import { FileText, Upload, Trash2, RefreshCw, Loader2, FilePlus } from "lucide-react";
 import { format } from "date-fns";
 
@@ -128,17 +138,18 @@ async function uploadToStorage(file: File): Promise<{ objectPath: string }> {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function TemplatesPage() {
+export function TemplatesPanel() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const { data: authEnvelope } = useGetCurrentAuthUser();
   const companyId = authEnvelope?.user?.companyId ?? "";
 
   // ── Data ─────────────────────────────────────────────────────────────────
-  const { data, isLoading } = useQuery<{ templates: Template[] }>({
-    queryKey: ["templates", companyId],
-    queryFn: () => customFetch(`/api/companies/${companyId}/templates`),
-    enabled: !!companyId,
+  const { data, isLoading } = useListCompanyTemplates(companyId, {
+    query: {
+      queryKey: getListCompanyTemplatesQueryKey(companyId),
+      enabled: !!companyId,
+    },
   });
   const templates = data?.templates ?? [];
 
@@ -159,57 +170,66 @@ export default function TemplatesPage() {
   // ── Delete state ──────────────────────────────────────────────────────────
   const [deleteTarget, setDeleteTarget] = useState<Template | null>(null);
 
+  // ── Conflict (409) reassign state ─────────────────────────────────────────
+  const [conflictHolder, setConflictHolder] = useState<{ id: string; name: string } | null>(null);
+  const [conflictPending, setConflictPending] = useState<(() => void) | null>(null);
+  const [reassigning, setReassigning] = useState(false);
+
+  const invalidateTemplates = () =>
+    qc.invalidateQueries({ queryKey: getListCompanyTemplatesQueryKey(companyId) });
+
+  /** When the server returns 409 with a holder, surface the reassign prompt. */
+  function handleConflict(err: unknown, retry: () => void) {
+    if (err instanceof ApiError && err.status === 409) {
+      const data = err.data as TemplateConflictEnvelope | null;
+      if (data?.holder) {
+        setConflictHolder(data.holder);
+        setConflictPending(() => retry);
+        return;
+      }
+    }
+    toast({
+      title: "Save failed",
+      description: err instanceof Error ? err.message : String(err),
+      variant: "destructive",
+    });
+  }
+
   // ── Mutations ─────────────────────────────────────────────────────────────
-  const createMutation = useMutation({
-    mutationFn: (body: {
-      name: string;
-      objectPath: string;
-      mimeType: string;
-      useCase: string;
-      originalFilename: string;
-    }) =>
-      customFetch(`/api/companies/${companyId}/templates`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["templates", companyId] });
-      toast({ title: "Template uploaded" });
-      setUploadDialog(false);
-      setPendingFile(null);
-      setPendingObjectPath("");
-      setNewName("");
-      setNewUseCase("");
+  const createMutation = useCreateCompanyTemplate({
+    mutation: {
+      onSuccess: () => {
+        invalidateTemplates();
+        toast({ title: "Template uploaded" });
+        setUploadDialog(false);
+        setPendingFile(null);
+        setPendingObjectPath("");
+        setNewName("");
+        setNewUseCase("");
+      },
+      onError: (err, vars) =>
+        handleConflict(err, () => createMutation.mutate(vars)),
     },
-    onError: (err) =>
-      toast({ title: "Upload failed", description: String(err), variant: "destructive" }),
   });
 
-  const patchMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<Template> }) =>
-      customFetch(`/api/companies/${companyId}/templates/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["templates", companyId] });
+  const patchMutation = useUpdateCompanyTemplate({
+    mutation: {
+      onSuccess: () => invalidateTemplates(),
+      onError: (err, vars) =>
+        handleConflict(err, () => patchMutation.mutate(vars)),
     },
-    onError: (err) =>
-      toast({ title: "Update failed", description: String(err), variant: "destructive" }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      customFetch(`/api/companies/${companyId}/templates/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["templates", companyId] });
-      toast({ title: "Template deleted" });
-      setDeleteTarget(null);
+  const deleteMutation = useDeleteCompanyTemplate({
+    mutation: {
+      onSuccess: () => {
+        invalidateTemplates();
+        toast({ title: "Template deleted" });
+        setDeleteTarget(null);
+      },
+      onError: (err) =>
+        toast({ title: "Delete failed", description: String(err), variant: "destructive" }),
     },
-    onError: (err) =>
-      toast({ title: "Delete failed", description: String(err), variant: "destructive" }),
   });
 
   // ── Upload flow ──────────────────────────────────────────────────────────
@@ -247,11 +267,14 @@ export default function TemplatesPage() {
   const handleSaveNew = () => {
     if (!pendingFile || !pendingObjectPath || !newName.trim() || !newUseCase) return;
     createMutation.mutate({
-      name: newName.trim(),
-      objectPath: pendingObjectPath,
-      mimeType: pendingFile.type,
-      useCase: newUseCase,
-      originalFilename: pendingFile.name,
+      companyId,
+      data: {
+        name: newName.trim(),
+        objectPath: pendingObjectPath,
+        mimeType: pendingFile.type,
+        useCase: newUseCase as Parameters<typeof createMutation.mutate>[0]["data"]["useCase"],
+        originalFilename: pendingFile.name,
+      },
     });
   };
 
@@ -279,12 +302,16 @@ export default function TemplatesPage() {
       try {
         const { objectPath } = await uploadToStorage(file);
         await patchMutation.mutateAsync({
-          id: replacingId,
-          body: { objectPath, mimeType: file.type, originalFilename: file.name },
+          companyId,
+          templateId: replacingId,
+          data: { objectPath, mimeType: file.type, originalFilename: file.name },
         });
         toast({ title: "Template replaced" });
       } catch (err) {
-        toast({ title: "Replace failed", description: String(err), variant: "destructive" });
+        if (!(err instanceof ApiError && err.status === 409)) {
+          toast({ title: "Replace failed", description: String(err), variant: "destructive" });
+        }
+        // 409 handled by patchMutation.onError → handleConflict
       } finally {
         setReplacingInFlight(false);
         setReplacingId(null);
@@ -295,12 +322,16 @@ export default function TemplatesPage() {
 
   // ── Use case inline edit ─────────────────────────────────────────────────
   const handleUseCaseChange = (id: string, useCase: string) => {
-    patchMutation.mutate({ id, body: { useCase } });
+    patchMutation.mutate({
+      companyId,
+      templateId: id,
+      data: { useCase: useCase as Parameters<typeof patchMutation.mutate>[0]["data"]["useCase"] },
+    });
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <Shell>
+    <>
       {/* Hidden file inputs */}
       <input
         ref={uploadInputRef}
@@ -519,6 +550,62 @@ export default function TemplatesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 409 use_case conflict — reassign prompt */}
+      <AlertDialog
+        open={!!conflictHolder}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConflictHolder(null);
+            setConflictPending(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Slot already taken</AlertDialogTitle>
+            <AlertDialogDescription>
+              The <strong>{conflictHolder?.name}</strong> template currently holds this
+              use case. Move it to <em>Other</em> and continue saving?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reassigning}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={reassigning}
+              onClick={async () => {
+                if (!conflictHolder || !conflictPending) return;
+                setReassigning(true);
+                try {
+                  await patchMutation.mutateAsync({
+                    companyId,
+                    templateId: conflictHolder.id,
+                    data: { useCase: "other" },
+                  });
+                  const retry = conflictPending;
+                  setConflictHolder(null);
+                  setConflictPending(null);
+                  retry();
+                } catch (err) {
+                  toast({
+                    title: "Reassign failed",
+                    description: String(err),
+                    variant: "destructive",
+                  });
+                } finally {
+                  setReassigning(false);
+                }
+              }}
+            >
+              {reassigning ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Moving…</>
+              ) : (
+                "Move to Other and save"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete confirmation */}
       <AlertDialog
         open={!!deleteTarget}
@@ -536,7 +623,10 @@ export default function TemplatesPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              onClick={() =>
+                deleteTarget &&
+                deleteMutation.mutate({ companyId, templateId: deleteTarget.id })
+              }
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? (
@@ -548,6 +638,10 @@ export default function TemplatesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Shell>
+    </>
   );
+}
+
+export default function TemplatesPage() {
+  return <Shell><TemplatesPanel /></Shell>;
 }

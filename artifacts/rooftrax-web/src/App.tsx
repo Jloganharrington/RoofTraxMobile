@@ -24,13 +24,11 @@ import RetailPipeline from '@/pages/pipeline/RetailPipeline';
 import Leads from '@/pages/leads/Leads';
 import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
-import PriceBookList from '@/pages/price-book/PriceBookList';
 import { ComingSoon } from '@/pages/ComingSoon';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
 import MapPage from '@/pages/MapPage';
-import TemplatesPage from '@/pages/TemplatesPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -129,7 +127,7 @@ function Router() {
         <ProtectedRoute minRole="manager"><TeamList /></ProtectedRoute>
       </Route>
       <Route path="/price-book">
-        <ProtectedRoute><PriceBookList /></ProtectedRoute>
+        <Redirect to="/settings" />
       </Route>
       <Route path="/settings/library">
         <ProtectedRoute><LibraryPage /></ProtectedRoute>
@@ -149,7 +147,7 @@ function Router() {
         <ProtectedRoute><MapPage /></ProtectedRoute>
       </Route>
       <Route path="/templates">
-        <ProtectedRoute minRole="admin"><TemplatesPage /></ProtectedRoute>
+        <Redirect to="/settings" />
       </Route>
       <Route path="/reports">
         <ProtectedRoute minRole="manager">

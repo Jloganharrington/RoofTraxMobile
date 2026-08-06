@@ -13,3 +13,9 @@ CREATE TABLE IF NOT EXISTS company_templates (
   created_at     timestamptz  NOT NULL DEFAULT now(),
   updated_at     timestamptz  NOT NULL DEFAULT now()
 );
+
+-- Exactly one template per real use-case slot per company.
+-- 'other' is exempt — unlimited 'other' templates allowed.
+CREATE UNIQUE INDEX IF NOT EXISTS company_templates_company_use_case_unique
+  ON company_templates (company_id, use_case)
+  WHERE use_case <> 'other';

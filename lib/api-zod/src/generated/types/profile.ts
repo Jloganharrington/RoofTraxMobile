@@ -7,6 +7,7 @@
  */
 import type { Department } from './department';
 import type { InspectorCertification } from './inspectorCertification';
+import type { ProfileTheme } from './profileTheme';
 import type { Role } from './role';
 import type { WorkflowAssignment } from './workflowAssignment';
 
@@ -46,4 +47,15 @@ export interface Profile {
   contractorAddress?: string | null;
   /** @nullable */
   fipsaFeeCents?: number | null;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  profileImageUrl?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  theme?: ProfileTheme;
 }

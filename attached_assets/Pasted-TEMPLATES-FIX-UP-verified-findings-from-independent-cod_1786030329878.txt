@@ -1,0 +1,76 @@
+TEMPLATES FIX-UP — verified findings from independent code review
+
+The tenancy/authz layer passed review — do NOT touch requireCompanyAdmin or
+verifyObjectOwnership logic. Six fixes, in order. STOP after all six and
+paste the verification output listed at the end — run everything, don't
+report done without running it.
+
+1 [LOCKED] Server-side file validation in POST and PATCH-with-objectPath
+  (artifacts/api-server/src/routes/templates.ts):
+  - mimeType must be one of: application/pdf, text/html,
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    — anything else 400. The current check accepts any non-empty string.
+  - After ownership verification, fetch the object's first bytes from
+    storage and content-sniff: %PDF magic for pdf, PK (zip) magic for docx;
+    for html reject if it sniffs as a binary format. Mismatch → 400.
+  - Enforce a 20MB cap server-side: reject registration if the stored
+    object exceeds it. The client-side cap in TemplatesPage is advisory
+    only and stays.
+
+2 [LOCKED] HTML sanitization: when mimeType is text/html, fetch the object,
+  run it through the SAME sanitizer api-server already uses for compiled-
+  report LLM HTML (it exists — find it and reuse it; do not add a new
+  sanitizer dependency), and write the sanitized bytes back to storage
+  BEFORE inserting/updating the row. Applies to both POST and PATCH
+  objectPath replacement.
+
+3 [LOCKED] OpenAPI retrofit: add all four /companies/{companyId}/templates
+  endpoints to lib/api-spec/openapi.yaml, regenerate the client packages
+  (never hand-edit lib/api-client-react/src/generated/ or
+  lib/api-zod/src/generated/), then swap TemplatesPage.tsx's customFetch
+  calls to the generated hooks. Endpoint shapes stay exactly as built —
+  the spec documents reality, don't rename fields or paths. This matters
+  beyond style: a hand-written hook drifting from the real routes is
+  exactly what caused the /api/profile 404 outage — don't leave another
+  copy of that failure mode in the codebase.
+
+4 [LOCKED] Object lifecycle:
+  - PATCH replacing objectPath: after the row update succeeds, delete the
+    OLD storage object and its object_ownership row.
+  - DELETE: after the row delete succeeds, delete the storage object and
+    its ownership row.
+  - Storage-deletion failures are logged, not fatal — the DB row is the
+    source of truth. No orphaned objects accumulating from replace/delete.
+
+5 [LOCKED] Migration consolidation: the migration currently exists as TWO
+  byte-identical date-named copies:
+    lib/db/data-migrations/2026-08-06-company-templates.sql
+    artifacts/api-server/data-migrations/2026-08-06-company-templates.sql
+  Move it to data-migrations/022_company_templates.sql (repo root — the
+  numbered convention every other migration follows) and DELETE both
+  date-named copies. Content unchanged except add the index from item 6.
+  It's already idempotent (CREATE TABLE IF NOT EXISTS) so re-running
+  against the dev DB is safe.
+
+6 [LOCKED] Use-case uniqueness: add a partial unique index on
+  (company_id, use_case) WHERE use_case <> 'other' — multiple 'other'
+  templates allowed, but every real slot has exactly one holder.
+  - Migration: CREATE UNIQUE INDEX IF NOT EXISTS ... (goes in 022).
+  - API: on POST/PATCH that would violate it, return 409 with the current
+    holder's {id, name} in the body.
+  - UI: on 409, prompt to reassign — PATCH the current holder to 'other'
+    (or another slot), then retry the original request.
+  - Update the tests for the 409 path.
+
+VERIFY — paste actual output for ALL of these:
+  - templates test suite green (including new tests for: renamed-.exe-as-
+    .pdf rejected by content sniff; oversize object rejected; HTML with
+    <script> stored sanitized — paste the before/after bytes check;
+    409 on duplicate use_case with holder info; replace deletes the old
+    object; delete removes object + ownership row)
+  - full api-server vitest run green
+  - typecheck clean: api-server, rooftrax-web, AND mobile
+  - git diff --stat -- artifacts/mobile/ → empty
+  - ls both old migration paths → gone; ls data-migrations/022_company_templates.sql → exists
+  - TemplatesPage grep: zero remaining customFetch calls for template
+    endpoints — all through generated hooks

@@ -47,7 +47,11 @@ import {
   AlertCircle,
   Send,
   XCircle,
+  DollarSign,
+  FileText,
 } from "lucide-react";
+import { PriceBookPanel } from "@/pages/price-book/PriceBookList";
+import { TemplatesPanel } from "@/pages/TemplatesPage";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,7 +100,7 @@ function displayDollarsToCents(value: string): number | null {
 // ---------------------------------------------------------------------------
 
 type PersonalTabId = "my_profile" | "appearance" | "dashboard_tab" | "email_settings";
-type CompanyTabId  = "company_profile" | "branding" | "preferences";
+type CompanyTabId  = "company_profile" | "branding" | "preferences" | "price_book" | "templates";
 type TabId = PersonalTabId | CompanyTabId;
 
 interface Tab {
@@ -113,9 +117,11 @@ const PERSONAL_TABS: Tab[] = [
 ];
 
 const COMPANY_TABS: Tab[] = [
-  { id: "company_profile", label: "Company Profile",     icon: Building2 },
-  { id: "branding",        label: "Branding",             icon: Palette   },
-  { id: "preferences",     label: "Platform Preferences", icon: Sliders   },
+  { id: "company_profile", label: "Company Profile",     icon: Building2  },
+  { id: "branding",        label: "Branding",             icon: Palette    },
+  { id: "preferences",     label: "Platform Preferences", icon: Sliders    },
+  { id: "price_book",      label: "Price Book",           icon: DollarSign },
+  { id: "templates",       label: "Templates",            icon: FileText   },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1275,9 +1281,13 @@ export default function SettingsPage() {
   const isManagerOrAbove =
     role === "manager" || role === "admin" || role === "super_admin";
 
+  const isAdminOrAbove = role === "admin" || role === "super_admin";
+
   // Company tabs filtered by role — personal tabs are always shown to all users
   const visibleCompanyTabs = COMPANY_TABS.filter((t) => {
     if (t.id === "company_profile") return isSuperAdmin;
+    if (t.id === "price_book")      return true;            // all authenticated users
+    if (t.id === "templates")       return isAdminOrAbove;  // admin+
     return isManagerOrAbove;
   });
 
@@ -1377,7 +1387,7 @@ export default function SettingsPage() {
             {activeTab === "dashboard_tab"  && <ComingSoonStub label="Dashboard" />}
             {activeTab === "email_settings" && <EmailSettingsTab />}
 
-            {/* Company tabs — gates preserved exactly as before */}
+            {/* Company tabs */}
             {activeTab === "company_profile" && isSuperAdmin && (
               <CompanyProfileTab companyId={companyId} />
             )}
@@ -1387,6 +1397,8 @@ export default function SettingsPage() {
             {activeTab === "preferences" && isManagerOrAbove && (
               <PlatformPreferencesTab companyId={companyId} />
             )}
+            {activeTab === "price_book" && <PriceBookPanel />}
+            {activeTab === "templates" && isAdminOrAbove && <TemplatesPanel />}
           </div>
         </div>
       </div>

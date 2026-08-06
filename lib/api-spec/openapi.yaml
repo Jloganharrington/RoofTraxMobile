@@ -627,6 +627,202 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /companies/{companyId}/templates:
+    get:
+      tags: [Companies]
+      operationId: listCompanyTemplates
+      summary: List all document templates for a company
+      description: >-
+        Admin or super admin of the target company only.
+        Returns all registered templates regardless of use case.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Companies]
+      operationId: createCompanyTemplate
+      summary: Register a new document template
+      description: >-
+        Admin or super admin only. The object must already be in storage (use
+        the storage upload endpoint first). MIME type is validated against the
+        allowlist; content is sniffed against the declared type; files over
+        20 MB are rejected. HTML is sanitized in-place before the row is
+        inserted. Returns 409 when a non-'other' use case is already taken,
+        with the current holder in the response body.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTemplateInput"
+      responses:
+        "201":
+          description: Template created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateEnvelope"
+        "400":
+          description: Validation error (missing fields, bad MIME type, content sniff failure, oversize).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: use_case slot is already occupied by another template.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateConflictEnvelope"
+  /companies/{companyId}/templates/{templateId}:
+    patch:
+      tags: [Companies]
+      operationId: updateCompanyTemplate
+      summary: Update a template's name, use case, or file
+      description: >-
+        Admin or super admin only. All fields are optional; at least one must
+        be supplied. Replacing objectPath triggers the same MIME allowlist,
+        size cap, and content-sniff checks as POST. The old storage object
+        and its ownership row are deleted after the DB update succeeds.
+        Returns 409 when the new use case is already taken.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTemplateInput"
+      responses:
+        "200":
+          description: Template updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateEnvelope"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Template not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: use_case slot is already occupied by another template.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateConflictEnvelope"
+    delete:
+      tags: [Companies]
+      operationId: deleteCompanyTemplate
+      summary: Delete a template and its storage object
+      description: >-
+        Admin or super admin only. Deletes the DB row, the storage object,
+        and the object ownership row. Storage deletion failures are logged
+        but do not affect the HTTP response.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateDeleteResult"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not an admin of this company.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Template not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /mobile-auth/token-exchange:
     post:
       tags: [Auth]
@@ -8077,4 +8273,138 @@ components:
       required: [html]
       properties:
         html:
+          type: string
+    # -------------------------------------------------------------------------
+    # Company Templates
+    # -------------------------------------------------------------------------
+    Template:
+      type: object
+      required:
+        - id
+        - companyId
+        - name
+        - objectPath
+        - mimeType
+        - useCase
+        - originalFilename
+        - uploadedByUserId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        name:
+          type: string
+        objectPath:
+          type: string
+        mimeType:
+          type: string
+        useCase:
+          type: string
+          enum:
+            - forensic_report
+            - proof_package
+            - fipsa_agreement
+            - estimate_proposal
+            - homeowner_email
+            - claim_supplement
+            - other
+        originalFilename:
+          type: string
+        uploadedByUserId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TemplateListEnvelope:
+      type: object
+      required: [templates]
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Template"
+    TemplateEnvelope:
+      type: object
+      required: [template]
+      properties:
+        template:
+          $ref: "#/components/schemas/Template"
+    TemplateDeleteResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    TemplateConflictHolder:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    TemplateConflictEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        holder:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/TemplateConflictHolder"
+            - type: "null"
+    CreateTemplateInput:
+      type: object
+      required:
+        - name
+        - objectPath
+        - mimeType
+        - useCase
+        - originalFilename
+      properties:
+        name:
+          type: string
+        objectPath:
+          type: string
+        mimeType:
+          type: string
+        useCase:
+          type: string
+          enum:
+            - forensic_report
+            - proof_package
+            - fipsa_agreement
+            - estimate_proposal
+            - homeowner_email
+            - claim_supplement
+            - other
+        originalFilename:
+          type: string
+    UpdateTemplateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        useCase:
+          type: string
+          enum:
+            - forensic_report
+            - proof_package
+            - fipsa_agreement
+            - estimate_proposal
+            - homeowner_email
+            - claim_supplement
+            - other
+        objectPath:
+          type: string
+        mimeType:
+          type: string
+        originalFilename:
           type: string

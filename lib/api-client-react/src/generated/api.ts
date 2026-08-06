@@ -55,6 +55,7 @@ import type {
   CreateMeasurementInput,
   CreatePinInput,
   CreatePriceBookItemInput,
+  CreateTemplateInput,
   CreateTestSquareHitInput,
   CreateTestSquareInput,
   CrmStatusEnvelope,
@@ -120,6 +121,10 @@ import type {
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
+  TemplateConflictEnvelope,
+  TemplateDeleteResult,
+  TemplateEnvelope,
+  TemplateListEnvelope,
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateBugReportInput,
@@ -139,6 +144,7 @@ import type {
   UpdateReportBrandingResult,
   UpdateSummaryInput,
   UpdateTeamUserInput,
+  UpdateTemplateInput,
   UploadUrlRequest,
   UploadUrlResponse,
   UpsertJurisdictionPackInput,
@@ -1481,6 +1487,306 @@ export const useUpdateCompanyReportBranding = <TError = ErrorType<ErrorEnvelope>
       return useMutation(getUpdateCompanyReportBrandingMutationOptions(options));
     }
 
+export const getListCompanyTemplatesUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/templates`
+}
+
+/**
+ * Admin or super admin of the target company only. Returns all registered templates regardless of use case.
+ * @summary List all document templates for a company
+ */
+export const listCompanyTemplates = async (companyId: string, options?: RequestInit): Promise<TemplateListEnvelope> => {
+
+  return customFetch<TemplateListEnvelope>(getListCompanyTemplatesUrl(companyId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCompanyTemplatesQueryKey = (companyId: string,) => {
+    return [
+    `/api/companies/${companyId}/templates`
+    ] as const;
+    }
+
+
+export const getListCompanyTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listCompanyTemplates>>, TError = ErrorType<ErrorEnvelope>>(companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCompanyTemplatesQueryKey(companyId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCompanyTemplates>>> = ({ signal }) => listCompanyTemplates(companyId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: companyId !== null && companyId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCompanyTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCompanyTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listCompanyTemplates>>>
+export type ListCompanyTemplatesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List all document templates for a company
+ */
+
+export function useListCompanyTemplates<TData = Awaited<ReturnType<typeof listCompanyTemplates>>, TError = ErrorType<ErrorEnvelope>>(
+ companyId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCompanyTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCompanyTemplatesQueryOptions(companyId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateCompanyTemplateUrl = (companyId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/templates`
+}
+
+/**
+ * Admin or super admin only. The object must already be in storage (use the storage upload endpoint first). MIME type is validated against the allowlist; content is sniffed against the declared type; files over 20 MB are rejected. HTML is sanitized in-place before the row is inserted. Returns 409 when a non-'other' use case is already taken, with the current holder in the response body.
+ * @summary Register a new document template
+ */
+export const createCompanyTemplate = async (companyId: string,
+    createTemplateInput: CreateTemplateInput, options?: RequestInit): Promise<TemplateEnvelope> => {
+
+  return customFetch<TemplateEnvelope>(getCreateCompanyTemplateUrl(companyId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCompanyTemplateMutationOptions = <TError = ErrorType<ErrorEnvelope | TemplateConflictEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCompanyTemplate>>, TError,{companyId: string;data: BodyType<CreateTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCompanyTemplate>>, TError,{companyId: string;data: BodyType<CreateTemplateInput>}, TContext> => {
+
+const mutationKey = ['createCompanyTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCompanyTemplate>>, {companyId: string;data: BodyType<CreateTemplateInput>}> = (props) => {
+          const {companyId,data} = props ?? {};
+
+          return  createCompanyTemplate(companyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCompanyTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof createCompanyTemplate>>>
+    export type CreateCompanyTemplateMutationBody = BodyType<CreateTemplateInput>
+    export type CreateCompanyTemplateMutationError = ErrorType<ErrorEnvelope | TemplateConflictEnvelope>
+
+    /**
+ * @summary Register a new document template
+ */
+export const useCreateCompanyTemplate = <TError = ErrorType<ErrorEnvelope | TemplateConflictEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCompanyTemplate>>, TError,{companyId: string;data: BodyType<CreateTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCompanyTemplate>>,
+        TError,
+        {companyId: string;data: BodyType<CreateTemplateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCompanyTemplateMutationOptions(options));
+    }
+
+export const getUpdateCompanyTemplateUrl = (companyId: string,
+    templateId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/templates/${templateId}`
+}
+
+/**
+ * Admin or super admin only. All fields are optional; at least one must be supplied. Replacing objectPath triggers the same MIME allowlist, size cap, and content-sniff checks as POST. The old storage object and its ownership row are deleted after the DB update succeeds. Returns 409 when the new use case is already taken.
+ * @summary Update a template's name, use case, or file
+ */
+export const updateCompanyTemplate = async (companyId: string,
+    templateId: string,
+    updateTemplateInput: UpdateTemplateInput, options?: RequestInit): Promise<TemplateEnvelope> => {
+
+  return customFetch<TemplateEnvelope>(getUpdateCompanyTemplateUrl(companyId,templateId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCompanyTemplateMutationOptions = <TError = ErrorType<ErrorEnvelope | TemplateConflictEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyTemplate>>, TError,{companyId: string;templateId: string;data: BodyType<UpdateTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCompanyTemplate>>, TError,{companyId: string;templateId: string;data: BodyType<UpdateTemplateInput>}, TContext> => {
+
+const mutationKey = ['updateCompanyTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCompanyTemplate>>, {companyId: string;templateId: string;data: BodyType<UpdateTemplateInput>}> = (props) => {
+          const {companyId,templateId,data} = props ?? {};
+
+          return  updateCompanyTemplate(companyId,templateId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCompanyTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof updateCompanyTemplate>>>
+    export type UpdateCompanyTemplateMutationBody = BodyType<UpdateTemplateInput>
+    export type UpdateCompanyTemplateMutationError = ErrorType<ErrorEnvelope | TemplateConflictEnvelope>
+
+    /**
+ * @summary Update a template's name, use case, or file
+ */
+export const useUpdateCompanyTemplate = <TError = ErrorType<ErrorEnvelope | TemplateConflictEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompanyTemplate>>, TError,{companyId: string;templateId: string;data: BodyType<UpdateTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCompanyTemplate>>,
+        TError,
+        {companyId: string;templateId: string;data: BodyType<UpdateTemplateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCompanyTemplateMutationOptions(options));
+    }
+
+export const getDeleteCompanyTemplateUrl = (companyId: string,
+    templateId: string,) => {
+
+
+
+
+  return `/api/companies/${companyId}/templates/${templateId}`
+}
+
+/**
+ * Admin or super admin only. Deletes the DB row, the storage object, and the object ownership row. Storage deletion failures are logged but do not affect the HTTP response.
+ * @summary Delete a template and its storage object
+ */
+export const deleteCompanyTemplate = async (companyId: string,
+    templateId: string, options?: RequestInit): Promise<TemplateDeleteResult> => {
+
+  return customFetch<TemplateDeleteResult>(getDeleteCompanyTemplateUrl(companyId,templateId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCompanyTemplateMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCompanyTemplate>>, TError,{companyId: string;templateId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCompanyTemplate>>, TError,{companyId: string;templateId: string}, TContext> => {
+
+const mutationKey = ['deleteCompanyTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCompanyTemplate>>, {companyId: string;templateId: string}> = (props) => {
+          const {companyId,templateId} = props ?? {};
+
+          return  deleteCompanyTemplate(companyId,templateId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCompanyTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCompanyTemplate>>>
+
+    export type DeleteCompanyTemplateMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a template and its storage object
+ */
+export const useDeleteCompanyTemplate = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCompanyTemplate>>, TError,{companyId: string;templateId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCompanyTemplate>>,
+        TError,
+        {companyId: string;templateId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCompanyTemplateMutationOptions(options));
+    }
+
 export const getExchangeMobileAuthorizationCodeUrl = () => {
 
 
@@ -1922,11 +2228,26 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+
+
+
+
+
+
 export const getUpdateProfileMeUrl = () => {
+
+
+
+
   return `/api/profile/me`
 }
 
 /**
+ * Updates firstName, lastName, phone, and/or profileImageUrl on the
+ * current user's record. All fields optional; omitted fields unchanged.
+ * NEVER accepts role, department, workflowAssignment, or any
+ * smtp/signature field — those have their own guarded endpoints.
+ * Operates on req.user.id only; no target-user parameter of any kind.
  * @summary Update the current user's personal profile fields
  */
 export const updateProfileMe = async (updateProfileMeInput: UpdateProfileMeInput, options?: RequestInit): Promise<ProfileEnvelope> => {
@@ -1940,6 +2261,10 @@ export const updateProfileMe = async (updateProfileMeInput: UpdateProfileMeInput
   }
 );}
 
+
+
+
+
 export const getUpdateProfileMeMutationOptions = <TError = ErrorType<ErrorEnvelope>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileMe>>, TError,{data: BodyType<UpdateProfileMeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateProfileMe>>, TError,{data: BodyType<UpdateProfileMeInput>}, TContext> => {
@@ -1951,11 +2276,19 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
+
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProfileMe>>, {data: BodyType<UpdateProfileMeInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  updateProfileMe(data,requestOptions)
         }
+
+
+
+
+
 
   return  { mutationFn, ...mutationOptions }}
 
@@ -1976,12 +2309,6 @@ export const useUpdateProfileMe = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getUpdateProfileMeMutationOptions(options));
     }
-
-
-
-
-
-
 
 export const getUpdateProfileCredentialsUrl = () => {
 
