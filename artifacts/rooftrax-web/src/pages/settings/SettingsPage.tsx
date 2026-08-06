@@ -19,12 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 import {
   customFetch,
   useGetCurrentAuthUser,
+  useGetMyProfile,
   useUpdateProfileMe,
   getGetMyProfileQueryKey,
   useUpdateProfileSmtp,
   useTestProfileSmtp,
 } from "@workspace/api-client-react";
-import { useGetMyProfile, useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
+import { useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import {
   Building2,
   Palette,
@@ -886,7 +887,7 @@ function BrandingTab({
           body: JSON.stringify({ logoUrl: objectPath }),
         });
 
-        qc.invalidateQueries({ queryKey: ["my-profile"] });
+        qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
         toast({ title: "Logo updated" });
       } catch (err) {
         toast({ title: "Logo upload failed", description: String(err), variant: "destructive" });
@@ -1164,7 +1165,7 @@ function PlatformPreferencesTab({ companyId }: { companyId: string }) {
         body: JSON.stringify({ betaBugReporting: enabled }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-profile"] });
+      qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
       toast({ title: "Beta preferences saved" });
     },
     onError: (err) =>
@@ -1426,7 +1427,7 @@ function EmailSettingsTab() {
   const updateMutation = useUpdateProfileSmtp({
     mutation: {
       onSuccess: (data) => {
-        qc.invalidateQueries({ queryKey: ["my-profile"] });
+        qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
         // Refresh password field (write-only, never shown)
         setForm((prev) => ({ ...prev, password: "" }));
         toast({ title: "SMTP configuration saved" });
@@ -1490,7 +1491,7 @@ function EmailSettingsTab() {
       { data: { clear: true } },
       {
         onSuccess: () => {
-          qc.invalidateQueries({ queryKey: ["my-profile"] });
+          qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
           setForm(EMPTY_SMTP);
           setErrors({});
           toast({ title: "SMTP configuration cleared" });
