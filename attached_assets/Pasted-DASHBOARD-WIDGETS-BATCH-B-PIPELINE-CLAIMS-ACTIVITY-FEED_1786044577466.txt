@@ -1,0 +1,154 @@
+DASHBOARD WIDGETS — BATCH B: PIPELINE, CLAIMS, ACTIVITY FEED
+
+Builds six widgets currently rendering <PlaceholderWidget>:
+  sales_funnel         (manager+)
+  insurance_claims     (manager+, insurance_retail workflow)
+  production_pipeline  (manager+)
+  pending_inspections  (department: inspector_canvasser | office — ALL ROLES)
+  claim_blockers       (workflow: insurance_retail — ALL ROLES)
+  recent_activity      (all users)
+
+Same rules as prior waves. openapi-first then regenerate; never hand-edit
+generated files; never touch artifacts/mobile/. Do NOT batch all six into one
+report — build and report in the three groups marked below.
+
+═══════════════════════════════════════════════════════════
+HARD RULES FOR ALL SIX
+═══════════════════════════════════════════════════════════
+1. requireWidgetCapability('<key>') as FIRST middleware on every data
+   endpoint. See the action_required / knock_to_lead endpoints in
+   artifacts/api-server/src/routes/dashboard.ts as the reference pattern.
+2. Company-scope every query by req.user.companyId.
+3. Read stage vocabulary from SERVER_STAGES_ARRAY in
+   artifacts/api-server/src/lib/pipelineStages.ts. NEVER hardcode stage key
+   lists — the insurance pipeline gained six stages recently and hardcoded
+   lists would already be wrong.
+4. Do NOT create new tables or columns.
+5. Cap any list-returning endpoint and report {total, capped} honestly.
+   Never silently truncate.
+
+⚠ TENANCY LANDMINE — read before writing any query:
+   stage_transitions has NO companyId column. It has only leadId (a pin id).
+   Any query touching stage_transitions MUST join through pins and filter on
+   pins.companyId. A query that filters stage_transitions alone will return
+   other companies' activity. This is the single most likely way to introduce
+   a cross-tenant leak in this batch — treat it as the thing to get right.
+   claim_events DOES have companyId; scope it directly.
+
+═══════════════════════════════════════════════════════════
+SCOPING DECISION — applies to B2 (pending_inspections, claim_blockers)
+═══════════════════════════════════════════════════════════
+Unlike every widget built so far, these two are gated by DEPARTMENT and
+WORKFLOW, not by role — so a field_rep can see them. That means data scope
+must be decided, not assumed.
+
+LOCKED RULE: field_rep sees ONLY their own; manager+ sees company-wide.
+This mirrors how /activity-stats already clamps field_rep to scope='own'.
+Resolve the actor's role from the DB profile row and clamp server-side. A
+field_rep must never be able to widen scope via any request parameter.
+
+"Their own" means:
+  - pending_inspections → inspections.inspectorUserId = actor
+  - claim_blockers      → the owning rep of the underlying pin (pins.userId)
+
+═══════════════════════════════════════════════════════════
+GROUP B1 — PIPELINE ROLLUPS (build + report together)
+sales_funnel, insurance_claims, production_pipeline — all manager+
+═══════════════════════════════════════════════════════════
+These three are the same shape: count pins by pipelineStage within one
+pipeline, company-scoped. Consider ONE shared endpoint parameterised by
+pipeline, or three thin ones — your call, but don't write the same query
+three times.
+
+  sales_funnel        → sourcePipeline 'retail' (+ insurance if you judge the
+                        funnel should span both; state your choice)
+  insurance_claims    → insurance pipeline; emphasise the claim-lifecycle
+                        stages (claim_review, adjuster_review,
+                        supplement_dispute, appraisal, public_adjuster,
+                        claim_approved/denied)
+  production_pipeline → project pipeline (pm_handoff → closed_warranty)
+
+Requirements:
+  - Stage labels and ordering come from SERVER_STAGES_ARRAY (label + order
+    fields), so the UI never drifts from the vocabulary.
+  - Exclude terminal stages from the "active" count but show them separately
+    if useful — don't silently drop archived_lost / archived_no_damage /
+    closed_warranty and make totals not reconcile.
+  - COUNTS ONLY. There is no revenue/contract-value data in this schema.
+    Do NOT display or imply dollar amounts anywhere in these three widgets.
+    If a funnel visual implies value, label it explicitly as lead count.
+
+═══════════════════════════════════════════════════════════
+GROUP B2 — PERSONAL WORK QUEUES (build + report together)
+pending_inspections, claim_blockers — see SCOPING DECISION above
+═══════════════════════════════════════════════════════════
+pending_inspections:
+  inspections where status indicates work is outstanding. Use the
+  INSPECTION_STATUSES vocabulary ('scheduled','capturing','validating',
+  'submitted','package_ready') — 'scheduled' and 'capturing' are the obvious
+  candidates; state which you included and why. Show enough to act on:
+  customer/address from the joined pin, phase (preliminary|forensic), how
+  long it's been outstanding. Sort by urgency, not alphabetically.
+
+claim_blockers:
+  Claims that cannot progress. This OVERLAPS the blocked-claims logic already
+  written in the action_required endpoint (see the "Blocked claims" raw-SQL
+  block in dashboard.ts). REUSE that logic — extract it into a shared helper
+  rather than writing a second, subtly-different version. Two implementations
+  of "what counts as blocked" that drift apart is exactly the mirror problem
+  this repo keeps hitting.
+  Difference from action_required: this widget is scoped to the actor when
+  they're a field_rep, and it's workflow-gated rather than manager-gated.
+
+═══════════════════════════════════════════════════════════
+GROUP B3 — recent_activity (all users)  [REASONING OK]
+═══════════════════════════════════════════════════════════
+GOAL: a scrolling log of what's happening that's relevant to this user.
+
+DATA — two sources, merge them:
+  - claim_events (inspectionId, companyId, eventType from CLAIM_EVENT_TYPES,
+    payload jsonb, actorId, createdAt). Has companyId — scope directly.
+  - stage_transitions (leadId, fromStage, toStage, trigger from
+    STAGE_TRANSITION_TRIGGERS, taskPayload, userId, createdAt). NO companyId
+    — MUST join through pins and filter pins.companyId. See the tenancy
+    landmine above.
+
+Requirements:
+  - Merge both sources into one reverse-chronological feed with a consistent
+    item shape. Cap it (e.g. 30) and report total.
+  - Resolve actor names — a feed of user IDs is useless. Note that
+    stage_transitions.userId is NULL for auto_event triggers; render those as
+    a system action, not as "Unknown user".
+  - Use the enum vocabularies (CLAIM_EVENT_TYPES, STAGE_TRANSITION_TRIGGERS)
+    to produce human-readable text. Do not print raw enum keys at the user.
+  - Scope: everyone sees company activity (this is a "what's happening on the
+    team" feed, matching its all-users gating). Do NOT include anything a
+    role shouldn't see — if any claim_event payload carries sensitive detail,
+    surface the event type, not the payload contents.
+
+═══════════════════════════════════════════════════════════
+VERIFY — per group, paste real output
+═══════════════════════════════════════════════════════════
+  - Screenshot each widget rendering real dev data.
+  - Describe what each query actually returned. If dev data is too thin to be
+    meaningful, SAY SO and seed enough to exercise it — do not report green
+    against an empty table.
+  - TENANCY, explicitly: prove a company-A user sees zero company-B rows from
+    stage_transitions specifically. Paste the query or test. This is the one
+    I most want evidence for.
+  - SCOPING: as FIELD_REP, call pending_inspections and claim_blockers →
+    confirm the response contains ONLY their own rows. Then confirm a request
+    parameter cannot widen it.
+  - As FIELD_REP: call the three manager+ endpoints directly → 403 each.
+  - Confirm stage keys/labels come from SERVER_STAGES_ARRAY — paste the line.
+  - Confirm claim_blockers reuses the extracted shared helper, not a copy —
+    paste the shared function signature and both call sites.
+  - Typecheck clean: api-server, rooftrax-web, mobile.
+  - git diff --stat -- artifacts/mobile/ → empty.
+
+FINAL after B3:
+  pnpm --filter @workspace/authz test          (expect 51/51)
+  cd artifacts/api-server && npx vitest run    ← RUN THIS. The report-branding
+     suite was silently red for several commits after the admin+ gating change
+     and nobody noticed because the suite wasn't being run. Paste the full
+     result and fix anything else that's stale.

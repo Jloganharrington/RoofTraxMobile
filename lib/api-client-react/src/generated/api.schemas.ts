@@ -3156,6 +3156,86 @@ export interface CanvassingHeatmapEnvelope {
   windowDays: number;
 }
 
+export interface PipelineFunnelStage {
+  key: string;
+  label: string;
+  order: number;
+  count: number;
+  isTerminal: boolean;
+}
+
+/**
+ * Stage-level lead counts for one pipeline. Terminal stages are present in the stages array; activeTotal excludes them, terminalTotal sums them.
+ */
+export interface PipelineFunnelEnvelope {
+  /** The pipeline that was queried. */
+  pipeline: string;
+  /** All stages for this pipeline, sorted by order ascending. */
+  stages: PipelineFunnelStage[];
+  /** Sum of counts for non-terminal stages. */
+  activeTotal: number;
+  /** Sum of counts for terminal stages. */
+  terminalTotal: number;
+}
+
+export interface PendingInspectionItem {
+  inspectionId: string;
+  pinId: string;
+  /** preliminary or forensic. */
+  phase: string;
+  /** scheduled or capturing. */
+  status: string;
+  /** Customer name or address, whichever is available. */
+  label: string;
+  ownerName?: string | null;
+  /** Milliseconds since the inspection was created. */
+  outstandingMs: number;
+  createdAt?: string;
+}
+
+export interface PendingInspectionsEnvelope {
+  items: PendingInspectionItem[];
+  total: number;
+  capped: boolean;
+  /** True when the caller is a field_rep seeing only their own. */
+  scopedToSelf: boolean;
+}
+
+export interface ClaimBlockerItem {
+  inspectionId: string;
+  pinId: string;
+  /** capturing_stalled | validating | fipsa_unsigned */
+  blockerKind: string;
+  label: string;
+  ownerName?: string | null;
+  stuckForLabel: string;
+}
+
+export interface ClaimBlockerEnvelope {
+  items: ClaimBlockerItem[];
+  total: number;
+  capped: boolean;
+  /** True when the caller is a field_rep seeing only their own. */
+  scopedToSelf: boolean;
+}
+
+export interface ActivityFeedItem {
+  id: string;
+  /** claim_event | stage_transition */
+  kind: string;
+  /** Human-readable description of the event. */
+  text: string;
+  /** Display name of the actor, or "System" for auto events. */
+  actorName: string;
+  createdAt: string;
+}
+
+export interface RecentActivityEnvelope {
+  items: ActivityFeedItem[];
+  total: number;
+  capped: boolean;
+}
+
 export type WeatherCandidateType = typeof WeatherCandidateType[keyof typeof WeatherCandidateType];
 
 
@@ -3648,4 +3728,20 @@ location: string;
  */
 dateOfLoss?: string;
 };
+
+export type GetPipelineFunnelWidgetParams = {
+/**
+ * Which pipeline to aggregate.
+ */
+pipeline: GetPipelineFunnelWidgetPipeline;
+};
+
+export type GetPipelineFunnelWidgetPipeline = typeof GetPipelineFunnelWidgetPipeline[keyof typeof GetPipelineFunnelWidgetPipeline];
+
+
+export const GetPipelineFunnelWidgetPipeline = {
+  retail: 'retail',
+  insurance: 'insurance',
+  project: 'project',
+} as const;
 

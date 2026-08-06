@@ -35,6 +35,7 @@ import type {
   CanvassingCurrentEnvelope,
   CanvassingHeatmapEnvelope,
   CanvassingSessionEnvelope,
+  ClaimBlockerEnvelope,
   CodeResearchInput,
   CompanyEnvelope,
   CompanyReportSettingsEnvelope,
@@ -77,6 +78,7 @@ import type {
   GenerateSummaryInput,
   GetActivityStatsParams,
   GetInspectionReportPreviewUrl200,
+  GetPipelineFunnelWidgetParams,
   GetWeatherEventsParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
@@ -107,8 +109,10 @@ import type {
   MeasurementsAnalysisResult,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
+  PendingInspectionsEnvelope,
   PinEnvelope,
   PinListEnvelope,
+  PipelineFunnelEnvelope,
   PortalEnvelope,
   PortalReportHtmlEnvelope,
   PreflightResultEnvelope,
@@ -116,6 +120,7 @@ import type {
   PriceBookItemListEnvelope,
   ProfileEnvelope,
   PutEstimateInput,
+  RecentActivityEnvelope,
   ReportBrandingEnvelope,
   ResearchJurisdictionCodes200,
   ReverseGeocodeCoordinatesParams,
@@ -8253,6 +8258,325 @@ export function useGetKnockToLeadWidget<TData = Awaited<ReturnType<typeof getKno
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetKnockToLeadWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPipelineFunnelWidgetUrl = (params: GetPipelineFunnelWidgetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dashboard/widgets/pipeline_funnel?${stringifiedParams}` : `/api/dashboard/widgets/pipeline_funnel`
+}
+
+/**
+ * Returns a count of active pins per pipeline stage for the requested pipeline (retail | insurance | project). Terminal stages are included in the response but broken out so the UI can present them separately. Labels and ordering come from the server-side stage vocabulary; the client never needs to hardcode stage names. Requires the corresponding pipeline widget capability (manager+).
+ * @summary Stage-by-stage lead counts for one pipeline
+ */
+export const getPipelineFunnelWidget = async (params: GetPipelineFunnelWidgetParams, options?: RequestInit): Promise<PipelineFunnelEnvelope> => {
+
+  return customFetch<PipelineFunnelEnvelope>(getGetPipelineFunnelWidgetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPipelineFunnelWidgetQueryKey = (params?: GetPipelineFunnelWidgetParams,) => {
+    return [
+    `/api/dashboard/widgets/pipeline_funnel`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPipelineFunnelWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getPipelineFunnelWidget>>, TError = ErrorType<ErrorEnvelope>>(params: GetPipelineFunnelWidgetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPipelineFunnelWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPipelineFunnelWidgetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPipelineFunnelWidget>>> = ({ signal }) => getPipelineFunnelWidget(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPipelineFunnelWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPipelineFunnelWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getPipelineFunnelWidget>>>
+export type GetPipelineFunnelWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Stage-by-stage lead counts for one pipeline
+ */
+
+export function useGetPipelineFunnelWidget<TData = Awaited<ReturnType<typeof getPipelineFunnelWidget>>, TError = ErrorType<ErrorEnvelope>>(
+ params: GetPipelineFunnelWidgetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPipelineFunnelWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPipelineFunnelWidgetQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPendingInspectionsWidgetUrl = () => {
+
+
+
+
+  return `/api/dashboard/widgets/pending_inspections`
+}
+
+/**
+ * Returns inspections that need action. Field reps see only their own; managers see company-wide. Statuses included: scheduled and capturing. Requires the pending_inspections widget capability (department-gated, all roles within the department).
+ * @summary Inspections with outstanding field work for this user
+ */
+export const getPendingInspectionsWidget = async ( options?: RequestInit): Promise<PendingInspectionsEnvelope> => {
+
+  return customFetch<PendingInspectionsEnvelope>(getGetPendingInspectionsWidgetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPendingInspectionsWidgetQueryKey = () => {
+    return [
+    `/api/dashboard/widgets/pending_inspections`
+    ] as const;
+    }
+
+
+export const getGetPendingInspectionsWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getPendingInspectionsWidget>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPendingInspectionsWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPendingInspectionsWidgetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPendingInspectionsWidget>>> = ({ signal }) => getPendingInspectionsWidget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPendingInspectionsWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPendingInspectionsWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getPendingInspectionsWidget>>>
+export type GetPendingInspectionsWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Inspections with outstanding field work for this user
+ */
+
+export function useGetPendingInspectionsWidget<TData = Awaited<ReturnType<typeof getPendingInspectionsWidget>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPendingInspectionsWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPendingInspectionsWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetClaimBlockersWidgetUrl = () => {
+
+
+
+
+  return `/api/dashboard/widgets/claim_blockers`
+}
+
+/**
+ * Blocked inspections: capturing-stalled (>7 days), validating, or preliminary with no signed FIPSA. Field reps see only their own; managers see company-wide. Requires the claim_blockers widget capability (workflow-gated, all roles within the workflow).
+ * @summary Claims that cannot progress (field-rep-scoped or company-wide)
+ */
+export const getClaimBlockersWidget = async ( options?: RequestInit): Promise<ClaimBlockerEnvelope> => {
+
+  return customFetch<ClaimBlockerEnvelope>(getGetClaimBlockersWidgetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClaimBlockersWidgetQueryKey = () => {
+    return [
+    `/api/dashboard/widgets/claim_blockers`
+    ] as const;
+    }
+
+
+export const getGetClaimBlockersWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getClaimBlockersWidget>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClaimBlockersWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClaimBlockersWidgetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClaimBlockersWidget>>> = ({ signal }) => getClaimBlockersWidget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClaimBlockersWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetClaimBlockersWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getClaimBlockersWidget>>>
+export type GetClaimBlockersWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Claims that cannot progress (field-rep-scoped or company-wide)
+ */
+
+export function useGetClaimBlockersWidget<TData = Awaited<ReturnType<typeof getClaimBlockersWidget>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClaimBlockersWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetClaimBlockersWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRecentActivityWidgetUrl = () => {
+
+
+
+
+  return `/api/dashboard/widgets/recent_activity`
+}
+
+/**
+ * Reverse-chronological feed merging claim events and pipeline stage transitions for the caller's company. Capped at 30 items. Actor names are resolved; auto-triggered transitions are labelled as System. Payload contents are never surfaced. Requires the recent_activity widget capability (all roles).
+ * @summary Company-wide activity feed (claim events + stage transitions)
+ */
+export const getRecentActivityWidget = async ( options?: RequestInit): Promise<RecentActivityEnvelope> => {
+
+  return customFetch<RecentActivityEnvelope>(getGetRecentActivityWidgetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecentActivityWidgetQueryKey = () => {
+    return [
+    `/api/dashboard/widgets/recent_activity`
+    ] as const;
+    }
+
+
+export const getGetRecentActivityWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getRecentActivityWidget>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecentActivityWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecentActivityWidgetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecentActivityWidget>>> = ({ signal }) => getRecentActivityWidget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecentActivityWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRecentActivityWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getRecentActivityWidget>>>
+export type GetRecentActivityWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Company-wide activity feed (claim events + stage transitions)
+ */
+
+export function useGetRecentActivityWidget<TData = Awaited<ReturnType<typeof getRecentActivityWidget>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecentActivityWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRecentActivityWidgetQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

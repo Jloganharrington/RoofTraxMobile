@@ -4204,6 +4204,143 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /dashboard/widgets/pipeline_funnel:
+    get:
+      tags: [Dashboard]
+      operationId: getPipelineFunnelWidget
+      summary: Stage-by-stage lead counts for one pipeline
+      description: >-
+        Returns a count of active pins per pipeline stage for the requested
+        pipeline (retail | insurance | project). Terminal stages are included
+        in the response but broken out so the UI can present them separately.
+        Labels and ordering come from the server-side stage vocabulary;
+        the client never needs to hardcode stage names. Requires the
+        corresponding pipeline widget capability (manager+).
+      parameters:
+        - name: pipeline
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [retail, insurance, project]
+          description: Which pipeline to aggregate.
+      responses:
+        "200":
+          description: Stage-level counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineFunnelEnvelope"
+        "400":
+          description: Missing or unrecognised pipeline parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the required pipeline widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/widgets/pending_inspections:
+    get:
+      tags: [Dashboard]
+      operationId: getPendingInspectionsWidget
+      summary: Inspections with outstanding field work for this user
+      description: >-
+        Returns inspections that need action. Field reps see only their own;
+        managers see company-wide. Statuses included: scheduled and capturing.
+        Requires the pending_inspections widget capability (department-gated,
+        all roles within the department).
+      responses:
+        "200":
+          description: Outstanding inspections.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingInspectionsEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the pending_inspections widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/widgets/claim_blockers:
+    get:
+      tags: [Dashboard]
+      operationId: getClaimBlockersWidget
+      summary: Claims that cannot progress (field-rep-scoped or company-wide)
+      description: >-
+        Blocked inspections: capturing-stalled (>7 days), validating, or
+        preliminary with no signed FIPSA. Field reps see only their own;
+        managers see company-wide. Requires the claim_blockers widget
+        capability (workflow-gated, all roles within the workflow).
+      responses:
+        "200":
+          description: Blocked claim items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimBlockerEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the claim_blockers widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/widgets/recent_activity:
+    get:
+      tags: [Dashboard]
+      operationId: getRecentActivityWidget
+      summary: Company-wide activity feed (claim events + stage transitions)
+      description: >-
+        Reverse-chronological feed merging claim events and pipeline stage
+        transitions for the caller's company. Capped at 30 items. Actor names
+        are resolved; auto-triggered transitions are labelled as System.
+        Payload contents are never surfaced. Requires the recent_activity
+        widget capability (all roles).
+      responses:
+        "200":
+          description: Activity feed items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentActivityEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the recent_activity widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /dashboard/widgets/canvassing_heatmap:
     get:
       tags: [Dashboard]
@@ -8274,6 +8411,153 @@ components:
         contactOutcome:
           type: string
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PipelineFunnelEnvelope:
+      type: object
+      required: [pipeline, stages, activeTotal, terminalTotal]
+      description: >-
+        Stage-level lead counts for one pipeline. Terminal stages are present
+        in the stages array; activeTotal excludes them, terminalTotal sums them.
+      properties:
+        pipeline:
+          type: string
+          description: The pipeline that was queried.
+        stages:
+          type: array
+          description: All stages for this pipeline, sorted by order ascending.
+          items:
+            $ref: "#/components/schemas/PipelineFunnelStage"
+        activeTotal:
+          type: integer
+          description: Sum of counts for non-terminal stages.
+        terminalTotal:
+          type: integer
+          description: Sum of counts for terminal stages.
+
+    PipelineFunnelStage:
+      type: object
+      required: [key, label, order, count, isTerminal]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        order:
+          type: integer
+        count:
+          type: integer
+        isTerminal:
+          type: boolean
+
+    PendingInspectionsEnvelope:
+      type: object
+      required: [items, total, capped, scopedToSelf]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PendingInspectionItem"
+        total:
+          type: integer
+        capped:
+          type: boolean
+        scopedToSelf:
+          type: boolean
+          description: True when the caller is a field_rep seeing only their own.
+
+    PendingInspectionItem:
+      type: object
+      required: [inspectionId, pinId, phase, status, label, outstandingMs]
+      properties:
+        inspectionId:
+          type: string
+        pinId:
+          type: string
+        phase:
+          type: string
+          description: preliminary or forensic.
+        status:
+          type: string
+          description: scheduled or capturing.
+        label:
+          type: string
+          description: Customer name or address, whichever is available.
+        ownerName:
+          type: string
+          nullable: true
+        outstandingMs:
+          type: integer
+          description: Milliseconds since the inspection was created.
+        createdAt:
+          type: string
+          format: date-time
+
+    ClaimBlockerEnvelope:
+      type: object
+      required: [items, total, capped, scopedToSelf]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaimBlockerItem"
+        total:
+          type: integer
+        capped:
+          type: boolean
+        scopedToSelf:
+          type: boolean
+          description: True when the caller is a field_rep seeing only their own.
+
+    ClaimBlockerItem:
+      type: object
+      required: [inspectionId, pinId, blockerKind, label, stuckForLabel]
+      properties:
+        inspectionId:
+          type: string
+        pinId:
+          type: string
+        blockerKind:
+          type: string
+          description: "capturing_stalled | validating | fipsa_unsigned"
+        label:
+          type: string
+        ownerName:
+          type: string
+          nullable: true
+        stuckForLabel:
+          type: string
+
+    RecentActivityEnvelope:
+      type: object
+      required: [items, total, capped]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityFeedItem"
+        total:
+          type: integer
+        capped:
+          type: boolean
+
+    ActivityFeedItem:
+      type: object
+      required: [id, kind, text, actorName, createdAt]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          description: "claim_event | stage_transition"
+        text:
+          type: string
+          description: Human-readable description of the event.
+        actorName:
+          type: string
+          description: Display name of the actor, or "System" for auto events.
         createdAt:
           type: string
           format: date-time

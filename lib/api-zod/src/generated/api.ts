@@ -6567,6 +6567,85 @@ export const GetKnockToLeadWidgetResponse = zod.object({
 
 
 /**
+ * Returns a count of active pins per pipeline stage for the requested pipeline (retail | insurance | project). Terminal stages are included in the response but broken out so the UI can present them separately. Labels and ordering come from the server-side stage vocabulary; the client never needs to hardcode stage names. Requires the corresponding pipeline widget capability (manager+).
+ * @summary Stage-by-stage lead counts for one pipeline
+ */
+export const GetPipelineFunnelWidgetQueryParams = zod.object({
+  "pipeline": zod.enum(['retail', 'insurance', 'project']).describe('Which pipeline to aggregate.')
+})
+
+export const GetPipelineFunnelWidgetResponse = zod.object({
+  "pipeline": zod.string().describe('The pipeline that was queried.'),
+  "stages": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "count": zod.number(),
+  "isTerminal": zod.boolean()
+})).describe('All stages for this pipeline, sorted by order ascending.'),
+  "activeTotal": zod.number().describe('Sum of counts for non-terminal stages.'),
+  "terminalTotal": zod.number().describe('Sum of counts for terminal stages.')
+}).describe('Stage-level lead counts for one pipeline. Terminal stages are present in the stages array; activeTotal excludes them, terminalTotal sums them.')
+
+
+/**
+ * Returns inspections that need action. Field reps see only their own; managers see company-wide. Statuses included: scheduled and capturing. Requires the pending_inspections widget capability (department-gated, all roles within the department).
+ * @summary Inspections with outstanding field work for this user
+ */
+export const GetPendingInspectionsWidgetResponse = zod.object({
+  "items": zod.array(zod.object({
+  "inspectionId": zod.string(),
+  "pinId": zod.string(),
+  "phase": zod.string().describe('preliminary or forensic.'),
+  "status": zod.string().describe('scheduled or capturing.'),
+  "label": zod.string().describe('Customer name or address, whichever is available.'),
+  "ownerName": zod.string().nullish(),
+  "outstandingMs": zod.number().describe('Milliseconds since the inspection was created.'),
+  "createdAt": zod.coerce.date().optional()
+})),
+  "total": zod.number(),
+  "capped": zod.boolean(),
+  "scopedToSelf": zod.boolean().describe('True when the caller is a field_rep seeing only their own.')
+})
+
+
+/**
+ * Blocked inspections: capturing-stalled (>7 days), validating, or preliminary with no signed FIPSA. Field reps see only their own; managers see company-wide. Requires the claim_blockers widget capability (workflow-gated, all roles within the workflow).
+ * @summary Claims that cannot progress (field-rep-scoped or company-wide)
+ */
+export const GetClaimBlockersWidgetResponse = zod.object({
+  "items": zod.array(zod.object({
+  "inspectionId": zod.string(),
+  "pinId": zod.string(),
+  "blockerKind": zod.string().describe('capturing_stalled | validating | fipsa_unsigned'),
+  "label": zod.string(),
+  "ownerName": zod.string().nullish(),
+  "stuckForLabel": zod.string()
+})),
+  "total": zod.number(),
+  "capped": zod.boolean(),
+  "scopedToSelf": zod.boolean().describe('True when the caller is a field_rep seeing only their own.')
+})
+
+
+/**
+ * Reverse-chronological feed merging claim events and pipeline stage transitions for the caller's company. Capped at 30 items. Actor names are resolved; auto-triggered transitions are labelled as System. Payload contents are never surfaced. Requires the recent_activity widget capability (all roles).
+ * @summary Company-wide activity feed (claim events + stage transitions)
+ */
+export const GetRecentActivityWidgetResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "kind": zod.string().describe('claim_event | stage_transition'),
+  "text": zod.string().describe('Human-readable description of the event.'),
+  "actorName": zod.string().describe('Display name of the actor, or \"System\" for auto events.'),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "capped": zod.boolean()
+})
+
+
+/**
  * Company-scoped array of pin coordinates with door-knock outcomes for heatmap rendering. PII-free (no names, addresses, phone numbers). Capped at 2,000 points; total before cap is always returned. Requires the canvassing_heatmap widget capability (manager+).
  * @summary Canvassing heatmap data points for the company
  */

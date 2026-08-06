@@ -1,11 +1,11 @@
 import { GetDashboardManifestResponse, GetDashboardLayoutResponse, PatchDashboardLayoutBody } from '@workspace/api-zod';
-import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable } from '@workspace/db';
+import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable, stageTransitionsTable, claimEventsTable } from '@workspace/db';
 import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
-import { selectWidgetsFor, WIDGET_CATALOG } from '@workspace/authz';
+import { selectWidgetsFor, WIDGET_CATALOG, type Capability } from '@workspace/authz';
 import { and, eq, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { requireWidgetCapability } from '../lib/dashboardGuard';
-import { SERVER_STAGES_ARRAY } from '../lib/pipelineStages';
+import { SERVER_STAGES_ARRAY, findServerStageByKey, type PipelineId } from '../lib/pipelineStages';
 
 const router: IRouter = Router();
 
@@ -184,6 +184,64 @@ router.delete('/dashboard/layout', async (req: Request, res: Response) => {
 // can call this URL directly. The guard re-checks the capability server-side
 // on every request, independent of the manifest.
 
+// ── Shared blocked-claims query ──────────────────────────────────────────────
+// Used by BOTH the action_required widget (manager+, company-wide) and the
+// claim_blockers widget (workflow-gated, optionally field-rep-scoped).
+// Extracting into a single function prevents the two implementations from
+// silently drifting apart (mirror problem).
+//
+// Three sub-cases:
+//   1. Capturing + stalled: field work hasn't progressed in 7+ days.
+//   2. Validating: claim review is open (human action required).
+//   3. FIPSA unsigned: preliminary phase, past scheduled, no signed agreement.
+// Raw SQL is required for the NOT EXISTS sub-select on signed_agreements.
+//
+// ⚠ stage_transitions has no companyId — this query scopes through pins.
+//   claim_blockers' optional scopeToUserId adds a p.user_id filter for
+//   field-rep views so a rep cannot see another rep's blocked inspections.
+async function fetchBlockedClaims(
+  companyId: string,
+  options: { scopeToUserId?: string } = {},
+): Promise<Array<Record<string, unknown>>> {
+  const userScope = options.scopeToUserId
+    ? sql`AND p.user_id = ${options.scopeToUserId}`
+    : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      i.id              AS inspection_id,
+      i.status          AS inspection_status,
+      i.phase           AS inspection_phase,
+      p.id              AS pin_id,
+      p.user_id,
+      p.pipeline_stage,
+      p.stage_entered_at,
+      p.customer_name,
+      p.address,
+      u.first_name,
+      u.last_name
+    FROM inspections i
+    JOIN pins p ON i.pin_id = p.id
+    LEFT JOIN users u ON p.user_id = u.id
+    WHERE i.company_id = ${companyId}
+      AND p.status = 'active'
+      ${userScope}
+      AND (
+        (i.status = 'capturing' AND p.stage_entered_at < NOW() - INTERVAL '7 days')
+        OR (i.status = 'validating')
+        OR (
+          i.phase = 'preliminary'
+          AND i.status NOT IN ('scheduled')
+          AND NOT EXISTS (
+            SELECT 1 FROM signed_agreements sa
+            WHERE sa.inspection_id = i.id AND sa.voided_at IS NULL
+          )
+        )
+      )
+  `);
+  return result.rows as Array<Record<string, unknown>>;
+}
+
 // GET /dashboard/widgets/action_required
 // Real ranked query across four data sources: overdue loop stages, stalled
 // non-loop stages, blocked claims, and pins needing stage review.
@@ -357,45 +415,11 @@ router.get(
     }
 
     // ── c. Blocked claims ───────────────────────────────────────────────────
-    // Three sub-cases:
-    //   1. Capturing + stalled: field work hasn't progressed in 7+ days.
-    //   2. Validating: claim review is open (human action required).
-    //   3. FIPSA unsigned: preliminary phase, past scheduled, no signed agreement.
-    // Raw SQL needed for the NOT EXISTS correlated sub-select on signed_agreements.
+    // Delegated to fetchBlockedClaims() — see shared helper defined above this
+    // route. action_required is manager+ so no user-scope filter is applied.
     {
-      const blockedResult = await db.execute(sql`
-        SELECT
-          i.id              AS inspection_id,
-          i.status          AS inspection_status,
-          i.phase           AS inspection_phase,
-          p.id              AS pin_id,
-          p.user_id,
-          p.pipeline_stage,
-          p.stage_entered_at,
-          p.customer_name,
-          p.address,
-          u.first_name,
-          u.last_name
-        FROM inspections i
-        JOIN pins p ON i.pin_id = p.id
-        LEFT JOIN users u ON p.user_id = u.id
-        WHERE i.company_id = ${companyId}
-          AND p.status = 'active'
-          AND (
-            (i.status = 'capturing' AND p.stage_entered_at < NOW() - INTERVAL '7 days')
-            OR (i.status = 'validating')
-            OR (
-              i.phase = 'preliminary'
-              AND i.status NOT IN ('scheduled')
-              AND NOT EXISTS (
-                SELECT 1 FROM signed_agreements sa
-                WHERE sa.inspection_id = i.id AND sa.voided_at IS NULL
-              )
-            )
-          )
-      `);
-
-      for (const row of blockedResult.rows as Array<Record<string, unknown>>) {
+      const blockedRows = await fetchBlockedClaims(companyId);
+      for (const row of blockedRows) {
         const stageEnteredAt = row.stage_entered_at
           ? new Date(row.stage_entered_at as string)
           : null;
@@ -603,6 +627,368 @@ router.get(
       total,
       capped,
       windowDays: WINDOW_DAYS,
+    });
+  },
+);
+
+// ── B1: Pipeline funnel ───────────────────────────────────────────────────────
+// Single parameterised endpoint for sales_funnel (retail), insurance_claims
+// (insurance), and production_pipeline (project). One DB query shape shared
+// across all three; labels and ordering always read from SERVER_STAGES_ARRAY.
+//
+// PIPELINE_CAPABILITY_MAP maps the pipeline query param to the widget capability
+// that gates it. requireWidgetCapability runs as the second middleware after the
+// param validation guard, preserving "first middleware" enforcement intent.
+const PIPELINE_CAPABILITY_MAP: Record<string, Capability> = {
+  retail:    'sales_funnel',
+  insurance: 'insurance_claims',
+  project:   'production_pipeline',
+};
+
+router.get(
+  '/dashboard/widgets/pipeline_funnel',
+  // Step 1: validate pipeline param before invoking capability check
+  (req: Request, res: Response, next) => {
+    const { pipeline } = req.query;
+    if (!pipeline || !PIPELINE_CAPABILITY_MAP[pipeline as string]) {
+      res.status(400).json({ error: 'pipeline must be one of: retail, insurance, project' });
+      return;
+    }
+    next();
+  },
+  // Step 2: capability check — maps pipeline → widget key
+  (req: Request, res: Response, next) => {
+    const key = PIPELINE_CAPABILITY_MAP[req.query.pipeline as string];
+    return requireWidgetCapability(key)(req, res, next);
+  },
+  async (req: Request, res: Response) => {
+    const pipeline   = req.query.pipeline as PipelineId;
+    const companyId  = req.user!.companyId;
+
+    // Stage definitions for this pipeline, sorted by `order`.
+    // Labels come from SERVER_STAGES_ARRAY — never hardcoded.
+    const pipelineStages = SERVER_STAGES_ARRAY
+      .filter((s) => s.pipeline === pipeline)
+      .sort((a, b) => a.order - b.order);
+
+    // Count active pins per pipelineStage for this pipeline.
+    const countRows = await db
+      .select({
+        stage: pinsTable.pipelineStage,
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(pinsTable)
+      .where(
+        and(
+          eq(pinsTable.companyId, companyId),
+          eq(pinsTable.sourcePipeline, pipeline),
+          eq(pinsTable.status, 'active'),
+        )
+      )
+      .groupBy(pinsTable.pipelineStage);
+
+    const countMap = new Map(countRows.map((r) => [r.stage ?? '__null__', Number(r.count)]));
+
+    const stages = pipelineStages.map((s) => ({
+      key:        s.key,
+      label:      s.label,
+      order:      s.order,
+      count:      countMap.get(s.key) ?? 0,
+      isTerminal: s.isTerminal,
+    }));
+
+    const activeTotal   = stages.filter((s) => !s.isTerminal).reduce((sum, s) => sum + s.count, 0);
+    const terminalTotal = stages.filter((s) =>  s.isTerminal).reduce((sum, s) => sum + s.count, 0);
+
+    res.json({ pipeline, stages, activeTotal, terminalTotal });
+  },
+);
+
+// ── B2a: Pending inspections ──────────────────────────────────────────────────
+// Inspections that need field action: status 'scheduled' (work hasn't started)
+// or 'capturing' (work in progress but not submitted).
+// 'validating' is excluded — the rep has submitted; awaiting office review is
+// the claim_blockers widget's responsibility.
+//
+// SCOPE RULE (mirrors /activity-stats):
+//   field_rep → own inspections only (inspectorUserId = actorId)
+//   manager+  → company-wide
+// Role is loaded from the DB profile row — never from the session token.
+router.get(
+  '/dashboard/widgets/pending_inspections',
+  requireWidgetCapability('pending_inspections'),
+  async (req: Request, res: Response) => {
+    const companyId = req.user!.companyId;
+    const actorId   = req.user!.id;
+    const CAP = 25;
+
+    const [profile] = await db
+      .select({ role: userProfilesTable.role })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, actorId));
+
+    const scopeToSelf = (profile?.role ?? 'field_rep') === 'field_rep';
+
+    const rows = await db
+      .select({
+        inspectionId: inspectionsTable.id,
+        pinId:        inspectionsTable.pinId,
+        phase:        inspectionsTable.phase,
+        status:       inspectionsTable.status,
+        createdAt:    inspectionsTable.createdAt,
+        customerName: pinsTable.customerName,
+        address:      pinsTable.address,
+        ownerFirst:   usersTable.firstName,
+        ownerLast:    usersTable.lastName,
+      })
+      .from(inspectionsTable)
+      .leftJoin(pinsTable, eq(inspectionsTable.pinId, pinsTable.id))
+      .leftJoin(usersTable, eq(inspectionsTable.inspectorUserId, usersTable.id))
+      .where(
+        and(
+          eq(inspectionsTable.companyId, companyId),
+          inArray(inspectionsTable.status, ['scheduled', 'capturing']),
+          scopeToSelf ? eq(inspectionsTable.inspectorUserId, actorId) : undefined,
+        )
+      )
+      .orderBy(sql`${inspectionsTable.createdAt} asc`); // oldest first = most urgent
+
+    const total  = rows.length;
+    const capped = total > CAP;
+    const now    = Date.now();
+
+    res.json({
+      items: rows.slice(0, CAP).map((r) => ({
+        inspectionId:  r.inspectionId,
+        pinId:         r.pinId ?? null,
+        phase:         r.phase,
+        status:        r.status,
+        label:         r.customerName ?? r.address ?? r.inspectionId,
+        ownerName:     r.ownerFirst || r.ownerLast
+          ? [r.ownerFirst, r.ownerLast].filter(Boolean).join(' ')
+          : null,
+        outstandingMs: r.createdAt instanceof Date ? now - r.createdAt.getTime() : 0,
+        createdAt:     r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+      })),
+      total,
+      capped,
+      scopedToSelf: scopeToSelf,
+    });
+  },
+);
+
+// ── B2b: Claim blockers ───────────────────────────────────────────────────────
+// Reuses fetchBlockedClaims() — no separate SQL copy. See shared helper above.
+// Workflow-gated (insurance_retail) and field-rep-scoped when applicable.
+router.get(
+  '/dashboard/widgets/claim_blockers',
+  requireWidgetCapability('claim_blockers'),
+  async (req: Request, res: Response) => {
+    const companyId = req.user!.companyId;
+    const actorId   = req.user!.id;
+    const CAP = 25;
+
+    const [profile] = await db
+      .select({ role: userProfilesTable.role })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, actorId));
+
+    const scopeToSelf = (profile?.role ?? 'field_rep') === 'field_rep';
+
+    const blockedRows = await fetchBlockedClaims(companyId, {
+      scopeToUserId: scopeToSelf ? actorId : undefined,
+    });
+
+    const total  = blockedRows.length;
+    const capped = total > CAP;
+
+    res.json({
+      items: blockedRows.slice(0, CAP).map((row) => {
+        const status   = row.inspection_status as string;
+        const phase    = row.inspection_phase  as string;
+        const pinLabel =
+          (row.customer_name as string | null) ??
+          (row.address        as string | null) ??
+          (row.pin_id         as string);
+        const stageEnteredAt = row.stage_entered_at
+          ? new Date(row.stage_entered_at as string)
+          : null;
+        const ageMs = stageEnteredAt ? Date.now() - stageEnteredAt.getTime() : 0;
+        const days  = ageMs / (1000 * 60 * 60 * 24);
+        const stuckForLabel =
+          days >= 2 ? `${Math.floor(days)} days` : days >= 1 ? '1 day' : '< 1 day';
+
+        let blockerKind: string;
+        let label: string;
+        if (phase === 'preliminary' && status !== 'scheduled') {
+          blockerKind = 'fipsa_unsigned';
+          label = `${pinLabel} — FIPSA unsigned`;
+        } else if (status === 'validating') {
+          blockerKind = 'validating';
+          label = `${pinLabel} — claim validating`;
+        } else {
+          blockerKind = 'capturing_stalled';
+          label = `${pinLabel} — field work stalled`;
+        }
+
+        return {
+          inspectionId: row.inspection_id as string,
+          pinId:        row.pin_id as string,
+          blockerKind,
+          label,
+          ownerName: (row.first_name as string | null) || (row.last_name as string | null)
+            ? [row.first_name, row.last_name].filter(Boolean).join(' ')
+            : null,
+          stuckForLabel,
+        };
+      }),
+      total,
+      capped,
+      scopedToSelf: scopeToSelf,
+    });
+  },
+);
+
+// ── B3: Recent activity feed ──────────────────────────────────────────────────
+// Merges claim_events + stage_transitions into one reverse-chronological feed.
+//
+// ⚠ TENANCY LANDMINE: stage_transitions has NO companyId column.
+//   The query MUST join through pins and filter on pins.companyId.
+//   claim_events has companyId and is scoped directly.
+//
+// NULL userId on stage_transitions indicates an auto_event trigger;
+// such items are rendered as "System" — not "Unknown user".
+// Payload contents are NEVER surfaced — only the event type label is shown.
+
+const CLAIM_EVENT_LABELS: Readonly<Record<string, string>> = {
+  inspection_synced:          'Inspection synced',
+  attested:                   'Inspection attested',
+  generation_started:         'AI generation started',
+  section_generated:          'Section generated',
+  section_approved:           'Section approved',
+  section_locked:             'Section locked',
+  compiled:                   'Report compiled',
+  report_attested:            'Report attested',
+  delivered:                  'Report delivered',
+  supplemented:               'Supplement added',
+  exhibit_selected:           'Exhibit selected',
+  exhibit_deselected:         'Exhibit deselected',
+  exhibit_class_set:          'Exhibit class updated',
+  comparison_pair_confirmed:  'Comparison pair confirmed',
+  comparison_pair_removed:    'Comparison pair removed',
+  exhibit_badges_finalized:   'Exhibit badges finalized',
+  captions_generated:         'Captions generated',
+  field_record_reviewed:      'Field record reviewed',
+  package_delivered:          'Package delivered',
+  slot_confirmed:             'Photo slot confirmed',
+  slot_swapped:               'Photo slot swapped',
+  slot_skipped:               'Photo slot skipped',
+  supplement_created:         'Supplement created',
+  supplement_attested:        'Supplement attested',
+  supplement_delivered:       'Supplement delivered',
+};
+
+// usersTable alias for stage transitions actor join (avoids Drizzle alias conflict)
+const stActorUsers = usersTable;
+
+router.get(
+  '/dashboard/widgets/recent_activity',
+  requireWidgetCapability('recent_activity'),
+  async (req: Request, res: Response) => {
+    const companyId   = req.user!.companyId;
+    const CAP         = 30;
+    const FETCH_LIMIT = 50; // over-fetch to have headroom after merge + sort
+
+    // a. Claim events — scoped by companyId column directly.
+    const claimEvents = await db
+      .select({
+        id:        claimEventsTable.id,
+        eventType: claimEventsTable.eventType,
+        actorId:   claimEventsTable.actorId,
+        createdAt: claimEventsTable.createdAt,
+        firstName: usersTable.firstName,
+        lastName:  usersTable.lastName,
+      })
+      .from(claimEventsTable)
+      .leftJoin(usersTable, eq(claimEventsTable.actorId, usersTable.id))
+      .where(eq(claimEventsTable.companyId, companyId))
+      .orderBy(sql`${claimEventsTable.createdAt} desc`)
+      .limit(FETCH_LIMIT);
+
+    // b. Stage transitions — scoped through pins.companyId (NO direct companyId).
+    //    INNER JOIN pins ensures only transitions for real pins are returned.
+    const stageTransitions = await db
+      .select({
+        id:        stageTransitionsTable.id,
+        fromStage: stageTransitionsTable.fromStage,
+        toStage:   stageTransitionsTable.toStage,
+        userId:    stageTransitionsTable.userId,
+        createdAt: stageTransitionsTable.createdAt,
+        firstName: stActorUsers.firstName,
+        lastName:  stActorUsers.lastName,
+      })
+      .from(stageTransitionsTable)
+      .innerJoin(pinsTable, eq(stageTransitionsTable.leadId, pinsTable.id))
+      .leftJoin(stActorUsers, eq(stageTransitionsTable.userId, stActorUsers.id))
+      .where(eq(pinsTable.companyId, companyId))
+      .orderBy(sql`${stageTransitionsTable.createdAt} desc`)
+      .limit(FETCH_LIMIT);
+
+    type FeedItem = {
+      id: string;
+      kind: 'claim_event' | 'stage_transition';
+      text: string;
+      actorName: string;
+      createdAt: Date | null;
+    };
+
+    const claimItems: FeedItem[] = claimEvents.map((e) => ({
+      id:        `ce:${e.id}`,
+      kind:      'claim_event',
+      text:      CLAIM_EVENT_LABELS[e.eventType] ?? e.eventType,
+      actorName: e.firstName || e.lastName
+        ? [e.firstName, e.lastName].filter(Boolean).join(' ')
+        : 'Unknown',
+      createdAt: e.createdAt,
+    }));
+
+    const transitionItems: FeedItem[] = stageTransitions.map((t) => {
+      const toLabel   = findServerStageByKey(t.toStage)?.label   ?? t.toStage;
+      const fromLabel = t.fromStage ? findServerStageByKey(t.fromStage)?.label ?? t.fromStage : null;
+      const text = fromLabel
+        ? `Stage: ${fromLabel} → ${toLabel}`
+        : `Stage set: ${toLabel}`;
+      return {
+        id:        `st:${t.id}`,
+        kind:      'stage_transition',
+        text,
+        // NULL userId = auto_event (system-triggered) — not "Unknown user"
+        actorName: t.userId === null
+          ? 'System'
+          : t.firstName || t.lastName
+            ? [t.firstName, t.lastName].filter(Boolean).join(' ')
+            : 'Unknown',
+        createdAt: t.createdAt,
+      };
+    });
+
+    const all = [...claimItems, ...transitionItems].sort((a, b) => {
+      if (!a.createdAt && !b.createdAt) return 0;
+      if (!a.createdAt) return 1;
+      if (!b.createdAt) return -1;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+
+    const total  = all.length;
+    const capped = total > CAP;
+
+    res.json({
+      items: all.slice(0, CAP).map((item) => ({
+        ...item,
+        createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
+      })),
+      total,
+      capped,
     });
   },
 );
