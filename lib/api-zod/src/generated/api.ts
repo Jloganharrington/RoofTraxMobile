@@ -6547,3 +6547,40 @@ export const GetActionRequiredWidgetResponse = zod.object({
 }).describe('Response envelope for the action-required widget endpoint.')
 
 
+/**
+ * Company-scoped canvassing conversion metrics: how many door knocks resulted in booked appointments over a rolling window. Requires the knock_to_lead widget capability (manager+). A field_rep receives 403.
+ * @summary Knock-to-lead conversion efficiency for the company
+ */
+export const GetKnockToLeadWidgetResponse = zod.object({
+  "totalKnocks": zod.number().describe('Pins with any doorKnockResult in the rolling window.'),
+  "totalLeads": zod.number().describe('Pins where doorKnockResult = \'appointment\' in the window.'),
+  "conversionRate": zod.number().describe('totalLeads \/ totalKnocks, or 0 when totalKnocks is 0.'),
+  "windowDays": zod.number().describe('Rolling window used for the query.'),
+  "repBreakdown": zod.array(zod.object({
+  "userId": zod.string(),
+  "name": zod.string(),
+  "knocks": zod.number(),
+  "leads": zod.number(),
+  "conversionRate": zod.number()
+})).describe('Per-rep breakdown sorted by knocks descending.')
+}).describe('Knock-to-lead conversion metrics for the company.')
+
+
+/**
+ * Company-scoped array of pin coordinates with door-knock outcomes for heatmap rendering. PII-free (no names, addresses, phone numbers). Capped at 2,000 points; total before cap is always returned. Requires the canvassing_heatmap widget capability (manager+).
+ * @summary Canvassing heatmap data points for the company
+ */
+export const GetCanvassingHeatmapWidgetResponse = zod.object({
+  "points": zod.array(zod.object({
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "doorKnockResult": zod.string().nullish(),
+  "contactOutcome": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number().describe('Total matching pins before the cap.'),
+  "capped": zod.boolean().describe('True when the result was truncated to the cap.'),
+  "windowDays": zod.number().describe('Recency window used.')
+}).describe('Heatmap data envelope for the canvassing_heatmap widget.')
+
+

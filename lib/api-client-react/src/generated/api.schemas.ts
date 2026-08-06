@@ -3111,6 +3111,51 @@ export interface ActionRequiredEnvelope {
   capped: boolean;
 }
 
+export interface KnockToLeadRepRow {
+  userId: string;
+  name: string;
+  knocks: number;
+  leads: number;
+  conversionRate: number;
+}
+
+/**
+ * Knock-to-lead conversion metrics for the company.
+ */
+export interface KnockToLeadEnvelope {
+  /** Pins with any doorKnockResult in the rolling window. */
+  totalKnocks: number;
+  /** Pins where doorKnockResult = 'appointment' in the window. */
+  totalLeads: number;
+  /** totalLeads / totalKnocks, or 0 when totalKnocks is 0. */
+  conversionRate: number;
+  /** Rolling window used for the query. */
+  windowDays: number;
+  /** Per-rep breakdown sorted by knocks descending. */
+  repBreakdown: KnockToLeadRepRow[];
+}
+
+export interface HeatmapPoint {
+  lat: number;
+  lng: number;
+  doorKnockResult?: string | null;
+  contactOutcome?: string | null;
+  createdAt: string;
+}
+
+/**
+ * Heatmap data envelope for the canvassing_heatmap widget.
+ */
+export interface CanvassingHeatmapEnvelope {
+  points: HeatmapPoint[];
+  /** Total matching pins before the cap. */
+  total: number;
+  /** True when the result was truncated to the cap. */
+  capped: boolean;
+  /** Recency window used. */
+  windowDays: number;
+}
+
 export type WeatherCandidateType = typeof WeatherCandidateType[keyof typeof WeatherCandidateType];
 
 

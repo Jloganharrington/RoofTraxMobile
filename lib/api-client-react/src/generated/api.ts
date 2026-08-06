@@ -33,6 +33,7 @@ import type {
   BugReportListEnvelope,
   BulkCreatePinsInput,
   CanvassingCurrentEnvelope,
+  CanvassingHeatmapEnvelope,
   CanvassingSessionEnvelope,
   CodeResearchInput,
   CompanyEnvelope,
@@ -95,6 +96,7 @@ import type {
   InteriorObservationEnvelope,
   JurisdictionPackEnvelope,
   JurisdictionPackListEnvelope,
+  KnockToLeadEnvelope,
   ListInspectionReportCodeCitations200,
   ListPinsParams,
   LocationPingBody,
@@ -8173,6 +8175,162 @@ export function useGetActionRequiredWidget<TData = Awaited<ReturnType<typeof get
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetActionRequiredWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetKnockToLeadWidgetUrl = () => {
+
+
+
+
+  return `/api/dashboard/widgets/knock_to_lead`
+}
+
+/**
+ * Company-scoped canvassing conversion metrics: how many door knocks resulted in booked appointments over a rolling window. Requires the knock_to_lead widget capability (manager+). A field_rep receives 403.
+ * @summary Knock-to-lead conversion efficiency for the company
+ */
+export const getKnockToLeadWidget = async ( options?: RequestInit): Promise<KnockToLeadEnvelope> => {
+
+  return customFetch<KnockToLeadEnvelope>(getGetKnockToLeadWidgetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKnockToLeadWidgetQueryKey = () => {
+    return [
+    `/api/dashboard/widgets/knock_to_lead`
+    ] as const;
+    }
+
+
+export const getGetKnockToLeadWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getKnockToLeadWidget>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKnockToLeadWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKnockToLeadWidgetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKnockToLeadWidget>>> = ({ signal }) => getKnockToLeadWidget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKnockToLeadWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKnockToLeadWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getKnockToLeadWidget>>>
+export type GetKnockToLeadWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Knock-to-lead conversion efficiency for the company
+ */
+
+export function useGetKnockToLeadWidget<TData = Awaited<ReturnType<typeof getKnockToLeadWidget>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKnockToLeadWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKnockToLeadWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCanvassingHeatmapWidgetUrl = () => {
+
+
+
+
+  return `/api/dashboard/widgets/canvassing_heatmap`
+}
+
+/**
+ * Company-scoped array of pin coordinates with door-knock outcomes for heatmap rendering. PII-free (no names, addresses, phone numbers). Capped at 2,000 points; total before cap is always returned. Requires the canvassing_heatmap widget capability (manager+).
+ * @summary Canvassing heatmap data points for the company
+ */
+export const getCanvassingHeatmapWidget = async ( options?: RequestInit): Promise<CanvassingHeatmapEnvelope> => {
+
+  return customFetch<CanvassingHeatmapEnvelope>(getGetCanvassingHeatmapWidgetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCanvassingHeatmapWidgetQueryKey = () => {
+    return [
+    `/api/dashboard/widgets/canvassing_heatmap`
+    ] as const;
+    }
+
+
+export const getGetCanvassingHeatmapWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCanvassingHeatmapWidgetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>> = ({ signal }) => getCanvassingHeatmapWidget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCanvassingHeatmapWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>>
+export type GetCanvassingHeatmapWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Canvassing heatmap data points for the company
+ */
+
+export function useGetCanvassingHeatmapWidget<TData = Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCanvassingHeatmapWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCanvassingHeatmapWidgetQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

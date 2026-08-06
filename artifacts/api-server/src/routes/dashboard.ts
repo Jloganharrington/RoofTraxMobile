@@ -2,7 +2,7 @@ import { GetDashboardManifestResponse, GetDashboardLayoutResponse, PatchDashboar
 import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable } from '@workspace/db';
 import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
 import { selectWidgetsFor, WIDGET_CATALOG } from '@workspace/authz';
-import { and, eq, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { requireWidgetCapability } from '../lib/dashboardGuard';
 import { SERVER_STAGES_ARRAY } from '../lib/pipelineStages';
@@ -493,6 +493,117 @@ router.get(
     const capped = total > 25;
 
     res.json({ items: items.slice(0, 25), total, capped });
+  },
+);
+
+// ── GET /dashboard/widgets/knock_to_lead ─────────────────────────────────────
+// Knock-to-lead conversion efficiency for the company, rolling 30-day window.
+//
+// Definition (stated explicitly per spec):
+//   Knock = any pin where doorKnockResult IS NOT NULL.
+//           This includes no_soliciting — the rep physically knocked and got
+//           that outcome. It counts in the denominator.
+//   Lead  = pin where doorKnockResult = 'appointment'.
+//
+// Stage list sourced from DOOR_KNOCK_RESULTS enum in the DB schema (not
+// hardcoded) — if the enum changes the filter stays correct automatically.
+router.get(
+  '/dashboard/widgets/knock_to_lead',
+  requireWidgetCapability('knock_to_lead'),
+  async (req: Request, res: Response) => {
+    const companyId = req.user!.companyId;
+    const WINDOW_DAYS = 30;
+    const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        userId: pinsTable.userId,
+        firstName: usersTable.firstName,
+        lastName: usersTable.lastName,
+        knocks: sql<number>`cast(count(*) as int)`,
+        leads: sql<number>`cast(count(*) filter (where ${pinsTable.doorKnockResult} = 'appointment') as int)`,
+      })
+      .from(pinsTable)
+      .innerJoin(usersTable, eq(pinsTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(pinsTable.companyId, companyId),
+          isNotNull(pinsTable.doorKnockResult),
+          gte(pinsTable.createdAt, windowStart),
+        )
+      )
+      .groupBy(pinsTable.userId, usersTable.firstName, usersTable.lastName)
+      .orderBy(sql`count(*) desc`);
+
+    const totalKnocks = rows.reduce((s, r) => s + Number(r.knocks), 0);
+    const totalLeads  = rows.reduce((s, r) => s + Number(r.leads), 0);
+
+    res.json({
+      totalKnocks,
+      totalLeads,
+      conversionRate: totalKnocks > 0 ? totalLeads / totalKnocks : 0,
+      windowDays: WINDOW_DAYS,
+      repBreakdown: rows.map(r => {
+        const knocks = Number(r.knocks);
+        const leads  = Number(r.leads);
+        return {
+          userId: r.userId,
+          name: [r.firstName, r.lastName].filter(Boolean).join(' '),
+          knocks,
+          leads,
+          conversionRate: knocks > 0 ? leads / knocks : 0,
+        };
+      }),
+    });
+  },
+);
+
+// ── GET /dashboard/widgets/canvassing_heatmap ─────────────────────────────────
+// PII-free coordinates + outcomes for the company, last 90 days, capped at
+// 2 000 points (most-recent first). No names, addresses, or phone numbers.
+// Window choice: 90 days is broad enough for geographic pattern recognition
+// while staying recent enough for operational decisions.
+router.get(
+  '/dashboard/widgets/canvassing_heatmap',
+  requireWidgetCapability('canvassing_heatmap'),
+  async (req: Request, res: Response) => {
+    const companyId = req.user!.companyId;
+    const WINDOW_DAYS = 90;
+    const CAP = 2_000;
+    const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+    const all = await db
+      .select({
+        lat:             pinsTable.latitude,
+        lng:             pinsTable.longitude,
+        doorKnockResult: pinsTable.doorKnockResult,
+        contactOutcome:  pinsTable.contactOutcome,
+        createdAt:       pinsTable.createdAt,
+      })
+      .from(pinsTable)
+      .where(
+        and(
+          eq(pinsTable.companyId, companyId),
+          gte(pinsTable.createdAt, windowStart),
+        )
+      )
+      .orderBy(sql`${pinsTable.createdAt} desc`);
+
+    const total  = all.length;
+    const capped = total > CAP;
+
+    res.json({
+      points: all.slice(0, CAP).map(p => ({
+        lat:             p.lat,
+        lng:             p.lng,
+        doorKnockResult: p.doorKnockResult ?? null,
+        contactOutcome:  p.contactOutcome  ?? null,
+        createdAt:       p.createdAt instanceof Date ? p.createdAt.toISOString() : p.createdAt,
+      })),
+      total,
+      capped,
+      windowDays: WINDOW_DAYS,
+    });
   },
 );
 

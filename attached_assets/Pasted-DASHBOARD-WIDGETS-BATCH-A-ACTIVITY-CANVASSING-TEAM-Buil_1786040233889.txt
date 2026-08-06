@@ -1,0 +1,147 @@
+DASHBOARD WIDGETS — BATCH A: ACTIVITY, CANVASSING, TEAM
+
+Builds four widgets currently rendering <PlaceholderWidget>:
+  my_activity        (all users)
+  knock_to_lead      (manager+)
+  canvassing_heatmap (manager+)
+  live_team          (manager+)
+
+Same rules as prior waves. openapi-first then regenerate; never hand-edit
+generated files; never touch artifacts/mobile/. STOP after each widget and
+paste real verification output. Do NOT batch all four into one report — four
+checkpoints, four reports.
+
+═══════════════════════════════════════════════════════════
+HARD RULES FOR ALL FOUR
+═══════════════════════════════════════════════════════════
+1. Every widget data endpoint MUST use requireWidgetCapability('<key>') as
+   its first middleware. Omission from the manifest is NOT access control.
+   This is the established pattern — see the action_required endpoint in
+   artifacts/api-server/src/routes/dashboard.ts as the reference.
+2. Company-scope every query by req.user.companyId. No cross-tenant rows.
+3. Role/scope decisions come from the DB profile row, never from request
+   body/query params.
+4. Do NOT create new tables or columns. Everything below already exists.
+5. Widgets keep the existing loading / error / empty-state structure already
+   in each stub's sibling (ActionRequiredWidget.tsx is the reference for a
+   fully-built widget).
+
+═══════════════════════════════════════════════════════════
+A1 — my_activity  (all users)  [REASONING OK]
+═══════════════════════════════════════════════════════════
+GOAL: show the signed-in user their own canvassing activity at a glance.
+
+DATA: GET /activity-stats already exists and returns exactly this. Response
+shape (verified):
+  stats.period       { pinsDropped, appointmentsSet, appointmentsCompleted,
+                       hoursTracked }
+  stats.competitive  { me{...}, teamTotal{...}, myRank, cohortSize }
+  stats.scope, stats.canViewLeaderboard, stats.leaderboard, stats.myRank
+
+IMPORTANT: that endpoint already clamps field_rep to scope='own' server-side.
+Do NOT add a second scoping layer — reuse it as-is.
+
+NOTE: appointmentsCompleted is currently hardcoded null in the endpoint
+(there is no completion signal in the schema yet). Do NOT display it as 0 —
+either omit it or show it as unavailable. Never render a null as a real
+number.
+
+Because /activity-stats already exists with a generated hook, this widget
+may NOT need a new endpoint at all. If the existing hook serves it, use it
+directly and add no new API surface. Only add an endpoint if you find a
+concrete reason the existing one can't serve the widget — and say what that
+reason was.
+
+Design the presentation (today vs 30-day, rank display, etc.). Keep it
+scannable at widget size — this is a card, not a report.
+
+═══════════════════════════════════════════════════════════
+A2 — knock_to_lead  (manager+)  [REASONING OK]
+═══════════════════════════════════════════════════════════
+GOAL: conversion efficiency — how effectively is canvassing generating
+qualified leads?
+
+DATA: pins table. Relevant fields (verified):
+  doorKnockResult: 'no_answer' | 'no_appointment' | 'appointment'
+  contactOutcome:  'no_soliciting' | 'priority_inspection' | 'call_to_schedule'
+  userId (owning rep), companyId, createdAt, sourcePipeline
+
+Use the enum vocabularies from lib/db/src/schema/rooftrax.ts
+(DOOR_KNOCK_RESULTS, CONTACT_OUTCOMES) — do not hardcode string lists.
+
+The core ratio is knocks → appointments. Decide what counts as a "knock"
+versus a "lead" and STATE YOUR DEFINITION in your report — e.g. whether
+no_soliciting pins count in the denominator. That definition is the whole
+widget; get it explicit rather than implied.
+
+Manager+ sees company-wide (role rank, no reporting tree — there is no
+"their team" in this schema). Include a per-rep breakdown if it fits the
+card; otherwise company aggregate with a link out.
+
+═══════════════════════════════════════════════════════════
+A3 — canvassing_heatmap  (manager+)  [REASONING OK]
+═══════════════════════════════════════════════════════════
+GOAL: where has the team been knocking, and what happened there.
+
+DATA: pins.latitude / .longitude (both doublePrecision, NOT NULL) plus
+doorKnockResult / contactOutcome for color-coding, createdAt for recency.
+
+Leaflet is already set up in artifacts/rooftrax-web/src/pages/MapPage.tsx —
+reuse that setup rather than introducing a second mapping approach.
+
+Constraints:
+  - Return only the columns the map needs. Do NOT return full pin rows with
+    customer names, phone numbers, or addresses to a heatmap endpoint —
+    that's PII on a surface that doesn't need it. Coordinates + outcome +
+    timestamp is enough.
+  - Cap the number of points returned and report the cap in the payload
+    (same honesty rule as action_required: never silently truncate). A
+    company with 50k pins must not blow up the response.
+  - Consider a recency window (default to something sensible, say last 30
+    or 90 days) rather than all-time. State what you chose.
+  - Leaflet in a small dashboard card needs different interaction defaults
+    than a full page — disable scroll-wheel zoom so the widget doesn't
+    hijack page scrolling.
+
+═══════════════════════════════════════════════════════════
+A4 — live_team  (manager+)  [REASONING OK]
+═══════════════════════════════════════════════════════════
+GOAL: who is out in the field right now, and where.
+
+DATA: GET /location/team ALREADY EXISTS and returns exactly this — verified
+shape: { locations: [{ userId, firstName, lastName, latitude, longitude,
+updatedAt, isClockedIn }] }. It already enforces isManagerOrAdmin and scopes
+by companyId.
+
+Like A1, this may need NO new endpoint. Reuse the existing one unless you
+find a concrete blocker; say so if you do.
+
+Two things to handle honestly:
+  - user_locations has one row per user (userId is the PRIMARY KEY), so it's
+    a last-known position, not a track. Don't imply live movement.
+  - updatedAt can be stale — a rep who closed the app hours ago still has a
+    row. Show staleness (e.g. "updated 3h ago") rather than presenting an
+    old fix as current. isClockedIn comes from an open canvassing_sessions
+    row and is the better "active right now" signal.
+
+Map or list is your call — if a map, reuse the MapPage Leaflet setup and the
+same scroll-zoom constraint as A3.
+
+═══════════════════════════════════════════════════════════
+VERIFY — per widget, paste real output
+═══════════════════════════════════════════════════════════
+  - Screenshot the widget rendering real dev data on the dashboard.
+  - Describe what the query actually returned. If dev data is too thin to be
+    meaningful, SAY SO and seed enough to exercise it — do not report a green
+    run against an empty table.
+  - As FIELD_REP: call each manager+ widget's data endpoint directly (A2, A3,
+    A4) → 403. Paste them. A1 should return the rep's OWN numbers, not
+    company totals — paste that too.
+  - Tenancy: confirm company A sees zero company B rows.
+  - For A1/A4: state explicitly whether you added a new endpoint or reused
+    the existing one, and why.
+  - Typecheck clean: api-server, rooftrax-web, mobile.
+  - git diff --stat -- artifacts/mobile/ → empty.
+
+FINAL after A4: pnpm --filter @workspace/authz test (still 51/51),
+cd artifacts/api-server && npx vitest run.

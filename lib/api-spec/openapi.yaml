@@ -4175,6 +4175,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /dashboard/widgets/knock_to_lead:
+    get:
+      tags: [Dashboard]
+      operationId: getKnockToLeadWidget
+      summary: Knock-to-lead conversion efficiency for the company
+      description: >-
+        Company-scoped canvassing conversion metrics: how many door knocks
+        resulted in booked appointments over a rolling window. Requires the
+        knock_to_lead widget capability (manager+). A field_rep receives 403.
+      responses:
+        "200":
+          description: Knock-to-lead conversion data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnockToLeadEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the knock_to_lead widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /dashboard/widgets/canvassing_heatmap:
+    get:
+      tags: [Dashboard]
+      operationId: getCanvassingHeatmapWidget
+      summary: Canvassing heatmap data points for the company
+      description: >-
+        Company-scoped array of pin coordinates with door-knock outcomes for
+        heatmap rendering. PII-free (no names, addresses, phone numbers).
+        Capped at 2,000 points; total before cap is always returned. Requires
+        the canvassing_heatmap widget capability (manager+).
+      responses:
+        "200":
+          description: Heatmap data points.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanvassingHeatmapEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the canvassing_heatmap widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -8143,6 +8202,81 @@ components:
         capped:
           type: boolean
           description: True when total exceeds 25 and the response was truncated.
+
+    KnockToLeadEnvelope:
+      type: object
+      required: [totalKnocks, totalLeads, conversionRate, windowDays, repBreakdown]
+      description: Knock-to-lead conversion metrics for the company.
+      properties:
+        totalKnocks:
+          type: integer
+          description: Pins with any doorKnockResult in the rolling window.
+        totalLeads:
+          type: integer
+          description: Pins where doorKnockResult = 'appointment' in the window.
+        conversionRate:
+          type: number
+          description: totalLeads / totalKnocks, or 0 when totalKnocks is 0.
+        windowDays:
+          type: integer
+          description: Rolling window used for the query.
+        repBreakdown:
+          type: array
+          description: Per-rep breakdown sorted by knocks descending.
+          items:
+            $ref: "#/components/schemas/KnockToLeadRepRow"
+
+    KnockToLeadRepRow:
+      type: object
+      required: [userId, name, knocks, leads, conversionRate]
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        knocks:
+          type: integer
+        leads:
+          type: integer
+        conversionRate:
+          type: number
+
+    CanvassingHeatmapEnvelope:
+      type: object
+      required: [points, total, capped, windowDays]
+      description: Heatmap data envelope for the canvassing_heatmap widget.
+      properties:
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/HeatmapPoint"
+        total:
+          type: integer
+          description: Total matching pins before the cap.
+        capped:
+          type: boolean
+          description: True when the result was truncated to the cap.
+        windowDays:
+          type: integer
+          description: Recency window used.
+
+    HeatmapPoint:
+      type: object
+      required: [lat, lng, createdAt]
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        doorKnockResult:
+          type: string
+          nullable: true
+        contactOutcome:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
 
     WeatherCandidate:
       type: object

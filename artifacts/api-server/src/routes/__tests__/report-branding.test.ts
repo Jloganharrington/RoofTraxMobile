@@ -90,16 +90,30 @@ describe('report-branding routes', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects non-super_admin readers and writers', async () => {
-    for (const sid of [a.adminSid, a.repSid]) {
-      const get = await request(app).get(`/api/companies/${a.companyId}/report-branding`).set(auth(sid));
-      expect(get.status).toBe(403);
-      const patch = await request(app)
-        .patch(`/api/companies/${a.companyId}/report-branding`)
-        .set(auth(sid))
-        .send({ branding: VALID });
-      expect(patch.status).toBe(403);
-    }
+  it('rejects readers and writers below admin rank', async () => {
+    // field_rep must be rejected
+    const repGet = await request(app).get(`/api/companies/${a.companyId}/report-branding`).set(auth(a.repSid));
+    expect(repGet.status).toBe(403);
+    const repPatch = await request(app)
+      .patch(`/api/companies/${a.companyId}/report-branding`)
+      .set(auth(a.repSid))
+      .send({ branding: VALID });
+    expect(repPatch.status).toBe(403);
+  });
+
+  it('allows admin-rank users to read and write report branding', async () => {
+    const get = await request(app).get(`/api/companies/${a.companyId}/report-branding`).set(auth(a.adminSid));
+    expect(get.status).toBe(200);
+    const patch = await request(app)
+      .patch(`/api/companies/${a.companyId}/report-branding`)
+      .set(auth(a.adminSid))
+      .send({ branding: VALID });
+    expect(patch.status).toBe(200);
+    // Reset so later "returns null" assertion starts from a clean state
+    await request(app)
+      .patch(`/api/companies/${a.companyId}/report-branding`)
+      .set(auth(a.adminSid))
+      .send({ branding: null });
   });
 
   it('rejects cross-company access even for super_admin', async () => {
@@ -169,15 +183,18 @@ describe('report-branding routes', () => {
 describe('branding sample preview route', () => {
   const previewPath = (companyId: string) => `/api/companies/${companyId}/report-branding/preview`;
 
-  it('requires auth and super_admin role', async () => {
+  it('requires auth and admin+ role', async () => {
     const anon = await request(app).get(previewPath(a.companyId));
     expect(anon.status).toBe(401);
-    for (const sid of [a.adminSid, a.repSid]) {
-      const res = await request(app).get(previewPath(a.companyId)).set(auth(sid));
-      expect(res.status).toBe(403);
-    }
+    // field_rep rejected
+    const rep = await request(app).get(previewPath(a.companyId)).set(auth(a.repSid));
+    expect(rep.status).toBe(403);
+    // cross-company super_admin rejected
     const cross = await request(app).get(previewPath(a.companyId)).set(auth(b.superSid));
     expect(cross.status).toBe(403);
+    // same-company admin allowed
+    const adm = await request(app).get(previewPath(a.companyId)).set(auth(a.adminSid));
+    expect(adm.status).toBe(200);
   });
 
   it('renders a sample report with the stored palette and freshly-signed logo', async () => {
