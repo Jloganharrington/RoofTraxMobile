@@ -214,6 +214,10 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
   const [updated] = await db
     .update(pinsTable)
     .set({
+      // updatedAt is always present so the set is never empty (Drizzle throws
+      // on .set({})). Commission fields are NOT accepted here — see
+      // PATCH /pins/:pinId/commissions in expenses.ts (bug-fix iii).
+      updatedAt: new Date(),
       ...(parsed.data.workflow !== undefined && { workflow: parsed.data.workflow }),
       ...(parsed.data.damageType !== undefined && { damageType: parsed.data.damageType }),
       ...(parsed.data.photoUrl !== undefined && { photoUrl: parsed.data.photoUrl }),
@@ -264,14 +268,12 @@ export const LeadProfileBody = z.object({
   adjusterEmail:        z.string().nullable().optional(),
   adjusterMeetingDate:  z.string().nullable().optional(),
   contractAmount:       z.string().nullable().optional(),
-  depositAmount:        z.string().nullable().optional(),
-  depositDate:          z.string().nullable().optional(),
-  depositPaymentMethod: z.string().nullable().optional(),
+  // depositAmount, depositDate, depositPaymentMethod, acvAmount,
+  // supplementAmount, finalPaymentAmount removed — these are now managed
+  // exclusively via the payments ledger (POST /pins/:pinId/payments).
+  // Bug fix (iii): they must not remain as a second write path here.
   deductibleAmount:     z.string().nullable().optional(),
   rcvAmount:            z.string().nullable().optional(),
-  acvAmount:            z.string().nullable().optional(),
-  supplementAmount:     z.string().nullable().optional(),
-  finalPaymentAmount:   z.string().nullable().optional(),
   contractScope:        z.string().nullable().optional(),
   squareFootage:        z.string().nullable().optional(),
   roofPitch:            z.string().nullable().optional(),
@@ -385,14 +387,8 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
       ...(d.adjusterEmail        !== undefined && { adjusterEmail:        d.adjusterEmail }),
       ...(d.adjusterMeetingDate  !== undefined && { adjusterMeetingDate:  toDateOrNull(d.adjusterMeetingDate) }),
       ...(d.contractAmount       !== undefined && { contractAmount:       d.contractAmount }),
-      ...(d.depositAmount        !== undefined && { depositAmount:        d.depositAmount }),
-      ...(d.depositDate          !== undefined && { depositDate:          toDateOrNull(d.depositDate) }),
-      ...(d.depositPaymentMethod !== undefined && { depositPaymentMethod: d.depositPaymentMethod }),
       ...(d.deductibleAmount     !== undefined && { deductibleAmount:     d.deductibleAmount }),
       ...(d.rcvAmount            !== undefined && { rcvAmount:            d.rcvAmount }),
-      ...(d.acvAmount            !== undefined && { acvAmount:            d.acvAmount }),
-      ...(d.supplementAmount     !== undefined && { supplementAmount:     d.supplementAmount }),
-      ...(d.finalPaymentAmount   !== undefined && { finalPaymentAmount:   d.finalPaymentAmount }),
       ...(d.contractScope        !== undefined && { contractScope:        d.contractScope }),
       ...(d.squareFootage        !== undefined && { squareFootage:        d.squareFootage }),
       ...(d.roofPitch            !== undefined && { roofPitch:            d.roofPitch }),

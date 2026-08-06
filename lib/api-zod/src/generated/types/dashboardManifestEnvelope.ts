@@ -11,6 +11,9 @@ import type { GridCellEntry } from './gridCellEntry';
 export interface DashboardManifestEnvelope {
   /** Ordered list of widgets this user is permitted to see. */
   widgets: DashboardWidgetMeta[];
-  /** Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes. */
+  /**
+     * Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes.
+     * @maxItems 50
+     */
   gridLayout?: GridCellEntry[] | null;
 }

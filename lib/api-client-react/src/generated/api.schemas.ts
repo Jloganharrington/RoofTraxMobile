@@ -770,6 +770,18 @@ export interface Pin {
   status: string;
   createdAt: string;
   updatedAt: string;
+  /** @nullable */
+  leadAcquisitionCostCents?: number | null;
+  /** @nullable */
+  referralFeeCents?: number | null;
+  /** @nullable */
+  salesCommissionCents?: number | null;
+  /** @nullable */
+  salesCommissionPaidDate?: string | null;
+  /** @nullable */
+  pmCommissionCents?: number | null;
+  /** @nullable */
+  pmCommissionPaidDate?: string | null;
 }
 
 export interface PinEnvelope {
@@ -3003,6 +3015,7 @@ export interface GridCellEntry {
   /**
      * Column index (0–11).
      * @minimum 0
+     * @maximum 11
      */
   x: number;
   /**
@@ -3013,6 +3026,7 @@ export interface GridCellEntry {
   /**
      * Width in grid columns (1–12).
      * @minimum 1
+     * @maximum 12
      */
   w: number;
   /**
@@ -3025,7 +3039,10 @@ export interface GridCellEntry {
 export interface DashboardManifestEnvelope {
   /** Ordered list of widgets this user is permitted to see. */
   widgets: DashboardWidgetMeta[];
-  /** Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes. */
+  /**
+     * Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes.
+     * @maxItems 50
+     */
   gridLayout?: GridCellEntry[] | null;
 }
 
@@ -3077,7 +3094,10 @@ export interface DashboardLayoutInput {
      * @maxItems 50
      */
   order?: string[];
-  /** Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults. */
+  /**
+     * Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults.
+     * @maxItems 50
+     */
   gridLayout?: GridCellEntry[] | null;
 }
 
@@ -3651,6 +3671,381 @@ export interface UpdateTemplateInput {
   objectPath?: string;
   mimeType?: string;
   originalFilename?: string;
+}
+
+export type PaymentType = typeof PaymentType[keyof typeof PaymentType];
+
+
+export const PaymentType = {
+  deposit: 'deposit',
+  acv: 'acv',
+  betterment: 'betterment',
+  supplement: 'supplement',
+  final: 'final',
+  rcv_holdback: 'rcv_holdback',
+  deductible: 'deductible',
+  other: 'other',
+} as const;
+
+export interface Payment {
+  id: string;
+  companyId: string;
+  pinId: string;
+  type: PaymentType;
+  /**
+     * Amount in integer cents. Never a float or dollar string.
+     * @minimum 1
+     */
+  amountCents: number;
+  /** @nullable */
+  method?: string | null;
+  paymentDate: string;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  customerInvoiceId?: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentEnvelope {
+  payment: Payment;
+}
+
+export interface PaymentListEnvelope {
+  payments: Payment[];
+}
+
+export type CreatePaymentInputType = typeof CreatePaymentInputType[keyof typeof CreatePaymentInputType];
+
+
+export const CreatePaymentInputType = {
+  deposit: 'deposit',
+  acv: 'acv',
+  betterment: 'betterment',
+  supplement: 'supplement',
+  final: 'final',
+  rcv_holdback: 'rcv_holdback',
+  deductible: 'deductible',
+  other: 'other',
+} as const;
+
+export interface CreatePaymentInput {
+  type: CreatePaymentInputType;
+  /**
+     * Amount in integer cents. Never a float or dollar string.
+     * @minimum 1
+     */
+  amountCents: number;
+  /** @nullable */
+  method?: string | null;
+  paymentDate: string;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type UpdatePaymentInputType = typeof UpdatePaymentInputType[keyof typeof UpdatePaymentInputType];
+
+
+export const UpdatePaymentInputType = {
+  deposit: 'deposit',
+  acv: 'acv',
+  betterment: 'betterment',
+  supplement: 'supplement',
+  final: 'final',
+  rcv_holdback: 'rcv_holdback',
+  deductible: 'deductible',
+  other: 'other',
+} as const;
+
+/**
+ * All fields optional; only present fields are updated.
+ */
+export interface UpdatePaymentInput {
+  type?: UpdatePaymentInputType;
+  /** @minimum 1 */
+  amountCents?: number;
+  /** @nullable */
+  method?: string | null;
+  paymentDate?: string;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type CustomerInvoiceInvoiceType = typeof CustomerInvoiceInvoiceType[keyof typeof CustomerInvoiceInvoiceType];
+
+
+export const CustomerInvoiceInvoiceType = {
+  initial_deposit: 'initial_deposit',
+  acv_payment: 'acv_payment',
+  supplement: 'supplement',
+  final_payment: 'final_payment',
+  service: 'service',
+  other: 'other',
+} as const;
+
+export type CustomerInvoiceStatus = typeof CustomerInvoiceStatus[keyof typeof CustomerInvoiceStatus];
+
+
+export const CustomerInvoiceStatus = {
+  open: 'open',
+  sent: 'sent',
+  paid: 'paid',
+  void: 'void',
+} as const;
+
+export interface CustomerInvoice {
+  id: string;
+  companyId: string;
+  pinId: string;
+  invoiceNumber: string;
+  customerName: string;
+  customerAddress: string;
+  invoiceType: CustomerInvoiceInvoiceType;
+  amountCents: number;
+  status: CustomerInvoiceStatus;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  pdfUrl?: string | null;
+  /** @nullable */
+  sentDate?: string | null;
+  /** @nullable */
+  paidDate?: string | null;
+  /** @nullable */
+  paymentMethod?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerInvoiceEnvelope {
+  invoice: CustomerInvoice;
+}
+
+export interface CustomerInvoiceListEnvelope {
+  invoices: CustomerInvoice[];
+}
+
+export type CreateCustomerInvoiceInputInvoiceType = typeof CreateCustomerInvoiceInputInvoiceType[keyof typeof CreateCustomerInvoiceInputInvoiceType];
+
+
+export const CreateCustomerInvoiceInputInvoiceType = {
+  initial_deposit: 'initial_deposit',
+  acv_payment: 'acv_payment',
+  supplement: 'supplement',
+  final_payment: 'final_payment',
+  service: 'service',
+  other: 'other',
+} as const;
+
+export interface CreateCustomerInvoiceInput {
+  customerName: string;
+  customerAddress: string;
+  invoiceType: CreateCustomerInvoiceInputInvoiceType;
+  /** @minimum 1 */
+  amountCents: number;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  pdfUrl?: string | null;
+}
+
+/**
+ * All fields optional; only present fields are updated.
+ */
+export interface UpdateCustomerInvoiceInput {
+  customerName?: string;
+  customerAddress?: string;
+  /** @minimum 1 */
+  amountCents?: number;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  pdfUrl?: string | null;
+}
+
+/**
+ * Optional context when marking an invoice paid.
+ */
+export interface MarkInvoicePaidInput {
+  /** @nullable */
+  paymentMethod?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type VendorExpenseCategory = typeof VendorExpenseCategory[keyof typeof VendorExpenseCategory];
+
+
+export const VendorExpenseCategory = {
+  materials: 'materials',
+  labor: 'labor',
+  subcontractor: 'subcontractor',
+  equipment: 'equipment',
+  other: 'other',
+} as const;
+
+export interface VendorExpense {
+  id: string;
+  companyId: string;
+  pinId: string;
+  vendorName: string;
+  /** @nullable */
+  invoiceNumber?: string | null;
+  /** @nullable */
+  invoiceDate?: string | null;
+  amountCents: number;
+  category: VendorExpenseCategory;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  documentUrl?: string | null;
+  isPaid: boolean;
+  /** @nullable */
+  paidDate?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VendorExpenseEnvelope {
+  expense: VendorExpense;
+}
+
+export interface VendorExpenseListEnvelope {
+  expenses: VendorExpense[];
+}
+
+export type CreateVendorExpenseInputCategory = typeof CreateVendorExpenseInputCategory[keyof typeof CreateVendorExpenseInputCategory];
+
+
+export const CreateVendorExpenseInputCategory = {
+  materials: 'materials',
+  labor: 'labor',
+  subcontractor: 'subcontractor',
+  equipment: 'equipment',
+  other: 'other',
+} as const;
+
+export interface CreateVendorExpenseInput {
+  vendorName: string;
+  /** @minimum 1 */
+  amountCents: number;
+  category: CreateVendorExpenseInputCategory;
+  /** @nullable */
+  invoiceNumber?: string | null;
+  /** @nullable */
+  invoiceDate?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  documentUrl?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+}
+
+export type UpdateVendorExpenseInputCategory = typeof UpdateVendorExpenseInputCategory[keyof typeof UpdateVendorExpenseInputCategory];
+
+
+export const UpdateVendorExpenseInputCategory = {
+  materials: 'materials',
+  labor: 'labor',
+  subcontractor: 'subcontractor',
+  equipment: 'equipment',
+  other: 'other',
+} as const;
+
+/**
+ * All fields optional; only present fields are updated.
+ */
+export interface UpdateVendorExpenseInput {
+  vendorName?: string;
+  /** @minimum 1 */
+  amountCents?: number;
+  category?: UpdateVendorExpenseInputCategory;
+  /** @nullable */
+  invoiceNumber?: string | null;
+  /** @nullable */
+  invoiceDate?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  documentUrl?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+}
+
+/**
+ * Commission and acquisition cost fields on a pin (all cents).
+ */
+export interface CommissionsData {
+  /** @nullable */
+  leadAcquisitionCostCents?: number | null;
+  /** @nullable */
+  referralFeeCents?: number | null;
+  /** @nullable */
+  salesCommissionCents?: number | null;
+  /** @nullable */
+  salesCommissionPaidDate?: string | null;
+  /** @nullable */
+  pmCommissionCents?: number | null;
+  /** @nullable */
+  pmCommissionPaidDate?: string | null;
+}
+
+export interface CommissionsEnvelope {
+  commissions: CommissionsData;
+}
+
+/**
+ * Update commission and acquisition cost amounts. All fields optional. Paid dates are NOT accepted here — use the mark-paid endpoints.
+ */
+export interface UpdateCommissionsInput {
+  /** @nullable */
+  leadAcquisitionCostCents?: number | null;
+  /** @nullable */
+  referralFeeCents?: number | null;
+  /** @nullable */
+  salesCommissionCents?: number | null;
+  /** @nullable */
+  pmCommissionCents?: number | null;
+}
+
+export interface ProfitabilitySummary {
+  pinId: string;
+  /** Sum of all payment ledger entries. */
+  totalPaymentsCents: number;
+  /** Sum of non-void customer invoice amounts. */
+  invoiceTotalCents: number;
+  /** Sum of paid customer invoice amounts. */
+  invoicePaidCents: number;
+  /** Sum of all vendor expense amounts. */
+  totalExpenseCents: number;
+  /** Sum of paid vendor expense amounts. */
+  paidExpenseCents: number;
+  /** Sum of unpaid vendor expense amounts. */
+  outstandingExpenseCents: number;
+  leadAcquisitionCostCents: number;
+  referralFeeCents: number;
+  salesCommissionCents: number;
+  pmCommissionCents: number;
+  /** Sum of all four commission/acquisition cost fields. */
+  totalCommissionCents: number;
+  /** totalExpenseCents + totalCommissionCents. */
+  totalCostCents: number;
+  /** totalPaymentsCents - totalCostCents. */
+  netProfitCents: number;
+  /**
+     * netProfitCents / totalPaymentsCents as a percentage (0–100), rounded to 2 decimal places. Null when totalPaymentsCents = 0.
+     * @nullable
+     */
+  marginPct?: number | null;
+}
+
+export interface ProfitabilitySummaryEnvelope {
+  profitability: ProfitabilitySummary;
 }
 
 /**

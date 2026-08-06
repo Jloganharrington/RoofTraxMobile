@@ -15,6 +15,7 @@ export interface GridCellEntry {
   /**
      * Column index (0–11).
      * @minimum 0
+     * @maximum 11
      */
   x: number;
   /**
@@ -25,6 +26,7 @@ export interface GridCellEntry {
   /**
      * Width in grid columns (1–12).
      * @minimum 1
+     * @maximum 12
      */
   w: number;
   /**

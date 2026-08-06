@@ -149,12 +149,14 @@ describe('dashboard layout endpoints', () => {
     expect(res.status).toBe(400);
   });
 
-  it('PATCH rejects missing required fields', async () => {
+  it('PATCH accepts a partial body — all fields are optional', async () => {
+    // hidden/order/gridLayout are all optional; a body with only some fields
+    // is a valid partial update — the server merges, not replaces.
     const res = await request(app)
       .patch('/api/dashboard/layout')
       .set(auth(rep.sid))
-      .send({ hidden: [] }); // missing order
-    expect(res.status).toBe(400);
+      .send({ hidden: [] }); // order omitted — still valid
+    expect(res.status).toBe(204);
   });
 
   it('PATCH persists layout; manifest reflects hidden/order changes', async () => {

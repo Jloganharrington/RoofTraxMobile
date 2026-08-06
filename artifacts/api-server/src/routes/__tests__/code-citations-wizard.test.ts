@@ -1,7 +1,9 @@
 import {
+  attestationsTable,
   companiesTable,
   companyJurisdictionPacksTable,
   db,
+  inspectionProductsTable,
   inspectionsTable,
   userProfilesTable,
   usersTable,
@@ -109,13 +111,32 @@ async function seedInspection(): Promise<string> {
       inspectorUserId: rep.userId,
       phase: 'forensic',
       address: '1 Main St, Fairfax, VA 22030',
+      // Satisfy readiness gate: forensic findings, RAP gate, estimate lines.
+      roofDamageFound: true,
+      rapGateReason: 'not_authorized',
+      estimate: { lines: [{ description: 'Roofing system replacement', qty: 1, unitCost: 100 }] },
       aiSummary: {
         forensicSummary: 'Hail impacts documented across the roof system.',
         repairabilityText: 'Full replacement of the affected system is warranted.',
         generatedAt: new Date().toISOString(),
       },
-    } as typeof inspectionsTable.$inferInsert)
+    } as unknown as typeof inspectionsTable.$inferInsert)
     .returning();
+  // Attestation + product satisfy the field_record_attested and product_id
+  // readiness checks. Both cascade-delete with the inspection — no extra cleanup.
+  await Promise.all([
+    db.insert(attestationsTable).values({
+      companyId,
+      inspectionId: row.id,
+      userId: rep.userId,
+      attestationType: 'stage_signoff',
+    } as typeof attestationsTable.$inferInsert),
+    db.insert(inspectionProductsTable).values({
+      companyId,
+      inspectionId: row.id,
+      identificationMethod: 'field_identified',
+    } as typeof inspectionProductsTable.$inferInsert),
+  ]);
   inspectionIds.push(row.id);
   return row.id;
 }

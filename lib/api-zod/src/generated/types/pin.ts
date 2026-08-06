@@ -32,4 +32,16 @@ export interface Pin {
   status: string;
   createdAt: Date;
   updatedAt: Date;
+  /** @nullable */
+  leadAcquisitionCostCents?: number | null;
+  /** @nullable */
+  referralFeeCents?: number | null;
+  /** @nullable */
+  salesCommissionCents?: number | null;
+  /** @nullable */
+  salesCommissionPaidDate?: Date | null;
+  /** @nullable */
+  pmCommissionCents?: number | null;
+  /** @nullable */
+  pmCommissionPaidDate?: Date | null;
 }

@@ -23,6 +23,10 @@ import ahjWizardRouter from "./ahjWizard";
 import pipelineEventsRouter from "./pipelineEvents";
 import dashboardRouter from "./dashboard";
 import templatesRouter from "./templates";
+import paymentsRouter from "./payments";
+import invoicesRouter from "./invoices";
+import expensesRouter from "./expenses";
+import profitabilityRouter from "./profitability";
 
 const router: IRouter = Router();
 
@@ -50,5 +54,9 @@ router.use(ahjWizardRouter);
 router.use(pipelineEventsRouter);
 router.use(dashboardRouter);
 router.use(templatesRouter);
+router.use(paymentsRouter);
+router.use(invoicesRouter);
+router.use(expensesRouter);
+router.use(profitabilityRouter);
 
 export default router;

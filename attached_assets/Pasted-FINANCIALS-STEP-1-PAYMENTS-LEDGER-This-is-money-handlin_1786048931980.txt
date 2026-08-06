@@ -1,0 +1,155 @@
+FINANCIALS STEP 1 — PAYMENTS LEDGER
+
+This is money-handling code touching schema. Different bar than widget work:
+every rule below marked [LOCKED] is locked because getting it wrong corrupts
+financial records or loses money, not because it's stylistically preferred.
+
+Prior art: RoofTraxAdmin (a separate repo) built this exact feature and its
+review caught five real bugs. Those fixes are encoded as rules 4a–4e below.
+Do not rediscover them.
+
+Same standing rules: openapi-first then regenerate; never hand-edit generated
+files; never touch artifacts/mobile/. STOP when done and paste real output.
+
+═══════════════════════════════════════════════════════════
+CONTEXT — what exists today
+═══════════════════════════════════════════════════════════
+pins currently carries per-type money columns as varchar strings:
+  contractAmount, depositAmount, depositDate, depositPaymentMethod,
+  deductibleAmount, rcvAmount, acvAmount, supplementAmount,
+  finalPaymentAmount, approvedRcvAmount, approvedAcvAmount,
+  depreciationAmount
+
+That shape cannot represent reality: a single acvAmount column cannot hold
+two ACV payments on different dates, cannot record method or notes, and
+cannot reconcile against an invoice. Replacing it with a ledger is the point
+of this task.
+
+═══════════════════════════════════════════════════════════
+1 [LOCKED] Schema — new table, migration 023
+═══════════════════════════════════════════════════════════
+Create data-migrations/023_payments_ledger.sql (root directory, numbered —
+verify 023 is free) plus the Drizzle schema in lib/db/src/schema/rooftrax.ts.
+
+Table: payments
+  id                 varchar PK, gen_random_uuid()  (match repo convention)
+  company_id         varchar NOT NULL REFERENCES companies(id)
+  pin_id             varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+  type               varchar NOT NULL — vocabulary below
+  amount_cents       integer NOT NULL
+  method             varchar NULL
+  payment_date       timestamptz NOT NULL
+  notes              text NULL
+  created_by_user_id varchar NOT NULL REFERENCES users(id)
+  created_at         timestamptz NOT NULL DEFAULT now()
+  updated_at         timestamptz NOT NULL DEFAULT now()
+Index on (company_id, payment_date).
+
+MONEY IS INTEGER CENTS. Not varchar, not float, not numeric. The legacy pins
+columns are strings and stay strings — they become a read-only backfill
+source and nothing else. New money is cents everywhere, end to end. Do not
+introduce a string-money path into new code.
+
+Type vocabulary — export as a const array from the schema file and validate
+against it server-side (same pattern as TEMPLATE_USE_CASES):
+  deposit, acv, betterment, supplement, final, rcv_holdback, deductible, other
+
+═══════════════════════════════════════════════════════════
+2 [LOCKED] Backfill — one-time, idempotent, inside migration 023
+═══════════════════════════════════════════════════════════
+Seed the ledger from the legacy pins columns so existing leads don't appear
+to have collected nothing:
+  depositAmount      → type 'deposit',    date = depositDate ?? created_at
+  acvAmount          → type 'acv'
+  supplementAmount   → type 'supplement'
+  finalPaymentAmount → type 'final'
+
+Rules:
+  - Legacy values are dirty strings — may contain "$", commas, whitespace,
+    or be empty/non-numeric. Parse defensively: strip $ and commas, reject
+    anything that isn't a number, SKIP rather than inserting garbage or zero.
+  - Skip zero and null amounts entirely. A zero-amount ledger row is noise.
+  - Convert to cents by multiplying by 100 and ROUNDING — never truncate,
+    and never let floating-point drift in (e.g. 1234.56 must become 123456,
+    not 123455).
+  - Must be idempotent: re-running the migration must not duplicate rows.
+    Guard on a marker (e.g. notes tag or a NOT EXISTS check per pin+type).
+    State how you guaranteed idempotency in your report.
+  - Do NOT delete or modify the legacy pins columns in this task. They stay
+    as-is for now; retiring them is a later decision once the ledger is
+    proven.
+
+═══════════════════════════════════════════════════════════
+3 [LOCKED] API — openapi-first
+═══════════════════════════════════════════════════════════
+  GET    /pins/:pinId/payments        list, company-scoped
+  POST   /pins/:pinId/payments        create
+  PATCH  /payments/:paymentId         update
+  DELETE /payments/:paymentId         delete
+
+Authorization: use roleRank from @workspace/authz. Reading a lead's payments
+follows the same access rule as reading the lead itself. Creating, editing,
+and deleting payments is manager+ — field reps must not write financial
+records. Verify the pin belongs to the caller's company on EVERY endpoint,
+including PATCH and DELETE by paymentId.
+
+═══════════════════════════════════════════════════════════
+4 [LOCKED] The five bug fixes — do not reintroduce these
+═══════════════════════════════════════════════════════════
+4a. IDOR ON UPDATE. company_id and pin_id must NEVER be settable by the
+    client on PATCH. A caller must not be able to reassign a payment onto a
+    different lead — that's how a payment gets moved to a lead the attacker
+    can see. Strip both fields from any update payload and re-verify the
+    existing row's company matches the caller's before writing.
+
+4b. IDEMPOTENCY. Any operation that creates a ledger row from another action
+    (later: marking an invoice paid) must not create duplicates when
+    repeated. Not required yet — no invoices in this step — but do not build
+    a create path that assumes exactly-once delivery.
+
+4c. NO BYPASS ROUTE. Money fields must not be writable through any other
+    endpoint. Check the generic pin PATCH: if it currently accepts
+    contractAmount / depositAmount / acvAmount / etc., those legacy fields
+    must not become a second write path that diverges from the ledger.
+    Report what you found in the pin PATCH handler and how you handled it.
+
+4d. CONSISTENT COHORT. Any aggregate (totals, balances) must sum over one
+    consistently-scoped set. Do not mix "all payments for this company" with
+    "payments for this filtered lead set" in the same calculation — that
+    produced nonsensical negative balances previously.
+
+4e. STALE WRITE ON CONTEXT SWITCH. If the UI debounces any money input,
+    the pending write MUST be cancelled when the user switches leads.
+    Otherwise a value lands on the wrong lead's record.
+
+═══════════════════════════════════════════════════════════
+5 [REASONING OK] UI — payments section of the Financials tab
+═══════════════════════════════════════════════════════════
+GOAL: on the Lead Profile, a payments list with add/edit/delete, plus a
+total. Reference design: type badge, date, amount, delete affordance,
+"Total Payments" summary line.
+
+Display money as dollars, store and transmit cents. Format at the boundary,
+never carry a dollar float through the app. Input should accept what a human
+types ("$12,500.00", "12500") and convert once, at the edge.
+
+Do NOT build invoices, expenses, commissions, or P&L in this task — the
+Cost Breakdown and Invoicing panels come later and need their own schema.
+
+═══════════════════════════════════════════════════════════
+VERIFY — paste real output
+═══════════════════════════════════════════════════════════
+  - Run the migration against dev. Paste the row count backfilled and
+    2-3 example rows showing correct cents conversion from the legacy strings.
+  - Run it a SECOND time. Prove no duplicate rows were created.
+  - Round-trip test: enter $12,500.00 in the UI → stored as 1250000 →
+    displays as $12,500.00. Paste the stored value.
+  - Enter a dirty value ("$1,234.56") → 123456 cents exactly.
+  - As FIELD_REP: POST a payment → 403. As MANAGER: → 201.
+  - IDOR: as a manager in company A, PATCH a payment belonging to company B
+    → 404 or 403, never success. Paste it.
+  - IDOR: attempt to PATCH a payment with a different pin_id in the body →
+    the pin_id must be unchanged afterward. Paste before/after.
+  - Report what you found in the generic pin PATCH handler re: money fields.
+  - Typecheck all three; git diff --stat -- artifacts/mobile/ empty.
+  - cd artifacts/api-server && npx vitest run — full output.

@@ -1,0 +1,316 @@
+ROOFTRAX-WEB FINANCIALS — STEPS 1–4
+
+This is money-handling code touching schema across four migrations. Higher bar
+than feature work: [LOCKED] rules are locked because violating them corrupts
+financial records or loses money, not for style.
+
+STOP AT EACH CHECKPOINT. Paste the listed verification output and wait for
+confirmation before starting the next step. Do NOT run steps together — each
+builds on the previous one's schema, and a mistake in step 1 compounds through
+step 4.
+
+Standing rules: openapi-first then regenerate; never hand-edit anything under
+lib/api-client-react/src/generated/ or lib/api-zod/src/generated/; never touch
+artifacts/mobile/; server-side enforcement is authoritative and UI hiding is
+not access control.
+
+═══════════════════════════════════════════════════════════════════
+REFERENCE REPO — READ IT, DO NOT COPY IT
+═══════════════════════════════════════════════════════════════════
+RoofTraxAdmin (GitHub) built this exact feature. Its review caught five real
+bugs; the fixes are encoded below. Consult it for edge cases, validation, and
+UI detail the screenshots don't show. Useful files:
+    server/services/financeMath.ts             — P&L math, money parsing
+    shared/schema.ts                           — payments, customerInvoices,
+                                                 invoices (vendor expenses)
+    client/src/components/FinancialsTab.tsx    — reference UI (~1600 lines)
+
+DO NOT bring across:
+  - varchar/string money or sanitizeMoney-style string handling.
+    THIS BUILD USES INTEGER CENTS EVERYWHERE.
+  - tenantId. This repo uses companyId.
+  - serial integer primary keys. This repo uses varchar + gen_random_uuid().
+  - leadId. This repo's entity is a pin — use pinId.
+  - the legacy per-type money columns pattern (acvAmount, depositAmount…).
+    That is the shape we are REPLACING.
+  - any multi-tenancy machinery. This repo has its own, working.
+  - ⚠ RoofTraxAdmin's vendor `invoices` table has NO tenant column at all,
+    only leadId. That is a tenancy bug. Our equivalent MUST have company_id.
+    Do not replicate that omission.
+
+If the reference contradicts this work order, THIS WORK ORDER WINS. Flag the
+discrepancy in your report rather than silently following the other repo.
+
+═══════════════════════════════════════════════════════════════════
+CONTEXT — what exists in RoofTraxMobile today
+═══════════════════════════════════════════════════════════════════
+pins already carries (all varchar strings, from the CRM import):
+  contractAmount, depositAmount, depositDate, depositPaymentMethod,
+  deductibleAmount, rcvAmount, acvAmount, supplementAmount,
+  finalPaymentAmount, approvedRcvAmount, approvedAcvAmount,
+  depreciationAmount
+plus insuranceCarrier, policyNumber, policyHolder, coverageType, claimNumber,
+claimFiledDate, dateOfLoss, adjusterName/Phone/Email, adjusterMeetingDate.
+
+Those per-type money columns cannot hold two payments of the same type, dates,
+methods, or invoice linkage. Replacing them is the point of step 1.
+
+There are NO payments, invoices, expense, or commission tables. Nothing on the
+cost side exists at all.
+
+╔═════════════════════════════════════════════════════════════════╗
+║ STEP 1 — PAYMENTS LEDGER                    migration 023        ║
+╚═════════════════════════════════════════════════════════════════╝
+
+1a [LOCKED] Table `payments`, in data-migrations/023_payments_ledger.sql plus
+Drizzle schema in lib/db/src/schema/rooftrax.ts (verify 023 is unused):
+    id                 varchar PK gen_random_uuid()
+    company_id         varchar NOT NULL REFERENCES companies(id)
+    pin_id             varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+    type               varchar NOT NULL
+    amount_cents       integer NOT NULL
+    method             varchar NULL
+    payment_date       timestamptz NOT NULL
+    notes              text NULL
+    customer_invoice_id varchar NULL   -- FK added in step 2, nullable now
+    created_by_user_id varchar NOT NULL REFERENCES users(id)
+    created_at         timestamptz NOT NULL DEFAULT now()
+    updated_at         timestamptz NOT NULL DEFAULT now()
+    INDEX (company_id, payment_date)
+
+MONEY IS INTEGER CENTS. Not varchar, not float, not numeric.
+
+Type vocabulary — export as a const array from the schema file, validate
+server-side against it (same pattern as TEMPLATE_USE_CASES):
+    deposit, acv, betterment, supplement, final, rcv_holdback,
+    deductible, other
+
+1b [LOCKED] Backfill inside migration 023, from the legacy pins columns:
+    depositAmount      → 'deposit',    date = depositDate ?? created_at
+    acvAmount          → 'acv'
+    supplementAmount   → 'supplement'
+    finalPaymentAmount → 'final'
+Rules:
+  - Legacy strings are dirty: may contain "$", commas, whitespace, or be
+    non-numeric. Parse defensively; SKIP rather than insert garbage or zero.
+  - Skip null and zero amounts entirely.
+  - Convert to cents by multiplying by 100 and ROUNDING. Never truncate.
+    1234.56 must become exactly 123456, not 123455. Floating-point drift here
+    silently corrupts every downstream total.
+  - MUST be idempotent — re-running must not duplicate. State how you
+    guaranteed that.
+  - Do NOT delete or modify the legacy pins columns. They stay as a read-only
+    backfill source; retiring them is a later decision.
+
+1c [LOCKED] API (openapi-first):
+    GET    /pins/:pinId/payments
+    POST   /pins/:pinId/payments
+    PATCH  /payments/:paymentId
+    DELETE /payments/:paymentId
+Authorization via roleRank from @workspace/authz. Reading follows the same
+rule as reading the lead. Create/update/delete is manager+ — field reps must
+not write financial records. Verify pin↔company on EVERY endpoint including
+PATCH and DELETE by paymentId.
+
+1d [LOCKED] THE FIVE BUG FIXES — do not reintroduce:
+  (i)   IDOR ON UPDATE. company_id and pin_id must NEVER be client-settable on
+        PATCH. Strip both from any payload; re-verify the existing row's
+        company matches the caller before writing. Reassigning a payment to
+        another lead is the attack.
+  (ii)  IDEMPOTENCY. No create path may assume exactly-once delivery. Becomes
+        critical in step 2 when marking an invoice paid writes a ledger row.
+  (iii) NO BYPASS ROUTE. Money must not be writable through any other endpoint.
+        Inspect the generic pin PATCH handler: if it accepts contractAmount /
+        depositAmount / acvAmount / etc., that is a second write path that will
+        diverge from the ledger. REPORT what you found and how you handled it.
+  (iv)  CONSISTENT COHORT. Aggregates must sum over one consistently-scoped
+        set. Mixing "all company payments" with "payments for a filtered lead
+        set" produced nonsensical negative balances previously.
+  (v)   STALE WRITE ON CONTEXT SWITCH. Any debounced money input MUST cancel
+        its pending write when the user switches leads, or the value lands on
+        the wrong record.
+
+1e [REASONING OK] UI — payments section of the Lead Profile Financials tab:
+list with type badge, date, amount, delete; "Total Payments" summary; add/edit.
+Display dollars, store and transmit cents — format at the boundary only, never
+carry a dollar float through the app. Accept human input ("$12,500.00",
+"12500") and convert once, at the edge.
+Do NOT build invoices, expenses, commissions, or P&L here.
+
+▶ CHECKPOINT 1 — paste all of:
+  - migration run: rows backfilled + 2–3 examples showing correct cents
+    conversion from the legacy strings
+  - migration run a SECOND time: prove zero duplicates
+  - round trip: "$12,500.00" → stored 1250000 → displays $12,500.00
+  - dirty input "$1,234.56" → exactly 123456
+  - field_rep POST → 403; manager POST → 201
+  - manager in company A PATCHes a company-B payment → 403/404, never success
+  - PATCH with a different pin_id in body → pin_id UNCHANGED (before/after)
+  - what you found in the generic pin PATCH re: money fields
+  - typechecks (api-server, rooftrax-web, mobile); mobile diff empty
+  - cd artifacts/api-server && npx vitest run — full output
+STOP. Wait for confirmation.
+
+╔═════════════════════════════════════════════════════════════════╗
+║ STEP 2 — CUSTOMER INVOICES                  migration 024        ║
+╚═════════════════════════════════════════════════════════════════╝
+
+2a [LOCKED] Table `customer_invoices`:
+    id              varchar PK gen_random_uuid()
+    company_id      varchar NOT NULL REFERENCES companies(id)
+    pin_id          varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+    invoice_number  varchar NOT NULL
+    customer_name   varchar NOT NULL
+    customer_address text NOT NULL
+    invoice_type    varchar NOT NULL
+    amount_cents    integer NOT NULL
+    status          varchar NOT NULL DEFAULT 'open'  -- open|sent|paid|void
+    notes           text NULL
+    pdf_url         text NULL
+    sent_date       timestamptz NULL
+    paid_date       timestamptz NULL
+    payment_method  varchar NULL
+    created_at / updated_at timestamptz NOT NULL DEFAULT now()
+    UNIQUE (company_id, invoice_number)
+Also add the FK constraint from payments.customer_invoice_id → this table.
+
+2b [LOCKED] Invoice numbering: sequential PER COMPANY, never random.
+Format follows the reference (INV-YYYYMM-NNNNN). Generating it must be
+collision-safe under concurrency — two simultaneous creates must not produce
+the same number. The unique index is the backstop; do not rely on it alone as
+the strategy. State your approach.
+
+2c [LOCKED] Lifecycle open → sent → paid, plus void from any state.
+Marking an invoice PAID creates a matching `payments` ledger row. This is
+where bug fix (ii) bites: marking paid twice MUST NOT create two ledger rows.
+Make it idempotent and test it explicitly.
+Map invoice_type → payment type using an explicit mapping (see the reference's
+mapInvoiceTypeToPaymentType). Voiding a paid invoice must reverse or
+neutralise its ledger row — decide and document which, do not leave the ledger
+inconsistent with invoice state.
+
+2d [REASONING OK] UI — Invoicing panel: invoice rows with status badge, number,
+type, amount, and actions (PDF, send, delete). Create Invoice + Add Payment.
+
+▶ CHECKPOINT 2 — paste all of:
+  - create two invoices concurrently → distinct numbers, no collision
+  - mark paid → exactly ONE ledger row appears with correct type + cents
+  - mark paid AGAIN → still exactly one ledger row (idempotency proof)
+  - void a paid invoice → ledger state is consistent; explain your choice
+  - field_rep create/modify invoice → 403
+  - cross-company invoice access → 403/404
+  - typechecks; mobile diff empty; vitest run full output
+STOP. Wait for confirmation.
+
+╔═════════════════════════════════════════════════════════════════╗
+║ STEP 3 — COSTS: VENDOR EXPENSES + COMMISSIONS  migration 025     ║
+╚═════════════════════════════════════════════════════════════════╝
+
+3a [LOCKED] Table `vendor_expenses` (the reference calls this `invoices` —
+rename for clarity, it is NOT a customer invoice):
+    id             varchar PK gen_random_uuid()
+    company_id     varchar NOT NULL REFERENCES companies(id)   ← reference repo
+                                                                 OMITS this.
+                                                                 We require it.
+    pin_id         varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+    vendor_name    varchar NOT NULL
+    invoice_number varchar NULL
+    invoice_date   timestamptz NULL
+    amount_cents   integer NOT NULL
+    category       varchar NOT NULL  -- materials|labor|subcontractor|
+                                     -- equipment|other (const array + validate)
+    description    text NULL
+    document_url   text NULL
+    is_paid        boolean NOT NULL DEFAULT false
+    paid_date      timestamptz NULL
+    due_date       timestamptz NULL
+    created_at / updated_at
+
+3b [LOCKED] Commission + acquisition costs as new columns on pins (all cents):
+    lead_acquisition_cost_cents  integer NULL
+    referral_fee_cents           integer NULL
+    sales_commission_cents       integer NULL
+    sales_commission_paid_date   timestamptz NULL
+    pm_commission_cents          integer NULL
+    pm_commission_paid_date      timestamptz NULL
+These are per-lead single values, not ledgers — matching the reference. Writing
+them is manager+ (bug fix iii applies: they must not be settable via the
+generic pin PATCH).
+
+3c [REASONING OK] UI — Cost Breakdown panel (Lead Acquisition, Referral Fee,
+Sales Commission with "Mark paid", PM Commission with "Mark paid",
+Invoices/Expenses subtotal, Total Costs) and the Expense Tracker list with
+Add Expense.
+
+▶ CHECKPOINT 3 — paste all of:
+  - vendor_expenses company scoping proven (company A cannot see company B)
+  - field_rep write attempts on expenses and commissions → 403
+  - commission fields NOT writable via the generic pin PATCH — prove it
+  - "Mark paid" sets the paid date server-side, not client-supplied
+  - typechecks; mobile diff empty; vitest run full output
+STOP. Wait for confirmation.
+
+╔═════════════════════════════════════════════════════════════════╗
+║ STEP 4 — P&L MATH + INSURANCE TAB           migration 026        ║
+╚═════════════════════════════════════════════════════════════════╝
+
+4a [LOCKED] Port computeLeadFinancials from the reference's financeMath.ts
+into a shared server module, CONVERTED TO CENTS (the reference does string
+math — do not carry that across). Preserve these decisions exactly:
+    expectedTotal   = leadType === insurance
+                        ? max(contractAmount, approvedRcvAmount)
+                        : contractAmount
+    collectedTotal  = sum of ALL ledger payments for the pin
+    deductibleCollected = sum of payments where type = 'deductible'
+    vendorExpenses  = sum of vendor_expenses for the pin
+                      (materialOrderTotal is deliberately EXCLUDED — it
+                       double-counts against vendor invoices)
+    totalCosts      = vendorExpenses + salesCommission + pmCommission
+                      + leadAcquisitionCost + referralFee
+    netProfit       = collectedTotal − totalCosts
+    cashMarginPct       = collected > 0 ? (collected − costs)/collected × 100 : 0
+    projectedMarginPct  = expected  > 0 ? (expected  − costs)/expected  × 100 : 0
+Both margins are required. Cash-only made in-progress jobs look unprofitable —
+that is why the pair exists.
+
+This module is the SINGLE SOURCE OF TRUTH. The Financials tab, the Insurance
+tab, and any later CSV export or company rollup must all call it. Do not
+recompute P&L anywhere else — that is how the dashboard and the lead page
+start disagreeing.
+
+4b [LOCKED] Migration 026 — three small columns still missing for the
+Insurance tab:
+    pins.claim_status              varchar NULL (const array + validate)
+    pins.adjuster_last_contact     timestamptz NULL
+    pins.betterments_amount_cents  integer NULL
+Contract breakdown = Base Scope + Betterments = Total Contract, where base
+scope is DERIVED (contract − betterments), not stored. One source of truth.
+
+4c [REASONING OK] UI — two surfaces:
+  Financials tab header cards: Contract Value, Total Costs, Net Profit (with
+  both margin percentages), Payments Received, Balance Due.
+  Insurance tab: Claim Value Tracker (Approved RCV vs Contract with variance
+  and a "supplement may be needed" indicator when short), Collected vs
+  Approved RCV with an under-collected indicator, claim/contract breakdown
+  columns, plus Policy Information / Claim Details / Adjuster Information
+  forms bound to the existing pins columns.
+
+▶ CHECKPOINT 4 — paste all of:
+  - a worked example: one lead with known payments, expenses, and commissions;
+    show every computed field and hand-verify netProfit and BOTH margins
+  - retail lead (no approvedRcv) computes expectedTotal = contractAmount
+  - insurance lead where approvedRcv > contract → expectedTotal uses approvedRcv
+  - zero-collected lead → margins are 0, not NaN or Infinity
+  - grep proof that P&L math exists in exactly ONE module
+  - Insurance tab screenshot with real data
+  - typechecks; mobile diff empty; vitest run full output
+
+═══════════════════════════════════════════════════════════════════
+FINAL — after checkpoint 4
+═══════════════════════════════════════════════════════════════════
+  pnpm --filter @workspace/authz test
+  cd artifacts/api-server && npx vitest run
+  typecheck api-server, rooftrax-web, mobile
+  git diff --stat -- artifacts/mobile/   → must be empty
+  confirm migrations 023–026 exist in data-migrations/ (root, numbered) and
+  that no date-named or duplicate copies were created elsewhere

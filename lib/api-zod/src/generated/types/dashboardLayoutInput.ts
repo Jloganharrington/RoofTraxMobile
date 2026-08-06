@@ -21,6 +21,9 @@ export interface DashboardLayoutInput {
      * @maxItems 50
      */
   order?: string[];
-  /** Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults. */
+  /**
+     * Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults.
+     * @maxItems 50
+     */
   gridLayout?: GridCellEntry[] | null;
 }

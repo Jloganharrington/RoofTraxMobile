@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GridLayout, noCompactor, useContainerWidth } from 'react-grid-layout';
+import { GridLayout, verticalCompactor, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import { GripVertical } from 'lucide-react';
 import type { DashboardWidgetMeta } from '@workspace/api-client-react';
@@ -294,7 +294,7 @@ export function DashboardGrid({
               editMode ? { handle: '.drag-handle' } : undefined
             }
             onLayoutChange={handleLayoutChange}
-            compactor={noCompactor}
+            compactor={verticalCompactor}
             autoSize
           >
             {widgets.map((w) => {

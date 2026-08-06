@@ -4371,6 +4371,928 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /pins/{pinId}/payments:
+    get:
+      tags: [Payments]
+      operationId: getPayments
+      summary: List payments for a lead
+      description: >-
+        Returns all ledger payments for the given pin, scoped to the caller's
+        company. Any authenticated company member may read.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentListEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Payments]
+      operationId: createPayment
+      summary: Record a payment on a lead (manager+)
+      description: >-
+        Creates a new payment ledger row for the pin. Manager or above only —
+        field reps must not write financial records. All money is integer cents;
+        never pass floats or dollar strings.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentInput"
+      responses:
+        "201":
+          description: Payment created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /payments/{paymentId}:
+    patch:
+      tags: [Payments]
+      operationId: updatePayment
+      summary: Update a payment record (manager+)
+      description: >-
+        Updates mutable fields on an existing payment. company_id and pin_id
+        are NEVER accepted in the body — the server re-verifies company scope
+        against the stored row before writing.
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePaymentInput"
+      responses:
+        "200":
+          description: Updated payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Payment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Payments]
+      operationId: deletePayment
+      summary: Delete a payment record (manager+)
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Payment not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ---------------------------------------------------------------------------
+  # Customer Invoices — step 2
+  # ---------------------------------------------------------------------------
+  /pins/{pinId}/invoices:
+    get:
+      tags: [CustomerInvoices]
+      operationId: listCustomerInvoices
+      summary: List all invoices for a lead
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Invoice list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceListEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [CustomerInvoices]
+      operationId: createCustomerInvoice
+      summary: Create a customer invoice (manager+)
+      description: >-
+        Invoice number generated server-side with per-company advisory lock
+        (INV-YYYYMM-NNNNN). Do not supply invoiceNumber in the body.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerInvoiceInput"
+      responses:
+        "201":
+          description: Invoice created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{invoiceId}:
+    get:
+      tags: [CustomerInvoices]
+      operationId: getCustomerInvoice
+      summary: Get a single customer invoice
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invoice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [CustomerInvoices]
+      operationId: updateCustomerInvoice
+      summary: Update a customer invoice (manager+)
+      description: >-
+        Updates mutable fields. company_id and pin_id are never accepted.
+        Status transitions use the dedicated action endpoints.
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomerInvoiceInput"
+      responses:
+        "200":
+          description: Updated invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invoice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [CustomerInvoices]
+      operationId: deleteCustomerInvoice
+      summary: Delete a customer invoice (manager+; only open or void)
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "204":
+          description: Deleted.
+        "400":
+          description: Cannot delete a sent or paid invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invoice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{invoiceId}/send:
+    post:
+      tags: [CustomerInvoices]
+      operationId: sendCustomerInvoice
+      summary: Mark an invoice as sent (manager+)
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Invoice marked sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceEnvelope"
+        "400":
+          description: Invoice already paid or void.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invoice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{invoiceId}/mark-paid:
+    post:
+      tags: [CustomerInvoices]
+      operationId: markCustomerInvoicePaid
+      summary: Mark an invoice paid and create a matching ledger row (manager+; idempotent)
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkInvoicePaidInput"
+      responses:
+        "200":
+          description: Invoice marked paid; payment row created or already existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceEnvelope"
+        "400":
+          description: Invoice is void.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invoice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{invoiceId}/void:
+    post:
+      tags: [CustomerInvoices]
+      operationId: voidCustomerInvoice
+      summary: Void an invoice from any status (manager+)
+      description: >-
+        If the invoice was paid, its linked payments row has customer_invoice_id
+        set to NULL — the payment stays in the ledger (money received is never
+        deleted) but is no longer tied to this invoice.
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Invoice voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerInvoiceEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invoice not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  # ---------------------------------------------------------------------------
+  # Vendor Expenses — step 3
+  # ---------------------------------------------------------------------------
+  /pins/{pinId}/expenses:
+    get:
+      tags: [VendorExpenses]
+      operationId: listVendorExpenses
+      summary: List all vendor expenses for a lead
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Expense list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorExpenseListEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [VendorExpenses]
+      operationId: createVendorExpense
+      summary: Create a vendor expense (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorExpenseInput"
+      responses:
+        "201":
+          description: Expense created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorExpenseEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /expenses/{expenseId}:
+    patch:
+      tags: [VendorExpenses]
+      operationId: updateVendorExpense
+      summary: Update a vendor expense (manager+)
+      parameters:
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVendorExpenseInput"
+      responses:
+        "200":
+          description: Updated expense.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorExpenseEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Expense not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [VendorExpenses]
+      operationId: deleteVendorExpense
+      summary: Delete a vendor expense (manager+)
+      parameters:
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Expense not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /expenses/{expenseId}/mark-paid:
+    post:
+      tags: [VendorExpenses]
+      operationId: markVendorExpensePaid
+      summary: Mark an expense as paid — paid_date set server-side (manager+)
+      parameters:
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Expense marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorExpenseEnvelope"
+        "400":
+          description: Already paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Expense not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ---------------------------------------------------------------------------
+  # Commissions — step 3 (per-lead single values on pins)
+  # ---------------------------------------------------------------------------
+  /pins/{pinId}/commissions:
+    patch:
+      tags: [Commissions]
+      operationId: updateCommissions
+      summary: Update commission and acquisition cost amounts for a lead (manager+)
+      description: >-
+        Updates the per-lead single-value cost columns. Paid dates are
+        NOT accepted here — use the dedicated mark-paid endpoints so that
+        the server always controls when a commission is recorded as paid.
+        These fields are NOT writable via the generic PATCH /pins/:pinId.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommissionsInput"
+      responses:
+        "200":
+          description: Updated commissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissionsEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/commissions/sales/mark-paid:
+    post:
+      tags: [Commissions]
+      operationId: markSalesCommissionPaid
+      summary: Mark sales commission as paid — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Sales commission marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissionsEnvelope"
+        "400":
+          description: No sales commission amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/commissions/pm/mark-paid:
+    post:
+      tags: [Commissions]
+      operationId: markPmCommissionPaid
+      summary: Mark PM commission as paid — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: PM commission marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissionsEnvelope"
+        "400":
+          description: No PM commission amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  # ---------------------------------------------------------------------------
+  # Profitability Summary — step 4
+  # ---------------------------------------------------------------------------
+  /pins/{pinId}/profitability:
+    get:
+      tags: [Profitability]
+      operationId: getPinProfitability
+      summary: Get computed profitability summary for a lead (all money in cents)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Profitability summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfitabilitySummaryEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -5334,6 +6256,21 @@ components:
           format: date-time
         updatedAt:
           type: string
+          format: date-time
+        # -- Costs & Commissions (step 3) --
+        leadAcquisitionCostCents:
+          type: [integer, "null"]
+        referralFeeCents:
+          type: [integer, "null"]
+        salesCommissionCents:
+          type: [integer, "null"]
+        salesCommissionPaidDate:
+          type: [string, "null"]
+          format: date-time
+        pmCommissionCents:
+          type: [integer, "null"]
+        pmCommissionPaidDate:
+          type: [string, "null"]
           format: date-time
     PinEnvelope:
       type: object
@@ -8216,6 +9153,7 @@ components:
         x:
           type: integer
           minimum: 0
+          maximum: 11
           description: Column index (0–11).
         y:
           type: integer
@@ -8224,6 +9162,7 @@ components:
         w:
           type: integer
           minimum: 1
+          maximum: 12
           description: Width in grid columns (1–12).
         h:
           type: integer
@@ -8242,6 +9181,7 @@ components:
         gridLayout:
           type: array
           nullable: true
+          maxItems: 50
           description: >-
             Stored per-user grid positions. Null when the user has never saved
             a custom layout; the frontend derives defaults from widget sizes.
@@ -8311,6 +9251,7 @@ components:
         gridLayout:
           type: array
           nullable: true
+          maxItems: 50
           description: >-
             Per-widget grid positions. Pass null to clear saved positions and
             revert to catalog-size defaults.
@@ -9106,3 +10047,498 @@ components:
           type: string
         originalFilename:
           type: string
+    Payment:
+      type: object
+      required:
+        - id
+        - companyId
+        - pinId
+        - type
+        - amountCents
+        - paymentDate
+        - createdByUserId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        pinId:
+          type: string
+        type:
+          type: string
+          enum:
+            - deposit
+            - acv
+            - betterment
+            - supplement
+            - final
+            - rcv_holdback
+            - deductible
+            - other
+        amountCents:
+          type: integer
+          minimum: 1
+          description: Amount in integer cents. Never a float or dollar string.
+        method:
+          type: [string, "null"]
+        paymentDate:
+          type: string
+          format: date-time
+        notes:
+          type: [string, "null"]
+        customerInvoiceId:
+          type: [string, "null"]
+        createdByUserId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PaymentEnvelope:
+      type: object
+      required: [payment]
+      properties:
+        payment:
+          $ref: "#/components/schemas/Payment"
+    PaymentListEnvelope:
+      type: object
+      required: [payments]
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+    CreatePaymentInput:
+      type: object
+      required:
+        - type
+        - amountCents
+        - paymentDate
+      properties:
+        type:
+          type: string
+          enum:
+            - deposit
+            - acv
+            - betterment
+            - supplement
+            - final
+            - rcv_holdback
+            - deductible
+            - other
+        amountCents:
+          type: integer
+          minimum: 1
+          description: Amount in integer cents. Never a float or dollar string.
+        method:
+          type: [string, "null"]
+        paymentDate:
+          type: string
+          format: date-time
+        notes:
+          type: [string, "null"]
+    UpdatePaymentInput:
+      type: object
+      description: All fields optional; only present fields are updated.
+      properties:
+        type:
+          type: string
+          enum:
+            - deposit
+            - acv
+            - betterment
+            - supplement
+            - final
+            - rcv_holdback
+            - deductible
+            - other
+        amountCents:
+          type: integer
+          minimum: 1
+        method:
+          type: [string, "null"]
+        paymentDate:
+          type: string
+          format: date-time
+        notes:
+          type: [string, "null"]
+
+    # ---------------------------------------------------------------------------
+    # Customer Invoices — step 2
+    # ---------------------------------------------------------------------------
+    CustomerInvoice:
+      type: object
+      required:
+        - id
+        - companyId
+        - pinId
+        - invoiceNumber
+        - customerName
+        - customerAddress
+        - invoiceType
+        - amountCents
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        pinId:
+          type: string
+        invoiceNumber:
+          type: string
+        customerName:
+          type: string
+        customerAddress:
+          type: string
+        invoiceType:
+          type: string
+          enum:
+            - initial_deposit
+            - acv_payment
+            - supplement
+            - final_payment
+            - service
+            - other
+        amountCents:
+          type: integer
+        status:
+          type: string
+          enum:
+            - open
+            - sent
+            - paid
+            - void
+        notes:
+          type: [string, "null"]
+        pdfUrl:
+          type: [string, "null"]
+        sentDate:
+          type: [string, "null"]
+          format: date-time
+        paidDate:
+          type: [string, "null"]
+          format: date-time
+        paymentMethod:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CustomerInvoiceEnvelope:
+      type: object
+      required: [invoice]
+      properties:
+        invoice:
+          $ref: "#/components/schemas/CustomerInvoice"
+    CustomerInvoiceListEnvelope:
+      type: object
+      required: [invoices]
+      properties:
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerInvoice"
+    CreateCustomerInvoiceInput:
+      type: object
+      required:
+        - customerName
+        - customerAddress
+        - invoiceType
+        - amountCents
+      properties:
+        customerName:
+          type: string
+        customerAddress:
+          type: string
+        invoiceType:
+          type: string
+          enum:
+            - initial_deposit
+            - acv_payment
+            - supplement
+            - final_payment
+            - service
+            - other
+        amountCents:
+          type: integer
+          minimum: 1
+        notes:
+          type: [string, "null"]
+        pdfUrl:
+          type: [string, "null"]
+    UpdateCustomerInvoiceInput:
+      type: object
+      description: All fields optional; only present fields are updated.
+      properties:
+        customerName:
+          type: string
+        customerAddress:
+          type: string
+        amountCents:
+          type: integer
+          minimum: 1
+        notes:
+          type: [string, "null"]
+        pdfUrl:
+          type: [string, "null"]
+    MarkInvoicePaidInput:
+      type: object
+      description: Optional context when marking an invoice paid.
+      properties:
+        paymentMethod:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+
+    # ---------------------------------------------------------------------------
+    # Vendor Expenses — step 3
+    # ---------------------------------------------------------------------------
+    VendorExpense:
+      type: object
+      required:
+        - id
+        - companyId
+        - pinId
+        - vendorName
+        - amountCents
+        - category
+        - isPaid
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        pinId:
+          type: string
+        vendorName:
+          type: string
+        invoiceNumber:
+          type: [string, "null"]
+        invoiceDate:
+          type: [string, "null"]
+          format: date-time
+        amountCents:
+          type: integer
+        category:
+          type: string
+          enum:
+            - materials
+            - labor
+            - subcontractor
+            - equipment
+            - other
+        description:
+          type: [string, "null"]
+        documentUrl:
+          type: [string, "null"]
+        isPaid:
+          type: boolean
+        paidDate:
+          type: [string, "null"]
+          format: date-time
+        dueDate:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    VendorExpenseEnvelope:
+      type: object
+      required: [expense]
+      properties:
+        expense:
+          $ref: "#/components/schemas/VendorExpense"
+    VendorExpenseListEnvelope:
+      type: object
+      required: [expenses]
+      properties:
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorExpense"
+    CreateVendorExpenseInput:
+      type: object
+      required:
+        - vendorName
+        - amountCents
+        - category
+      properties:
+        vendorName:
+          type: string
+        amountCents:
+          type: integer
+          minimum: 1
+        category:
+          type: string
+          enum:
+            - materials
+            - labor
+            - subcontractor
+            - equipment
+            - other
+        invoiceNumber:
+          type: [string, "null"]
+        invoiceDate:
+          type: [string, "null"]
+          format: date-time
+        description:
+          type: [string, "null"]
+        documentUrl:
+          type: [string, "null"]
+        dueDate:
+          type: [string, "null"]
+          format: date-time
+    UpdateVendorExpenseInput:
+      type: object
+      description: All fields optional; only present fields are updated.
+      properties:
+        vendorName:
+          type: string
+        amountCents:
+          type: integer
+          minimum: 1
+        category:
+          type: string
+          enum:
+            - materials
+            - labor
+            - subcontractor
+            - equipment
+            - other
+        invoiceNumber:
+          type: [string, "null"]
+        invoiceDate:
+          type: [string, "null"]
+          format: date-time
+        description:
+          type: [string, "null"]
+        documentUrl:
+          type: [string, "null"]
+        dueDate:
+          type: [string, "null"]
+          format: date-time
+    # ---------------------------------------------------------------------------
+    # Commissions — step 3
+    # ---------------------------------------------------------------------------
+    CommissionsData:
+      type: object
+      description: Commission and acquisition cost fields on a pin (all cents).
+      properties:
+        leadAcquisitionCostCents:
+          type: [integer, "null"]
+        referralFeeCents:
+          type: [integer, "null"]
+        salesCommissionCents:
+          type: [integer, "null"]
+        salesCommissionPaidDate:
+          type: [string, "null"]
+          format: date-time
+        pmCommissionCents:
+          type: [integer, "null"]
+        pmCommissionPaidDate:
+          type: [string, "null"]
+          format: date-time
+    CommissionsEnvelope:
+      type: object
+      required: [commissions]
+      properties:
+        commissions:
+          $ref: "#/components/schemas/CommissionsData"
+    UpdateCommissionsInput:
+      type: object
+      description: >-
+        Update commission and acquisition cost amounts. All fields optional.
+        Paid dates are NOT accepted here — use the mark-paid endpoints.
+      properties:
+        leadAcquisitionCostCents:
+          type: [integer, "null"]
+        referralFeeCents:
+          type: [integer, "null"]
+        salesCommissionCents:
+          type: [integer, "null"]
+        pmCommissionCents:
+          type: [integer, "null"]
+
+    # ---------------------------------------------------------------------------
+    # Profitability — step 4
+    # ---------------------------------------------------------------------------
+    ProfitabilitySummary:
+      type: object
+      required:
+        - pinId
+        - totalPaymentsCents
+        - invoiceTotalCents
+        - invoicePaidCents
+        - totalExpenseCents
+        - paidExpenseCents
+        - outstandingExpenseCents
+        - leadAcquisitionCostCents
+        - referralFeeCents
+        - salesCommissionCents
+        - pmCommissionCents
+        - totalCommissionCents
+        - totalCostCents
+        - netProfitCents
+      properties:
+        pinId:
+          type: string
+        totalPaymentsCents:
+          type: integer
+          description: Sum of all payment ledger entries.
+        invoiceTotalCents:
+          type: integer
+          description: Sum of non-void customer invoice amounts.
+        invoicePaidCents:
+          type: integer
+          description: Sum of paid customer invoice amounts.
+        totalExpenseCents:
+          type: integer
+          description: Sum of all vendor expense amounts.
+        paidExpenseCents:
+          type: integer
+          description: Sum of paid vendor expense amounts.
+        outstandingExpenseCents:
+          type: integer
+          description: Sum of unpaid vendor expense amounts.
+        leadAcquisitionCostCents:
+          type: integer
+        referralFeeCents:
+          type: integer
+        salesCommissionCents:
+          type: integer
+        pmCommissionCents:
+          type: integer
+        totalCommissionCents:
+          type: integer
+          description: Sum of all four commission/acquisition cost fields.
+        totalCostCents:
+          type: integer
+          description: totalExpenseCents + totalCommissionCents.
+        netProfitCents:
+          type: integer
+          description: totalPaymentsCents - totalCostCents.
+        marginPct:
+          type: [number, "null"]
+          description: >-
+            netProfitCents / totalPaymentsCents as a percentage (0–100),
+            rounded to 2 decimal places. Null when totalPaymentsCents = 0.
+    ProfitabilitySummaryEnvelope:
+      type: object
+      required: [profitability]
+      properties:
+        profitability:
+          $ref: "#/components/schemas/ProfitabilitySummary"

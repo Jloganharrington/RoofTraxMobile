@@ -248,6 +248,16 @@ export const pinsTable = pgTable('pins', {
    */
   needsStageReview: boolean('needs_stage_review').default(false).notNull(),
 
+  // ── Costs & Commissions (step 3 — migration 025) ───────────────────────
+  // Integer cents. Manager-only via PATCH /pins/:pinId/commissions.
+  // Must NOT be writable via the generic pin PATCH endpoint.
+  leadAcquisitionCostCents:  integer('lead_acquisition_cost_cents'),
+  referralFeeCents:          integer('referral_fee_cents'),
+  salesCommissionCents:      integer('sales_commission_cents'),
+  salesCommissionPaidDate:   timestamp('sales_commission_paid_date', { withTimezone: true }),
+  pmCommissionCents:         integer('pm_commission_cents'),
+  pmCommissionPaidDate:      timestamp('pm_commission_paid_date',    { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -549,3 +559,167 @@ export const companyTemplatesTable = pgTable('company_templates', {
 
 export type CompanyTemplate = typeof companyTemplatesTable.$inferSelect;
 export type InsertCompanyTemplate = typeof companyTemplatesTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Payments ledger — per-lead financial transactions (migration 023)
+// ---------------------------------------------------------------------------
+
+export const PAYMENT_TYPES = [
+  'deposit',
+  'acv',
+  'betterment',
+  'supplement',
+  'final',
+  'rcv_holdback',
+  'deductible',
+  'other',
+] as const;
+
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+
+// ---------------------------------------------------------------------------
+// Customer Invoices — step 2
+// ---------------------------------------------------------------------------
+
+export const INVOICE_TYPES = [
+  'initial_deposit',
+  'acv_payment',
+  'supplement',
+  'final_payment',
+  'service',
+  'other',
+] as const;
+
+export type InvoiceType = (typeof INVOICE_TYPES)[number];
+
+export const INVOICE_STATUSES = ['open', 'sent', 'paid', 'void'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
+/** Maps customer invoice type → payments ledger type. */
+export const INVOICE_TYPE_TO_PAYMENT_TYPE: Record<InvoiceType, PaymentType> = {
+  initial_deposit: 'deposit',
+  acv_payment: 'acv',
+  supplement: 'supplement',
+  final_payment: 'final',
+  service: 'other',
+  other: 'other',
+};
+
+export const customerInvoicesTable = pgTable('customer_invoices', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  invoiceNumber: varchar('invoice_number').notNull(),
+  customerName: varchar('customer_name').notNull(),
+  customerAddress: text('customer_address').notNull(),
+  invoiceType: varchar('invoice_type', { enum: INVOICE_TYPES }).notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  status: varchar('status', { enum: INVOICE_STATUSES }).notNull().default('open'),
+  notes: text('notes'),
+  pdfUrl: text('pdf_url'),
+  sentDate: timestamp('sent_date', { withTimezone: true }),
+  paidDate: timestamp('paid_date', { withTimezone: true }),
+  paymentMethod: varchar('payment_method'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type CustomerInvoice = typeof customerInvoicesTable.$inferSelect;
+export type InsertCustomerInvoice = typeof customerInvoicesTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+
+export const paymentsTable = pgTable('payments', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  type: varchar('type', { enum: PAYMENT_TYPES }).notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  method: varchar('method'),
+  paymentDate: timestamp('payment_date', { withTimezone: true }).notNull(),
+  notes: text('notes'),
+  // FK enforced in migration 024; ON DELETE SET NULL keeps ledger intact when
+  // an invoice is deleted or voided.
+  customerInvoiceId: varchar('customer_invoice_id').references(
+    () => customerInvoicesTable.id,
+    { onDelete: 'set null' },
+  ),
+  createdByUserId: varchar('created_by_user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type Payment = typeof paymentsTable.$inferSelect;
+export type InsertPayment = typeof paymentsTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Vendor Expenses (step 3 — migration 025)
+// ---------------------------------------------------------------------------
+
+export const EXPENSE_CATEGORIES = [
+  'materials',
+  'labor',
+  'subcontractor',
+  'equipment',
+  'other',
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const vendorExpensesTable = pgTable('vendor_expenses', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  vendorName:    varchar('vendor_name').notNull(),
+  invoiceNumber: varchar('invoice_number'),
+  invoiceDate:   timestamp('invoice_date',  { withTimezone: true }),
+  amountCents:   integer('amount_cents').notNull(),
+  // category values: EXPENSE_CATEGORIES
+  category:      varchar('category').notNull(),
+  description:   text('description'),
+  documentUrl:   text('document_url'),
+  isPaid:        boolean('is_paid').notNull().default(false),
+  // paid_date is ALWAYS set server-side by the mark-paid endpoint — never
+  // accepted from the client. See /expenses/:expenseId/mark-paid.
+  paidDate:      timestamp('paid_date',     { withTimezone: true }),
+  dueDate:       timestamp('due_date',      { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type VendorExpense = typeof vendorExpensesTable.$inferSelect;
+export type InsertVendorExpense = typeof vendorExpensesTable.$inferInsert;

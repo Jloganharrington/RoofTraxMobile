@@ -1,0 +1,41 @@
+▶ CHECKPOINT 1 — INTEGRATION (add to the existing checkpoint)
+  - Dashboard manifest unaffected: GET /dashboard/manifest as manager returns
+    the same widget set as before this step. Layout still cannot grant an
+    ungranted widget — re-run the field_rep test that PATCHes a layout
+    containing "action_required" and confirm it stays absent.
+  - Lead Profile still loads for a lead with legacy money columns populated
+    but zero ledger rows (proves the backfill skip-path didn't break reads).
+  - scripts/seed-acceptance-claim.ts still passes 42/42. Migration 023 touches
+    pins; this proves the inspection pipeline is unaffected.
+  - pnpm --filter @workspace/authz test → 51/51.
+
+▶ CHECKPOINT 2 — INTEGRATION
+  - Step 1's four payment endpoints still behave identically after the
+    customer_invoice_id FK was added — re-run checkpoint 1's IDOR and
+    round-trip tests verbatim and paste them again.
+  - A payment created in step 1 (no invoice link) still lists, edits, and
+    deletes correctly alongside invoice-generated ones.
+  - seed-acceptance-claim.ts still 42/42.
+
+▶ CHECKPOINT 3 — INTEGRATION
+  - Payments and invoices from steps 1–2 unaffected: re-run the idempotency
+    proof (mark-paid twice → one ledger row) and paste it again.
+  - The generic pin PATCH still works for NON-money fields (name, address,
+    stage) after commission columns were added and blocked — prove a normal
+    lead edit still saves.
+  - Pipeline widgets still return correct counts — pins gained columns; confirm
+    sales_funnel / insurance_claims / production_pipeline are unchanged.
+  - seed-acceptance-claim.ts still 42/42.
+
+▶ CHECKPOINT 4 — INTEGRATION
+  - Full chain: create a lead → add payments → create and pay an invoice →
+    add expenses and commissions → confirm the P&L numbers reconcile against
+    hand-calculation. This is the end-to-end proof all four steps compose.
+  - Every dashboard widget still renders — the Insurance and Financials tabs
+    share the Lead Profile with existing tabs; confirm none broke.
+  - action_required widget still returns correct items (it queries pins, which
+    gained columns across three migrations).
+  - seed-acceptance-claim.ts still 42/42.
+  - Confirm the P&L module is the ONLY place margins are computed — grep and
+    paste. If the company dashboard later disagrees with a lead page, this is
+    the check that would have prevented it.

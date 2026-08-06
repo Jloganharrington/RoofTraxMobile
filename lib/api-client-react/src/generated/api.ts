@@ -37,6 +37,7 @@ import type {
   CanvassingSessionEnvelope,
   ClaimBlockerEnvelope,
   CodeResearchInput,
+  CommissionsEnvelope,
   CompanyEnvelope,
   CompanyReportSettingsEnvelope,
   CompileInspectionReport200,
@@ -44,6 +45,7 @@ import type {
   CreateAttestationInput,
   CreateBugReportInput,
   CreateCompanyRequest,
+  CreateCustomerInvoiceInput,
   CreateDamageInstanceInput,
   CreateInspectionAddendumInput,
   CreateInspectionComponentInput,
@@ -56,14 +58,18 @@ import type {
   CreateInspectionSlopeInput,
   CreateInteriorObservationInput,
   CreateMeasurementInput,
+  CreatePaymentInput,
   CreatePinInput,
   CreatePriceBookItemInput,
   CreateTemplateInput,
   CreateTestSquareHitInput,
   CreateTestSquareInput,
+  CreateVendorExpenseInput,
   CrmStatusEnvelope,
   CurateInspectionPhotosRequest,
   CurationResultEnvelope,
+  CustomerInvoiceEnvelope,
+  CustomerInvoiceListEnvelope,
   DamageInstanceEnvelope,
   DashboardLayoutEnvelope,
   DashboardLayoutInput,
@@ -105,10 +111,13 @@ import type {
   LocationPingSuccess,
   LogoutBrowserSessionParams,
   LogoutSuccess,
+  MarkInvoicePaidInput,
   MeasurementEnvelope,
   MeasurementsAnalysisResult,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
+  PaymentEnvelope,
+  PaymentListEnvelope,
   PendingInspectionsEnvelope,
   PinEnvelope,
   PinListEnvelope,
@@ -119,6 +128,7 @@ import type {
   PriceBookItemEnvelope,
   PriceBookItemListEnvelope,
   ProfileEnvelope,
+  ProfitabilitySummaryEnvelope,
   PutEstimateInput,
   RecentActivityEnvelope,
   ReportBrandingEnvelope,
@@ -138,12 +148,15 @@ import type {
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateBugReportInput,
+  UpdateCommissionsInput,
   UpdateCompanyReportSettingsInput,
+  UpdateCustomerInvoiceInput,
   UpdateFipsaSettingsInput,
   UpdateInspectionComponentInput,
   UpdateInspectionInput,
   UpdateInspectionSidingFacetInput,
   UpdateInspectionSlopeInput,
+  UpdatePaymentInput,
   UpdatePinInput,
   UpdatePriceBookItemInput,
   UpdateProfileCredentialsInput,
@@ -155,9 +168,12 @@ import type {
   UpdateSummaryInput,
   UpdateTeamUserInput,
   UpdateTemplateInput,
+  UpdateVendorExpenseInput,
   UploadUrlRequest,
   UploadUrlResponse,
   UpsertJurisdictionPackInput,
+  VendorExpenseEnvelope,
+  VendorExpenseListEnvelope,
   WeatherCandidatesEnvelope
 } from './api.schemas';
 
@@ -8655,6 +8671,1542 @@ export function useGetCanvassingHeatmapWidget<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCanvassingHeatmapWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPaymentsUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/payments`
+}
+
+/**
+ * Returns all ledger payments for the given pin, scoped to the caller's company. Any authenticated company member may read.
+ * @summary List payments for a lead
+ */
+export const getPayments = async (pinId: string, options?: RequestInit): Promise<PaymentListEnvelope> => {
+
+  return customFetch<PaymentListEnvelope>(getGetPaymentsUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPaymentsQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/payments`
+    ] as const;
+    }
+
+
+export const getGetPaymentsQueryOptions = <TData = Awaited<ReturnType<typeof getPayments>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPaymentsQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPayments>>> = ({ signal }) => getPayments(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPayments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPaymentsQueryResult = NonNullable<Awaited<ReturnType<typeof getPayments>>>
+export type GetPaymentsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List payments for a lead
+ */
+
+export function useGetPayments<TData = Awaited<ReturnType<typeof getPayments>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPayments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPaymentsQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePaymentUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/payments`
+}
+
+/**
+ * Creates a new payment ledger row for the pin. Manager or above only — field reps must not write financial records. All money is integer cents; never pass floats or dollar strings.
+ * @summary Record a payment on a lead (manager+)
+ */
+export const createPayment = async (pinId: string,
+    createPaymentInput: CreatePaymentInput, options?: RequestInit): Promise<PaymentEnvelope> => {
+
+  return customFetch<PaymentEnvelope>(getCreatePaymentUrl(pinId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPaymentInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePaymentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPayment>>, TError,{pinId: string;data: BodyType<CreatePaymentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPayment>>, TError,{pinId: string;data: BodyType<CreatePaymentInput>}, TContext> => {
+
+const mutationKey = ['createPayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPayment>>, {pinId: string;data: BodyType<CreatePaymentInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  createPayment(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePaymentMutationResult = NonNullable<Awaited<ReturnType<typeof createPayment>>>
+    export type CreatePaymentMutationBody = BodyType<CreatePaymentInput>
+    export type CreatePaymentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Record a payment on a lead (manager+)
+ */
+export const useCreatePayment = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPayment>>, TError,{pinId: string;data: BodyType<CreatePaymentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPayment>>,
+        TError,
+        {pinId: string;data: BodyType<CreatePaymentInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePaymentMutationOptions(options));
+    }
+
+export const getUpdatePaymentUrl = (paymentId: string,) => {
+
+
+
+
+  return `/api/payments/${paymentId}`
+}
+
+/**
+ * Updates mutable fields on an existing payment. company_id and pin_id are NEVER accepted in the body — the server re-verifies company scope against the stored row before writing.
+ * @summary Update a payment record (manager+)
+ */
+export const updatePayment = async (paymentId: string,
+    updatePaymentInput: UpdatePaymentInput, options?: RequestInit): Promise<PaymentEnvelope> => {
+
+  return customFetch<PaymentEnvelope>(getUpdatePaymentUrl(paymentId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePaymentInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePaymentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePayment>>, TError,{paymentId: string;data: BodyType<UpdatePaymentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePayment>>, TError,{paymentId: string;data: BodyType<UpdatePaymentInput>}, TContext> => {
+
+const mutationKey = ['updatePayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePayment>>, {paymentId: string;data: BodyType<UpdatePaymentInput>}> = (props) => {
+          const {paymentId,data} = props ?? {};
+
+          return  updatePayment(paymentId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePaymentMutationResult = NonNullable<Awaited<ReturnType<typeof updatePayment>>>
+    export type UpdatePaymentMutationBody = BodyType<UpdatePaymentInput>
+    export type UpdatePaymentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a payment record (manager+)
+ */
+export const useUpdatePayment = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePayment>>, TError,{paymentId: string;data: BodyType<UpdatePaymentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePayment>>,
+        TError,
+        {paymentId: string;data: BodyType<UpdatePaymentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdatePaymentMutationOptions(options));
+    }
+
+export const getDeletePaymentUrl = (paymentId: string,) => {
+
+
+
+
+  return `/api/payments/${paymentId}`
+}
+
+/**
+ * @summary Delete a payment record (manager+)
+ */
+export const deletePayment = async (paymentId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeletePaymentUrl(paymentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePaymentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePayment>>, TError,{paymentId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePayment>>, TError,{paymentId: string}, TContext> => {
+
+const mutationKey = ['deletePayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePayment>>, {paymentId: string}> = (props) => {
+          const {paymentId} = props ?? {};
+
+          return  deletePayment(paymentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePaymentMutationResult = NonNullable<Awaited<ReturnType<typeof deletePayment>>>
+
+    export type DeletePaymentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a payment record (manager+)
+ */
+export const useDeletePayment = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePayment>>, TError,{paymentId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePayment>>,
+        TError,
+        {paymentId: string},
+        TContext
+      > => {
+      return useMutation(getDeletePaymentMutationOptions(options));
+    }
+
+export const getListCustomerInvoicesUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/invoices`
+}
+
+/**
+ * @summary List all invoices for a lead
+ */
+export const listCustomerInvoices = async (pinId: string, options?: RequestInit): Promise<CustomerInvoiceListEnvelope> => {
+
+  return customFetch<CustomerInvoiceListEnvelope>(getListCustomerInvoicesUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCustomerInvoicesQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/invoices`
+    ] as const;
+    }
+
+
+export const getListCustomerInvoicesQueryOptions = <TData = Awaited<ReturnType<typeof listCustomerInvoices>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCustomerInvoicesQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCustomerInvoices>>> = ({ signal }) => listCustomerInvoices(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCustomerInvoices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCustomerInvoicesQueryResult = NonNullable<Awaited<ReturnType<typeof listCustomerInvoices>>>
+export type ListCustomerInvoicesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List all invoices for a lead
+ */
+
+export function useListCustomerInvoices<TData = Awaited<ReturnType<typeof listCustomerInvoices>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerInvoices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCustomerInvoicesQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateCustomerInvoiceUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/invoices`
+}
+
+/**
+ * Invoice number generated server-side with per-company advisory lock (INV-YYYYMM-NNNNN). Do not supply invoiceNumber in the body.
+ * @summary Create a customer invoice (manager+)
+ */
+export const createCustomerInvoice = async (pinId: string,
+    createCustomerInvoiceInput: CreateCustomerInvoiceInput, options?: RequestInit): Promise<CustomerInvoiceEnvelope> => {
+
+  return customFetch<CustomerInvoiceEnvelope>(getCreateCustomerInvoiceUrl(pinId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createCustomerInvoiceInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCustomerInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerInvoice>>, TError,{pinId: string;data: BodyType<CreateCustomerInvoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCustomerInvoice>>, TError,{pinId: string;data: BodyType<CreateCustomerInvoiceInput>}, TContext> => {
+
+const mutationKey = ['createCustomerInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCustomerInvoice>>, {pinId: string;data: BodyType<CreateCustomerInvoiceInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  createCustomerInvoice(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCustomerInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof createCustomerInvoice>>>
+    export type CreateCustomerInvoiceMutationBody = BodyType<CreateCustomerInvoiceInput>
+    export type CreateCustomerInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a customer invoice (manager+)
+ */
+export const useCreateCustomerInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerInvoice>>, TError,{pinId: string;data: BodyType<CreateCustomerInvoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCustomerInvoice>>,
+        TError,
+        {pinId: string;data: BodyType<CreateCustomerInvoiceInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCustomerInvoiceMutationOptions(options));
+    }
+
+export const getGetCustomerInvoiceUrl = (invoiceId: string,) => {
+
+
+
+
+  return `/api/invoices/${invoiceId}`
+}
+
+/**
+ * @summary Get a single customer invoice
+ */
+export const getCustomerInvoice = async (invoiceId: string, options?: RequestInit): Promise<CustomerInvoiceEnvelope> => {
+
+  return customFetch<CustomerInvoiceEnvelope>(getGetCustomerInvoiceUrl(invoiceId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCustomerInvoiceQueryKey = (invoiceId: string,) => {
+    return [
+    `/api/invoices/${invoiceId}`
+    ] as const;
+    }
+
+
+export const getGetCustomerInvoiceQueryOptions = <TData = Awaited<ReturnType<typeof getCustomerInvoice>>, TError = ErrorType<ErrorEnvelope>>(invoiceId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCustomerInvoiceQueryKey(invoiceId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCustomerInvoice>>> = ({ signal }) => getCustomerInvoice(invoiceId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: invoiceId !== null && invoiceId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCustomerInvoice>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCustomerInvoiceQueryResult = NonNullable<Awaited<ReturnType<typeof getCustomerInvoice>>>
+export type GetCustomerInvoiceQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get a single customer invoice
+ */
+
+export function useGetCustomerInvoice<TData = Awaited<ReturnType<typeof getCustomerInvoice>>, TError = ErrorType<ErrorEnvelope>>(
+ invoiceId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCustomerInvoiceQueryOptions(invoiceId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCustomerInvoiceUrl = (invoiceId: string,) => {
+
+
+
+
+  return `/api/invoices/${invoiceId}`
+}
+
+/**
+ * Updates mutable fields. company_id and pin_id are never accepted. Status transitions use the dedicated action endpoints.
+ * @summary Update a customer invoice (manager+)
+ */
+export const updateCustomerInvoice = async (invoiceId: string,
+    updateCustomerInvoiceInput: UpdateCustomerInvoiceInput, options?: RequestInit): Promise<CustomerInvoiceEnvelope> => {
+
+  return customFetch<CustomerInvoiceEnvelope>(getUpdateCustomerInvoiceUrl(invoiceId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCustomerInvoiceInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCustomerInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerInvoice>>, TError,{invoiceId: string;data: BodyType<UpdateCustomerInvoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCustomerInvoice>>, TError,{invoiceId: string;data: BodyType<UpdateCustomerInvoiceInput>}, TContext> => {
+
+const mutationKey = ['updateCustomerInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCustomerInvoice>>, {invoiceId: string;data: BodyType<UpdateCustomerInvoiceInput>}> = (props) => {
+          const {invoiceId,data} = props ?? {};
+
+          return  updateCustomerInvoice(invoiceId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCustomerInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof updateCustomerInvoice>>>
+    export type UpdateCustomerInvoiceMutationBody = BodyType<UpdateCustomerInvoiceInput>
+    export type UpdateCustomerInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a customer invoice (manager+)
+ */
+export const useUpdateCustomerInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerInvoice>>, TError,{invoiceId: string;data: BodyType<UpdateCustomerInvoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCustomerInvoice>>,
+        TError,
+        {invoiceId: string;data: BodyType<UpdateCustomerInvoiceInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCustomerInvoiceMutationOptions(options));
+    }
+
+export const getDeleteCustomerInvoiceUrl = (invoiceId: string,) => {
+
+
+
+
+  return `/api/invoices/${invoiceId}`
+}
+
+/**
+ * @summary Delete a customer invoice (manager+; only open or void)
+ */
+export const deleteCustomerInvoice = async (invoiceId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCustomerInvoiceUrl(invoiceId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCustomerInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerInvoice>>, TError,{invoiceId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerInvoice>>, TError,{invoiceId: string}, TContext> => {
+
+const mutationKey = ['deleteCustomerInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCustomerInvoice>>, {invoiceId: string}> = (props) => {
+          const {invoiceId} = props ?? {};
+
+          return  deleteCustomerInvoice(invoiceId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCustomerInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCustomerInvoice>>>
+
+    export type DeleteCustomerInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a customer invoice (manager+; only open or void)
+ */
+export const useDeleteCustomerInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerInvoice>>, TError,{invoiceId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCustomerInvoice>>,
+        TError,
+        {invoiceId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCustomerInvoiceMutationOptions(options));
+    }
+
+export const getSendCustomerInvoiceUrl = (invoiceId: string,) => {
+
+
+
+
+  return `/api/invoices/${invoiceId}/send`
+}
+
+/**
+ * @summary Mark an invoice as sent (manager+)
+ */
+export const sendCustomerInvoice = async (invoiceId: string, options?: RequestInit): Promise<CustomerInvoiceEnvelope> => {
+
+  return customFetch<CustomerInvoiceEnvelope>(getSendCustomerInvoiceUrl(invoiceId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendCustomerInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendCustomerInvoice>>, TError,{invoiceId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendCustomerInvoice>>, TError,{invoiceId: string}, TContext> => {
+
+const mutationKey = ['sendCustomerInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendCustomerInvoice>>, {invoiceId: string}> = (props) => {
+          const {invoiceId} = props ?? {};
+
+          return  sendCustomerInvoice(invoiceId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendCustomerInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof sendCustomerInvoice>>>
+
+    export type SendCustomerInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark an invoice as sent (manager+)
+ */
+export const useSendCustomerInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendCustomerInvoice>>, TError,{invoiceId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendCustomerInvoice>>,
+        TError,
+        {invoiceId: string},
+        TContext
+      > => {
+      return useMutation(getSendCustomerInvoiceMutationOptions(options));
+    }
+
+export const getMarkCustomerInvoicePaidUrl = (invoiceId: string,) => {
+
+
+
+
+  return `/api/invoices/${invoiceId}/mark-paid`
+}
+
+/**
+ * @summary Mark an invoice paid and create a matching ledger row (manager+; idempotent)
+ */
+export const markCustomerInvoicePaid = async (invoiceId: string,
+    markInvoicePaidInput?: MarkInvoicePaidInput, options?: RequestInit): Promise<CustomerInvoiceEnvelope> => {
+
+  return customFetch<CustomerInvoiceEnvelope>(getMarkCustomerInvoicePaidUrl(invoiceId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markInvoicePaidInput)
+  }
+);}
+
+
+
+
+
+export const getMarkCustomerInvoicePaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markCustomerInvoicePaid>>, TError,{invoiceId: string;data?: BodyType<MarkInvoicePaidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markCustomerInvoicePaid>>, TError,{invoiceId: string;data?: BodyType<MarkInvoicePaidInput>}, TContext> => {
+
+const mutationKey = ['markCustomerInvoicePaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markCustomerInvoicePaid>>, {invoiceId: string;data?: BodyType<MarkInvoicePaidInput>}> = (props) => {
+          const {invoiceId,data} = props ?? {};
+
+          return  markCustomerInvoicePaid(invoiceId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkCustomerInvoicePaidMutationResult = NonNullable<Awaited<ReturnType<typeof markCustomerInvoicePaid>>>
+    export type MarkCustomerInvoicePaidMutationBody = BodyType<MarkInvoicePaidInput> | undefined
+    export type MarkCustomerInvoicePaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark an invoice paid and create a matching ledger row (manager+; idempotent)
+ */
+export const useMarkCustomerInvoicePaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markCustomerInvoicePaid>>, TError,{invoiceId: string;data?: BodyType<MarkInvoicePaidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markCustomerInvoicePaid>>,
+        TError,
+        {invoiceId: string;data?: BodyType<MarkInvoicePaidInput>},
+        TContext
+      > => {
+      return useMutation(getMarkCustomerInvoicePaidMutationOptions(options));
+    }
+
+export const getVoidCustomerInvoiceUrl = (invoiceId: string,) => {
+
+
+
+
+  return `/api/invoices/${invoiceId}/void`
+}
+
+/**
+ * If the invoice was paid, its linked payments row has customer_invoice_id set to NULL — the payment stays in the ledger (money received is never deleted) but is no longer tied to this invoice.
+ * @summary Void an invoice from any status (manager+)
+ */
+export const voidCustomerInvoice = async (invoiceId: string, options?: RequestInit): Promise<CustomerInvoiceEnvelope> => {
+
+  return customFetch<CustomerInvoiceEnvelope>(getVoidCustomerInvoiceUrl(invoiceId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getVoidCustomerInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidCustomerInvoice>>, TError,{invoiceId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voidCustomerInvoice>>, TError,{invoiceId: string}, TContext> => {
+
+const mutationKey = ['voidCustomerInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidCustomerInvoice>>, {invoiceId: string}> = (props) => {
+          const {invoiceId} = props ?? {};
+
+          return  voidCustomerInvoice(invoiceId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoidCustomerInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof voidCustomerInvoice>>>
+
+    export type VoidCustomerInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Void an invoice from any status (manager+)
+ */
+export const useVoidCustomerInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidCustomerInvoice>>, TError,{invoiceId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voidCustomerInvoice>>,
+        TError,
+        {invoiceId: string},
+        TContext
+      > => {
+      return useMutation(getVoidCustomerInvoiceMutationOptions(options));
+    }
+
+export const getListVendorExpensesUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/expenses`
+}
+
+/**
+ * @summary List all vendor expenses for a lead
+ */
+export const listVendorExpenses = async (pinId: string, options?: RequestInit): Promise<VendorExpenseListEnvelope> => {
+
+  return customFetch<VendorExpenseListEnvelope>(getListVendorExpensesUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVendorExpensesQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/expenses`
+    ] as const;
+    }
+
+
+export const getListVendorExpensesQueryOptions = <TData = Awaited<ReturnType<typeof listVendorExpenses>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVendorExpenses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVendorExpensesQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVendorExpenses>>> = ({ signal }) => listVendorExpenses(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVendorExpenses>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVendorExpensesQueryResult = NonNullable<Awaited<ReturnType<typeof listVendorExpenses>>>
+export type ListVendorExpensesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List all vendor expenses for a lead
+ */
+
+export function useListVendorExpenses<TData = Awaited<ReturnType<typeof listVendorExpenses>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVendorExpenses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVendorExpensesQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateVendorExpenseUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/expenses`
+}
+
+/**
+ * @summary Create a vendor expense (manager+)
+ */
+export const createVendorExpense = async (pinId: string,
+    createVendorExpenseInput: CreateVendorExpenseInput, options?: RequestInit): Promise<VendorExpenseEnvelope> => {
+
+  return customFetch<VendorExpenseEnvelope>(getCreateVendorExpenseUrl(pinId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createVendorExpenseInput)
+  }
+);}
+
+
+
+
+
+export const getCreateVendorExpenseMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVendorExpense>>, TError,{pinId: string;data: BodyType<CreateVendorExpenseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVendorExpense>>, TError,{pinId: string;data: BodyType<CreateVendorExpenseInput>}, TContext> => {
+
+const mutationKey = ['createVendorExpense'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVendorExpense>>, {pinId: string;data: BodyType<CreateVendorExpenseInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  createVendorExpense(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVendorExpenseMutationResult = NonNullable<Awaited<ReturnType<typeof createVendorExpense>>>
+    export type CreateVendorExpenseMutationBody = BodyType<CreateVendorExpenseInput>
+    export type CreateVendorExpenseMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a vendor expense (manager+)
+ */
+export const useCreateVendorExpense = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVendorExpense>>, TError,{pinId: string;data: BodyType<CreateVendorExpenseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVendorExpense>>,
+        TError,
+        {pinId: string;data: BodyType<CreateVendorExpenseInput>},
+        TContext
+      > => {
+      return useMutation(getCreateVendorExpenseMutationOptions(options));
+    }
+
+export const getUpdateVendorExpenseUrl = (expenseId: string,) => {
+
+
+
+
+  return `/api/expenses/${expenseId}`
+}
+
+/**
+ * @summary Update a vendor expense (manager+)
+ */
+export const updateVendorExpense = async (expenseId: string,
+    updateVendorExpenseInput: UpdateVendorExpenseInput, options?: RequestInit): Promise<VendorExpenseEnvelope> => {
+
+  return customFetch<VendorExpenseEnvelope>(getUpdateVendorExpenseUrl(expenseId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateVendorExpenseInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateVendorExpenseMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVendorExpense>>, TError,{expenseId: string;data: BodyType<UpdateVendorExpenseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVendorExpense>>, TError,{expenseId: string;data: BodyType<UpdateVendorExpenseInput>}, TContext> => {
+
+const mutationKey = ['updateVendorExpense'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVendorExpense>>, {expenseId: string;data: BodyType<UpdateVendorExpenseInput>}> = (props) => {
+          const {expenseId,data} = props ?? {};
+
+          return  updateVendorExpense(expenseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVendorExpenseMutationResult = NonNullable<Awaited<ReturnType<typeof updateVendorExpense>>>
+    export type UpdateVendorExpenseMutationBody = BodyType<UpdateVendorExpenseInput>
+    export type UpdateVendorExpenseMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a vendor expense (manager+)
+ */
+export const useUpdateVendorExpense = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVendorExpense>>, TError,{expenseId: string;data: BodyType<UpdateVendorExpenseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVendorExpense>>,
+        TError,
+        {expenseId: string;data: BodyType<UpdateVendorExpenseInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateVendorExpenseMutationOptions(options));
+    }
+
+export const getDeleteVendorExpenseUrl = (expenseId: string,) => {
+
+
+
+
+  return `/api/expenses/${expenseId}`
+}
+
+/**
+ * @summary Delete a vendor expense (manager+)
+ */
+export const deleteVendorExpense = async (expenseId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVendorExpenseUrl(expenseId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteVendorExpenseMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVendorExpense>>, TError,{expenseId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVendorExpense>>, TError,{expenseId: string}, TContext> => {
+
+const mutationKey = ['deleteVendorExpense'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVendorExpense>>, {expenseId: string}> = (props) => {
+          const {expenseId} = props ?? {};
+
+          return  deleteVendorExpense(expenseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVendorExpenseMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVendorExpense>>>
+
+    export type DeleteVendorExpenseMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a vendor expense (manager+)
+ */
+export const useDeleteVendorExpense = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVendorExpense>>, TError,{expenseId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVendorExpense>>,
+        TError,
+        {expenseId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVendorExpenseMutationOptions(options));
+    }
+
+export const getMarkVendorExpensePaidUrl = (expenseId: string,) => {
+
+
+
+
+  return `/api/expenses/${expenseId}/mark-paid`
+}
+
+/**
+ * @summary Mark an expense as paid — paid_date set server-side (manager+)
+ */
+export const markVendorExpensePaid = async (expenseId: string, options?: RequestInit): Promise<VendorExpenseEnvelope> => {
+
+  return customFetch<VendorExpenseEnvelope>(getMarkVendorExpensePaidUrl(expenseId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkVendorExpensePaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markVendorExpensePaid>>, TError,{expenseId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markVendorExpensePaid>>, TError,{expenseId: string}, TContext> => {
+
+const mutationKey = ['markVendorExpensePaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markVendorExpensePaid>>, {expenseId: string}> = (props) => {
+          const {expenseId} = props ?? {};
+
+          return  markVendorExpensePaid(expenseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkVendorExpensePaidMutationResult = NonNullable<Awaited<ReturnType<typeof markVendorExpensePaid>>>
+
+    export type MarkVendorExpensePaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark an expense as paid — paid_date set server-side (manager+)
+ */
+export const useMarkVendorExpensePaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markVendorExpensePaid>>, TError,{expenseId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markVendorExpensePaid>>,
+        TError,
+        {expenseId: string},
+        TContext
+      > => {
+      return useMutation(getMarkVendorExpensePaidMutationOptions(options));
+    }
+
+export const getUpdateCommissionsUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/commissions`
+}
+
+/**
+ * Updates the per-lead single-value cost columns. Paid dates are NOT accepted here — use the dedicated mark-paid endpoints so that the server always controls when a commission is recorded as paid. These fields are NOT writable via the generic PATCH /pins/:pinId.
+ * @summary Update commission and acquisition cost amounts for a lead (manager+)
+ */
+export const updateCommissions = async (pinId: string,
+    updateCommissionsInput: UpdateCommissionsInput, options?: RequestInit): Promise<CommissionsEnvelope> => {
+
+  return customFetch<CommissionsEnvelope>(getUpdateCommissionsUrl(pinId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCommissionsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCommissionsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCommissions>>, TError,{pinId: string;data: BodyType<UpdateCommissionsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCommissions>>, TError,{pinId: string;data: BodyType<UpdateCommissionsInput>}, TContext> => {
+
+const mutationKey = ['updateCommissions'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCommissions>>, {pinId: string;data: BodyType<UpdateCommissionsInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  updateCommissions(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCommissionsMutationResult = NonNullable<Awaited<ReturnType<typeof updateCommissions>>>
+    export type UpdateCommissionsMutationBody = BodyType<UpdateCommissionsInput>
+    export type UpdateCommissionsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update commission and acquisition cost amounts for a lead (manager+)
+ */
+export const useUpdateCommissions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCommissions>>, TError,{pinId: string;data: BodyType<UpdateCommissionsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCommissions>>,
+        TError,
+        {pinId: string;data: BodyType<UpdateCommissionsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateCommissionsMutationOptions(options));
+    }
+
+export const getMarkSalesCommissionPaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/commissions/sales/mark-paid`
+}
+
+/**
+ * @summary Mark sales commission as paid — date set server-side (manager+)
+ */
+export const markSalesCommissionPaid = async (pinId: string, options?: RequestInit): Promise<CommissionsEnvelope> => {
+
+  return customFetch<CommissionsEnvelope>(getMarkSalesCommissionPaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkSalesCommissionPaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markSalesCommissionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markSalesCommissionPaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markSalesCommissionPaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markSalesCommissionPaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markSalesCommissionPaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkSalesCommissionPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markSalesCommissionPaid>>>
+
+    export type MarkSalesCommissionPaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark sales commission as paid — date set server-side (manager+)
+ */
+export const useMarkSalesCommissionPaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markSalesCommissionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markSalesCommissionPaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkSalesCommissionPaidMutationOptions(options));
+    }
+
+export const getMarkPmCommissionPaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/commissions/pm/mark-paid`
+}
+
+/**
+ * @summary Mark PM commission as paid — date set server-side (manager+)
+ */
+export const markPmCommissionPaid = async (pinId: string, options?: RequestInit): Promise<CommissionsEnvelope> => {
+
+  return customFetch<CommissionsEnvelope>(getMarkPmCommissionPaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkPmCommissionPaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markPmCommissionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markPmCommissionPaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markPmCommissionPaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markPmCommissionPaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markPmCommissionPaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkPmCommissionPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markPmCommissionPaid>>>
+
+    export type MarkPmCommissionPaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark PM commission as paid — date set server-side (manager+)
+ */
+export const useMarkPmCommissionPaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markPmCommissionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markPmCommissionPaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkPmCommissionPaidMutationOptions(options));
+    }
+
+export const getGetPinProfitabilityUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/profitability`
+}
+
+/**
+ * @summary Get computed profitability summary for a lead (all money in cents)
+ */
+export const getPinProfitability = async (pinId: string, options?: RequestInit): Promise<ProfitabilitySummaryEnvelope> => {
+
+  return customFetch<ProfitabilitySummaryEnvelope>(getGetPinProfitabilityUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPinProfitabilityQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/profitability`
+    ] as const;
+    }
+
+
+export const getGetPinProfitabilityQueryOptions = <TData = Awaited<ReturnType<typeof getPinProfitability>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPinProfitability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPinProfitabilityQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPinProfitability>>> = ({ signal }) => getPinProfitability(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPinProfitability>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPinProfitabilityQueryResult = NonNullable<Awaited<ReturnType<typeof getPinProfitability>>>
+export type GetPinProfitabilityQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get computed profitability summary for a lead (all money in cents)
+ */
+
+export function useGetPinProfitability<TData = Awaited<ReturnType<typeof getPinProfitability>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPinProfitability>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPinProfitabilityQueryOptions(pinId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

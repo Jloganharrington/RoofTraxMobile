@@ -53,6 +53,7 @@ import {
   Trash2,
   File,
   ImageIcon,
+  Plus,
 } from 'lucide-react';
 import {
   useGetLead,
@@ -69,7 +70,30 @@ import {
   type LeadFileCategory,
   type LeadFileRow,
 } from '@/lib/claimHubApi';
-import { customFetch, useGetMyProfile } from '@workspace/api-client-react';
+import {
+  customFetch,
+  useGetMyProfile,
+  useGetPayments,
+  useCreatePayment,
+  useDeletePayment,
+  useListCustomerInvoices,
+  useCreateCustomerInvoice,
+  useDeleteCustomerInvoice,
+  useSendCustomerInvoice,
+  useMarkCustomerInvoicePaid,
+  useVoidCustomerInvoice,
+  useListVendorExpenses,
+  useCreateVendorExpense,
+  useUpdateVendorExpense,
+  useDeleteVendorExpense,
+  useMarkVendorExpensePaid,
+  useUpdateCommissions,
+  useMarkSalesCommissionPaid,
+  useMarkPmCommissionPaid,
+  type CreateVendorExpenseInput,
+  type UpdateVendorExpenseInput,
+  useGetPinProfitability,
+} from '@workspace/api-client-react';
 import { InspectionFlowWizard } from '@/components/inspection/InspectionFlowWizard';
 import {
   INSURANCE_STAGES,
@@ -193,9 +217,8 @@ interface FormState {
   insuranceCarrier: string; policyNumber: string; claimNumber: string;
   dateOfLoss: string; inspectionDate: string;
   adjusterName: string; adjusterPhone: string; adjusterEmail: string; adjusterMeetingDate: string;
-  // Financials
-  contractAmount: string; depositAmount: string; depositDate: string; depositPaymentMethod: string;
-  deductibleAmount: string; rcvAmount: string; acvAmount: string; supplementAmount: string; finalPaymentAmount: string;
+  // Financials — deposit/acv/supplement/final removed: managed by payments ledger
+  contractAmount: string; deductibleAmount: string; rcvAmount: string;
   communicationNotes: string;
   contractScope: string; squareFootage: string; roofPitch: string;
   measurementVendor: string; measurementReportUrl: string;
@@ -253,14 +276,8 @@ function initForm(lead: FullLead): FormState {
     adjusterEmail:        toStr(lead.adjusterEmail),
     adjusterMeetingDate:  toDateStr(lead.adjusterMeetingDate),
     contractAmount:       toStr(lead.contractAmount),
-    depositAmount:        toStr(lead.depositAmount),
-    depositDate:          toDateStr(lead.depositDate),
-    depositPaymentMethod: toStr(lead.depositPaymentMethod),
     deductibleAmount:     toStr(lead.deductibleAmount),
     rcvAmount:            toStr(lead.rcvAmount),
-    acvAmount:            toStr(lead.acvAmount),
-    supplementAmount:     toStr(lead.supplementAmount),
-    finalPaymentAmount:   toStr(lead.finalPaymentAmount),
     communicationNotes:   toStr(lead.notes),
     contractScope:        toStr(lead.contractScope),
     squareFootage:        toStr(lead.squareFootage),
@@ -287,7 +304,7 @@ const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
   ],
   inspection_flow: [],
   insurance:       ['insuranceCarrier','policyNumber','claimNumber','dateOfLoss','inspectionDate','adjusterName','adjusterPhone','adjusterEmail','adjusterMeetingDate'],
-  financials:      ['contractAmount','depositAmount','depositDate','depositPaymentMethod','deductibleAmount','rcvAmount','acvAmount','supplementAmount','finalPaymentAmount'],
+  financials:      ['contractAmount','deductibleAmount','rcvAmount'],
   communication:   ['communicationNotes'],
   scope:           ['contractScope','squareFootage','roofPitch','measurementVendor','measurementReportUrl','materialBrand','materialColor','materialStyle'],
   files:           [],
@@ -540,24 +557,1080 @@ function InsuranceTab({ form, onField }: { form: FormState; onField: (n: string,
   );
 }
 
-function FinancialsTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
+// ---------------------------------------------------------------------------
+// Payments ledger helpers
+// ---------------------------------------------------------------------------
+
+function parseDollarToCents(value: string): number | null {
+  const cleaned = value.replace(/[$,\s]/g, '');
+  if (!cleaned || !/^\d+(\.\d+)?$/.test(cleaned)) return null;
+  const cents = Math.round(parseFloat(cleaned) * 100);
+  return cents > 0 ? cents : null;
+}
+
+function formatCents(cents: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+    cents / 100,
+  );
+}
+
+const PAYMENT_TYPE_OPTIONS = [
+  { value: 'deposit',      label: 'Deposit' },
+  { value: 'acv',          label: 'ACV' },
+  { value: 'betterment',   label: 'Betterment' },
+  { value: 'supplement',   label: 'Supplement' },
+  { value: 'final',        label: 'Final Payment' },
+  { value: 'rcv_holdback', label: 'RCV Holdback' },
+  { value: 'deductible',   label: 'Deductible' },
+  { value: 'other',        label: 'Other' },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Invoices panel (Step 2)
+// ---------------------------------------------------------------------------
+
+const INVOICE_TYPE_LABELS: Record<string, string> = {
+  initial_deposit: 'Initial Deposit',
+  acv_payment:     'ACV Payment',
+  supplement:      'Supplement',
+  final_payment:   'Final Payment',
+  service:         'Service',
+  other:           'Other',
+};
+
+const INVOICE_TYPE_OPTIONS = Object.entries(INVOICE_TYPE_LABELS).map(([value, label]) => ({ value, label }));
+
+const INVOICE_STATUS_CLASSES: Record<string, string> = {
+  open:  'bg-blue-50  text-blue-700  border-blue-200',
+  sent:  'bg-amber-50 text-amber-700 border-amber-200',
+  paid:  'bg-green-50 text-green-700 border-green-200',
+  void:  'bg-gray-50  text-gray-500  border-gray-200',
+};
+
+function InvoicesPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { toast } = useToast();
+  const { data, isLoading } = useListCustomerInvoices(pinId);
+  const createMutation   = useCreateCustomerInvoice();
+  const deleteMutation   = useDeleteCustomerInvoice();
+  const sendMutation     = useSendCustomerInvoice();
+  const markPaidMutation = useMarkCustomerInvoicePaid();
+  const voidMutation     = useVoidCustomerInvoice();
+
+  const invoices = data?.invoices ?? [];
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [cName,    setCName]    = useState('');
+  const [cAddress, setCAddress] = useState('');
+  const [cType,    setCType]    = useState('initial_deposit');
+  const [cDollars, setCDollars] = useState('');
+  const [cNotes,   setCNotes]   = useState('');
+  const [cError,   setCError]   = useState<string | null>(null);
+
+  function resetCreate() {
+    setCName(''); setCAddress(''); setCType('initial_deposit');
+    setCDollars(''); setCNotes(''); setCError(null); setShowCreate(false);
+  }
+
+  async function handleCreate() {
+    const cents = parseDollarToCents(cDollars);
+    if (!cents)        { setCError('Enter a valid amount greater than $0.00'); return; }
+    if (!cName.trim()) { setCError('Customer name is required');              return; }
+    if (!cAddress.trim()) { setCError('Customer address is required');        return; }
+    setCError(null);
+    try {
+      await createMutation.mutateAsync({
+        pinId,
+        data: {
+          customerName:    cName.trim(),
+          customerAddress: cAddress.trim(),
+          invoiceType:     cType as 'initial_deposit',
+          amountCents:     cents,
+          notes:           cNotes || null,
+        },
+      });
+      resetCreate();
+      toast({ title: 'Invoice created' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to create invoice.', variant: 'destructive' });
+    }
+  }
+
+  async function handleSend(invoiceId: string) {
+    try {
+      await sendMutation.mutateAsync({ invoiceId });
+      toast({ title: 'Invoice marked sent' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to send invoice.', variant: 'destructive' });
+    }
+  }
+
+  async function handleMarkPaid(invoiceId: string) {
+    try {
+      await markPaidMutation.mutateAsync({ invoiceId });
+      toast({ title: 'Invoice marked paid — payment recorded' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to mark paid.', variant: 'destructive' });
+    }
+  }
+
+  async function handleVoid(invoiceId: string) {
+    try {
+      await voidMutation.mutateAsync({ invoiceId });
+      toast({ title: 'Invoice voided' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to void invoice.', variant: 'destructive' });
+    }
+  }
+
+  async function handleDelete(invoiceId: string) {
+    try {
+      await deleteMutation.mutateAsync({ invoiceId });
+      toast({ title: 'Invoice deleted' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to delete invoice.', variant: 'destructive' });
+    }
+  }
+
+  const anyPending =
+    createMutation.isPending || deleteMutation.isPending ||
+    sendMutation.isPending   || markPaidMutation.isPending || voidMutation.isPending;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between border-b pb-1">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Invoices
+        </h3>
+        {isManager && (
+          <Button size="sm" variant="outline" onClick={() => setShowCreate(v => !v)}>
+            <Plus className="h-3.5 w-3.5 mr-1" />Create Invoice
+          </Button>
+        )}
+      </div>
+
+      {/* Create form */}
+      {showCreate && isManager && (
+        <div className="rounded-lg border bg-card p-5 space-y-4">
+          <p className="text-sm font-medium text-muted-foreground">
+            Invoice number is generated server-side (INV-YYYYMM-NNNNN).
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Invoice Type</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={cType}
+                onChange={e => setCType(e.target.value)}
+              >
+                {INVOICE_TYPE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Amount</Label>
+              <Input placeholder="$12,500.00 or 12500" value={cDollars} onChange={e => setCDollars(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Customer Name</Label>
+              <Input placeholder="Jane Smith" value={cName} onChange={e => setCName(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Customer Address</Label>
+              <Input placeholder="123 Main St, City, VA 22150" value={cAddress} onChange={e => setCAddress(e.target.value)} />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label className="text-xs">Notes (optional)</Label>
+              <Input placeholder="Reference #, memo…" value={cNotes} onChange={e => setCNotes(e.target.value)} />
+            </div>
+          </div>
+          {cError && <p className="text-xs text-destructive">{cError}</p>}
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="outline" onClick={resetCreate}>Cancel</Button>
+            <Button size="sm" onClick={handleCreate} disabled={createMutation.isPending}>
+              {createMutation.isPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              Save Invoice
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice list */}
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground py-4">Loading invoices…</div>
+      ) : invoices.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-8 text-center border rounded-md">
+          No invoices yet.
+        </div>
+      ) : (
+        <div className="rounded-md border overflow-hidden divide-y">
+          {invoices.map(inv => (
+            <div key={inv.id} className="flex items-start justify-between px-4 py-3 gap-3">
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono text-muted-foreground shrink-0">{inv.invoiceNumber}</span>
+                  <Badge
+                    variant="outline"
+                    className={`text-xs shrink-0 capitalize ${INVOICE_STATUS_CLASSES[inv.status] ?? ''}`}
+                  >
+                    {inv.status}
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    {INVOICE_TYPE_LABELS[inv.invoiceType] ?? inv.invoiceType}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground truncate">{inv.customerName}</p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-sm font-semibold tabular-nums">{formatCents(inv.amountCents)}</span>
+                {isManager && (
+                  <>
+                    {(inv.status === 'open' || inv.status === 'sent') && (
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-7 text-xs px-2"
+                        onClick={() => handleMarkPaid(inv.id)}
+                        disabled={anyPending}
+                      >
+                        Mark Paid
+                      </Button>
+                    )}
+                    {inv.status === 'open' && (
+                      <Button
+                        size="sm" variant="ghost"
+                        className="h-7 text-xs px-2"
+                        onClick={() => handleSend(inv.id)}
+                        disabled={anyPending}
+                      >
+                        Send
+                      </Button>
+                    )}
+                    {inv.status !== 'void' && (
+                      <Button
+                        size="icon" variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-amber-600"
+                        onClick={() => handleVoid(inv.id)}
+                        disabled={anyPending}
+                        title="Void invoice"
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {(inv.status === 'open' || inv.status === 'void') && (
+                      <Button
+                        size="icon" variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDelete(inv.id)}
+                        disabled={anyPending}
+                        title="Delete invoice"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Vendor Expense helpers
+// ---------------------------------------------------------------------------
+
+const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  materials:     'Materials',
+  labor:         'Labor',
+  subcontractor: 'Subcontractor',
+  equipment:     'Equipment',
+  other:         'Other',
+};
+
+const EXPENSE_CATEGORIES_LIST = ['materials', 'labor', 'subcontractor', 'equipment', 'other'] as const;
+
+// ---------------------------------------------------------------------------
+// ExpensesPanel — vendor expense tracker (step 3)
+// ---------------------------------------------------------------------------
+
+function ExpensesPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { toast } = useToast();
+  const { data, isLoading } = useListVendorExpenses(pinId);
+  const createMutation   = useCreateVendorExpense();
+  const updateMutation   = useUpdateVendorExpense();
+  const deleteMutation   = useDeleteVendorExpense();
+  const markPaidMutation = useMarkVendorExpensePaid();
+
+  const expenses = data?.expenses ?? [];
+
+  // ── Add form state ──────────────────────────────────────────────────────
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [aVendor,    setAVendor]    = useState('');
+  const [aDollars,   setADollars]   = useState('');
+  const [aCategory,  setACategory]  = useState<string>('materials');
+  const [aInvoice,   setAInvoice]   = useState('');
+  const [aDesc,      setADesc]      = useState('');
+  const [aAddError,  setAAddError]  = useState<string | null>(null);
+
+  // ── Inline edit state ────────────────────────────────────────────────────
+  const [editingId,  setEditingId]  = useState<string | null>(null);
+  const [eVendor,    setEVendor]    = useState('');
+  const [eDollars,   setEDollars]   = useState('');
+  const [eCategory,  setECategory]  = useState<string>('materials');
+  const [eDesc,      setEDesc]      = useState('');
+
+  function resetAdd() {
+    setAVendor(''); setADollars(''); setACategory('materials');
+    setAInvoice(''); setADesc(''); setAAddError(null); setShowAdd(false);
+  }
+
+  async function handleCreate() {
+    const cents = parseDollarToCents(aDollars);
+    if (!cents)            { setAAddError('Enter a valid amount greater than $0.00'); return; }
+    if (!aVendor.trim())   { setAAddError('Vendor name is required');                 return; }
+    setAAddError(null);
+    try {
+      await createMutation.mutateAsync({
+        pinId,
+        data: {
+          vendorName:    aVendor.trim(),
+          amountCents:   cents,
+          category:      aCategory as CreateVendorExpenseInput['category'],
+          invoiceNumber: aInvoice.trim() || null,
+          description:   aDesc.trim() || null,
+        } satisfies CreateVendorExpenseInput,
+      });
+      resetAdd();
+      toast({ title: 'Expense added' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to add expense.', variant: 'destructive' });
+    }
+  }
+
+  function beginEdit(exp: NonNullable<typeof data>['expenses'][number]) {
+    setEditingId(exp.id);
+    setEVendor(exp.vendorName);
+    setEDollars((exp.amountCents / 100).toFixed(2));
+    setECategory(exp.category);
+    setEDesc(exp.description ?? '');
+  }
+
+  async function handleUpdate(expenseId: string) {
+    const cents = parseDollarToCents(eDollars);
+    if (!cents)          return;
+    if (!eVendor.trim()) return;
+    try {
+      await updateMutation.mutateAsync({
+        expenseId,
+        data: {
+          vendorName:  eVendor.trim(),
+          amountCents: cents,
+          category:    eCategory as UpdateVendorExpenseInput['category'],
+          description: eDesc.trim() || null,
+        } satisfies UpdateVendorExpenseInput,
+      });
+      setEditingId(null);
+      toast({ title: 'Expense updated' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to update expense.', variant: 'destructive' });
+    }
+  }
+
+  async function handleDelete(expenseId: string) {
+    try {
+      await deleteMutation.mutateAsync({ expenseId });
+      toast({ title: 'Expense deleted' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to delete expense.', variant: 'destructive' });
+    }
+  }
+
+  async function handleMarkPaid(expenseId: string) {
+    try {
+      await markPaidMutation.mutateAsync({ expenseId });
+      toast({ title: 'Expense marked as paid' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to mark paid.', variant: 'destructive' });
+    }
+  }
+
+  const totalCents    = expenses.reduce((s, e) => s + e.amountCents, 0);
+  const paidCents     = expenses.filter(e => e.isPaid).reduce((s, e) => s + e.amountCents, 0);
+  const outstandingCents = totalCents - paidCents;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between border-b pb-1">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Vendor Expenses
+        </h3>
+        {isManager && (
+          <Button size="sm" variant="outline" onClick={() => setShowAdd(v => !v)}>
+            <Plus className="h-3.5 w-3.5 mr-1" />Add Expense
+          </Button>
+        )}
+      </div>
+
+      {/* Add form */}
+      {isManager && showAdd && (
+        <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="col-span-2">
+              <Label className="text-xs">Vendor Name *</Label>
+              <Input value={aVendor} onChange={e => setAVendor(e.target.value)}
+                placeholder="e.g. ACME Roofing Supply" className="h-8 text-sm mt-0.5" />
+            </div>
+            <div>
+              <Label className="text-xs">Amount ($) *</Label>
+              <Input value={aDollars} onChange={e => setADollars(e.target.value)}
+                placeholder="0.00" className="h-8 text-sm mt-0.5" />
+            </div>
+            <div>
+              <Label className="text-xs">Category *</Label>
+              <Select value={aCategory} onValueChange={setACategory}>
+                <SelectTrigger className="h-8 text-sm mt-0.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPENSE_CATEGORIES_LIST.map(c => (
+                    <SelectItem key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Invoice # (optional)</Label>
+              <Input value={aInvoice} onChange={e => setAInvoice(e.target.value)}
+                placeholder="INV-001" className="h-8 text-sm mt-0.5" />
+            </div>
+            <div>
+              <Label className="text-xs">Description (optional)</Label>
+              <Input value={aDesc} onChange={e => setADesc(e.target.value)}
+                placeholder="Brief description" className="h-8 text-sm mt-0.5" />
+            </div>
+          </div>
+          {aAddError && <p className="text-xs text-destructive">{aAddError}</p>}
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="ghost" onClick={resetAdd}>Cancel</Button>
+            <Button size="sm" onClick={handleCreate} disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Adding…' : 'Add Expense'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && <p className="text-xs text-muted-foreground">Loading expenses…</p>}
+
+      {!isLoading && expenses.length === 0 && (
+        <p className="text-xs text-muted-foreground italic text-center py-2">No vendor expenses recorded.</p>
+      )}
+
+      {expenses.length > 0 && (
+        <div className="space-y-2">
+          {expenses.map(exp => (
+            <div key={exp.id} className="rounded-md border bg-background">
+              {editingId === exp.id ? (
+                // Inline edit row
+                <div className="p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <Label className="text-xs">Vendor Name</Label>
+                      <Input value={eVendor} onChange={e => setEVendor(e.target.value)}
+                        className="h-8 text-sm mt-0.5" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Amount ($)</Label>
+                      <Input value={eDollars} onChange={e => setEDollars(e.target.value)}
+                        className="h-8 text-sm mt-0.5" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Category</Label>
+                      <Select value={eCategory} onValueChange={setECategory}>
+                        <SelectTrigger className="h-8 text-sm mt-0.5"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {EXPENSE_CATEGORIES_LIST.map(c => (
+                            <SelectItem key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Description</Label>
+                      <Input value={eDesc} onChange={e => setEDesc(e.target.value)}
+                        className="h-8 text-sm mt-0.5" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                    <Button size="sm" onClick={() => handleUpdate(exp.id)} disabled={updateMutation.isPending}>
+                      {updateMutation.isPending ? 'Saving…' : 'Save'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // Read row
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{exp.vendorName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {EXPENSE_CATEGORY_LABELS[exp.category] ?? exp.category}
+                      {exp.description ? ` · ${exp.description}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm font-semibold tabular-nums">{formatCents(exp.amountCents)}</span>
+                    {exp.isPaid ? (
+                      <Badge variant="outline" className="text-xs border-green-500 text-green-600">Paid</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">Unpaid</Badge>
+                    )}
+                    {isManager && !exp.isPaid && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2"
+                        onClick={() => handleMarkPaid(exp.id)}
+                        disabled={markPaidMutation.isPending}>
+                        Mark Paid
+                      </Button>
+                    )}
+                    {isManager && (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                          onClick={() => beginEdit(exp)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(exp.id)}
+                          disabled={deleteMutation.isPending}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {expenses.length > 0 && (
+        <div className="flex items-center justify-end gap-4 text-sm border-t pt-3">
+          {paidCents > 0 && (
+            <span className="text-xs text-muted-foreground">
+              Paid: <span className="font-semibold text-green-600 tabular-nums">{formatCents(paidCents)}</span>
+            </span>
+          )}
+          {outstandingCents > 0 && (
+            <span className="text-xs text-muted-foreground">
+              Outstanding: <span className="font-semibold text-amber-600 tabular-nums">{formatCents(outstandingCents)}</span>
+            </span>
+          )}
+          <span className="text-muted-foreground font-normal text-xs">Total Expenses:</span>
+          <span className="font-semibold tabular-nums">{formatCents(totalCents)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CommissionsPanel — per-lead cost + commission amounts (step 3)
+// ---------------------------------------------------------------------------
+
+type CommissionField = {
+  key:       'leadAcquisitionCostCents' | 'referralFeeCents' | 'salesCommissionCents' | 'pmCommissionCents';
+  label:     string;
+  paidKey?:  'salesCommissionPaidDate' | 'pmCommissionPaidDate';
+};
+
+const COMMISSION_FIELDS: CommissionField[] = [
+  { key: 'leadAcquisitionCostCents', label: 'Lead Acquisition Cost' },
+  { key: 'referralFeeCents',         label: 'Referral Fee' },
+  { key: 'salesCommissionCents',     label: 'Sales Commission', paidKey: 'salesCommissionPaidDate' },
+  { key: 'pmCommissionCents',        label: 'PM Commission',    paidKey: 'pmCommissionPaidDate' },
+];
+
+function CommissionsPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { toast } = useToast();
+  const { data: leadData } = useGetLead(pinId);
+  const updateMutation        = useUpdateCommissions();
+  const salesMarkPaidMutation = useMarkSalesCommissionPaid();
+  const pmMarkPaidMutation    = useMarkPmCommissionPaid();
+
+  // Use `any` cast because commission fields are new DB columns not yet in
+  // the FullLead TypeScript type (added migration 025).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lead = leadData?.lead as any;
+
+  // Local dollar-string state for each amount field
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  // Re-initialise drafts from server data whenever the query updates
+  useEffect(() => {
+    if (!lead) return;
+    setDrafts({
+      leadAcquisitionCostCents: lead.leadAcquisitionCostCents != null
+        ? (lead.leadAcquisitionCostCents / 100).toFixed(2) : '',
+      referralFeeCents: lead.referralFeeCents != null
+        ? (lead.referralFeeCents / 100).toFixed(2) : '',
+      salesCommissionCents: lead.salesCommissionCents != null
+        ? (lead.salesCommissionCents / 100).toFixed(2) : '',
+      pmCommissionCents: lead.pmCommissionCents != null
+        ? (lead.pmCommissionCents / 100).toFixed(2) : '',
+    });
+  }, [lead?.id]); // only re-init on a different pin, not on every mutation
+
+  async function handleSave(field: CommissionField) {
+    const raw = drafts[field.key] ?? '';
+    const cents = parseDollarToCents(raw);
+    // Allow null (clearing the field)
+    const value = raw.trim() === '' ? null : cents;
+    if (raw.trim() !== '' && !value) {
+      toast({ title: 'Invalid amount', variant: 'destructive' });
+      return;
+    }
+    try {
+      await updateMutation.mutateAsync({
+        pinId,
+        data: { [field.key]: value },
+      });
+      toast({ title: `${field.label} saved` });
+    } catch {
+      toast({ title: 'Error', description: `Failed to save ${field.label}.`, variant: 'destructive' });
+    }
+  }
+
+  async function handleMarkPaid(field: CommissionField) {
+    if (!field.paidKey) return;
+    const isSales = field.paidKey === 'salesCommissionPaidDate';
+    const mutation = isSales ? salesMarkPaidMutation : pmMarkPaidMutation;
+    try {
+      await mutation.mutateAsync({ pinId });
+      toast({ title: `${field.label} marked as paid` });
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message ?? 'Failed to mark paid.';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
+    }
+  }
+
+  const totalCents = COMMISSION_FIELDS.reduce((sum, f) => {
+    const val = lead?.[f.key];
+    return sum + (typeof val === 'number' ? val : 0);
+  }, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between border-b pb-1">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Costs &amp; Commissions
+        </h3>
+      </div>
+
+      <div className="space-y-3">
+        {COMMISSION_FIELDS.map(field => {
+          const paidDate = field.paidKey ? lead?.[field.paidKey] : null;
+          const amountSet = !!(lead?.[field.key]);
+          const isPaid    = !!paidDate;
+
+          return (
+            <div key={field.key} className="flex items-center gap-3">
+              <div className="w-44 shrink-0">
+                <p className="text-sm font-medium leading-tight">{field.label}</p>
+                {isPaid && (
+                  <p className="text-xs text-green-600 mt-0.5">
+                    Paid {new Date(paidDate as string).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+
+              {isManager ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-sm text-muted-foreground">$</span>
+                  <Input
+                    className="h-8 text-sm w-32"
+                    value={drafts[field.key] ?? ''}
+                    onChange={e => setDrafts(d => ({ ...d, [field.key]: e.target.value }))}
+                    placeholder="0.00"
+                    disabled={updateMutation.isPending}
+                  />
+                  <Button size="sm" variant="outline" className="h-8"
+                    onClick={() => handleSave(field)}
+                    disabled={updateMutation.isPending}>
+                    Save
+                  </Button>
+                  {field.paidKey && amountSet && !isPaid && (
+                    <Button size="sm" variant="outline"
+                      className="h-8 text-xs border-green-500 text-green-700 hover:bg-green-50"
+                      onClick={() => handleMarkPaid(field)}
+                      disabled={salesMarkPaidMutation.isPending || pmMarkPaidMutation.isPending}>
+                      Mark Paid
+                    </Button>
+                  )}
+                  {isPaid && (
+                    <Badge variant="outline" className="text-xs border-green-500 text-green-600">Paid</Badge>
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm tabular-nums font-semibold">
+                  {lead?.[field.key] != null ? formatCents(lead[field.key] as number) : '—'}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {totalCents > 0 && (
+        <div className="flex items-center justify-end gap-2 text-sm font-semibold border-t pt-3">
+          <span className="text-muted-foreground font-normal">Total Costs:</span>
+          <span className="tabular-nums">{formatCents(totalCents)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ProfitabilityPanel — computed summary (step 4)
+// ---------------------------------------------------------------------------
+
+function ProfitabilityPanel({ pinId }: { pinId: string }) {
+  const { data, isLoading } = useGetPinProfitability(pinId);
+  const p = data?.profitability;
+
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground">Loading profitability…</p>;
+  }
+  if (!p) return null;
+
+  const isProfit = p.netProfitCents >= 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between border-b pb-1">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Profitability Summary
+        </h3>
+        {p.marginPct !== null && p.marginPct !== undefined && (
+          <span
+            className={`text-sm font-bold tabular-nums ${
+              p.marginPct >= 0 ? 'text-green-600' : 'text-destructive'
+            }`}
+          >
+            {p.marginPct >= 0 ? '+' : ''}{p.marginPct.toFixed(1)}% margin
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        {/* Revenue column */}
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Revenue</p>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Payments Received</span>
+            <span className="tabular-nums font-semibold">{formatCents(p.totalPaymentsCents)}</span>
+          </div>
+          {p.invoiceTotalCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">Invoiced</span>
+              <span className="tabular-nums text-xs text-muted-foreground">{formatCents(p.invoiceTotalCents)}</span>
+            </div>
+          )}
+          {p.invoiceTotalCents > p.invoicePaidCents && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">Invoice Outstanding</span>
+              <span className="tabular-nums text-xs text-amber-600">
+                {formatCents(p.invoiceTotalCents - p.invoicePaidCents)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Costs column */}
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Costs</p>
+          {p.totalExpenseCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Vendor Expenses</span>
+              <span className="tabular-nums">{formatCents(p.totalExpenseCents)}</span>
+            </div>
+          )}
+          {p.outstandingExpenseCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">Outstanding</span>
+              <span className="tabular-nums text-xs text-amber-600">{formatCents(p.outstandingExpenseCents)}</span>
+            </div>
+          )}
+          {p.totalCommissionCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Commissions &amp; Fees</span>
+              <span className="tabular-nums">{formatCents(p.totalCommissionCents)}</span>
+            </div>
+          )}
+          {p.leadAcquisitionCostCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">Lead Acquisition</span>
+              <span className="tabular-nums text-xs text-muted-foreground">{formatCents(p.leadAcquisitionCostCents)}</span>
+            </div>
+          )}
+          {p.referralFeeCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">Referral Fee</span>
+              <span className="tabular-nums text-xs text-muted-foreground">{formatCents(p.referralFeeCents)}</span>
+            </div>
+          )}
+          {p.salesCommissionCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">Sales Commission</span>
+              <span className="tabular-nums text-xs text-muted-foreground">{formatCents(p.salesCommissionCents)}</span>
+            </div>
+          )}
+          {p.pmCommissionCents > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-xs pl-2">PM Commission</span>
+              <span className="tabular-nums text-xs text-muted-foreground">{formatCents(p.pmCommissionCents)}</span>
+            </div>
+          )}
+          {p.totalCostCents > 0 && (
+            <div className="flex justify-between border-t pt-1 mt-1">
+              <span className="font-medium">Total Costs</span>
+              <span className="tabular-nums font-semibold">{formatCents(p.totalCostCents)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Net profit banner */}
+      <div
+        className={`flex items-center justify-between rounded-md px-4 py-3 ${
+          isProfit ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+        }`}
+      >
+        <span className={`text-sm font-semibold ${isProfit ? 'text-green-800' : 'text-red-800'}`}>
+          Net Profit
+        </span>
+        <span
+          className={`text-base font-bold tabular-nums ${
+            isProfit ? 'text-green-700' : 'text-red-700'
+          }`}
+        >
+          {p.netProfitCents >= 0 ? '' : '−'}{formatCents(Math.abs(p.netProfitCents))}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function FinancialsTab({
+  form,
+  onField,
+  pinId,
+  isManager,
+}: {
+  form: FormState;
+  onField: (n: string, v: string) => void;
+  pinId: string;
+  isManager: boolean;
+}) {
+  const { toast } = useToast();
+  const { data: paymentsData, isLoading: paymentsLoading } = useGetPayments(pinId);
+  const createPaymentMutation = useCreatePayment();
+  const deletePaymentMutation = useDeletePayment();
+
+  const payments = paymentsData?.payments ?? [];
+  const totalCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [addType, setAddType] = useState<string>('deposit');
+  const [addDollars, setAddDollars] = useState('');
+  const [addDate, setAddDate] = useState('');
+  const [addMethod, setAddMethod] = useState('');
+  const [addNotes, setAddNotes] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  async function handleAddPayment() {
+    const cents = parseDollarToCents(addDollars);
+    if (!cents) { setAddError('Enter a valid amount greater than $0.00'); return; }
+    if (!addDate) { setAddError('Payment date is required'); return; }
+    setAddError(null);
+    try {
+      // Dollar-to-cents conversion happens exactly once here at the edge.
+      // The value transmitted and stored is always integer cents.
+      await createPaymentMutation.mutateAsync({
+        pinId,
+        data: {
+          type: addType as 'deposit',
+          amountCents: cents,
+          paymentDate: new Date(addDate + 'T12:00:00').toISOString(),
+          method: addMethod || null,
+          notes: addNotes || null,
+        },
+      });
+      setShowAdd(false);
+      setAddDollars(''); setAddDate(''); setAddMethod(''); setAddNotes('');
+      toast({ title: 'Payment recorded' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to save payment.', variant: 'destructive' });
+    }
+  }
+
+  async function handleDeletePayment(paymentId: string) {
+    try {
+      await deletePaymentMutation.mutateAsync({ paymentId });
+      toast({ title: 'Payment deleted' });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to delete payment.', variant: 'destructive' });
+    }
+  }
+
   return (
     <div className="space-y-8">
+      {/* Contract — still saved via the profile debounce */}
       <FieldGroup title="Contract">
         <Field label="Contract Amount ($)" name="contractAmount"   value={form.contractAmount}   onChange={onField} placeholder="0.00" />
         <Field label="Deductible ($)"      name="deductibleAmount" value={form.deductibleAmount} onChange={onField} placeholder="0.00" />
+        <Field label="RCV Amount ($)"      name="rcvAmount"        value={form.rcvAmount}        onChange={onField} placeholder="0.00" />
       </FieldGroup>
-      <FieldGroup title="Deposit">
-        <Field label="Deposit Amount ($)"  name="depositAmount"        value={form.depositAmount}        onChange={onField} placeholder="0.00" />
-        <Field label="Deposit Date"        name="depositDate"          value={form.depositDate}          onChange={onField} type="date" />
-        <Field label="Payment Method"      name="depositPaymentMethod" value={form.depositPaymentMethod} onChange={onField} placeholder="Check, ACH, Credit Card…" span2 />
-      </FieldGroup>
-      <FieldGroup title="Insurance Settlement">
-        <Field label="RCV Amount ($)"        name="rcvAmount"          value={form.rcvAmount}          onChange={onField} placeholder="0.00" />
-        <Field label="ACV Amount ($)"        name="acvAmount"          value={form.acvAmount}          onChange={onField} placeholder="0.00" />
-        <Field label="Supplement Amount ($)" name="supplementAmount"   value={form.supplementAmount}   onChange={onField} placeholder="0.00" />
-        <Field label="Final Payment ($)"     name="finalPaymentAmount" value={form.finalPaymentAmount} onChange={onField} placeholder="0.00" />
-      </FieldGroup>
+
+      {/* Payments ledger */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between border-b pb-1">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Payments
+          </h3>
+          {isManager && (
+            <Button size="sm" variant="outline" onClick={() => setShowAdd(v => !v)}>
+              <Plus className="h-3.5 w-3.5 mr-1" />Add Payment
+            </Button>
+          )}
+        </div>
+
+        {/* Add-payment form */}
+        {showAdd && isManager && (
+          <div className="rounded-lg border bg-card p-5 space-y-4">
+            <p className="text-sm font-medium text-muted-foreground">
+              Enter dollars — stored as integer cents (no floats, no strings).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Type</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={addType}
+                  onChange={e => setAddType(e.target.value)}
+                >
+                  {PAYMENT_TYPE_OPTIONS.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Amount</Label>
+                <Input
+                  placeholder="$12,500.00 or 12500"
+                  value={addDollars}
+                  onChange={e => setAddDollars(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Payment Date</Label>
+                <Input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Method (optional)</Label>
+                <Input
+                  placeholder="Check, ACH, Credit Card…"
+                  value={addMethod}
+                  onChange={e => setAddMethod(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs">Notes (optional)</Label>
+                <Input
+                  placeholder="Reference #, memo…"
+                  value={addNotes}
+                  onChange={e => setAddNotes(e.target.value)}
+                />
+              </div>
+            </div>
+            {addError && <p className="text-xs text-destructive">{addError}</p>}
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={() => { setShowAdd(false); setAddError(null); }}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleAddPayment} disabled={createPaymentMutation.isPending}>
+                {createPaymentMutation.isPending && (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                )}
+                Save Payment
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Payments list */}
+        {paymentsLoading ? (
+          <div className="text-sm text-muted-foreground py-4">Loading payments…</div>
+        ) : payments.length === 0 ? (
+          <div className="text-sm text-muted-foreground py-8 text-center border rounded-md">
+            No payments recorded yet.
+          </div>
+        ) : (
+          <div className="rounded-md border overflow-hidden divide-y">
+            {payments.map(p => (
+              <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Badge variant="secondary" className="capitalize shrink-0 text-xs">
+                    {p.type.replace(/_/g, ' ')}
+                  </Badge>
+                  <span className="text-muted-foreground shrink-0 text-xs">
+                    {new Date(p.paymentDate).toLocaleDateString()}
+                  </span>
+                  {p.method && (
+                    <span className="text-muted-foreground text-xs truncate">{p.method}</span>
+                  )}
+                  {p.notes && !p.notes.startsWith('backfill:') && (
+                    <span className="text-muted-foreground text-xs truncate hidden sm:block">{p.notes}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-semibold tabular-nums">{formatCents(p.amountCents)}</span>
+                  {isManager && (
+                    <Button
+                      size="icon" variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeletePayment(p.id)}
+                      disabled={deletePaymentMutation.isPending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Total summary */}
+        <div className="flex items-center justify-end gap-2 text-sm font-semibold border-t pt-3">
+          <span className="text-muted-foreground font-normal">Total Payments:</span>
+          <span className="tabular-nums">{formatCents(totalCents)}</span>
+        </div>
+      </div>
+
+      {/* Invoices panel — step 2 */}
+      <InvoicesPanel pinId={pinId} isManager={isManager} />
+
+      {/* Vendor Expenses — step 3 */}
+      <ExpensesPanel pinId={pinId} isManager={isManager} />
+
+      {/* Costs & Commissions — step 3 */}
+      <CommissionsPanel pinId={pinId} isManager={isManager} />
+
+      {/* Profitability Summary — step 4 */}
+      <ProfitabilityPanel pinId={pinId} />
     </div>
   );
 }
@@ -1213,7 +2286,7 @@ export default function LeadProfile() {
               {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} isManager={isManager} />}
               {activeTab === 'inspection_flow' && inspectionId && <InspectionFlowTab inspectionId={inspectionId} />}
               {activeTab === 'insurance'       && isInsurance && <InsuranceTab  form={form} onField={handleField} />}
-              {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} />}
+              {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} pinId={id!} isManager={isManager} />}
               {activeTab === 'communication'   && <CommunicationTab  form={form} onField={handleField} />}
               {activeTab === 'scope'           && <ScopeTab          form={form} onField={handleField} />}
               {activeTab === 'files'           && lead && (

@@ -1155,7 +1155,13 @@ export const ListPinsResponse = zod.object({
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
 }))
 })
 
@@ -1225,7 +1231,13 @@ export const CreatePinResponse = zod.object({
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
 })
 })
 
@@ -1277,7 +1289,13 @@ export const BulkCreatePinsResponse = zod.object({
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
 }))
 })
 
@@ -1348,7 +1366,13 @@ export const UpdatePinResponse = zod.object({
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
 })
 })
 
@@ -6477,10 +6501,14 @@ export const GetPortalReportHtmlResponse = zod.object({
  * @summary Returns the ordered list of widgets this user is permitted to see
  */
 export const getDashboardManifestResponseGridLayoutItemXMin = 0;
+export const getDashboardManifestResponseGridLayoutItemXMax = 11;
 
 export const getDashboardManifestResponseGridLayoutItemYMin = 0;
 
+export const getDashboardManifestResponseGridLayoutItemWMax = 12;
 
+
+export const getDashboardManifestResponseGridLayoutMax = 50;
 
 
 
@@ -6492,11 +6520,11 @@ export const GetDashboardManifestResponse = zod.object({
 }).describe('Manifest metadata for a single dashboard widget. Contains key, title, and size only — never widget payload data (rows, values, etc.).')).describe('Ordered list of widgets this user is permitted to see.'),
   "gridLayout": zod.array(zod.object({
   "key": zod.string().describe('Widget key — matches WIDGET_CATALOG key.'),
-  "x": zod.number().min(getDashboardManifestResponseGridLayoutItemXMin).describe('Column index (0–11).'),
+  "x": zod.number().min(getDashboardManifestResponseGridLayoutItemXMin).max(getDashboardManifestResponseGridLayoutItemXMax).describe('Column index (0–11).'),
   "y": zod.number().min(getDashboardManifestResponseGridLayoutItemYMin).describe('Row index (0-based).'),
-  "w": zod.number().min(1).describe('Width in grid columns (1–12).'),
+  "w": zod.number().min(1).max(getDashboardManifestResponseGridLayoutItemWMax).describe('Width in grid columns (1–12).'),
   "h": zod.number().min(1).describe('Height in grid rows (minimum 1).')
-}).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).nullish().describe('Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes.')
+}).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).max(getDashboardManifestResponseGridLayoutMax).nullish().describe('Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes.')
 })
 
 
@@ -6523,10 +6551,14 @@ export const patchDashboardLayoutBodyHiddenMax = 50;
 export const patchDashboardLayoutBodyOrderMax = 50;
 
 export const patchDashboardLayoutBodyGridLayoutItemXMin = 0;
+export const patchDashboardLayoutBodyGridLayoutItemXMax = 11;
 
 export const patchDashboardLayoutBodyGridLayoutItemYMin = 0;
 
+export const patchDashboardLayoutBodyGridLayoutItemWMax = 12;
 
+
+export const patchDashboardLayoutBodyGridLayoutMax = 50;
 
 
 
@@ -6535,11 +6567,11 @@ export const PatchDashboardLayoutBody = zod.object({
   "order": zod.array(zod.string()).max(patchDashboardLayoutBodyOrderMax).optional().describe('Desired display order of widget keys (front of list first).'),
   "gridLayout": zod.array(zod.object({
   "key": zod.string().describe('Widget key — matches WIDGET_CATALOG key.'),
-  "x": zod.number().min(patchDashboardLayoutBodyGridLayoutItemXMin).describe('Column index (0–11).'),
+  "x": zod.number().min(patchDashboardLayoutBodyGridLayoutItemXMin).max(patchDashboardLayoutBodyGridLayoutItemXMax).describe('Column index (0–11).'),
   "y": zod.number().min(patchDashboardLayoutBodyGridLayoutItemYMin).describe('Row index (0-based).'),
-  "w": zod.number().min(1).describe('Width in grid columns (1–12).'),
+  "w": zod.number().min(1).max(patchDashboardLayoutBodyGridLayoutItemWMax).describe('Width in grid columns (1–12).'),
   "h": zod.number().min(1).describe('Height in grid rows (minimum 1).')
-}).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).nullish().describe('Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults.')
+}).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).max(patchDashboardLayoutBodyGridLayoutMax).nullish().describe('Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults.')
 }).describe('User\'s widget layout preferences. All fields are optional — omitted fields are preserved from the existing stored layout. Hidden keys subtract from the capability-resolved set; order keys sort the result; gridLayout stores per-widget drag\/resize positions. Unknown or uncapable keys are silently ignored at manifest resolution time.')
 
 export const PatchDashboardLayoutResponse = zod.void()
@@ -6689,5 +6721,679 @@ export const GetCanvassingHeatmapWidgetResponse = zod.object({
   "capped": zod.boolean().describe('True when the result was truncated to the cap.'),
   "windowDays": zod.number().describe('Recency window used.')
 }).describe('Heatmap data envelope for the canvassing_heatmap widget.')
+
+
+/**
+ * Returns all ledger payments for the given pin, scoped to the caller's company. Any authenticated company member may read.
+ * @summary List payments for a lead
+ */
+export const GetPaymentsParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+
+
+
+export const GetPaymentsResponse = zod.object({
+  "payments": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "type": zod.enum(['deposit', 'acv', 'betterment', 'supplement', 'final', 'rcv_holdback', 'deductible', 'other']),
+  "amountCents": zod.number().min(1).describe('Amount in integer cents. Never a float or dollar string.'),
+  "method": zod.string().nullish(),
+  "paymentDate": zod.coerce.date(),
+  "notes": zod.string().nullish(),
+  "customerInvoiceId": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Creates a new payment ledger row for the pin. Manager or above only — field reps must not write financial records. All money is integer cents; never pass floats or dollar strings.
+ * @summary Record a payment on a lead (manager+)
+ */
+export const CreatePaymentParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+
+
+
+export const CreatePaymentBody = zod.object({
+  "type": zod.enum(['deposit', 'acv', 'betterment', 'supplement', 'final', 'rcv_holdback', 'deductible', 'other']),
+  "amountCents": zod.number().min(1).describe('Amount in integer cents. Never a float or dollar string.'),
+  "method": zod.string().nullish(),
+  "paymentDate": zod.coerce.date(),
+  "notes": zod.string().nullish()
+})
+
+
+
+
+export const CreatePaymentResponse = zod.object({
+  "payment": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "type": zod.enum(['deposit', 'acv', 'betterment', 'supplement', 'final', 'rcv_holdback', 'deductible', 'other']),
+  "amountCents": zod.number().min(1).describe('Amount in integer cents. Never a float or dollar string.'),
+  "method": zod.string().nullish(),
+  "paymentDate": zod.coerce.date(),
+  "notes": zod.string().nullish(),
+  "customerInvoiceId": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Updates mutable fields on an existing payment. company_id and pin_id are NEVER accepted in the body — the server re-verifies company scope against the stored row before writing.
+ * @summary Update a payment record (manager+)
+ */
+export const UpdatePaymentParams = zod.object({
+  "paymentId": zod.coerce.string()
+})
+
+
+
+
+export const UpdatePaymentBody = zod.object({
+  "type": zod.enum(['deposit', 'acv', 'betterment', 'supplement', 'final', 'rcv_holdback', 'deductible', 'other']).optional(),
+  "amountCents": zod.number().min(1).optional(),
+  "method": zod.string().nullish(),
+  "paymentDate": zod.coerce.date().optional(),
+  "notes": zod.string().nullish()
+}).describe('All fields optional; only present fields are updated.')
+
+
+
+
+export const UpdatePaymentResponse = zod.object({
+  "payment": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "type": zod.enum(['deposit', 'acv', 'betterment', 'supplement', 'final', 'rcv_holdback', 'deductible', 'other']),
+  "amountCents": zod.number().min(1).describe('Amount in integer cents. Never a float or dollar string.'),
+  "method": zod.string().nullish(),
+  "paymentDate": zod.coerce.date(),
+  "notes": zod.string().nullish(),
+  "customerInvoiceId": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete a payment record (manager+)
+ */
+export const DeletePaymentParams = zod.object({
+  "paymentId": zod.coerce.string()
+})
+
+export const DeletePaymentResponse = zod.void()
+
+
+/**
+ * @summary List all invoices for a lead
+ */
+export const ListCustomerInvoicesParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const ListCustomerInvoicesHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ListCustomerInvoicesResponse = zod.object({
+  "invoices": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Invoice number generated server-side with per-company advisory lock (INV-YYYYMM-NNNNN). Do not supply invoiceNumber in the body.
+ * @summary Create a customer invoice (manager+)
+ */
+export const CreateCustomerInvoiceParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const CreateCustomerInvoiceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+export const CreateCustomerInvoiceBody = zod.object({
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number().min(1),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish()
+})
+
+export const CreateCustomerInvoiceResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Get a single customer invoice
+ */
+export const GetCustomerInvoiceParams = zod.object({
+  "invoiceId": zod.coerce.string()
+})
+
+export const GetCustomerInvoiceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetCustomerInvoiceResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Updates mutable fields. company_id and pin_id are never accepted. Status transitions use the dedicated action endpoints.
+ * @summary Update a customer invoice (manager+)
+ */
+export const UpdateCustomerInvoiceParams = zod.object({
+  "invoiceId": zod.coerce.string()
+})
+
+export const UpdateCustomerInvoiceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+export const UpdateCustomerInvoiceBody = zod.object({
+  "customerName": zod.string().optional(),
+  "customerAddress": zod.string().optional(),
+  "amountCents": zod.number().min(1).optional(),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish()
+}).describe('All fields optional; only present fields are updated.')
+
+export const UpdateCustomerInvoiceResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete a customer invoice (manager+; only open or void)
+ */
+export const DeleteCustomerInvoiceParams = zod.object({
+  "invoiceId": zod.coerce.string()
+})
+
+export const DeleteCustomerInvoiceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const DeleteCustomerInvoiceResponse = zod.void()
+
+
+/**
+ * @summary Mark an invoice as sent (manager+)
+ */
+export const SendCustomerInvoiceParams = zod.object({
+  "invoiceId": zod.coerce.string()
+})
+
+export const SendCustomerInvoiceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const SendCustomerInvoiceResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Mark an invoice paid and create a matching ledger row (manager+; idempotent)
+ */
+export const MarkCustomerInvoicePaidParams = zod.object({
+  "invoiceId": zod.coerce.string()
+})
+
+export const MarkCustomerInvoicePaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkCustomerInvoicePaidBody = zod.object({
+  "paymentMethod": zod.string().nullish(),
+  "notes": zod.string().nullish()
+}).describe('Optional context when marking an invoice paid.')
+
+export const MarkCustomerInvoicePaidResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * If the invoice was paid, its linked payments row has customer_invoice_id set to NULL — the payment stays in the ledger (money received is never deleted) but is no longer tied to this invoice.
+ * @summary Void an invoice from any status (manager+)
+ */
+export const VoidCustomerInvoiceParams = zod.object({
+  "invoiceId": zod.coerce.string()
+})
+
+export const VoidCustomerInvoiceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const VoidCustomerInvoiceResponse = zod.object({
+  "invoice": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerAddress": zod.string(),
+  "invoiceType": zod.enum(['initial_deposit', 'acv_payment', 'supplement', 'final_payment', 'service', 'other']),
+  "amountCents": zod.number(),
+  "status": zod.enum(['open', 'sent', 'paid', 'void']),
+  "notes": zod.string().nullish(),
+  "pdfUrl": zod.string().nullish(),
+  "sentDate": zod.coerce.date().nullish(),
+  "paidDate": zod.coerce.date().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary List all vendor expenses for a lead
+ */
+export const ListVendorExpensesParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const ListVendorExpensesHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ListVendorExpensesResponse = zod.object({
+  "expenses": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "vendorName": zod.string(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "amountCents": zod.number(),
+  "category": zod.enum(['materials', 'labor', 'subcontractor', 'equipment', 'other']),
+  "description": zod.string().nullish(),
+  "documentUrl": zod.string().nullish(),
+  "isPaid": zod.boolean(),
+  "paidDate": zod.coerce.date().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a vendor expense (manager+)
+ */
+export const CreateVendorExpenseParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const CreateVendorExpenseHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+export const CreateVendorExpenseBody = zod.object({
+  "vendorName": zod.string(),
+  "amountCents": zod.number().min(1),
+  "category": zod.enum(['materials', 'labor', 'subcontractor', 'equipment', 'other']),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "description": zod.string().nullish(),
+  "documentUrl": zod.string().nullish(),
+  "dueDate": zod.coerce.date().nullish()
+})
+
+export const CreateVendorExpenseResponse = zod.object({
+  "expense": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "vendorName": zod.string(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "amountCents": zod.number(),
+  "category": zod.enum(['materials', 'labor', 'subcontractor', 'equipment', 'other']),
+  "description": zod.string().nullish(),
+  "documentUrl": zod.string().nullish(),
+  "isPaid": zod.boolean(),
+  "paidDate": zod.coerce.date().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update a vendor expense (manager+)
+ */
+export const UpdateVendorExpenseParams = zod.object({
+  "expenseId": zod.coerce.string()
+})
+
+export const UpdateVendorExpenseHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+export const UpdateVendorExpenseBody = zod.object({
+  "vendorName": zod.string().optional(),
+  "amountCents": zod.number().min(1).optional(),
+  "category": zod.enum(['materials', 'labor', 'subcontractor', 'equipment', 'other']).optional(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "description": zod.string().nullish(),
+  "documentUrl": zod.string().nullish(),
+  "dueDate": zod.coerce.date().nullish()
+}).describe('All fields optional; only present fields are updated.')
+
+export const UpdateVendorExpenseResponse = zod.object({
+  "expense": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "vendorName": zod.string(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "amountCents": zod.number(),
+  "category": zod.enum(['materials', 'labor', 'subcontractor', 'equipment', 'other']),
+  "description": zod.string().nullish(),
+  "documentUrl": zod.string().nullish(),
+  "isPaid": zod.boolean(),
+  "paidDate": zod.coerce.date().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete a vendor expense (manager+)
+ */
+export const DeleteVendorExpenseParams = zod.object({
+  "expenseId": zod.coerce.string()
+})
+
+export const DeleteVendorExpenseHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const DeleteVendorExpenseResponse = zod.void()
+
+
+/**
+ * @summary Mark an expense as paid — paid_date set server-side (manager+)
+ */
+export const MarkVendorExpensePaidParams = zod.object({
+  "expenseId": zod.coerce.string()
+})
+
+export const MarkVendorExpensePaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkVendorExpensePaidResponse = zod.object({
+  "expense": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "vendorName": zod.string(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.coerce.date().nullish(),
+  "amountCents": zod.number(),
+  "category": zod.enum(['materials', 'labor', 'subcontractor', 'equipment', 'other']),
+  "description": zod.string().nullish(),
+  "documentUrl": zod.string().nullish(),
+  "isPaid": zod.boolean(),
+  "paidDate": zod.coerce.date().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Updates the per-lead single-value cost columns. Paid dates are NOT accepted here — use the dedicated mark-paid endpoints so that the server always controls when a commission is recorded as paid. These fields are NOT writable via the generic PATCH /pins/:pinId.
+ * @summary Update commission and acquisition cost amounts for a lead (manager+)
+ */
+export const UpdateCommissionsParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const UpdateCommissionsHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const UpdateCommissionsBody = zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "pmCommissionCents": zod.number().nullish()
+}).describe('Update commission and acquisition cost amounts. All fields optional. Paid dates are NOT accepted here — use the mark-paid endpoints.')
+
+export const UpdateCommissionsResponse = zod.object({
+  "commissions": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Commission and acquisition cost fields on a pin (all cents).')
+})
+
+
+/**
+ * @summary Mark sales commission as paid — date set server-side (manager+)
+ */
+export const MarkSalesCommissionPaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkSalesCommissionPaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkSalesCommissionPaidResponse = zod.object({
+  "commissions": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Commission and acquisition cost fields on a pin (all cents).')
+})
+
+
+/**
+ * @summary Mark PM commission as paid — date set server-side (manager+)
+ */
+export const MarkPmCommissionPaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkPmCommissionPaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkPmCommissionPaidResponse = zod.object({
+  "commissions": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Commission and acquisition cost fields on a pin (all cents).')
+})
+
+
+/**
+ * @summary Get computed profitability summary for a lead (all money in cents)
+ */
+export const GetPinProfitabilityParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const GetPinProfitabilityHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetPinProfitabilityResponse = zod.object({
+  "profitability": zod.object({
+  "pinId": zod.string(),
+  "totalPaymentsCents": zod.number().describe('Sum of all payment ledger entries.'),
+  "invoiceTotalCents": zod.number().describe('Sum of non-void customer invoice amounts.'),
+  "invoicePaidCents": zod.number().describe('Sum of paid customer invoice amounts.'),
+  "totalExpenseCents": zod.number().describe('Sum of all vendor expense amounts.'),
+  "paidExpenseCents": zod.number().describe('Sum of paid vendor expense amounts.'),
+  "outstandingExpenseCents": zod.number().describe('Sum of unpaid vendor expense amounts.'),
+  "leadAcquisitionCostCents": zod.number(),
+  "referralFeeCents": zod.number(),
+  "salesCommissionCents": zod.number(),
+  "pmCommissionCents": zod.number(),
+  "totalCommissionCents": zod.number().describe('Sum of all four commission\/acquisition cost fields.'),
+  "totalCostCents": zod.number().describe('totalExpenseCents + totalCommissionCents.'),
+  "netProfitCents": zod.number().describe('totalPaymentsCents - totalCostCents.'),
+  "marginPct": zod.number().nullish().describe('netProfitCents \/ totalPaymentsCents as a percentage (0–100), rounded to 2 decimal places. Null when totalPaymentsCents = 0.')
+})
+})
 
 
