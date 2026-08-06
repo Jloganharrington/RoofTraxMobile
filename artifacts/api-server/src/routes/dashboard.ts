@@ -1,10 +1,11 @@
 import { GetDashboardManifestResponse, GetDashboardLayoutResponse, PatchDashboardLayoutBody } from '@workspace/api-zod';
-import { db, userProfilesTable } from '@workspace/db';
+import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable } from '@workspace/db';
 import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
 import { selectWidgetsFor, WIDGET_CATALOG } from '@workspace/authz';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { requireWidgetCapability } from '../lib/dashboardGuard';
+import { SERVER_STAGES_ARRAY } from '../lib/pipelineStages';
 
 const router: IRouter = Router();
 
@@ -184,13 +185,314 @@ router.delete('/dashboard/layout', async (req: Request, res: Response) => {
 // on every request, independent of the manifest.
 
 // GET /dashboard/widgets/action_required
-// Payload is a placeholder — this endpoint proves the guard pattern (Task 4).
-// Real query implementation follows in Task 8.
+// Real ranked query across four data sources: overdue loop stages, stalled
+// non-loop stages, blocked claims, and pins needing stage review.
+// Company-scoped, capped at 25 items, sorted by rank descending.
 router.get(
   '/dashboard/widgets/action_required',
   requireWidgetCapability('action_required'),
-  (_req: Request, res: Response) => {
-    res.json({ items: [] });
+  async (req: Request, res: Response) => {
+    // requireWidgetCapability already verified authentication; user is present.
+    const companyId = req.user!.companyId;
+    const now = Date.now();
+
+    // Derive loop and terminal stage key sets from the server-side pipeline
+    // vocabulary. Using a Set deduplicates keys shared across pipelines
+    // (e.g. contract_pending appears in both retail and insurance).
+    const loopStageKeys = [
+      ...new Set(SERVER_STAGES_ARRAY.filter((s) => s.isLoopStage).map((s) => s.key)),
+    ];
+    const terminalStageKeys = [
+      ...new Set(SERVER_STAGES_ARRAY.filter((s) => s.isTerminal).map((s) => s.key)),
+    ];
+
+    // Per-stage base weights for the ranking formula.
+    // Higher weight = more urgency; log scale prevents age from drowning out priority.
+    const highRevLoopStages = new Set(['contract_pending', 'supplement_dispute']);
+    const insLoopStages = new Set([
+      'adjuster_meeting',
+      'adjuster_review',
+      'appraisal',
+      'public_adjuster',
+      'contract_sent_ins',
+    ]);
+
+    function loopBaseWeight(stage: string): number {
+      if (highRevLoopStages.has(stage)) return 12;
+      if (insLoopStages.has(stage)) return 9;
+      return 7; // follow_up, phase1_scheduled, phase2_scheduled, appt_scheduled, final_invoiced, etc.
+    }
+
+    function computeRank(baseWeight: number, ageMs: number): number {
+      const ageInDays = ageMs / (1000 * 60 * 60 * 24);
+      return baseWeight * Math.log2(1 + ageInDays);
+    }
+
+    function makeStuckForLabel(ageMs: number): string {
+      const days = ageMs / (1000 * 60 * 60 * 24);
+      if (days >= 2) return `${Math.floor(days)} days`;
+      if (days >= 1) return '1 day';
+      return '< 1 day';
+    }
+
+    function ownerDisplayName(firstName: string | null, lastName: string | null): string {
+      const parts = [firstName, lastName].filter(Boolean);
+      return parts.length > 0 ? parts.join(' ') : 'Unknown';
+    }
+
+    type ActionItem = {
+      id: string;
+      category: 'overdue_loop' | 'stalled_stage' | 'blocked_claim' | 'needs_review';
+      label: string;
+      ownerName: string;
+      ownerId: string;
+      stuckForLabel: string;
+      rank: number;
+      pinId: string;
+      inspectionId: string | null;
+      detail: string | null;
+      pipelineStage: string | null;
+    };
+
+    const items: ActionItem[] = [];
+
+    // ── a. Overdue loop stages ──────────────────────────────────────────────
+    // Pins currently in a loop stage whose next-action date has passed.
+    if (loopStageKeys.length > 0) {
+      const overdueRows = await db
+        .select({
+          id: pinsTable.id,
+          userId: pinsTable.userId,
+          pipelineStage: pinsTable.pipelineStage,
+          loopNextActionAt: pinsTable.loopNextActionAt,
+          customerName: pinsTable.customerName,
+          address: pinsTable.address,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+        })
+        .from(pinsTable)
+        .leftJoin(usersTable, eq(pinsTable.userId, usersTable.id))
+        .where(
+          and(
+            eq(pinsTable.companyId, companyId),
+            eq(pinsTable.status, 'active'),
+            inArray(pinsTable.pipelineStage, loopStageKeys),
+            isNotNull(pinsTable.loopNextActionAt),
+            lt(pinsTable.loopNextActionAt, sql`NOW()`),
+          ),
+        );
+
+      for (const row of overdueRows) {
+        const ageMs = row.loopNextActionAt ? now - row.loopNextActionAt.getTime() : 0;
+        const stage = row.pipelineStage ?? '';
+        const weight = loopBaseWeight(stage);
+        const pinLabel = row.customerName ?? row.address ?? row.id;
+        items.push({
+          id: `overdue_loop:${row.id}`,
+          category: 'overdue_loop',
+          label: `${pinLabel} — loop overdue`,
+          ownerName: ownerDisplayName(row.firstName, row.lastName),
+          ownerId: row.userId,
+          stuckForLabel: makeStuckForLabel(ageMs),
+          rank: computeRank(weight, ageMs),
+          pinId: row.id,
+          inspectionId: null,
+          detail: stage,
+          pipelineStage: stage,
+        });
+      }
+    }
+
+    // ── b. Stalled non-loop stages ──────────────────────────────────────────
+    // Pins in a non-loop, non-terminal stage that haven't moved in 14+ days.
+    // 14-day threshold: one week is normal stage dwell; two weeks signals a
+    // genuine block worth surfacing.
+    {
+      const allExcluded = [
+        ...new Set([...loopStageKeys, ...terminalStageKeys]),
+      ];
+      const stalledRows = await db
+        .select({
+          id: pinsTable.id,
+          userId: pinsTable.userId,
+          pipelineStage: pinsTable.pipelineStage,
+          stageEnteredAt: pinsTable.stageEnteredAt,
+          customerName: pinsTable.customerName,
+          address: pinsTable.address,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+        })
+        .from(pinsTable)
+        .leftJoin(usersTable, eq(pinsTable.userId, usersTable.id))
+        .where(
+          and(
+            eq(pinsTable.companyId, companyId),
+            eq(pinsTable.status, 'active'),
+            isNotNull(pinsTable.pipelineStage),
+            isNotNull(pinsTable.stageEnteredAt),
+            allExcluded.length > 0
+              ? notInArray(pinsTable.pipelineStage, allExcluded)
+              : undefined,
+            lt(pinsTable.stageEnteredAt, sql`NOW() - INTERVAL '14 days'`),
+          ),
+        );
+
+      for (const row of stalledRows) {
+        const ageMs = row.stageEnteredAt ? now - row.stageEnteredAt.getTime() : 0;
+        const pinLabel = row.customerName ?? row.address ?? row.id;
+        items.push({
+          id: `stalled_stage:${row.id}`,
+          category: 'stalled_stage',
+          label: `${pinLabel} — stage stalled`,
+          ownerName: ownerDisplayName(row.firstName, row.lastName),
+          ownerId: row.userId,
+          stuckForLabel: makeStuckForLabel(ageMs),
+          rank: computeRank(4, ageMs),
+          pinId: row.id,
+          inspectionId: null,
+          detail: row.pipelineStage ?? null,
+          pipelineStage: row.pipelineStage ?? null,
+        });
+      }
+    }
+
+    // ── c. Blocked claims ───────────────────────────────────────────────────
+    // Three sub-cases:
+    //   1. Capturing + stalled: field work hasn't progressed in 7+ days.
+    //   2. Validating: claim review is open (human action required).
+    //   3. FIPSA unsigned: preliminary phase, past scheduled, no signed agreement.
+    // Raw SQL needed for the NOT EXISTS correlated sub-select on signed_agreements.
+    {
+      const blockedResult = await db.execute(sql`
+        SELECT
+          i.id              AS inspection_id,
+          i.status          AS inspection_status,
+          i.phase           AS inspection_phase,
+          p.id              AS pin_id,
+          p.user_id,
+          p.pipeline_stage,
+          p.stage_entered_at,
+          p.customer_name,
+          p.address,
+          u.first_name,
+          u.last_name
+        FROM inspections i
+        JOIN pins p ON i.pin_id = p.id
+        LEFT JOIN users u ON p.user_id = u.id
+        WHERE i.company_id = ${companyId}
+          AND p.status = 'active'
+          AND (
+            (i.status = 'capturing' AND p.stage_entered_at < NOW() - INTERVAL '7 days')
+            OR (i.status = 'validating')
+            OR (
+              i.phase = 'preliminary'
+              AND i.status NOT IN ('scheduled')
+              AND NOT EXISTS (
+                SELECT 1 FROM signed_agreements sa
+                WHERE sa.inspection_id = i.id AND sa.voided_at IS NULL
+              )
+            )
+          )
+      `);
+
+      for (const row of blockedResult.rows as Array<Record<string, unknown>>) {
+        const stageEnteredAt = row.stage_entered_at
+          ? new Date(row.stage_entered_at as string)
+          : null;
+        const ageMs = stageEnteredAt ? now - stageEnteredAt.getTime() : 0;
+        const pinLabel =
+          (row.customer_name as string | null) ??
+          (row.address as string | null) ??
+          (row.pin_id as string);
+        const status = row.inspection_status as string;
+        const phase = row.inspection_phase as string;
+
+        let baseWeight: number;
+        let label: string;
+
+        if (phase === 'preliminary' && status !== 'scheduled') {
+          // Sunk forensic prep at risk — FIPSA unsigned is the hardest blocker.
+          baseWeight = 18;
+          label = `${pinLabel} — FIPSA unsigned`;
+        } else if (status === 'validating') {
+          // Work done; awaiting human resolution.
+          baseWeight = 15;
+          label = `${pinLabel} — claim validating`;
+        } else {
+          // Capturing stalled: field work hasn't moved.
+          baseWeight = 8;
+          label = `${pinLabel} — field work stalled`;
+        }
+
+        items.push({
+          id: `blocked_claim:${row.inspection_id as string}`,
+          category: 'blocked_claim',
+          label,
+          ownerName: ownerDisplayName(
+            row.first_name as string | null,
+            row.last_name as string | null,
+          ),
+          ownerId: row.user_id as string,
+          stuckForLabel: makeStuckForLabel(ageMs),
+          rank: computeRank(baseWeight, ageMs),
+          pinId: row.pin_id as string,
+          inspectionId: row.inspection_id as string,
+          detail: status,
+          pipelineStage: (row.pipeline_stage as string | null) ?? null,
+        });
+      }
+    }
+
+    // ── d. Needs stage review ───────────────────────────────────────────────
+    // Pins where a null pipeline stage was auto-mapped during migration and
+    // a manager needs to confirm the correct placement.
+    {
+      const reviewRows = await db
+        .select({
+          id: pinsTable.id,
+          userId: pinsTable.userId,
+          pipelineStage: pinsTable.pipelineStage,
+          stageEnteredAt: pinsTable.stageEnteredAt,
+          customerName: pinsTable.customerName,
+          address: pinsTable.address,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+        })
+        .from(pinsTable)
+        .leftJoin(usersTable, eq(pinsTable.userId, usersTable.id))
+        .where(
+          and(
+            eq(pinsTable.companyId, companyId),
+            eq(pinsTable.status, 'active'),
+            eq(pinsTable.needsStageReview, true),
+          ),
+        );
+
+      for (const row of reviewRows) {
+        const ageMs = row.stageEnteredAt ? now - row.stageEnteredAt.getTime() : 0;
+        const pinLabel = row.customerName ?? row.address ?? row.id;
+        items.push({
+          id: `needs_review:${row.id}`,
+          category: 'needs_review',
+          label: `${pinLabel} — stage needs review`,
+          ownerName: ownerDisplayName(row.firstName, row.lastName),
+          ownerId: row.userId,
+          stuckForLabel: makeStuckForLabel(ageMs),
+          rank: computeRank(2, ageMs),
+          pinId: row.id,
+          inspectionId: null,
+          detail: row.pipelineStage ?? null,
+          pipelineStage: row.pipelineStage ?? null,
+        });
+      }
+    }
+
+    // ── Sort, cap at 25, respond ────────────────────────────────────────────
+    items.sort((a, b) => b.rank - a.rank);
+    const total = items.length;
+    const capped = total > 25;
+
+    res.json({ items: items.slice(0, 25), total, capped });
   },
 );
 

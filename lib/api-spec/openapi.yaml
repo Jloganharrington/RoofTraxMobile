@@ -4144,6 +4144,37 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /dashboard/widgets/action_required:
+    get:
+      tags: [Dashboard]
+      operationId: getActionRequiredWidget
+      summary: Returns ranked items that require a manager's attention
+      description: >-
+        Company-scoped ranked list of leads and inspections that are stuck:
+        overdue loop stages, stalled non-loop stages, blocked claims, and pins
+        needing stage review. Capped at 25 items; the total count before capping
+        is always returned. Requires the action_required widget capability
+        (manager role or higher). A field_rep receives 403.
+      responses:
+        "200":
+          description: Ranked action-required items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionRequiredEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the action_required widget capability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -8044,6 +8075,74 @@ components:
           description: Desired display order of widget keys (front of list first).
           items:
             type: string
+
+    ProfileTheme:
+      type: string
+      enum: [light, dark, system]
+      description: UI colour scheme preference stored on the user's profile.
+
+    ActionRequiredItem:
+      type: object
+      required: [id, category, label, ownerName, ownerId, stuckForLabel, rank, pinId]
+      description: >-
+        A single item surfaced by the action-required widget. Represents a lead
+        or inspection that is stuck and needs a manager's attention.
+      properties:
+        id:
+          type: string
+          description: Unique identifier for this action item (derived from pin/inspection id + category).
+        category:
+          type: string
+          enum: [overdue_loop, stalled_stage, blocked_claim, needs_review]
+          description: Classification of why this item requires attention.
+        label:
+          type: string
+          description: Human-readable description of what is stuck.
+        ownerName:
+          type: string
+          description: Display name of the rep who owns this lead.
+        ownerId:
+          type: string
+          description: User id of the rep who owns this lead.
+        stuckForLabel:
+          type: string
+          description: >-
+            Server-computed human-readable duration string (e.g. "14 days", "1 day", "< 1 day").
+            Clients must not recompute this from timestamps.
+        rank:
+          type: number
+          description: Numeric sort score (higher = more urgent). Pre-sorted descending in the response.
+        pinId:
+          type: string
+          description: Id of the associated pin. Use for deep-link navigation to /leads/:pinId.
+        inspectionId:
+          type: [string, "null"]
+          description: Id of the associated inspection. Present for blocked_claim items.
+        detail:
+          type: [string, "null"]
+          description: Optional secondary context line (e.g. pipeline stage label, claim status).
+        pipelineStage:
+          type: [string, "null"]
+          description: >-
+            Current pipeline stage key of the pin. Present for overdue_loop and stalled_stage items.
+            Clients may use this as toStage when calling advance-stage inline.
+
+    ActionRequiredEnvelope:
+      type: object
+      required: [items, total, capped]
+      description: Response envelope for the action-required widget endpoint.
+      properties:
+        items:
+          type: array
+          description: Ranked action-required items (at most 25), sorted by rank descending.
+          items:
+            $ref: "#/components/schemas/ActionRequiredItem"
+        total:
+          type: integer
+          description: Total count of matching items before the 25-item cap.
+        capped:
+          type: boolean
+          description: True when total exceeds 25 and the response was truncated.
 
     WeatherCandidate:
       type: object

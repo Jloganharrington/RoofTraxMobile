@@ -7,7 +7,7 @@
  */
 import type { Department } from './department';
 import type { InspectorCertification } from './inspectorCertification';
-import type { ProfileTheme } from './profileTheme';
+import type { ProfileThemeProperty } from './profileThemeProperty';
 import type { Role } from './role';
 import type { WorkflowAssignment } from './workflowAssignment';
 
@@ -57,5 +57,5 @@ export interface Profile {
   profileImageUrl?: string | null;
   /** @nullable */
   phone?: string | null;
-  theme?: ProfileTheme;
+  theme?: ProfileThemeProperty;
 }

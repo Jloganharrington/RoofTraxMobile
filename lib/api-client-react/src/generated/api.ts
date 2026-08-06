@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActionRequiredEnvelope,
   ActivityStatsEnvelope,
   AddressSearchResults,
   AdminStatsEnvelope,
@@ -8105,4 +8106,82 @@ export const useDeleteDashboardLayout = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getDeleteDashboardLayoutMutationOptions(options));
     }
+
+export const getGetActionRequiredWidgetUrl = () => {
+
+
+
+
+  return `/api/dashboard/widgets/action_required`
+}
+
+/**
+ * Company-scoped ranked list of leads and inspections that are stuck: overdue loop stages, stalled non-loop stages, blocked claims, and pins needing stage review. Capped at 25 items; the total count before capping is always returned. Requires the action_required widget capability (manager role or higher). A field_rep receives 403.
+ * @summary Returns ranked items that require a manager's attention
+ */
+export const getActionRequiredWidget = async ( options?: RequestInit): Promise<ActionRequiredEnvelope> => {
+
+  return customFetch<ActionRequiredEnvelope>(getGetActionRequiredWidgetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetActionRequiredWidgetQueryKey = () => {
+    return [
+    `/api/dashboard/widgets/action_required`
+    ] as const;
+    }
+
+
+export const getGetActionRequiredWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getActionRequiredWidget>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActionRequiredWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetActionRequiredWidgetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getActionRequiredWidget>>> = ({ signal }) => getActionRequiredWidget({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getActionRequiredWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetActionRequiredWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getActionRequiredWidget>>>
+export type GetActionRequiredWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Returns ranked items that require a manager's attention
+ */
+
+export function useGetActionRequiredWidget<TData = Awaited<ReturnType<typeof getActionRequiredWidget>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActionRequiredWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetActionRequiredWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

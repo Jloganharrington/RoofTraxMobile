@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './actionRequiredEnvelope';
+export * from './actionRequiredItem';
+export * from './actionRequiredItemCategory';
 export * from './activityMetrics';
 export * from './activityScope';
 export * from './activityStats';
@@ -220,6 +223,7 @@ export * from './productIdMethod';
 export * from './profile';
 export * from './profileEnvelope';
 export * from './profileTheme';
+export * from './profileThemeProperty';
 export * from './propertyProfile';
 export * from './propertyProfileAttachedOrDetached';
 export * from './propertyProfileDeckType';

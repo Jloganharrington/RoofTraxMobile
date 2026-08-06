@@ -6,13 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-/**
- * UI colour scheme preference stored on the user's profile.
- */
-export type ProfileTheme = typeof ProfileTheme[keyof typeof ProfileTheme];
+export type ProfileThemeProperty = typeof ProfileThemeProperty[keyof typeof ProfileThemeProperty];
 
 
-export const ProfileTheme = {
+export const ProfileThemeProperty = {
   light: 'light',
   dark: 'dark',
   system: 'system',

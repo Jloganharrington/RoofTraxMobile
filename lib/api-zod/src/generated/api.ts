@@ -887,7 +887,7 @@ export const UpdateProfileMeBody = zod.object({
   "lastName": zod.string().nullish(),
   "phone": zod.string().nullish(),
   "profileImageUrl": zod.string().nullish(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
+  "theme": zod.enum(['light', 'dark', 'system']).optional().describe('UI colour scheme preference stored on the user\'s profile.')
 })
 
 
@@ -6522,5 +6522,28 @@ export const PatchDashboardLayoutResponse = zod.void()
  * @summary Restore the authenticated user's widget layout to defaults
  */
 export const DeleteDashboardLayoutResponse = zod.void()
+
+
+/**
+ * Company-scoped ranked list of leads and inspections that are stuck: overdue loop stages, stalled non-loop stages, blocked claims, and pins needing stage review. Capped at 25 items; the total count before capping is always returned. Requires the action_required widget capability (manager role or higher). A field_rep receives 403.
+ * @summary Returns ranked items that require a manager's attention
+ */
+export const GetActionRequiredWidgetResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().describe('Unique identifier for this action item (derived from pin\/inspection id + category).'),
+  "category": zod.enum(['overdue_loop', 'stalled_stage', 'blocked_claim', 'needs_review']).describe('Classification of why this item requires attention.'),
+  "label": zod.string().describe('Human-readable description of what is stuck.'),
+  "ownerName": zod.string().describe('Display name of the rep who owns this lead.'),
+  "ownerId": zod.string().describe('User id of the rep who owns this lead.'),
+  "stuckForLabel": zod.string().describe('Server-computed human-readable duration string (e.g. \"14 days\", \"1 day\", \"< 1 day\"). Clients must not recompute this from timestamps.'),
+  "rank": zod.number().describe('Numeric sort score (higher = more urgent). Pre-sorted descending in the response.'),
+  "pinId": zod.string().describe('Id of the associated pin. Use for deep-link navigation to \/leads\/:pinId.'),
+  "inspectionId": zod.string().nullish().describe('Id of the associated inspection. Present for blocked_claim items.'),
+  "detail": zod.string().nullish().describe('Optional secondary context line (e.g. pipeline stage label, claim status).'),
+  "pipelineStage": zod.string().nullish().describe('Current pipeline stage key of the pin. Present for overdue_loop and stalled_stage items. Clients may use this as toStage when calling advance-stage inline.')
+}).describe('A single item surfaced by the action-required widget. Represents a lead or inspection that is stuck and needs a manager\'s attention.')).describe('Ranked action-required items (at most 25), sorted by rank descending.'),
+  "total": zod.number().describe('Total count of matching items before the 25-item cap.'),
+  "capped": zod.boolean().describe('True when total exceeds 25 and the response was truncated.')
+}).describe('Response envelope for the action-required widget endpoint.')
 
 

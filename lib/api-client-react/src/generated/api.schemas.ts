@@ -452,10 +452,10 @@ export const ContactOutcome = {
   call_to_schedule: 'call_to_schedule',
 } as const;
 
-export type ProfileTheme = typeof ProfileTheme[keyof typeof ProfileTheme];
+export type ProfileThemeProperty = typeof ProfileThemeProperty[keyof typeof ProfileThemeProperty];
 
 
-export const ProfileTheme = {
+export const ProfileThemeProperty = {
   light: 'light',
   dark: 'dark',
   system: 'system',
@@ -518,8 +518,20 @@ export interface Profile {
   profileImageUrl?: string | null;
   /** @nullable */
   phone?: string | null;
-  theme?: ProfileTheme;
+  theme?: ProfileThemeProperty;
 }
+
+/**
+ * UI colour scheme preference stored on the user's profile.
+ */
+export type ProfileTheme = typeof ProfileTheme[keyof typeof ProfileTheme];
+
+
+export const ProfileTheme = {
+  light: 'light',
+  dark: 'dark',
+  system: 'system',
+} as const;
 
 export interface UpdateProfileMeInput {
   /** @nullable */
@@ -3035,6 +3047,68 @@ export interface DashboardLayoutInput {
      * @maxItems 50
      */
   order: string[];
+}
+
+/**
+ * Classification of why this item requires attention.
+ */
+export type ActionRequiredItemCategory = typeof ActionRequiredItemCategory[keyof typeof ActionRequiredItemCategory];
+
+
+export const ActionRequiredItemCategory = {
+  overdue_loop: 'overdue_loop',
+  stalled_stage: 'stalled_stage',
+  blocked_claim: 'blocked_claim',
+  needs_review: 'needs_review',
+} as const;
+
+/**
+ * A single item surfaced by the action-required widget. Represents a lead or inspection that is stuck and needs a manager's attention.
+ */
+export interface ActionRequiredItem {
+  /** Unique identifier for this action item (derived from pin/inspection id + category). */
+  id: string;
+  /** Classification of why this item requires attention. */
+  category: ActionRequiredItemCategory;
+  /** Human-readable description of what is stuck. */
+  label: string;
+  /** Display name of the rep who owns this lead. */
+  ownerName: string;
+  /** User id of the rep who owns this lead. */
+  ownerId: string;
+  /** Server-computed human-readable duration string (e.g. "14 days", "1 day", "< 1 day"). Clients must not recompute this from timestamps. */
+  stuckForLabel: string;
+  /** Numeric sort score (higher = more urgent). Pre-sorted descending in the response. */
+  rank: number;
+  /** Id of the associated pin. Use for deep-link navigation to /leads/:pinId. */
+  pinId: string;
+  /**
+     * Id of the associated inspection. Present for blocked_claim items.
+     * @nullable
+     */
+  inspectionId?: string | null;
+  /**
+     * Optional secondary context line (e.g. pipeline stage label, claim status).
+     * @nullable
+     */
+  detail?: string | null;
+  /**
+     * Current pipeline stage key of the pin. Present for overdue_loop and stalled_stage items. Clients may use this as toStage when calling advance-stage inline.
+     * @nullable
+     */
+  pipelineStage?: string | null;
+}
+
+/**
+ * Response envelope for the action-required widget endpoint.
+ */
+export interface ActionRequiredEnvelope {
+  /** Ranked action-required items (at most 25), sorted by rank descending. */
+  items: ActionRequiredItem[];
+  /** Total count of matching items before the 25-item cap. */
+  total: number;
+  /** True when total exceeds 25 and the response was truncated. */
+  capped: boolean;
 }
 
 export type WeatherCandidateType = typeof WeatherCandidateType[keyof typeof WeatherCandidateType];
