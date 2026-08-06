@@ -463,6 +463,14 @@ export interface InspectorCertification {
   expiry?: string | null;
 }
 
+export type ProfileTheme = typeof ProfileTheme[keyof typeof ProfileTheme];
+
+export const ProfileTheme = {
+  light: 'light',
+  dark: 'dark',
+  system: 'system',
+} as const;
+
 export interface Profile {
   userId: string;
   role: Role;
@@ -499,6 +507,28 @@ export interface Profile {
   contractorAddress?: string | null;
   /** @nullable */
   fipsaFeeCents?: number | null;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  profileImageUrl?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  theme?: ProfileTheme;
+}
+
+export interface UpdateProfileMeInput {
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  profileImageUrl?: string | null;
 }
 
 export interface UpdateProfileCredentialsInput {

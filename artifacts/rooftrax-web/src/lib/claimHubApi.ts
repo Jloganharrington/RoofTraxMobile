@@ -736,6 +736,14 @@ export interface MyProfile {
   companyId: string;
   companyLogoUrl?: string | null;
   betaBugReporting?: boolean;
+  // Wave-2B personal profile fields
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  profileImageUrl?: string | null;
+  phone?: string | null;
+  workflowAssignment?: string | null;
+  signatureSignedAt?: string | null;
 }
 
 export const getMyProfileQueryKey = () => ['my-profile'] as const;

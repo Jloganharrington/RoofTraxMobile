@@ -794,6 +794,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+    patch:
+      tags: [Profile]
+      operationId: updateProfileMe
+      summary: Update the current user's personal profile fields
+      description: |
+        Updates firstName, lastName, phone, and/or profileImageUrl on the
+        current user's record. All fields optional; omitted fields unchanged.
+        NEVER accepts role, department, workflowAssignment, or any
+        smtp/signature field — those have their own guarded endpoints.
+        Operates on req.user.id only; no target-user parameter of any kind.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileMeInput"
+      responses:
+        "200":
+          description: Profile updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /profile/credentials:
     patch:
       tags: [Profile]
@@ -4451,6 +4487,20 @@ components:
           type: [string, "null"]
         fipsaFeeCents:
           type: [number, "null"]
+        # Wave-2B personal profile fields (from users + user_profiles tables)
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        email:
+          type: [string, "null"]
+        profileImageUrl:
+          type: [string, "null"]
+        phone:
+          type: [string, "null"]
+        theme:
+          type: string
+          enum: [light, dark, system]
     InspectorCertification:
       type: object
       required: [name]
@@ -4463,6 +4513,17 @@ components:
         number:
           type: [string, "null"]
         expiry:
+          type: [string, "null"]
+    UpdateProfileMeInput:
+      type: object
+      properties:
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        phone:
+          type: [string, "null"]
+        profileImageUrl:
           type: [string, "null"]
     UpdateProfileCredentialsInput:
       type: object

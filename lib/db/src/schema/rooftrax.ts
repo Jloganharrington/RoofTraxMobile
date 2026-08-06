@@ -93,6 +93,18 @@ export const userProfilesTable = pgTable('user_profiles', {
   // person, not the company (company pack lives Brain-side).
   certifications: jsonb('certifications').$type<InspectorCertification[] | null>(),
   yearsExperience: integer('years_experience'),
+  // Wave-2B personal profile columns
+  // Per-user contact phone, editable via PATCH /profile/me.
+  phone: text('phone'),
+  // UI theme preference. Default 'dark' = no visual change for existing users
+  // until they opt in via the Appearance settings tab (Task A1).
+  theme: varchar('theme', { enum: ['light', 'dark', 'system'] }).notNull().default('dark'),
+  // Dashboard widget layout: { hidden: string[], order: string[] }.
+  // null = defaults (catalog order, all granted widgets visible).
+  // Managed via PATCH /dashboard/layout and DELETE /dashboard/layout (Task D1).
+  dashboardLayout: jsonb('dashboard_layout')
+    .$type<{ hidden: string[]; order: string[] } | null>()
+    .default(null),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

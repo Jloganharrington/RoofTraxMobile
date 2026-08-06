@@ -317,13 +317,30 @@ export function Shell({ children }: ShellProps) {
           {user ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2.5 px-2 py-1">
-                <div className="h-7 w-7 flex-shrink-0 bg-primary flex items-center justify-center text-primary-foreground text-xs font-black uppercase">
-                  {user.firstName?.charAt(0) || user.email?.charAt(0) || '?'}
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-semibold truncate">{user.firstName} {user.lastName}</span>
-                  <span className="text-[10px] text-sidebar-foreground/50 truncate">{user.email}</span>
-                </div>
+                {/* Prefer profile data (reflects edits) over session user (reflects last login) */}
+                {(() => {
+                  const displayFirst = profile?.firstName ?? user.firstName;
+                  const displayLast  = profile?.lastName  ?? user.lastName;
+                  const avatarUrl    = profile?.profileImageUrl ?? user.profileImageUrl;
+                  const initials     = displayFirst?.charAt(0) || user.email?.charAt(0) || '?';
+                  return (
+                    <>
+                      <div className="h-7 w-7 flex-shrink-0 rounded-sm overflow-hidden flex-none">
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-black uppercase">
+                            {initials}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold truncate">{displayFirst} {displayLast}</span>
+                        <span className="text-[10px] text-sidebar-foreground/50 truncate">{user.email}</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
               <button
                 onClick={handleLogout}

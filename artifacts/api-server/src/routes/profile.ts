@@ -1,5 +1,6 @@
 import {
   GetMyProfileResponse,
+  UpdateProfileMeBody,
   UpdateProfileCredentialsBody,
   UpdateProfileSignatureBody,
   UpdateProfileSmtpBody,
@@ -40,6 +41,11 @@ function checkSmtpTestRateLimit(userId: string): boolean {
 function toProfileEnvelope(
   profile: typeof userProfilesTable.$inferSelect,
   company: {
+    // Wave-2B: user fields joined through loadCompany
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    profileImageUrl?: string | null;
     companyId: string;
     companyName: string;
     companyLogoUrl?: string | null;
@@ -83,6 +89,13 @@ function toProfileEnvelope(
       contractorLegalName: company.contractorLegalName ?? null,
       contractorAddress: company.contractorAddress ?? null,
       fipsaFeeCents: company.fipsaFeeCents ?? null,
+      // Wave-2B personal profile fields
+      firstName: company.firstName ?? null,
+      lastName: company.lastName ?? null,
+      email: company.email ?? null,
+      profileImageUrl: company.profileImageUrl ?? null,
+      phone: profile.phone ?? null,
+      theme: profile.theme ?? 'dark',
     },
   });
 }
@@ -90,6 +103,11 @@ function toProfileEnvelope(
 async function loadCompany(userId: string) {
   const [row] = await db
     .select({
+      // Wave-2B: include user fields so toProfileEnvelope can surface them
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      email: usersTable.email,
+      profileImageUrl: usersTable.profileImageUrl,
       companyId: usersTable.companyId,
       companyName: companiesTable.name,
       companyLogoUrl: companiesTable.logoUrl,
@@ -138,6 +156,57 @@ router.get('/profile/me', async (req: Request, res: Response) => {
   const profile = await loadOrCreateProfile(userId);
   const company = await loadCompany(userId);
 
+  res.json(toProfileEnvelope(profile, company));
+});
+
+// Wave-2B — update the current user's personal profile fields.
+// Accepts ONLY firstName, lastName, phone, profileImageUrl.
+// The zod schema strips everything else so role/department/smtp fields
+// can never reach this handler. Self-only: operates on req.user.id.
+router.patch('/profile/me', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = UpdateProfileMeBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid profile payload' });
+    return;
+  }
+
+  const userId = req.user.id;
+  await loadOrCreateProfile(userId);
+
+  const data = parsed.data;
+
+  // users table: firstName, lastName, profileImageUrl
+  const userSet: Partial<typeof usersTable.$inferInsert> = {};
+  if (data.firstName !== undefined) userSet.firstName = data.firstName;
+  if (data.lastName  !== undefined) userSet.lastName  = data.lastName;
+  if (data.profileImageUrl !== undefined) userSet.profileImageUrl = data.profileImageUrl;
+  if (Object.keys(userSet).length > 0) {
+    await db
+      .update(usersTable)
+      .set({ ...userSet, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+  }
+
+  // user_profiles table: phone (theme added in A1)
+  const profileSet: Partial<typeof userProfilesTable.$inferInsert> = {};
+  if (data.phone !== undefined) profileSet.phone = data.phone;
+  if (Object.keys(profileSet).length > 0) {
+    await db
+      .update(userProfilesTable)
+      .set(profileSet)
+      .where(eq(userProfilesTable.userId, userId));
+  }
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, userId));
+  const company = await loadCompany(userId);
   res.json(toProfileEnvelope(profile, company));
 });
 

@@ -1,0 +1,169 @@
+ROOFTRAX-WEB SETTINGS — WAVE 2B: PROFILE, APPEARANCE, DASHBOARD TABS
+
+Same rules as prior waves: [LOCKED] = implement exactly as written, stop and
+report if the spec looks wrong — don't redesign. [REASONING OK] = goal stated,
+implementation yours. STOP after each task and paste actual verification
+output — run the commands, don't report done without running them.
+
+HARD BOUNDARIES (unchanged): never touch artifacts/mobile/; never hand-edit
+lib/api-client-react/src/generated/ or lib/api-zod/src/generated/ (edit
+lib/api-spec/openapi.yaml, then regenerate); server-side enforcement for
+anything role-gated; UI hiding is not access control.
+
+Task order is deliberate: P1 → P2 → D1 → A1. Do not reorder — P1's answer
+gates P2, and Appearance goes last because palette iteration must not block
+the logic work.
+
+════════════════════════════════════════════════════════════
+TASK P1 [LOCKED — INVESTIGATION ONLY, NO CODE CHANGES]
+Check whether OIDC login clobbers name edits
+════════════════════════════════════════════════════════════
+Find the login/OIDC callback code that upserts the users row (firstName,
+lastName, email, profileImageUrl from identity-provider claims). Answer
+exactly these questions and paste the relevant code:
+  1. On every login, does it overwrite firstName/lastName with claim values,
+     or only set them when null?
+  2. Same question for profileImageUrl.
+Do NOT change anything in this task. Report the answer and STOP. The P2 spec
+below has two branches; which one you build depends on this answer.
+
+════════════════════════════════════════════════════════════
+TASK P2 [LOCKED] — Profile tab
+════════════════════════════════════════════════════════════
+Schema (one migration carries ALL THREE Wave-2B columns — phone, theme,
+dashboard_layout — plus the drizzle schema updates; next free number is 020,
+verify no collision, this directory has had duplicate numbers before):
+  - user_profiles.phone            text, nullable
+  - user_profiles.theme            varchar enum 'light'|'dark'|'system',
+                                   NOT NULL DEFAULT 'dark'
+  - user_profiles.dashboard_layout jsonb, nullable
+
+Name-edit branch, decided by P1's answer:
+  - If the callback only-fills-when-null (or you change it to do so): name
+    edits go to users.firstName/lastName. Change the callback to
+    fill-only-when-null for firstName/lastName IN THE SAME COMMIT as the
+    edit endpoint — never ship one without the other.
+  - If the callback must keep overwriting (report why): add
+    user_profiles.display_name text nullable to the migration instead, edit
+    that, and leave users.* untouched.
+
+API (openapi-first): PATCH /profile/me accepting ONLY firstName, lastName
+(or displayName per branch), phone. Server strips/rejects everything else —
+this endpoint must NEVER accept role, department, workflowAssignment, or
+any smtp/signature field; those have their own guarded endpoints. Operates
+on req.user.id only — no target-user parameter of any kind.
+
+UI — Profile tab in the Personal group (replaces its S1 stub):
+  - Name (per branch), phone, email read-only with a note that it's the
+    login identity.
+  - Avatar upload reusing the EXISTING presigned-upload + object_ownership
+    ACL flow (the signature-on-file upload is the reference pattern — reuse
+    it, don't write a new upload path). On success set users.profileImageUrl
+    and render the avatar in the Shell header as well.
+  - Read-only "Your access" block: role, department, workflow. Display only.
+  - Signature-on-file status (captured/not, date). Display only — capture
+    stays in the mobile app.
+
+VERIFY (paste real output/responses):
+  - PATCH /profile/me with {"role":"admin","phone":"555"} → 200, phone
+    updated, role UNCHANGED (paste the follow-up GET /profile/me).
+  - Edit name, log out, log back in → edit survived. This is the test that
+    matters; do it for real, not by code inspection.
+  - Avatar: upload works, renders in header; a second test user cannot
+    overwrite the first user's avatar object (ACL).
+  - Typecheck all three (api-server, rooftrax-web, mobile) clean;
+    git diff --stat -- artifacts/mobile/ EMPTY.
+
+════════════════════════════════════════════════════════════
+TASK D1 [LOCKED] — Dashboard tab: widget visibility + order
+════════════════════════════════════════════════════════════
+Layout shape (already migrated in P2): { hidden: string[], order: string[] }
+— widget KEYS only, never titles.
+
+Server rule — this is the security-relevant part, get it exact:
+GET /dashboard/manifest applies the stored layout AFTER selectWidgetsFor().
+The capability-resolved set remains the universe; layout is a view on it.
+  - hidden: subtracts keys from the resolved set. Keys not in the resolved
+    set are ignored (they subtract nothing, they add nothing).
+  - order: sorts the remaining resolved keys. Keys not in the resolved set
+    are dropped. Resolved widgets NOT listed in order append AFTER the
+    ordered ones, in catalog order — this is required so a newly shipped
+    widget appears for users with saved layouts instead of vanishing.
+  - Stale/unknown keys anywhere in the layout are ignored silently — a
+    catalog change must never 500 a manifest request.
+  - A layout can never ADD a widget. There is no code path where a key in
+    the stored layout reaches the response unless the resolver granted it.
+
+API (openapi-first): PATCH /dashboard/layout (validated {hidden, order},
+self-only) and DELETE /dashboard/layout (nulls the column = restore
+defaults). Server-side validation: arrays of strings, sane length cap
+(e.g. 50), no other fields.
+
+UI — Dashboard tab: list the user's GRANTED widgets (source the list from
+the manifest response — never from WIDGET_CATALOG directly, the manifest IS
+their universe), each with a visibility toggle and up/down reorder buttons.
+No drag-and-drop unless something already installed makes it trivial.
+"Restore defaults" calls the DELETE. Changes reflect on the dashboard
+without a full reload (invalidate the manifest query on save).
+
+VERIFY (paste real output):
+  - Hide a widget → paste manifest response omitting it → dashboard grid
+    no longer renders it.
+  - Reorder → manifest order changes accordingly.
+  - As field_rep, PATCH a layout with "action_required" in BOTH hidden and
+    order → 200, and paste the manifest proving action_required absent and
+    everything else unaffected.
+  - lib/authz tests still 51/51 (pnpm --filter @workspace/authz test —
+    run it, paste it).
+  - Restore defaults → manifest back to catalog order.
+
+════════════════════════════════════════════════════════════
+TASK A1 [REASONING OK, mechanics LOCKED] — Appearance tab + light palette
+════════════════════════════════════════════════════════════
+The app currently has ONE palette (the dark :root in
+artifacts/rooftrax-web/src/index.css) and no .dark block — the custom
+variant on line 5 is unused. This task authors light mode.
+
+Mechanics [LOCKED]:
+  - Move the CURRENT :root variable values into a .dark { } block VERBATIM
+    — dark mode must look pixel-identical to today.
+  - Author new light values in :root.
+  - Default is DARK for everyone: theme column defaults 'dark' (done in
+    P2), and the pre-paint script below defaults to dark when nothing is
+    stored. No user sees a visual change until they opt in.
+  - Inline <head> script in index.html: read localStorage 'rt_theme',
+    apply the 'dark' class on <html> BEFORE first paint ('system' resolves
+    via matchMedia). This kills the wrong-theme flash — do not skip it.
+  - One shared applyTheme() helper used by the Settings tab, the profile
+    load (profile value wins over stale localStorage and re-syncs it), and
+    a matchMedia change listener for 'system'. The unauthenticated
+    marketing Home uses localStorage/system only — it has no profile.
+  - Theme persists via PATCH /profile/me? No — extend the P2 endpoint to
+    also accept 'theme' (enum-validated). Same self-only rules.
+
+Palette design [REASONING OK] with these constraints:
+  - The orange primary and condensed-font brand identity stay IDENTICAL in
+    light mode. This is a re-ground, not a redesign.
+  - The sidebar keeps its role as the most-contrasted layer relatively —
+    in light mode that means visually distinct from the content area, not
+    necessarily dark.
+  - Sweep for hardcoded colors that bypass the variables — the Leaflet map
+    container, pipeline stage-color chips, and any bg-orange-500-style
+    literal classes (the sidebar New Lead button has one) are the likely
+    offenders. Fix them to use variables or explicit dark:/light: variants.
+
+VERIFY (paste screenshots, both themes):
+  - Dashboard, one pipeline board, the map page, an open dialog (New Lead),
+    a toast, and the Settings page itself — in light AND dark.
+  - Cold load with throttled network: no flash of wrong theme (say what
+    you observed, not what should happen).
+  - Set theme in browser A, open browser B logged in as the same user →
+    B follows the profile value.
+  - 'system' mode: flip the OS setting → app follows live.
+  - Dark mode diff check: with theme=dark, the app is visually identical
+    to before this task (compare screenshots).
+
+════════════════════════════════════════════════════════════
+FINAL after A1: full suite — authz tests, api-server vitest run, all three
+typechecks, git diff --stat -- artifacts/mobile/ empty. Paste everything.
+════════════════════════════════════════════════════════════

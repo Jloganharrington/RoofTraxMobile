@@ -760,7 +760,13 @@ export const GetMyProfileResponse = zod.object({
   "companyLogoUrl": zod.string().nullish(),
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
-  "fipsaFeeCents": zod.number().nullish()
+  "fipsaFeeCents": zod.number().nullish(),
+  "firstName": zod.string().nullable().optional(),
+  "lastName": zod.string().nullable().optional(),
+  "email": zod.string().nullable().optional(),
+  "profileImageUrl": zod.string().nullable().optional(),
+  "phone": zod.string().nullable().optional(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
 
@@ -812,7 +818,13 @@ export const UpdateProfileCredentialsResponse = zod.object({
   "companyLogoUrl": zod.string().nullish(),
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
-  "fipsaFeeCents": zod.number().nullish()
+  "fipsaFeeCents": zod.number().nullish(),
+  "firstName": zod.string().nullable().optional(),
+  "lastName": zod.string().nullable().optional(),
+  "email": zod.string().nullable().optional(),
+  "profileImageUrl": zod.string().nullable().optional(),
+  "phone": zod.string().nullable().optional(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
 
@@ -860,7 +872,13 @@ export const UpdateProfileSignatureResponse = zod.object({
   "companyLogoUrl": zod.string().nullish(),
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
-  "fipsaFeeCents": zod.number().nullish()
+  "fipsaFeeCents": zod.number().nullish(),
+  "firstName": zod.string().nullable().optional(),
+  "lastName": zod.string().nullable().optional(),
+  "email": zod.string().nullable().optional(),
+  "profileImageUrl": zod.string().nullable().optional(),
+  "phone": zod.string().nullable().optional(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
 
@@ -925,7 +943,62 @@ export const UpdateProfileSmtpResponse = zod.object({
   "companyLogoUrl": zod.string().nullish(),
   "contractorLegalName": zod.string().nullish(),
   "contractorAddress": zod.string().nullish(),
-  "fipsaFeeCents": zod.number().nullish()
+  "fipsaFeeCents": zod.number().nullish(),
+  "firstName": zod.string().nullable().optional(),
+  "lastName": zod.string().nullable().optional(),
+  "email": zod.string().nullable().optional(),
+  "profileImageUrl": zod.string().nullable().optional(),
+  "phone": zod.string().nullable().optional(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
+})
+})
+
+
+/**
+ * @summary Update the current user's personal profile fields
+ */
+export const UpdateProfileMeBody = zod.object({
+  "firstName": zod.string().nullable().optional(),
+  "lastName": zod.string().nullable().optional(),
+  "phone": zod.string().nullable().optional(),
+  "profileImageUrl": zod.string().nullable().optional(),
+})
+
+export const UpdateProfileMeResponse = zod.object({
+  "profile": zod.object({
+  "userId": zod.string(),
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "department": zod.enum(['canvasser', 'inspector_canvasser']),
+  "companyId": zod.string(),
+  "companyName": zod.string(),
+  "signatureUrl": zod.string().nullable(),
+  "signatureSha256": zod.string().nullable(),
+  "signatureSignedAt": zod.coerce.date().nullable(),
+  "smtpConfigured": zod.boolean().optional(),
+  "smtpHost": zod.string().nullish(),
+  "smtpPort": zod.number().nullish(),
+  "smtpSecure": zod.boolean().nullish(),
+  "smtpUsername": zod.string().nullish(),
+  "smtpFromEmail": zod.string().nullish(),
+  "betaBugReporting": zod.boolean().optional(),
+  "certifications": zod.union([zod.array(zod.object({
+  "name": zod.string().min(1),
+  "issuingBody": zod.string().nullish(),
+  "number": zod.string().nullish(),
+  "expiry": zod.string().nullish()
+})),zod.null()]).optional(),
+  "yearsExperience": zod.number().nullish(),
+  "companyLogoUrl": zod.string().nullish(),
+  "contractorLegalName": zod.string().nullish(),
+  "contractorAddress": zod.string().nullish(),
+  "fipsaFeeCents": zod.number().nullish(),
+  "firstName": zod.string().nullable().optional(),
+  "lastName": zod.string().nullable().optional(),
+  "email": zod.string().nullable().optional(),
+  "profileImageUrl": zod.string().nullable().optional(),
+  "phone": zod.string().nullable().optional(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 })
 

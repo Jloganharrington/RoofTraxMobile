@@ -44,9 +44,18 @@ export async function upsertUserOnLogin(
     .where(eq(usersTable.id, claims.sub));
 
   if (existing) {
+    // email always tracks the identity provider.
+    // firstName, lastName, and profileImageUrl are fill-only-when-null so
+    // that user edits (PATCH /profile/me) survive future logins without
+    // being silently wiped by the OIDC picture/name claims.
+    const nameAndAvatar = {
+      firstName:       existing.firstName       !== null ? existing.firstName       : profileFields.firstName,
+      lastName:        existing.lastName        !== null ? existing.lastName        : profileFields.lastName,
+      profileImageUrl: existing.profileImageUrl !== null ? existing.profileImageUrl : profileFields.profileImageUrl,
+    };
     const [updated] = await db
       .update(usersTable)
-      .set({ ...profileFields, updatedAt: new Date() })
+      .set({ email: profileFields.email, ...nameAndAvatar, updatedAt: new Date() })
       .where(eq(usersTable.id, claims.sub))
       .returning();
     return updated;

@@ -16,8 +16,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { customFetch } from "@workspace/api-client-react";
-import { useGetCurrentAuthUser } from "@workspace/api-client-react";
+import {
+  customFetch,
+  useGetCurrentAuthUser,
+  useUpdateProfileMe,
+  getGetMyProfileQueryKey,
+} from "@workspace/api-client-react";
 import { useGetMyProfile, useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import {
   Building2,
@@ -122,6 +126,230 @@ function ComingSoonStub({ label }: { label: string }) {
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Personal Profile Tab — Wave 2B
+// ---------------------------------------------------------------------------
+
+function ProfileTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: profileData } = useGetMyProfile();
+  const profile = profileData?.profile;
+  const mutation = useUpdateProfileMe();
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName,  setLastName]  = useState('');
+  const [phone,     setPhone]     = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  // Initialise form fields once profile data loads
+  useEffect(() => {
+    if (!profile) return;
+    setFirstName(profile.firstName ?? '');
+    setLastName(profile.lastName   ?? '');
+    setPhone(profile.phone         ?? '');
+  }, [profile]);
+
+  const handleSave = () => {
+    mutation.mutate(
+      { data: { firstName: firstName || null, lastName: lastName || null, phone: phone || null } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+          toast({ title: 'Profile saved' });
+        },
+        onError: () => toast({ title: 'Failed to save profile', variant: 'destructive' }),
+      },
+    );
+  };
+
+  const handleAvatarUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        toast({ title: 'Please select an image file', variant: 'destructive' });
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: 'Image must be under 5 MB', variant: 'destructive' });
+        return;
+      }
+      setUploadingAvatar(true);
+      try {
+        const { uploadURL, objectPath } = await customFetch<{
+          uploadURL: string;
+          objectPath: string;
+        }>('/api/storage/uploads/request-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        });
+        const putRes = await fetch(uploadURL, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!putRes.ok) throw new Error(`Storage PUT failed: ${putRes.status}`);
+        const avatarUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, '')}`;
+        await mutation.mutateAsync({ data: { profileImageUrl: avatarUrl } });
+        qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+        toast({ title: 'Avatar updated' });
+      } catch (err) {
+        toast({ title: 'Avatar upload failed', description: String(err), variant: 'destructive' });
+      } finally {
+        setUploadingAvatar(false);
+      }
+    },
+    [mutation, qc, toast],
+  );
+
+  const ROLE_LABELS: Record<string, string> = {
+    field_rep: 'Field Rep', manager: 'Manager',
+    admin: 'Admin', super_admin: 'Super Admin',
+  };
+  const WORKFLOW_LABELS: Record<string, string> = {
+    retail: 'Retail', insurance_retail: 'Insurance / Retail',
+  };
+  const DEPT_LABELS: Record<string, string> = {
+    canvasser: 'Canvasser', inspector_canvasser: 'Inspector / Canvasser',
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* ── Name, phone, avatar ──────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Personal profile</CardTitle>
+          <CardDescription>Your display name, avatar, and contact phone.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Avatar */}
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 rounded-sm overflow-hidden flex-none bg-muted flex items-center justify-center">
+              {profile?.profileImageUrl ? (
+                <img src={profile.profileImageUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-2xl font-black uppercase text-muted-foreground">
+                  {profile?.firstName?.charAt(0) || '?'}
+                </span>
+              )}
+            </div>
+            <div>
+              <label className="cursor-pointer">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded hover:bg-muted transition-colors">
+                  {uploadingAvatar
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…</>
+                    : <><Upload className="h-3.5 w-3.5" /> Change avatar</>}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={uploadingAvatar}
+                  onChange={handleAvatarUpload}
+                />
+              </label>
+              <p className="text-[10px] text-muted-foreground mt-1.5">JPG, PNG, GIF · max 5 MB</p>
+            </div>
+          </div>
+
+          {/* Name */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="prof-first">First name</Label>
+              <Input
+                id="prof-first"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="prof-last">Last name</Label>
+              <Input
+                id="prof-last"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
+              />
+            </div>
+          </div>
+
+          {/* Email — read-only */}
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input value={profile?.email ?? ''} disabled />
+            <p className="text-[10px] text-muted-foreground">
+              Email is your login identity and cannot be changed here.
+            </p>
+          </div>
+
+          {/* Phone */}
+          <div className="space-y-1.5">
+            <Label htmlFor="prof-phone">Phone</Label>
+            <Input
+              id="prof-phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1 555 000 0000"
+            />
+          </div>
+
+          <Button onClick={handleSave} disabled={mutation.isPending} size="sm">
+            {mutation.isPending && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
+            Save changes
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ── Your access ──────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Your access</CardTitle>
+          <CardDescription>Role and workflow — set by your manager.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm max-w-sm">
+            <dt className="text-muted-foreground">Role</dt>
+            <dd className="font-medium">{ROLE_LABELS[profile?.role ?? ''] ?? profile?.role ?? '—'}</dd>
+            <dt className="text-muted-foreground">Department</dt>
+            <dd className="font-medium">{DEPT_LABELS[profile?.department ?? ''] ?? profile?.department ?? '—'}</dd>
+            <dt className="text-muted-foreground">Workflow</dt>
+            <dd className="font-medium">{WORKFLOW_LABELS[profile?.workflowAssignment ?? ''] ?? profile?.workflowAssignment ?? '—'}</dd>
+          </dl>
+        </CardContent>
+      </Card>
+
+      {/* ── Signature on file ────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Signature on file</CardTitle>
+          <CardDescription>
+            Your signature is captured in the mobile app and printed on inspection declarations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {profile?.signatureSignedAt ? (
+            <p className="text-sm">
+              Captured on{' '}
+              <span className="font-medium">
+                {new Date(profile.signatureSignedAt).toLocaleDateString()}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No signature on file. Capture one in the mobile app.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -1132,7 +1360,7 @@ export default function SettingsPage() {
           {/* Tab content */}
           <div className="flex-1 min-w-0">
             {/* Personal tabs — stubs until S2–S4 */}
-            {activeTab === "my_profile"     && <ComingSoonStub label="Profile" />}
+            {activeTab === "my_profile"     && <ProfileTab />}
             {activeTab === "appearance"     && <ComingSoonStub label="Appearance" />}
             {activeTab === "dashboard_tab"  && <ComingSoonStub label="Dashboard" />}
             {activeTab === "email_settings" && <ComingSoonStub label="Email" />}

@@ -132,6 +132,7 @@ import type {
   UpdatePinInput,
   UpdatePriceBookItemInput,
   UpdateProfileCredentialsInput,
+  UpdateProfileMeInput,
   UpdateProfileSignatureInput,
   UpdateProfileSmtpInput,
   UpdateReportBrandingInput,
@@ -1920,6 +1921,61 @@ export function useGetMyProfile<TData = Awaited<ReturnType<typeof getMyProfile>>
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getUpdateProfileMeUrl = () => {
+  return `/api/profile/me`
+}
+
+/**
+ * @summary Update the current user's personal profile fields
+ */
+export const updateProfileMe = async (updateProfileMeInput: UpdateProfileMeInput, options?: RequestInit): Promise<ProfileEnvelope> => {
+
+  return customFetch<ProfileEnvelope>(getUpdateProfileMeUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateProfileMeInput)
+  }
+);}
+
+export const getUpdateProfileMeMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileMe>>, TError,{data: BodyType<UpdateProfileMeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProfileMe>>, TError,{data: BodyType<UpdateProfileMeInput>}, TContext> => {
+
+const mutationKey = ['updateProfileMe'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProfileMe>>, {data: BodyType<UpdateProfileMeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateProfileMe(data,requestOptions)
+        }
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProfileMeMutationResult = NonNullable<Awaited<ReturnType<typeof updateProfileMe>>>
+    export type UpdateProfileMeMutationBody = BodyType<UpdateProfileMeInput>
+    export type UpdateProfileMeMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update the current user's personal profile fields
+ */
+export const useUpdateProfileMe = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProfileMe>>, TError,{data: BodyType<UpdateProfileMeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProfileMe>>,
+        TError,
+        {data: BodyType<UpdateProfileMeInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateProfileMeMutationOptions(options));
+    }
 
 
 
