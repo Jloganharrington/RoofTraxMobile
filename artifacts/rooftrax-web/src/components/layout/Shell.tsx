@@ -12,7 +12,6 @@ import {
   Calendar,
   MapPin,
   BarChart2,
-  Receipt,
   BookOpen,
   Users,
   ShieldCheck,
@@ -73,7 +72,6 @@ const NAV_SECTIONS: NavSection[] = [
     heading: "Data & Tools",
     items: [
       { label: "Reports",            path: "/reports",           icon: BarChart2,   minRole: 'manager' },
-      { label: "Commission Report",  path: "/commission-report", icon: Receipt,     minRole: 'manager' },
       { label: "Proof Package Data", path: "/settings/library",  icon: BookOpen },
     ],
   },

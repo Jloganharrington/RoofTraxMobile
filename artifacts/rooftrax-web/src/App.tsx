@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import {
-  Calendar, MapPin, FileText, BarChart2, Receipt,
+  Calendar, MapPin, FileText,
   ShieldCheck, Settings, Plug, Bell,
   Loader2,
 } from 'lucide-react';
@@ -25,6 +25,7 @@ import Leads from '@/pages/leads/Leads';
 import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
 import { ComingSoon } from '@/pages/ComingSoon';
+import { ReportsPage } from '@/pages/ReportsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
@@ -151,15 +152,11 @@ function Router() {
       </Route>
       <Route path="/reports">
         <ProtectedRoute minRole="manager">
-          <ComingSoon icon={BarChart2} title="Reports"
-            description="Company-wide performance dashboards, claim conversion rates, and pipeline analytics at a glance." />
+          <ReportsPage />
         </ProtectedRoute>
       </Route>
       <Route path="/commission-report">
-        <ProtectedRoute minRole="manager">
-          <ComingSoon icon={Receipt} title="Commission Reports"
-            description="Track rep earnings, commission tiers, and payout history across your entire team." />
-        </ProtectedRoute>
+        <Redirect to="/reports" />
       </Route>
       <Route path="/user-authorization">
         <ProtectedRoute minRole="manager"><UserAuthorizationPage /></ProtectedRoute>
