@@ -27,6 +27,7 @@ import paymentsRouter from "./payments";
 import invoicesRouter from "./invoices";
 import expensesRouter from "./expenses";
 import profitabilityRouter from "./profitability";
+import financialsExportRouter from "./financialsExport";
 
 const router: IRouter = Router();
 
@@ -58,5 +59,6 @@ router.use(paymentsRouter);
 router.use(invoicesRouter);
 router.use(expensesRouter);
 router.use(profitabilityRouter);
+router.use(financialsExportRouter);
 
 export default router;

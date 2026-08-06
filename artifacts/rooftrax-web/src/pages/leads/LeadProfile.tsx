@@ -1435,7 +1435,30 @@ function FinancialsTab({
   isManager: boolean;
 }) {
   const { toast } = useToast();
+  const [exportingPdf, setExportingPdf] = useState(false);
   const { data: paymentsData, isLoading: paymentsLoading } = useGetPayments(pinId);
+
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      const blob = await customFetch<Blob>(
+        `/api/pins/${pinId}/financials/export`,
+        { responseType: 'blob' },
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `financials-${pinId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: 'Export failed', description: 'Could not generate the PDF. Please try again.', variant: 'destructive' });
+    } finally {
+      setExportingPdf(false);
+    }
+  }
   const createPaymentMutation = useCreatePayment();
   const deletePaymentMutation = useDeletePayment();
 
@@ -1487,6 +1510,23 @@ function FinancialsTab({
 
   return (
     <div className="space-y-8">
+      {/* Export Financials — manager only */}
+      {isManager && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+          >
+            {exportingPdf
+              ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Generating…</>
+              : <><Download className="h-3.5 w-3.5 mr-1.5" />Export Financials</>
+            }
+          </Button>
+        </div>
+      )}
+
       {/* Contract — still saved via the profile debounce */}
       <FieldGroup title="Contract">
         <Field label="Contract Amount ($)" name="contractAmount"   value={form.contractAmount}   onChange={onField} placeholder="0.00" />
