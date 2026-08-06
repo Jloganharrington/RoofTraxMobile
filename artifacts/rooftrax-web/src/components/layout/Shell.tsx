@@ -26,6 +26,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useSearch } from "@/lib/claimHubApi";
+import { applyTheme, type ThemeValue } from "@/lib/applyTheme";
 import { QuickAddLeadModal } from "@/components/dashboard/QuickAddLeadModal";
 
 interface ShellProps {
@@ -206,6 +207,16 @@ export function Shell({ children }: ShellProps) {
   const { data: profileEnvelope } = useGetMyProfile();
   const [location] = useLocation();
   const [newLeadOpen, setNewLeadOpen] = useState(false);
+
+  // Sync theme from the server profile on every authenticated load.
+  // The pre-paint bootstrap already applied the localStorage value; this
+  // re-syncs if the user changed their preference on another device.
+  useEffect(() => {
+    const serverTheme = profileEnvelope?.profile?.theme as ThemeValue | undefined;
+    if (serverTheme === 'light' || serverTheme === 'dark' || serverTheme === 'system') {
+      applyTheme(serverTheme);
+    }
+  }, [profileEnvelope?.profile?.theme]);
 
   if (isLoading) {
     return (

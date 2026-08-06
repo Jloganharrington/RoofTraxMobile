@@ -886,7 +886,8 @@ export const UpdateProfileMeBody = zod.object({
   "firstName": zod.string().nullish(),
   "lastName": zod.string().nullish(),
   "phone": zod.string().nullish(),
-  "profileImageUrl": zod.string().nullish()
+  "profileImageUrl": zod.string().nullish(),
+  "theme": zod.enum(['light', 'dark', 'system']).optional()
 })
 
 

@@ -61,7 +61,63 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ── Light mode (default) ───────────────────────────────────────────────── */
 :root {
+  /* ── Background: near-white */
+  --background: 0 0% 97%;
+  --foreground: 0 0% 10%;
+
+  /* ── Cards: white, grey border */
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 10%;
+  --card-border: 0 0% 87%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 10%;
+  --popover-border: 0 0% 87%;
+
+  /* ── Primary: RoofTrax orange #F97316 — unchanged */
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 0 0% 93%;
+  --secondary-foreground: 0 0% 10%;
+
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 45%;
+
+  --accent: 0 0% 91%;
+  --accent-foreground: 0 0% 10%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 87%;
+  --input: 0 0% 93%;
+  --ring: 24 95% 53%;
+
+  /* ── Sharp corners — matches the site */
+  --radius: 0.125rem;
+
+  /* ── Sidebar: slightly darker than content so it stays visually distinct */
+  --sidebar: 0 0% 91%;
+  --sidebar-foreground: 0 0% 15%;
+  --sidebar-border: 0 0% 82%;
+  --sidebar-primary: 24 95% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 85%;
+  --sidebar-accent-foreground: 0 0% 10%;
+  --sidebar-ring: 24 95% 53%;
+
+  /* ── Typography */
+  --app-font-sans: 'Inter', sans-serif;
+  --app-font-condensed: 'Inter', sans-serif;
+  --app-font-serif: 'Inter', sans-serif;
+  --app-font-mono: 'Space Mono', Menlo, monospace;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────────── */
+.dark {
   /* ── Background: near-black #0D0D0D */
   --background: 0 0% 5%;
   --foreground: 0 0% 96%;

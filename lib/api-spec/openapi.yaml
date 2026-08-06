@@ -4795,6 +4795,8 @@ components:
           type: [string, "null"]
         profileImageUrl:
           type: [string, "null"]
+        theme:
+          $ref: "#/components/schemas/ProfileTheme"
     UpdateProfileCredentialsInput:
       type: object
       properties:

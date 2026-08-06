@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+import type { ProfileTheme } from './profileTheme';
+
 export interface UpdateProfileMeInput {
   /** @nullable */
   firstName?: string | null;
@@ -15,4 +17,5 @@ export interface UpdateProfileMeInput {
   phone?: string | null;
   /** @nullable */
   profileImageUrl?: string | null;
+  theme?: ProfileTheme;
 }

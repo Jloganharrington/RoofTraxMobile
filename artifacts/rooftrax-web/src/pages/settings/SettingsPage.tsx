@@ -57,7 +57,11 @@ import {
   EyeOff,
   ChevronUp,
   ChevronDown,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
+import { applyTheme, type ThemeValue } from "@/lib/applyTheme";
 import { PriceBookPanel } from "@/pages/price-book/PriceBookList";
 import { TemplatesPanel } from "@/pages/TemplatesPage";
 
@@ -1386,7 +1390,7 @@ export default function SettingsPage() {
           <div className="flex-1 min-w-0">
             {/* Personal tabs — stubs until S2–S4 */}
             {activeTab === "my_profile"     && <ProfileTab />}
-            {activeTab === "appearance"     && <ComingSoonStub label="Appearance" />}
+            {activeTab === "appearance"     && <AppearanceTab />}
             {activeTab === "dashboard_tab"  && <DashboardSettingsTab />}
             {activeTab === "email_settings" && <EmailSettingsTab />}
 
@@ -1406,6 +1410,144 @@ export default function SettingsPage() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Appearance Tab — Wave 2B (A1)
+// ---------------------------------------------------------------------------
+
+interface ThemeOption {
+  value: ThemeValue;
+  label: string;
+  description: string;
+  Icon: React.ElementType;
+}
+
+const THEME_OPTIONS: ThemeOption[] = [
+  {
+    value: 'light',
+    label: 'Light',
+    description: 'White canvas, dark text.',
+    Icon: Sun,
+  },
+  {
+    value: 'dark',
+    label: 'Dark',
+    description: 'Near-black canvas, light text.',
+    Icon: Moon,
+  },
+  {
+    value: 'system',
+    label: 'System',
+    description: 'Follows your OS preference.',
+    Icon: Monitor,
+  },
+];
+
+function AppearanceTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const { data: profileData, isLoading } = useGetMyProfile();
+  const profile = profileData?.profile;
+  const mutation = useUpdateProfileMe();
+
+  // Derive current theme: prefer what's stored in localStorage so the UI
+  // reflects the live-applied value, falling back to the server value.
+  const [current, setCurrent] = useState<ThemeValue>(() => {
+    const stored = localStorage.getItem('rt_theme');
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+    return 'dark';
+  });
+
+  // Sync from server profile once loaded (profile wins over bootstrap guess).
+  useEffect(() => {
+    if (!profile) return;
+    const serverTheme = profile.theme as ThemeValue | undefined;
+    if (serverTheme === 'light' || serverTheme === 'dark' || serverTheme === 'system') {
+      setCurrent(serverTheme);
+      applyTheme(serverTheme);
+    }
+  }, [profile]);
+
+  const handleSelect = (value: ThemeValue) => {
+    if (value === current) return;
+    setCurrent(value);
+    applyTheme(value);
+    mutation.mutate(
+      { data: { theme: value } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+          toast({ title: 'Appearance saved' });
+        },
+        onError: () => toast({ title: 'Failed to save appearance', variant: 'destructive' }),
+      },
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Choose how the app looks.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Appearance</CardTitle>
+        <CardDescription>
+          Choose how the app looks. Your preference is saved to your profile and applies across all sessions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {THEME_OPTIONS.map(({ value, label, description, Icon }) => {
+          const selected = current === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => handleSelect(value)}
+              disabled={mutation.isPending}
+              className={`w-full flex items-center gap-4 rounded border p-4 text-left transition-colors
+                ${selected
+                  ? 'border-primary bg-primary/10 text-foreground'
+                  : 'border-border bg-card text-foreground hover:bg-accent hover:border-accent-foreground/20'
+                }
+                disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-sm
+                ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-semibold text-sm">{label}</span>
+                <span className="block text-xs text-muted-foreground">{description}</span>
+              </span>
+              {selected && (
+                <span className="flex-shrink-0">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                </span>
+              )}
+              {mutation.isPending && selected && (
+                <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+              )}
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 

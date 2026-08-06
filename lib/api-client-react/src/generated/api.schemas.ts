@@ -530,6 +530,7 @@ export interface UpdateProfileMeInput {
   phone?: string | null;
   /** @nullable */
   profileImageUrl?: string | null;
+  theme?: ProfileTheme;
 }
 
 export interface UpdateProfileCredentialsInput {

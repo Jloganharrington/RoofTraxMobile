@@ -192,9 +192,13 @@ router.patch('/profile/me', async (req: Request, res: Response) => {
       .where(eq(usersTable.id, userId));
   }
 
-  // user_profiles table: phone (theme added in A1)
+  // user_profiles table: phone + theme (A1)
+  const VALID_THEMES = ['light', 'dark', 'system'] as const;
   const profileSet: Partial<typeof userProfilesTable.$inferInsert> = {};
   if (data.phone !== undefined) profileSet.phone = data.phone;
+  if (data.theme !== undefined && VALID_THEMES.includes(data.theme as typeof VALID_THEMES[number])) {
+    profileSet.theme = data.theme as typeof VALID_THEMES[number];
+  }
   if (Object.keys(profileSet).length > 0) {
     await db
       .update(userProfilesTable)
