@@ -307,3 +307,231 @@ describe('migration idempotency', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 6. Mutation re-aggregation
+// ---------------------------------------------------------------------------
+// Each sub-describe adds its own records, mutates them, verifies the view
+// re-aggregates, then tears down — leaving pinId baseline intact for others.
+
+describe('mutation re-aggregation', () => {
+  // ── 6a. Delete a payment ──────────────────────────────────────────────────
+  describe('delete a payment → totalPaymentsCents and netProfitCents decrease', () => {
+    let extraPaymentId: string;
+
+    beforeAll(async () => {
+      const [pmt] = await db
+        .insert(paymentsTable)
+        .values({
+          companyId: CO_A, pinId, type: 'supplement', amountCents: 100000,
+          paymentDate: new Date(), createdByUserId: managerId,
+        })
+        .returning();
+      extraPaymentId = pmt!.id;
+    });
+
+    afterAll(async () => {
+      // Guard: clean up in case the test itself never deleted the row
+      await db
+        .delete(paymentsTable)
+        .where(eq(paymentsTable.id, extraPaymentId))
+        .catch(() => {});
+    });
+
+    it('view reflects the new payment before deletion', async () => {
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      // Baseline 1,500,000 + 100,000 = 1,600,000
+      expect(res.body.profitability.totalPaymentsCents).toBe(1600000);
+    });
+
+    it('after deleting the payment, totalPaymentsCents and netProfitCents decrease', async () => {
+      await db.delete(paymentsTable).where(eq(paymentsTable.id, extraPaymentId));
+
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      const p = res.body.profitability;
+      // Back to baseline 1,500,000
+      expect(p.totalPaymentsCents).toBe(1500000);
+      // net = 1,500,000 − 700,000 = 800,000
+      expect(p.netProfitCents).toBe(800000);
+    });
+  });
+
+  // ── 6b. Mark an expense paid ──────────────────────────────────────────────
+  describe('mark expense paid → paidExpenseCents increases, outstandingExpenseCents decreases, total unchanged', () => {
+    let unpaidExpenseId: string;
+
+    beforeAll(async () => {
+      const [exp] = await db
+        .insert(vendorExpensesTable)
+        .values({
+          companyId: CO_A, pinId, vendorName: 'Mutation Labor Co',
+          amountCents: 75000, category: 'labor', isPaid: false,
+        })
+        .returning();
+      unpaidExpenseId = exp!.id;
+    });
+
+    afterAll(async () => {
+      await db
+        .delete(vendorExpensesTable)
+        .where(eq(vendorExpensesTable.id, unpaidExpenseId))
+        .catch(() => {});
+    });
+
+    it('view reflects the new unpaid expense before marking paid', async () => {
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      const p = res.body.profitability;
+      // total: 500,000 + 75,000 = 575,000
+      expect(p.totalExpenseCents).toBe(575000);
+      // outstanding: 200,000 + 75,000 = 275,000
+      expect(p.outstandingExpenseCents).toBe(275000);
+      // paid: still 300,000
+      expect(p.paidExpenseCents).toBe(300000);
+    });
+
+    it('after marking paid: paidExpenseCents increases, outstandingExpenseCents decreases, totalExpenseCents unchanged', async () => {
+      await db
+        .update(vendorExpensesTable)
+        .set({ isPaid: true, paidDate: new Date() })
+        .where(eq(vendorExpensesTable.id, unpaidExpenseId));
+
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      const p = res.body.profitability;
+      // total unchanged: 575,000
+      expect(p.totalExpenseCents).toBe(575000);
+      // paid: 300,000 + 75,000 = 375,000
+      expect(p.paidExpenseCents).toBe(375000);
+      // outstanding: back to 200,000 (the original baseline unpaid row)
+      expect(p.outstandingExpenseCents).toBe(200000);
+    });
+  });
+
+  // ── 6c. Void an invoice ───────────────────────────────────────────────────
+  describe('void an invoice → invoiceTotalCents excludes the voided amount', () => {
+    let activeInvoiceId: string;
+
+    beforeAll(async () => {
+      const [inv] = await db
+        .insert(customerInvoicesTable)
+        .values({
+          companyId: CO_A, pinId,
+          invoiceNumber: `PROF-MUT-${RUN_ID}`,
+          customerName: 'Mutation Customer', customerAddress: '456 Test Ave',
+          invoiceType: 'supplement', amountCents: 120000,
+          status: 'open',
+        })
+        .returning();
+      activeInvoiceId = inv!.id;
+    });
+
+    afterAll(async () => {
+      await db
+        .delete(customerInvoicesTable)
+        .where(eq(customerInvoicesTable.id, activeInvoiceId))
+        .catch(() => {});
+    });
+
+    it('pending invoice appears in invoiceTotalCents before void', async () => {
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      // 800,000 + 120,000 = 920,000
+      expect(res.body.profitability.invoiceTotalCents).toBe(920000);
+    });
+
+    it('after voiding the invoice, invoiceTotalCents decreases back to baseline', async () => {
+      await db
+        .update(customerInvoicesTable)
+        .set({ status: 'void' })
+        .where(eq(customerInvoicesTable.id, activeInvoiceId));
+
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      // Voided amount removed → back to 800,000
+      expect(res.body.profitability.invoiceTotalCents).toBe(800000);
+    });
+  });
+
+  // ── 6c-ii. Delete an expense ──────────────────────────────────────────────
+  describe('delete an expense → totalExpenseCents, totalCostCents, and netProfitCents decrease', () => {
+    let deletableExpenseId: string;
+
+    beforeAll(async () => {
+      const [exp] = await db
+        .insert(vendorExpensesTable)
+        .values({
+          companyId: CO_A, pinId, vendorName: 'Deletable Subcontractor',
+          amountCents: 50000, category: 'subcontractor', isPaid: false,
+        })
+        .returning();
+      deletableExpenseId = exp!.id;
+    });
+
+    afterAll(async () => {
+      await db
+        .delete(vendorExpensesTable)
+        .where(eq(vendorExpensesTable.id, deletableExpenseId))
+        .catch(() => {});
+    });
+
+    it('view reflects the new expense before deletion', async () => {
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      const p = res.body.profitability;
+      // total: 500,000 + 50,000 = 550,000
+      expect(p.totalExpenseCents).toBe(550000);
+      // totalCostCents: 550,000 + 200,000 (commissions) = 750,000
+      expect(p.totalCostCents).toBe(750000);
+    });
+
+    it('after deleting the expense: totalExpenseCents, totalCostCents, and netProfitCents decrease', async () => {
+      await db
+        .delete(vendorExpensesTable)
+        .where(eq(vendorExpensesTable.id, deletableExpenseId));
+
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      const p = res.body.profitability;
+      // total back to baseline: 500,000
+      expect(p.totalExpenseCents).toBe(500000);
+      // totalCostCents: 500,000 + 200,000 = 700,000
+      expect(p.totalCostCents).toBe(700000);
+      // netProfitCents: 1,500,000 − 700,000 = 800,000
+      expect(p.netProfitCents).toBe(800000);
+    });
+  });
+
+  // ── 6d. Null out salesCommissionCents ─────────────────────────────────────
+  describe('set salesCommissionCents = null → totalCommissionCents and totalCostCents decrease', () => {
+    afterAll(async () => {
+      // Restore baseline commission so subsequent runs are unaffected
+      await db
+        .update(pinsTable)
+        .set({ salesCommissionCents: 150000 })
+        .where(eq(pinsTable.id, pinId));
+    });
+
+    it('nulling salesCommissionCents reduces salesCommissionCents, totalCommissionCents, totalCostCents, and netProfitCents', async () => {
+      await db
+        .update(pinsTable)
+        .set({ salesCommissionCents: null })
+        .where(eq(pinsTable.id, pinId));
+
+      const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+      expect(res.status).toBe(200);
+      const p = res.body.profitability;
+
+      // COALESCE(null, 0) → 0
+      expect(p.salesCommissionCents).toBe(0);
+      // totalCommissionCents: 0 (sales) + 50,000 (pm) = 50,000  (was 200,000)
+      expect(p.totalCommissionCents).toBe(50000);
+      // totalCostCents: 500,000 (expenses) + 50,000 (commissions) = 550,000  (was 700,000)
+      expect(p.totalCostCents).toBe(550000);
+      // netProfitCents: 1,500,000 − 550,000 = 950,000  (was 800,000)
+      expect(p.netProfitCents).toBe(950000);
+    });
+  });
+});
