@@ -726,64 +726,6 @@ export function useGetLeads(
 }
 
 // ---------------------------------------------------------------------------
-// Current user profile (role gating)
-// ---------------------------------------------------------------------------
-
-export interface MyProfile {
-  userId: string;
-
-  role: string;
-
-  department: string | null;
-
-  companyId: string;
-
-  companyLogoUrl?: string | null;
-
-  betaBugReporting?: boolean;
-  // Wave-2B personal profile fields
-
-  firstName?: string | null;
-
-  lastName?: string | null;
-
-  email?: string | null;
-
-  profileImageUrl?: string | null;
-
-  phone?: string | null;
-
-  workflowAssignment?: string | null;
-
-  signatureSignedAt?: string | null;
-
-  smtpConfigured?: boolean;
-
-  smtpHost?: string | null;
-
-  smtpPort?: number | null;
-
-  smtpSecure?: boolean | null;
-
-  smtpUsername?: string | null;
-
-  smtpFromEmail?: string | null;
-}
-
-export const getMyProfileQueryKey = () => ['my-profile'] as const;
-
-export function useGetMyProfile(
-  options?: Omit<UseQueryOptions<{ profile: MyProfile }>, 'queryKey' | 'queryFn'>,
-) {
-  return useQuery({
-    queryKey: getMyProfileQueryKey(),
-    queryFn: () => customFetch<{ profile: MyProfile }>('/api/profile'),
-    staleTime: 5 * 60 * 1000,
-    ...options,
-  });
-}
-
-// ---------------------------------------------------------------------------
 // AHJ re-check
 // ---------------------------------------------------------------------------
 

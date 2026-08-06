@@ -57,7 +57,6 @@ import {
 import {
   useGetLead,
   useUpdateLead,
-  useGetMyProfile,
   useRecheckAhj,
   useGetSamplePackageInfo,
   useGetLeadFiles,
@@ -70,7 +69,7 @@ import {
   type LeadFileCategory,
   type LeadFileRow,
 } from '@/lib/claimHubApi';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, useGetMyProfile } from '@workspace/api-client-react';
 import { InspectionFlowWizard } from '@/components/inspection/InspectionFlowWizard';
 import {
   INSURANCE_STAGES,
