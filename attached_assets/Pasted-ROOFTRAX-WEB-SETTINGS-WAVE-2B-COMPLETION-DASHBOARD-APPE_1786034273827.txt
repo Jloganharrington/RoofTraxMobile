@@ -1,0 +1,134 @@
+ROOFTRAX-WEB SETTINGS — WAVE 2B COMPLETION: DASHBOARD + APPEARANCE TABS
+
+Context — what already landed, do NOT redo:
+  - Migration 020 applied: user_profiles.phone, .theme (VARCHAR(10) NOT NULL
+    DEFAULT 'dark', CHECK IN ('light','dark','system')), .dashboard_layout
+    (jsonb, nullable). NO new migration needed for this task.
+  - GET /profile/me already RETURNS theme (profile.ts:98) and the generated
+    ProfileTheme type exists. Read side is done.
+  - PATCH /profile/me exists and accepts firstName/lastName/phone/
+    profileImageUrl. It does NOT yet accept theme — profile.ts:195 literally
+    says "(theme added in A1)". That seam is prepared for you.
+  - Profile tab and Email tab are built. Appearance and Dashboard are still
+    <ComingSoonStub>.
+
+Same rules as prior waves: [LOCKED] = exact, stop and report if the spec
+looks wrong. [REASONING OK] = goal stated, implementation yours. openapi-first
+then regenerate; never hand-edit generated files. Never touch artifacts/mobile/.
+STOP after each task and paste real verification output — run the commands.
+
+Order is deliberate: D1 first, then A1. Palette iteration must not block the
+logic work.
+
+════════════════════════════════════════════════════════════
+TASK D1 [LOCKED] — Dashboard tab: widget visibility + order
+════════════════════════════════════════════════════════════
+Layout shape stored in user_profiles.dashboard_layout:
+    { hidden: string[], order: string[] }
+Widget KEYS only, never titles.
+
+SERVER RULE — this is the security-relevant part, get it exact.
+GET /dashboard/manifest applies the stored layout AFTER selectWidgetsFor().
+The capability-resolved set is the universe; layout is only a view on it.
+  - hidden: subtracts keys from the resolved set. Keys not in the resolved
+    set are ignored — they subtract nothing and add nothing.
+  - order: sorts the remaining resolved keys. Keys not in the resolved set
+    are dropped. Resolved widgets NOT listed in order append AFTER the
+    ordered ones, in catalog order. This is required so a newly shipped
+    widget appears for users with saved layouts instead of vanishing.
+  - Stale/unknown keys anywhere in the layout are ignored silently. A
+    catalog change must never 500 a manifest request.
+  - A layout can NEVER add a widget. There must be no code path where a key
+    in the stored layout reaches the response unless the resolver granted it.
+
+API (openapi-first, then regenerate):
+  - PATCH /dashboard/layout — body { hidden: string[], order: string[] },
+    self-only (operates on req.user.id, no target-user param). Validate:
+    arrays of strings, length cap 50 each, no other fields accepted.
+  - DELETE /dashboard/layout — nulls the column (restore defaults).
+
+UI — Dashboard tab, replacing the ComingSoonStub:
+  - List the user's GRANTED widgets. Source that list from the MANIFEST
+    response, never from WIDGET_CATALOG directly — the manifest IS their
+    universe and reading the catalog would show widgets they can't have.
+  - Per row: a visibility toggle and up/down reorder buttons. No
+    drag-and-drop unless something already installed makes it trivial.
+  - "Restore defaults" button calls the DELETE.
+  - On save, invalidate the manifest query so the dashboard reflects changes
+    without a full page reload.
+
+VERIFY D1 — paste real output:
+  - Hide a widget → paste the manifest response omitting it → confirm the
+    dashboard grid no longer renders it.
+  - Reorder two widgets → paste manifest showing the new order.
+  - As a field_rep, PATCH a layout containing "action_required" in BOTH
+    hidden and order → 200, then paste the manifest proving action_required
+    is still absent and nothing else changed. This proves layout can't
+    escalate.
+  - Save a layout, then confirm a widget NOT in the order array still
+    appears (appended in catalog order) — this is the new-widget case.
+  - pnpm --filter @workspace/authz test → still 51/51. Run it, paste it.
+  - Restore defaults → manifest back to catalog order.
+
+════════════════════════════════════════════════════════════
+TASK A1 — Appearance tab + light palette
+════════════════════════════════════════════════════════════
+Current state: artifacts/rooftrax-web/src/index.css has ONE palette — a
+:root block at line 64 holding the dark values — and no .dark block. The
+@custom-variant dark (&:is(.dark *)) on line 5 exists but is unused. This
+task authors light mode.
+
+MECHANICS [LOCKED]:
+  a) Move the CURRENT :root variable values into a .dark { } block VERBATIM.
+     Dark mode must render pixel-identical to today. Do not "improve" any
+     value while moving it.
+  b) Author NEW light values in :root.
+  c) Default stays DARK for everyone. The theme column already defaults
+     'dark', and the pre-paint script below must default to dark when
+     nothing is stored. No existing user sees a visual change unless they
+     opt in.
+  d) Inline <head> script in index.html: read localStorage 'rt_theme' and
+     apply the 'dark' class to <html> BEFORE first paint ('system' resolves
+     via matchMedia). This kills the wrong-theme flash — do not skip it and
+     do not move it into React.
+  e) ONE shared applyTheme() helper, used by: the Appearance tab, the
+     profile load (the stored profile value wins over stale localStorage and
+     re-syncs it), and a matchMedia change listener for 'system'. The
+     unauthenticated marketing Home has no profile — it uses
+     localStorage/system only.
+  f) Persistence: extend the EXISTING PATCH /profile/me to also accept
+     theme (enum light|dark|system, validated). Add it to
+     UpdateProfileMeInput in openapi.yaml, regenerate, and handle it in the
+     profileSet block at profile.ts:195 where the comment already marks the
+     spot. Same self-only rules as the rest of that endpoint — it must still
+     reject role/department/workflowAssignment/smtp fields.
+
+PALETTE DESIGN [REASONING OK] with these constraints:
+  - The orange primary and the condensed-font brand identity stay IDENTICAL
+    in light mode. This is a re-ground, not a redesign.
+  - The sidebar keeps its role as the most-contrasted layer relatively — in
+    light mode that means clearly distinct from the content area, not
+    necessarily dark.
+  - Sweep for hardcoded colors that bypass the variables. Known offenders to
+    check: the Leaflet map container, pipeline stage-color chips, and literal
+    utility classes like bg-orange-500 (the sidebar New Lead button has one).
+    Fix them to use variables or explicit dark:/light: variants.
+
+VERIFY A1 — paste screenshots in BOTH themes:
+  - Dashboard, one pipeline board, the map page, an open dialog (New Lead),
+    a toast, and the Settings page itself.
+  - Cold load with throttled network: report whether you observed a flash of
+    wrong theme. Say what you actually saw, not what should happen.
+  - Set theme in browser A, open browser B logged in as the same user → B
+    follows the profile value.
+  - 'system' mode: flip the OS setting → app follows live without reload.
+  - DARK REGRESSION CHECK: with theme=dark, compare screenshots against
+    pre-change. Must be visually identical.
+
+════════════════════════════════════════════════════════════
+FINAL after A1 — paste everything:
+  pnpm --filter @workspace/authz test
+  cd artifacts/api-server && npx vitest run
+  typecheck all three: api-server, rooftrax-web, mobile
+  git diff --stat -- artifacts/mobile/   → must be empty
+════════════════════════════════════════════════════════════
