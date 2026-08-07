@@ -64,6 +64,7 @@ import {
   TrendingDown,
   ReceiptText,
   Wallet,
+  Scissors,
 } from 'lucide-react';
 import {
   useGetLead,
@@ -2686,6 +2687,96 @@ function FinKpiCards({
 }
 
 // ===========================================================================
+// BETTERMENTS PANEL — upgrades/code-items deducted from the covered claim scope
+// ===========================================================================
+
+function BettermentsPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: insData, isLoading } = useGetPinInsurance(pinId);
+  const { mutateAsync: patchIns, isPending: saving } = usePatchPinInsurance({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPinInsuranceQueryKey(pinId) });
+        qc.invalidateQueries({ queryKey: getGetPinProfitabilityQueryKey(pinId) });
+      },
+    },
+  });
+
+  const bettCents = insData?.insurance?.bettermentsAmountCents ?? null;
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState('');
+
+  function openEdit() {
+    setDraft(bettCents != null ? (bettCents / 100).toFixed(2) : '');
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    const cents = draft.trim() ? parseDollarToCents(draft) : null;
+    try {
+      await patchIns({ pinId, data: { bettermentsAmountCents: cents } });
+      toast({ title: 'Betterments saved.' });
+      setEditing(false);
+    } catch {
+      toast({ title: 'Error saving betterments.', variant: 'destructive' });
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center gap-2">
+          <Scissors className="h-4 w-4 text-purple-500 shrink-0" />
+          <div>
+            <h3 className="font-semibold text-sm">Betterments</h3>
+            <p className="text-xs text-muted-foreground">Upgrades not covered by the claim</p>
+          </div>
+        </div>
+        {isManager && !editing && (
+          <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={openEdit}>
+            <Pencil className="h-3 w-3 mr-1" /> Edit
+          </Button>
+        )}
+      </div>
+
+      <div className="p-4">
+        {isLoading ? (
+          <Skeleton className="h-8 w-1/2" />
+        ) : editing ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <Input
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                placeholder="0.00"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)} disabled={saving}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : bettCents != null && bettCents > 0 ? (
+          <div>
+            <p className="text-2xl font-bold tabular-nums">{formatCents(bettCents)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">deducted from covered scope</p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-2">No betterments recorded.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
 // CHANGE ORDERS PANEL — Zone 4, full width below expense tracker
 // ===========================================================================
 
@@ -2991,6 +3082,7 @@ function FinancialsTab({
         <div className="md:col-span-1 flex flex-col gap-4">
           <CollectionTrackerPanel pinId={pinId} />
           <ChangeOrdersPanel pinId={pinId} isManager={isManager} isInsurance={isInsurance} />
+          <BettermentsPanel pinId={pinId} isManager={isManager} />
         </div>
       </div>
     </div>
