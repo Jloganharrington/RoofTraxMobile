@@ -26,6 +26,7 @@ import templatesRouter from "./templates";
 import paymentsRouter from "./payments";
 import invoicesRouter from "./invoices";
 import expensesRouter from "./expenses";
+import changeOrdersRouter from "./changeOrders";
 import profitabilityRouter from "./profitability";
 import financialsExportRouter from "./financialsExport";
 
@@ -58,6 +59,7 @@ router.use(templatesRouter);
 router.use(paymentsRouter);
 router.use(invoicesRouter);
 router.use(expensesRouter);
+router.use(changeOrdersRouter);
 router.use(profitabilityRouter);
 router.use(financialsExportRouter);
 

@@ -5257,6 +5257,748 @@ paths:
 
 
   # ---------------------------------------------------------------------------
+  # Change Orders + Overhead — step 5 (migration 028)
+  # ---------------------------------------------------------------------------
+
+  /pins/{pinId}/change-orders:
+    get:
+      tags: [ChangeOrders]
+      operationId: listChangeOrders
+      summary: List change orders for a lead (any authenticated company member)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Change orders list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrdersEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [ChangeOrders]
+      operationId: createChangeOrder
+      summary: Create a change order for a lead (manager+)
+      description: >-
+        amount_cents may be negative for deductive change orders (scope
+        reductions). No positive-only constraint is applied.
+        approved_at is stamped server-side when status = 'approved'.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChangeOrderInput"
+      responses:
+        "201":
+          description: Change order created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /change-orders/{changeOrderId}:
+    patch:
+      tags: [ChangeOrders]
+      operationId: updateChangeOrder
+      summary: Update a change order (manager+)
+      description: >-
+        company_id and pin_id are NEVER client-settable — the stored row is
+        fetched and company verified from the DB. When status transitions to
+        'approved', approved_at is stamped server-side. When status transitions
+        away from 'approved', approved_at is cleared.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChangeOrderInput"
+      responses:
+        "200":
+          description: Change order updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Change order not found (or cross-company).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [ChangeOrders]
+      operationId: deleteChangeOrder
+      summary: Delete a change order (manager+)
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Change order not found (or cross-company).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /change-orders/{changeOrderId}/sign:
+    post:
+      tags: [ChangeOrders]
+      operationId: signChangeOrder
+      summary: Sign a change order (any authenticated member)
+      description: >-
+        Stores the document and signature paths. homeownerSignedAt and
+        repSignedAt are always server-stamped — never accepted from the client.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignChangeOrderInput"
+      responses:
+        "200":
+          description: Change order signed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Change order not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Change order is voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /change-orders/{changeOrderId}/approve:
+    post:
+      tags: [ChangeOrders]
+      operationId: approveChangeOrder
+      summary: Approve a change order (manager+, gated by document + homeowner signature)
+      description: >-
+        Requires documentObjectPath AND homeownerSignedAt to be set (via /sign).
+        Returns 422 if either is missing. Returns 409 if already voided.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Change order approved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Change order not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Change order is voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Document or homeowner signature not yet captured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /change-orders/{changeOrderId}/void:
+    post:
+      tags: [ChangeOrders]
+      operationId: voidChangeOrder
+      summary: Void a change order in place (manager+)
+      description: >-
+        Voided in place — never deleted. A voided CO can be replaced with a
+        new one on the same pin. Returns 409 if already voided.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoidChangeOrderInput"
+      responses:
+        "200":
+          description: Change order voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Change order not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Already voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /change-orders/{changeOrderId}/line-items:
+    post:
+      tags: [ChangeOrders]
+      operationId: addChangeOrderLineItem
+      summary: Add a line item to a change order (any authenticated member)
+      description: >-
+        Recomputes change_orders.amount_cents after insert.
+        Returns 409 if the change order is voided.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLineItemInput"
+      responses:
+        "201":
+          description: Line item added; returns updated changeOrder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderLineItemEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Change order not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Change order is voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /change-orders/{changeOrderId}/line-items/{lineItemId}:
+    patch:
+      tags: [ChangeOrders]
+      operationId: updateChangeOrderLineItem
+      summary: Update a line item (any authenticated member)
+      description: Recomputes change_orders.amount_cents after update.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lineItemId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLineItemInput"
+      responses:
+        "200":
+          description: Line item updated; returns updated changeOrder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderLineItemEnvelope"
+        "404":
+          description: Change order or line item not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Change order is voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [ChangeOrders]
+      operationId: deleteChangeOrderLineItem
+      summary: Delete a line item (any authenticated member)
+      description: Recomputes change_orders.amount_cents after delete.
+      parameters:
+        - name: changeOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lineItemId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Line item deleted; returns updated changeOrder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeOrderEnvelope"
+        "404":
+          description: Change order or line item not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Change order is voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/overhead:
+    patch:
+      tags: [Overhead]
+      operationId: updateOverhead
+      summary: Update job overhead amounts for a lead (manager+)
+      description: >-
+        Accepts all five overhead amount fields. Paid dates are NOT accepted
+        here — use the dedicated mark-paid sub-endpoints so the server always
+        controls when an overhead item is recorded as paid. These fields are
+        NOT writable via the generic PATCH /pins/:pinId or
+        PATCH /pins/:pinId/profile.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOverheadInput"
+      responses:
+        "200":
+          description: Overhead amounts updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverheadEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/overhead/lead-acquisition/mark-paid:
+    post:
+      tags: [Overhead]
+      operationId: markLeadAcquisitionPaid
+      summary: Mark lead acquisition cost as paid — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Lead acquisition cost marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverheadEnvelope"
+        "400":
+          description: No lead acquisition cost amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/overhead/referral/mark-paid:
+    post:
+      tags: [Overhead]
+      operationId: markReferralFeePaid
+      summary: Mark referral fee as paid — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Referral fee marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverheadEnvelope"
+        "400":
+          description: No referral fee amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/overhead/sales/mark-paid:
+    post:
+      tags: [Overhead]
+      operationId: markSalesOverheadPaid
+      summary: Mark sales commission as paid via unified /overhead path — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Sales commission marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverheadEnvelope"
+        "400":
+          description: No sales commission amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/overhead/canvassing/mark-paid:
+    post:
+      tags: [Overhead]
+      operationId: markCanvassingCommissionPaid
+      summary: Mark canvassing commission as paid — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Canvassing commission marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverheadEnvelope"
+        "400":
+          description: No canvassing commission amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /pins/{pinId}/overhead/pm/mark-paid:
+    post:
+      tags: [Overhead]
+      operationId: markPmOverheadPaid
+      summary: Mark PM commission as paid via unified /overhead path — date set server-side (manager+)
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: PM commission marked paid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverheadEnvelope"
+        "400":
+          description: No PM commission amount set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
+  # ---------------------------------------------------------------------------
   # Profitability Summary — step 4
   # ---------------------------------------------------------------------------
   /pins/{pinId}/profitability:
@@ -10474,6 +11216,338 @@ components:
           type: [integer, "null"]
 
     # ---------------------------------------------------------------------------
+    # Change Orders + Overhead — migrations 028 + 030
+    # ---------------------------------------------------------------------------
+    ChangeOrderLineItem:
+      type: object
+      required:
+        - id
+        - changeOrderId
+        - companyId
+        - description
+        - quantity
+        - unitPriceCents
+        - totalCents
+        - sortOrder
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        changeOrderId:
+          type: string
+        companyId:
+          type: string
+        description:
+          type: string
+        quantity:
+          type: string
+          description: Numeric string (e.g. "1.0000"). Stored as numeric(10,4).
+        unitPriceCents:
+          type: integer
+          description: Unit price in cents. May be negative for credit items.
+        totalCents:
+          type: integer
+          description: >-
+            Stored total: round(quantity × unitPriceCents). Immutable after
+            creation so signed documents remain reproducible.
+        priceBookItemId:
+          type: [string, "null"]
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ChangeOrderLineItemEnvelope:
+      type: object
+      required: [lineItem, changeOrder]
+      properties:
+        lineItem:
+          $ref: "#/components/schemas/ChangeOrderLineItem"
+        changeOrder:
+          $ref: "#/components/schemas/ChangeOrder"
+    CreateLineItemInput:
+      type: object
+      required: [description, unitPriceCents]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: >-
+            Client-generated UUID for offline idempotency. When supplied the
+            server uses it as the row id; duplicate id returns 409.
+        description:
+          type: string
+          minLength: 1
+        quantity:
+          type: number
+          default: 1
+          exclusiveMinimum: 0
+        unitPriceCents:
+          type: integer
+          description: May be negative for credit items.
+        priceBookItemId:
+          type: string
+        sortOrder:
+          type: integer
+          default: 0
+    UpdateLineItemInput:
+      type: object
+      description: All fields optional.
+      properties:
+        description:
+          type: string
+          minLength: 1
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        unitPriceCents:
+          type: integer
+        priceBookItemId:
+          type: [string, "null"]
+        sortOrder:
+          type: integer
+    SignChangeOrderInput:
+      type: object
+      description: >-
+        Signs the change order. Either pdfBase64 (mobile path — server uploads
+        the PDF to object storage) or documentObjectPath (CRM / pre-upload path)
+        is required; the server returns 400 if neither is supplied.
+        homeownerSignedAt and repSignedAt are always server-stamped (NOW()).
+      properties:
+        pdfBase64:
+          type: string
+          description: >-
+            Base64-encoded PDF generated on-device. Server decodes, stores to
+            object storage, and sets documentObjectPath automatically.
+        sha256:
+          type: string
+          description: >-
+            SHA-256 hex digest of the raw PDF bytes (used with pdfBase64).
+        documentObjectPath:
+          type: string
+          minLength: 1
+          description: Pre-uploaded object-storage path (CRM / direct-upload callers).
+        documentSha256:
+          type: string
+          minLength: 1
+        homeownerName:
+          type: string
+          description: Display name embedded in the audit record.
+        repName:
+          type: string
+          description: Display name embedded in the audit record.
+        homeownerSignaturePath:
+          type: string
+          description: >-
+            Optional — legacy callers that upload separate signature images.
+            The mobile flow embeds signatures inside the PDF.
+        repSignaturePath:
+          type: string
+    VoidChangeOrderInput:
+      type: object
+      properties:
+        voidReason:
+          type: string
+    ChangeOrder:
+      type: object
+      required:
+        - id
+        - companyId
+        - pinId
+        - description
+        - amountCents
+        - status
+        - requiredToCompleteScope
+        - approvedAt
+        - homeownerSignedAt
+        - documentObjectPath
+        - voidedAt
+        - createdByUserId
+        - createdAt
+        - updatedAt
+        - lineItems
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        pinId:
+          type: string
+        description:
+          type: string
+        amountCents:
+          type: integer
+          description: >-
+            DERIVED — always the sum of lineItems[].totalCents. Never
+            client-settable. May be negative when deductive items dominate.
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        requiredToCompleteScope:
+          type: boolean
+          description: >-
+            true = hidden condition / undocumented work required to finish
+            the original scope (supplement candidate on insurance jobs).
+        documentObjectPath:
+          type: [string, "null"]
+        documentSha256:
+          type: [string, "null"]
+        homeownerSignaturePath:
+          type: [string, "null"]
+        homeownerSignedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Server-stamped when /sign is called.
+        repSignaturePath:
+          type: [string, "null"]
+        repSignedAt:
+          type: [string, "null"]
+          format: date-time
+        approvedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Server-stamped when /approve is called; null otherwise.
+        voidedAt:
+          type: [string, "null"]
+          format: date-time
+        voidedByUserId:
+          type: [string, "null"]
+        voidReason:
+          type: [string, "null"]
+        emailedAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            Server-stamped when the signed PDF is successfully emailed on
+            approval (best-effort via per-user SMTP). Null if SMTP is not
+            configured or the send failed.
+        createdByUserId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangeOrderLineItem"
+    ChangeOrderEnvelope:
+      type: object
+      required: [changeOrder]
+      properties:
+        changeOrder:
+          $ref: "#/components/schemas/ChangeOrder"
+    ChangeOrdersEnvelope:
+      type: object
+      required: [changeOrders]
+      properties:
+        changeOrders:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangeOrder"
+    CreateChangeOrderInput:
+      type: object
+      required: [description]
+      description: >-
+        amountCents is DERIVED from lineItems — do not supply it.
+        Any authenticated company member may create (field reps capture on site;
+        managers approve separately).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: >-
+            Client-generated UUID for offline idempotency. When supplied the
+            server uses it as the row id; duplicate id returns 409.
+        description:
+          type: string
+          minLength: 1
+        requiredToCompleteScope:
+          type: boolean
+          default: false
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateLineItemInput"
+          default: []
+    UpdateChangeOrderInput:
+      type: object
+      description: >-
+        Mutable fields: description, requiredToCompleteScope.
+        pin_id, company_id, and amountCents are NOT accepted.
+        Use /approve to approve, /void to void.
+      properties:
+        description:
+          type: string
+          minLength: 1
+        requiredToCompleteScope:
+          type: boolean
+    OverheadData:
+      type: object
+      description: >-
+        Per-lead job overhead: five indirect cost lines, each with an amount
+        and a server-stamped paid date (null = committed but unpaid).
+      properties:
+        leadAcquisitionCostCents:
+          type: [integer, "null"]
+        leadAcquisitionPaidDate:
+          type: [string, "null"]
+          format: date-time
+        referralFeeCents:
+          type: [integer, "null"]
+        referralFeePaidDate:
+          type: [string, "null"]
+          format: date-time
+        salesCommissionCents:
+          type: [integer, "null"]
+        salesCommissionPaidDate:
+          type: [string, "null"]
+          format: date-time
+        canvassingCommissionCents:
+          type: [integer, "null"]
+        canvassingCommissionPaidDate:
+          type: [string, "null"]
+          format: date-time
+        pmCommissionCents:
+          type: [integer, "null"]
+        pmCommissionPaidDate:
+          type: [string, "null"]
+          format: date-time
+    OverheadEnvelope:
+      type: object
+      required: [overhead]
+      properties:
+        overhead:
+          $ref: "#/components/schemas/OverheadData"
+    UpdateOverheadInput:
+      type: object
+      description: >-
+        Update overhead amounts. All fields optional. Paid dates are NOT
+        accepted here — use the mark-paid sub-endpoints.
+      properties:
+        leadAcquisitionCostCents:
+          type: [integer, "null"]
+          minimum: 0
+        referralFeeCents:
+          type: [integer, "null"]
+          minimum: 0
+        salesCommissionCents:
+          type: [integer, "null"]
+          minimum: 0
+        canvassingCommissionCents:
+          type: [integer, "null"]
+          minimum: 0
+        pmCommissionCents:
+          type: [integer, "null"]
+          minimum: 0
+
+    # ---------------------------------------------------------------------------
     # Profitability — step 4
     # ---------------------------------------------------------------------------
     ProfitabilitySummary:
@@ -10531,12 +11605,6 @@ components:
         netProfitCents:
           type: integer
           description: totalPaymentsCents - totalCostCents.
-        marginPct:
-          type: [number, "null"]
-          description: >-
-            netProfitCents / totalPaymentsCents as a percentage (0–100),
-            rounded to 2 decimal places. Null when totalPaymentsCents = 0.
-            Kept for backward compatibility; prefer cashMarginPct.
         expectedTotalCents:
           type: integer
           description: >-

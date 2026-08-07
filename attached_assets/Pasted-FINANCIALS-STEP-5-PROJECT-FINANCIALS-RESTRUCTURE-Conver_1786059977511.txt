@@ -1,0 +1,206 @@
+FINANCIALS STEP 5 — PROJECT FINANCIALS RESTRUCTURE
+
+Converts the lead P&L from a CASH basis (collected − costs) to an ACCRUAL
+basis (revised contract − COGS − overhead). This is a redefinition, not a
+rename — read the whole order before starting.
+
+Money is integer cents everywhere. Standing rules: openapi-first then
+regenerate; never hand-edit generated client files; never touch
+artifacts/mobile/; server enforcement is authoritative.
+
+STOP AT EACH CHECKPOINT and paste the listed output. Do not run steps
+together — step 2's view depends on step 1's schema.
+
+═══════════════════════════════════════════════════════════
+TARGET MODEL — the waterfall being built
+═══════════════════════════════════════════════════════════
+    Contract Value                    $15,000
+    Change Orders (approved)          + $3,500
+    ─────────────────────────────────────────
+    Revised Contract Value            $18,500
+    Cost of Goods Sold                − $8,000   ← vendor_expenses total
+    Job Overhead                      − $2,500   ← the modal's total
+    ─────────────────────────────────────────
+    Net Project Margin                  $8,000   (43.2%)
+
+COGS  = direct job costs — the existing vendor_expenses table
+        (materials / labor / subcontractor / equipment / other).
+        The Cost of Goods Sold line MUST equal the Expense Tracker total.
+        Same source, no second aggregation.
+
+JOB OVERHEAD = indirect project costs, all per-lead single values on pins:
+        lead acquisition cost, referral fee, sales commission,
+        canvassing commission, PM commission.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 — SCHEMA + API                    migration 028     ║
+╚═══════════════════════════════════════════════════════════╝
+
+1a [LOCKED] New table `change_orders` in data-migrations/028_change_orders_
+and_overhead.sql plus Drizzle schema (verify 028 is unused):
+    id             varchar PK gen_random_uuid()
+    company_id     varchar NOT NULL REFERENCES companies(id)
+    pin_id         varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+    description    text NOT NULL
+    amount_cents   integer NOT NULL          ← MAY BE NEGATIVE
+    status         varchar NOT NULL DEFAULT 'pending'  -- pending|approved|rejected
+    approved_at    timestamptz NULL
+    created_by_user_id varchar NOT NULL REFERENCES users(id)
+    created_at / updated_at timestamptz NOT NULL DEFAULT now()
+    INDEX (company_id, pin_id)
+
+amount_cents MUST allow negative values — deductive change orders (scope
+reductions) are real and common. Do not add a positive-only constraint.
+Export the status vocabulary as a const array and validate server-side.
+
+1b [LOCKED] New columns on pins, same migration, all integer cents:
+    canvassing_commission_cents       integer NULL
+    canvassing_commission_paid_date   timestamptz NULL
+    referral_fee_paid_date            timestamptz NULL   ← referral fee has an
+                                        amount today but NO paid date; sales
+                                        and PM already have one. This makes
+                                        overhead paid-tracking consistent.
+    lead_acquisition_paid_date        timestamptz NULL
+
+Every Job Overhead line now has the same shape: amount + paid date. A null
+paid date means committed-but-unpaid. Do NOT add a separate boolean —
+the date is the source of truth, presence means paid.
+
+KEEP lead_acquisition_cost_cents and pm_commission_cents. Both are indirect
+project costs and both hold real data. Do not drop or rename them.
+
+1c [LOCKED] API (openapi-first):
+    GET/POST   /pins/:pinId/change-orders
+    PATCH/DELETE /change-orders/:changeOrderId
+    PATCH      /pins/:pinId/overhead   ← all five overhead amounts + paid dates
+Authorization: reads follow lead-read rules; ALL writes are manager+.
+Apply the same protections as the payments ledger:
+  - company_id and pin_id are NEVER client-settable on PATCH. Fetch the
+    stored row, verify company from the DB, whitelist mutable fields in .set().
+  - Overhead fields must NOT be writable through the generic pin PATCH.
+    Verify and report what you find there.
+  - Paid dates are server-stamped when marking paid, never client-supplied.
+
+▶ CHECKPOINT 1
+  VERIFY:
+   - negative change order (−$1,200) saves and reads back correctly
+   - manager can write change orders and overhead; field_rep → 403 on both
+   - cross-company change order PATCH → 404/403, never success
+   - PATCH with a different pin_id in body → pin_id UNCHANGED (before/after)
+   - overhead fields rejected by the generic pin PATCH — paste what you found
+   - "Mark paid" sets the date server-side; a client-supplied date is ignored
+  INTEGRATION:
+   - payments, invoices, and vendor_expenses endpoints from steps 1–3
+     unchanged — re-run the mark-paid idempotency proof and paste it
+   - generic pin PATCH still saves NON-money fields (name, address, stage)
+   - scripts/seed-acceptance-claim.ts still 42/42
+   - pnpm --filter @workspace/authz test → 51/51
+   - typechecks (api-server, rooftrax-web, mobile); mobile diff empty
+STOP. Wait for confirmation.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 — PROFITABILITY VIEW REWRITE      migration 029     ║
+╚═══════════════════════════════════════════════════════════╝
+
+2a [LOCKED] CREATE OR REPLACE pin_profitability, adding:
+    change_orders_cents
+        SUM of change_orders WHERE status = 'approved' ONLY.
+        Pending and rejected are excluded. COALESCE to 0.
+    revised_contract_cents
+        contract_amount (parsed via _parse_legacy_money_cents)
+        + change_orders_cents
+    net_project_margin_cents
+        revised_contract_cents − total_cost_cents
+    net_project_margin_pct
+        revised_contract_cents > 0
+          ? (net_project_margin_cents)::numeric / revised_contract_cents * 100
+          : 0        ← guard, never NaN/Infinity/null
+
+2b [LOCKED] total_cost_cents must now include canvassing commission.
+Current definition sums vendor expenses + lead acquisition + referral +
+sales + PM. Add canvassing. If any overhead line is missing from
+total_cost_cents, Net Project Margin silently overstates profit.
+
+2c [LOCKED] expected_total_cents must now use the REVISED contract:
+    insurance → GREATEST(revised_contract_cents, approved_rcv_cents)
+    retail    → revised_contract_cents
+A change order that raises the contract must raise the projected baseline.
+Keep cash_margin_pct exactly as-is — it is still collected-vs-costs and is
+consumed by the company rollup later.
+
+2d [LOCKED] Remove the legacy `marginPct` field from the profitability
+response and its test. Nothing external consumes this API; a third margin
+that can diverge from the other two is the exact drift this restructure
+exists to eliminate.
+
+Remember: pg returns numeric as STRING. The existing pct() coercion helper
+in profitability.ts must cover every new percentage column.
+
+▶ CHECKPOINT 2
+  VERIFY — hand-verify a worked example and paste the arithmetic:
+   - lead with $15,000 contract, +$3,500 approved CO, $8,000 expenses,
+     $2,500 overhead → revised $18,500, margin $8,000, 43.24%
+   - a PENDING change order does NOT move revised_contract_cents
+   - a NEGATIVE (deductive) change order lowers it correctly
+   - zero-contract lead → net_project_margin_pct = 0, not NaN
+   - insurance lead where approvedRcv > revised contract → expected_total
+     uses approvedRcv; where revised > approvedRcv → uses revised
+   - all percentages arrive as numbers, not strings, in the JSON response
+  INTEGRATION:
+   - cash_margin_pct unchanged for a lead with payments but no change orders
+   - profitability.test.ts passes with marginPct assertions removed
+   - existing payments/invoice/expense aggregates unchanged — paste the
+     before/after for one lead with financial data
+   - seed-acceptance-claim.ts still 42/42
+   - cd artifacts/api-server && npx vitest run — full output
+STOP. Wait for confirmation.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 — UI                                                ║
+╚═══════════════════════════════════════════════════════════╝
+
+3a [LOCKED] Card renames on the Financials tab:
+   - "Net Profit" → "Net Project Margin", showing
+     net_project_margin_cents as the dollar figure with
+     net_project_margin_pct as its single subordinate percentage.
+     Remove the projected/cash percentage pair from this card — three
+     figures called margin on one card is unreadable, and the cash story
+     is already told by Payments Received and Balance Due.
+   - "Contract Value" card keeps showing the BASE contract with its edit
+     control (editing base contract, not a derived total). When approved
+     change orders exist, show "+$3,500 CO" as a subline so the card never
+     contradicts the Project Financials panel.
+
+3b [LOCKED] "Cost Breakdown" panel → "Project Financials", rendering the
+waterfall in this order:
+     Contract Value
+     Change Orders           (approved only; opens the change-order list)
+     Revised Contract Value  (subtotal, visually separated)
+     Cost of Goods Sold      (ties to Expense Tracker — same number)
+     Job Overhead            (opens the modal; shows the total)
+     Net Project Margin      (result, with %)
+
+3c [REASONING OK] Job Overhead modal — five lines (lead acquisition,
+referral fee, sales commission, canvassing commission, PM commission), each
+with an amount and paid/unpaid state with a "Mark paid" action. Show a
+committed-but-unpaid subtotal — that number is the point of the modal.
+Design is yours; match the existing visual language.
+
+▶ CHECKPOINT 3
+  VERIFY:
+   - screenshot: waterfall reconciles top to bottom with real data
+   - Cost of Goods Sold equals the Expense Tracker total exactly
+   - Job Overhead modal total equals the panel's Job Overhead line
+   - field_rep sees the tab read-only — no edit controls, and direct API
+     calls still 403
+  INTEGRATION:
+   - every other Lead Profile tab still renders (Lead Dashboard, Inspection,
+     Insurance, Communications, Selections & Scope, Documents)
+   - Insurance tab's Claim Value Tracker still computes — it reads contract
+     and approvedRcv, both of which this restructure touched
+   - dashboard widgets unaffected: sales_funnel, insurance_claims,
+     production_pipeline, action_required all still return correct data
+     (pins gained columns again)
+   - the financial summary PDF export still generates correctly
+   - seed-acceptance-claim.ts 42/42; authz 51/51; api-server vitest full
+   - typechecks all three; git diff --stat -- artifacts/mobile/ empty

@@ -2,20 +2,24 @@
  * Checkpoint 4 — Profitability Summary
  *
  * Verified:
- *   1. Empty lead → all zeros, marginPct null
+ *   1. Empty lead → all zeros
  *   2. Payments + expenses + commissions → correct net_profit_cents
- *   3. marginPct computed correctly (rounded to 2 dp)
+ *   3. cashMarginPct computed correctly
  *   4. Void invoices excluded from invoice_total_cents
  *   5. Company scoping — company B cannot read company A profitability (404)
  *   6. field_rep CAN read (no write restriction on this read-only endpoint)
  *   7. Migration idempotency — CREATE OR REPLACE VIEW is safe to re-run
  *
- * Migration 027 additions (expected_total_cents + margin pcts):
- *   8.  retail lead → expected_total_cents = contract_amount_cents
- *   9.  insurance lead where approvedRcv > contract → expected = approvedRcv
- *   10. zero-collected lead (empty) → both margin pcts are 0, not NaN/null
- *   11. zero-collected lead with expected > 0 → cash=0, projected>0
- *   12. hand-verify cash and projected margins for a fully-seeded insurance lead
+ * Migration 027 additions (expected_total_cents + cash/projected margin pcts):
+ *   8.  retail lead → expectedTotalCents = contractAmountCents
+ *   9.  retail reference: $15k contract / $0 costs / $0 collected
+ *         → 100% projected / 0% cash / $0 net profit
+ *   10. insurance where approvedRcv > contract → expected = approvedRcv
+ *   11. insurance where contract > approvedRcv → expected = contract
+ *   12. zero-collected lead (nonzero expected) → cashMarginPct = 0 (not NaN/null),
+ *         projectedMarginPct computed from expectedTotal
+ *   13. zero-contract lead → projectedMarginPct = 0 (not NaN/null)
+ *   14. hand-verify cash and projected margins for a fully-seeded insurance lead
  */
 
 import {
@@ -175,7 +179,7 @@ function coB() { return { Authorization: `Bearer ${companyBSid}`  }; }
 // 1. Empty pin → all zeros
 // ---------------------------------------------------------------------------
 
-describe('empty pin → all zeros, marginPct null', () => {
+describe('empty pin → all zeros', () => {
   it('returns zeroes for a pin with no financial data', async () => {
     const res = await request(app)
       .get(`/api/pins/${emptyPinId}/profitability`)
@@ -187,7 +191,8 @@ describe('empty pin → all zeros, marginPct null', () => {
     expect(p.totalCommissionCents).toBe(0);
     expect(p.totalCostCents).toBe(0);
     expect(p.netProfitCents).toBe(0);
-    expect(p.marginPct).toBeNull();
+    expect(p.cashMarginPct).toBe(0);
+    expect(p.projectedMarginPct).toBe(0);
   });
 });
 
@@ -237,11 +242,13 @@ describe('profitability aggregation', () => {
     expect(p.netProfitCents).toBe(800000);
   });
 
-  it('marginPct = netProfit / totalPayments * 100 (rounded 2dp)', async () => {
+  it('cashMarginPct = (payments - costs) / payments * 100', async () => {
     const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
     const p = res.body.profitability;
-    // 800,000 / 1,500,000 * 100 = 53.33...% → 53.33
-    expect(p.marginPct).toBeCloseTo(53.33, 1);
+    // (1,500,000 − 700,000) / 1,500,000 × 100 = 53.33…%
+    expect(p.cashMarginPct).toBeCloseTo(53.33, 1);
+    // marginPct field must not be present — removed in favour of cashMarginPct
+    expect(p).not.toHaveProperty('marginPct');
   });
 });
 
@@ -546,32 +553,35 @@ describe('mutation re-aggregation', () => {
 // ---------------------------------------------------------------------------
 // Migration 027 — expected_total_cents + cash/projected margin pcts
 // ---------------------------------------------------------------------------
-// All three rules verified in isolation with dedicated fixture pins.
+// Fixture pins (all in isolated company M027_CO):
 //
-// Fixture data for the insurance pin (m027InsPin):
-//   contractAmount    = '$12,000'   → 1,200,000 cents
-//   approvedRcvAmount = '$18,000'   → 1,800,000 cents  (> contract)
-//   salesCommission   = 500,000 cents
-//   pmCommission      = 200,000 cents
-//   total_cost        = 700,000 cents
-//   payments          =  900,000 cents
+//   m027InsPinId        — insurance, approvedRcv > contract
+//     contractAmount    = '$12,000'  → 1,200,000 cents
+//     approvedRcvAmount = '$18,000'  → 1,800,000 cents
+//     salesCommission   = 500,000 cents  |  pmCommission = 200,000 cents
+//     payments          = 900,000 cents
+//     expected          = GREATEST(1,200,000, 1,800,000) = 1,800,000
+//     cash_margin_pct   = (900k − 700k) / 900k × 100 = 22.22…%
+//     proj_margin_pct   = (1,800k − 700k) / 1,800k × 100 = 61.11…%
 //
-//   expected_total_cents  = GREATEST(1,200,000, 1,800,000) = 1,800,000
-//   cash_margin_pct       = (900,000 − 700,000) / 900,000 × 100 = 22.22…%
-//   projected_margin_pct  = (1,800,000 − 700,000) / 1,800,000 × 100 = 61.11…%
+//   m027InsContractWinsPinId — insurance, contract > approvedRcv
+//     contractAmount    = '$20,000'  → 2,000,000 cents
+//     approvedRcvAmount = '$15,000'  → 1,500,000 cents
+//     no costs, no payments
+//     expected          = GREATEST(2,000,000, 1,500,000) = 2,000,000 (contract wins)
 //
-// Fixture data for the retail pin (m027RetailPin):
-//   contractAmount = '15000'  → 1,500,000 cents
-//   no costs, no payments
-//
-//   expected_total_cents  = 1,500,000  (retail uses contract only)
-//   cash_margin_pct       = 0          (no payments)
-//   projected_margin_pct  = 100.00     (0 cost, full expected revenue)
+//   m027RetailPinId     — retail, $15k contract, $0 costs, $0 collected
+//     contractAmount    = '15000'    → 1,500,000 cents
+//     expected          = 1,500,000  (retail: contract only, ignores rcv)
+//     cash_margin_pct   = 0          (no payments → guard returns 0)
+//     proj_margin_pct   = 100.00     (0 cost / 1,500,000 expected)
+//     net_profit_cents  = 0          (0 payments − 0 costs)
 // ---------------------------------------------------------------------------
 
 describe('migration 027 — expected_total_cents + margin pcts', () => {
   let m027UserId: string;
   let m027InsPinId: string;
+  let m027InsContractWinsPinId: string;
   let m027RetailPinId: string;
   let m027Sid: string;
   const M027_CO = `PROF-027-${Date.now().toString(36).toUpperCase()}`;
@@ -591,7 +601,7 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
       access_token: 'tok',
     });
 
-    // ── Insurance pin: approvedRcvAmount > contractAmount ─────────────────
+    // ── Insurance pin A: approvedRcv ($18k) > contract ($12k) ─────────────
     const [insPin] = await db
       .insert(pinsTable)
       .values({
@@ -614,7 +624,24 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
       amountCents: 900000, paymentDate: new Date(), createdByUserId: m027UserId,
     });
 
-    // ── Retail pin: only contractAmount, no costs, no payments ────────────
+    // ── Insurance pin B: contract ($20k) > approvedRcv ($15k) ────────────
+    // No costs, no payments — isolated to test just the GREATEST branch.
+    const [insContractWinsPin] = await db
+      .insert(pinsTable)
+      .values({
+        companyId:         M027_CO,
+        userId:            m027UserId,
+        latitude:          38.9,
+        longitude:         -77.0,
+        workflow:          'insurance',
+        contractAmount:    '$20,000',
+        approvedRcvAmount: '$15,000',
+      })
+      .returning();
+    m027InsContractWinsPinId = insContractWinsPin!.id;
+
+    // ── Retail pin: $15k contract, $0 costs, $0 payments ──────────────────
+    // Reference-implementation fixture: the canonical $15k/$0/$0 case.
     const [retailPin] = await db
       .insert(pinsTable)
       .values({
@@ -646,64 +673,89 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
     expect(res.body.profitability.expectedTotalCents).toBe(1500000);
   });
 
-  it('retail lead: projected margin uses contract as denominator', async () => {
+  // ── 9. reference implementation — $15k / $0 / $0 quad-verify ─────────────
+  // A $15,000 contract with no costs and no collected payments must produce:
+  //   100.0% projected  (no costs → full margin)
+  //   0.0%   cash       (no payments → guard fires, returns 0)
+  //   $0     net profit (0 payments − 0 costs)
+  //   $15,000 balance due implied by expectedTotalCents − totalPaymentsCents
+  it('reference: $15k contract / $0 costs / $0 collected → 100% projected / 0% cash / $0 net', async () => {
     const res = await request(app).get(`/api/pins/${m027RetailPinId}/profitability`).set(auth());
+    expect(res.status).toBe(200);
     const p = res.body.profitability;
-    // No costs, full contract → 100%
-    expect(p.projectedMarginPct).toBeCloseTo(100, 1);
+    expect(p.expectedTotalCents).toBe(1500000);          // $15,000 expected
+    expect(p.projectedMarginPct).toBeCloseTo(100.0, 1);  // 100% projected
+    expect(p.cashMarginPct).toBe(0);                     // 0% cash (guard)
+    expect(p.netProfitCents).toBe(0);                    // $0 net
+    expect(p.totalPaymentsCents).toBe(0);                // $0 collected → $15k balance due
+    // Confirm no NaN / Infinity leaked
+    expect(Number.isFinite(p.projectedMarginPct)).toBe(true);
+    expect(Number.isFinite(p.cashMarginPct)).toBe(true);
   });
 
-  // ── 9. insurance where approvedRcv > contract → expected = approvedRcv ───
-  it('insurance lead: expected_total_cents = GREATEST(contract, approvedRcv)', async () => {
+  // ── 10. insurance where approvedRcv > contract → expected = approvedRcv ──
+  it('insurance: approvedRcv > contract → expectedTotalCents = approvedRcv', async () => {
     const res = await request(app).get(`/api/pins/${m027InsPinId}/profitability`).set(auth());
     expect(res.status).toBe(200);
     // GREATEST(1,200,000 ; 1,800,000) = 1,800,000
     expect(res.body.profitability.expectedTotalCents).toBe(1800000);
   });
 
-  // ── 10. empty pin → both margins 0, never NaN/null/Infinity ──────────────
-  it('zero-collected, zero-expected pin: both margin pcts are exactly 0', async () => {
-    // emptyPinId (from outer fixture) has no contract, no payments, no costs
-    const res = await request(app).get(`/api/pins/${emptyPinId}/profitability`).set(mgr());
+  // ── 11. insurance where contract > approvedRcv → expected = contract ──────
+  it('insurance: contract > approvedRcv → expectedTotalCents = contract', async () => {
+    const res = await request(app).get(`/api/pins/${m027InsContractWinsPinId}/profitability`).set(auth());
     expect(res.status).toBe(200);
-    const p = res.body.profitability;
-    expect(p.cashMarginPct).toBe(0);
-    expect(p.projectedMarginPct).toBe(0);
-    expect(p.expectedTotalCents).toBe(0);
-    // Confirm no NaN / null / Infinity leaked through
-    expect(Number.isFinite(p.cashMarginPct)).toBe(true);
-    expect(Number.isFinite(p.projectedMarginPct)).toBe(true);
+    // GREATEST(2,000,000 ; 1,500,000) = 2,000,000 (contract wins)
+    expect(res.body.profitability.expectedTotalCents).toBe(2000000);
   });
 
-  // ── 11. zero payments + nonzero expected → cash = 0, projected > 0 ───────
-  it('retail pin with no payments: cashMarginPct = 0, projectedMarginPct = 100', async () => {
+  // ── 12. zero-collected lead → cashMarginPct = 0, projectedMarginPct computed
+  // The retail pin has no payments but a nonzero expected; the cash guard must
+  // return 0 while the projected margin is still fully computed from expectedTotal.
+  it('zero-collected lead: cashMarginPct = 0 (not NaN/null), projectedMarginPct still computed', async () => {
     const res = await request(app).get(`/api/pins/${m027RetailPinId}/profitability`).set(auth());
     expect(res.status).toBe(200);
     const p = res.body.profitability;
     expect(p.totalPaymentsCents).toBe(0);
     expect(p.cashMarginPct).toBe(0);
-    expect(p.projectedMarginPct).toBeCloseTo(100, 1);
+    expect(Number.isFinite(p.cashMarginPct)).toBe(true);
+    // projectedMarginPct must still be computed (not 0) because expectedTotal > 0
+    expect(p.expectedTotalCents).toBeGreaterThan(0);
+    expect(p.projectedMarginPct).toBeGreaterThan(0);
   });
 
-  // ── 12. hand-verify insurance pin margins against raw numbers ─────────────
+  // ── 13. zero-contract lead → projectedMarginPct = 0, not NaN ─────────────
+  // emptyPinId has no contract, no payments, no costs.
+  // Both margins must be exactly 0 (divide-by-zero guard active for both).
+  it('zero-contract lead: projectedMarginPct = 0 (not NaN/null/Infinity)', async () => {
+    const res = await request(app).get(`/api/pins/${emptyPinId}/profitability`).set(mgr());
+    expect(res.status).toBe(200);
+    const p = res.body.profitability;
+    expect(p.expectedTotalCents).toBe(0);
+    expect(p.projectedMarginPct).toBe(0);
+    expect(p.cashMarginPct).toBe(0);
+    expect(Number.isFinite(p.projectedMarginPct)).toBe(true);
+    expect(Number.isFinite(p.cashMarginPct)).toBe(true);
+  });
+
+  // ── 14. hand-verify insurance pin A margins against raw numbers ───────────
   it('insurance pin: hand-verify cash and projected margins', async () => {
     const res = await request(app).get(`/api/pins/${m027InsPinId}/profitability`).set(auth());
     expect(res.status).toBe(200);
     const p = res.body.profitability;
 
-    // Raw data summary:
-    //   payments    = 900,000 cents
-    //   total_cost  = 700,000 cents (sales 500k + pm 200k, no expenses)
-    //   expected    = 1,800,000 cents (approvedRcv wins)
-
+    // Raw data:
+    //   payments   = 900,000 cents
+    //   total_cost = 700,000 cents (sales 500k + pm 200k, no expenses)
+    //   expected   = 1,800,000 cents (approvedRcv wins over contract)
     expect(p.totalPaymentsCents).toBe(900000);
     expect(p.totalCostCents).toBe(700000);
     expect(p.expectedTotalCents).toBe(1800000);
 
-    // cash_margin_pct  = (900,000 − 700,000) / 900,000 × 100 = 22.22…
+    // cash_margin_pct  = (900k − 700k) / 900k × 100 = 22.22…%
     expect(p.cashMarginPct).toBeCloseTo(22.22, 1);
 
-    // projected_margin_pct = (1,800,000 − 700,000) / 1,800,000 × 100 = 61.11…
+    // projected_margin_pct = (1,800k − 700k) / 1,800k × 100 = 61.11…%
     expect(p.projectedMarginPct).toBeCloseTo(61.11, 1);
   });
 });

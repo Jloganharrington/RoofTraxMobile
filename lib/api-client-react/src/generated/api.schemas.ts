@@ -4041,7 +4041,6 @@ export interface ProfitabilitySummary {
      * netProfitCents / totalPaymentsCents as a percentage (0–100), rounded to 2 decimal places. Null when totalPaymentsCents = 0.
      * @nullable
      */
-  marginPct?: number | null;
   /** Expected revenue baseline in cents (migration 027). Insurance: GREATEST(contract,rcv). Retail: contract. */
   expectedTotalCents?: number;
   /** (payments - costs) / payments * 100. Returns 0 when no payments. */

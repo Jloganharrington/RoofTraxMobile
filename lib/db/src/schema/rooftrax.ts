@@ -4,6 +4,7 @@ import {
   doublePrecision,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -257,6 +258,15 @@ export const pinsTable = pgTable('pins', {
   salesCommissionPaidDate:   timestamp('sales_commission_paid_date', { withTimezone: true }),
   pmCommissionCents:         integer('pm_commission_cents'),
   pmCommissionPaidDate:      timestamp('pm_commission_paid_date',    { withTimezone: true }),
+
+  // ── Overhead additions (step 5 — migration 028) ────────────────────────
+  // Canvassing commission: new overhead line with full amount + paid-date shape.
+  canvassingCommissionCents:     integer('canvassing_commission_cents'),
+  canvassingCommissionPaidDate:  timestamp('canvassing_commission_paid_date', { withTimezone: true }),
+  // Paid dates for the two existing overhead lines that previously had amounts
+  // but no paid-date tracking (referral fee, lead acquisition).
+  referralFeePaidDate:           timestamp('referral_fee_paid_date',          { withTimezone: true }),
+  leadAcquisitionPaidDate:       timestamp('lead_acquisition_paid_date',      { withTimezone: true }),
 
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
@@ -528,6 +538,7 @@ export const TEMPLATE_USE_CASES = [
   'estimate_proposal',
   'homeowner_email',
   'claim_supplement',
+  'change_order',
   'other',
 ] as const;
 
@@ -723,3 +734,99 @@ export const vendorExpensesTable = pgTable('vendor_expenses', {
 
 export type VendorExpense = typeof vendorExpensesTable.$inferSelect;
 export type InsertVendorExpense = typeof vendorExpensesTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Change Orders (step 5 — migration 028)
+// ---------------------------------------------------------------------------
+
+export const CHANGE_ORDER_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type ChangeOrderStatus = (typeof CHANGE_ORDER_STATUSES)[number];
+
+export const changeOrdersTable = pgTable('change_orders', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  description: text('description').notNull(),
+  // amount_cents is DERIVED — always the sum of change_order_line_items.total_cents.
+  // Never set by the client; recomputed on every line-item write.
+  // May be negative when deductive line items exceed additive ones.
+  amountCents: integer('amount_cents').notNull().default(0),
+  // Status vocabulary: pending | approved | rejected
+  status: varchar('status', { enum: CHANGE_ORDER_STATUSES }).notNull().default('pending'),
+  // Set server-side when status → 'approved'; cleared when status → other.
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  // Migration 030 — on-site capture fields
+  // Scope flag: true = hidden conditions discovered during job (supplement candidate)
+  requiredToCompleteScope: boolean('required_to_complete_scope').notNull().default(false),
+  // Document (PDF generated on-device, uploaded to object storage)
+  documentObjectPath: text('document_object_path'),
+  documentSha256: text('document_sha256'),
+  // Homeowner signature (PNG uploaded separately)
+  homeownerSignaturePath: text('homeowner_signature_path'),
+  homeownerSignedAt: timestamp('homeowner_signed_at', { withTimezone: true }),
+  // Rep signature
+  repSignaturePath: text('rep_signature_path'),
+  repSignedAt: timestamp('rep_signed_at', { withTimezone: true }),
+  // Void semantics (never hard-delete a signed CO)
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  voidedByUserId: varchar('voided_by_user_id')
+    .references(() => usersTable.id),
+  voidReason: text('void_reason'),
+  /** Stamped when the signed PDF is successfully emailed on approval (best-effort). */
+  emailedAt: timestamp('emailed_at', { withTimezone: true }),
+  createdByUserId: varchar('created_by_user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type ChangeOrder = typeof changeOrdersTable.$inferSelect;
+export type InsertChangeOrder = typeof changeOrdersTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Change Order Line Items (migration 030)
+// ---------------------------------------------------------------------------
+
+export const changeOrderLineItemsTable = pgTable('change_order_line_items', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  changeOrderId: varchar('change_order_id')
+    .notNull()
+    .references(() => changeOrdersTable.id, { onDelete: 'cascade' }),
+  description: text('description').notNull(),
+  // Stored as numeric(10,4) — fractional quantities (e.g. 0.5 squares) are common.
+  quantity: numeric('quantity', { precision: 10, scale: 4 }).notNull().default('1'),
+  unitPriceCents: integer('unit_price_cents').notNull(), // may be negative (credit)
+  // Stored total: round(quantity × unit_price_cents). Stored so signed documents
+  // remain reproducible even if a price-book item later changes.
+  totalCents: integer('total_cents').notNull(),
+  priceBookItemId: varchar('price_book_item_id')
+    .references(() => priceBookItemsTable.id),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type ChangeOrderLineItem = typeof changeOrderLineItemsTable.$inferSelect;
+export type InsertChangeOrderLineItem = typeof changeOrderLineItemsTable.$inferInsert;

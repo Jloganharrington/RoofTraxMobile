@@ -30,7 +30,13 @@ export type OutboxItemKind =
   | 'inspection.photoCaption'
   // Beta bug report — deliberately NOT an inspection write: it never gates
   // inspection submission and a dead bug report must never block the queue.
-  | 'bug_report';
+  | 'bug_report'
+  // Change order writes — offline-first, client-id idempotent.
+  // Ordering matters: change_order.create must be drained before
+  // change_order.line_item or change_order.sign that reference its id.
+  | 'change_order.create'
+  | 'change_order.line_item'
+  | 'change_order.sign';
 
 export interface InspectionPhotoOutboxPayload {
   /** Client-generated photo id so a replayed outbox item (e.g. after a lost
@@ -200,6 +206,51 @@ export interface BugReportOutboxPayload {
   platform: string | null;
   osVersion: string | null;
   capturedAt: string;
+}
+
+// ── Change order payload interfaces ───────────────────────────────────────────
+
+/**
+ * Creates a change order with a client-supplied id so the operation is
+ * idempotent: if drained a second time the server returns 409 and the
+ * handler treats that as success (already done).
+ */
+export interface ChangeOrderCreateOutboxPayload {
+  /** Client-generated UUID used as the server-side row id. */
+  id: string;
+  pinId: string;
+  description: string;
+  requiredToCompleteScope: boolean;
+}
+
+/**
+ * Creates one line item on a change order.  The change_order.create item for
+ * the same changeOrderId MUST be drained (FIFO) before this item reaches the
+ * server.  The client-supplied id ensures idempotent replay.
+ */
+export interface ChangeOrderLineItemOutboxPayload {
+  /** Client-generated UUID for this line item. */
+  id: string;
+  /** Must match the id from the preceding change_order.create payload. */
+  changeOrderId: string;
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
+  priceBookItemId?: string | null;
+  sortOrder?: number;
+}
+
+/**
+ * Uploads the signed PDF and stamps both signed-at timestamps server-side.
+ * Must be drained after all change_order.line_item items for the same
+ * changeOrderId.  409 (e.g. re-signed after void) is treated as success.
+ */
+export interface ChangeOrderSignOutboxPayload {
+  changeOrderId: string;
+  pdfBase64: string;
+  sha256: string;
+  homeownerName?: string;
+  repName?: string;
 }
 
 // `dead` — permanently rejected by the server (4xx on a well-formed replay,

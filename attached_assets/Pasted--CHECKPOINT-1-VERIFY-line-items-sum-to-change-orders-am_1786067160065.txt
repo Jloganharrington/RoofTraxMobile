@@ -1,0 +1,87 @@
+▶ CHECKPOINT 1
+  VERIFY:
+   - line items sum to change_orders.amount_cents; editing a line recomputes it
+   - negative line item (credit) handled correctly
+   - approve without signature/document → 409 or 422, never success
+   - approve with both → succeeds, manager+ only; field_rep → 403
+   - field_rep CAN create a change order with line items
+   - cross-company access → 404/403; PATCH with foreign pin_id → unchanged
+  INTEGRATION:
+   - pin_profitability: an APPROVED CO moves revised_contract_cents and
+     net_project_margin_cents; a PENDING one does not. Paste before/after.
+   - payments, invoices, vendor_expenses endpoints unchanged
+   - Templates page still lists/uploads correctly with the new use-case value
+   - seed-acceptance-claim.ts 42/42; authz 51/51; api-server vitest full
+   - typechecks all three
+STOP.
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 — MOBILE: PRICE BOOK OFFLINE CACHE                  ║
+╚═══════════════════════════════════════════════════════════╝
+Prerequisite for step 3 — "Add from Price Book" must work with no signal.
+The mobile app has NO price book code today (priceBookApi.ts is referenced
+only as a pattern other files copied). Build a local cache following the
+app's existing offline patterns: fetch on login/refresh, persist locally,
+serve from cache when offline, refresh opportunistically.
+GET /price-book/items is already requireAuthenticated, so reps can read it —
+no server change needed.
+▶ CHECKPOINT 2
+  VERIFY: price book list renders; airplane mode → still renders from cache;
+          reconnect → refreshes
+  INTEGRATION: existing mobile flows unaffected — inspections, pin drop, and
+          the FIPSA agreement all still work; typecheck mobile
+STOP.
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 — MOBILE: CHANGE ORDER FLOW                         ║
+╚═══════════════════════════════════════════════════════════╝
+3a [LOCKED] Replace the "Team" tab with "Change Orders" in the tab bar
+(artifacts/mobile/app/team.tsx and the tab layout). Remove the Team screen.
+3b [REASONING OK] Capture flow: pick the job → add line items (description +
+price + quantity, or "Add from Price Book") → running total → the
+"This work is required as part of the original scope" checkbox → review →
+homeowner signature → submit.
+3c [LOCKED] Document generation MUST mirror the FIPSA pattern exactly:
+a deterministic HTML template with fixed placeholders (see
+lib/fipsaTemplate.ts buildFipsaHtml), rendered to PDF on-device via
+expo-print's printToFileAsync, uploaded as base64 (see lib/agreementApi.ts).
+NO AI, NO server round-trip for the document. It must work in airplane mode.
+3d [LOCKED] Offline submission via the existing outbox: the create carries a
+client-generated id, conflict lookup is parent-scoped (change_order_id), and
+replaying the outbox must never duplicate a change order or its line items.
+3e [LOCKED] Signature: homeowner required. Capture the rep signature too,
+matching FIPSA's dual-signature flow. Store both plus a SHA-256 of the exact
+PDF bytes.
+▶ CHECKPOINT 3
+  VERIFY:
+   - full flow in AIRPLANE MODE: create, add price book items, sign, generate
+     PDF on-device. Report what you actually observed.
+   - reconnect → syncs; run the outbox twice → no duplicate CO or line items
+   - generated PDF matches the template with correct totals
+   - the required-scope checkbox changes the document wording
+  INTEGRATION:
+   - FIPSA agreement signing still works end to end (shares expo-print and
+     the upload path)
+   - inspection capture, photo upload, and pin drop unaffected
+   - the removed Team tab leaves no dangling routes or imports
+   - typecheck mobile; full mobile regression on a real device
+STOP.
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 — CRM: APPROVAL + DELIVERY                          ║
+╚═══════════════════════════════════════════════════════════╝
+4a Change orders visible on the Financials tab's Project Financials panel:
+   list with status, line items, total, signed document link, and a
+   manager-only Approve action. Pending COs visually distinct — they don't
+   count toward contract value yet.
+4b Email the signed PDF to the customer on approval, via the existing
+   per-user SMTP. Record sent-at like signed_agreements.emailedAt.
+4c Supplement candidates: surface required_to_complete_scope COs on insurance
+   jobs so they can be pursued with the carrier. Read-only flag for now — no
+   supplement workflow in this step.
+▶ CHECKPOINT 4
+  VERIFY: approve moves the waterfall; email sends with the correct PDF;
+          field_rep sees read-only, no Approve control, and 403 on the API
+  INTEGRATION:
+   - full waterfall reconciles: contract + approved COs − COGS − overhead
+   - Insurance tab Claim Value Tracker still computes (contract changed)
+   - dashboard widgets unaffected; financial PDF export still generates
+   - seed-acceptance-claim.ts 42/42; authz 51/51; api-server vitest full
+   - typechecks all three

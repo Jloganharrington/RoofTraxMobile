@@ -1,5 +1,6 @@
 import { File } from 'expo-file-system';
 import {
+  customFetch,
   createAttestation,
   createBugReport,
   createDamageInstance,
@@ -24,6 +25,11 @@ import {
   updateInspectionSidingFacet,
   updateInspectionSlope,
 } from '@workspace/api-client-react';
+import type {
+  ChangeOrderCreateOutboxPayload,
+  ChangeOrderLineItemOutboxPayload,
+  ChangeOrderSignOutboxPayload,
+} from './types';
 import type {
   CreateAttestationInput,
   CreateBugReportInput,
@@ -364,6 +370,77 @@ async function syncInspectionSubmission(payloadJson: string): Promise<void> {
   await submitInspection(payload.inspectionId, payload.input as unknown as SubmitInspectionInput);
 }
 
+// ── Change order handlers ─────────────────────────────────────────────────────
+
+/** Creates the change order row server-side. 409 = already exists; treat as success. */
+async function syncChangeOrderCreate(payloadJson: string): Promise<void> {
+  const payload: ChangeOrderCreateOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await customFetch<unknown>(`/api/pins/${payload.pinId}/change-orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id:                      payload.id,
+        description:             payload.description,
+        requiredToCompleteScope: payload.requiredToCompleteScope,
+        lineItems:               [],
+      }),
+    });
+  } catch (err: unknown) {
+    // 409 = duplicate id — change order already created on a prior replay.
+    if ((err as { status?: number }).status === 409) return;
+    throw err;
+  }
+}
+
+/** Adds one line item to a change order. 409 = already exists; treat as success. */
+async function syncChangeOrderLineItem(payloadJson: string): Promise<void> {
+  const payload: ChangeOrderLineItemOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await customFetch<unknown>(`/api/change-orders/${payload.changeOrderId}/line-items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id:              payload.id,
+        description:     payload.description,
+        quantity:        payload.quantity,
+        unitPriceCents:  payload.unitPriceCents,
+        priceBookItemId: payload.priceBookItemId ?? null,
+        sortOrder:       payload.sortOrder,
+      }),
+    });
+  } catch (err: unknown) {
+    // 409 = duplicate line-item id on replay.
+    if ((err as { status?: number }).status === 409) return;
+    throw err;
+  }
+}
+
+/**
+ * Uploads the signed PDF (as base64) and stamps signed-at timestamps.
+ * 409 may occur if the CO was voided between queue drain and this item landing;
+ * treat as success so the item doesn't permanently block the queue.
+ */
+async function syncChangeOrderSign(payloadJson: string): Promise<void> {
+  const payload: ChangeOrderSignOutboxPayload = JSON.parse(payloadJson);
+  try {
+    await customFetch<unknown>(`/api/change-orders/${payload.changeOrderId}/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pdfBase64:     payload.pdfBase64,
+        sha256:        payload.sha256,
+        homeownerName: payload.homeownerName,
+        repName:       payload.repName,
+      }),
+    });
+  } catch (err: unknown) {
+    // 409 = CO voided or already signed — unblock the queue.
+    if ((err as { status?: number }).status === 409) return;
+    throw err;
+  }
+}
+
 export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.photo': syncInspectionPhoto,
   'inspection.create': syncInspectionCreate,
@@ -389,4 +466,7 @@ export const OUTBOX_HANDLERS: Record<OutboxItemKind, Handler> = {
   'inspection.submission': syncInspectionSubmission,
   'inspection.photoCaption': syncInspectionPhotoCaption,
   'bug_report': syncBugReport,
+  'change_order.create':    syncChangeOrderCreate,
+  'change_order.line_item': syncChangeOrderLineItem,
+  'change_order.sign':      syncChangeOrderSign,
 };

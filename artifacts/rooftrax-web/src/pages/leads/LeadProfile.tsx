@@ -106,6 +106,11 @@ import {
   STAGE_DEFAULT_PROFILE_STATUS,
   getStageLabel,
 } from '@/lib/pipelineStages';
+import {
+  useListPinChangeOrders,
+  useApproveChangeOrder,
+  type ChangeOrder as ChangeOrderRecord,
+} from '@/lib/changeOrdersApi';
 
 // ---------------------------------------------------------------------------
 // Tab config
@@ -539,7 +544,20 @@ function DashboardTab({
   );
 }
 
-function InsuranceTab({ form, onField }: { form: FormState; onField: (n: string, v: string) => void }) {
+function InsuranceTab({
+  form,
+  onField,
+  pinId,
+}: {
+  form: FormState;
+  onField: (n: string, v: string) => void;
+  pinId: string;
+}) {
+  const { data: coData } = useListPinChangeOrders(pinId);
+  const supplementCandidates = (coData?.changeOrders ?? []).filter(
+    (co) => co.requiredToCompleteScope && !co.voidedAt,
+  );
+
   return (
     <div className="space-y-8">
       <FieldGroup title="Policy">
@@ -557,6 +575,52 @@ function InsuranceTab({ form, onField }: { form: FormState; onField: (n: string,
         <Field label="Adjuster Email"        name="adjusterEmail"       value={form.adjusterEmail}       onChange={onField} type="email" />
         <Field label="Adjuster Meeting Date" name="adjusterMeetingDate" value={form.adjusterMeetingDate} onChange={onField} type="date" />
       </FieldGroup>
+
+      {/* Supplement candidates — read-only; change orders marked as required
+          to complete original scope are surfaced here for carrier pursuit. */}
+      {supplementCandidates.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">Supplement Candidates</h3>
+            <Badge className="bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
+              {supplementCandidates.length}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The following change orders are marked as required to complete the original scope of work.
+            These may be submitted to the carrier as supplement items for reimbursement.
+          </p>
+          <div className="space-y-2">
+            {supplementCandidates.map((co) => (
+              <div
+                key={co.id}
+                className="flex items-center justify-between px-3 py-2.5 rounded-lg border bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+              >
+                <div className="min-w-0">
+                  <span className="text-sm font-semibold tabular-nums">
+                    {formatCents(co.amountCents)}
+                  </span>
+                  {co.description && (
+                    <span className="text-xs text-muted-foreground ml-2 truncate">
+                      {co.description}
+                    </span>
+                  )}
+                </div>
+                <Badge
+                  variant="outline"
+                  className={`text-xs shrink-0 ml-3 ${
+                    co.status === 'approved'
+                      ? 'border-green-500 text-green-600'
+                      : 'border-amber-400 text-amber-600'
+                  }`}
+                >
+                  {co.status === 'approved' ? 'Approved' : 'Pending approval'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1546,6 +1610,241 @@ function FinKpiCards({
 }
 
 // ===========================================================================
+// CHANGE ORDERS PANEL — Zone 4, full width below expense tracker
+// ===========================================================================
+
+function ChangeOrdersPanel({
+  pinId,
+  isManager,
+  isInsurance,
+}: {
+  pinId: string;
+  isManager: boolean;
+  isInsurance: boolean;
+}) {
+  const { toast } = useToast();
+  const { data, isLoading } = useListPinChangeOrders(pinId);
+  const approveMutation = useApproveChangeOrder(pinId);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const changeOrders: ChangeOrderRecord[] = data?.changeOrders ?? [];
+  const approvedCos = changeOrders.filter((co) => co.status === 'approved' && !co.voidedAt);
+  const pendingCos  = changeOrders.filter((co) => co.status === 'pending'  && !co.voidedAt);
+  const approvedTotal = approvedCos.reduce((s, co) => s + co.amountCents, 0);
+
+  async function handleApprove(co: ChangeOrderRecord) {
+    try {
+      await approveMutation.mutateAsync(co.id);
+      toast({
+        title: 'Change order approved',
+        description: 'The signed PDF has been queued for delivery to the customer.',
+      });
+    } catch (err: unknown) {
+      toast({
+        title: 'Approval failed',
+        description: (err as { message?: string })?.message ?? 'Could not approve this change order.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-card flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center gap-2">
+          <ReceiptText className="h-4 w-4 text-primary shrink-0" />
+          <div>
+            <h3 className="font-semibold text-sm">Change Orders</h3>
+            <p className="text-xs text-muted-foreground">
+              {approvedCos.length} approved
+              {pendingCos.length > 0 && ` · ${pendingCos.length} pending`}
+              {approvedTotal > 0 && ` · ${formatCents(approvedTotal)} added to contract`}
+            </p>
+          </div>
+        </div>
+        {pendingCos.length > 0 && (
+          <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 text-xs">
+            {pendingCos.length} pending review
+          </Badge>
+        )}
+      </div>
+
+      {isLoading && (
+        <div className="p-4 space-y-2">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-3/4" />
+        </div>
+      )}
+
+      {!isLoading && changeOrders.length === 0 && (
+        <div className="p-6 text-center text-muted-foreground text-sm">
+          No change orders on this job yet.
+        </div>
+      )}
+
+      {!isLoading && changeOrders.length > 0 && (
+        <div className="divide-y">
+          {changeOrders.map((co) => {
+            const isVoided   = !!co.voidedAt;
+            const isExpanded = expandedId === co.id;
+            const canApprove =
+              isManager &&
+              co.status === 'pending' &&
+              !isVoided &&
+              !!co.documentObjectPath &&
+              !!co.homeownerSignedAt;
+            const docUrl = co.documentObjectPath
+              ? `/api/storage/objects${co.documentObjectPath.replace(/^\/objects/, '')}`
+              : null;
+
+            return (
+              <div key={co.id} className={isVoided ? 'opacity-50' : ''}>
+                <div className="flex items-center gap-3 px-4 py-3">
+                  {/* Status icon */}
+                  <div className="shrink-0">
+                    {co.status === 'approved' && !isVoided && (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    )}
+                    {co.status === 'pending' && !isVoided && (
+                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                    )}
+                    {isVoided && <XCircle className="h-4 w-4 text-muted-foreground" />}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-semibold tabular-nums">
+                        {formatCents(co.amountCents)}
+                      </span>
+                      {co.status === 'approved' && !isVoided && (
+                        <Badge variant="outline" className="text-xs border-green-500 text-green-600">
+                          Approved
+                        </Badge>
+                      )}
+                      {co.status === 'pending' && !isVoided && (
+                        <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">
+                          Pending
+                        </Badge>
+                      )}
+                      {isVoided && (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          Voided
+                        </Badge>
+                      )}
+                      {co.requiredToCompleteScope && (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            isInsurance
+                              ? 'border-blue-400 text-blue-600 dark:text-blue-400'
+                              : 'border-orange-400 text-orange-600'
+                          }`}
+                        >
+                          {isInsurance ? 'Supplement candidate' : 'Required scope'}
+                        </Badge>
+                      )}
+                      {co.emailedAt && (
+                        <span className="text-xs text-green-500 font-medium">✉ Emailed</span>
+                      )}
+                    </div>
+                    {co.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {co.description}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {new Date(co.createdAt).toLocaleDateString()}
+                      {co.homeownerSignedAt &&
+                        ` · Signed ${new Date(co.homeownerSignedAt).toLocaleDateString()}`}
+                      {co.approvedAt &&
+                        ` · Approved ${new Date(co.approvedAt).toLocaleDateString()}`}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {docUrl && (
+                      <a
+                        href={docUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        title="View signed document"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    {canApprove && (
+                      <Button
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => handleApprove(co)}
+                        disabled={approveMutation.isPending}
+                      >
+                        {approveMutation.isPending ? (
+                          <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Approving…</>
+                        ) : (
+                          'Approve'
+                        )}
+                      </Button>
+                    )}
+                    {co.lineItems.length > 0 && (
+                      <button
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setExpandedId(isExpanded ? null : co.id)}
+                        title={isExpanded ? 'Collapse line items' : 'Expand line items'}
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Line items accordion */}
+                {isExpanded && co.lineItems.length > 0 && (
+                  <div className="px-4 pb-3 pl-11">
+                    <div className="rounded border bg-muted/20 divide-y text-xs">
+                      {co.lineItems.map((li) => (
+                        <div
+                          key={li.id}
+                          className="flex items-center justify-between px-3 py-1.5 gap-2"
+                        >
+                          <span className="flex-1 truncate text-muted-foreground">
+                            {parseFloat(li.quantity) !== 1
+                              ? `${parseFloat(li.quantity)}× `
+                              : ''}
+                            {li.description}
+                          </span>
+                          <span className="font-medium tabular-nums shrink-0">
+                            {formatCents(li.totalCents)}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40">
+                        <span className="font-semibold text-muted-foreground">Total</span>
+                        <span className="font-bold tabular-nums">
+                          {formatCents(co.amountCents)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===========================================================================
 // FINANCIALS TAB — 3-zone widget layout
 // ===========================================================================
 
@@ -1554,11 +1853,13 @@ function FinancialsTab({
   onField,
   pinId,
   isManager,
+  isInsurance,
 }: {
   form: FormState;
   onField: (n: string, v: string) => void;
   pinId: string;
   isManager: boolean;
+  isInsurance: boolean;
 }) {
   const { toast } = useToast();
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -1603,6 +1904,9 @@ function FinancialsTab({
         onExportPdf={handleExportPdf}
         exportingPdf={exportingPdf}
       />
+
+      {/* Zone 4 — Change Orders, full width */}
+      <ChangeOrdersPanel pinId={pinId} isManager={isManager} isInsurance={isInsurance} />
     </div>
   );
 }
@@ -2257,8 +2561,8 @@ export default function LeadProfile() {
             <>
               {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} isManager={isManager} />}
               {activeTab === 'inspection_flow' && inspectionId && <InspectionFlowTab inspectionId={inspectionId} />}
-              {activeTab === 'insurance'       && isInsurance && <InsuranceTab  form={form} onField={handleField} />}
-              {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} pinId={id!} isManager={isManager} />}
+              {activeTab === 'insurance'       && isInsurance && <InsuranceTab  form={form} onField={handleField} pinId={id!} />}
+              {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} pinId={id!} isManager={isManager} isInsurance={isInsurance} />}
               {activeTab === 'communication'   && <CommunicationTab  form={form} onField={handleField} />}
               {activeTab === 'scope'           && <ScopeTab          form={form} onField={handleField} />}
               {activeTab === 'files'           && lead && (

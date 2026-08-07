@@ -26,6 +26,7 @@ import type { IconName } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
+import { usePriceBookSync } from '@/lib/priceBookApi';
 
 /** Formats an ISO start time into an HH:MM:SS elapsed string, ticking live. */
 function useElapsed(startedAt: string | null | undefined): string | null {
@@ -60,6 +61,9 @@ export default function DashboardScreen() {
   const { role, companyName, department } = useProfile();
   const queryClient = useQueryClient();
   const isManager = role === 'manager' || role === 'admin' || role === 'super_admin';
+  // Warm the price book cache on mount (= after login) and keep it fresh
+  // whenever the device regains connectivity. Runs silently in the background.
+  usePriceBookSync();
   const canSeeInspections = department === 'inspector_canvasser' || role === 'super_admin';
 
   const [scope, setScope] = useState<ActivityScope>('total');
