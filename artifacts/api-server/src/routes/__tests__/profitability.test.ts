@@ -756,6 +756,8 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
   });
 
   // ── 14. hand-verify insurance pin A margins against raw numbers ───────────
+  //
+  // Migration 032 additions (tests 22-28) live in the describe block below.
   it('insurance pin: hand-verify cash and projected margins', async () => {
     const res = await request(app).get(`/api/pins/${m027InsPinId}/profitability`).set(auth());
     expect(res.status).toBe(200);
@@ -779,5 +781,203 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
     expect(p.revisedContractCents).toBe(1200000);
     expect(p.netProjectMarginCents).toBe(500000);
     expect(p.netProjectMarginPct).toBeCloseTo(41.67, 1);
+  });
+});
+
+// =============================================================================
+// Migration 032 — Insurance analytics columns (tests 22-28)
+//
+// Seven new columns appended to pin_profitability (positions 24-30):
+//
+//   22. deductibleCollectedCents  = SUM payments WHERE type='deductible'
+//   23. policyDeductibleCents     = _parse_legacy_money_cents(deductible_amount)
+//   24. approvedAcvCents          = _parse_legacy_money_cents(approved_acv_amount)
+//   25. supplementCandidateCents  = SUM approved+non-voided COs WHERE
+//                                   required_to_complete_scope = true
+//   26. depreciationCents         = approvedRcvCents − approvedAcvCents
+//   27. claimVarianceCents        = approvedRcvCents − revisedContractCents
+//                                   (negative = SHORT; carrier < contracted)
+//   28. baseScopeCents            = revisedContractCents − bettermentsAmountCents
+//
+// Fixture pin (M032_CO):
+//   contractAmount    = '$10,000'  → base_contract   = 1,000,000 ¢
+//   approvedRcvAmount = '$12,000'  → approved_rcv    = 1,200,000 ¢
+//   approvedAcvAmount = '$9,000'   → approved_acv    =   900,000 ¢
+//   deductibleAmount  = '$2,000'   → policy_ded      =   200,000 ¢
+//   bettermentsAmountCents = 50000 →                 =    50,000 ¢
+//
+// Change orders:
+//   CO_SUPP  : status='approved', requiredToCompleteScope=true,  amount=500,000 ¢  (non-voided)
+//   CO_NOSUPP: status='approved', requiredToCompleteScope=false, amount=100,000 ¢  (non-voided)
+//   CO_VOIDED: status='approved', requiredToCompleteScope=true,  amount=200,000 ¢  (voided — excluded everywhere)
+//
+// Derived:
+//   approved_co_cents          = 500k + 100k             = 600,000
+//   revised_contract_cents     = 1,000k + 600k           = 1,600,000
+//   supplement_candidate_cents = 500,000  (only CO_SUPP)
+//   depreciation_cents         = 1,200k − 900k           = 300,000
+//   claim_variance_cents       = 1,200k − 1,600k         = −400,000  (SHORT)
+//   base_scope_cents           = 1,600k − 50k            = 1,550,000
+//   deductible_collected_cents = 150,000  (one payment)
+// =============================================================================
+
+describe('migration 032 — insurance analytics columns', () => {
+  const M032_CO = `PROF-032-${Date.now().toString(36).toUpperCase()}`;
+  let m032UserId: string;
+  let m032Sid:    string;
+  let m032PinId:  string;
+
+  beforeAll(async () => {
+    await db.insert(companiesTable).values({ id: M032_CO, name: 'Migration 032 Test Co' });
+
+    const [u] = await db
+      .insert(usersTable)
+      .values({ companyId: M032_CO, email: `m032-${M032_CO}@t.invalid` })
+      .returning();
+    m032UserId = u!.id;
+    await db.insert(userProfilesTable).values({ userId: m032UserId, role: 'manager' });
+    m032Sid = await createSession({
+      user: { id: m032UserId, email: u!.email, firstName: null, lastName: null, profileImageUrl: null, companyId: M032_CO },
+      access_token: 'tok',
+    });
+
+    // ── Fixture pin ────────────────────────────────────────────────────────
+    const [pin] = await db
+      .insert(pinsTable)
+      .values({
+        companyId:            M032_CO,
+        userId:               m032UserId,
+        latitude:             38.9,
+        longitude:            -77.0,
+        workflow:             'insurance',
+        contractAmount:       '$10,000',
+        approvedRcvAmount:    '$12,000',
+        approvedAcvAmount:    '$9,000',
+        deductibleAmount:     '$2,000',
+        bettermentsAmountCents: 50000,
+      })
+      .returning();
+    m032PinId = pin!.id;
+
+    // ── Change orders ──────────────────────────────────────────────────────
+    // CO_SUPP: approved, required, non-voided → both approved_co and supplement_candidate
+    await db.insert(changeOrdersTable).values({
+      companyId: M032_CO, pinId: m032PinId, createdByUserId: m032UserId,
+      description: 'Supplement CO (required scope)',
+      amountCents: 500000, status: 'approved', approvedAt: new Date(),
+      requiredToCompleteScope: true,
+    });
+
+    // CO_NOSUPP: approved, NOT required, non-voided → approved_co only (not supplement_candidate)
+    await db.insert(changeOrdersTable).values({
+      companyId: M032_CO, pinId: m032PinId, createdByUserId: m032UserId,
+      description: 'Betterment CO (not required scope)',
+      amountCents: 100000, status: 'approved', approvedAt: new Date(),
+      requiredToCompleteScope: false,
+    });
+
+    // CO_VOIDED: approved but voided → excluded from BOTH aggregations
+    await db.insert(changeOrdersTable).values({
+      companyId: M032_CO, pinId: m032PinId, createdByUserId: m032UserId,
+      description: 'Voided CO (excluded)',
+      amountCents: 200000, status: 'approved', approvedAt: new Date(),
+      requiredToCompleteScope: true, voidedAt: new Date(),
+    });
+
+    // ── Deductible payment ─────────────────────────────────────────────────
+    await db.insert(paymentsTable).values({
+      companyId: M032_CO, pinId: m032PinId, createdByUserId: m032UserId,
+      type: 'deductible', amountCents: 150000, paymentDate: new Date(),
+    });
+  });
+
+  afterAll(async () => {
+    await db.delete(pinsTable).where(eq(pinsTable.companyId, M032_CO));
+    await db.delete(usersTable).where(eq(usersTable.companyId, M032_CO));
+    await db.delete(companiesTable).where(eq(companiesTable.id, M032_CO));
+  });
+
+  async function prof() {
+    const res = await request(app)
+      .get(`/api/pins/${m032PinId}/profitability`)
+      .set('Authorization', `Bearer ${m032Sid}`);
+    expect(res.status).toBe(200);
+    return res.body.profitability as Record<string, number>;
+  }
+
+  // ── 22. deductibleCollectedCents ─────────────────────────────────────────
+  it('22. deductibleCollectedCents = sum of type=deductible payments', async () => {
+    const p = await prof();
+    expect(p.deductibleCollectedCents).toBe(150000);
+  });
+
+  // ── 23. policyDeductibleCents ────────────────────────────────────────────
+  it('23. policyDeductibleCents = parsed deductibleAmount text column ($2,000 → 200000)', async () => {
+    const p = await prof();
+    expect(p.policyDeductibleCents).toBe(200000);
+  });
+
+  // ── 24. approvedAcvCents ─────────────────────────────────────────────────
+  it('24. approvedAcvCents = parsed approvedAcvAmount text column ($9,000 → 900000)', async () => {
+    const p = await prof();
+    expect(p.approvedAcvCents).toBe(900000);
+  });
+
+  // ── 25. supplementCandidateCents ─────────────────────────────────────────
+  // Only CO_SUPP (approved, non-voided, requiredToCompleteScope=true) counts.
+  // CO_NOSUPP (required=false) and CO_VOIDED (voided) are excluded.
+  it('25. supplementCandidateCents sums only approved+non-voided+required-scope COs', async () => {
+    const p = await prof();
+    expect(p.supplementCandidateCents).toBe(500000);
+  });
+
+  // ── 26. depreciationCents ────────────────────────────────────────────────
+  // depreciation = approvedRcv ($12k) − approvedAcv ($9k) = $3k
+  it('26. depreciationCents = approvedRcvCents − approvedAcvCents (300000)', async () => {
+    const p = await prof();
+    expect(p.depreciationCents).toBe(300000); // 1,200,000 − 900,000
+  });
+
+  // ── 27. claimVarianceCents ───────────────────────────────────────────────
+  // revised_contract = 1,000k + 600k = 1,600k
+  // approved_rcv = 1,200k
+  // claim_variance = 1,200k − 1,600k = −400k (SHORT: carrier < contracted)
+  it('27. claimVarianceCents = approvedRcv − revisedContract (−400000 = SHORT)', async () => {
+    const p = await prof();
+    expect(p.claimVarianceCents).toBe(-400000);
+    // Verify revised contract while we're here: $10k base + $600k approved COs
+    expect(p.revisedContractCents).toBe(1600000);
+  });
+
+  // ── 28. baseScopeCents ───────────────────────────────────────────────────
+  // base_scope = revised_contract (1,600k) − betterments (50k) = 1,550k
+  it('28. baseScopeCents = revisedContractCents − bettermentsAmountCents (1550000)', async () => {
+    const p = await prof();
+    expect(p.baseScopeCents).toBe(1550000); // 1,600,000 − 50,000
+  });
+
+  // ── 29. zero baseScopeCents when betterments equal full contract ──────────
+  it('29. baseScopeCents = 0 when betterments equal revised contract (divide-by-zero safe)', async () => {
+    // Insert a second pin where betterments = revised contract (no COs, base_contract = betterments)
+    const [zeroScopePin] = await db
+      .insert(pinsTable)
+      .values({
+        companyId: M032_CO, userId: m032UserId,
+        latitude: 38.9, longitude: -77.0, workflow: 'insurance',
+        contractAmount: '$1,000', bettermentsAmountCents: 100000, // 100,000 = $1,000
+      })
+      .returning();
+
+    const res = await request(app)
+      .get(`/api/pins/${zeroScopePin!.id}/profitability`)
+      .set('Authorization', `Bearer ${m032Sid}`);
+    expect(res.status).toBe(200);
+    const p = res.body.profitability;
+    // revised_contract = $1,000 base + $0 COs = 100,000 ¢
+    // base_scope       = 100,000 − 100,000 = 0
+    expect(p.revisedContractCents).toBe(100000);
+    expect(p.baseScopeCents).toBe(0);
+
+    await db.delete(pinsTable).where(eq(pinsTable.id, zeroScopePin!.id));
   });
 });

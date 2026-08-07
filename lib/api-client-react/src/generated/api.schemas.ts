@@ -4239,6 +4239,57 @@ export interface UpdateOverheadInput {
   pmCommissionCents?: number | null;
 }
 
+export type InsuranceFieldsClaimStatus = typeof InsuranceFieldsClaimStatus[keyof typeof InsuranceFieldsClaimStatus] | null;
+
+
+export const InsuranceFieldsClaimStatus = {
+  not_filed: 'not_filed',
+  filed: 'filed',
+  under_review: 'under_review',
+  adjuster_scheduled: 'adjuster_scheduled',
+  approved: 'approved',
+  partially_approved: 'partially_approved',
+  denied: 'denied',
+  supplement_pending: 'supplement_pending',
+  closed: 'closed',
+} as const;
+
+/**
+ * Insurance, claim, and adjuster fields stored on a pin.
+ */
+export interface InsuranceFields {
+  insuranceCarrier?: string | null;
+  policyNumber?: string | null;
+  policyHolder?: string | null;
+  coverageType?: string | null;
+  /** Legacy varchar dollar value (e.g. "$1,000"). */
+  deductibleAmount?: string | null;
+  claimNumber?: string | null;
+  claimFiledDate?: string | null;
+  dateOfLoss?: string | null;
+  inspectionDate?: string | null;
+  claimStatus?: InsuranceFieldsClaimStatus;
+  adjusterName?: string | null;
+  adjusterPhone?: string | null;
+  adjusterEmail?: string | null;
+  adjusterMeetingDate?: string | null;
+  adjusterLastContact?: string | null;
+  approvedRcvAmount?: string | null;
+  approvedAcvAmount?: string | null;
+  /** Carrier-asserted betterments deduction in cents. */
+  bettermentsAmountCents?: number | null;
+  supplementNotes?: string | null;
+}
+
+/**
+ * Fields accepted by PATCH /pins/{pinId}/insurance. All fields are optional; omitted fields are preserved. Manager+ required.
+ */
+export type InsurancePatchBody = InsuranceFields;
+
+export interface InsuranceEnvelope {
+  insurance: InsuranceFields;
+}
+
 export interface ProfitabilitySummary {
   pinId: string;
   /** Sum of all payment ledger entries. */
@@ -4276,6 +4327,20 @@ export interface ProfitabilitySummary {
   netProjectMarginCents: number;
   /** netProjectMarginCents / revisedContractCents × 100. Returns 0 (not NaN or null) when revisedContractCents = 0. Primary margin metric; replaces projectedMarginPct. */
   netProjectMarginPct: number;
+  /** Sum of payments with type='deductible'. How much of the deductible has actually been collected from the homeowner. */
+  deductibleCollectedCents: number;
+  /** Policy deductible amount parsed from the legacy varchar deductibleAmount field. */
+  policyDeductibleCents: number;
+  /** Approved ACV parsed from the legacy varchar approvedAcvAmount field. */
+  approvedAcvCents: number;
+  /** Sum of approved non-voided change orders flagged as requiredToCompleteScope. Shows the dollar value of supplementable items already on file. */
+  supplementCandidateCents: number;
+  /** approvedRcvCents − approvedAcvCents. */
+  depreciationCents: number;
+  /** approvedRcvCents − revisedContractCents. Negative = SHORT (carrier approved less than the contract; a supplement may be needed to bridge the gap). */
+  claimVarianceCents: number;
+  /** revisedContractCents − bettermentsAmountCents. What the carrier owes after stripping out betterments. */
+  baseScopeCents: number;
 }
 
 export interface ProfitabilitySummaryEnvelope {

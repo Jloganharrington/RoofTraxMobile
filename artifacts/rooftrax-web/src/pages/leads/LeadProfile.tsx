@@ -80,6 +80,7 @@ import {
   type LeadFileCategory,
   type LeadFileRow,
 } from '@/lib/claimHubApi';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   customFetch,
   useGetMyProfile,
@@ -104,6 +105,11 @@ import {
   type CreateVendorExpenseInput,
   type UpdateVendorExpenseInput,
   useGetPinProfitability,
+  useGetPinInsurance,
+  usePatchPinInsurance,
+  getGetPinInsuranceQueryKey,
+  getGetPinProfitabilityQueryKey,
+  type InsurancePatchBody,
 } from '@workspace/api-client-react';
 import { InspectionFlowWizard } from '@/components/inspection/InspectionFlowWizard';
 import {
@@ -118,13 +124,14 @@ import {
   useApproveChangeOrder,
   type ChangeOrder as ChangeOrderRecord,
 } from '@/lib/changeOrdersApi';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 
 // ---------------------------------------------------------------------------
 // Tab config
 // ---------------------------------------------------------------------------
 
 
-type TabId = 'dashboard' | 'inspection_flow' | 'insurance' | 'financials' | 'communication' | 'scope' | 'files';
+type TabId = 'dashboard' | 'inspection_flow' | 'contract_builder' | 'financials' | 'communication' | 'scope' | 'files';
 
 function buildTabs(isInsurance: boolean, hasInspection: boolean) {
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
@@ -134,7 +141,7 @@ function buildTabs(isInsurance: boolean, hasInspection: boolean) {
     tabs.push({ id: 'inspection_flow', label: 'Proof Package Builder', icon: <FileText className="h-4 w-4" /> });
   }
   if (isInsurance) {
-    tabs.push({ id: 'insurance', label: 'Insurance', icon: <Shield className="h-4 w-4" /> });
+    tabs.push({ id: 'contract_builder', label: 'Contract Builder', icon: <Shield className="h-4 w-4" /> });
   }
   tabs.push(
     { id: 'financials',    label: 'Financials',         icon: <DollarSign className="h-4 w-4" /> },
@@ -179,6 +186,29 @@ function Field({ label, name, value, onChange, type = 'text', placeholder, span2
         value={value}
         onChange={e => onChange(name, e.target.value)}
         placeholder={placeholder}
+        className="h-9 text-sm"
+      />
+    </div>
+  );
+}
+
+function formatPhoneDisplay(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 10);
+  if (d.length === 0) return '';
+  if (d.length <= 3)  return `(${d}`;
+  if (d.length <= 6)  return `(${d.slice(0, 3)})${d.slice(3)}`;
+  return `(${d.slice(0, 3)})${d.slice(3, 6)}-${d.slice(6)}`;
+}
+
+function PhoneField({ label, name, value, onChange, span2 }: Omit<FieldProps, 'type' | 'placeholder'>) {
+  return (
+    <div className={span2 ? 'sm:col-span-2' : ''}>
+      <Label className="text-xs text-muted-foreground mb-1 block">{label}</Label>
+      <Input
+        type="tel"
+        value={value}
+        onChange={e => onChange(name, formatPhoneDisplay(e.target.value))}
+        placeholder="(555)555-5555"
         className="h-9 text-sm"
       />
     </div>
@@ -261,7 +291,7 @@ function initForm(lead: FullLead): FormState {
     hasSecondOwner:       !!(lead.owner2FirstName || lead.owner2LastName),
     owner2FirstName:      toStr(lead.owner2FirstName),
     owner2LastName:       toStr(lead.owner2LastName),
-    customerPhone:        toStr(lead.customerPhone),
+    customerPhone:        formatPhoneDisplay(toStr(lead.customerPhone)),
     notes:                toStr(lead.notes),
     statusNotes:          toStr(lead.statusNotes),
     pipelineStage:        toStr(lead.pipelineStage),
@@ -319,7 +349,7 @@ const TAB_FIELDS: Record<TabId, (keyof FormState)[]> = {
     'deductibleAmount','statusNotes','notes',
   ],
   inspection_flow: [],
-  insurance:       ['insuranceCarrier','policyNumber','claimNumber','dateOfLoss','inspectionDate','adjusterName','adjusterPhone','adjusterEmail','adjusterMeetingDate'],
+  contract_builder: [],
   financials:      ['contractAmount','deductibleAmount','rcvAmount'],
   communication:   ['communicationNotes'],
   scope:           ['contractScope','squareFootage','roofPitch','measurementVendor','measurementReportUrl','materialBrand','materialColor','materialStyle'],
@@ -334,8 +364,199 @@ function InspectionFlowTab({ inspectionId }: { inspectionId: string }) {
   return <InspectionFlowWizard inspectionId={inspectionId} />;
 }
 
+// ===========================================================================
+// INSURANCE DETAIL TILES — Policy · Claim Details · Adjuster
+// Self-contained; owns its own data fetch and save.
+// Rendered in DashboardTab (insurance leads only).
+// These three panels were moved here from InsuranceTab.
+// ===========================================================================
+function InsuranceDetailTiles({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { toast } = useToast();
+  const qc       = useQueryClient();
+  const ro       = !isManager;
+  const { data: insData, isLoading } = useGetPinInsurance(pinId);
+  const ins = insData?.insurance;
+
+  const [f, setF] = useState({
+    insuranceCarrier: '', policyNumber: '', policyHolder: '', coverageType: '', deductibleAmount: '',
+    claimNumber: '', dateOfLoss: '', claimFiledDate: '', inspectionDate: '', claimStatus: '',
+    adjusterName: '', adjusterPhone: '', adjusterEmail: '', adjusterMeetingDate: '', adjusterLastContact: '',
+  });
+  const [inited, setInited] = useState(false);
+
+  const inp = (key: keyof typeof f) => ({
+    value: f[key],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [key]: e.target.value })),
+    disabled: ro,
+    className: 'h-8 text-sm',
+  });
+
+  useEffect(() => {
+    if (ins && !inited) {
+      setF({
+        insuranceCarrier:    ins.insuranceCarrier    ?? '',
+        policyNumber:        ins.policyNumber        ?? '',
+        policyHolder:        ins.policyHolder        ?? '',
+        coverageType:        ins.coverageType        ?? '',
+        deductibleAmount:    ins.deductibleAmount    ?? '',
+        claimNumber:         ins.claimNumber         ?? '',
+        dateOfLoss:          toDateStr(ins.dateOfLoss),
+        claimFiledDate:      toDateStr(ins.claimFiledDate),
+        inspectionDate:      toDateStr(ins.inspectionDate),
+        claimStatus:         ins.claimStatus         ?? '',
+        adjusterName:        ins.adjusterName        ?? '',
+        adjusterPhone:       ins.adjusterPhone       ?? '',
+        adjusterEmail:       ins.adjusterEmail       ?? '',
+        adjusterMeetingDate: toDateStr(ins.adjusterMeetingDate),
+        adjusterLastContact: toDateStr(ins.adjusterLastContact),
+      });
+      setInited(true);
+    }
+  }, [ins, inited]);
+
+  const { mutateAsync: saveIns, isPending: saving } = usePatchPinInsurance({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPinInsuranceQueryKey(pinId) });
+        toast({ title: 'Insurance data saved.' });
+      },
+      onError: () => toast({ title: 'Save failed', variant: 'destructive' }),
+    },
+  });
+
+  async function handleSave() {
+    await saveIns({
+      pinId,
+      data: {
+        insuranceCarrier:    f.insuranceCarrier    || null,
+        policyNumber:        f.policyNumber        || null,
+        policyHolder:        f.policyHolder        || null,
+        coverageType:        f.coverageType        || null,
+        deductibleAmount:    f.deductibleAmount    || null,
+        claimNumber:         f.claimNumber         || null,
+        dateOfLoss:          f.dateOfLoss          || null,
+        claimFiledDate:      f.claimFiledDate       || null,
+        inspectionDate:      f.inspectionDate      || null,
+        claimStatus:         (f.claimStatus as InsurancePatchBody['claimStatus']) ?? null,
+        adjusterName:        f.adjusterName        || null,
+        adjusterPhone:       f.adjusterPhone       || null,
+        adjusterEmail:       f.adjusterEmail       || null,
+        adjusterMeetingDate: f.adjusterMeetingDate || null,
+        adjusterLastContact: f.adjusterLastContact || null,
+      },
+    });
+  }
+
+  if (isLoading) return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-64 w-full rounded-lg" />)}
+    </div>
+  );
+
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        {/* ── Policy ──────────────────────────────────────────────────── */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">Policy</h3>
+          </div>
+          <div className="p-4 space-y-2">
+            <div><Label className="text-xs text-muted-foreground">Carrier</Label>
+              <Input placeholder="State Farm, Allstate…" {...inp('insuranceCarrier')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Policy No.</Label>
+              <Input {...inp('policyNumber')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Policy Holder</Label>
+              <Input {...inp('policyHolder')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Coverage Type</Label>
+              <Input placeholder="HO-3, HO-5…" {...inp('coverageType')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Deductible Amount</Label>
+              <Input placeholder="$1,000" {...inp('deductibleAmount')} /></div>
+          </div>
+        </div>
+
+        {/* ── Claim Details ────────────────────────────────────────────── */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <Clipboard className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">Claim Details</h3>
+          </div>
+          <div className="p-4 space-y-2">
+            <div><Label className="text-xs text-muted-foreground">Claim No.</Label>
+              <Input {...inp('claimNumber')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Date of Loss</Label>
+              <Input type="date" {...inp('dateOfLoss')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Claim Filed Date</Label>
+              <Input type="date" {...inp('claimFiledDate')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Inspection Date</Label>
+              <Input type="date" {...inp('inspectionDate')} /></div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Claim Status</Label>
+              {ro ? (
+                <div className="h-8 flex items-center">
+                  {f.claimStatus
+                    ? <Badge className={`text-xs ${CLAIM_STATUS_BADGE[f.claimStatus] ?? 'bg-muted text-foreground border'}`}>
+                        {CLAIM_STATUS_OPTIONS.find(o => o.value === f.claimStatus)?.label ?? f.claimStatus}
+                      </Badge>
+                    : <span className="text-xs text-muted-foreground">—</span>}
+                </div>
+              ) : (
+                <Select value={f.claimStatus} onValueChange={v => setF(p => ({ ...p, claimStatus: v }))}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select status…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">— Not set —</SelectItem>
+                    {CLAIM_STATUS_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Adjuster ────────────────────────────────────────────────── */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <User className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">Adjuster</h3>
+          </div>
+          <div className="p-4 space-y-2">
+            <div><Label className="text-xs text-muted-foreground">Name</Label>
+              <Input {...inp('adjusterName')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Phone</Label>
+              <Input type="tel" {...inp('adjusterPhone')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Email</Label>
+              <Input type="email" {...inp('adjusterEmail')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Meeting Date</Label>
+              <Input type="date" {...inp('adjusterMeetingDate')} /></div>
+            <div><Label className="text-xs text-muted-foreground">Last Contact</Label>
+              <Input type="date" {...inp('adjusterLastContact')} /></div>
+          </div>
+        </div>
+
+      </div>
+
+      {isManager && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving
+              ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Saving…</>
+              : <><Save className="h-3.5 w-3.5 mr-1.5" />Save Insurance</>}
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ===========================================================================
+// DASHBOARD TAB — property overview + contacts + insurance identity tiles
+// ===========================================================================
 function DashboardTab({
-  form, onField, onCheck, isInsurance, lead, isManager,
+  form, onField, onCheck, isInsurance, lead, isManager, pinId,
 }: {
   form: FormState;
   onField: (n: string, v: string) => void;
@@ -343,6 +564,7 @@ function DashboardTab({
   isInsurance: boolean;
   lead: FullLead;
   isManager: boolean;
+  pinId: string;
 }) {
   const workflowLabel = lead.workflow === 'insurance' ? 'Insurance' : 'Retail';
   const workflowColors = lead.workflow === 'insurance'
@@ -350,32 +572,50 @@ function DashboardTab({
     : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
 
   const { data: sourcesData } = useGetLeadSources(lead.companyId);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  // Lead Source: start in edit mode when no value is saved yet, else show plain text
+  const [leadSrcEditing, setLeadSrcEditing] = useState(!form.externalLeadSource);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div className="space-y-4">
 
-      {/* ── Left: Property & Contact ─────────────────────────────────── */}
-      <div className="space-y-6">
+      {/* ── Row 1: Property & Owner (left) · File Handlers (right) ───────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Photo + Address/AHJ/Type row */}
-        <div className="flex gap-4 items-start">
+        {/* Property & Owner tile */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center justify-between p-4 border-b">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-semibold text-sm">Property & Owner</h3>
+            </div>
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${workflowColors}`}>
+              {workflowLabel}
+            </span>
+          </div>
+          <div className="p-4 space-y-4">
 
-          {/* Photo — half column */}
-          <div className="w-1/2 shrink-0">
+            {/* Photo thumbnail → modal */}
             {lead.photoUrl ? (
-              <div className="rounded-xl overflow-hidden border aspect-video bg-muted">
-                <img src={lead.photoUrl} alt="Property" className="w-full h-full object-cover" />
-              </div>
+              <button
+                onClick={() => setPhotoOpen(true)}
+                className="w-full rounded-lg overflow-hidden border aspect-video bg-muted relative group focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <img src={lead.photoUrl} alt="Front of home" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-xs px-2 py-1 rounded">
+                    View photo
+                  </span>
+                </div>
+              </button>
             ) : (
-              <div className="rounded-xl border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <div className="rounded-lg border bg-muted/30 aspect-video flex flex-col items-center justify-center gap-2 text-muted-foreground">
                 <MapPin className="h-6 w-6 opacity-20" />
                 <p className="text-xs">No photo</p>
               </div>
             )}
-          </div>
 
-          {/* Address + AHJ + Lead type */}
-          <div className="flex-1 space-y-3 min-w-0 pt-0.5">
+            {/* Address */}
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Address</p>
               <p className="text-sm text-foreground/80 leading-snug break-words">
@@ -383,251 +623,263 @@ function DashboardTab({
               </p>
             </div>
 
+            {/* AHJ */}
             {lead.ahjCheck?.jurisdiction && (
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">AHJ</p>
-                <p className="text-sm text-foreground/80 leading-snug">{lead.ahjCheck.jurisdiction}</p>
+                <p className="text-sm text-foreground/80">{lead.ahjCheck.jurisdiction}</p>
               </div>
             )}
 
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Lead Type</p>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${workflowColors}`}>
-                {workflowLabel}
-              </span>
+            {/* Non-owner occupied */}
+            <div className="flex items-center gap-2 border-t pt-3">
+              <input
+                type="checkbox"
+                id="nonOwnerOccupied"
+                checked={form.nonOwnerOccupied}
+                onChange={e => onCheck('nonOwnerOccupied', e.target.checked)}
+                className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+              />
+              <Label htmlFor="nonOwnerOccupied" className="text-sm font-normal cursor-pointer">
+                Non-owner occupied property
+              </Label>
             </div>
 
-            {/* ── File Handler Progression Tracker ── */}
-            <div className="pt-2.5 border-t border-border/40 space-y-2">
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/60">File Handlers</p>
+            {/* ── Owner contact fields ─────────────────────────────────── */}
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Owner</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="First Name" name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
+                <Field label="Last Name"  name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
+                <Field label="Email"      name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" span2 />
+                <PhoneField label="Phone" name="customerPhone" value={form.customerPhone} onChange={onField} span2 />
+                <div className="sm:col-span-2 flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="hasSecondOwner"
+                    checked={form.hasSecondOwner}
+                    onChange={e => onCheck('hasSecondOwner', e.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  />
+                  <Label htmlFor="hasSecondOwner" className="text-sm font-normal cursor-pointer">
+                    Second owner
+                  </Label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-              {/* Lead Source */}
-              <div>
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">Lead Source</p>
-                {isManager ? (
+        {/* File Tracking tile */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <Clipboard className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">File Tracking</h3>
+          </div>
+          <div className="p-4 space-y-4">
+            {/* Lead Source */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Lead Source</p>
+              {isManager && leadSrcEditing ? (
+                <>
                   <select
                     value={form.externalLeadSource}
                     onChange={e => onField('externalLeadSource', e.target.value)}
-                    className="w-full text-[11px] border border-input rounded px-1.5 py-0.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-full text-sm border border-input rounded px-2 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                   >
                     <option value="">Canvassing</option>
                     {(sourcesData?.leadSources ?? ["Angi's", 'Yelp', 'Call-In', 'Website']).map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
-                ) : (
-                  <p className="text-xs font-medium">
-                    {form.externalLeadSource || 'Canvassing'}
-                  </p>
-                )}
-                {!form.externalLeadSource && lead.repName && (
-                  <p className="text-[10px] text-muted-foreground">by {lead.repName}</p>
-                )}
-              </div>
-
-              {/* Sales Rep */}
-              <div>
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">Sales Rep</p>
-                <p className="text-xs font-medium">
-                  {lead.repName ?? <span className="italic opacity-40 text-[11px]">—</span>}
-                </p>
-              </div>
-
-              {/* Project Manager */}
-              <div>
-                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/60 mb-0.5">Project Manager</p>
-                {isManager ? (
-                  <input
-                    type="text"
-                    value={form.projectManagerName}
-                    onChange={e => onField('projectManagerName', e.target.value)}
-                    placeholder="Assign PM…"
-                    className="w-full text-[11px] border border-input rounded px-1.5 py-0.5 bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                ) : (
-                  <p className="text-xs font-medium">
-                    {form.projectManagerName || <span className="italic opacity-40 text-[11px]">—</span>}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Non-owner occupied */}
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="nonOwnerOccupied"
-            checked={form.nonOwnerOccupied}
-            onChange={e => onCheck('nonOwnerOccupied', e.target.checked)}
-            className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-          />
-          <Label htmlFor="nonOwnerOccupied" className="text-sm font-normal cursor-pointer">
-            Non-owner occupied property
-          </Label>
-        </div>
-
-        {form.nonOwnerOccupied && (
-          <FieldGroup title="Mailing Address">
-            <Field label="Street"  name="mailingAddress" value={form.mailingAddress} onChange={onField} span2 placeholder="123 Main St" />
-            <Field label="City"    name="mailingCity"    value={form.mailingCity}    onChange={onField} placeholder="Dallas" />
-            <Field label="State"   name="mailingState"   value={form.mailingState}   onChange={onField} placeholder="TX" />
-            <Field label="ZIP"     name="mailingZip"     value={form.mailingZip}     onChange={onField} placeholder="75201" />
-          </FieldGroup>
-        )}
-
-        <FieldGroup title="Primary Contact">
-          <Field label="First Name" name="ownerFirstName" value={form.ownerFirstName} onChange={onField} />
-          <Field label="Last Name"  name="ownerLastName"  value={form.ownerLastName}  onChange={onField} />
-          <Field label="Email"      name="ownerEmail"     value={form.ownerEmail}     onChange={onField} type="email" />
-          <Field label="Phone"      name="customerPhone"  value={form.customerPhone}  onChange={onField} type="tel" />
-          <div className="sm:col-span-2 flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="hasSecondOwner"
-              checked={form.hasSecondOwner}
-              onChange={e => onCheck('hasSecondOwner', e.target.checked)}
-              className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-            />
-            <Label htmlFor="hasSecondOwner" className="text-sm font-normal cursor-pointer">
-              Second owner
-            </Label>
-          </div>
-        </FieldGroup>
-
-        {form.hasSecondOwner && (
-          <FieldGroup title="Second Owner">
-            <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
-            <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
-          </FieldGroup>
-        )}
-      </div>
-
-      {/* ── Right: Lead Info ─────────────────────────────────────────── */}
-      <div className="space-y-6">
-        {/* Retail: appointment date (read-only, set by mobile) */}
-        {lead.retailData?.appointmentDate && (
-          <div className="rounded-xl border bg-card px-5 py-4 space-y-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Appointment</p>
-            <p className="text-sm font-semibold">
-              {new Date(lead.retailData.appointmentDate).toLocaleDateString('en-US', {
-                weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
-              })}
-            </p>
-          </div>
-        )}
-
-        {/* Retail: damage interests (read-only, set by mobile) */}
-        {lead.retailData && (
-          <FieldGroup title="Damage Interests">
-            <div className="sm:col-span-2 flex flex-wrap gap-2">
-              {(
-                [
-                  { key: 'interestedRoof'    as const, label: 'Roof' },
-                  { key: 'interestedSiding'  as const, label: 'Siding' },
-                  { key: 'interestedWindows' as const, label: 'Windows' },
-                  { key: 'interestedDoors'   as const, label: 'Doors' },
-                ]
-              ).filter(({ key }) => lead.retailData?.[key]).map(({ label }) => (
-                <span key={label} className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
-                  {label}
-                </span>
-              ))}
-              {!lead.retailData.interestedRoof && !lead.retailData.interestedSiding &&
-               !lead.retailData.interestedWindows && !lead.retailData.interestedDoors && (
-                <span className="text-xs text-muted-foreground italic">None recorded</span>
+                  <Button size="sm" className="h-7 text-xs mt-2 px-3"
+                    onClick={() => setLeadSrcEditing(false)}>
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{form.externalLeadSource || 'Canvassing'}</p>
+                    {!form.externalLeadSource && lead.repName && (
+                      <p className="text-xs text-muted-foreground mt-0.5">by {lead.repName}</p>
+                    )}
+                  </div>
+                  {isManager && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs px-2 shrink-0"
+                      onClick={() => setLeadSrcEditing(true)}>
+                      Edit
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
-            {lead.retailData.notes && (
-              <div className="sm:col-span-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed">
-                {lead.retailData.notes}
-              </div>
-            )}
-          </FieldGroup>
-        )}
+            {/* Sales Rep */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Sales Rep</p>
+              <p className="text-sm font-medium">
+                {lead.repName ?? <span className="italic opacity-40">—</span>}
+              </p>
+            </div>
+            {/* Project Manager */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Project Manager</p>
+              {isManager ? (
+                <input
+                  type="text"
+                  value={form.projectManagerName}
+                  onChange={e => onField('projectManagerName', e.target.value)}
+                  placeholder="Assign PM…"
+                  className="w-full text-sm border border-input rounded px-2 py-1.5 bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-sm font-medium">
+                  {form.projectManagerName || <span className="italic opacity-40">—</span>}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* ── Row 2: Second Owner OR Retail (when applicable) ───────────────── */}
+      {(form.hasSecondOwner || lead.retailData) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {form.hasSecondOwner ? (
+            <div className="rounded-lg border bg-card">
+              <div className="flex items-center gap-2 p-4 border-b">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <h3 className="font-semibold text-sm">Second Owner</h3>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="First Name" name="owner2FirstName" value={form.owner2FirstName} onChange={onField} />
+                  <Field label="Last Name"  name="owner2LastName"  value={form.owner2LastName}  onChange={onField} />
+                </div>
+              </div>
+            </div>
+          ) : lead.retailData ? (
+            <div className="rounded-lg border bg-card">
+              <div className="flex items-center gap-2 p-4 border-b">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <h3 className="font-semibold text-sm">Damage Interests</h3>
+              </div>
+              <div className="p-4 space-y-4">
+                {lead.retailData.appointmentDate && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Appointment</p>
+                    <p className="text-sm font-semibold">
+                      {new Date(lead.retailData.appointmentDate).toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'long', day: 'numeric', year: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Interests</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        { key: 'interestedRoof'    as const, label: 'Roof' },
+                        { key: 'interestedSiding'  as const, label: 'Siding' },
+                        { key: 'interestedWindows' as const, label: 'Windows' },
+                        { key: 'interestedDoors'   as const, label: 'Doors' },
+                      ]
+                    ).filter(({ key }) => lead.retailData?.[key]).map(({ label }) => (
+                      <span key={label} className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                        {label}
+                      </span>
+                    ))}
+                    {!lead.retailData.interestedRoof && !lead.retailData.interestedSiding &&
+                     !lead.retailData.interestedWindows && !lead.retailData.interestedDoors && (
+                      <span className="text-xs text-muted-foreground italic">None recorded</span>
+                    )}
+                  </div>
+                </div>
+                {lead.retailData.notes && (
+                  <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 leading-relaxed">
+                    {lead.retailData.notes}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Photo modal */}
+      <Dialog open={photoOpen} onOpenChange={setPhotoOpen}>
+        <DialogContent className="max-w-3xl p-2">
+          <DialogHeader className="px-2 pt-2 pb-1">
+            <DialogTitle className="text-sm">Front of Home</DialogTitle>
+          </DialogHeader>
+          {lead.photoUrl && (
+            <img src={lead.photoUrl} alt="Front of home" className="w-full rounded-lg object-contain max-h-[75vh]" />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Mailing Address tile (non-owner occupied only) ───────────────── */}
+      {form.nonOwnerOccupied && (
+        <div className="rounded-lg border bg-card">
+          <div className="flex items-center gap-2 p-4 border-b">
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-semibold text-sm">Mailing Address</h3>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Street"  name="mailingAddress" value={form.mailingAddress} onChange={onField} span2 placeholder="123 Main St" />
+              <Field label="City"    name="mailingCity"    value={form.mailingCity}    onChange={onField} placeholder="Dallas" />
+              <Field label="State"   name="mailingState"   value={form.mailingState}   onChange={onField} placeholder="TX" />
+              <Field label="ZIP"     name="mailingZip"     value={form.mailingZip}     onChange={onField} placeholder="75201" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Insurance tiles: Policy · Claim Details · Adjuster ──────────── */}
+      {isInsurance && (
+        <InsuranceDetailTiles pinId={pinId} isManager={isManager} />
+      )}
+
     </div>
   );
 }
 
-function InsuranceTab({
-  form,
-  onField,
-  pinId,
-}: {
-  form: FormState;
-  onField: (n: string, v: string) => void;
-  pinId: string;
-}) {
-  const { data: coData } = useListPinChangeOrders(pinId);
-  const supplementCandidates = (coData?.changeOrders ?? []).filter(
-    (co) => co.requiredToCompleteScope && !co.voidedAt,
-  );
+// ---------------------------------------------------------------------------
+// Claim status — mirrors CLAIM_STATUSES in artifacts/api-server/src/routes/insurance.ts
+// ---------------------------------------------------------------------------
+const CLAIM_STATUS_OPTIONS = [
+  { value: 'not_filed',          label: 'Not Filed' },
+  { value: 'filed',              label: 'Filed' },
+  { value: 'under_review',       label: 'Under Review' },
+  { value: 'adjuster_scheduled', label: 'Adjuster Scheduled' },
+  { value: 'approved',           label: 'Approved' },
+  { value: 'partially_approved', label: 'Partially Approved' },
+  { value: 'denied',             label: 'Denied' },
+  { value: 'supplement_pending', label: 'Supplement Pending' },
+  { value: 'closed',             label: 'Closed' },
+];
+const CLAIM_STATUS_BADGE: Record<string, string> = {
+  approved:           'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300',
+  partially_approved: 'bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300',
+  denied:             'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300',
+  filed:              'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300',
+  under_review:       'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300',
+  adjuster_scheduled: 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300',
+  supplement_pending: 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300',
+  closed:             'bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-400',
+};
 
+// ---------------------------------------------------------------------------
+// ContractBuilderTab — placeholder; content coming soon
+// ---------------------------------------------------------------------------
+function ContractBuilderTab() {
   return (
-    <div className="space-y-8">
-      <FieldGroup title="Policy">
-        <Field label="Insurance Carrier" name="insuranceCarrier" value={form.insuranceCarrier} onChange={onField} placeholder="State Farm, Allstate…" />
-        <Field label="Policy Number"     name="policyNumber"     value={form.policyNumber}     onChange={onField} />
-        <Field label="Claim Number"      name="claimNumber"      value={form.claimNumber}      onChange={onField} />
-        <Field label="Date of Loss"      name="dateOfLoss"       value={form.dateOfLoss}       onChange={onField} type="date" />
-      </FieldGroup>
-      <FieldGroup title="Inspection">
-        <Field label="Inspection Date" name="inspectionDate" value={form.inspectionDate} onChange={onField} type="date" />
-      </FieldGroup>
-      <FieldGroup title="Adjuster">
-        <Field label="Adjuster Name"         name="adjusterName"        value={form.adjusterName}        onChange={onField} />
-        <Field label="Adjuster Phone"        name="adjusterPhone"       value={form.adjusterPhone}       onChange={onField} type="tel" />
-        <Field label="Adjuster Email"        name="adjusterEmail"       value={form.adjusterEmail}       onChange={onField} type="email" />
-        <Field label="Adjuster Meeting Date" name="adjusterMeetingDate" value={form.adjusterMeetingDate} onChange={onField} type="date" />
-      </FieldGroup>
-
-      {/* Supplement candidates — read-only; change orders marked as required
-          to complete original scope are surfaced here for carrier pursuit. */}
-      {supplementCandidates.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">Supplement Candidates</h3>
-            <Badge className="bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
-              {supplementCandidates.length}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            The following change orders are marked as required to complete the original scope of work.
-            These may be submitted to the carrier as supplement items for reimbursement.
-          </p>
-          <div className="space-y-2">
-            {supplementCandidates.map((co) => (
-              <div
-                key={co.id}
-                className="flex items-center justify-between px-3 py-2.5 rounded-lg border bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
-              >
-                <div className="min-w-0">
-                  <span className="text-sm font-semibold tabular-nums">
-                    {formatCents(co.amountCents)}
-                  </span>
-                  {co.description && (
-                    <span className="text-xs text-muted-foreground ml-2 truncate">
-                      {co.description}
-                    </span>
-                  )}
-                </div>
-                <Badge
-                  variant="outline"
-                  className={`text-xs shrink-0 ml-3 ${
-                    co.status === 'approved'
-                      ? 'border-green-500 text-green-600'
-                      : 'border-amber-400 text-amber-600'
-                  }`}
-                >
-                  {co.status === 'approved' ? 'Approved' : 'Pending approval'}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+    <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground gap-3">
+      <Shield className="h-10 w-10 opacity-20" />
+      <p className="text-sm font-medium">Contract Builder</p>
+      <p className="text-xs max-w-xs">This tab is ready for new content.</p>
     </div>
   );
 }
@@ -686,8 +938,14 @@ const INVOICE_STATUS_CLASSES: Record<string, string> = {
 // INVOICING PANEL — payments + invoices combined, left column (steps 1 + 2)
 // ===========================================================================
 
-function InvoicingPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+function InvoicingPanel({ pinId, isManager, lead }: { pinId: string; isManager: boolean; lead: FullLead }) {
   const { toast } = useToast();
+
+  // ── Profitability + insurance for amount pre-fills ─────────────────────────
+  const { data: profData } = useGetPinProfitability(pinId);
+  const { data: insData }  = useGetPinInsurance(pinId);
+  const p   = profData?.profitability;
+  const ins = insData?.insurance;
 
   // ── Payments ──────────────────────────────────────────────────────────────
   const { data: paymentsData, isLoading: paymentsLoading } = useGetPayments(pinId);
@@ -745,35 +1003,107 @@ function InvoicingPanel({ pinId, isManager }: { pinId: string; isManager: boolea
   const voidInvMutation     = useVoidCustomerInvoice();
   const invoices = invData?.invoices ?? [];
 
-  const [showCreateInv, setShowCreateInv] = useState(false);
-  const [cName,    setCName]    = useState('');
-  const [cAddress, setCAddress] = useState('');
-  const [cType,    setCType]    = useState('initial_deposit');
-  const [cDollars, setCDollars] = useState('');
-  const [cNotes,   setCNotes]   = useState('');
-  const [cError,   setCError]   = useState<string | null>(null);
+  // ── Invoice modal state ───────────────────────────────────────────────────
+  const [invModalOpen, setInvModalOpen] = useState(false);
+  const [invName,      setInvName]      = useState('');
+  const [invAddress,   setInvAddress]   = useState('');
 
-  function resetCreateInv() {
-    setCName(''); setCAddress(''); setCType('initial_deposit');
-    setCDollars(''); setCNotes(''); setCError(null); setShowCreateInv(false);
+  // Standard line item selections
+  const [selFipsa,      setSelFipsa]      = useState(false);
+  const [fipsaAmt,      setFipsaAmt]      = useState('');
+  const [selAcv,        setSelAcv]        = useState(false);
+  const [acvAmt,        setAcvAmt]        = useState('');
+  const [selDeductible, setSelDeductible] = useState(false);
+  const [deductibleAmt, setDeductibleAmt] = useState('');
+  const [selBetterment, setSelBetterment] = useState(false);
+  const [bettermentAmt, setBettermentAmt] = useState('');
+
+  // Exclusive options with free-form line items
+  const [selEmergency,   setSelEmergency]   = useState(false);
+  const [selChangeOrder, setSelChangeOrder] = useState(false);
+  const [emergencyLines, setEmergencyLines] = useState<{ desc: string; amount: string }[]>([{ desc: '', amount: '' }]);
+  const [coLines,        setCoLines]        = useState<{ desc: string; amount: string }[]>([{ desc: '', amount: '' }]);
+
+  const [invModalErr, setInvModalErr] = useState<string | null>(null);
+
+  // Derived totals
+  const isExclusive = selEmergency || selChangeOrder;
+  const toC = (v: string) => parseDollarToCents(v) ?? 0;
+  const grossCents =
+    (selAcv         ? toC(acvAmt)        : 0) +
+    (selDeductible  ? toC(deductibleAmt) : 0) +
+    (selBetterment  ? toC(bettermentAmt) : 0) +
+    (selEmergency   ? emergencyLines.reduce((s, l) => s + toC(l.amount), 0) : 0) +
+    (selChangeOrder ? coLines.reduce((s, l)        => s + toC(l.amount), 0) : 0);
+  const fipsaCents = selFipsa ? toC(fipsaAmt) : 0;
+  const netCents   = Math.max(0, grossCents - fipsaCents);
+
+  function openInvModal() {
+    const fullName = [lead.ownerFirstName, lead.ownerLastName].filter(Boolean).join(' ') || lead.customerName || '';
+    setInvName(fullName);
+    setInvAddress(lead.address ?? '');
+    setAcvAmt(p?.approvedAcvCents           ? (p.approvedAcvCents / 100).toFixed(2)           : '');
+    setDeductibleAmt(p?.policyDeductibleCents ? (p.policyDeductibleCents / 100).toFixed(2)    : '');
+    setBettermentAmt(ins?.bettermentsAmountCents ? (ins.bettermentsAmountCents / 100).toFixed(2) : '');
+    setSelFipsa(false); setFipsaAmt('');
+    setSelAcv(false); setSelDeductible(false); setSelBetterment(false);
+    setSelEmergency(false); setSelChangeOrder(false);
+    setEmergencyLines([{ desc: '', amount: '' }]);
+    setCoLines([{ desc: '', amount: '' }]);
+    setInvModalErr(null);
+    setInvModalOpen(true);
+  }
+
+  function toggleEmergency(checked: boolean) {
+    setSelEmergency(checked);
+    if (checked) { setSelChangeOrder(false); setSelFipsa(false); setSelAcv(false); setSelDeductible(false); setSelBetterment(false); }
+  }
+
+  function toggleChangeOrder(checked: boolean) {
+    setSelChangeOrder(checked);
+    if (checked) { setSelEmergency(false); setSelFipsa(false); setSelAcv(false); setSelDeductible(false); setSelBetterment(false); }
   }
 
   async function handleCreateInvoice() {
-    const cents = parseDollarToCents(cDollars);
-    if (!cents)           { setCError('Enter a valid amount greater than $0.00'); return; }
-    if (!cName.trim())    { setCError('Customer name is required');               return; }
-    if (!cAddress.trim()) { setCError('Customer address is required');             return; }
-    setCError(null);
+    if (!invName.trim())    { setInvModalErr('Customer name is required');    return; }
+    if (!invAddress.trim()) { setInvModalErr('Customer address is required'); return; }
+    const noneSelected = !selFipsa && !selAcv && !selDeductible && !selBetterment && !selEmergency && !selChangeOrder;
+    if (noneSelected)       { setInvModalErr('Select at least one line item'); return; }
+    if (netCents <= 0)      { setInvModalErr('Invoice total must be greater than $0.00'); return; }
+
+    const noteLines: string[] = [];
+    if (selAcv)        noteLines.push(`ACV Payment: ${formatCents(toC(acvAmt))}`);
+    if (selDeductible) noteLines.push(`Deductible: ${formatCents(toC(deductibleAmt))}`);
+    if (selBetterment) noteLines.push(`Betterment: ${formatCents(toC(bettermentAmt))}`);
+    if (selEmergency) {
+      noteLines.push('Emergency Services:');
+      emergencyLines.filter(l => l.desc || l.amount).forEach(l =>
+        noteLines.push(`  ${l.desc || '(no description)'}: ${formatCents(toC(l.amount))}`));
+    }
+    if (selChangeOrder) {
+      noteLines.push('Change Order:');
+      coLines.filter(l => l.desc || l.amount).forEach(l =>
+        noteLines.push(`  ${l.desc || '(no description)'}: ${formatCents(toC(l.amount))}`));
+    }
+    if (selFipsa) noteLines.push(`FIPSA Credit (paid): -${formatCents(fipsaCents)}`);
+
+    let invoiceType = 'other';
+    if (selEmergency) invoiceType = 'service';
+    else if (selAcv && !selDeductible && !selBetterment && !selFipsa) invoiceType = 'acv_payment';
+
+    setInvModalErr(null);
     try {
       await createInvMutation.mutateAsync({
         pinId,
         data: {
-          customerName: cName.trim(), customerAddress: cAddress.trim(),
-          invoiceType:  cType as 'initial_deposit',
-          amountCents:  cents, notes: cNotes || null,
+          customerName:    invName.trim(),
+          customerAddress: invAddress.trim(),
+          invoiceType:     invoiceType as 'acv_payment',
+          amountCents:     netCents,
+          notes:           noteLines.join('\n') || null,
         },
       });
-      resetCreateInv();
+      setInvModalOpen(false);
       toast({ title: 'Invoice created' });
     } catch {
       toast({ title: 'Error', description: 'Failed to create invoice.', variant: 'destructive' });
@@ -785,6 +1115,46 @@ function InvoicingPanel({ pinId, isManager }: { pinId: string; isManager: boolea
 
   const hasActivity = payments.length > 0 || invoices.length > 0;
   const isLoading   = paymentsLoading || invLoading;
+
+  // ── Line item row helper ──────────────────────────────────────────────────
+  function LineItems({
+    lines,
+    setLines,
+  }: {
+    lines: { desc: string; amount: string }[];
+    setLines: React.Dispatch<React.SetStateAction<{ desc: string; amount: string }[]>>;
+  }) {
+    return (
+      <div className="mt-2 space-y-2 pl-7">
+        {lines.map((line, i) => (
+          <div key={i} className="flex gap-2 items-center">
+            <Input
+              className="h-7 text-xs flex-1 min-w-0"
+              placeholder="Description…"
+              value={line.desc}
+              onChange={e => setLines(prev => prev.map((l, j) => j === i ? { ...l, desc: e.target.value } : l))}
+            />
+            <Input
+              className="h-7 text-xs w-28 shrink-0"
+              placeholder="$0.00"
+              value={line.amount}
+              onChange={e => setLines(prev => prev.map((l, j) => j === i ? { ...l, amount: e.target.value } : l))}
+            />
+            {lines.length > 1 && (
+              <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                onClick={() => setLines(prev => prev.filter((_, j) => j !== i))}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        ))}
+        <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground"
+          onClick={() => setLines(prev => [...prev, { desc: '', amount: '' }])}>
+          <Plus className="h-3 w-3 mr-1" />Add line
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border bg-card flex flex-col">
@@ -799,12 +1169,11 @@ function InvoicingPanel({ pinId, isManager }: { pinId: string; isManager: boolea
         </div>
         {isManager && (
           <div className="flex gap-1.5 shrink-0">
-            <Button size="sm" variant="outline" className="h-7 text-xs px-2"
-              onClick={() => { setShowCreateInv(v => !v); setShowAddPayment(false); }}>
+            <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={openInvModal}>
               <FileText className="h-3 w-3 mr-1" />Create Invoice
             </Button>
             <Button size="sm" className="h-7 text-xs px-2"
-              onClick={() => { setShowAddPayment(v => !v); setShowCreateInv(false); }}>
+              onClick={() => setShowAddPayment(v => !v)}>
               <Plus className="h-3 w-3 mr-1" />Add Payment
             </Button>
           </div>
@@ -851,51 +1220,6 @@ function InvoicingPanel({ pinId, isManager }: { pinId: string; isManager: boolea
               disabled={createPaymentMutation.isPending}>
               {createPaymentMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
               Save Payment
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Create-invoice inline form */}
-      {showCreateInv && isManager && (
-        <div className="border-b p-4 bg-muted/30 space-y-3">
-          <p className="text-xs text-muted-foreground">Invoice number is auto-generated.</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Type</Label>
-              <select className="w-full rounded-md border bg-background px-2 py-1.5 text-xs"
-                value={cType} onChange={e => setCType(e.target.value)}>
-                {INVOICE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Amount</Label>
-              <Input className="h-7 text-xs" placeholder="$0.00"
-                value={cDollars} onChange={e => setCDollars(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Customer Name</Label>
-              <Input className="h-7 text-xs" placeholder="Jane Smith"
-                value={cName} onChange={e => setCName(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Address</Label>
-              <Input className="h-7 text-xs" placeholder="123 Main St"
-                value={cAddress} onChange={e => setCAddress(e.target.value)} />
-            </div>
-            <div className="space-y-1 col-span-2">
-              <Label className="text-xs">Notes (optional)</Label>
-              <Input className="h-7 text-xs" placeholder="Reference…"
-                value={cNotes} onChange={e => setCNotes(e.target.value)} />
-            </div>
-          </div>
-          {cError && <p className="text-xs text-destructive">{cError}</p>}
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={resetCreateInv}>Cancel</Button>
-            <Button size="sm" className="h-7 text-xs" onClick={handleCreateInvoice}
-              disabled={createInvMutation.isPending}>
-              {createInvMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-              Save Invoice
             </Button>
           </div>
         </div>
@@ -1002,6 +1326,185 @@ function InvoicingPanel({ pinId, isManager }: { pinId: string; isManager: boolea
           </div>
         )}
       </div>
+
+      {/* ── Create Invoice modal ──────────────────────────────────────────── */}
+      <Dialog open={invModalOpen} onOpenChange={setInvModalOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create Invoice</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Customer info */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Customer Name</Label>
+                <Input className="h-8 text-sm" value={invName}
+                  onChange={e => setInvName(e.target.value)} placeholder="Jane Smith" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Address</Label>
+                <Input className="h-8 text-sm" value={invAddress}
+                  onChange={e => setInvAddress(e.target.value)} placeholder="123 Main St" />
+              </div>
+            </div>
+
+            {/* Line items section */}
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground border-b pb-1">
+                Line Items
+              </p>
+
+              {/* FIPSA Credit */}
+              <div className="py-2 border-b">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="selFipsa" checked={selFipsa}
+                    disabled={isExclusive}
+                    onChange={e => setSelFipsa(e.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="selFipsa" className={`text-sm font-medium cursor-pointer ${isExclusive ? 'opacity-40' : ''}`}>
+                        FIPSA Credit
+                      </Label>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                        Always Paid — reduces total
+                      </span>
+                    </div>
+                    {selFipsa && (
+                      <Input className="h-7 text-xs mt-1.5 w-36" placeholder="$0.00"
+                        value={fipsaAmt} onChange={e => setFipsaAmt(e.target.value)} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ACV Payment */}
+              <div className="py-2 border-b">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="selAcv" checked={selAcv}
+                    disabled={isExclusive}
+                    onChange={e => setSelAcv(e.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                  <div className="flex-1">
+                    <Label htmlFor="selAcv" className={`text-sm font-medium cursor-pointer ${isExclusive ? 'opacity-40' : ''}`}>
+                      ACV Payment
+                    </Label>
+                    {selAcv && (
+                      <Input className="h-7 text-xs mt-1.5 w-36" placeholder="$0.00"
+                        value={acvAmt} onChange={e => setAcvAmt(e.target.value)} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Deductible */}
+              <div className="py-2 border-b">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="selDeductible" checked={selDeductible}
+                    disabled={isExclusive}
+                    onChange={e => setSelDeductible(e.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                  <div className="flex-1">
+                    <Label htmlFor="selDeductible" className={`text-sm font-medium cursor-pointer ${isExclusive ? 'opacity-40' : ''}`}>
+                      Deductible
+                    </Label>
+                    {selDeductible && (
+                      <Input className="h-7 text-xs mt-1.5 w-36" placeholder="$0.00"
+                        value={deductibleAmt} onChange={e => setDeductibleAmt(e.target.value)} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Betterment */}
+              <div className="py-2 border-b">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" id="selBetterment" checked={selBetterment}
+                    disabled={isExclusive}
+                    onChange={e => setSelBetterment(e.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                  <div className="flex-1">
+                    <Label htmlFor="selBetterment" className={`text-sm font-medium cursor-pointer ${isExclusive ? 'opacity-40' : ''}`}>
+                      Betterment
+                    </Label>
+                    {selBetterment && (
+                      <Input className="h-7 text-xs mt-1.5 w-36" placeholder="$0.00"
+                        value={bettermentAmt} onChange={e => setBettermentAmt(e.target.value)} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Emergency Services — exclusive */}
+              <div className="py-2 border-b">
+                <div className="flex items-start gap-3">
+                  <input type="checkbox" id="selEmergency" checked={selEmergency}
+                    disabled={selChangeOrder}
+                    onChange={e => toggleEmergency(e.target.checked)}
+                    className="h-4 w-4 mt-0.5 rounded border-input accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="selEmergency" className={`text-sm font-medium cursor-pointer ${selChangeOrder ? 'opacity-40' : ''}`}>
+                        Emergency Services
+                      </Label>
+                      <span className="text-[10px] text-muted-foreground italic">cannot combine with other items</span>
+                    </div>
+                    {selEmergency && (
+                      <LineItems lines={emergencyLines} setLines={setEmergencyLines} />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Change Order — exclusive */}
+              <div className="py-2">
+                <div className="flex items-start gap-3">
+                  <input type="checkbox" id="selChangeOrder" checked={selChangeOrder}
+                    disabled={selEmergency}
+                    onChange={e => toggleChangeOrder(e.target.checked)}
+                    className="h-4 w-4 mt-0.5 rounded border-input accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="selChangeOrder" className={`text-sm font-medium cursor-pointer ${selEmergency ? 'opacity-40' : ''}`}>
+                        Change Order
+                      </Label>
+                      <span className="text-[10px] text-muted-foreground italic">cannot combine with other items</span>
+                    </div>
+                    {selChangeOrder && (
+                      <LineItems lines={coLines} setLines={setCoLines} />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Total summary */}
+            <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-1">
+              {selFipsa && fipsaCents > 0 && (
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>FIPSA Credit (paid)</span>
+                  <span className="text-green-600 font-medium">−{formatCents(fipsaCents)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm font-semibold">
+                <span>Invoice Total</span>
+                <span className={netCents > 0 ? '' : 'text-muted-foreground'}>{formatCents(netCents)}</span>
+              </div>
+            </div>
+
+            {invModalErr && <p className="text-xs text-destructive">{invModalErr}</p>}
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2 border-t">
+            <Button variant="ghost" size="sm" onClick={() => setInvModalOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleCreateInvoice} disabled={createInvMutation.isPending}>
+              {createInvMutation.isPending && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+              Create Invoice
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1344,6 +1847,464 @@ const OVERHEAD_FIELDS: CommissionField[] = [
 ];
 
 // ===========================================================================
+// COLLECTION TRACKER PANEL — donut chart of invoiced / collected / balance
+// ===========================================================================
+
+function CollectionTrackerPanel({ pinId }: { pinId: string }) {
+  const { data: profData } = useGetPinProfitability(pinId);
+  const p = profData?.profitability;
+
+  const totalCents      = p?.revisedContractCents ?? 0;
+  const invoicedRaw     = p?.invoiceTotalCents    ?? 0;
+  const paidCents       = p?.invoicePaidCents     ?? 0;
+  const unpaidCents     = Math.max(0, invoicedRaw - paidCents);   // invoiced but not yet collected
+  const balanceCents    = Math.max(0, totalCents - invoicedRaw);  // not yet invoiced
+
+  // When total is zero fall back to a single placeholder segment so the ring
+  // renders; we'll hide the labels in that case.
+  const hasData = totalCents > 0;
+
+  const segments = hasData
+    ? [
+        { name: 'Collected', value: Math.max(0, paidCents), color: '#22c55e' },  // green-500
+        { name: 'Invoiced',  value: unpaidCents,            color: '#fbbf24' },  // amber-400
+        { name: 'Balance',   value: balanceCents,           color: '#fca5a5' },  // red-300
+      ]
+    : [{ name: 'No data', value: 1, color: '#e2e8f0' }]; // muted placeholder
+
+  const rows: { color: string; label: string; cents: number }[] = [
+    { color: '#22c55e', label: 'Collected', cents: paidCents    },
+    { color: '#fbbf24', label: 'Invoiced',  cents: unpaidCents  },
+    { color: '#fca5a5', label: 'Balance',   cents: balanceCents },
+  ];
+
+  return (
+    <div className="rounded-lg border bg-card flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-2 p-4 border-b">
+        <Wallet className="h-4 w-4 text-blue-500 shrink-0" />
+        <div>
+          <h3 className="font-semibold text-base">Collection Tracker</h3>
+          <p className="text-sm text-muted-foreground">
+            {hasData
+              ? `Total contract: ${formatCents(totalCents)}`
+              : 'No contract value set'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center gap-4 px-4 py-5">
+        {/* Donut chart */}
+        <div className="shrink-0 relative">
+          <PieChart width={425} height={425}>
+            <Pie
+              data={segments}
+              cx={206}
+              cy={206}
+              innerRadius={125}
+              outerRadius={195}
+              dataKey="value"
+              strokeWidth={hasData ? 2 : 0}
+              stroke="hsl(var(--card))"
+              startAngle={90}
+              endAngle={-270}
+            >
+              {segments.map((seg, i) => (
+                <Cell key={i} fill={seg.color} />
+              ))}
+            </Pie>
+            {hasData && (
+              <RechartsTooltip
+                formatter={(value: number) => [formatCents(value), '']}
+                contentStyle={{ fontSize: 13, padding: '4px 8px' }}
+                itemStyle={{ margin: 0 }}
+              />
+            )}
+          </PieChart>
+          {/* Center label — always visible */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-sm text-muted-foreground leading-none">Total</span>
+            <span className="text-base font-semibold tabular-nums leading-tight mt-1">
+              {formatCents(totalCents)}
+            </span>
+          </div>
+        </div>
+
+        {/* Legend table */}
+        <div className="w-full space-y-5 text-base px-2">
+          {rows.map(row => (
+            <div key={row.label} className="flex items-center gap-2.5">
+              <div
+                className="h-3 w-3 rounded-[3px] shrink-0"
+                style={{ backgroundColor: row.color }}
+              />
+              <span className="flex-1 text-muted-foreground text-sm">{row.label}</span>
+              <span className="tabular-nums font-semibold text-sm">{formatCents(row.cents)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// CLAIM VALUE TRACKER PANEL — RCV / ACV / Variance / Betterments bar
+// Insurance-only tile in the Financials tab. Shows how the carrier's approved
+// amounts map against the total contract value.
+//
+// Bar (left → right, widths sum to 100% of revisedContractCents):
+//   ■ Green        – Approved ACV
+//   ■ Light Green  – Approved RCV above ACV
+//   ■ Red          – Variance (base scope not covered by RCV — SHORT)
+//   ■ Light Purple – Betterments (always from the right)
+// ===========================================================================
+
+function ClaimValueTrackerFinancialsPanel({
+  pinId,
+  isManager,
+}: {
+  pinId: string;
+  isManager: boolean;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: profData } = useGetPinProfitability(pinId);
+  const { data: insData }  = useGetPinInsurance(pinId);
+  const { mutateAsync: patchIns, isPending: saving } = usePatchPinInsurance({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPinProfitabilityQueryKey(pinId) });
+        qc.invalidateQueries({ queryKey: getGetPinInsuranceQueryKey(pinId) });
+      },
+    },
+  });
+
+  const p   = profData?.profitability;
+  const ins = insData?.insurance;
+
+  // ── Bar math ──────────────────────────────────────────────────────────────
+  // totalCents  = contract value ± change orders  (the full bar)
+  // baseScopeCents = revised − betterments         (non-betterments portion)
+  // rcvCents    = revisedContractCents + claimVarianceCents
+  //               (claimVariance = approvedRcv − revised, so rcv = revised + variance)
+  const totalCents      = Math.max(0, p?.revisedContractCents ?? 0);
+  const baseScopeCents  = Math.max(0, p?.baseScopeCents       ?? totalCents);
+  const bettCents       = Math.max(0, totalCents - baseScopeCents);
+  const acvCents        = Math.max(0, p?.approvedAcvCents     ?? 0);
+  const rcvCents        = Math.max(0, totalCents + (p?.claimVarianceCents ?? 0));
+
+  // Clamp all within baseScopeCents so segments never overflow the left portion
+  const clampedAcv      = Math.min(acvCents, baseScopeCents);
+  const clampedRcvTop   = Math.min(rcvCents, baseScopeCents);
+  const rcvAboveAcvCents = Math.max(0, clampedRcvTop - clampedAcv);
+  const varianceCents    = Math.max(0, baseScopeCents - clampedRcvTop);
+  const isShort          = varianceCents > 0 && totalCents > 0;
+
+  const toPercent = (n: number) =>
+    totalCents > 0 ? Math.max(0, Math.min(100, (n / totalCents) * 100)) : 0;
+
+  const acvPct        = toPercent(clampedAcv);
+  const rcvAbovePct   = toPercent(rcvAboveAcvCents);
+  const variancePct   = toPercent(varianceCents);
+  const bettPct       = toPercent(bettCents);
+
+  // RCV tick position as percentage of bar (for the midpoint label)
+  const rcvTickPct    = totalCents > 0 ? Math.max(2, Math.min(96, (rcvCents / totalCents) * 100)) : 50;
+
+  // ── Modal state ───────────────────────────────────────────────────────────
+  const [open,      setOpen]     = useState(false);
+  const [rcvDraft,  setRcvDraft] = useState('');
+  const [acvDraft,  setAcvDraft] = useState('');
+  const [bettDraft, setBettDraft] = useState('');
+
+  function openModal() {
+    setRcvDraft(ins?.approvedRcvAmount  ?? '');
+    setAcvDraft(ins?.approvedAcvAmount  ?? '');
+    setBettDraft(
+      ins?.bettermentsAmountCents != null
+        ? (ins.bettermentsAmountCents / 100).toFixed(2)
+        : '',
+    );
+    setOpen(true);
+  }
+
+  async function handleSave() {
+    const bettCentsVal = bettDraft.trim() ? parseDollarToCents(bettDraft) : null;
+    try {
+      await patchIns({
+        pinId,
+        data: {
+          approvedRcvAmount:      rcvDraft.trim()  || null,
+          approvedAcvAmount:      acvDraft.trim()  || null,
+          bettermentsAmountCents: bettCentsVal,
+        },
+      });
+      toast({ title: 'Claim financials saved.' });
+      setOpen(false);
+    } catch {
+      toast({ title: 'Error saving claim financials.', variant: 'destructive' });
+    }
+  }
+
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const hasData = totalCents > 0;
+
+  return (
+    <div className="rounded-lg border bg-card">
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-2 p-4 border-b">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-blue-500 shrink-0" />
+          <div>
+            <h3 className="font-semibold text-sm">Claim Value Tracker</h3>
+            <p className="text-xs text-muted-foreground">RCV coverage vs. contract value</p>
+          </div>
+        </div>
+        {isManager && (
+          <Button
+            size="sm" variant="outline"
+            className="h-7 text-xs gap-1.5 shrink-0"
+            onClick={openModal}
+          >
+            <Pencil className="h-3 w-3" />
+            Record Claim Financials
+          </Button>
+        )}
+      </div>
+
+      {/* ── Body ──────────────────────────────────────────────────────────── */}
+      <div className="p-4 space-y-3">
+
+        {/* RCV / Contract labels */}
+        <div className="flex justify-between items-end">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Approved RCV</p>
+            <p className="text-xl font-bold tabular-nums">
+              {rcvCents > 0 ? formatCents(rcvCents) : '—'}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Contract Amount</p>
+            <p className="text-xl font-bold tabular-nums">
+              {hasData ? formatCents(totalCents) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Bar ───────────────────────────────────────────────────────── */}
+        {hasData ? (
+          <>
+            <div className="relative h-7 w-full rounded-md overflow-hidden bg-muted/30 flex">
+              {/* ACV — solid green */}
+              <div
+                className="h-full bg-green-500 transition-all"
+                style={{ width: `${acvPct}%` }}
+                title={`ACV: ${formatCents(clampedAcv)}`}
+              />
+              {/* RCV above ACV — light green */}
+              <div
+                className="h-full bg-green-300 transition-all"
+                style={{ width: `${rcvAbovePct}%` }}
+                title={`RCV above ACV: ${formatCents(rcvAboveAcvCents)}`}
+              />
+              {/* Variance — red (gap between RCV and base scope) */}
+              <div
+                className="h-full bg-red-400 transition-all"
+                style={{ width: `${variancePct}%` }}
+                title={`Variance (SHORT): ${formatCents(varianceCents)}`}
+              />
+              {/* Betterments — light purple, flush right */}
+              <div
+                className="h-full bg-purple-300 transition-all ml-auto"
+                style={{ width: `${bettPct}%` }}
+                title={`Betterments: ${formatCents(bettCents)}`}
+              />
+            </div>
+
+            {/* Tick labels: 0% … rcvPct% … 100% */}
+            <div className="relative h-4 w-full text-[10px] text-muted-foreground select-none">
+              <span className="absolute left-0">0%</span>
+              {rcvCents > 0 && (
+                <span
+                  className="absolute -translate-x-1/2"
+                  style={{ left: `${rcvTickPct}%` }}
+                >
+                  {rcvTickPct.toFixed(1)}%
+                </span>
+              )}
+              <span className="absolute right-0">100%</span>
+            </div>
+
+            {/* Legend row */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-green-500" />
+                ACV
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-green-300" />
+                RCV above ACV
+              </span>
+              {isShort && (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-red-400" />
+                  Variance
+                </span>
+              )}
+              {bettCents > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rounded-[2px] bg-purple-300" />
+                  Betterments
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="h-7 rounded-md bg-muted/30 flex items-center justify-center">
+            <span className="text-xs text-muted-foreground">
+              No contract value — set via Project Financials
+            </span>
+          </div>
+        )}
+
+        {/* ── Variance / coverage alert ──────────────────────────────────── */}
+        {isShort && (
+          <div className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/20 dark:border-red-800 px-3 py-2 text-xs">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600 dark:text-red-400" />
+            <span className="font-semibold text-red-700 dark:text-red-400">
+              VARIANCE: {formatCents(varianceCents)} (SHORT)
+            </span>
+            <span className="text-red-500 dark:text-red-500 ml-0.5">
+              Supplement may be needed
+            </span>
+          </div>
+        )}
+        {!isShort && hasData && rcvCents > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-green-300 bg-green-50 dark:bg-green-950/20 dark:border-green-800 px-3 py-2 text-xs">
+            <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
+            <span className="font-semibold text-green-700 dark:text-green-400">
+              RCV covers full scope
+            </span>
+          </div>
+        )}
+
+        {/* ── Collapsible breakdown ──────────────────────────────────────── */}
+        <button
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setBreakdownOpen(o => !o)}
+        >
+          {breakdownOpen
+            ? <><ChevronUp className="h-3 w-3" /> Hide claim &amp; contract breakdown</>
+            : <><ChevronDown className="h-3 w-3" /> Show claim &amp; contract breakdown</>}
+        </button>
+
+        {breakdownOpen && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-3 border-t text-sm">
+            {/* Claim breakdown */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Claim Breakdown
+              </p>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">RCV Approved</span>
+                <span className="tabular-nums font-medium">{formatCents(rcvCents)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ACV Approved</span>
+                <span className="tabular-nums font-medium">{formatCents(acvCents)}</span>
+              </div>
+              <div className="flex justify-between border-t pt-2">
+                <span className="font-semibold">Total Approved</span>
+                <span className="tabular-nums font-bold">{formatCents(rcvCents)}</span>
+              </div>
+            </div>
+
+            {/* Contract breakdown */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Contract Breakdown
+              </p>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Base Scope</span>
+                <span className="tabular-nums font-medium">{formatCents(baseScopeCents)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Betterments</span>
+                <span className="tabular-nums font-medium">{formatCents(bettCents)}</span>
+              </div>
+              <div className="flex justify-between border-t pt-2">
+                <span className="font-semibold">Total Contract</span>
+                <span className="tabular-nums font-bold">{formatCents(totalCents)}</span>
+              </div>
+              {hasData && rcvCents > 0 && (
+                <p className="text-right text-[10px] text-muted-foreground">
+                  {((rcvCents / totalCents) * 100).toFixed(1)}% of contract
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Record Claim Financials modal ─────────────────────────────────── */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Record Claim Financials</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Approved RCV</Label>
+              <Input
+                placeholder="e.g. 18,520.00"
+                value={rcvDraft}
+                onChange={e => setRcvDraft(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Replacement Cost Value approved by the carrier
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Approved ACV</Label>
+              <Input
+                placeholder="e.g. 15,000.00"
+                value={acvDraft}
+                onChange={e => setAcvDraft(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Actual Cash Value (depreciated payment)
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Betterments</Label>
+              <Input
+                placeholder="e.g. 2,500.00"
+                value={bettDraft}
+                onChange={e => setBettDraft(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Upgrades / code-required improvements not covered by the claim
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ===========================================================================
 // PROJECT FINANCIALS PANEL — accrual-basis waterfall (FINANCIALS STEP 5, Step 3)
 // Waterfall: Contract Value → Change Orders → Revised Contract →
 //            Cost of Goods Sold → Job Overhead → Net Project Margin
@@ -1593,6 +2554,9 @@ function FinKpiCards({
 }) {
   const { data: profData } = useGetPinProfitability(pinId);
   const p = profData?.profitability;
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const { mutateAsync: updateLead } = useUpdateLead(pinId);
 
   const [editingContract, setEditingContract] = useState(false);
   const [contractDraft,   setContractDraft]   = useState(contractAmount);
@@ -1600,6 +2564,17 @@ function FinKpiCards({
   useEffect(() => {
     if (!editingContract) setContractDraft(contractAmount);
   }, [contractAmount, editingContract]);
+
+  async function commitContract(val: string) {
+    onField('contractAmount', val);          // keep local form state in sync
+    setEditingContract(false);
+    try {
+      await updateLead({ contractAmount: val.trim() === '' ? null : val });
+      qc.invalidateQueries({ queryKey: getGetPinProfitabilityQueryKey(pinId) });
+    } catch {
+      toast({ title: 'Save failed', description: 'Could not update contract value.', variant: 'destructive' });
+    }
+  }
 
   const contractCents      = parseDollarToCents(contractAmount.replace(/[$,\s]/g, '')) ??
     (contractAmount.trim() ? null : 0);
@@ -1613,30 +2588,32 @@ function FinKpiCards({
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-      {/* Contract Value */}
-      <div className="rounded-lg border bg-card border-l-[3px] border-l-green-500 p-4 space-y-1">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span className="text-xs font-medium">Contract Value</span>
-          </div>
-          <button className="text-muted-foreground hover:text-foreground"
-            onClick={() => setEditingContract(v => !v)} title="Edit contract value">
-            <Pencil className="h-3 w-3" />
-          </button>
+      {/* Contract Value — whole tile is clickable to edit */}
+      <div
+        className={`rounded-lg border bg-card border-l-[3px] border-l-green-500 p-4 space-y-1 transition-colors ${
+          editingContract ? '' : 'cursor-pointer hover:bg-accent/50'
+        }`}
+        onClick={() => { if (!editingContract) setEditingContract(true); }}
+        title={editingContract ? undefined : 'Edit contract value'}
+      >
+        <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+          <TrendingUp className="h-3.5 w-3.5" />
+          <span className="text-xs font-medium">Contract Value</span>
+          {!editingContract && <Pencil className="h-3 w-3 ml-auto opacity-40" />}
         </div>
         {editingContract ? (
           <Input
             className="h-7 text-sm mt-1"
             value={contractDraft}
             onChange={e => setContractDraft(e.target.value)}
-            onBlur={() => { onField('contractAmount', contractDraft); setEditingContract(false); }}
+            onBlur={() => commitContract(contractDraft)}
             onKeyDown={e => {
-              if (e.key === 'Enter') { onField('contractAmount', contractDraft); setEditingContract(false); }
+              if (e.key === 'Enter') commitContract(contractDraft);
               if (e.key === 'Escape') setEditingContract(false);
             }}
             autoFocus
             placeholder="0.00"
+            onClick={e => e.stopPropagation()}
           />
         ) : (
           <>
@@ -1953,12 +2930,14 @@ function FinancialsTab({
   pinId,
   isManager,
   isInsurance,
+  lead,
 }: {
   form: FormState;
   onField: (n: string, v: string) => void;
   pinId: string;
   isManager: boolean;
   isInsurance: boolean;
+  lead: FullLead;
 }) {
   const { toast } = useToast();
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -1990,22 +2969,30 @@ function FinancialsTab({
       {/* Zone 1 — KPI stat cards */}
       <FinKpiCards pinId={pinId} contractAmount={form.contractAmount} onField={onField} />
 
-      {/* Zone 2 — Invoicing (left) + Cost Breakdown (right) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <InvoicingPanel pinId={pinId} isManager={isManager} />
-        <ProjectFinancialsPanel pinId={pinId} isManager={isManager} />
+      {/* Two-column layout — left 2/3 stacks all main panels;
+                              right 1/3 stacks Collection Tracker + Change Orders */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        {/* Column 1–2: Project Financials, Claim Value Tracker, Invoicing, Expense Tracker */}
+        <div className="md:col-span-2 flex flex-col gap-4">
+          <ProjectFinancialsPanel pinId={pinId} isManager={isManager} />
+          {isInsurance && (
+            <ClaimValueTrackerFinancialsPanel pinId={pinId} isManager={isManager} />
+          )}
+          <InvoicingPanel pinId={pinId} isManager={isManager} lead={lead} />
+          <ExpenseTrackerPanel
+            pinId={pinId}
+            isManager={isManager}
+            onExportPdf={handleExportPdf}
+            exportingPdf={exportingPdf}
+          />
+        </div>
+
+        {/* Column 3: Collection Tracker + Change Orders */}
+        <div className="md:col-span-1 flex flex-col gap-4">
+          <CollectionTrackerPanel pinId={pinId} />
+          <ChangeOrdersPanel pinId={pinId} isManager={isManager} isInsurance={isInsurance} />
+        </div>
       </div>
-
-      {/* Zone 3 — Expense Tracker, full width */}
-      <ExpenseTrackerPanel
-        pinId={pinId}
-        isManager={isManager}
-        onExportPdf={handleExportPdf}
-        exportingPdf={exportingPdf}
-      />
-
-      {/* Zone 4 — Change Orders, full width */}
-      <ChangeOrdersPanel pinId={pinId} isManager={isManager} isInsurance={isInsurance} />
     </div>
   );
 }
@@ -2658,10 +3645,10 @@ export default function LeadProfile() {
             </div>
           ) : (
             <>
-              {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} isManager={isManager} />}
+              {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} isManager={isManager} pinId={id!} />}
               {activeTab === 'inspection_flow' && inspectionId && <InspectionFlowTab inspectionId={inspectionId} />}
-              {activeTab === 'insurance'       && isInsurance && <InsuranceTab  form={form} onField={handleField} pinId={id!} />}
-              {activeTab === 'financials'      && <FinancialsTab     form={form} onField={handleField} pinId={id!} isManager={isManager} isInsurance={isInsurance} />}
+              {activeTab === 'contract_builder' && isInsurance && <ContractBuilderTab />}
+              {activeTab === 'financials'      && lead && <FinancialsTab form={form} onField={handleField} pinId={id!} isManager={isManager} isInsurance={isInsurance} lead={lead} />}
               {activeTab === 'communication'   && <CommunicationTab  form={form} onField={handleField} />}
               {activeTab === 'scope'           && <ScopeTab          form={form} onField={handleField} />}
               {activeTab === 'files'           && lead && (
@@ -2674,7 +3661,7 @@ export default function LeadProfile() {
                 />
               )}
 
-              {activeTab !== 'files' && activeTab !== 'inspection_flow' && (
+              {activeTab !== 'files' && activeTab !== 'inspection_flow' && activeTab !== 'contract_builder' && (
                 <div className="mt-8 flex justify-end border-t pt-6">
                   <Button onClick={handleSave} disabled={saving} className="min-w-28">
                     {saving

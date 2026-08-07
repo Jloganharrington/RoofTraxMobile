@@ -8139,6 +8139,102 @@ export const MarkPmOverheadPaidResponse = zod.object({
 
 
 /**
+ * Returns all insurance-related fields for the pin. Any authenticated company member may read. Field reps see the tab read-only in the UI.
+ * @summary Get insurance/claim fields for a lead
+ */
+export const GetPinInsuranceParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const GetPinInsuranceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const GetPinInsuranceResponse = zod.object({
+  "insurance": zod.object({
+  "insuranceCarrier": zod.string().nullish(),
+  "policyNumber": zod.string().nullish(),
+  "policyHolder": zod.string().nullish(),
+  "coverageType": zod.string().nullish(),
+  "deductibleAmount": zod.string().nullish().describe('Legacy varchar dollar value (e.g. \"$1,000\").'),
+  "claimNumber": zod.string().nullish(),
+  "claimFiledDate": zod.string().nullish(),
+  "dateOfLoss": zod.string().nullish(),
+  "inspectionDate": zod.string().nullish(),
+  "claimStatus": zod.enum(['not_filed', 'filed', 'under_review', 'adjuster_scheduled', 'approved', 'partially_approved', 'denied', 'supplement_pending', 'closed']).nullish(),
+  "adjusterName": zod.string().nullish(),
+  "adjusterPhone": zod.string().nullish(),
+  "adjusterEmail": zod.string().nullish(),
+  "adjusterMeetingDate": zod.string().nullish(),
+  "adjusterLastContact": zod.string().nullish(),
+  "approvedRcvAmount": zod.string().nullish(),
+  "approvedAcvAmount": zod.string().nullish(),
+  "bettermentsAmountCents": zod.number().nullish().describe('Carrier-asserted betterments deduction in cents.'),
+  "supplementNotes": zod.string().nullish()
+}).describe('Insurance, claim, and adjuster fields stored on a pin.')
+})
+
+
+/**
+ * Writes insurance, claim, and adjuster fields to the pin. Manager or above required — field reps see the insurance tab read-only. These fields are NOT writable via PATCH /pins/:pinId (generic) or PATCH /pins/:pinId/profile. All fields are optional; omitted fields are preserved.
+ * @summary Update insurance/claim fields for a lead (manager+)
+ */
+export const PatchPinInsuranceParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const PatchPinInsuranceHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const PatchPinInsuranceBody = zod.object({
+  "insuranceCarrier": zod.string().nullish(),
+  "policyNumber": zod.string().nullish(),
+  "policyHolder": zod.string().nullish(),
+  "coverageType": zod.string().nullish(),
+  "deductibleAmount": zod.string().nullish().describe('Legacy varchar dollar value (e.g. \"$1,000\").'),
+  "claimNumber": zod.string().nullish(),
+  "claimFiledDate": zod.string().nullish(),
+  "dateOfLoss": zod.string().nullish(),
+  "inspectionDate": zod.string().nullish(),
+  "claimStatus": zod.enum(['not_filed', 'filed', 'under_review', 'adjuster_scheduled', 'approved', 'partially_approved', 'denied', 'supplement_pending', 'closed']).nullish(),
+  "adjusterName": zod.string().nullish(),
+  "adjusterPhone": zod.string().nullish(),
+  "adjusterEmail": zod.string().nullish(),
+  "adjusterMeetingDate": zod.string().nullish(),
+  "adjusterLastContact": zod.string().nullish(),
+  "approvedRcvAmount": zod.string().nullish(),
+  "approvedAcvAmount": zod.string().nullish(),
+  "bettermentsAmountCents": zod.number().nullish().describe('Carrier-asserted betterments deduction in cents.'),
+  "supplementNotes": zod.string().nullish()
+}).describe('Insurance, claim, and adjuster fields stored on a pin.').describe('Fields accepted by PATCH \/pins\/{pinId}\/insurance. All fields are optional; omitted fields are preserved. Manager+ required.')
+
+export const PatchPinInsuranceResponse = zod.object({
+  "insurance": zod.object({
+  "insuranceCarrier": zod.string().nullish(),
+  "policyNumber": zod.string().nullish(),
+  "policyHolder": zod.string().nullish(),
+  "coverageType": zod.string().nullish(),
+  "deductibleAmount": zod.string().nullish().describe('Legacy varchar dollar value (e.g. \"$1,000\").'),
+  "claimNumber": zod.string().nullish(),
+  "claimFiledDate": zod.string().nullish(),
+  "dateOfLoss": zod.string().nullish(),
+  "inspectionDate": zod.string().nullish(),
+  "claimStatus": zod.enum(['not_filed', 'filed', 'under_review', 'adjuster_scheduled', 'approved', 'partially_approved', 'denied', 'supplement_pending', 'closed']).nullish(),
+  "adjusterName": zod.string().nullish(),
+  "adjusterPhone": zod.string().nullish(),
+  "adjusterEmail": zod.string().nullish(),
+  "adjusterMeetingDate": zod.string().nullish(),
+  "adjusterLastContact": zod.string().nullish(),
+  "approvedRcvAmount": zod.string().nullish(),
+  "approvedAcvAmount": zod.string().nullish(),
+  "bettermentsAmountCents": zod.number().nullish().describe('Carrier-asserted betterments deduction in cents.'),
+  "supplementNotes": zod.string().nullish()
+}).describe('Insurance, claim, and adjuster fields stored on a pin.')
+})
+
+
+/**
  * @summary Get computed profitability summary for a lead (all money in cents)
  */
 export const GetPinProfitabilityParams = zod.object({
@@ -8171,7 +8267,14 @@ export const GetPinProfitabilityResponse = zod.object({
   "approvedCoCents": zod.number().describe('Sum of non-voided approved change-order amounts.'),
   "revisedContractCents": zod.number().describe('base contract + approvedCoCents. Accrual-basis contract value after all approved (non-voided) change orders.'),
   "netProjectMarginCents": zod.number().describe('revisedContractCents − totalCostCents.'),
-  "netProjectMarginPct": zod.number().describe('netProjectMarginCents \/ revisedContractCents × 100. Returns 0 (not NaN or null) when revisedContractCents = 0. Primary margin metric; replaces projectedMarginPct.')
+  "netProjectMarginPct": zod.number().describe('netProjectMarginCents \/ revisedContractCents × 100. Returns 0 (not NaN or null) when revisedContractCents = 0. Primary margin metric; replaces projectedMarginPct.'),
+  "deductibleCollectedCents": zod.number().describe('Sum of payments with type=\'deductible\'. How much of the deductible has actually been collected from the homeowner.'),
+  "policyDeductibleCents": zod.number().describe('Policy deductible amount parsed from the legacy varchar deductibleAmount field.'),
+  "approvedAcvCents": zod.number().describe('Approved ACV parsed from the legacy varchar approvedAcvAmount field.'),
+  "supplementCandidateCents": zod.number().describe('Sum of approved non-voided change orders flagged as requiredToCompleteScope. Shows the dollar value of supplementable items already on file.'),
+  "depreciationCents": zod.number().describe('approvedRcvCents − approvedAcvCents.'),
+  "claimVarianceCents": zod.number().describe('approvedRcvCents − revisedContractCents. Negative = SHORT (carrier approved less than the contract; a supplement may be needed to bridge the gap).'),
+  "baseScopeCents": zod.number().describe('revisedContractCents − bettermentsAmountCents. What the carrier owes after stripping out betterments.')
 })
 })
 

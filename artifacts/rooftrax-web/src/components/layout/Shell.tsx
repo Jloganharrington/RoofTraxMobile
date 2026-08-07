@@ -23,6 +23,8 @@ import {
   Search,
   X,
   Plus,
+  Menu,
+  RotateCcw,
 } from "lucide-react";
 import { useSearch } from "@/lib/claimHubApi";
 import { applyTheme, type ThemeValue } from "@/lib/applyTheme";
@@ -205,6 +207,37 @@ export function Shell({ children }: ShellProps) {
   const { data: profileEnvelope } = useGetMyProfile();
   const [location] = useLocation();
   const [newLeadOpen, setNewLeadOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen]   = useState(false);
+
+  // ── Last-pipeline quick-jump ─────────────────────────────────────────────
+  // When the user navigates to any pipeline, persist that path under the
+  // `rt_last_pipeline` key so we can surface a one-click return link the
+  // next time they're somewhere else in the app.
+  const PIPELINE_PATHS = ['/retail-pipeline', '/insurance-pipeline', '/project-pipeline'] as const;
+  type PipelinePath = typeof PIPELINE_PATHS[number];
+  const PIPELINE_LABELS: Record<PipelinePath, string> = {
+    '/retail-pipeline':    'Retail Pipeline',
+    '/insurance-pipeline': 'Insurance Pipeline',
+    '/project-pipeline':   'Project Pipeline',
+  };
+  const [lastPipeline, setLastPipeline] = useState<PipelinePath | null>(() => {
+    const stored = typeof window !== 'undefined'
+      ? window.localStorage.getItem('rt_last_pipeline') : null;
+    return (stored && (PIPELINE_PATHS as readonly string[]).includes(stored))
+      ? stored as PipelinePath : null;
+  });
+
+  // Persist whenever the user lands on a pipeline page
+  useEffect(() => {
+    if ((PIPELINE_PATHS as readonly string[]).includes(location)) {
+      const p = location as PipelinePath;
+      window.localStorage.setItem('rt_last_pipeline', p);
+      setLastPipeline(p);
+    }
+  }, [location]);
+
+  // Close the mobile drawer whenever the route changes
+  useEffect(() => { setDrawerOpen(false); }, [location]);
 
   // Sync theme from the server profile on every authenticated load.
   // The pre-paint bootstrap already applied the localStorage value; this
@@ -249,13 +282,170 @@ export function Shell({ children }: ShellProps) {
     }))
     .filter((section) => section.items.length > 0);
 
-  return (
-    <div className="flex min-h-screen flex-col md:flex-row bg-background">
-      {/* Sidebar */}
-      <aside className="w-full md:w-56 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex flex-col flex-shrink-0">
+  // Shared nav content rendered inside both the desktop sidebar and mobile drawer
+  const navContent = (
+    <>
+      {/* Search */}
+      <SearchBar />
 
-        {/* Logo */}
-        <div className="px-5 h-14 flex items-center border-b border-sidebar-border">
+      {/* + New Lead */}
+      <div className="px-3 pt-2 pb-1">
+        <button
+          onClick={() => { setNewLeadOpen(true); setDrawerOpen(false); }}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5 flex-shrink-0" />
+          Add New Lead
+        </button>
+      </div>
+
+      {/* Quick-jump: return to last pipeline (only when off-pipeline) */}
+      {lastPipeline && !(PIPELINE_PATHS as readonly string[]).includes(location) && (
+        <div className="px-3 pb-2">
+          <Link
+            href={lastPipeline}
+            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors rounded border border-sidebar-border"
+          >
+            <RotateCcw className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <span className="truncate">{PIPELINE_LABELS[lastPipeline]}</span>
+          </Link>
+        </div>
+      )}
+
+      {/* Nav sections */}
+      <nav className="flex-1 overflow-y-auto py-3">
+        {visibleSections.map((section) => (
+          <div key={section.heading} className="mb-4">
+            <p className="px-4 mb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 select-none">
+              {section.heading}
+            </p>
+            {section.items.map((item) => {
+              const active = !item.soon && isNavItemActive(item.path, location);
+              return (
+                <Link
+                  key={item.path}
+                  href={item.soon ? "#" : item.path}
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                  className={`flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
+                    item.soon
+                      ? "opacity-40 cursor-default pointer-events-none"
+                      : active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                  onClick={item.soon ? (e) => e.preventDefault() : undefined}
+                >
+                  <item.icon className="h-4 w-4 flex-shrink-0" />
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {item.soon && (
+                    <span className="text-[9px] font-semibold uppercase tracking-wide bg-sidebar-foreground/10 text-sidebar-foreground/50 px-1.5 py-0.5 rounded">
+                      Soon
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* User footer */}
+      <div className="p-3 border-t border-sidebar-border">
+        {user ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5 px-2 py-1">
+              {(() => {
+                const displayFirst = profile?.firstName ?? user.firstName;
+                const displayLast  = profile?.lastName  ?? user.lastName;
+                const avatarUrl    = profile?.profileImageUrl ?? user.profileImageUrl;
+                const initials     = displayFirst?.charAt(0) || user.email?.charAt(0) || '?';
+                return (
+                  <>
+                    <div className="h-7 w-7 flex-shrink-0 rounded-sm overflow-hidden flex-none">
+                      {avatarUrl ? (
+                        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-black uppercase">
+                          {initials}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold truncate">{displayFirst} {displayLast}</span>
+                      <span className="text-[10px] text-sidebar-foreground/50 truncate">{user.email}</span>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <button
+              onClick={handleLogout}
+              data-testid="button-sign-out"
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors rounded"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign Out
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex min-h-screen bg-background">
+
+      {/* ── Mobile top bar (≥md hidden) ──────────────────────────────────────
+          Fixed at the top; main content is padded below it via pt-12 md:pt-0.  */}
+      <header className="fixed inset-x-0 top-0 z-10 h-12 flex items-center justify-between px-3 bg-sidebar border-b border-sidebar-border md:hidden">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="p-1.5 rounded text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            aria-label="Open navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4 text-primary flex-shrink-0" strokeWidth={2.5} />
+            <span className="text-base font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
+              <span className="text-foreground">ROOF</span><span className="text-primary">TRAX</span>
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={() => setNewLeadOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5 flex-shrink-0" />
+          New Lead
+        </button>
+      </header>
+
+      {/* ── Mobile backdrop ───────────────────────────────────────────────── */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* ── Sidebar (drawer on mobile, static on desktop) ─────────────────── */}
+      <aside
+        className={[
+          // shared
+          'flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border',
+          // mobile: fixed drawer, slide in/out
+          'fixed inset-y-0 left-0 z-30 w-72',
+          'transition-transform duration-200 ease-in-out',
+          drawerOpen ? 'translate-x-0' : '-translate-x-full',
+          // desktop: static sidebar, pixel-identical to before
+          'md:relative md:translate-x-0 md:w-56 md:z-auto md:flex-shrink-0',
+        ].join(' ')}
+      >
+        {/* Logo — desktop only; mobile top bar handles branding */}
+        <div className="hidden md:flex px-5 h-14 items-center border-b border-sidebar-border">
           <div className="flex items-center gap-2.5">
             <ShieldCheck className="h-5 w-5 text-primary flex-shrink-0" strokeWidth={2.5} />
             <span className="text-lg font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
@@ -264,104 +454,28 @@ export function Shell({ children }: ShellProps) {
           </div>
         </div>
 
-        {/* Search */}
-        <SearchBar />
-
-        {/* + New Lead */}
-        <div className="px-3 pt-2 pb-1">
+        {/* Mobile drawer header with close button */}
+        <div className="md:hidden flex items-center justify-between px-4 h-12 border-b border-sidebar-border flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" strokeWidth={2.5} />
+            <span className="text-base font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
+              <span className="text-foreground">ROOF</span><span className="text-primary">TRAX</span>
+            </span>
+          </div>
           <button
-            onClick={() => setNewLeadOpen(true)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
+            onClick={() => setDrawerOpen(false)}
+            className="p-1.5 rounded text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            aria-label="Close navigation"
           >
-            <Plus className="h-3.5 w-3.5 flex-shrink-0" />
-            Add New Lead
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Nav sections */}
-        <nav className="flex-1 overflow-y-auto py-3">
-          {visibleSections.map((section) => (
-            <div key={section.heading} className="mb-4">
-              {/* Section heading */}
-              <p className="px-4 mb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 select-none">
-                {section.heading}
-              </p>
-
-              {section.items.map((item) => {
-                const active = !item.soon && isNavItemActive(item.path, location);
-                return (
-                  <Link
-                    key={item.path}
-                    href={item.soon ? "#" : item.path}
-                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-                    className={`flex items-center gap-2.5 px-4 py-2 text-sm transition-colors ${
-                      item.soon
-                        ? "opacity-40 cursor-default pointer-events-none"
-                        : active
-                        ? "bg-primary text-primary-foreground"
-                        : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                    }`}
-                    onClick={item.soon ? (e) => e.preventDefault() : undefined}
-                  >
-                    <item.icon className="h-4 w-4 flex-shrink-0" />
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {item.soon && (
-                      <span className="text-[9px] font-semibold uppercase tracking-wide bg-sidebar-foreground/10 text-sidebar-foreground/50 px-1.5 py-0.5 rounded">
-                        Soon
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        {/* User footer */}
-        <div className="p-3 border-t border-sidebar-border">
-          {user ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2.5 px-2 py-1">
-                {/* Prefer profile data (reflects edits) over session user (reflects last login) */}
-                {(() => {
-                  const displayFirst = profile?.firstName ?? user.firstName;
-                  const displayLast  = profile?.lastName  ?? user.lastName;
-                  const avatarUrl    = profile?.profileImageUrl ?? user.profileImageUrl;
-                  const initials     = displayFirst?.charAt(0) || user.email?.charAt(0) || '?';
-                  return (
-                    <>
-                      <div className="h-7 w-7 flex-shrink-0 rounded-sm overflow-hidden flex-none">
-                        {avatarUrl ? (
-                          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="h-full w-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-black uppercase">
-                            {initials}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-semibold truncate">{displayFirst} {displayLast}</span>
-                        <span className="text-[10px] text-sidebar-foreground/50 truncate">{user.email}</span>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-              <button
-                onClick={handleLogout}
-                data-testid="button-sign-out"
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors rounded"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Sign Out
-              </button>
-            </div>
-          ) : null}
-        </div>
+        {navContent}
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* ── Main content ──────────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden pt-12 md:pt-0">
         <div className="flex-1 overflow-auto p-5 md:p-8">
           {children}
         </div>

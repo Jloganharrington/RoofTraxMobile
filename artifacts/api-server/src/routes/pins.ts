@@ -258,20 +258,19 @@ export const LeadProfileBody = z.object({
   profileStatus:        z.string().nullable().optional(),
   statusNotes:          z.string().nullable().optional(),
   statusLastUpdated:    z.string().nullable().optional(),
-  insuranceCarrier:     z.string().nullable().optional(),
-  policyNumber:         z.string().nullable().optional(),
-  claimNumber:          z.string().nullable().optional(),
-  dateOfLoss:           z.string().nullable().optional(),
-  inspectionDate:       z.string().nullable().optional(),
-  adjusterName:         z.string().nullable().optional(),
-  adjusterPhone:        z.string().nullable().optional(),
-  adjusterEmail:        z.string().nullable().optional(),
-  adjusterMeetingDate:  z.string().nullable().optional(),
   contractAmount:       z.string().nullable().optional(),
   // depositAmount, depositDate, depositPaymentMethod, acvAmount,
   // supplementAmount, finalPaymentAmount removed — these are now managed
   // exclusively via the payments ledger (POST /pins/:pinId/payments).
   // Bug fix (iii): they must not remain as a second write path here.
+  //
+  // Insurance-specific fields (insuranceCarrier, policyNumber, claimNumber,
+  // dateOfLoss, inspectionDate, adjusterName, adjusterPhone, adjusterEmail,
+  // adjusterMeetingDate, claimFiledDate, policyHolder, coverageType,
+  // approvedRcvAmount, approvedAcvAmount, depreciationAmount) removed from
+  // this schema — they are now manager-only and written exclusively via
+  // PATCH /pins/:pinId/insurance.  Accepting them here via canEditPin()
+  // would let field reps bypass the insurance endpoint's auth gate.
   deductibleAmount:     z.string().nullable().optional(),
   rcvAmount:            z.string().nullable().optional(),
   contractScope:        z.string().nullable().optional(),
@@ -289,12 +288,6 @@ export const LeadProfileBody = z.object({
   mailingState:        z.string().nullable().optional(),
   mailingZip:          z.string().nullable().optional(),
   mailerSentDate:      z.string().nullable().optional(),
-  claimFiledDate:      z.string().nullable().optional(),
-  policyHolder:        z.string().nullable().optional(),
-  coverageType:        z.string().nullable().optional(),
-  approvedRcvAmount:   z.string().nullable().optional(),
-  approvedAcvAmount:   z.string().nullable().optional(),
-  depreciationAmount:  z.string().nullable().optional(),
   inspectionNotes:     z.string().nullable().optional(),
 });
 
@@ -377,15 +370,6 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
       ...(d.customerPhone        !== undefined && { customerPhone:        d.customerPhone }),
       ...(d.notes                !== undefined && { notes:                d.notes }),
       ...(d.pipelineStage        !== undefined && { pipelineStage:        d.pipelineStage }),
-      ...(d.insuranceCarrier     !== undefined && { insuranceCarrier:     d.insuranceCarrier }),
-      ...(d.policyNumber         !== undefined && { policyNumber:         d.policyNumber }),
-      ...(d.claimNumber          !== undefined && { claimNumber:          d.claimNumber }),
-      ...(d.dateOfLoss           !== undefined && { dateOfLoss:           toDateOrNull(d.dateOfLoss) }),
-      ...(d.inspectionDate       !== undefined && { inspectionDate:       toDateOrNull(d.inspectionDate) }),
-      ...(d.adjusterName         !== undefined && { adjusterName:         d.adjusterName }),
-      ...(d.adjusterPhone        !== undefined && { adjusterPhone:        d.adjusterPhone }),
-      ...(d.adjusterEmail        !== undefined && { adjusterEmail:        d.adjusterEmail }),
-      ...(d.adjusterMeetingDate  !== undefined && { adjusterMeetingDate:  toDateOrNull(d.adjusterMeetingDate) }),
       ...(d.contractAmount       !== undefined && { contractAmount:       d.contractAmount }),
       ...(d.deductibleAmount     !== undefined && { deductibleAmount:     d.deductibleAmount }),
       ...(d.rcvAmount            !== undefined && { rcvAmount:            d.rcvAmount }),

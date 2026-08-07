@@ -70,7 +70,15 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
           approved_co_cents,
           revised_contract_cents,
           net_project_margin_cents,
-          net_project_margin_pct
+          net_project_margin_pct,
+          -- insurance analytics (migration 032)
+          deductible_collected_cents,
+          policy_deductible_cents,
+          approved_acv_cents,
+          supplement_candidate_cents,
+          depreciation_cents,
+          claim_variance_cents,
+          base_scope_cents
         FROM pin_profitability
         WHERE pin_id   = ${pinId}
           AND company_id = ${req.user.companyId}`,
@@ -103,6 +111,14 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
         revisedContractCents:       0,
         netProjectMarginCents:      0,
         netProjectMarginPct:        0,
+        // Migration 032 — insurance analytics
+        deductibleCollectedCents:   0,
+        policyDeductibleCents:      0,
+        approvedAcvCents:           0,
+        supplementCandidateCents:   0,
+        depreciationCents:          0,
+        claimVarianceCents:         0,
+        baseScopeCents:             0,
       },
     });
     return;
@@ -139,6 +155,14 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
       netProjectMarginCents:      n(row.net_project_margin_cents),
       // Migration 029 — accrual-basis margin percentage
       netProjectMarginPct:        pct(row.net_project_margin_pct),
+      // Migration 032 — insurance analytics
+      deductibleCollectedCents:   n(row.deductible_collected_cents),
+      policyDeductibleCents:      n(row.policy_deductible_cents),
+      approvedAcvCents:           n(row.approved_acv_cents),
+      supplementCandidateCents:   n(row.supplement_candidate_cents),
+      depreciationCents:          n(row.depreciation_cents),
+      claimVarianceCents:         n(row.claim_variance_cents),
+      baseScopeCents:             n(row.base_scope_cents),
     },
   });
 });

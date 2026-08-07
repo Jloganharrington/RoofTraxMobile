@@ -30,6 +30,7 @@ import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
 import MapPage from '@/pages/MapPage';
+import { RootRoute } from '@/routes/RootRoute';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,28 +40,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
-/**
- * Splits "/" between authenticated and unauthenticated users.
- * - Authenticated  → render Dashboard; URL stays "/"
- * - Unauthenticated → render marketing Home
- * No redirect, no setLocation. Auth resolution is synchronous from React Query
- * cache on every subsequent render, so there is no flash of wrong content
- * after the first load.
- */
-function RootRoute() {
-  const { data: authEnvelope, isLoading } = useGetCurrentAuthUser();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  return authEnvelope?.user ? <Dashboard /> : <Home />;
-}
 
 function NotFound() {
   return (

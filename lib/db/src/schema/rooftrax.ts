@@ -268,6 +268,15 @@ export const pinsTable = pgTable('pins', {
   referralFeePaidDate:           timestamp('referral_fee_paid_date',          { withTimezone: true }),
   leadAcquisitionPaidDate:       timestamp('lead_acquisition_paid_date',      { withTimezone: true }),
 
+  // ── Insurance analytics (migration 032) ───────────────────────────────
+  // Validated server-side against CLAIM_STATUSES constant; stored as varchar
+  // so additions do not require a schema migration.
+  claimStatus:            varchar('claim_status'),
+  adjusterLastContact:    timestamp('adjuster_last_contact',    { withTimezone: true }),
+  // Integer cents (not legacy varchar) — safe to use in arithmetic directly.
+  bettermentsAmountCents: integer('betterments_amount_cents'),
+  supplementNotes:        text('supplement_notes'),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

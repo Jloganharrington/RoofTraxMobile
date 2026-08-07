@@ -5999,6 +5999,100 @@ paths:
 
 
   # ---------------------------------------------------------------------------
+  # Insurance data — claim fields, policy info, adjuster details (migration 032)
+  # ---------------------------------------------------------------------------
+  /pins/{pinId}/insurance:
+    get:
+      tags: [Insurance]
+      operationId: getPinInsurance
+      summary: Get insurance/claim fields for a lead
+      description: >-
+        Returns all insurance-related fields for the pin. Any authenticated
+        company member may read. Field reps see the tab read-only in the UI.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      responses:
+        "200":
+          description: Insurance fields for the pin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsuranceEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Insurance]
+      operationId: patchPinInsurance
+      summary: Update insurance/claim fields for a lead (manager+)
+      description: >-
+        Writes insurance, claim, and adjuster fields to the pin. Manager or
+        above required — field reps see the insurance tab read-only.
+        These fields are NOT writable via PATCH /pins/:pinId (generic) or
+        PATCH /pins/:pinId/profile. All fields are optional; omitted fields
+        are preserved.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AuthorizationSessionHeader"
+        - $ref: "#/components/parameters/SessionCookie"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsurancePatchBody"
+      responses:
+        "200":
+          description: Insurance fields updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsuranceEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager or above required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ---------------------------------------------------------------------------
   # Profitability Summary — step 4
   # ---------------------------------------------------------------------------
   /pins/{pinId}/profitability:
@@ -11550,6 +11644,97 @@ components:
           minimum: 0
 
     # ---------------------------------------------------------------------------
+    # Insurance — migration 032
+    # ---------------------------------------------------------------------------
+    InsuranceFields:
+      type: object
+      description: Insurance, claim, and adjuster fields stored on a pin.
+      properties:
+        insuranceCarrier:
+          type: string
+          nullable: true
+        policyNumber:
+          type: string
+          nullable: true
+        policyHolder:
+          type: string
+          nullable: true
+        coverageType:
+          type: string
+          nullable: true
+        deductibleAmount:
+          type: string
+          nullable: true
+          description: Legacy varchar dollar value (e.g. "$1,000").
+        claimNumber:
+          type: string
+          nullable: true
+        claimFiledDate:
+          type: string
+          nullable: true
+        dateOfLoss:
+          type: string
+          nullable: true
+        inspectionDate:
+          type: string
+          nullable: true
+        claimStatus:
+          type: string
+          nullable: true
+          enum:
+            - not_filed
+            - filed
+            - under_review
+            - adjuster_scheduled
+            - approved
+            - partially_approved
+            - denied
+            - supplement_pending
+            - closed
+        adjusterName:
+          type: string
+          nullable: true
+        adjusterPhone:
+          type: string
+          nullable: true
+        adjusterEmail:
+          type: string
+          nullable: true
+        adjusterMeetingDate:
+          type: string
+          nullable: true
+        adjusterLastContact:
+          type: string
+          nullable: true
+        approvedRcvAmount:
+          type: string
+          nullable: true
+        approvedAcvAmount:
+          type: string
+          nullable: true
+        bettermentsAmountCents:
+          type: integer
+          nullable: true
+          description: Carrier-asserted betterments deduction in cents.
+        supplementNotes:
+          type: string
+          nullable: true
+    InsurancePatchBody:
+      type: object
+      additionalProperties: false
+      description: >-
+        Fields accepted by PATCH /pins/{pinId}/insurance. All fields are
+        optional; omitted fields are preserved. Manager+ required.
+      allOf:
+        - $ref: "#/components/schemas/InsuranceFields"
+    InsuranceEnvelope:
+      type: object
+      required: [insurance]
+      properties:
+        insurance:
+          $ref: "#/components/schemas/InsuranceFields"
+
+    # ---------------------------------------------------------------------------
     # Profitability — step 4 / migration 029 (FINANCIALS STEP 5, Step 2)
     # projectedMarginPct removed (Step 2d); replaced by netProjectMarginPct.
     # ---------------------------------------------------------------------------
@@ -11577,6 +11762,13 @@ components:
         - revisedContractCents
         - netProjectMarginCents
         - netProjectMarginPct
+        - deductibleCollectedCents
+        - policyDeductibleCents
+        - approvedAcvCents
+        - supplementCandidateCents
+        - depreciationCents
+        - claimVarianceCents
+        - baseScopeCents
       properties:
         pinId:
           type: string
@@ -11646,6 +11838,41 @@ components:
             netProjectMarginCents / revisedContractCents × 100. Returns 0 (not
             NaN or null) when revisedContractCents = 0. Primary margin metric;
             replaces projectedMarginPct.
+        deductibleCollectedCents:
+          type: integer
+          description: >-
+            Sum of payments with type='deductible'. How much of the deductible
+            has actually been collected from the homeowner.
+        policyDeductibleCents:
+          type: integer
+          description: >-
+            Policy deductible amount parsed from the legacy varchar
+            deductibleAmount field.
+        approvedAcvCents:
+          type: integer
+          description: >-
+            Approved ACV parsed from the legacy varchar approvedAcvAmount
+            field.
+        supplementCandidateCents:
+          type: integer
+          description: >-
+            Sum of approved non-voided change orders flagged as
+            requiredToCompleteScope. Shows the dollar value of supplementable
+            items already on file.
+        depreciationCents:
+          type: integer
+          description: approvedRcvCents − approvedAcvCents.
+        claimVarianceCents:
+          type: integer
+          description: >-
+            approvedRcvCents − revisedContractCents. Negative = SHORT
+            (carrier approved less than the contract; a supplement may be
+            needed to bridge the gap).
+        baseScopeCents:
+          type: integer
+          description: >-
+            revisedContractCents − bettermentsAmountCents. What the carrier
+            owes after stripping out betterments.
     ProfitabilitySummaryEnvelope:
       type: object
       required: [profitability]

@@ -106,6 +106,8 @@ import type {
   InspectionSlopeEnvelope,
   InspectionStatusEnvelope,
   InspectionSummaryEnvelope,
+  InsuranceEnvelope,
+  InsurancePatchBody,
   InteriorObservationEnvelope,
   JurisdictionPackEnvelope,
   JurisdictionPackListEnvelope,
@@ -11313,6 +11315,157 @@ export const useMarkPmOverheadPaid = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getMarkPmOverheadPaidMutationOptions(options));
+    }
+
+export const getGetPinInsuranceUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/insurance`
+}
+
+/**
+ * Returns all insurance-related fields for the pin. Any authenticated company member may read. Field reps see the tab read-only in the UI.
+ * @summary Get insurance/claim fields for a lead
+ */
+export const getPinInsurance = async (pinId: string, options?: RequestInit): Promise<InsuranceEnvelope> => {
+
+  return customFetch<InsuranceEnvelope>(getGetPinInsuranceUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPinInsuranceQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/insurance`
+    ] as const;
+    }
+
+
+export const getGetPinInsuranceQueryOptions = <TData = Awaited<ReturnType<typeof getPinInsurance>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPinInsurance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPinInsuranceQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPinInsurance>>> = ({ signal }) => getPinInsurance(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPinInsurance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPinInsuranceQueryResult = NonNullable<Awaited<ReturnType<typeof getPinInsurance>>>
+export type GetPinInsuranceQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get insurance/claim fields for a lead
+ */
+
+export function useGetPinInsurance<TData = Awaited<ReturnType<typeof getPinInsurance>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPinInsurance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPinInsuranceQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPatchPinInsuranceUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/insurance`
+}
+
+/**
+ * Writes insurance, claim, and adjuster fields to the pin. Manager or above required — field reps see the insurance tab read-only. These fields are NOT writable via PATCH /pins/:pinId (generic) or PATCH /pins/:pinId/profile. All fields are optional; omitted fields are preserved.
+ * @summary Update insurance/claim fields for a lead (manager+)
+ */
+export const patchPinInsurance = async (pinId: string,
+    insurancePatchBody: InsurancePatchBody, options?: RequestInit): Promise<InsuranceEnvelope> => {
+
+  return customFetch<InsuranceEnvelope>(getPatchPinInsuranceUrl(pinId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(insurancePatchBody)
+  }
+);}
+
+
+
+
+
+export const getPatchPinInsuranceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchPinInsurance>>, TError,{pinId: string;data: BodyType<InsurancePatchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof patchPinInsurance>>, TError,{pinId: string;data: BodyType<InsurancePatchBody>}, TContext> => {
+
+const mutationKey = ['patchPinInsurance'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchPinInsurance>>, {pinId: string;data: BodyType<InsurancePatchBody>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  patchPinInsurance(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PatchPinInsuranceMutationResult = NonNullable<Awaited<ReturnType<typeof patchPinInsurance>>>
+    export type PatchPinInsuranceMutationBody = BodyType<InsurancePatchBody>
+    export type PatchPinInsuranceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update insurance/claim fields for a lead (manager+)
+ */
+export const usePatchPinInsurance = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchPinInsurance>>, TError,{pinId: string;data: BodyType<InsurancePatchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof patchPinInsurance>>,
+        TError,
+        {pinId: string;data: BodyType<InsurancePatchBody>},
+        TContext
+      > => {
+      return useMutation(getPatchPinInsuranceMutationOptions(options));
     }
 
 export const getGetPinProfitabilityUrl = (pinId: string,) => {
