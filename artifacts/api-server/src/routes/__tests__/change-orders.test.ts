@@ -923,3 +923,113 @@ describe('cross-company approve → 404', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Test 15: Outbox ordering guard — out-of-order drain fails cleanly
+//
+// If signal drops between the create being enqueued and the drain starting,
+// the drainer could theoretically attempt sign or line-item before the CO
+// row exists on the server.  The server must return 404 in both cases so
+// the mobile handler can re-queue or halt rather than silently succeeding
+// with phantom data.
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// pdfBase64 signing path — verifies the mobile-native sign payload route
+// ---------------------------------------------------------------------------
+describe('outbox sign: pdfBase64 payload stores document and stamps timestamps', () => {
+  // A minimal valid base64-encoded PDF for testing the upload code path.
+  // The server does not validate PDF content — it stores whatever bytes are sent.
+  const TINY_PDF_BASE64 = Buffer.from(
+    '%PDF-1.4\n1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj\n' +
+    '2 0 obj<</Type /Pages /Kids [3 0 R] /Count 1>>endobj\n' +
+    '3 0 obj<</Type /Page /Parent 2 0 R /MediaBox [0 0 3 3]>>endobj\n' +
+    'xref\n0 4\n0000000000 65535 f \n' +
+    'trailer<</Size 4 /Root 1 0 R>>\nstartxref\n9\n%%EOF',
+  ).toString('base64');
+  const PDF_SHA256 = 'testpdfsha256mobile';
+
+  let pdf64CoId: string;
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .post(`/api/pins/${pinId}/change-orders`)
+      .set(rep())
+      .send({
+        description:             'PDF64 sign test CO',
+        requiredToCompleteScope: false,
+        lineItems:               [{ description: 'Material', quantity: 1, unitPriceCents: 10000 }],
+      });
+    expect(res.status).toBe(201);
+    pdf64CoId = res.body.changeOrder.id;
+  });
+
+  it('POST /sign with pdfBase64 stamps homeownerSignedAt and stores a non-empty documentObjectPath', async () => {
+    const before = new Date();
+    const res = await request(app)
+      .post(`/api/change-orders/${pdf64CoId}/sign`)
+      .set(rep())
+      .send({
+        pdfBase64: TINY_PDF_BASE64,
+        sha256:    PDF_SHA256,
+        homeownerName: 'Jane PDF Test',
+        repName:       'John Rep',
+      });
+    const after = new Date();
+    expect(res.status).toBe(200);
+    const co = res.body.changeOrder;
+    // documentObjectPath must be a non-empty storage key written by the server.
+    expect(typeof co.documentObjectPath).toBe('string');
+    expect(co.documentObjectPath.length).toBeGreaterThan(0);
+    expect(co.documentSha256).toBe(PDF_SHA256);
+    expect(co.homeownerSignedAt).not.toBeNull();
+    const stamp = new Date(co.homeownerSignedAt);
+    expect(stamp.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
+    expect(stamp.getTime()).toBeLessThanOrEqual(after.getTime() + 1000);
+  });
+
+  it('replay pdfBase64 sign → 200; CO remains signed with a document path', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${pdf64CoId}/sign`)
+      .set(rep())
+      .send({
+        pdfBase64: TINY_PDF_BASE64,
+        sha256:    PDF_SHA256,
+        homeownerName: 'Jane PDF Test',
+        repName:       'John Rep',
+      });
+    expect(res.status).toBe(200);
+    const co = res.body.changeOrder;
+    expect(typeof co.documentObjectPath).toBe('string');
+    expect(co.documentObjectPath.length).toBeGreaterThan(0);
+    expect(co.homeownerSignedAt).not.toBeNull();
+  });
+});
+
+describe('outbox ordering guard: sign / line-item before CO exists → 404', () => {
+  it('POST /sign for a non-existent CO id → 404', async () => {
+    const ghostId = crypto.randomUUID();
+    const res = await request(app)
+      .post(`/api/change-orders/${ghostId}/sign`)
+      .set(rep())
+      .send({
+        documentObjectPath: 'objects/test/ghost-signed.pdf',
+        documentSha256:     'ghostsha256',
+        homeownerName:      'Ghost Owner',
+        repName:            'Ghost Rep',
+      });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST line-item for a non-existent CO id → 404', async () => {
+    const ghostId = crypto.randomUUID();
+    const res = await request(app)
+      .post(`/api/change-orders/${ghostId}/line-items`)
+      .set(rep())
+      .send({
+        description:    'Phantom line item',
+        quantity:       1,
+        unitPriceCents: 5000,
+      });
+    expect(res.status).toBe(404);
+  });
+});

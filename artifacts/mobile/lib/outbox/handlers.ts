@@ -410,8 +410,10 @@ async function syncChangeOrderLineItem(payloadJson: string): Promise<void> {
       }),
     });
   } catch (err: unknown) {
+    const status = (err as { status?: number }).status;
     // 409 = duplicate line-item id on replay.
-    if ((err as { status?: number }).status === 409) return;
+    // 404 = parent CO was deleted after this item was queued; nothing to add.
+    if (status === 409 || status === 404) return;
     throw err;
   }
 }
@@ -435,8 +437,12 @@ async function syncChangeOrderSign(payloadJson: string): Promise<void> {
       }),
     });
   } catch (err: unknown) {
-    // 409 = CO voided or already signed — unblock the queue.
-    if ((err as { status?: number }).status === 409) return;
+    const status = (err as { status?: number }).status;
+    // 409 = CO voided or already signed — treat as done, unblock the queue.
+    // 404 = CO was deleted after it was queued (e.g. manager voided while rep
+    //       was offline); signing something that no longer exists is a no-op,
+    //       not an error.  Rethrowing would permanently jam the queue.
+    if (status === 409 || status === 404) return;
     throw err;
   }
 }

@@ -21,6 +21,36 @@ export async function enqueueOutboxItem(kind: OutboxItemKind, payload: unknown):
 }
 
 /**
+ * Atomically enqueue multiple outbox items in a single SQLite exclusive
+ * transaction. All items are inserted or none are — a process-kill between
+ * two `enqueueOutboxItem` calls can leave a partial sequence; this function
+ * prevents that for sequences that must land together (e.g. the three
+ * change-order items: create → line_item × N → sign).
+ *
+ * The items are inserted in the array order, preserving FIFO drain sequence.
+ * Returns the generated IDs in the same order as the input array.
+ */
+export async function enqueueOutboxItemsBulk(
+  items: Array<{ kind: OutboxItemKind; payload: unknown }>,
+): Promise<string[]> {
+  const db = await getOutboxDb();
+  const ids: string[] = [];
+  const now = new Date().toISOString();
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    for (const item of items) {
+      const id = Crypto.randomUUID();
+      ids.push(id);
+      await txn.runAsync(
+        `INSERT INTO outbox_items (id, kind, payload, status, attempts, lastError, createdAt, updatedAt)
+         VALUES (?, ?, ?, 'pending', 0, NULL, ?, ?)`,
+        [id, item.kind, JSON.stringify(item.payload), now, now],
+      );
+    }
+  });
+  return ids;
+}
+
+/**
  * Items eligible to attempt a sync: never-tried, previously-failed, or left
  * mid-flight by an interrupted drain (a crash/force-quit after an item was
  * marked `syncing` but before it could be marked done/failed). The in-process

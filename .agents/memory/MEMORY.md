@@ -65,3 +65,4 @@
 - [Wave-2B Profile tab implementation](wave2b-profile-tab.md) — api-zod + api-client-react need `npx tsc --build` after generated-file edits (composite dist); MyProfile in claimHubApi is hand-typed; theme+dashboardLayout columns exist but are wired in A1/D1.
 - [Change Order Step 3 — Mobile Flow](change-order-step3.md) — server accepts pdfBase64 OR documentObjectPath; outbox 3-item sequence; SHA-256 needs `bytes.buffer as ArrayBuffer`; `receipt` icon invalid, use `file-text`.
 - [Change Order Step 4 — CRM approval + email](change-order-step4.md) — SMTP fields on userProfilesTable (not usersTable); emailedAt column; ChangeOrdersPanel Zone 4; changeOrdersApi.ts hooks; 14a–14d tests.
+- [Change order outbox atomic enqueue](change-order-outbox-enqueue.md) — enqueueOutboxItemsBulk() wraps create+line_items+sign in one SQLite exclusive transaction; sign 404 = CO deleted, treat as success (not a queue-blocker).

@@ -7,7 +7,7 @@
  */
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
-import { enqueueOutboxItem } from './outbox/queue';
+import { enqueueOutboxItemsBulk } from './outbox/queue';
 import type {
   ChangeOrderCreateOutboxPayload,
   ChangeOrderLineItemOutboxPayload,
@@ -103,7 +103,23 @@ export interface EnqueueChangeOrderInput {
  *  - The server returns 409 on duplicate client-id inserts.
  *  - Each outbox handler catches 409 and treats it as success.
  */
+/**
+ * Atomically enqueue three outbox items for a complete change-order submission:
+ *   1. change_order.create  — creates the CO (idempotent by clientId)
+ *   2. change_order.line_item × N — creates each line item (idempotent by clientId)
+ *   3. change_order.sign    — uploads signed PDF + SHA-256
+ *
+ * All items are enqueued in a single SQLite exclusive transaction so that a
+ * process-kill between two inserts can never leave a partial (orphaned) sequence
+ * in the outbox. The drain always sees either the full set or nothing.
+ *
+ * Replaying the outbox twice will never duplicate a CO or line item because:
+ *  - The server returns 409 on duplicate client-id inserts.
+ *  - Each outbox handler catches 409 and treats it as success.
+ */
 export async function enqueueChangeOrder(input: EnqueueChangeOrderInput): Promise<void> {
+  const items: Array<{ kind: 'change_order.create' | 'change_order.line_item' | 'change_order.sign'; payload: ChangeOrderCreateOutboxPayload | ChangeOrderLineItemOutboxPayload | ChangeOrderSignOutboxPayload }> = [];
+
   // 1 — CO create
   const createPayload: ChangeOrderCreateOutboxPayload = {
     id: input.clientId,
@@ -111,7 +127,7 @@ export async function enqueueChangeOrder(input: EnqueueChangeOrderInput): Promis
     description: input.description,
     requiredToCompleteScope: input.requiredToCompleteScope,
   };
-  await enqueueOutboxItem('change_order.create', createPayload);
+  items.push({ kind: 'change_order.create', payload: createPayload });
 
   // 2 — Line items (one per item, in order)
   for (const li of input.lineItems) {
@@ -124,7 +140,7 @@ export async function enqueueChangeOrder(input: EnqueueChangeOrderInput): Promis
       priceBookItemId: li.priceBookItemId ?? null,
       sortOrder: li.sortOrder,
     };
-    await enqueueOutboxItem('change_order.line_item', liPayload);
+    items.push({ kind: 'change_order.line_item', payload: liPayload });
   }
 
   // 3 — Sign (references the CO id created in step 1)
@@ -135,5 +151,7 @@ export async function enqueueChangeOrder(input: EnqueueChangeOrderInput): Promis
     homeownerName: input.homeownerName,
     repName: input.repName,
   };
-  await enqueueOutboxItem('change_order.sign', signPayload);
+  items.push({ kind: 'change_order.sign', payload: signPayload });
+
+  await enqueueOutboxItemsBulk(items);
 }
