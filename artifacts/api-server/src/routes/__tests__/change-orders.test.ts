@@ -16,6 +16,10 @@
  *       net_project_margin_cents; a PENDING CO does not
  *   12. overhead PATCH + mark-paid unchanged from migration 028
  *   13. Templates page still accepts 'change_order' as a use case
+ *   14. emailedAt field + approval email behavior (Step 4: 14a–14d)
+ *   15. approve returns 422 when documentObjectPath is null (upload failure)
+ *   16. void then re-approve is blocked (409)
+ *   17. cross-company approve/void/sign → 404 (IDOR guard)
  */
 
 import {
@@ -754,5 +758,168 @@ describe('approve → email failure does not roll back approval', () => {
     expect(res.body.changeOrder.status).toBe('approved');
     // emailedAt must be null — the send failed before we could stamp it.
     expect(res.body.changeOrder.emailedAt).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 15: approve returns 422 when documentObjectPath is null
+//   (sign call landed / homeownerSignedAt was stamped, but the PDF upload to
+//   object storage failed silently so documentObjectPath remains null)
+// ---------------------------------------------------------------------------
+describe('approve with null documentObjectPath → 422', () => {
+  let coId: string;
+
+  beforeAll(async () => {
+    // Create the CO.
+    const create = await request(app)
+      .post(`/api/pins/${pinId}/change-orders`)
+      .set(mgr())
+      .send({
+        description: 'Upload-failure CO',
+        lineItems: [{ description: 'Work', quantity: 1, unitPriceCents: 10000 }],
+      });
+    expect(create.status).toBe(201);
+    coId = create.body.changeOrder.id;
+
+    // Directly stamp homeownerSignedAt without setting documentObjectPath,
+    // simulating a mid-upload failure where the signature timestamp was persisted
+    // but the object storage write did not complete.
+    await db
+      .update(changeOrdersTable)
+      .set({ homeownerSignedAt: new Date(), updatedAt: new Date() })
+      .where(eq(changeOrdersTable.id, coId));
+  });
+
+  it('approve returns 422 when documentObjectPath is null despite homeownerSignedAt being set', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/approve`)
+      .set(mgr());
+    expect(res.status).toBe(422);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 16: void then re-approve → blocked
+//   Voiding an already-approved CO stamps voidedAt. A subsequent approve
+//   attempt must fail (409) — the CO cannot be re-approved without a new
+//   sign call (which is also blocked on a voided CO).
+// ---------------------------------------------------------------------------
+describe('void then re-approve is blocked', () => {
+  let coId: string;
+
+  beforeAll(async () => {
+    // Create, sign, and approve a CO.
+    const create = await request(app)
+      .post(`/api/pins/${pinId}/change-orders`)
+      .set(mgr())
+      .send({
+        description: 'Void-reapprove test CO',
+        lineItems: [{ description: 'Work', quantity: 1, unitPriceCents: 20000 }],
+      });
+    expect(create.status).toBe(201);
+    coId = create.body.changeOrder.id;
+
+    await request(app)
+      .post(`/api/change-orders/${coId}/sign`)
+      .set(rep())
+      .send({
+        documentObjectPath:    'objects/test/void-reapprove.pdf',
+        documentSha256:        'deadbeef',
+        homeownerSignaturePath: 'objects/test/void-reapprove-hw-sig.png',
+      });
+
+    const approve = await request(app)
+      .post(`/api/change-orders/${coId}/approve`)
+      .set(mgr());
+    expect(approve.status).toBe(200);
+    expect(approve.body.changeOrder.status).toBe('approved');
+  });
+
+  it('void returns 200 and reverts status to rejected', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/void`)
+      .set(mgr())
+      .send({ voidReason: 'Signed in error — need revision' });
+    expect(res.status).toBe(200);
+    expect(res.body.changeOrder.voidedAt).not.toBeNull();
+    expect(res.body.changeOrder.status).toBe('rejected');
+    expect(res.body.changeOrder.approvedAt).toBeNull();
+  });
+
+  it('re-approve after void → 409 (voidedAt blocks approval)', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/approve`)
+      .set(mgr());
+    expect(res.status).toBe(409);
+  });
+
+  it('re-sign after void → 409 (cannot sign a voided CO)', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/sign`)
+      .set(rep())
+      .send({
+        documentObjectPath: 'objects/test/void-reapprove-v2.pdf',
+        documentSha256:     'newsha',
+      });
+    expect(res.status).toBe(409);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 17: cross-company approve → 404 (IDOR — must not leak existence)
+//   A manager from company B must not be able to approve a CO belonging to
+//   company A's pin. The response must be 404, not 403, so existence is not
+//   revealed.
+// ---------------------------------------------------------------------------
+describe('cross-company approve → 404', () => {
+  let coId: string;
+
+  beforeAll(async () => {
+    // Create a signed CO under company A.
+    const create = await request(app)
+      .post(`/api/pins/${pinId}/change-orders`)
+      .set(mgr())
+      .send({
+        description: 'IDOR approve bait',
+        lineItems: [{ description: 'Work', quantity: 1, unitPriceCents: 5000 }],
+      });
+    expect(create.status).toBe(201);
+    coId = create.body.changeOrder.id;
+
+    await request(app)
+      .post(`/api/change-orders/${coId}/sign`)
+      .set(rep())
+      .send({
+        documentObjectPath:    'objects/test/idor-bait.pdf',
+        documentSha256:        'idor123',
+        homeownerSignaturePath: 'objects/test/idor-bait-hw-sig.png',
+      });
+  });
+
+  it('company B manager POST /approve on company A CO → 404', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/approve`)
+      .set(coB());
+    // 404 (not 403) so the CO's existence is not revealed to a foreign company.
+    expect(res.status).toBe(404);
+  });
+
+  it('company B manager POST /void on company A CO → 404', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/void`)
+      .set(coB())
+      .send({ voidReason: 'tamper' });
+    expect(res.status).toBe(404);
+  });
+
+  it('company B member POST /sign on company A CO → 404', async () => {
+    const res = await request(app)
+      .post(`/api/change-orders/${coId}/sign`)
+      .set(coB())
+      .send({
+        documentObjectPath: 'objects/test/idor-sign-attempt.pdf',
+        documentSha256:     'idor456',
+      });
+    expect(res.status).toBe(404);
   });
 });

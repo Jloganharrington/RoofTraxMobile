@@ -36,7 +36,8 @@ ALTER TABLE change_orders
   ADD COLUMN IF NOT EXISTS rep_signed_at               timestamptz,
   ADD COLUMN IF NOT EXISTS voided_at                   timestamptz,
   ADD COLUMN IF NOT EXISTS voided_by_user_id           varchar      REFERENCES users(id),
-  ADD COLUMN IF NOT EXISTS void_reason                 text;
+  ADD COLUMN IF NOT EXISTS void_reason                 text,
+  ADD COLUMN IF NOT EXISTS emailed_at                  timestamptz;
 
 -- ---------------------------------------------------------------------------
 -- 2. change_order_line_items

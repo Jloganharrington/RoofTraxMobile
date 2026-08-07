@@ -603,9 +603,9 @@ router.post(
             smtpPasswordEnc: userProfilesTable.smtpPasswordEnc,
             smtpFromEmail:   userProfilesTable.smtpFromEmail,
           })
-          .from(userProfilesTable)
-          .innerJoin(usersTable, eq(userProfilesTable.userId, usersTable.id))
-          .where(eq(userProfilesTable.userId, req.user.id));
+          .from(usersTable)
+          .innerJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
+          .where(eq(usersTable.id, req.user.id));
 
         if (actor?.smtpHost && actor.smtpPort && actor.smtpUsername && actor.smtpPasswordEnc) {
           const pdfBuffer  = await objectStorageService.readObjectEntityBytes(approved!.documentObjectPath);
