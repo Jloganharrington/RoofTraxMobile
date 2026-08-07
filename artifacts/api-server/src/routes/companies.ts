@@ -53,7 +53,24 @@ async function generateUniqueCompanyId(): Promise<string> {
   throw new Error('Failed to generate a unique company ID');
 }
 
+// POST /companies — create a new tenant. super_admin only.
+// Nothing in the normal authenticated user flow calls this; it is a
+// provisioning endpoint for platform operators.  Any unauthenticated caller
+// that reached this would be able to mint arbitrary tenants — gate it hard.
 router.post('/companies', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const [actorProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+  if (actorProfile?.role !== 'super_admin') {
+    res.status(403).json({ error: 'Super admin access required' });
+    return;
+  }
+
   const parsed = CreateCompanyBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload' });

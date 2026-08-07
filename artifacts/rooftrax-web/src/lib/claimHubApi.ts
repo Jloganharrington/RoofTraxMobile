@@ -1,7 +1,21 @@
 /**
- * Manual React Query hooks for Claim Hub endpoints.
- * Endpoints are not in the OpenAPI spec yet — follows the same pattern as
- * curationApi.ts, using customFetch from @workspace/api-client-react.
+ * Manual React Query hooks for Claim Hub, pipeline, and lead endpoints.
+ * Most of these routes pre-date the OpenAPI spec or are spec-pending.
+ *
+ * QUERY KEY RULE — enforced across this file and all client api libs:
+ *   Never hand-write a query key for an endpoint that has a generated hook.
+ *   If getGet*QueryKey() exists in @workspace/api-client-react for an endpoint,
+ *   import and use it in BOTH the useQuery queryKey and any invalidateQueries
+ *   call.  A literal array key that doesn't match the generated key is a
+ *   silent no-op — the cache never refreshes.
+ *
+ *   Example of the bug:
+ *     qc.invalidateQueries({ queryKey: ['pinProfitability', pinId] })
+ *     // generated key is ['/api/pins/${pinId}/profitability'] → invalidation is a no-op
+ *
+ *   Correct pattern:
+ *     import { getGetPinProfitabilityQueryKey } from '@workspace/api-client-react';
+ *     qc.invalidateQueries({ queryKey: getGetPinProfitabilityQueryKey(pinId) });
  */
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query';
 import { customFetch, getGetInspectionQueryKey } from '@workspace/api-client-react';

@@ -166,7 +166,12 @@ export function filterDetrimentEntries<T extends { applicabilityConditions: unkn
 }
 
 // ---------------------------------------------------------------------------
-// Shared HTML sanitiser (safe allowlist for AI-generated fragments)
+// HTML sanitiser for AI-generated section fragments
+// ---------------------------------------------------------------------------
+// <a> and <img> are intentionally excluded — section content is LLM output,
+// not user-controlled HTML.  External links and embeds must not be injected.
+// For user-supplied templates (which allow <a>/<img>), use sanitizeTemplateHtml
+// from lib/htmlSanitize.ts instead.
 // ---------------------------------------------------------------------------
 
 function sanitizeSectionHtml(raw: string): string {
@@ -175,7 +180,7 @@ function sanitizeSectionHtml(raw: string): string {
       'h2', 'h3', 'h4',
       'p', 'br', 'strong', 'em', 'b', 'i',
       'ul', 'ol', 'li',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
       'span', 'div', 'section',
     ],
     allowedAttributes: {
@@ -193,6 +198,10 @@ function sanitizeSectionHtml(raw: string): string {
         padding: [/^[\d. px%]+$/],
         margin: [/^[\d. px%]+$/],
         border: [/^[\d. pxsolid#a-zA-Z]+$/],
+        'border-radius': [/^[\d.]+(%|px|em|rem)$/],
+        opacity: [/^[\d.]+$/],
+        display: [/^(block|inline|flex|grid|table|table-row|table-cell|none)$/],
+        'vertical-align': [/^(top|middle|bottom|baseline)$/],
       },
     },
     disallowedTagsMode: 'discard',

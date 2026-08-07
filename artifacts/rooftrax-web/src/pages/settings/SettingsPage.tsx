@@ -30,6 +30,13 @@ import {
   getGetDashboardLayoutQueryKey,
   usePatchDashboardLayout,
   useDeleteDashboardLayout,
+  // Generated query-key functions — NEVER hand-write a key for a generated hook.
+  // If a get*QueryKey() exists for an endpoint, use it in both useQuery and
+  // invalidateQueries so cross-component cache consistency is guaranteed.
+  getGetCompanyQueryKey,
+  getGetCompanyFipsaSettingsQueryKey,
+  getGetCompanyReportSettingsQueryKey,
+  getGetCompanyReportBrandingQueryKey,
 } from "@workspace/api-client-react";
 import { useGetLeadSources, useUpdateLeadSources, DEFAULT_LEAD_SOURCES } from "@/lib/claimHubApi";
 import {
@@ -392,7 +399,7 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
   const { data: companyData, isLoading: loadingCompany } = useQuery<{
     company: { id: string; name: string };
   }>({
-    queryKey: ["company", companyId],
+    queryKey: getGetCompanyQueryKey(companyId),
     queryFn: () => customFetch(`/api/companies/${companyId}`),
   });
 
@@ -409,7 +416,7 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
         body: JSON.stringify({ name }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["company", companyId] });
+      qc.invalidateQueries({ queryKey: getGetCompanyQueryKey(companyId) });
       toast({ title: "Company name saved" });
     },
     onError: (err) =>
@@ -420,7 +427,7 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
   const { data: fipsaData, isLoading: loadingFipsa } = useQuery<{
     settings: FipsaSettings;
   }>({
-    queryKey: ["fipsa-settings", companyId],
+    queryKey: getGetCompanyFipsaSettingsQueryKey(companyId),
     queryFn: () => customFetch(`/api/companies/${companyId}/fipsa-settings`),
   });
 
@@ -451,7 +458,7 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
         }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["fipsa-settings", companyId] });
+      qc.invalidateQueries({ queryKey: getGetCompanyFipsaSettingsQueryKey(companyId) });
       toast({ title: "Legal & Agreement settings saved" });
     },
     onError: (err) =>
@@ -462,7 +469,7 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
   const { data: reportData, isLoading: loadingReport } = useQuery<{
     settings: ReportSettings;
   }>({
-    queryKey: ["report-settings", companyId],
+    queryKey: getGetCompanyReportSettingsQueryKey(companyId),
     queryFn: () => customFetch(`/api/companies/${companyId}/report-settings`),
   });
 
@@ -493,7 +500,7 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
         }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["report-settings", companyId] });
+      qc.invalidateQueries({ queryKey: getGetCompanyReportSettingsQueryKey(companyId) });
       toast({ title: "Report settings saved" });
     },
     onError: (err) =>
@@ -921,7 +928,7 @@ function BrandingTab({
   const { data: brandingData, isLoading: loadingBranding } = useQuery<{
     branding: ReportBranding | null;
   }>({
-    queryKey: ["report-branding", companyId],
+    queryKey: getGetCompanyReportBrandingQueryKey(companyId),
     queryFn: () => customFetch(`/api/companies/${companyId}/report-branding`),
     enabled: isSuperAdmin,
   });
@@ -942,7 +949,7 @@ function BrandingTab({
         body: JSON.stringify({ branding }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["report-branding", companyId] });
+      qc.invalidateQueries({ queryKey: getGetCompanyReportBrandingQueryKey(companyId) });
       toast({ title: "Color palette saved" });
     },
     onError: (err) =>

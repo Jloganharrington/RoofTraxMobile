@@ -5,7 +5,7 @@
  * other hand-typed hooks in claimHubApi.ts).
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, getGetPinProfitabilityQueryKey } from '@workspace/api-client-react';
 
 // ── Types (mirrors the server changeOrderShape) ───────────────────────────────
 
@@ -74,8 +74,7 @@ export function useApproveChangeOrder(pinId: string) {
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: getChangeOrdersQueryKey(pinId) });
-      // Also invalidate profitability — revised contract value changes.
-      void qc.invalidateQueries({ queryKey: ['pinProfitability', pinId] });
+      void qc.invalidateQueries({ queryKey: getGetPinProfitabilityQueryKey(pinId) });
     },
   });
 }
@@ -94,7 +93,7 @@ export function useVoidChangeOrder(pinId: string) {
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: getChangeOrdersQueryKey(pinId) });
-      void qc.invalidateQueries({ queryKey: ['pinProfitability', pinId] });
+      void qc.invalidateQueries({ queryKey: getGetPinProfitabilityQueryKey(pinId) });
     },
   });
 }

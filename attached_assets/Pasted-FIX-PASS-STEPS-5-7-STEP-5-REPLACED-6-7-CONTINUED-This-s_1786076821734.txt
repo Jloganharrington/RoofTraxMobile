@@ -1,0 +1,236 @@
+FIX PASS — STEPS 5–7 (STEP 5 REPLACED, 6–7 CONTINUED)
+
+This supersedes the previously-issued Step 5. Steps 6 and 7 are unchanged from
+the original fix-pass instructions and are restated here so this document is
+self-contained.
+
+STANDING BOUNDARIES — every step:
+  - Never modify artifacts/mobile/. Every checkpoint must show
+    `git diff --stat -- artifacts/mobile/` returning empty.
+  - Never hand-edit lib/api-client-react/src/generated/ or
+    lib/api-zod/src/generated/. Edit lib/api-spec/openapi.yaml, regenerate.
+  - Server-side enforcement is authoritative. Hiding UI is not access control.
+  - Integer cents for money. Never varchar, never float.
+  - Never hand-write a query key for a generated hook — import get*QueryKey.
+
+STOP at each ▶ CHECKPOINT, paste the real terminal output listed, push to git,
+and wait for confirmation. Pushing is part of the checkpoint, not optional —
+review happens against the pushed commit.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 5A — INSURANCE: SCHEMA, VIEW, API   migration 032    ║
+╚═══════════════════════════════════════════════════════════╝
+
+5A-1 [LOCKED] Migration 032 (verify 032 is free), new columns on pins:
+    claim_status              varchar NULL — const array, validated server-side.
+                              Suggested: not_filed, filed, under_review,
+                              adjuster_scheduled, approved, partially_approved,
+                              denied, supplement_pending, closed.
+                              If this vocabulary is wrong, STOP and ask —
+                              do not invent your own.
+    adjuster_last_contact     timestamptz NULL
+    betterments_amount_cents  integer NULL
+    supplement_notes          text NULL
+
+5A-2 [LOCKED] Extend pin_profitability (CREATE OR REPLACE) with:
+    deductible_collected_cents
+        SUM(payments.amount_cents) WHERE type = 'deductible'. COALESCE 0.
+    policy_deductible_cents
+        pins.deductible_amount is legacy varchar — parse via
+        _parse_legacy_money_cents (migration 023). Do NOT add a new column.
+    approved_acv_cents
+        Add if not already present, parsed the same way.
+    supplement_candidate_cents
+        SUM of APPROVED, non-voided change_orders WHERE
+        required_to_complete_scope = true.
+
+    Derived — computed in the view or the route, NEVER stored:
+      depreciation      = approved_rcv_cents − approved_acv_cents
+      claim_variance    = approved_rcv_cents − revised_contract_cents
+                          (negative = SHORT, supplement may be needed)
+      base_scope_cents  = revised_contract_cents − betterments_amount_cents
+
+    Guard every division against zero — percentages return 0, never NaN.
+    SUM(integer) returns bigint in Postgres; the n()/pct() coercion helpers in
+    profitability.ts must cover every new column.
+
+5A-3 [LOCKED] API, openapi-first then regenerate:
+    PATCH /pins/:pinId/insurance — accepts ONLY:
+      insuranceCarrier, policyNumber, policyHolder, coverageType,
+      deductibleAmount, claimNumber, claimFiledDate, dateOfLoss, claimStatus,
+      adjusterName, adjusterPhone, adjusterEmail, adjusterMeetingDate,
+      adjusterLastContact, approvedRcvAmount, approvedAcvAmount,
+      bettermentsAmountCents, supplementNotes.
+    Manager+ for writes; reads follow lead-read rules.
+    These fields must NOT be writable through the generic pin PATCH — same
+    rule as money and overhead. Report what you find there.
+
+▶ CHECKPOINT 5A
+  VERIFY:
+   - worked example: approved RCV $18,520, revised contract $27,000,
+     betterments $2,500, collected $12,500, deductible $1,000 fully collected
+     → hand-verify variance (−$8,480 SHORT), base scope ($24,500),
+     depreciation, and collected-vs-approved. Paste the arithmetic.
+   - lead with no claim data → all zeros, no NaN, no divide-by-zero
+   - approved required_to_complete_scope CO appears in
+     supplement_candidate_cents; a pending one does not
+   - field_rep PATCH → 403; manager → 200
+   - insurance fields rejected by the generic pin PATCH — paste what you found
+  INTEGRATION:
+   - Financials waterfall unchanged: contract + approved COs − COGS −
+     overhead = net project margin. Paste before/after for one lead.
+   - approving a change order still moves revised contract, and now also
+     moves supplement_candidate_cents when flagged
+   - payments / invoices / expenses aggregates unchanged
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 5B — INSURANCE TAB UI                                ║
+╚═══════════════════════════════════════════════════════════╝
+Six panels. Claim Documents is NOT included — the Files tab owns documents.
+
+5B-1 [LOCKED] Claim Value Tracker (top, full width)
+    Approved RCV vs REVISED CONTRACT (not base) with progress bar and % of
+    contract. Variance reads SHORT in red when negative, with a "supplement
+    may be needed" indicator.
+    Second line: Collected vs Approved RCV with an under-collected indicator.
+    Expandable breakdown, two columns:
+      CLAIM:    RCV Approved · ACV Approved · Depreciation (derived) · Total
+      CONTRACT: Base Scope (derived) · Betterments · Change Orders · Total
+    When supplement_candidate_cents > 0, list the approved
+    required_to_complete_scope change orders with their total, framed as work
+    that may support a supplement. This is the point of the panel — it is what
+    connects change orders to the carrier conversation.
+
+5B-2 [LOCKED] Deductible — READ-ONLY display, NOT a form.
+    Show policy deductible vs deductible_collected_cents with a collected/
+    outstanding indicator. "Record collection" opens the EXISTING Add Payment
+    flow with type pre-set to 'deductible'. Do NOT build a second write path
+    for deductible money — the payments ledger owns it.
+    Keep a "Generate Proof" action producing a deductible-collection proof
+    document (compliance artifact; waiving deductibles is a legal problem in
+    most states). If proof generation is non-trivial, ship the read-only
+    display and REPORT what it would require rather than half-building it.
+
+5B-3 [REASONING OK] Claim Amounts — approved RCV, approved ACV, betterments,
+    depreciation (derived, display-only, never an input), supplement notes.
+
+5B-4 [REASONING OK] Policy Information / Claim Details / Adjuster Information
+    — three forms bound to pins columns, most of which already exist.
+
+5B-5 [LOCKED] Claim Timeline — DERIVED. No new table, no manual entry.
+    Merge the claim date fields (dateOfLoss, claimFiledDate,
+    adjusterMeetingDate, adjusterLastContact) with insurance-pipeline
+    stage_transitions for this pin (claim_review, adjuster_review,
+    supplement_dispute, claim_approved, etc.), in chronological order.
+    ⚠ stage_transitions has NO company_id — join through pins and filter
+    pins.company_id. Same tenancy trap as the recent-activity widget.
+    Do NOT use claim_events — those are proof-package lifecycle events
+    (compiled, attested, delivered), not claim milestones.
+
+5B-6 Writes manager+; field_rep sees the entire tab read-only.
+
+▶ CHECKPOINT 5B
+  VERIFY:
+   - screenshots with real data: a SHORT variance case and a fully-approved case
+   - supplement candidates appear only when flagged COs are approved
+   - deductible panel read-only; "Record collection" opens Add Payment pre-set
+     to deductible; recording updates the collected figure
+   - timeline shows date-field events AND pipeline transitions, correctly ordered
+   - tenancy: a pin in company A shows zero company-B transitions
+   - field_rep read-only, no inputs, direct API write → 403
+  INTEGRATION:
+   - every other Lead Profile tab still renders
+   - Financials waterfall reconciles, and its numbers MATCH the Insurance tab
+     where they overlap (revised contract, change orders)
+   - a deductible payment appears in BOTH the Financials payments list and the
+     Insurance deductible panel — same ledger, one source of truth
+   - dashboard widgets unaffected
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 6 — MOBILE-RESPONSIVE SHELL                          ║
+╚═══════════════════════════════════════════════════════════╝
+artifacts/rooftrax-web/src/components/layout/Shell.tsx uses
+`flex min-h-screen flex-col md:flex-row` with
+`aside w-full md:w-56`, so below the md breakpoint the entire sidebar renders
+as a full-width block STACKED ABOVE the content. Every nav section and item
+must be scrolled past to reach the page. There is no drawer, no hamburger, no
+collapse. This blocks all field use of the CRM — which now matters, because
+PMs and reps create change orders from job sites.
+
+[REASONING OK] Collapse the sidebar into a drawer below md, with a header bar
+and toggle. Design is yours; match the existing visual language.
+
+Constraints that are NOT optional:
+  - Preserve the role-based nav filtering EXACTLY. This is a layout change,
+    not a permissions change. Do not touch the visibleSections filter.
+  - The search bar and the New Lead button must remain reachable on mobile.
+  - Desktop (md and above) must be pixel-identical to today.
+
+▶ CHECKPOINT 6
+  VERIFY:
+   - screenshots at 375px and 768px: dashboard, a pipeline board, a lead profile
+   - drawer opens and closes; nav items still filtered by role (check as
+     field_rep and as manager — they must see different items)
+   - search and New Lead reachable at 375px
+  INTEGRATION:
+   - desktop layout visually UNCHANGED — paste before/after screenshots at 1280px
+   - dashboard grid still switches to its stacked mobile list below its own
+     breakpoint, and still drag/resizes on desktop
+   - Settings tabs, Lead Profile tabs, and modals all usable at 375px
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 7 — TEST COVERAGE + POLISH                           ║
+╚═══════════════════════════════════════════════════════════╝
+
+7a [LOCKED] Ticket #267 — tests for the "/" auth-split routing.
+    RootRoute renders Dashboard for authenticated users and the marketing Home
+    for anonymous ones at the SAME URL, decided entirely by one React Query
+    result. There is zero coverage, so a future change to RootRoute,
+    ProtectedRoute, or the auth query could silently serve the wrong page.
+
+    Use React Testing Library with useGetCurrentAuthUser mocked (vi.mock or
+    MSW). Do NOT use the supertest pattern from dashboard.test.ts — that
+    exercises Express routes and cannot render React. This mistake is in the
+    original ticket text; ignore it.
+
+    Cover:
+      - authenticated → Dashboard renders, URL stays "/"
+      - anonymous → marketing Home renders, no Dashboard content present
+      - session expires mid-visit → transitions to Home without crashing
+      - /dashboard → redirects to "/" (not 404, not blank)
+      - a ProtectedRoute with minRole still gates correctly
+      - profile fetch ERROR on a minRole route → the fail-closed error state
+        from Step 2, not the page (regression test for that fix)
+
+7b [REASONING OK] Ticket #268 — "jump back to last pipeline".
+    The rt_last_pipeline localStorage key is still written by all three
+    pipeline pages but read nowhere — the old auto-redirect was correctly
+    removed during the "/" split. Restore the convenience as an OPT-IN action
+    in the sidebar, not a redirect.
+    Show it only when the key is set — no empty-state noise. Clicking
+    navigates to the stored pipeline.
+
+▶ CHECKPOINT 7
+  VERIFY:
+   - the new RootRoute tests pass — paste the run
+   - jump-back appears only when rt_last_pipeline is set, and navigates correctly
+   - clearing localStorage hides it again
+  INTEGRATION — FULL PASS, this closes the fix pass:
+   - cd artifacts/api-server && npx vitest run — full output, green
+   - pnpm --filter @workspace/authz test → 51/51
+   - npx tsx artifacts/api-server/src/scripts/seed-acceptance-claim.ts → 42/42
+   - typechecks: api-server, rooftrax-web, mobile
+   - git diff --stat -- artifacts/mobile/ → empty
+   - manual smoke across roles: log in as field_rep, manager, and admin —
+     each sees the correct nav items, dashboard widgets, Settings tabs, and
+     Lead Profile tab permissions
+   - confirm migrations in data-migrations/ are sequentially numbered with no
+     duplicates and no date-named strays

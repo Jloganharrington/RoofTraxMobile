@@ -1,0 +1,276 @@
+ROOFTRAX-WEB — DEFERRED FIX PASS
+
+Seven steps, forced order. Step 1 gates everything after it — do not skip it
+or run steps together.
+
+STOP at each ▶ CHECKPOINT, paste the real output listed, and wait for
+confirmation before continuing. "Paste the output" means the actual terminal
+result, not a description of it.
+
+STANDING BOUNDARIES — apply to every step:
+  - Never modify artifacts/mobile/. Every checkpoint must show
+    `git diff --stat -- artifacts/mobile/` returning empty.
+  - Never hand-edit lib/api-client-react/src/generated/ or
+    lib/api-zod/src/generated/. Edit lib/api-spec/openapi.yaml, regenerate.
+  - Server-side enforcement is authoritative. Hiding UI is not access control.
+  - Integer cents for money. Never varchar, never float.
+
+NOT IN SCOPE — do not do these:
+  - Retiring the legacy pins varchar money columns (contractAmount, acvAmount,
+    etc.). They stay as read-only backfill sources until the ledger is proven
+    in production. That is a later decision.
+  - Any appointments/scheduling work. Blocked on a pending product decision.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 — GET THE TEST SUITE GREEN AND MAKE IT A GATE      ║
+╚═══════════════════════════════════════════════════════════╝
+This is first because every later step verifies against it.
+
+1a. Run `cd artifacts/api-server && npx vitest run` and paste the FULL output
+    before changing anything. We need the honest starting state.
+
+1b. Fix every failure. Expect stale assertions rather than real bugs — the
+    admin+ gating sweep relaxed /companies/* from super_admin to admin+, and
+    at least one suite (report-branding) encoded the old expectation. For each
+    failure, state whether it was a stale test or a real defect. If a test
+    encodes behaviour that is now wrong, update the test. If it exposes a real
+    bug, fix the code and say so explicitly.
+
+1c. Run `pnpm --filter @workspace/authz test` (expect 51/51) and
+    `npx tsx artifacts/api-server/src/scripts/seed-acceptance-claim.ts`
+    (expect 42/42). Fix anything red.
+
+1d. Report why the suite drifted unnoticed and what would catch it next time.
+    Do not add CI infrastructure — just report the recommendation.
+
+▶ CHECKPOINT 1
+  - full `npx vitest run` output, green
+  - authz 51/51, acceptance fixture 42/42
+  - per-failure classification: stale test vs real bug
+  - typechecks: api-server, rooftrax-web, mobile
+  - git diff --stat -- artifacts/mobile/ → empty
+STOP.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 — SECURITY: UNAUTH TENANT CREATION + FAIL-OPEN GATE ║
+╚═══════════════════════════════════════════════════════════╝
+
+2a [LOCKED] `POST /companies` (artifacts/api-server/src/routes/companies.ts,
+    ~line 56) has NO authentication — no isAuthenticated(), no role check. It
+    parses the body, generates an ID, and inserts a company row. Any
+    unauthenticated caller can create tenants at will.
+    FIRST: report what calls it. If it is part of a signup/provisioning flow,
+    say so and STOP for a decision — do not break onboarding.
+    If nothing legitimate calls it unauthenticated, gate it to super_admin
+    using roleRank from @workspace/authz.
+
+2b [LOCKED] `ProtectedRoute.tsx` fails OPEN when the useGetMyProfile query
+    ERRORS (distinct from loading). Once the query settles as an error,
+    profileEnvelope is undefined, so `if (minRole && profileEnvelope?.profile)`
+    is skipped and the protected page renders.
+    Fix it to fail CLOSED but RECOVERABLE: when a minRole is required and the
+    profile cannot be resolved, render an error state with a retry action —
+    NOT the page, and NOT a silent AccessDenied that looks like a permissions
+    problem. A transient network blip must not read as "you lack access", and
+    must not grant access either.
+
+2c [LOCKED] Verify server-side enforcement actually exists behind the four
+    routes never confirmed: /settings, /integrations, /reports,
+    /commission-report. For each, report what the underlying data endpoints
+    check. Any that rely solely on the client gate must be fixed server-side.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - unauthenticated POST /companies → 401/403 (or a written justification
+     for why it must stay public, with rate limiting added)
+   - simulate a profile-fetch failure (block the request in devtools) on a
+     minRole route → error state with retry, page NOT rendered
+   - same simulation on a route with no minRole → still renders normally
+   - per-route report for the four routes above
+  INTEGRATION:
+   - login → dashboard → settings → a pipeline all still work normally for
+     manager and admin
+   - field_rep still correctly blocked from /user-authorization
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; mobile diff empty
+STOP.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 — QUERY-KEY AUDIT (the recurring outage pattern)   ║
+╚═══════════════════════════════════════════════════════════╝
+Hand-written query keys and hooks in the client api libs have now caused two
+production bugs: the legacy useGetMyProfile hitting a nonexistent /api/profile
+(broke Settings and LeadProfile silently), and
+invalidateQueries(['pinProfitability', pinId]) not matching the generated key
+[`/api/pins/${pinId}/profitability`] (left the financials waterfall stale
+after approving a change order).
+
+3a [LOCKED] Audit EVERY invalidateQueries / setQueryData / getQueryData call
+    across artifacts/rooftrax-web/src. For each one, confirm the key is
+    sourced from a generated get*QueryKey function. Any literal array key that
+    corresponds to a generated hook is a bug — fix it by importing the
+    generated key function.
+    Paste a table: file, line, key used, generated equivalent, fixed y/n.
+
+3b [LOCKED] Audit hand-written hooks in claimHubApi.ts and the other client
+    api libs. For each, confirm the URL it calls actually exists in
+    lib/api-spec/openapi.yaml. Any hook calling a route that isn't in the spec
+    is the /api/profile failure waiting to happen — report it.
+    Do NOT rewrite these hooks in this step. Report only.
+
+3c [LOCKED] Add a short comment block at the top of claimHubApi.ts stating the
+    rule: never hand-write a query key for a generated hook; import
+    get*QueryKey from @workspace/api-client-react.
+
+▶ CHECKPOINT 3
+  VERIFY:
+   - the audit table from 3a, with every mismatch fixed
+   - the 3b report of hooks calling unspec'd routes
+   - approving a change order updates the waterfall live (regression proof
+     for the bug that motivated this step)
+  INTEGRATION:
+   - mutations across the app still refresh their views: create a lead,
+     add a payment, save dashboard layout, save a settings tab — each must
+     reflect immediately without a manual refresh
+   - api-server vitest green; typechecks ×3; mobile diff empty
+STOP.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 — DRIFT CLEANUP                                     ║
+╚═══════════════════════════════════════════════════════════╝
+
+4a [LOCKED] Three competing HTML sanitizer allowlists.
+    artifacts/api-server/src/lib/htmlSanitize.ts documents itself as "reused
+    by section generation, compiled reports, and the templates upload
+    pipeline… A single place so the allowlist stays consistent" — but only
+    routes/templates.ts imports it. lib/sectionGeneration.ts (~line 173) and
+    routes/inspections.ts (~line 4956) keep their own inline allowlists.
+    Compare all three allowlists and report the differences BEFORE changing
+    anything — they may legitimately differ (report HTML vs uploaded
+    templates have different needs).
+    Then either consolidate onto the shared module, or correct the docstring
+    to state accurately what it covers. Do not silently widen or narrow any
+    allowlist while consolidating — if consolidation changes what any surface
+    permits, say so explicitly and stop.
+    Note: routes/inspections.ts also uses sanitizeHtml with
+    {allowedTags: [], allowedAttributes: {}} for caption stripping. That is a
+    different use (plain-text extraction), not an allowlist — leave it alone.
+
+4b [LOCKED] Bound the dashboard grid layout in openapi.yaml, then regenerate:
+    - gridLayout: add maxItems: 50 (siblings hidden/order already cap at 50)
+    - GridCellEntry: add maximum: 11 to x and maximum: 12 to w, matching the
+      documented 12-column grid. y and h keep minimums only (rows are
+      unbounded).
+    Server must reject out-of-bounds cells, not clamp them silently.
+
+▶ CHECKPOINT 4
+  VERIFY:
+   - the allowlist comparison report, and what you did about it
+   - HTML template upload still strips <script> (paste before/after bytes)
+   - compiled report generation still renders correctly
+   - PATCH /dashboard/layout with 200 grid cells → 400
+   - PATCH with a cell at x:99 → 400, not silently accepted
+  INTEGRATION:
+   - dashboard grid drag/resize still saves and reloads correctly
+   - AI section generation and compiled reports unaffected by 4a
+   - Templates page upload/replace/delete unaffected
+   - api-server vitest green; typechecks ×3; mobile diff empty
+STOP.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 5 — INSURANCE TAB              migration 032          ║
+╚═══════════════════════════════════════════════════════════╝
+Specified in the Financials order but never built — it was lost when
+migration 026 became the profitability view.
+
+5a [LOCKED] Migration 032 (verify 032 is free), three columns on pins:
+    claim_status              varchar NULL  (const array + server validation)
+    adjuster_last_contact     timestamptz NULL
+    betterments_amount_cents  integer NULL
+    Base scope is DERIVED (revised contract − betterments), never stored.
+
+5b [LOCKED] Extend the profitability view or the pins read path so the
+    Insurance tab can compute:
+      approved RCV vs revised contract → variance (may be negative)
+      collected (total_payments_cents) vs approved RCV → under/over collected
+    Reuse existing view columns — do NOT recompute totals in a second place.
+
+5c [REASONING OK] Insurance tab UI:
+    - Claim Value Tracker: approved RCV vs revised contract with a progress
+      bar and % of contract; variance line that reads SHORT when negative
+      with a "supplement may be needed" indicator
+    - Collected vs Approved RCV with an under-collected indicator
+    - Claim breakdown (RCV approved, ACV approved, total) alongside contract
+      breakdown (base scope, betterments, total)
+    - Policy Information / Claim Details / Adjuster Information forms bound to
+      the pins columns that ALREADY exist: insuranceCarrier, policyNumber,
+      policyHolder, coverageType, deductibleAmount, claimNumber,
+      claimFiledDate, dateOfLoss, adjusterName/Phone/Email,
+      adjusterMeetingDate, plus the three new columns.
+    Writes are manager+; field_rep sees read-only.
+
+▶ CHECKPOINT 5
+  VERIFY:
+   - worked example pasted: contract, betterments, approved RCV, collected →
+     hand-verify variance and the under-collected figure
+   - negative variance renders as SHORT with the supplement indicator
+   - zero/missing approved RCV → no divide-by-zero, no NaN
+   - field_rep sees read-only; direct API write → 403
+  INTEGRATION:
+   - Financials tab waterfall still reconciles (betterments is a new column
+     on the same table)
+   - approved change orders still move revised contract value
+   - other Lead Profile tabs all still render
+   - api-server vitest green; acceptance fixture 42/42; typechecks ×3;
+     mobile diff empty
+STOP.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 6 — MOBILE-RESPONSIVE SHELL                           ║
+╚═══════════════════════════════════════════════════════════╝
+Shell.tsx uses `flex-col md:flex-row` with `aside w-full md:w-56`, so below md
+the entire sidebar renders as a full-width block stacked above the content —
+every nav section and item must be scrolled past to reach the page. This
+blocks any field use of the CRM.
+
+[REASONING OK] Collapse the sidebar into a drawer below md with a header bar
+and toggle. Preserve the existing role-based nav filtering exactly — this is a
+layout change, not a permissions change. Keep the search bar and the New Lead
+button reachable.
+
+▶ CHECKPOINT 6
+  VERIFY: screenshots at 375px and 768px of dashboard, a pipeline board, and
+          a lead profile; drawer opens/closes; nav still filtered by role
+  INTEGRATION:
+   - desktop layout visually unchanged — compare before/after screenshots
+   - dashboard grid still switches to its stacked mobile list correctly
+   - typechecks ×3; mobile diff empty
+STOP.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 7 — TEST COVERAGE + POLISH                            ║
+╚═══════════════════════════════════════════════════════════╝
+
+7a [LOCKED] Ticket #267 — tests for the "/" auth-split routing. RootRoute
+    renders Dashboard for authenticated users and marketing Home for
+    anonymous ones at the same URL, and there is zero coverage.
+    Use React Testing Library with useGetCurrentAuthUser mocked (vi.mock or
+    MSW). Do NOT use the supertest pattern from dashboard.test.ts — that
+    tests Express routes and cannot render React.
+    Cover: authenticated → Dashboard, URL stays "/"; anonymous → Home;
+    session expiring mid-visit → transitions to Home without crashing;
+    /dashboard → redirects to "/"; other ProtectedRoutes still gate.
+
+7b [REASONING OK] Ticket #268 — "jump back to last pipeline" action in the
+    sidebar, reading the rt_last_pipeline localStorage key (still written by
+    all three pipeline pages, no longer read anywhere). Show it only when the
+    key is set — no empty-state noise.
+
+▶ CHECKPOINT 7
+  VERIFY: the new RootRoute tests pass; jump-back appears only when the key
+          is set and navigates correctly
+  INTEGRATION:
+   - full suite: api-server vitest, authz 51/51, acceptance fixture 42/42
+   - typechecks ×3; git diff --stat -- artifacts/mobile/ empty
+   - manual smoke: log in as field_rep, manager, and admin — each sees the
+     correct nav, dashboard widgets, and settings tabs

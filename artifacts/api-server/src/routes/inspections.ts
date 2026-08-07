@@ -4948,22 +4948,23 @@ router.patch('/inspections/:inspectionId/summary', async (req: Request, res: Res
 // ── Report Compilation (Gemini 2.5-flash) ─────────────────────────────────
 
 /**
- * Strict allowlist sanitizer for LLM-generated HTML fragments.
+ * Strict allowlist sanitizer for LLM-generated HTML fragments in compiled reports.
  * Strips all scripts, event handlers, external embeds, and javascript: URLs.
- * Only structural/formatting tags with safe attributes are permitted.
+ * <a> and <img> are intentionally excluded — this sanitizes LLM output, not
+ * user-controlled content.  Use sanitizeTemplateHtml() for user-supplied HTML.
  */
 function sanitizeReportFragment(html: string): string {
   return sanitizeHtml(html, {
     allowedTags: [
-      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
       'p', 'br', 'strong', 'em', 'b', 'i',
       'ul', 'ol', 'li',
       'h2', 'h3', 'h4',
       'span', 'div',
     ],
     allowedAttributes: {
-      // class is safe; style is allowed but expressions are stripped below.
-      '*': ['class', 'style'],
+      // class/id are safe; style is allowed but expressions are stripped below.
+      '*': ['class', 'id', 'style'],
       'td': ['colspan', 'rowspan'],
       'th': ['colspan', 'rowspan', 'scope'],
     },

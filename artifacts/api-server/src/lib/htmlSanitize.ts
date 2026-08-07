@@ -1,13 +1,18 @@
 /**
- * Shared HTML sanitizer — reused by section generation, compiled reports,
- * and the templates upload pipeline.  A single place so the allowlist stays
- * consistent.
+ * HTML sanitizer for user-supplied template content (rich allowlist — permits
+ * links, images, and full heading range).
+ *
+ * NOT used for LLM output.  Section generation uses sanitizeSectionHtml()
+ * in sectionGeneration.ts; compiled-report fragments use sanitizeReportFragment()
+ * in inspections.ts.  Those two intentionally exclude <a>/<img> and external
+ * schemes because they sanitize LLM-generated HTML, not user-controlled content.
  */
 import sanitizeHtml from 'sanitize-html';
 
 /**
- * Strict allowlist sanitizer for LLM-generated and user-supplied HTML.
- * Strips scripts, event handlers, iframes, and all unknown tags/attributes.
+ * Sanitizes user-supplied HTML (templates, uploaded content).
+ * Strips scripts, event handlers, iframes, javascript: URLs, and unknown tags.
+ * Permits links and images — those are valid in user-authored templates.
  */
 export function sanitizeTemplateHtml(raw: string): string {
   return sanitizeHtml(raw, {
@@ -38,6 +43,10 @@ export function sanitizeTemplateHtml(raw: string): string {
         padding: [/^[\d. px%]+$/],
         margin: [/^[\d. px%]+$/],
         border: [/^[\d. pxsolid#a-zA-Z]+$/],
+        'border-radius': [/^[\d.]+(%|px|em|rem)$/],
+        opacity: [/^[\d.]+$/],
+        display: [/^(block|inline|flex|grid|table|table-row|table-cell|none)$/],
+        'vertical-align': [/^(top|middle|bottom|baseline)$/],
       },
     },
     allowedSchemes: ['http', 'https', 'mailto'],

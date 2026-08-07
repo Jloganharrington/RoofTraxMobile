@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link } from 'wouter';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, getGetActionRequiredWidgetQueryKey } from '@workspace/api-client-react';
 import { CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -30,7 +30,7 @@ interface ActionRequiredEnvelope {
   capped: boolean;
 }
 
-const ACTION_REQUIRED_KEY = ['dashboard', 'widgets', 'action_required'];
+const ACTION_REQUIRED_KEY = getGetActionRequiredWidgetQueryKey();
 
 function useActionRequired() {
   return useQuery({

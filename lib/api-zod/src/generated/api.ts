@@ -6504,9 +6504,11 @@ export const getDashboardManifestResponseGridLayoutItemXMin = 0;
 export const getDashboardManifestResponseGridLayoutItemXMax = 11;
 
 export const getDashboardManifestResponseGridLayoutItemYMin = 0;
+export const getDashboardManifestResponseGridLayoutItemYMax = 999;
 
 export const getDashboardManifestResponseGridLayoutItemWMax = 12;
 
+export const getDashboardManifestResponseGridLayoutItemHMax = 20;
 
 export const getDashboardManifestResponseGridLayoutMax = 50;
 
@@ -6521,9 +6523,9 @@ export const GetDashboardManifestResponse = zod.object({
   "gridLayout": zod.array(zod.object({
   "key": zod.string().describe('Widget key — matches WIDGET_CATALOG key.'),
   "x": zod.number().min(getDashboardManifestResponseGridLayoutItemXMin).max(getDashboardManifestResponseGridLayoutItemXMax).describe('Column index (0–11).'),
-  "y": zod.number().min(getDashboardManifestResponseGridLayoutItemYMin).describe('Row index (0-based).'),
+  "y": zod.number().min(getDashboardManifestResponseGridLayoutItemYMin).max(getDashboardManifestResponseGridLayoutItemYMax).describe('Row index (0-based). Upper bound prevents runaway stored values.'),
   "w": zod.number().min(1).max(getDashboardManifestResponseGridLayoutItemWMax).describe('Width in grid columns (1–12).'),
-  "h": zod.number().min(1).describe('Height in grid rows (minimum 1).')
+  "h": zod.number().min(1).max(getDashboardManifestResponseGridLayoutItemHMax).describe('Height in grid rows (1–20).')
 }).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).max(getDashboardManifestResponseGridLayoutMax).nullish().describe('Stored per-user grid positions. Null when the user has never saved a custom layout; the frontend derives defaults from widget sizes.')
 })
 
@@ -6554,9 +6556,11 @@ export const patchDashboardLayoutBodyGridLayoutItemXMin = 0;
 export const patchDashboardLayoutBodyGridLayoutItemXMax = 11;
 
 export const patchDashboardLayoutBodyGridLayoutItemYMin = 0;
+export const patchDashboardLayoutBodyGridLayoutItemYMax = 999;
 
 export const patchDashboardLayoutBodyGridLayoutItemWMax = 12;
 
+export const patchDashboardLayoutBodyGridLayoutItemHMax = 20;
 
 export const patchDashboardLayoutBodyGridLayoutMax = 50;
 
@@ -6568,9 +6572,9 @@ export const PatchDashboardLayoutBody = zod.object({
   "gridLayout": zod.array(zod.object({
   "key": zod.string().describe('Widget key — matches WIDGET_CATALOG key.'),
   "x": zod.number().min(patchDashboardLayoutBodyGridLayoutItemXMin).max(patchDashboardLayoutBodyGridLayoutItemXMax).describe('Column index (0–11).'),
-  "y": zod.number().min(patchDashboardLayoutBodyGridLayoutItemYMin).describe('Row index (0-based).'),
+  "y": zod.number().min(patchDashboardLayoutBodyGridLayoutItemYMin).max(patchDashboardLayoutBodyGridLayoutItemYMax).describe('Row index (0-based). Upper bound prevents runaway stored values.'),
   "w": zod.number().min(1).max(patchDashboardLayoutBodyGridLayoutItemWMax).describe('Width in grid columns (1–12).'),
-  "h": zod.number().min(1).describe('Height in grid rows (minimum 1).')
+  "h": zod.number().min(1).max(patchDashboardLayoutBodyGridLayoutItemHMax).describe('Height in grid rows (1–20).')
 }).describe('A single widget\'s position and size within the 12-column resizable dashboard grid. x\/y are zero-indexed column\/row coordinates; w\/h are column-span and row-span respectively.')).max(patchDashboardLayoutBodyGridLayoutMax).nullish().describe('Per-widget grid positions. Pass null to clear saved positions and revert to catalog-size defaults.')
 }).describe('User\'s widget layout preferences. All fields are optional — omitted fields are preserved from the existing stored layout. Hidden keys subtract from the capability-resolved set; order keys sort the result; gridLayout stores per-widget drag\/resize positions. Unknown or uncapable keys are silently ignored at manifest resolution time.')
 

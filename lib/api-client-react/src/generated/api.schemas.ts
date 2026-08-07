@@ -3019,8 +3019,9 @@ export interface GridCellEntry {
      */
   x: number;
   /**
-     * Row index (0-based).
+     * Row index (0-based). Upper bound prevents runaway stored values.
      * @minimum 0
+     * @maximum 999
      */
   y: number;
   /**
@@ -3030,8 +3031,9 @@ export interface GridCellEntry {
      */
   w: number;
   /**
-     * Height in grid rows (minimum 1).
+     * Height in grid rows (1–20).
      * @minimum 1
+     * @maximum 20
      */
   h: number;
 }
