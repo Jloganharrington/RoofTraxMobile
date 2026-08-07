@@ -3,7 +3,7 @@
 - [createSession call signature](createSession-call-signature.md) — takes one SessionData object; positional args silently store a string → all requests 401.
 - [Payments ledger schema](payments-ledger-schema.md) — migration 023; LeadProfileBody bypass route closed; orval hook signatures for payments endpoints.
 - [lib/db composite build quirk](lib-db-composite-build.md) — `tsc --build` even with `--clean` does not regenerate dist after schema edits; run plain `npx tsc` (no --build) inside lib/db to force full re-emit.
-- [Profitability view](profitability-view.md) — migration 026 creates `pin_profitability` view; API reads via raw sql`SELECT … FROM pin_profitability`; no Drizzle schema entry (read-only aggregation layer).
+- [Profitability view](profitability-view.md) — migrations 026-029; 029 corrects revised_contract formula + adds net_project_margin_pct; projectedMarginPct removed from API; ProjectFinancialsPanel waterfall replaces CostBreakdownPanel.
 - [Drizzle empty set guard](drizzle-empty-set-guard.md) — Drizzle throws when `.set({})` is empty; always include `updatedAt: new Date()` in generic PATCH handlers so the set is never empty when Zod strips all body fields.
 
 - [Drizzle query error wrapping](drizzle-query-error-wrapping.md) — pg error code (23505 etc.) lives on `.cause`, not top-level; DrizzleQueryError wraps the pg error.

@@ -93,6 +93,7 @@ import {
   useMarkVendorExpensePaid,
   useUpdateCommissions,
   useMarkSalesCommissionPaid,
+  useMarkCanvassingCommissionPaid,
   useMarkPmCommissionPaid,
   type CreateVendorExpenseInput,
   type UpdateVendorExpenseInput,
@@ -1322,41 +1323,50 @@ function ExpenseTrackerPanel({
 // ---------------------------------------------------------------------------
 
 type CommissionField = {
-  key:      'leadAcquisitionCostCents' | 'referralFeeCents' | 'salesCommissionCents' | 'pmCommissionCents';
+  key:      'leadAcquisitionCostCents' | 'referralFeeCents' | 'salesCommissionCents'
+          | 'canvassingCommissionCents' | 'pmCommissionCents';
   label:    string;
-  paidKey?: 'salesCommissionPaidDate' | 'pmCommissionPaidDate';
+  paidKey?: 'salesCommissionPaidDate' | 'canvassingCommissionPaidDate' | 'pmCommissionPaidDate';
 };
 
-const COST_BREAKDOWN_FIELDS: CommissionField[] = [
-  { key: 'leadAcquisitionCostCents', label: 'Lead Acquisition' },
-  { key: 'referralFeeCents',         label: 'Referral Fee' },
-  { key: 'salesCommissionCents',     label: 'Sales Commission', paidKey: 'salesCommissionPaidDate' },
-  { key: 'pmCommissionCents',        label: 'PM Commission',    paidKey: 'pmCommissionPaidDate'   },
+const OVERHEAD_FIELDS: CommissionField[] = [
+  { key: 'leadAcquisitionCostCents',  label: 'Lead Acquisition'   },
+  { key: 'referralFeeCents',          label: 'Referral Fee'       },
+  { key: 'salesCommissionCents',      label: 'Sales Commission',  paidKey: 'salesCommissionPaidDate'      },
+  { key: 'canvassingCommissionCents', label: 'Canvassing Comm.',  paidKey: 'canvassingCommissionPaidDate' },
+  { key: 'pmCommissionCents',         label: 'PM Commission',     paidKey: 'pmCommissionPaidDate'         },
 ];
 
-function CostBreakdownPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
-  const { toast } = useToast();
+// ===========================================================================
+// PROJECT FINANCIALS PANEL — accrual-basis waterfall (FINANCIALS STEP 5, Step 3)
+// Waterfall: Contract Value → Change Orders → Revised Contract →
+//            Cost of Goods Sold → Job Overhead → Net Project Margin
+// ===========================================================================
+
+function ProjectFinancialsPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { toast }                  = useToast();
   const { data: leadData }         = useGetLead(pinId);
   const { data: profData }         = useGetPinProfitability(pinId);
   const updateMutation             = useUpdateCommissions();
   const salesMarkPaidMutation      = useMarkSalesCommissionPaid();
+  const canvassingMarkPaidMutation = useMarkCanvassingCommissionPaid();
   const pmMarkPaidMutation         = useMarkPmCommissionPaid();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lead = leadData?.lead as any;
+  const p    = profData?.profitability;
+
+  const [overheadOpen, setOverheadOpen] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!lead) return;
     setDrafts({
-      leadAcquisitionCostCents: lead.leadAcquisitionCostCents != null
-        ? (lead.leadAcquisitionCostCents / 100).toFixed(2) : '',
-      referralFeeCents: lead.referralFeeCents != null
-        ? (lead.referralFeeCents / 100).toFixed(2) : '',
-      salesCommissionCents: lead.salesCommissionCents != null
-        ? (lead.salesCommissionCents / 100).toFixed(2) : '',
-      pmCommissionCents: lead.pmCommissionCents != null
-        ? (lead.pmCommissionCents / 100).toFixed(2) : '',
+      leadAcquisitionCostCents:  lead.leadAcquisitionCostCents  != null ? (lead.leadAcquisitionCostCents  / 100).toFixed(2) : '',
+      referralFeeCents:          lead.referralFeeCents          != null ? (lead.referralFeeCents          / 100).toFixed(2) : '',
+      salesCommissionCents:      lead.salesCommissionCents      != null ? (lead.salesCommissionCents      / 100).toFixed(2) : '',
+      canvassingCommissionCents: lead.canvassingCommissionCents != null ? (lead.canvassingCommissionCents / 100).toFixed(2) : '',
+      pmCommissionCents:         lead.pmCommissionCents         != null ? (lead.pmCommissionCents         / 100).toFixed(2) : '',
     });
   }, [lead?.id]);
 
@@ -1377,7 +1387,10 @@ function CostBreakdownPanel({ pinId, isManager }: { pinId: string; isManager: bo
 
   async function handleMarkPaid(field: CommissionField) {
     if (!field.paidKey) return;
-    const mutation = field.paidKey === 'salesCommissionPaidDate' ? salesMarkPaidMutation : pmMarkPaidMutation;
+    const mutation =
+      field.paidKey === 'salesCommissionPaidDate'      ? salesMarkPaidMutation      :
+      field.paidKey === 'canvassingCommissionPaidDate'  ? canvassingMarkPaidMutation :
+                                                          pmMarkPaidMutation;
     try {
       await mutation.mutateAsync({ pinId });
       toast({ title: `${field.label} marked as paid` });
@@ -1388,86 +1401,161 @@ function CostBreakdownPanel({ pinId, isManager }: { pinId: string; isManager: bo
     }
   }
 
-  const p = profData?.profitability;
-  const expensesCents = p?.totalExpenseCents ?? null;
+  // Waterfall numbers — all from the profitability view (migration 029)
+  const approvedCoCents    = p?.approvedCoCents         ?? 0;
+  const revisedCents       = p?.revisedContractCents    ?? 0;
+  const baseContractCents  = revisedCents - approvedCoCents;   // = _parse_legacy(contractAmount)
+  const cogsCents          = p?.totalExpenseCents       ?? 0;
+  const overheadCents      = p?.totalCommissionCents    ?? 0;
+  const netMarginCents     = p?.netProjectMarginCents   ?? 0;
+  const netMarginPct       = p?.netProjectMarginPct     ?? 0;
 
-  const commissionTotalCents = COST_BREAKDOWN_FIELDS.reduce((sum, f) => {
-    const v = lead?.[f.key];
-    return sum + (typeof v === 'number' ? v : 0);
-  }, 0);
-  const totalCostCents = commissionTotalCents + (expensesCents ?? 0);
+  // Committed-but-unpaid: overhead lines that have a paidKey, an amount set,
+  // but no paid date yet — these are real liabilities.
+  const unpaidOverheadCents = OVERHEAD_FIELDS
+    .filter(f => f.paidKey && !lead?.[f.paidKey] && (lead?.[f.key] ?? 0) > 0)
+    .reduce((s, f) => s + ((lead?.[f.key] as number | undefined) ?? 0), 0);
 
   return (
     <div className="rounded-lg border bg-card flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 p-4 border-b">
-        <TrendingDown className="h-4 w-4 text-red-500 shrink-0" />
+        <TrendingUp className="h-4 w-4 text-blue-500 shrink-0" />
         <div>
-          <h3 className="font-semibold text-sm">Cost Breakdown</h3>
-          <p className="text-xs text-muted-foreground">Project expenses and commissions</p>
+          <h3 className="font-semibold text-sm">Project Financials</h3>
+          <p className="text-xs text-muted-foreground">Accrual waterfall</p>
         </div>
       </div>
 
-      {/* Rows */}
-      <div className="flex-1 divide-y">
-        {COST_BREAKDOWN_FIELDS.map(field => {
-          const paidDate  = field.paidKey ? lead?.[field.paidKey] : null;
-          const amountSet = !!(lead?.[field.key]);
-          const isPaid    = !!paidDate;
-
-          return (
-            <div key={field.key} className="flex items-center justify-between px-4 py-2.5 gap-3">
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium">{field.label}</span>
-                {isPaid && (
-                  <p className="text-xs text-green-500 mt-0.5">
-                    Paid {new Date(paidDate as string).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {field.paidKey && amountSet && !isPaid && isManager && (
-                  <button
-                    className="text-xs text-amber-500 hover:text-amber-400 hover:underline underline-offset-2"
-                    onClick={() => handleMarkPaid(field)}
-                    disabled={salesMarkPaidMutation.isPending || pmMarkPaidMutation.isPending}>
-                    Mark paid
-                  </button>
-                )}
-                {isPaid && <span className="text-xs text-green-500 font-medium">✓</span>}
-                {isManager ? (
-                  <Input
-                    className="h-7 w-24 text-sm text-right tabular-nums"
-                    value={drafts[field.key] ?? ''}
-                    onChange={e => setDrafts(d => ({ ...d, [field.key]: e.target.value }))}
-                    onBlur={() => handleBlurSave(field)}
-                    placeholder="0"
-                    disabled={updateMutation.isPending}
-                  />
-                ) : (
-                  <span className="text-sm tabular-nums font-semibold">
-                    {lead?.[field.key] != null ? formatCents(lead[field.key] as number) : '—'}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Invoices/Expenses — computed from profitability view */}
+      <div className="flex-1 divide-y text-sm">
+        {/* Row: Contract Value */}
         <div className="flex items-center justify-between px-4 py-2.5">
-          <span className="text-sm font-medium">Invoices/Expenses</span>
-          <span className="text-sm tabular-nums font-semibold">
-            {expensesCents != null ? formatCents(expensesCents) : '—'}
+          <span className="font-medium">Contract Value</span>
+          <span className="tabular-nums font-semibold">
+            {formatCents(baseContractCents)}
           </span>
         </div>
 
-        {/* Total Costs */}
-        <div className="flex items-center justify-between px-4 py-3 bg-muted/20">
-          <span className="text-sm font-bold">Total Costs</span>
-          <span className="text-sm tabular-nums font-bold text-red-500">
-            {formatCents(totalCostCents)}
+        {/* Row: Change Orders — only when nonzero */}
+        {approvedCoCents !== 0 && (
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <span className="text-muted-foreground">Change Orders</span>
+            <span className={`tabular-nums font-semibold ${approvedCoCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {approvedCoCents >= 0 ? '+' : '−'}{formatCents(Math.abs(approvedCoCents))}
+            </span>
+          </div>
+        )}
+
+        {/* Row: Revised Contract Value — separator / subtotal */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30">
+          <span className="font-bold">Revised Contract Value</span>
+          <span className="tabular-nums font-bold text-green-600 dark:text-green-400">
+            {formatCents(revisedCents)}
           </span>
+        </div>
+
+        {/* Row: Cost of Goods Sold */}
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <span className="font-medium text-muted-foreground">Cost of Goods Sold</span>
+          <span className="tabular-nums font-semibold text-red-600 dark:text-red-400">
+            {cogsCents > 0 ? `(${formatCents(cogsCents)})` : '—'}
+          </span>
+        </div>
+
+        {/* Row: Job Overhead — collapsible, expands to show the 5 lines (3c) */}
+        <div>
+          <button
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/40 transition-colors text-sm"
+            onClick={() => setOverheadOpen(o => !o)}>
+            <span className="font-medium text-muted-foreground">Job Overhead</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="tabular-nums font-semibold text-red-600 dark:text-red-400">
+                {overheadCents > 0 ? `(${formatCents(overheadCents)})` : '—'}
+              </span>
+              {overheadOpen
+                ? <ChevronUp   className="h-3.5 w-3.5 text-muted-foreground" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+            </div>
+          </button>
+
+          {/* Overhead detail rows */}
+          {overheadOpen && (
+            <div className="bg-muted/20 divide-y border-t">
+              {OVERHEAD_FIELDS.map(field => {
+                const paidDate  = field.paidKey ? lead?.[field.paidKey] : null;
+                const amountSet = !!(lead?.[field.key]);
+                const isPaid    = !!paidDate;
+                return (
+                  <div key={field.key} className="flex items-center justify-between px-4 py-2 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium">{field.label}</span>
+                      {isPaid && (
+                        <p className="text-xs text-green-500 mt-0.5">
+                          Paid {new Date(paidDate as string).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {field.paidKey && amountSet && !isPaid && isManager && (
+                        <button
+                          className="text-xs text-amber-500 hover:text-amber-400 hover:underline underline-offset-2"
+                          onClick={() => handleMarkPaid(field)}
+                          disabled={
+                            salesMarkPaidMutation.isPending ||
+                            canvassingMarkPaidMutation.isPending ||
+                            pmMarkPaidMutation.isPending
+                          }>
+                          Mark paid
+                        </button>
+                      )}
+                      {isPaid && <span className="text-xs text-green-500 font-medium">✓</span>}
+                      {isManager ? (
+                        <Input
+                          className="h-7 w-24 text-sm text-right tabular-nums"
+                          value={drafts[field.key] ?? ''}
+                          onChange={e => setDrafts(d => ({ ...d, [field.key]: e.target.value }))}
+                          onBlur={() => handleBlurSave(field)}
+                          placeholder="0"
+                          disabled={updateMutation.isPending}
+                        />
+                      ) : (
+                        <span className="text-sm tabular-nums font-semibold">
+                          {lead?.[field.key] != null ? formatCents(lead[field.key] as number) : '—'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Committed-but-unpaid subtotal */}
+              {unpaidOverheadCents > 0 && (
+                <div className="flex items-center justify-between px-4 py-2 bg-amber-500/10">
+                  <span className="text-xs text-amber-600 dark:text-amber-400">Committed, unpaid</span>
+                  <span className="text-xs tabular-nums font-semibold text-amber-600 dark:text-amber-400">
+                    {formatCents(unpaidOverheadCents)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Row: Net Project Margin — bottom line */}
+        <div className="flex items-center justify-between px-4 py-3 bg-muted/20">
+          <span className="font-bold">Net Project Margin</span>
+          <div className="text-right shrink-0">
+            <span className={`tabular-nums font-bold ${
+              netMarginCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+            }`}>
+              {formatCents(netMarginCents)}
+            </span>
+            {revisedCents > 0 && (
+              <p className={`text-xs ${netMarginPct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {netMarginPct.toFixed(1)}%
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1497,22 +1585,15 @@ function FinKpiCards({
     if (!editingContract) setContractDraft(contractAmount);
   }, [contractAmount, editingContract]);
 
-  const contractCents  = parseDollarToCents(contractAmount.replace(/[$,\s]/g, '')) ??
+  const contractCents      = parseDollarToCents(contractAmount.replace(/[$,\s]/g, '')) ??
     (contractAmount.trim() ? null : 0);
-  const totalPayments  = p?.totalPaymentsCents ?? 0;
-  const totalCosts     = p?.totalCostCents     ?? 0;
-  const netProfit      = p?.netProfitCents      ?? 0;
-  const balanceDue     = contractCents != null ? Math.max(0, contractCents - totalPayments) : null;
-
-  // Both margins are server-computed from the pin_profitability view (migration 027).
-  // projected uses expected_total_cents (insurance = GREATEST(contract,rcv), retail = contract).
-  // Both return 0 from the view when the denominator is 0 — display only when > 0.
-  const projectedMarginPct = (p?.projectedMarginPct ?? 0) > 0 || (p?.expectedTotalCents ?? 0) > 0
-    ? (p?.projectedMarginPct ?? 0)
-    : null;
-  const cashMarginPct = (p?.totalPaymentsCents ?? 0) > 0
-    ? (p?.cashMarginPct ?? 0)
-    : null;
+  const totalPayments      = p?.totalPaymentsCents      ?? 0;
+  const totalCosts         = p?.totalCostCents          ?? 0;
+  const approvedCoCents    = p?.approvedCoCents         ?? 0;
+  const netProjectMargin   = p?.netProjectMarginCents   ?? 0;
+  const netProjectMarginPct = p?.netProjectMarginPct    ?? 0;
+  const revisedCents       = p?.revisedContractCents    ?? 0;
+  const balanceDue         = revisedCents > 0 ? Math.max(0, revisedCents - totalPayments) : null;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -1542,11 +1623,18 @@ function FinKpiCards({
             placeholder="0.00"
           />
         ) : (
-          <p className="text-2xl font-bold tabular-nums text-green-600 dark:text-green-400">
-            {contractAmount.trim()
-              ? (contractCents != null ? formatCents(contractCents) : contractAmount)
-              : '$0'}
-          </p>
+          <>
+            <p className="text-2xl font-bold tabular-nums text-green-600 dark:text-green-400">
+              {contractAmount.trim()
+                ? (contractCents != null ? formatCents(contractCents) : contractAmount)
+                : '$0'}
+            </p>
+            {approvedCoCents > 0 && (
+              <p className="text-xs text-green-500">
+                +{formatCents(approvedCoCents)} CO → {formatCents(revisedCents)}
+              </p>
+            )}
+          </>
         )}
       </div>
 
@@ -1561,26 +1649,21 @@ function FinKpiCards({
         </p>
       </div>
 
-      {/* Net Profit */}
+      {/* Net Project Margin */}
       <div className="rounded-lg border bg-card border-l-[3px] border-l-blue-500 p-4 space-y-1">
         <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
           <DollarSign className="h-3.5 w-3.5" />
-          <span className="text-xs font-medium">Net Profit</span>
+          <span className="text-xs font-medium">Net Project Margin</span>
         </div>
         <p className={`text-2xl font-bold tabular-nums ${
-          netProfit >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'
+          netProjectMargin >= 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'
         }`}>
-          {formatCents(netProfit)}
+          {formatCents(netProjectMargin)}
         </p>
-        {(projectedMarginPct !== null || cashMarginPct !== null) && (
-          <div className="space-y-0.5">
-            {projectedMarginPct !== null && (
-              <p className="text-xs text-blue-500">{projectedMarginPct.toFixed(1)}% projected margin</p>
-            )}
-            {cashMarginPct !== null && (
-              <p className="text-xs text-blue-400">{cashMarginPct.toFixed(1)}% cash margin</p>
-            )}
-          </div>
+        {revisedCents > 0 && (
+          <p className={`text-xs ${netProjectMarginPct >= 0 ? 'text-blue-500' : 'text-red-500'}`}>
+            {netProjectMarginPct.toFixed(1)}% margin
+          </p>
         )}
       </div>
 
@@ -1894,7 +1977,7 @@ function FinancialsTab({
       {/* Zone 2 — Invoicing (left) + Cost Breakdown (right) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <InvoicingPanel pinId={pinId} isManager={isManager} />
-        <CostBreakdownPanel pinId={pinId} isManager={isManager} />
+        <ProjectFinancialsPanel pinId={pinId} isManager={isManager} />
       </div>
 
       {/* Zone 3 — Expense Tracker, full width */}

@@ -11548,7 +11548,8 @@ components:
           minimum: 0
 
     # ---------------------------------------------------------------------------
-    # Profitability — step 4
+    # Profitability — step 4 / migration 029 (FINANCIALS STEP 5, Step 2)
+    # projectedMarginPct removed (Step 2d); replaced by netProjectMarginPct.
     # ---------------------------------------------------------------------------
     ProfitabilitySummary:
       type: object
@@ -11564,9 +11565,16 @@ components:
         - referralFeeCents
         - salesCommissionCents
         - pmCommissionCents
+        - canvassingCommissionCents
         - totalCommissionCents
         - totalCostCents
         - netProfitCents
+        - expectedTotalCents
+        - cashMarginPct
+        - approvedCoCents
+        - revisedContractCents
+        - netProjectMarginCents
+        - netProjectMarginPct
       properties:
         pinId:
           type: string
@@ -11596,32 +11604,46 @@ components:
           type: integer
         pmCommissionCents:
           type: integer
+        canvassingCommissionCents:
+          type: integer
         totalCommissionCents:
           type: integer
-          description: Sum of all four commission/acquisition cost fields.
+          description: Sum of all five commission/overhead lines (incl. canvassing).
         totalCostCents:
           type: integer
           description: totalExpenseCents + totalCommissionCents.
         netProfitCents:
           type: integer
-          description: totalPaymentsCents - totalCostCents.
+          description: totalPaymentsCents − totalCostCents (cash basis).
         expectedTotalCents:
           type: integer
           description: >-
-            Expected revenue baseline in cents. Insurance leads use
-            GREATEST(contractAmountCents, approvedRcvAmountCents); retail leads
-            use contractAmountCents. Derived from migration-027 view column.
+            Expected revenue baseline. Insurance: GREATEST(revisedContractCents,
+            approvedRcvAmountCents). Retail: revisedContractCents. Uses the
+            revised contract as the baseline so a CO that raises the contract
+            also raises the projected revenue.
         cashMarginPct:
           type: number
           description: >-
             (totalPaymentsCents − totalCostCents) / totalPaymentsCents × 100.
             Returns 0 (not NaN or null) when totalPaymentsCents = 0.
-        projectedMarginPct:
+        approvedCoCents:
+          type: integer
+          description: Sum of non-voided approved change-order amounts.
+        revisedContractCents:
+          type: integer
+          description: >-
+            base contract + approvedCoCents. Accrual-basis contract value after
+            all approved (non-voided) change orders.
+        netProjectMarginCents:
+          type: integer
+          description: revisedContractCents − totalCostCents.
+        netProjectMarginPct:
           type: number
           description: >-
-            (expectedTotalCents − totalCostCents) / expectedTotalCents × 100.
-            Returns 0 (not NaN or null) when expectedTotalCents = 0. Accounts
-            for insurance leads where approvedRcv exceeds the contract amount.
+            netProjectMarginCents / revisedContractCents × 100. Returns 0 (not
+            NaN or null) when revisedContractCents = 0. Primary margin metric;
+            replaces projectedMarginPct.
     ProfitabilitySummaryEnvelope:
       type: object
       required: [profitability]

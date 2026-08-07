@@ -45,6 +45,8 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
 
   // Query the view directly with a raw SQL query (the view is not in the
   // Drizzle schema — it is a read-only aggregation layer, not a table).
+  // Migration 029: net_project_margin_pct added; projected_margin_pct kept in
+  // the view for column-position compatibility but not exposed in this response.
   const result = await db.execute(
     sql`SELECT
           pin_id,
@@ -65,10 +67,10 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
           net_profit_cents,
           expected_total_cents,
           cash_margin_pct,
-          projected_margin_pct,
           approved_co_cents,
           revised_contract_cents,
-          net_project_margin_cents
+          net_project_margin_cents,
+          net_project_margin_pct
         FROM pin_profitability
         WHERE pin_id   = ${pinId}
           AND company_id = ${req.user.companyId}`,
@@ -97,10 +99,10 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
         netProfitCents:             0,
         expectedTotalCents:         0,
         cashMarginPct:              0,
-        projectedMarginPct:         0,
         approvedCoCents:            0,
         revisedContractCents:       0,
         netProjectMarginCents:      0,
+        netProjectMarginPct:        0,
       },
     });
     return;
@@ -130,11 +132,13 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
       // Migration 027 — view-computed margins
       expectedTotalCents:         n(row.expected_total_cents),
       cashMarginPct:              pct(row.cash_margin_pct),
-      projectedMarginPct:         pct(row.projected_margin_pct),
+      // projectedMarginPct removed per Step 2d — replaced by netProjectMarginPct
       // Migration 030 — approved change orders + revised contract
       approvedCoCents:            n(row.approved_co_cents),
       revisedContractCents:       n(row.revised_contract_cents),
       netProjectMarginCents:      n(row.net_project_margin_cents),
+      // Migration 029 — accrual-basis margin percentage
+      netProjectMarginPct:        pct(row.net_project_margin_pct),
     },
   });
 });

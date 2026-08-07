@@ -35,6 +35,9 @@ import type {
   CanvassingCurrentEnvelope,
   CanvassingHeatmapEnvelope,
   CanvassingSessionEnvelope,
+  ChangeOrderEnvelope,
+  ChangeOrderLineItemEnvelope,
+  ChangeOrdersEnvelope,
   ClaimBlockerEnvelope,
   CodeResearchInput,
   CommissionsEnvelope,
@@ -44,6 +47,7 @@ import type {
   CompileReportInput,
   CreateAttestationInput,
   CreateBugReportInput,
+  CreateChangeOrderInput,
   CreateCompanyRequest,
   CreateCustomerInvoiceInput,
   CreateDamageInstanceInput,
@@ -57,6 +61,7 @@ import type {
   CreateInspectionSidingFacetInput,
   CreateInspectionSlopeInput,
   CreateInteriorObservationInput,
+  CreateLineItemInput,
   CreateMeasurementInput,
   CreatePaymentInput,
   CreatePinInput,
@@ -116,6 +121,7 @@ import type {
   MeasurementsAnalysisResult,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
+  OverheadEnvelope,
   PaymentEnvelope,
   PaymentListEnvelope,
   PendingInspectionsEnvelope,
@@ -137,6 +143,7 @@ import type {
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
   SearchAddressParams,
+  SignChangeOrderInput,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
@@ -148,6 +155,7 @@ import type {
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateBugReportInput,
+  UpdateChangeOrderInput,
   UpdateCommissionsInput,
   UpdateCompanyReportSettingsInput,
   UpdateCustomerInvoiceInput,
@@ -156,6 +164,8 @@ import type {
   UpdateInspectionInput,
   UpdateInspectionSidingFacetInput,
   UpdateInspectionSlopeInput,
+  UpdateLineItemInput,
+  UpdateOverheadInput,
   UpdatePaymentInput,
   UpdatePinInput,
   UpdatePriceBookItemInput,
@@ -174,6 +184,7 @@ import type {
   UpsertJurisdictionPackInput,
   VendorExpenseEnvelope,
   VendorExpenseListEnvelope,
+  VoidChangeOrderInput,
   WeatherCandidatesEnvelope
 } from './api.schemas';
 
@@ -10140,6 +10151,1168 @@ export const useMarkPmCommissionPaid = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getMarkPmCommissionPaidMutationOptions(options));
+    }
+
+export const getListChangeOrdersUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/change-orders`
+}
+
+/**
+ * @summary List change orders for a lead (any authenticated company member)
+ */
+export const listChangeOrders = async (pinId: string, options?: RequestInit): Promise<ChangeOrdersEnvelope> => {
+
+  return customFetch<ChangeOrdersEnvelope>(getListChangeOrdersUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChangeOrdersQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/change-orders`
+    ] as const;
+    }
+
+
+export const getListChangeOrdersQueryOptions = <TData = Awaited<ReturnType<typeof listChangeOrders>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChangeOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChangeOrdersQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChangeOrders>>> = ({ signal }) => listChangeOrders(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChangeOrders>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChangeOrdersQueryResult = NonNullable<Awaited<ReturnType<typeof listChangeOrders>>>
+export type ListChangeOrdersQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List change orders for a lead (any authenticated company member)
+ */
+
+export function useListChangeOrders<TData = Awaited<ReturnType<typeof listChangeOrders>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChangeOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChangeOrdersQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateChangeOrderUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/change-orders`
+}
+
+/**
+ * amount_cents may be negative for deductive change orders (scope reductions). No positive-only constraint is applied. approved_at is stamped server-side when status = 'approved'.
+ * @summary Create a change order for a lead (manager+)
+ */
+export const createChangeOrder = async (pinId: string,
+    createChangeOrderInput: CreateChangeOrderInput, options?: RequestInit): Promise<ChangeOrderEnvelope> => {
+
+  return customFetch<ChangeOrderEnvelope>(getCreateChangeOrderUrl(pinId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createChangeOrderInput)
+  }
+);}
+
+
+
+
+
+export const getCreateChangeOrderMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChangeOrder>>, TError,{pinId: string;data: BodyType<CreateChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChangeOrder>>, TError,{pinId: string;data: BodyType<CreateChangeOrderInput>}, TContext> => {
+
+const mutationKey = ['createChangeOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChangeOrder>>, {pinId: string;data: BodyType<CreateChangeOrderInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  createChangeOrder(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateChangeOrderMutationResult = NonNullable<Awaited<ReturnType<typeof createChangeOrder>>>
+    export type CreateChangeOrderMutationBody = BodyType<CreateChangeOrderInput>
+    export type CreateChangeOrderMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a change order for a lead (manager+)
+ */
+export const useCreateChangeOrder = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChangeOrder>>, TError,{pinId: string;data: BodyType<CreateChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createChangeOrder>>,
+        TError,
+        {pinId: string;data: BodyType<CreateChangeOrderInput>},
+        TContext
+      > => {
+      return useMutation(getCreateChangeOrderMutationOptions(options));
+    }
+
+export const getUpdateChangeOrderUrl = (changeOrderId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}`
+}
+
+/**
+ * company_id and pin_id are NEVER client-settable — the stored row is fetched and company verified from the DB. When status transitions to 'approved', approved_at is stamped server-side. When status transitions away from 'approved', approved_at is cleared.
+ * @summary Update a change order (manager+)
+ */
+export const updateChangeOrder = async (changeOrderId: string,
+    updateChangeOrderInput: UpdateChangeOrderInput, options?: RequestInit): Promise<ChangeOrderEnvelope> => {
+
+  return customFetch<ChangeOrderEnvelope>(getUpdateChangeOrderUrl(changeOrderId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateChangeOrderInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateChangeOrderMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChangeOrder>>, TError,{changeOrderId: string;data: BodyType<UpdateChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChangeOrder>>, TError,{changeOrderId: string;data: BodyType<UpdateChangeOrderInput>}, TContext> => {
+
+const mutationKey = ['updateChangeOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChangeOrder>>, {changeOrderId: string;data: BodyType<UpdateChangeOrderInput>}> = (props) => {
+          const {changeOrderId,data} = props ?? {};
+
+          return  updateChangeOrder(changeOrderId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChangeOrderMutationResult = NonNullable<Awaited<ReturnType<typeof updateChangeOrder>>>
+    export type UpdateChangeOrderMutationBody = BodyType<UpdateChangeOrderInput>
+    export type UpdateChangeOrderMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a change order (manager+)
+ */
+export const useUpdateChangeOrder = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChangeOrder>>, TError,{changeOrderId: string;data: BodyType<UpdateChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChangeOrder>>,
+        TError,
+        {changeOrderId: string;data: BodyType<UpdateChangeOrderInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateChangeOrderMutationOptions(options));
+    }
+
+export const getDeleteChangeOrderUrl = (changeOrderId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}`
+}
+
+/**
+ * @summary Delete a change order (manager+)
+ */
+export const deleteChangeOrder = async (changeOrderId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteChangeOrderUrl(changeOrderId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteChangeOrderMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChangeOrder>>, TError,{changeOrderId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChangeOrder>>, TError,{changeOrderId: string}, TContext> => {
+
+const mutationKey = ['deleteChangeOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChangeOrder>>, {changeOrderId: string}> = (props) => {
+          const {changeOrderId} = props ?? {};
+
+          return  deleteChangeOrder(changeOrderId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChangeOrderMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChangeOrder>>>
+
+    export type DeleteChangeOrderMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a change order (manager+)
+ */
+export const useDeleteChangeOrder = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChangeOrder>>, TError,{changeOrderId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChangeOrder>>,
+        TError,
+        {changeOrderId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteChangeOrderMutationOptions(options));
+    }
+
+export const getSignChangeOrderUrl = (changeOrderId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}/sign`
+}
+
+/**
+ * Stores the document and signature paths. homeownerSignedAt and repSignedAt are always server-stamped — never accepted from the client.
+ * @summary Sign a change order (any authenticated member)
+ */
+export const signChangeOrder = async (changeOrderId: string,
+    signChangeOrderInput: SignChangeOrderInput, options?: RequestInit): Promise<ChangeOrderEnvelope> => {
+
+  return customFetch<ChangeOrderEnvelope>(getSignChangeOrderUrl(changeOrderId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(signChangeOrderInput)
+  }
+);}
+
+
+
+
+
+export const getSignChangeOrderMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof signChangeOrder>>, TError,{changeOrderId: string;data: BodyType<SignChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof signChangeOrder>>, TError,{changeOrderId: string;data: BodyType<SignChangeOrderInput>}, TContext> => {
+
+const mutationKey = ['signChangeOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof signChangeOrder>>, {changeOrderId: string;data: BodyType<SignChangeOrderInput>}> = (props) => {
+          const {changeOrderId,data} = props ?? {};
+
+          return  signChangeOrder(changeOrderId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SignChangeOrderMutationResult = NonNullable<Awaited<ReturnType<typeof signChangeOrder>>>
+    export type SignChangeOrderMutationBody = BodyType<SignChangeOrderInput>
+    export type SignChangeOrderMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Sign a change order (any authenticated member)
+ */
+export const useSignChangeOrder = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof signChangeOrder>>, TError,{changeOrderId: string;data: BodyType<SignChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof signChangeOrder>>,
+        TError,
+        {changeOrderId: string;data: BodyType<SignChangeOrderInput>},
+        TContext
+      > => {
+      return useMutation(getSignChangeOrderMutationOptions(options));
+    }
+
+export const getApproveChangeOrderUrl = (changeOrderId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}/approve`
+}
+
+/**
+ * Requires documentObjectPath AND homeownerSignedAt to be set (via /sign). Returns 422 if either is missing. Returns 409 if already voided.
+ * @summary Approve a change order (manager+, gated by document + homeowner signature)
+ */
+export const approveChangeOrder = async (changeOrderId: string, options?: RequestInit): Promise<ChangeOrderEnvelope> => {
+
+  return customFetch<ChangeOrderEnvelope>(getApproveChangeOrderUrl(changeOrderId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApproveChangeOrderMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveChangeOrder>>, TError,{changeOrderId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveChangeOrder>>, TError,{changeOrderId: string}, TContext> => {
+
+const mutationKey = ['approveChangeOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveChangeOrder>>, {changeOrderId: string}> = (props) => {
+          const {changeOrderId} = props ?? {};
+
+          return  approveChangeOrder(changeOrderId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveChangeOrderMutationResult = NonNullable<Awaited<ReturnType<typeof approveChangeOrder>>>
+
+    export type ApproveChangeOrderMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Approve a change order (manager+, gated by document + homeowner signature)
+ */
+export const useApproveChangeOrder = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveChangeOrder>>, TError,{changeOrderId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveChangeOrder>>,
+        TError,
+        {changeOrderId: string},
+        TContext
+      > => {
+      return useMutation(getApproveChangeOrderMutationOptions(options));
+    }
+
+export const getVoidChangeOrderUrl = (changeOrderId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}/void`
+}
+
+/**
+ * Voided in place — never deleted. A voided CO can be replaced with a new one on the same pin. Returns 409 if already voided.
+ * @summary Void a change order in place (manager+)
+ */
+export const voidChangeOrder = async (changeOrderId: string,
+    voidChangeOrderInput?: VoidChangeOrderInput, options?: RequestInit): Promise<ChangeOrderEnvelope> => {
+
+  return customFetch<ChangeOrderEnvelope>(getVoidChangeOrderUrl(changeOrderId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(voidChangeOrderInput)
+  }
+);}
+
+
+
+
+
+export const getVoidChangeOrderMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidChangeOrder>>, TError,{changeOrderId: string;data?: BodyType<VoidChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voidChangeOrder>>, TError,{changeOrderId: string;data?: BodyType<VoidChangeOrderInput>}, TContext> => {
+
+const mutationKey = ['voidChangeOrder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidChangeOrder>>, {changeOrderId: string;data?: BodyType<VoidChangeOrderInput>}> = (props) => {
+          const {changeOrderId,data} = props ?? {};
+
+          return  voidChangeOrder(changeOrderId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoidChangeOrderMutationResult = NonNullable<Awaited<ReturnType<typeof voidChangeOrder>>>
+    export type VoidChangeOrderMutationBody = BodyType<VoidChangeOrderInput> | undefined
+    export type VoidChangeOrderMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Void a change order in place (manager+)
+ */
+export const useVoidChangeOrder = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidChangeOrder>>, TError,{changeOrderId: string;data?: BodyType<VoidChangeOrderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voidChangeOrder>>,
+        TError,
+        {changeOrderId: string;data?: BodyType<VoidChangeOrderInput>},
+        TContext
+      > => {
+      return useMutation(getVoidChangeOrderMutationOptions(options));
+    }
+
+export const getAddChangeOrderLineItemUrl = (changeOrderId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}/line-items`
+}
+
+/**
+ * Recomputes change_orders.amount_cents after insert. Returns 409 if the change order is voided.
+ * @summary Add a line item to a change order (any authenticated member)
+ */
+export const addChangeOrderLineItem = async (changeOrderId: string,
+    createLineItemInput: CreateLineItemInput, options?: RequestInit): Promise<ChangeOrderLineItemEnvelope> => {
+
+  return customFetch<ChangeOrderLineItemEnvelope>(getAddChangeOrderLineItemUrl(changeOrderId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createLineItemInput)
+  }
+);}
+
+
+
+
+
+export const getAddChangeOrderLineItemMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addChangeOrderLineItem>>, TError,{changeOrderId: string;data: BodyType<CreateLineItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addChangeOrderLineItem>>, TError,{changeOrderId: string;data: BodyType<CreateLineItemInput>}, TContext> => {
+
+const mutationKey = ['addChangeOrderLineItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addChangeOrderLineItem>>, {changeOrderId: string;data: BodyType<CreateLineItemInput>}> = (props) => {
+          const {changeOrderId,data} = props ?? {};
+
+          return  addChangeOrderLineItem(changeOrderId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddChangeOrderLineItemMutationResult = NonNullable<Awaited<ReturnType<typeof addChangeOrderLineItem>>>
+    export type AddChangeOrderLineItemMutationBody = BodyType<CreateLineItemInput>
+    export type AddChangeOrderLineItemMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Add a line item to a change order (any authenticated member)
+ */
+export const useAddChangeOrderLineItem = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addChangeOrderLineItem>>, TError,{changeOrderId: string;data: BodyType<CreateLineItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addChangeOrderLineItem>>,
+        TError,
+        {changeOrderId: string;data: BodyType<CreateLineItemInput>},
+        TContext
+      > => {
+      return useMutation(getAddChangeOrderLineItemMutationOptions(options));
+    }
+
+export const getUpdateChangeOrderLineItemUrl = (changeOrderId: string,
+    lineItemId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}/line-items/${lineItemId}`
+}
+
+/**
+ * Recomputes change_orders.amount_cents after update.
+ * @summary Update a line item (any authenticated member)
+ */
+export const updateChangeOrderLineItem = async (changeOrderId: string,
+    lineItemId: string,
+    updateLineItemInput: UpdateLineItemInput, options?: RequestInit): Promise<ChangeOrderLineItemEnvelope> => {
+
+  return customFetch<ChangeOrderLineItemEnvelope>(getUpdateChangeOrderLineItemUrl(changeOrderId,lineItemId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateLineItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateChangeOrderLineItemMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChangeOrderLineItem>>, TError,{changeOrderId: string;lineItemId: string;data: BodyType<UpdateLineItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChangeOrderLineItem>>, TError,{changeOrderId: string;lineItemId: string;data: BodyType<UpdateLineItemInput>}, TContext> => {
+
+const mutationKey = ['updateChangeOrderLineItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChangeOrderLineItem>>, {changeOrderId: string;lineItemId: string;data: BodyType<UpdateLineItemInput>}> = (props) => {
+          const {changeOrderId,lineItemId,data} = props ?? {};
+
+          return  updateChangeOrderLineItem(changeOrderId,lineItemId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChangeOrderLineItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateChangeOrderLineItem>>>
+    export type UpdateChangeOrderLineItemMutationBody = BodyType<UpdateLineItemInput>
+    export type UpdateChangeOrderLineItemMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a line item (any authenticated member)
+ */
+export const useUpdateChangeOrderLineItem = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChangeOrderLineItem>>, TError,{changeOrderId: string;lineItemId: string;data: BodyType<UpdateLineItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChangeOrderLineItem>>,
+        TError,
+        {changeOrderId: string;lineItemId: string;data: BodyType<UpdateLineItemInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateChangeOrderLineItemMutationOptions(options));
+    }
+
+export const getDeleteChangeOrderLineItemUrl = (changeOrderId: string,
+    lineItemId: string,) => {
+
+
+
+
+  return `/api/change-orders/${changeOrderId}/line-items/${lineItemId}`
+}
+
+/**
+ * Recomputes change_orders.amount_cents after delete.
+ * @summary Delete a line item (any authenticated member)
+ */
+export const deleteChangeOrderLineItem = async (changeOrderId: string,
+    lineItemId: string, options?: RequestInit): Promise<ChangeOrderEnvelope> => {
+
+  return customFetch<ChangeOrderEnvelope>(getDeleteChangeOrderLineItemUrl(changeOrderId,lineItemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteChangeOrderLineItemMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChangeOrderLineItem>>, TError,{changeOrderId: string;lineItemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChangeOrderLineItem>>, TError,{changeOrderId: string;lineItemId: string}, TContext> => {
+
+const mutationKey = ['deleteChangeOrderLineItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChangeOrderLineItem>>, {changeOrderId: string;lineItemId: string}> = (props) => {
+          const {changeOrderId,lineItemId} = props ?? {};
+
+          return  deleteChangeOrderLineItem(changeOrderId,lineItemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChangeOrderLineItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChangeOrderLineItem>>>
+
+    export type DeleteChangeOrderLineItemMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete a line item (any authenticated member)
+ */
+export const useDeleteChangeOrderLineItem = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChangeOrderLineItem>>, TError,{changeOrderId: string;lineItemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChangeOrderLineItem>>,
+        TError,
+        {changeOrderId: string;lineItemId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteChangeOrderLineItemMutationOptions(options));
+    }
+
+export const getUpdateOverheadUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/overhead`
+}
+
+/**
+ * Accepts all five overhead amount fields. Paid dates are NOT accepted here — use the dedicated mark-paid sub-endpoints so the server always controls when an overhead item is recorded as paid. These fields are NOT writable via the generic PATCH /pins/:pinId or PATCH /pins/:pinId/profile.
+ * @summary Update job overhead amounts for a lead (manager+)
+ */
+export const updateOverhead = async (pinId: string,
+    updateOverheadInput: UpdateOverheadInput, options?: RequestInit): Promise<OverheadEnvelope> => {
+
+  return customFetch<OverheadEnvelope>(getUpdateOverheadUrl(pinId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateOverheadInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateOverheadMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOverhead>>, TError,{pinId: string;data: BodyType<UpdateOverheadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOverhead>>, TError,{pinId: string;data: BodyType<UpdateOverheadInput>}, TContext> => {
+
+const mutationKey = ['updateOverhead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOverhead>>, {pinId: string;data: BodyType<UpdateOverheadInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  updateOverhead(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOverheadMutationResult = NonNullable<Awaited<ReturnType<typeof updateOverhead>>>
+    export type UpdateOverheadMutationBody = BodyType<UpdateOverheadInput>
+    export type UpdateOverheadMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update job overhead amounts for a lead (manager+)
+ */
+export const useUpdateOverhead = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOverhead>>, TError,{pinId: string;data: BodyType<UpdateOverheadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOverhead>>,
+        TError,
+        {pinId: string;data: BodyType<UpdateOverheadInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateOverheadMutationOptions(options));
+    }
+
+export const getMarkLeadAcquisitionPaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/overhead/lead-acquisition/mark-paid`
+}
+
+/**
+ * @summary Mark lead acquisition cost as paid — date set server-side (manager+)
+ */
+export const markLeadAcquisitionPaid = async (pinId: string, options?: RequestInit): Promise<OverheadEnvelope> => {
+
+  return customFetch<OverheadEnvelope>(getMarkLeadAcquisitionPaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkLeadAcquisitionPaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markLeadAcquisitionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markLeadAcquisitionPaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markLeadAcquisitionPaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markLeadAcquisitionPaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markLeadAcquisitionPaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkLeadAcquisitionPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markLeadAcquisitionPaid>>>
+
+    export type MarkLeadAcquisitionPaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark lead acquisition cost as paid — date set server-side (manager+)
+ */
+export const useMarkLeadAcquisitionPaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markLeadAcquisitionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markLeadAcquisitionPaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkLeadAcquisitionPaidMutationOptions(options));
+    }
+
+export const getMarkReferralFeePaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/overhead/referral/mark-paid`
+}
+
+/**
+ * @summary Mark referral fee as paid — date set server-side (manager+)
+ */
+export const markReferralFeePaid = async (pinId: string, options?: RequestInit): Promise<OverheadEnvelope> => {
+
+  return customFetch<OverheadEnvelope>(getMarkReferralFeePaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkReferralFeePaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markReferralFeePaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markReferralFeePaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markReferralFeePaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markReferralFeePaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markReferralFeePaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkReferralFeePaidMutationResult = NonNullable<Awaited<ReturnType<typeof markReferralFeePaid>>>
+
+    export type MarkReferralFeePaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark referral fee as paid — date set server-side (manager+)
+ */
+export const useMarkReferralFeePaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markReferralFeePaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markReferralFeePaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkReferralFeePaidMutationOptions(options));
+    }
+
+export const getMarkSalesOverheadPaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/overhead/sales/mark-paid`
+}
+
+/**
+ * @summary Mark sales commission as paid via unified /overhead path — date set server-side (manager+)
+ */
+export const markSalesOverheadPaid = async (pinId: string, options?: RequestInit): Promise<OverheadEnvelope> => {
+
+  return customFetch<OverheadEnvelope>(getMarkSalesOverheadPaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkSalesOverheadPaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markSalesOverheadPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markSalesOverheadPaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markSalesOverheadPaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markSalesOverheadPaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markSalesOverheadPaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkSalesOverheadPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markSalesOverheadPaid>>>
+
+    export type MarkSalesOverheadPaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark sales commission as paid via unified /overhead path — date set server-side (manager+)
+ */
+export const useMarkSalesOverheadPaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markSalesOverheadPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markSalesOverheadPaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkSalesOverheadPaidMutationOptions(options));
+    }
+
+export const getMarkCanvassingCommissionPaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/overhead/canvassing/mark-paid`
+}
+
+/**
+ * @summary Mark canvassing commission as paid — date set server-side (manager+)
+ */
+export const markCanvassingCommissionPaid = async (pinId: string, options?: RequestInit): Promise<OverheadEnvelope> => {
+
+  return customFetch<OverheadEnvelope>(getMarkCanvassingCommissionPaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkCanvassingCommissionPaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markCanvassingCommissionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markCanvassingCommissionPaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markCanvassingCommissionPaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markCanvassingCommissionPaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markCanvassingCommissionPaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkCanvassingCommissionPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markCanvassingCommissionPaid>>>
+
+    export type MarkCanvassingCommissionPaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark canvassing commission as paid — date set server-side (manager+)
+ */
+export const useMarkCanvassingCommissionPaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markCanvassingCommissionPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markCanvassingCommissionPaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkCanvassingCommissionPaidMutationOptions(options));
+    }
+
+export const getMarkPmOverheadPaidUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/overhead/pm/mark-paid`
+}
+
+/**
+ * @summary Mark PM commission as paid via unified /overhead path — date set server-side (manager+)
+ */
+export const markPmOverheadPaid = async (pinId: string, options?: RequestInit): Promise<OverheadEnvelope> => {
+
+  return customFetch<OverheadEnvelope>(getMarkPmOverheadPaidUrl(pinId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkPmOverheadPaidMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markPmOverheadPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markPmOverheadPaid>>, TError,{pinId: string}, TContext> => {
+
+const mutationKey = ['markPmOverheadPaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markPmOverheadPaid>>, {pinId: string}> = (props) => {
+          const {pinId} = props ?? {};
+
+          return  markPmOverheadPaid(pinId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkPmOverheadPaidMutationResult = NonNullable<Awaited<ReturnType<typeof markPmOverheadPaid>>>
+
+    export type MarkPmOverheadPaidMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Mark PM commission as paid via unified /overhead path — date set server-side (manager+)
+ */
+export const useMarkPmOverheadPaid = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markPmOverheadPaid>>, TError,{pinId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markPmOverheadPaid>>,
+        TError,
+        {pinId: string},
+        TContext
+      > => {
+      return useMutation(getMarkPmOverheadPaidMutationOptions(options));
     }
 
 export const getGetPinProfitabilityUrl = (pinId: string,) => {

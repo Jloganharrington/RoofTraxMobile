@@ -7366,6 +7366,775 @@ export const MarkPmCommissionPaidResponse = zod.object({
 
 
 /**
+ * @summary List change orders for a lead (any authenticated company member)
+ */
+export const ListChangeOrdersParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const ListChangeOrdersHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ListChangeOrdersResponse = zod.object({
+  "changeOrders": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+}))
+})
+
+
+/**
+ * amount_cents may be negative for deductive change orders (scope reductions). No positive-only constraint is applied. approved_at is stamped server-side when status = 'approved'.
+ * @summary Create a change order for a lead (manager+)
+ */
+export const CreateChangeOrderParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const CreateChangeOrderHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+export const createChangeOrderBodyRequiredToCompleteScopeDefault = false;
+export const createChangeOrderBodyLineItemsItemQuantityDefault = 1;
+export const createChangeOrderBodyLineItemsItemQuantityExclusiveMin = 0;
+
+export const createChangeOrderBodyLineItemsItemSortOrderDefault = 0;
+export const createChangeOrderBodyLineItemsDefault = [];
+
+export const CreateChangeOrderBody = zod.object({
+  "id": zod.string().uuid().optional().describe('Client-generated UUID for offline idempotency. When supplied the server uses it as the row id; duplicate id returns 409.'),
+  "description": zod.string().min(1),
+  "requiredToCompleteScope": zod.boolean().default(createChangeOrderBodyRequiredToCompleteScopeDefault),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string().uuid().optional().describe('Client-generated UUID for offline idempotency. When supplied the server uses it as the row id; duplicate id returns 409.'),
+  "description": zod.string().min(1),
+  "quantity": zod.number().gt(createChangeOrderBodyLineItemsItemQuantityExclusiveMin).default(createChangeOrderBodyLineItemsItemQuantityDefault),
+  "unitPriceCents": zod.number().describe('May be negative for credit items.'),
+  "priceBookItemId": zod.string().optional(),
+  "sortOrder": zod.number().default(createChangeOrderBodyLineItemsItemSortOrderDefault)
+})).default(createChangeOrderBodyLineItemsDefault)
+}).describe('amountCents is DERIVED from lineItems — do not supply it. Any authenticated company member may create (field reps capture on site; managers approve separately).')
+
+export const CreateChangeOrderResponse = zod.object({
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * company_id and pin_id are NEVER client-settable — the stored row is fetched and company verified from the DB. When status transitions to 'approved', approved_at is stamped server-side. When status transitions away from 'approved', approved_at is cleared.
+ * @summary Update a change order (manager+)
+ */
+export const UpdateChangeOrderParams = zod.object({
+  "changeOrderId": zod.coerce.string()
+})
+
+export const UpdateChangeOrderHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+export const UpdateChangeOrderBody = zod.object({
+  "description": zod.string().min(1).optional(),
+  "requiredToCompleteScope": zod.boolean().optional()
+}).describe('Mutable fields: description, requiredToCompleteScope. pin_id, company_id, and amountCents are NOT accepted. Use \/approve to approve, \/void to void.')
+
+export const UpdateChangeOrderResponse = zod.object({
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * @summary Delete a change order (manager+)
+ */
+export const DeleteChangeOrderParams = zod.object({
+  "changeOrderId": zod.coerce.string()
+})
+
+export const DeleteChangeOrderHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const DeleteChangeOrderResponse = zod.void()
+
+
+/**
+ * Stores the document and signature paths. homeownerSignedAt and repSignedAt are always server-stamped — never accepted from the client.
+ * @summary Sign a change order (any authenticated member)
+ */
+export const SignChangeOrderParams = zod.object({
+  "changeOrderId": zod.coerce.string()
+})
+
+export const SignChangeOrderHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+
+
+
+export const SignChangeOrderBody = zod.object({
+  "pdfBase64": zod.string().optional().describe('Base64-encoded PDF generated on-device. Server decodes, stores to object storage, and sets documentObjectPath automatically.'),
+  "sha256": zod.string().optional().describe('SHA-256 hex digest of the raw PDF bytes (used with pdfBase64).'),
+  "documentObjectPath": zod.string().min(1).optional().describe('Pre-uploaded object-storage path (CRM \/ direct-upload callers).'),
+  "documentSha256": zod.string().min(1).optional(),
+  "homeownerName": zod.string().optional().describe('Display name embedded in the audit record.'),
+  "repName": zod.string().optional().describe('Display name embedded in the audit record.'),
+  "homeownerSignaturePath": zod.string().optional().describe('Optional — legacy callers that upload separate signature images. The mobile flow embeds signatures inside the PDF.'),
+  "repSignaturePath": zod.string().optional()
+}).describe('Signs the change order. Either pdfBase64 (mobile path — server uploads the PDF to object storage) or documentObjectPath (CRM \/ pre-upload path) is required; the server returns 400 if neither is supplied. homeownerSignedAt and repSignedAt are always server-stamped (NOW()).')
+
+export const SignChangeOrderResponse = zod.object({
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Requires documentObjectPath AND homeownerSignedAt to be set (via /sign). Returns 422 if either is missing. Returns 409 if already voided.
+ * @summary Approve a change order (manager+, gated by document + homeowner signature)
+ */
+export const ApproveChangeOrderParams = zod.object({
+  "changeOrderId": zod.coerce.string()
+})
+
+export const ApproveChangeOrderHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const ApproveChangeOrderResponse = zod.object({
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Voided in place — never deleted. A voided CO can be replaced with a new one on the same pin. Returns 409 if already voided.
+ * @summary Void a change order in place (manager+)
+ */
+export const VoidChangeOrderParams = zod.object({
+  "changeOrderId": zod.coerce.string()
+})
+
+export const VoidChangeOrderHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const VoidChangeOrderBody = zod.object({
+  "voidReason": zod.string().optional()
+})
+
+export const VoidChangeOrderResponse = zod.object({
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Recomputes change_orders.amount_cents after insert. Returns 409 if the change order is voided.
+ * @summary Add a line item to a change order (any authenticated member)
+ */
+export const AddChangeOrderLineItemParams = zod.object({
+  "changeOrderId": zod.coerce.string()
+})
+
+export const AddChangeOrderLineItemHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+export const addChangeOrderLineItemBodyQuantityDefault = 1;
+export const addChangeOrderLineItemBodyQuantityExclusiveMin = 0;
+
+export const addChangeOrderLineItemBodySortOrderDefault = 0;
+
+export const AddChangeOrderLineItemBody = zod.object({
+  "id": zod.string().uuid().optional().describe('Client-generated UUID for offline idempotency. When supplied the server uses it as the row id; duplicate id returns 409.'),
+  "description": zod.string().min(1),
+  "quantity": zod.number().gt(addChangeOrderLineItemBodyQuantityExclusiveMin).default(addChangeOrderLineItemBodyQuantityDefault),
+  "unitPriceCents": zod.number().describe('May be negative for credit items.'),
+  "priceBookItemId": zod.string().optional(),
+  "sortOrder": zod.number().default(addChangeOrderLineItemBodySortOrderDefault)
+})
+
+export const AddChangeOrderLineItemResponse = zod.object({
+  "lineItem": zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Recomputes change_orders.amount_cents after update.
+ * @summary Update a line item (any authenticated member)
+ */
+export const UpdateChangeOrderLineItemParams = zod.object({
+  "changeOrderId": zod.coerce.string(),
+  "lineItemId": zod.coerce.string()
+})
+
+export const UpdateChangeOrderLineItemHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+
+export const updateChangeOrderLineItemBodyQuantityExclusiveMin = 0;
+
+
+
+export const UpdateChangeOrderLineItemBody = zod.object({
+  "description": zod.string().min(1).optional(),
+  "quantity": zod.number().gt(updateChangeOrderLineItemBodyQuantityExclusiveMin).optional(),
+  "unitPriceCents": zod.number().optional(),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number().optional()
+}).describe('All fields optional.')
+
+export const UpdateChangeOrderLineItemResponse = zod.object({
+  "lineItem": zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Recomputes change_orders.amount_cents after delete.
+ * @summary Delete a line item (any authenticated member)
+ */
+export const DeleteChangeOrderLineItemParams = zod.object({
+  "changeOrderId": zod.coerce.string(),
+  "lineItemId": zod.coerce.string()
+})
+
+export const DeleteChangeOrderLineItemHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const DeleteChangeOrderLineItemResponse = zod.object({
+  "changeOrder": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "description": zod.string(),
+  "amountCents": zod.number().describe('DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate.'),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "requiredToCompleteScope": zod.boolean().describe('true = hidden condition \/ undocumented work required to finish the original scope (supplement candidate on insurance jobs).'),
+  "documentObjectPath": zod.string().nullable(),
+  "documentSha256": zod.string().nullish(),
+  "homeownerSignaturePath": zod.string().nullish(),
+  "homeownerSignedAt": zod.coerce.date().nullable().describe('Server-stamped when \/sign is called.'),
+  "repSignaturePath": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "approvedAt": zod.coerce.date().nullable().describe('Server-stamped when \/approve is called; null otherwise.'),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "emailedAt": zod.coerce.date().nullish().describe('Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.'),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "changeOrderId": zod.string(),
+  "companyId": zod.string(),
+  "description": zod.string(),
+  "quantity": zod.string().describe('Numeric string (e.g. \"1.0000\"). Stored as numeric(10,4).'),
+  "unitPriceCents": zod.number().describe('Unit price in cents. May be negative for credit items.'),
+  "totalCents": zod.number().describe('Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible.'),
+  "priceBookItemId": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Accepts all five overhead amount fields. Paid dates are NOT accepted here — use the dedicated mark-paid sub-endpoints so the server always controls when an overhead item is recorded as paid. These fields are NOT writable via the generic PATCH /pins/:pinId or PATCH /pins/:pinId/profile.
+ * @summary Update job overhead amounts for a lead (manager+)
+ */
+export const UpdateOverheadParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const UpdateOverheadHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const updateOverheadBodyLeadAcquisitionCostCentsMin = 0;
+
+export const updateOverheadBodyReferralFeeCentsMin = 0;
+
+export const updateOverheadBodySalesCommissionCentsMin = 0;
+
+export const updateOverheadBodyCanvassingCommissionCentsMin = 0;
+
+export const updateOverheadBodyPmCommissionCentsMin = 0;
+
+
+
+export const UpdateOverheadBody = zod.object({
+  "leadAcquisitionCostCents": zod.number().min(updateOverheadBodyLeadAcquisitionCostCentsMin).nullish(),
+  "referralFeeCents": zod.number().min(updateOverheadBodyReferralFeeCentsMin).nullish(),
+  "salesCommissionCents": zod.number().min(updateOverheadBodySalesCommissionCentsMin).nullish(),
+  "canvassingCommissionCents": zod.number().min(updateOverheadBodyCanvassingCommissionCentsMin).nullish(),
+  "pmCommissionCents": zod.number().min(updateOverheadBodyPmCommissionCentsMin).nullish()
+}).describe('Update overhead amounts. All fields optional. Paid dates are NOT accepted here — use the mark-paid sub-endpoints.')
+
+export const UpdateOverheadResponse = zod.object({
+  "overhead": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "leadAcquisitionPaidDate": zod.coerce.date().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "referralFeePaidDate": zod.coerce.date().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "canvassingCommissionCents": zod.number().nullish(),
+  "canvassingCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).')
+})
+
+
+/**
+ * @summary Mark lead acquisition cost as paid — date set server-side (manager+)
+ */
+export const MarkLeadAcquisitionPaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkLeadAcquisitionPaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkLeadAcquisitionPaidResponse = zod.object({
+  "overhead": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "leadAcquisitionPaidDate": zod.coerce.date().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "referralFeePaidDate": zod.coerce.date().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "canvassingCommissionCents": zod.number().nullish(),
+  "canvassingCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).')
+})
+
+
+/**
+ * @summary Mark referral fee as paid — date set server-side (manager+)
+ */
+export const MarkReferralFeePaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkReferralFeePaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkReferralFeePaidResponse = zod.object({
+  "overhead": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "leadAcquisitionPaidDate": zod.coerce.date().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "referralFeePaidDate": zod.coerce.date().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "canvassingCommissionCents": zod.number().nullish(),
+  "canvassingCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).')
+})
+
+
+/**
+ * @summary Mark sales commission as paid via unified /overhead path — date set server-side (manager+)
+ */
+export const MarkSalesOverheadPaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkSalesOverheadPaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkSalesOverheadPaidResponse = zod.object({
+  "overhead": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "leadAcquisitionPaidDate": zod.coerce.date().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "referralFeePaidDate": zod.coerce.date().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "canvassingCommissionCents": zod.number().nullish(),
+  "canvassingCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).')
+})
+
+
+/**
+ * @summary Mark canvassing commission as paid — date set server-side (manager+)
+ */
+export const MarkCanvassingCommissionPaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkCanvassingCommissionPaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkCanvassingCommissionPaidResponse = zod.object({
+  "overhead": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "leadAcquisitionPaidDate": zod.coerce.date().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "referralFeePaidDate": zod.coerce.date().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "canvassingCommissionCents": zod.number().nullish(),
+  "canvassingCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).')
+})
+
+
+/**
+ * @summary Mark PM commission as paid via unified /overhead path — date set server-side (manager+)
+ */
+export const MarkPmOverheadPaidParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const MarkPmOverheadPaidHeader = zod.object({
+  "Authorization": zod.string().optional().describe('Opaque session token — `Bearer <sid>`.')
+})
+
+export const MarkPmOverheadPaidResponse = zod.object({
+  "overhead": zod.object({
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "leadAcquisitionPaidDate": zod.coerce.date().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "referralFeePaidDate": zod.coerce.date().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "canvassingCommissionCents": zod.number().nullish(),
+  "canvassingCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+}).describe('Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).')
+})
+
+
+/**
  * @summary Get computed profitability summary for a lead (all money in cents)
  */
 export const GetPinProfitabilityParams = zod.object({
@@ -7389,10 +8158,16 @@ export const GetPinProfitabilityResponse = zod.object({
   "referralFeeCents": zod.number(),
   "salesCommissionCents": zod.number(),
   "pmCommissionCents": zod.number(),
-  "totalCommissionCents": zod.number().describe('Sum of all four commission\/acquisition cost fields.'),
+  "canvassingCommissionCents": zod.number(),
+  "totalCommissionCents": zod.number().describe('Sum of all five commission\/overhead lines (incl. canvassing).'),
   "totalCostCents": zod.number().describe('totalExpenseCents + totalCommissionCents.'),
-  "netProfitCents": zod.number().describe('totalPaymentsCents - totalCostCents.'),
-  "marginPct": zod.number().nullish().describe('netProfitCents \/ totalPaymentsCents as a percentage (0–100), rounded to 2 decimal places. Null when totalPaymentsCents = 0.')
+  "netProfitCents": zod.number().describe('totalPaymentsCents − totalCostCents (cash basis).'),
+  "expectedTotalCents": zod.number().describe('Expected revenue baseline. Insurance: GREATEST(revisedContractCents, approvedRcvAmountCents). Retail: revisedContractCents. Uses the revised contract as the baseline so a CO that raises the contract also raises the projected revenue.'),
+  "cashMarginPct": zod.number().describe('(totalPaymentsCents − totalCostCents) \/ totalPaymentsCents × 100. Returns 0 (not NaN or null) when totalPaymentsCents = 0.'),
+  "approvedCoCents": zod.number().describe('Sum of non-voided approved change-order amounts.'),
+  "revisedContractCents": zod.number().describe('base contract + approvedCoCents. Accrual-basis contract value after all approved (non-voided) change orders.'),
+  "netProjectMarginCents": zod.number().describe('revisedContractCents − totalCostCents.'),
+  "netProjectMarginPct": zod.number().describe('netProjectMarginCents \/ revisedContractCents × 100. Returns 0 (not NaN or null) when revisedContractCents = 0. Primary margin metric; replaces projectedMarginPct.')
 })
 })
 

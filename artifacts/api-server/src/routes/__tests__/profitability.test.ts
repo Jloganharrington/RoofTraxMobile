@@ -10,19 +10,29 @@
  *   6. field_rep CAN read (no write restriction on this read-only endpoint)
  *   7. Migration idempotency — CREATE OR REPLACE VIEW is safe to re-run
  *
- * Migration 027 additions (expected_total_cents + cash/projected margin pcts):
- *   8.  retail lead → expectedTotalCents = contractAmountCents
+ * Migration 027 additions (expected_total_cents + cash margin pct):
+ *   8.  retail lead → expectedTotalCents = revisedContractCents
  *   9.  retail reference: $15k contract / $0 costs / $0 collected
- *         → 100% projected / 0% cash / $0 net profit
- *   10. insurance where approvedRcv > contract → expected = approvedRcv
- *   11. insurance where contract > approvedRcv → expected = contract
- *   12. zero-collected lead (nonzero expected) → cashMarginPct = 0 (not NaN/null),
- *         projectedMarginPct computed from expectedTotal
- *   13. zero-contract lead → projectedMarginPct = 0 (not NaN/null)
- *   14. hand-verify cash and projected margins for a fully-seeded insurance lead
+ *         → 100% netProjectMarginPct / 0% cash / $0 net profit
+ *   10. insurance where approvedRcv > contract → expectedTotal = approvedRcv
+ *   11. insurance where contract > approvedRcv → expectedTotal = contract
+ *   12. zero-collected lead (nonzero revised) → cashMarginPct = 0 (not NaN/null),
+ *         netProjectMarginPct still computed
+ *   13. zero-contract lead → netProjectMarginPct = 0 (not NaN/null)
+ *   14. hand-verify cash margin and netProjectMarginPct for insurance lead
+ *
+ * Migration 029 additions (FINANCIALS STEP 5, Step 2):
+ *   15. worked-example checkpoint: $15k + $3.5k CO − $10.5k costs = 43.24%
+ *   16. pending CO does NOT move revisedContractCents
+ *   17. voided CO does NOT move revisedContractCents
+ *   18. deductive (negative) CO lowers revisedContractCents
+ *   19. zero revised contract → netProjectMarginPct = 0 (not NaN)
+ *   20. insurance: revised > approvedRcv → expectedTotal = revised
+ *   21. insurance: approvedRcv > revised  → expectedTotal = approvedRcv
  */
 
 import {
+  changeOrdersTable,
   companiesTable,
   customerInvoicesTable,
   db,
@@ -192,7 +202,9 @@ describe('empty pin → all zeros', () => {
     expect(p.totalCostCents).toBe(0);
     expect(p.netProfitCents).toBe(0);
     expect(p.cashMarginPct).toBe(0);
-    expect(p.projectedMarginPct).toBe(0);
+    expect(p.netProjectMarginPct).toBe(0);
+    // projectedMarginPct removed from API response (Step 2d of FINANCIALS STEP 5)
+    expect(p).not.toHaveProperty('projectedMarginPct');
   });
 });
 
@@ -247,8 +259,10 @@ describe('profitability aggregation', () => {
     const p = res.body.profitability;
     // (1,500,000 − 700,000) / 1,500,000 × 100 = 53.33…%
     expect(p.cashMarginPct).toBeCloseTo(53.33, 1);
-    // marginPct field must not be present — removed in favour of cashMarginPct
+    // marginPct must not be present — removed in favour of cashMarginPct
     expect(p).not.toHaveProperty('marginPct');
+    // projectedMarginPct removed from API response in migration 029 (Step 2d)
+    expect(p).not.toHaveProperty('projectedMarginPct');
   });
 });
 
@@ -683,13 +697,14 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
     const res = await request(app).get(`/api/pins/${m027RetailPinId}/profitability`).set(auth());
     expect(res.status).toBe(200);
     const p = res.body.profitability;
-    expect(p.expectedTotalCents).toBe(1500000);          // $15,000 expected
-    expect(p.projectedMarginPct).toBeCloseTo(100.0, 1);  // 100% projected
-    expect(p.cashMarginPct).toBe(0);                     // 0% cash (guard)
-    expect(p.netProfitCents).toBe(0);                    // $0 net
-    expect(p.totalPaymentsCents).toBe(0);                // $0 collected → $15k balance due
+    expect(p.expectedTotalCents).toBe(1500000);           // $15,000 expected
+    // projectedMarginPct removed (Step 2d); netProjectMarginPct is the accrual metric
+    expect(p.netProjectMarginPct).toBeCloseTo(100.0, 1);  // 100% (no costs)
+    expect(p.cashMarginPct).toBe(0);                      // 0% cash (guard)
+    expect(p.netProfitCents).toBe(0);                     // $0 net
+    expect(p.totalPaymentsCents).toBe(0);                 // $0 collected → $15k balance due
     // Confirm no NaN / Infinity leaked
-    expect(Number.isFinite(p.projectedMarginPct)).toBe(true);
+    expect(Number.isFinite(p.netProjectMarginPct)).toBe(true);
     expect(Number.isFinite(p.cashMarginPct)).toBe(true);
   });
 
@@ -719,9 +734,9 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
     expect(p.totalPaymentsCents).toBe(0);
     expect(p.cashMarginPct).toBe(0);
     expect(Number.isFinite(p.cashMarginPct)).toBe(true);
-    // projectedMarginPct must still be computed (not 0) because expectedTotal > 0
-    expect(p.expectedTotalCents).toBeGreaterThan(0);
-    expect(p.projectedMarginPct).toBeGreaterThan(0);
+    // netProjectMarginPct must be nonzero because revisedContractCents > 0
+    expect(p.revisedContractCents).toBeGreaterThan(0);
+    expect(p.netProjectMarginPct).toBeGreaterThan(0);
   });
 
   // ── 13. zero-contract lead → projectedMarginPct = 0, not NaN ─────────────
@@ -732,9 +747,11 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
     expect(res.status).toBe(200);
     const p = res.body.profitability;
     expect(p.expectedTotalCents).toBe(0);
-    expect(p.projectedMarginPct).toBe(0);
+    // netProjectMarginPct guard fires when revisedContractCents = 0
+    expect(p.revisedContractCents).toBe(0);
+    expect(p.netProjectMarginPct).toBe(0);
     expect(p.cashMarginPct).toBe(0);
-    expect(Number.isFinite(p.projectedMarginPct)).toBe(true);
+    expect(Number.isFinite(p.netProjectMarginPct)).toBe(true);
     expect(Number.isFinite(p.cashMarginPct)).toBe(true);
   });
 
@@ -755,7 +772,12 @@ describe('migration 027 — expected_total_cents + margin pcts', () => {
     // cash_margin_pct  = (900k − 700k) / 900k × 100 = 22.22…%
     expect(p.cashMarginPct).toBeCloseTo(22.22, 1);
 
-    // projected_margin_pct = (1,800k − 700k) / 1,800k × 100 = 61.11…%
-    expect(p.projectedMarginPct).toBeCloseTo(61.11, 1);
+    // net_project_margin_pct = (revised − costs) / revised × 100
+    // revised = base_contract = 1,200,000 (no COs on this pin)
+    // cost    = 700,000 (sales 500k + pm 200k)
+    // pct     = 500,000 / 1,200,000 × 100 = 41.67%
+    expect(p.revisedContractCents).toBe(1200000);
+    expect(p.netProjectMarginCents).toBe(500000);
+    expect(p.netProjectMarginPct).toBeCloseTo(41.67, 1);
   });
 });

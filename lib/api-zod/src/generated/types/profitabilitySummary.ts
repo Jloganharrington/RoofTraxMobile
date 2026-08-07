@@ -24,15 +24,23 @@ export interface ProfitabilitySummary {
   referralFeeCents: number;
   salesCommissionCents: number;
   pmCommissionCents: number;
-  /** Sum of all four commission/acquisition cost fields. */
+  canvassingCommissionCents: number;
+  /** Sum of all five commission/overhead lines (incl. canvassing). */
   totalCommissionCents: number;
   /** totalExpenseCents + totalCommissionCents. */
   totalCostCents: number;
-  /** totalPaymentsCents - totalCostCents. */
+  /** totalPaymentsCents − totalCostCents (cash basis). */
   netProfitCents: number;
-  /**
-     * netProfitCents / totalPaymentsCents as a percentage (0–100), rounded to 2 decimal places. Null when totalPaymentsCents = 0.
-     * @nullable
-     */
-  marginPct?: number | null;
+  /** Expected revenue baseline. Insurance: GREATEST(revisedContractCents, approvedRcvAmountCents). Retail: revisedContractCents. Uses the revised contract as the baseline so a CO that raises the contract also raises the projected revenue. */
+  expectedTotalCents: number;
+  /** (totalPaymentsCents − totalCostCents) / totalPaymentsCents × 100. Returns 0 (not NaN or null) when totalPaymentsCents = 0. */
+  cashMarginPct: number;
+  /** Sum of non-voided approved change-order amounts. */
+  approvedCoCents: number;
+  /** base contract + approvedCoCents. Accrual-basis contract value after all approved (non-voided) change orders. */
+  revisedContractCents: number;
+  /** revisedContractCents − totalCostCents. */
+  netProjectMarginCents: number;
+  /** netProjectMarginCents / revisedContractCents × 100. Returns 0 (not NaN or null) when revisedContractCents = 0. Primary margin metric; replaces projectedMarginPct. */
+  netProjectMarginPct: number;
 }

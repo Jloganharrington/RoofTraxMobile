@@ -4013,6 +4013,230 @@ export interface UpdateCommissionsInput {
   pmCommissionCents?: number | null;
 }
 
+export interface ChangeOrderLineItem {
+  id: string;
+  changeOrderId: string;
+  companyId: string;
+  description: string;
+  /** Numeric string (e.g. "1.0000"). Stored as numeric(10,4). */
+  quantity: string;
+  /** Unit price in cents. May be negative for credit items. */
+  unitPriceCents: number;
+  /** Stored total: round(quantity × unitPriceCents). Immutable after creation so signed documents remain reproducible. */
+  totalCents: number;
+  /** @nullable */
+  priceBookItemId?: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChangeOrderStatus = typeof ChangeOrderStatus[keyof typeof ChangeOrderStatus];
+
+
+export const ChangeOrderStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface ChangeOrder {
+  id: string;
+  companyId: string;
+  pinId: string;
+  description: string;
+  /** DERIVED — always the sum of lineItems[].totalCents. Never client-settable. May be negative when deductive items dominate. */
+  amountCents: number;
+  status: ChangeOrderStatus;
+  /** true = hidden condition / undocumented work required to finish the original scope (supplement candidate on insurance jobs). */
+  requiredToCompleteScope: boolean;
+  /** @nullable */
+  documentObjectPath: string | null;
+  /** @nullable */
+  documentSha256?: string | null;
+  /** @nullable */
+  homeownerSignaturePath?: string | null;
+  /**
+     * Server-stamped when /sign is called.
+     * @nullable
+     */
+  homeownerSignedAt: string | null;
+  /** @nullable */
+  repSignaturePath?: string | null;
+  /** @nullable */
+  repSignedAt?: string | null;
+  /**
+     * Server-stamped when /approve is called; null otherwise.
+     * @nullable
+     */
+  approvedAt: string | null;
+  /** @nullable */
+  voidedAt: string | null;
+  /** @nullable */
+  voidedByUserId?: string | null;
+  /** @nullable */
+  voidReason?: string | null;
+  /**
+     * Server-stamped when the signed PDF is successfully emailed on approval (best-effort via per-user SMTP). Null if SMTP is not configured or the send failed.
+     * @nullable
+     */
+  emailedAt?: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  lineItems: ChangeOrderLineItem[];
+}
+
+export interface ChangeOrderLineItemEnvelope {
+  lineItem: ChangeOrderLineItem;
+  changeOrder: ChangeOrder;
+}
+
+export interface CreateLineItemInput {
+  /** Client-generated UUID for offline idempotency. When supplied the server uses it as the row id; duplicate id returns 409. */
+  id?: string;
+  /** @minLength 1 */
+  description: string;
+  /** @exclusiveMinimum 0 */
+  quantity?: number;
+  /** May be negative for credit items. */
+  unitPriceCents: number;
+  priceBookItemId?: string;
+  sortOrder?: number;
+}
+
+/**
+ * All fields optional.
+ */
+export interface UpdateLineItemInput {
+  /** @minLength 1 */
+  description?: string;
+  /** @exclusiveMinimum 0 */
+  quantity?: number;
+  unitPriceCents?: number;
+  /** @nullable */
+  priceBookItemId?: string | null;
+  sortOrder?: number;
+}
+
+/**
+ * Signs the change order. Either pdfBase64 (mobile path — server uploads the PDF to object storage) or documentObjectPath (CRM / pre-upload path) is required; the server returns 400 if neither is supplied. homeownerSignedAt and repSignedAt are always server-stamped (NOW()).
+ */
+export interface SignChangeOrderInput {
+  /** Base64-encoded PDF generated on-device. Server decodes, stores to object storage, and sets documentObjectPath automatically. */
+  pdfBase64?: string;
+  /** SHA-256 hex digest of the raw PDF bytes (used with pdfBase64). */
+  sha256?: string;
+  /**
+     * Pre-uploaded object-storage path (CRM / direct-upload callers).
+     * @minLength 1
+     */
+  documentObjectPath?: string;
+  /** @minLength 1 */
+  documentSha256?: string;
+  /** Display name embedded in the audit record. */
+  homeownerName?: string;
+  /** Display name embedded in the audit record. */
+  repName?: string;
+  /** Optional — legacy callers that upload separate signature images. The mobile flow embeds signatures inside the PDF. */
+  homeownerSignaturePath?: string;
+  repSignaturePath?: string;
+}
+
+export interface VoidChangeOrderInput {
+  voidReason?: string;
+}
+
+export interface ChangeOrderEnvelope {
+  changeOrder: ChangeOrder;
+}
+
+export interface ChangeOrdersEnvelope {
+  changeOrders: ChangeOrder[];
+}
+
+/**
+ * amountCents is DERIVED from lineItems — do not supply it. Any authenticated company member may create (field reps capture on site; managers approve separately).
+ */
+export interface CreateChangeOrderInput {
+  /** Client-generated UUID for offline idempotency. When supplied the server uses it as the row id; duplicate id returns 409. */
+  id?: string;
+  /** @minLength 1 */
+  description: string;
+  requiredToCompleteScope?: boolean;
+  lineItems?: CreateLineItemInput[];
+}
+
+/**
+ * Mutable fields: description, requiredToCompleteScope. pin_id, company_id, and amountCents are NOT accepted. Use /approve to approve, /void to void.
+ */
+export interface UpdateChangeOrderInput {
+  /** @minLength 1 */
+  description?: string;
+  requiredToCompleteScope?: boolean;
+}
+
+/**
+ * Per-lead job overhead: five indirect cost lines, each with an amount and a server-stamped paid date (null = committed but unpaid).
+ */
+export interface OverheadData {
+  /** @nullable */
+  leadAcquisitionCostCents?: number | null;
+  /** @nullable */
+  leadAcquisitionPaidDate?: string | null;
+  /** @nullable */
+  referralFeeCents?: number | null;
+  /** @nullable */
+  referralFeePaidDate?: string | null;
+  /** @nullable */
+  salesCommissionCents?: number | null;
+  /** @nullable */
+  salesCommissionPaidDate?: string | null;
+  /** @nullable */
+  canvassingCommissionCents?: number | null;
+  /** @nullable */
+  canvassingCommissionPaidDate?: string | null;
+  /** @nullable */
+  pmCommissionCents?: number | null;
+  /** @nullable */
+  pmCommissionPaidDate?: string | null;
+}
+
+export interface OverheadEnvelope {
+  overhead: OverheadData;
+}
+
+/**
+ * Update overhead amounts. All fields optional. Paid dates are NOT accepted here — use the mark-paid sub-endpoints.
+ */
+export interface UpdateOverheadInput {
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  leadAcquisitionCostCents?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  referralFeeCents?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  salesCommissionCents?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  canvassingCommissionCents?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  pmCommissionCents?: number | null;
+}
+
 export interface ProfitabilitySummary {
   pinId: string;
   /** Sum of all payment ledger entries. */
@@ -4031,22 +4255,25 @@ export interface ProfitabilitySummary {
   referralFeeCents: number;
   salesCommissionCents: number;
   pmCommissionCents: number;
-  /** Sum of all four commission/acquisition cost fields. */
+  canvassingCommissionCents: number;
+  /** Sum of all five commission/overhead lines (incl. canvassing). */
   totalCommissionCents: number;
   /** totalExpenseCents + totalCommissionCents. */
   totalCostCents: number;
-  /** totalPaymentsCents - totalCostCents. */
+  /** totalPaymentsCents − totalCostCents (cash basis). */
   netProfitCents: number;
-  /**
-     * netProfitCents / totalPaymentsCents as a percentage (0–100), rounded to 2 decimal places. Null when totalPaymentsCents = 0.
-     * @nullable
-     */
-  /** Expected revenue baseline in cents (migration 027). Insurance: GREATEST(contract,rcv). Retail: contract. */
-  expectedTotalCents?: number;
-  /** (payments - costs) / payments * 100. Returns 0 when no payments. */
-  cashMarginPct?: number;
-  /** (expectedTotal - costs) / expectedTotal * 100. Returns 0 when expectedTotal = 0. */
-  projectedMarginPct?: number;
+  /** Expected revenue baseline. Insurance: GREATEST(revisedContractCents, approvedRcvAmountCents). Retail: revisedContractCents. Uses the revised contract as the baseline so a CO that raises the contract also raises the projected revenue. */
+  expectedTotalCents: number;
+  /** (totalPaymentsCents − totalCostCents) / totalPaymentsCents × 100. Returns 0 (not NaN or null) when totalPaymentsCents = 0. */
+  cashMarginPct: number;
+  /** Sum of non-voided approved change-order amounts. */
+  approvedCoCents: number;
+  /** base contract + approvedCoCents. Accrual-basis contract value after all approved (non-voided) change orders. */
+  revisedContractCents: number;
+  /** revisedContractCents − totalCostCents. */
+  netProjectMarginCents: number;
+  /** netProjectMarginCents / revisedContractCents × 100. Returns 0 (not NaN or null) when revisedContractCents = 0. Primary margin metric; replaces projectedMarginPct. */
+  netProjectMarginPct: number;
 }
 
 export interface ProfitabilitySummaryEnvelope {
