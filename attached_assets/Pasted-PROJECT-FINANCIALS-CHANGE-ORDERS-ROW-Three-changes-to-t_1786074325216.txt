@@ -1,0 +1,74 @@
+PROJECT FINANCIALS — CHANGE ORDERS ROW
+
+Three changes to the waterfall in
+artifacts/rooftrax-web/src/pages/leads/LeadProfile.tsx.
+
+1 [LOCKED] Remove the "Revised Contract Value" subtotal row from the
+   waterfall. It duplicates the Contract Value card at the top of the tab and
+   gives the screen two competing "contract value" figures. The waterfall
+   reads fine without it:
+
+       Contract Value          $15,000
+       Change Orders          + $3,500     ← clickable
+       Cost of Goods Sold      ($8,000)
+       Job Overhead            ($2,500)
+       ──────────────────────────────────
+       Net Project Margin        $8,000  (43.2%)
+
+   Keep revised_contract_cents in the API response and the view — it is the
+   denominator for net_project_margin_pct and other surfaces will want it.
+   This removes a UI row, not a field.
+
+   Instead, surface the revised total on the Contract Value CARD as a
+   subline (e.g. "+$3,500 CO · $18,500 revised") so the current contract
+   reality is visible in one place rather than two.
+
+2 [LOCKED] The Change Orders row must ALWAYS render, including at $0.
+   It is currently gated behind `approvedCoCents !== 0`, so on a job with no
+   approved change orders the row vanishes and there is no way to reach the
+   list — including to see PENDING change orders awaiting approval, which is
+   exactly when someone needs to look. Show "$0" or "—" and keep it clickable.
+
+3 [LOCKED] Clicking the row opens a modal listing that lead's change orders.
+   ChangeOrdersPanel already exists in this file (~line 1699) with
+   useListPinChangeOrders, approve, and void wired up — reuse it, do not
+   write a second list.
+
+   The modal shows ALL change orders with their status, not just approved:
+     - approved  → counted in the row total
+     - pending   → visible, clearly marked as not yet counted
+     - rejected / voided → visible, clearly excluded
+   Each entry: description, line items, total, status, signed-document link,
+   and the manager-only Approve action already built.
+
+   The ROW total stays approved-only — it must continue to match
+   approved_co_cents from the view. The modal is where the fuller picture
+   lives. If the row and the modal ever disagree, that is the bug.
+
+4 [LOCKED] Credits must read correctly throughout. Change orders may be
+   negative (credits against the job) at both the change-order and
+   line-item level. The row already color-codes and signs correctly —
+   verify the modal and the totals do too, and that a negative change order
+   REDUCES revised contract value rather than being treated as absolute.
+
+▶ CHECKPOINT
+  VERIFY:
+   - lead with zero change orders → row shows, reads $0 or —, opens an empty
+     modal with a sensible empty state
+   - lead with approved + pending COs → row total counts ONLY approved;
+     modal shows both with clear status
+   - negative (credit) change order → row shows − and red; revised contract
+     and net project margin both DECREASE. Paste the before/after numbers.
+   - approving a pending CO from the modal updates the row and the margin
+     without a page reload (invalidate the profitability query too, not just
+     the change-order list)
+   - field_rep sees the modal read-only, no Approve control, 403 on the API
+  INTEGRATION:
+   - the waterfall still reconciles: contract + approved COs − COGS −
+     overhead = net project margin, hand-verified on one real lead
+   - net_project_margin_pct still divides by revised_contract_cents even
+     though that row is no longer displayed — confirm the percentage is
+     unchanged for a lead with change orders
+   - Contract Value card subline matches the modal's approved total
+   - Insurance tab Claim Value Tracker unaffected
+   - typechecks all three; git diff --stat -- artifacts/mobile/ empty

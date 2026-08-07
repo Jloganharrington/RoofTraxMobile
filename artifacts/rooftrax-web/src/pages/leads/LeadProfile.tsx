@@ -19,6 +19,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -1357,6 +1363,7 @@ function ProjectFinancialsPanel({ pinId, isManager }: { pinId: string; isManager
   const p    = profData?.profitability;
 
   const [overheadOpen, setOverheadOpen] = useState(false);
+  const [coModalOpen,  setCoModalOpen]  = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -1436,23 +1443,32 @@ function ProjectFinancialsPanel({ pinId, isManager }: { pinId: string; isManager
           </span>
         </div>
 
-        {/* Row: Change Orders — only when nonzero */}
-        {approvedCoCents !== 0 && (
-          <div className="flex items-center justify-between px-4 py-2.5">
-            <span className="text-muted-foreground">Change Orders</span>
-            <span className={`tabular-nums font-semibold ${approvedCoCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {approvedCoCents >= 0 ? '+' : '−'}{formatCents(Math.abs(approvedCoCents))}
-            </span>
+        {/* Row: Change Orders — always visible; click opens full CO list modal */}
+        <button
+          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/40 transition-colors text-sm text-left"
+          onClick={() => setCoModalOpen(true)}>
+          <span className="text-muted-foreground">Change Orders</span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {approvedCoCents !== 0 ? (
+              <span className={`tabular-nums font-semibold ${approvedCoCents >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {approvedCoCents >= 0 ? '+' : '−'}{formatCents(Math.abs(approvedCoCents))}
+              </span>
+            ) : (
+              <span className="tabular-nums font-semibold text-muted-foreground">—</span>
+            )}
+            <ExternalLink className="h-3 w-3 text-muted-foreground" />
           </div>
-        )}
+        </button>
 
-        {/* Row: Revised Contract Value — separator / subtotal */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30">
-          <span className="font-bold">Revised Contract Value</span>
-          <span className="tabular-nums font-bold text-green-600 dark:text-green-400">
-            {formatCents(revisedCents)}
-          </span>
-        </div>
+        {/* Change Orders modal — reuses the existing ChangeOrdersPanel list */}
+        <Dialog open={coModalOpen} onOpenChange={setCoModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Change Orders</DialogTitle>
+            </DialogHeader>
+            <ChangeOrdersPanel pinId={pinId} isManager={isManager} isInsurance={false} />
+          </DialogContent>
+        </Dialog>
 
         {/* Row: Cost of Goods Sold */}
         <div className="flex items-center justify-between px-4 py-2.5">
@@ -1629,9 +1645,9 @@ function FinKpiCards({
                 ? (contractCents != null ? formatCents(contractCents) : contractAmount)
                 : '$0'}
             </p>
-            {approvedCoCents > 0 && (
-              <p className="text-xs text-green-500">
-                +{formatCents(approvedCoCents)} CO → {formatCents(revisedCents)}
+            {approvedCoCents !== 0 && (
+              <p className={`text-xs ${approvedCoCents >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {approvedCoCents >= 0 ? '+' : '−'}{formatCents(Math.abs(approvedCoCents))} CO · {formatCents(revisedCents)} revised
               </p>
             )}
           </>
