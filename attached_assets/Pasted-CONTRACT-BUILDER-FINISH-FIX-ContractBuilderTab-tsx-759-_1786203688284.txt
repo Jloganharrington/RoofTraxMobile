@@ -1,0 +1,169 @@
+CONTRACT BUILDER — FINISH & FIX
+
+ContractBuilderTab.tsx (759 lines) already implements scope packages with
+quantity/unit, covered-scope entry, send, document generation, void, and
+portal-link surfacing. This order closes two gaps and adds what's missing.
+Do NOT rebuild what exists.
+
+STANDING BOUNDARIES: never modify artifacts/mobile/; never hand-edit
+generated client files; server enforcement authoritative; integer cents.
+STOP at each ▶ CHECKPOINT, paste real output, push, wait for confirmation.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 [LOCKED] — OPENAPI RETROFIT                        ║
+╚═══════════════════════════════════════════════════════════╝
+⚠ The contracts endpoints are NOT in lib/api-spec/openapi.yaml — grep returns
+zero matches. Both routes/contracts.ts and routes/contractPortal.ts were
+built without spec entries, so no generated hooks exist, and
+ContractBuilderTab.tsx calls them via customFetch with hand-written path
+strings.
+
+This is the exact pattern that caused two production incidents in this repo:
+the legacy useGetMyProfile hitting a nonexistent /api/profile (broke Settings
+AND LeadProfile silently), and a hand-written query key that didn't match the
+generated one (left the financials waterfall stale after approving a change
+order). It must not be allowed to set into the contract flow, which is the
+most consequential surface in the app.
+
+1a. Add ALL endpoints from routes/contracts.ts to openapi.yaml:
+      GET/POST   /pins/{pinId}/contracts
+      GET/PATCH  /contracts/{contractId}
+      POST       /contracts/{contractId}/scope-packages
+      PATCH/DELETE /contracts/{contractId}/scope-packages/{pkgId}
+      POST       /contracts/{contractId}/send
+      POST       /contracts/{contractId}/generate-document
+      POST       /contracts/{contractId}/void
+    Endpoint shapes stay EXACTLY as built — the spec documents reality, do
+    not rename fields or paths.
+
+1b. Add the public endpoints from routes/contractPortal.ts as well:
+      GET  /portal/contract/{code}
+      POST /portal/contract/{code}/select/{pkgId}
+      GET  /portal/contract/{code}/document
+      POST /portal/contract/{code}/generate-document
+      POST /portal/contract/{code}/sign
+    The signing-portal build needs these generated too.
+
+1c. Regenerate the clients, then replace every customFetch call in
+    ContractBuilderTab.tsx with the generated hooks. Use generated
+    get*QueryKey functions for every queryKey AND every invalidateQueries —
+    no literal array keys.
+
+▶ CHECKPOINT 1
+  VERIFY:
+   - grep ContractBuilderTab.tsx for customFetch → zero results
+   - grep for literal queryKey arrays in that file → zero results
+   - create a contract, add a package, send it — each action refreshes the
+     view with no manual reload (proves invalidation keys match)
+  INTEGRATION:
+   - the change-order and profitability invalidations from the fix pass still
+     work — approve a change order, confirm the waterfall still updates live
+   - api-server vitest green; typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 [LOCKED] — BASE PRICE FROM THE ESTIMATE            ║
+╚═══════════════════════════════════════════════════════════╝
+covered_scope_cents is currently hand-typed. It is the SETTLEMENT ANCHOR —
+the number that argues a carrier's estimate is insufficient. Typing it by
+hand invites a figure that doesn't match the proof package you submitted,
+which is the one thing that would undermine it.
+
+2a. Insurance leads WITH an inspection: pull the covered scope from
+    inspections.estimate (jsonb). Offer it as a prefill with the source
+    stated ("from inspection estimate — $18,520"), editable, and set
+    contracts.scope_source = 'estimate'.
+2b. Retail leads or no inspection: fall back to pins.contract_amount
+    (legacy varchar — parse defensively, it may carry $ and commas) and
+    pins.contract_scope for the narrative. scope_source = 'manual'.
+2c. Show scope_source in the UI so a rep always knows whether the number
+    came from the estimate or was typed.
+2d. Per-package covered_amount_cents should also prefill from the estimate
+    where the estimate breaks down by trade. If it doesn't, leave manual and
+    say so — do not guess an allocation.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - insurance lead with an estimate → prefills, source labelled, editable
+   - retail lead → falls back to contract_amount, parses "$27,000.00" correctly
+   - lead with neither → empty, no crash, no NaN
+   - overriding the prefill persists and the source flips to manual
+  INTEGRATION:
+   - the estimate itself is unchanged — Contract Builder reads, never writes it
+   - Financials waterfall unaffected until a contract is SIGNED
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 [REASONING OK] — SEND FLOW + REP-ASSISTED PATH     ║
+╚═══════════════════════════════════════════════════════════╝
+3a. Sending: the rep needs to actually get the link to the homeowner. Provide
+    copy-to-clipboard and an email send via the existing per-user SMTP
+    (the same path signed_agreements uses, recording sent_at). SMS is out of
+    scope unless something already exists — do not add a provider.
+
+3b. Rep-assisted selection. Not every homeowner self-serves; a rep sitting at
+    the kitchen table must be able to make the selections and then hand over
+    their phone for the signature. Add a "Select on behalf of customer" path
+    in the builder that writes contract_selections with selected_by = 'rep'
+    and selected_by_user_id set. The customer still signs in the portal —
+    open the portal link on the rep's device.
+    A rep must NEVER be able to submit the signature. Only the portal's
+    /sign endpoint captures it, and it is the customer's mark.
+
+3c. Readiness display before send: which scope packages lack a product, and
+    whether a template is configured. Mirror what the server enforces —
+    don't let a rep send a contract that cannot be signed.
+
+▶ CHECKPOINT 3
+  VERIFY:
+   - copy link works; email sends with the correct URL and records sent_at
+   - rep-assisted selection persists with selected_by='rep' and the user id
+   - readiness blocks send when a package has no product or no template
+   - screenshot the tab in draft, sent, and signed states
+  INTEGRATION:
+   - portal renders a rep-made selection correctly and goes straight to
+     review-and-sign rather than re-asking
+   - signing still writes back to pins.contract_amount and
+     pins.betterments_amount_cents in one transaction — re-run that proof
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 [LOCKED] — TEMPLATE + IMMUTABILITY                 ║
+╚═══════════════════════════════════════════════════════════╝
+4a. Confirm and wire template selection. Add a 'contract' value to
+    TEMPLATE_USE_CASES if absent, and have generate-document render from the
+    company's configured contract template rather than a hardcoded layout —
+    verify what contractPdf.ts currently does and report it.
+    Deterministic template with fixed placeholders. NO AI-generated legal
+    language, same discipline as FIPSA and change orders.
+    The selections schedule MUST appear inside the contract document —
+    product, brand, colour, quantity, unit delta, extended delta, betterment
+    total. One signature only covers what the document contains.
+
+4b. Enforce immutability after signature, server-side: a signed contract
+    rejects edits to scope packages, selections, covered scope, and template
+    with 409. The UI renders read-only. Changes after signature go through
+    the change-order flow that already exists.
+
+4c. Void requires manager+ and a reason, mirroring signed_agreements. Voiding
+    must also clear the write-back it made to pins.contract_amount and
+    pins.betterments_amount_cents — otherwise a voided contract leaves phantom
+    contract value in every financial surface. State how you handled this.
+
+▶ CHECKPOINT 4 — closes Contract Builder
+  VERIFY:
+   - generated PDF renders from the company template and contains the full
+     selections schedule — paste a generated PDF
+   - PATCH a signed contract's scope package → 409
+   - field_rep void → 403; manager void with reason → 200
+   - void a SIGNED contract → pins.contract_amount and betterments cleared;
+     paste the profitability row before and after
+  INTEGRATION — full pass:
+   - Financials waterfall: sign a contract → revised contract and net project
+     margin move; void it → they revert. Paste both.
+   - Claim Value Tracker reflects the contract value change
+   - change orders still function against a signed contract
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; git diff --stat -- artifacts/mobile/ empty

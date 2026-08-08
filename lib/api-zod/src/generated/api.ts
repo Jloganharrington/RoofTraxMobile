@@ -8782,3 +8782,662 @@ export const DeleteSelectionProductOptionResponse = zod.object({
 })
 
 
+/**
+ * @summary Latest inspection estimate total for prefilling covered scope
+ */
+export const GetPinInspectionEstimateParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const GetPinInspectionEstimateResponse = zod.object({
+  "coveredScopeCents": zod.number().nullable(),
+  "source": zod.enum(['estimate']).nullish()
+})
+
+
+/**
+ * @summary List all contracts for a lead
+ */
+export const ListPinContractsParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const ListPinContractsResponse = zod.object({
+  "contracts": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+}))
+})
+
+
+/**
+ * @summary Create a draft contract for a lead
+ */
+export const CreateContractParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const createContractBodyCoveredScopeCentsMin = 0;
+
+export const createContractBodyDeductibleCentsMin = 0;
+
+
+
+export const CreateContractBody = zod.object({
+  "coveredScopeCents": zod.number().min(createContractBodyCoveredScopeCentsMin).optional(),
+  "deductibleCents": zod.number().min(createContractBodyDeductibleCentsMin).optional(),
+  "scopeSummary": zod.string().optional(),
+  "scopeSource": zod.enum(['estimate', 'manual']).optional(),
+  "templateId": zod.string().optional()
+})
+
+export const CreateContractResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+})
+})
+
+
+/**
+ * @summary Get contract detail including scope packages and selections
+ */
+export const GetContractParams = zod.object({
+  "contractId": zod.coerce.string()
+})
+
+export const GetContractResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+})
+})
+
+
+/**
+ * @summary Update draft/sent contract fields (signed contracts are immutable)
+ */
+export const UpdateContractParams = zod.object({
+  "contractId": zod.coerce.string()
+})
+
+export const updateContractBodyCoveredScopeCentsMin = 0;
+
+export const updateContractBodyDeductibleCentsMin = 0;
+
+
+
+export const UpdateContractBody = zod.object({
+  "coveredScopeCents": zod.number().min(updateContractBodyCoveredScopeCentsMin).optional(),
+  "deductibleCents": zod.number().min(updateContractBodyDeductibleCentsMin).optional(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.enum(['estimate', 'manual']).nullish(),
+  "templateId": zod.string().nullish()
+})
+
+export const UpdateContractResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+})
+})
+
+
+/**
+ * @summary Add a scope package to a draft/sent contract
+ */
+export const AddContractScopePackageParams = zod.object({
+  "contractId": zod.coerce.string()
+})
+
+export const addContractScopePackageBodyCoveredAmountCentsMin = 0;
+
+
+
+export const AddContractScopePackageBody = zod.object({
+  "categoryId": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number().min(addContractScopePackageBodyCoveredAmountCentsMin).optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const AddContractScopePackageResponse = zod.object({
+  "scopePackage": zod.object({
+
+}).passthrough().describe('Raw scope package row (without nested selection; refetch contract for full shape).')
+})
+
+
+/**
+ * @summary Update a scope package (draft/sent only)
+ */
+export const UpdateContractScopePackageParams = zod.object({
+  "contractId": zod.coerce.string(),
+  "pkgId": zod.coerce.string()
+})
+
+export const updateContractScopePackageBodyCoveredAmountCentsMin = 0;
+
+
+
+export const UpdateContractScopePackageBody = zod.object({
+  "quantity": zod.number().optional(),
+  "unit": zod.string().optional(),
+  "coveredAmountCents": zod.number().min(updateContractScopePackageBodyCoveredAmountCentsMin).optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateContractScopePackageResponse = zod.object({
+  "scopePackage": zod.object({
+
+}).passthrough().describe('Raw scope package row (without nested selection; refetch contract for full shape).')
+})
+
+
+/**
+ * @summary Remove a scope package from a draft contract
+ */
+export const DeleteContractScopePackageParams = zod.object({
+  "contractId": zod.coerce.string(),
+  "pkgId": zod.coerce.string()
+})
+
+export const DeleteContractScopePackageResponse = zod.void()
+
+
+/**
+ * @summary Transition contract from draft to sent; activates the access code
+ */
+export const SendContractParams = zod.object({
+  "contractId": zod.coerce.string()
+})
+
+export const SendContractResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+})
+})
+
+
+/**
+ * @summary Generate (or regenerate) the contract PDF and store it
+ */
+export const GenerateContractDocumentParams = zod.object({
+  "contractId": zod.coerce.string()
+})
+
+export const GenerateContractDocumentResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+})
+})
+
+
+/**
+ * @summary Void a contract (manager+ only, reason required)
+ */
+export const VoidContractParams = zod.object({
+  "contractId": zod.coerce.string()
+})
+
+
+
+
+export const VoidContractBody = zod.object({
+  "voidReason": zod.string().min(1)
+})
+
+export const VoidContractResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "pinId": zod.string(),
+  "accessCode": zod.string().nullish(),
+  "accessCodeExpiresAt": zod.coerce.date().nullish(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'voided']),
+  "sentAt": zod.coerce.date().nullish(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "scopeSource": zod.string().nullish(),
+  "templateId": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish(),
+  "customerPrintName": zod.string().nullish(),
+  "repSignedAt": zod.coerce.date().nullish(),
+  "voidedAt": zod.coerce.date().nullish(),
+  "voidedByUserId": zod.string().nullish(),
+  "voidReason": zod.string().nullish(),
+  "createdByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "scopePackages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string(),
+  "selectedAt": zod.coerce.date()
+}).nullish()
+}))
+})
+})
+
+
+/**
+ * @summary Load contract details by access code (customer-facing)
+ */
+export const GetPortalContractParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetPortalContractResponse = zod.object({
+  "contract": zod.object({
+  "id": zod.string(),
+  "status": zod.string(),
+  "coveredScopeCents": zod.number(),
+  "bettermentsCents": zod.number(),
+  "deductibleCents": zod.number(),
+  "totalContractCents": zod.number(),
+  "scopeSummary": zod.string().nullish(),
+  "documentObjectPath": zod.string().nullish(),
+  "customerSignedAt": zod.coerce.date().nullish()
+}),
+  "property": zod.object({
+  "address": zod.string().nullable()
+}),
+  "company": zod.object({
+  "name": zod.string().nullable()
+}),
+  "packages": zod.array(zod.object({
+  "id": zod.string(),
+  "categoryId": zod.string().optional(),
+  "categoryName": zod.string(),
+  "quantity": zod.string(),
+  "unit": zod.string(),
+  "coveredAmountCents": zod.number(),
+  "sortOrder": zod.number(),
+  "selection": zod.object({
+  "productId": zod.string(),
+  "optionId": zod.string().nullish(),
+  "productName": zod.string(),
+  "brandName": zod.string(),
+  "optionName": zod.string().nullish(),
+  "unitDeltaCents": zod.number(),
+  "quantity": zod.string(),
+  "extendedDeltaCents": zod.number()
+}).nullish(),
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "brandName": zod.string(),
+  "isBase": zod.boolean(),
+  "priceDeltaCents": zod.number(),
+  "unit": zod.string(),
+  "description": zod.string().nullish(),
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "optionGroup": zod.string().nullish(),
+  "swatchHex": zod.string().nullish(),
+  "hoaCompliant": zod.boolean().nullish()
+}))
+}))
+}))
+})
+
+
+/**
+ * @summary Record a product selection for a scope package
+ */
+export const PortalSelectProductParams = zod.object({
+  "code": zod.coerce.string(),
+  "pkgId": zod.coerce.string()
+})
+
+export const PortalSelectProductBody = zod.object({
+  "productId": zod.string(),
+  "optionId": zod.string().nullish()
+})
+
+export const PortalSelectProductResponse = zod.object({
+  "selection": zod.object({
+
+}).passthrough().describe('Raw selection row snapshot.')
+})
+
+
+/**
+ * @summary Stream the generated contract PDF
+ */
+export const GetPortalContractDocumentParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetPortalContractDocumentResponse = zod.unknown()
+
+
+/**
+ * @summary Generate the contract PDF from the customer portal (requires all packages selected)
+ */
+export const PortalGenerateContractDocumentParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const PortalGenerateContractDocumentResponse = zod.object({
+  "documentObjectPath": zod.string(),
+  "documentSha256": zod.string()
+})
+
+
+/**
+ * @summary Submit customer signature (requires all packages selected and document generated)
+ */
+export const PortalSignContractParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+
+
+
+export const PortalSignContractBody = zod.object({
+  "customerSignatureBase64": zod.string().optional(),
+  "customerSignaturePath": zod.string().optional(),
+  "customerPrintName": zod.string().min(1)
+})
+
+export const PortalSignContractResponse = zod.object({
+  "status": zod.string(),
+  "customerSignedAt": zod.coerce.date()
+})
+
+

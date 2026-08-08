@@ -4569,6 +4569,259 @@ export interface BulkApplySelectionOptionsInput {
   optionIds: string[];
 }
 
+export interface ContractSelection {
+  id: string;
+  productId: string;
+  optionId?: string | null;
+  productName: string;
+  brandName: string;
+  optionName?: string | null;
+  unitDeltaCents: number;
+  quantity: string;
+  extendedDeltaCents: number;
+  selectedBy: string;
+  selectedAt: string;
+}
+
+export interface ContractScopePackage {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  quantity: string;
+  unit: string;
+  coveredAmountCents: number;
+  sortOrder: number;
+  selection?: ContractSelection | null;
+}
+
+export type ContractStatus = typeof ContractStatus[keyof typeof ContractStatus];
+
+
+export const ContractStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  signed: 'signed',
+  voided: 'voided',
+} as const;
+
+export interface Contract {
+  id: string;
+  companyId: string;
+  pinId: string;
+  accessCode?: string | null;
+  accessCodeExpiresAt?: string | null;
+  status: ContractStatus;
+  sentAt?: string | null;
+  coveredScopeCents: number;
+  bettermentsCents: number;
+  deductibleCents: number;
+  totalContractCents: number;
+  scopeSummary?: string | null;
+  scopeSource?: string | null;
+  templateId?: string | null;
+  documentObjectPath?: string | null;
+  documentSha256?: string | null;
+  customerSignedAt?: string | null;
+  customerPrintName?: string | null;
+  repSignedAt?: string | null;
+  voidedAt?: string | null;
+  voidedByUserId?: string | null;
+  voidReason?: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  scopePackages: ContractScopePackage[];
+}
+
+export interface ContractEnvelope {
+  contract: Contract;
+}
+
+export interface ContractListEnvelope {
+  contracts: Contract[];
+}
+
+/**
+ * Raw scope package row (without nested selection; refetch contract for full shape).
+ */
+export type ContractScopePackageEnvelopeScopePackage = { [key: string]: unknown };
+
+export interface ContractScopePackageEnvelope {
+  /** Raw scope package row (without nested selection; refetch contract for full shape). */
+  scopePackage: ContractScopePackageEnvelopeScopePackage;
+}
+
+export type CreateContractInputScopeSource = typeof CreateContractInputScopeSource[keyof typeof CreateContractInputScopeSource];
+
+
+export const CreateContractInputScopeSource = {
+  estimate: 'estimate',
+  manual: 'manual',
+} as const;
+
+export interface CreateContractInput {
+  /** @minimum 0 */
+  coveredScopeCents?: number;
+  /** @minimum 0 */
+  deductibleCents?: number;
+  scopeSummary?: string;
+  scopeSource?: CreateContractInputScopeSource;
+  templateId?: string;
+}
+
+export type UpdateContractInputScopeSource = typeof UpdateContractInputScopeSource[keyof typeof UpdateContractInputScopeSource] | null;
+
+
+export const UpdateContractInputScopeSource = {
+  estimate: 'estimate',
+  manual: 'manual',
+} as const;
+
+export interface UpdateContractInput {
+  /** @minimum 0 */
+  coveredScopeCents?: number;
+  /** @minimum 0 */
+  deductibleCents?: number;
+  scopeSummary?: string | null;
+  scopeSource?: UpdateContractInputScopeSource;
+  templateId?: string | null;
+}
+
+export interface CreateContractScopePackageInput {
+  categoryId: string;
+  quantity: number;
+  unit: string;
+  /** @minimum 0 */
+  coveredAmountCents?: number;
+  sortOrder?: number;
+}
+
+export interface UpdateContractScopePackageInput {
+  quantity?: number;
+  unit?: string;
+  /** @minimum 0 */
+  coveredAmountCents?: number;
+  sortOrder?: number;
+}
+
+export interface VoidContractInput {
+  /** @minLength 1 */
+  voidReason: string;
+}
+
+export type InspectionEstimateForContractEnvelopeSource = typeof InspectionEstimateForContractEnvelopeSource[keyof typeof InspectionEstimateForContractEnvelopeSource] | null;
+
+
+export const InspectionEstimateForContractEnvelopeSource = {
+  estimate: 'estimate',
+} as const;
+
+export interface InspectionEstimateForContractEnvelope {
+  coveredScopeCents: number | null;
+  source?: InspectionEstimateForContractEnvelopeSource;
+}
+
+export interface PortalProductOption {
+  id: string;
+  name: string;
+  optionGroup?: string | null;
+  swatchHex?: string | null;
+  hoaCompliant?: boolean | null;
+}
+
+export interface PortalProduct {
+  id: string;
+  name: string;
+  brandName: string;
+  isBase: boolean;
+  priceDeltaCents: number;
+  unit: string;
+  description?: string | null;
+  options: PortalProductOption[];
+}
+
+export interface PortalPackageSelection {
+  productId: string;
+  optionId?: string | null;
+  productName: string;
+  brandName: string;
+  optionName?: string | null;
+  unitDeltaCents: number;
+  quantity: string;
+  extendedDeltaCents: number;
+}
+
+export interface PortalScopePackage {
+  id: string;
+  categoryId?: string;
+  categoryName: string;
+  quantity: string;
+  unit: string;
+  coveredAmountCents: number;
+  sortOrder: number;
+  selection?: PortalPackageSelection | null;
+  products: PortalProduct[];
+}
+
+export type PortalContractEnvelopeContract = {
+  id: string;
+  status: string;
+  coveredScopeCents: number;
+  bettermentsCents: number;
+  deductibleCents: number;
+  totalContractCents: number;
+  scopeSummary?: string | null;
+  documentObjectPath?: string | null;
+  customerSignedAt?: string | null;
+};
+
+export type PortalContractEnvelopeProperty = {
+  address: string | null;
+};
+
+export type PortalContractEnvelopeCompany = {
+  name: string | null;
+};
+
+export interface PortalContractEnvelope {
+  contract: PortalContractEnvelopeContract;
+  property: PortalContractEnvelopeProperty;
+  company: PortalContractEnvelopeCompany;
+  packages: PortalScopePackage[];
+}
+
+export interface PortalSelectProductInput {
+  productId: string;
+  optionId?: string | null;
+}
+
+/**
+ * Raw selection row snapshot.
+ */
+export type PortalSelectionEnvelopeSelection = { [key: string]: unknown };
+
+export interface PortalSelectionEnvelope {
+  /** Raw selection row snapshot. */
+  selection: PortalSelectionEnvelopeSelection;
+}
+
+export interface PortalGenerateDocumentResponse {
+  documentObjectPath: string;
+  documentSha256: string;
+}
+
+export interface PortalSignInput {
+  customerSignatureBase64?: string;
+  customerSignaturePath?: string;
+  /** @minLength 1 */
+  customerPrintName: string;
+}
+
+export interface PortalSignResponse {
+  status: string;
+  customerSignedAt: string;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */

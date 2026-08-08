@@ -4,29 +4,33 @@
  *   GET    /pins/:pinId/contracts                    list all contracts for a pin
  *   POST   /pins/:pinId/contracts                    create draft (auto-generates access_code)
  *   GET    /contracts/:contractId                    full detail
- *   PATCH  /contracts/:contractId                    update draft fields (draft-only)
- *   POST   /contracts/:contractId/scope-packages     add scope package (draft-only)
+ *   PATCH  /contracts/:contractId                    update draft/sent fields (signed = immutable)
+ *   POST   /contracts/:contractId/scope-packages     add scope package (draft/sent only)
  *   PATCH  /contracts/:contractId/scope-packages/:pkgId   update package (draft/sent)
- *   DELETE /contracts/:contractId/scope-packages/:pkgId   remove package (draft-only)
- *   POST   /contracts/:contractId/send               draft→sent; activates access code
+ *   DELETE /contracts/:contractId/scope-packages/:pkgId   remove package (draft only)
+ *   POST   /contracts/:contractId/send               draft→sent; activates access code; emails homeowner
  *   POST   /contracts/:contractId/generate-document  generate/regenerate PDF
- *   POST   /contracts/:contractId/void               manager+; reason required
+ *   POST   /contracts/:contractId/void               manager+; reason required; clears pin write-back
+ *   GET    /pins/:pinId/inspection-estimate           latest inspection estimate total for prefill
  *
  * Security invariants:
  *   - company_id and pin_id are never client-settable on PATCH.
  *   - betterments_cents and total_contract_cents are DERIVED — never accepted from a client.
  *   - Signed contracts are IMMUTABLE: no edits, only void (manager+, reason required).
- *   - Void only if not already voided; void-then-replace creates a new contract.
+ *   - Void clears pins.contract_amount and pins.betterments_amount_cents if signed.
  */
 
 import { createHash } from 'node:crypto';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
+import nodemailer from 'nodemailer';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { generatePortalAccessCode } from '../lib/portalAccess';
 import { recomputeContractTotals } from '../lib/contractTotals';
 import { generateContractPdf } from '../lib/contractPdf';
+import { decryptSmtpPassword } from '../lib/smtpCrypto';
+import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 import {
   db,
   contractsTable,
@@ -35,6 +39,7 @@ import {
   selectionCategoriesTable,
   pinsTable,
   userProfilesTable,
+  inspectionsTable,
 } from '@workspace/db';
 import { isManagerOrAdmin, type Role } from '@workspace/authz';
 
@@ -178,6 +183,42 @@ const VoidContractBody = z.object({
   voidReason: z.string().min(1),
 }).strict();
 
+// ── GET /pins/:pinId/inspection-estimate ──────────────────────────────────────
+// Returns the latest inspection estimate subtotalCents for the pin,
+// for use as a prefill when creating a new contract.
+
+router.get('/pins/:pinId/inspection-estimate', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const pinId = req.params.pinId as string;
+
+  // Verify pin belongs to this company
+  const [pin] = await db
+    .select({ id: pinsTable.id })
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+  if (!pin) { res.status(404).json({ error: 'Lead not found' }); return; }
+
+  // Fetch the most recent inspection with a non-null estimate
+  const [inspection] = await db
+    .select({ estimate: inspectionsTable.estimate })
+    .from(inspectionsTable)
+    .where(eq(inspectionsTable.pinId, pinId))
+    .orderBy(desc(inspectionsTable.createdAt))
+    .limit(10); // Look at up to 10 inspections; pick first with an estimate below
+
+  if (!inspection || !inspection.estimate) {
+    res.json({ coveredScopeCents: null, source: null });
+    return;
+  }
+
+  // The estimate jsonb has shape: { subtotalCents: number, ... }
+  const est = inspection.estimate as { subtotalCents?: number } | null;
+  const subtotalCents = typeof est?.subtotalCents === 'number' ? est.subtotalCents : null;
+
+  res.json({ coveredScopeCents: subtotalCents, source: subtotalCents !== null ? 'estimate' : null });
+});
+
 // ── GET /pins/:pinId/contracts ────────────────────────────────────────────────
 
 router.get('/pins/:pinId/contracts', async (req: Request, res: Response) => {
@@ -272,7 +313,7 @@ router.patch('/contracts/:contractId', async (req: Request, res: Response) => {
 
   const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
-  if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable' }); return; }
+  if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
   if (contract.status === 'voided') { res.status(409).json({ error: 'Voided contracts cannot be edited' }); return; }
 
   const parsed = UpdateContractBody.safeParse(req.body);
@@ -307,7 +348,7 @@ router.post('/contracts/:contractId/scope-packages', async (req: Request, res: R
 
   const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
-  if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable' }); return; }
+  if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
   if (contract.status === 'voided') { res.status(409).json({ error: 'Cannot edit voided contract' }); return; }
 
   const parsed = CreateScopePackageBody.safeParse(req.body);
@@ -350,7 +391,7 @@ router.patch(
 
     const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
     if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
-    if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable' }); return; }
+    if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
     if (contract.status === 'voided') { res.status(409).json({ error: 'Cannot edit voided contract' }); return; }
 
     const parsed = UpdateScopePackageBody.safeParse(req.body);
@@ -455,7 +496,80 @@ router.post('/contracts/:contractId/send', async (req: Request, res: Response) =
     fetchPackages(contract.id),
     fetchSelections(contract.id),
   ]);
-  res.json({ contract: contractShape(updated!, packages, sels) });
+  const result = contractShape(updated!, packages, sels);
+
+  // ── Best-effort email to homeowner ────────────────────────────────────────
+  // Non-blocking: email failures are logged but never prevent the 200 response.
+  void (async () => {
+    try {
+      // Load rep's SMTP credentials and the pin's owner email
+      const [profile] = await db
+        .select({
+          smtpHost:        userProfilesTable.smtpHost,
+          smtpPort:        userProfilesTable.smtpPort,
+          smtpUsername:    userProfilesTable.smtpUsername,
+          smtpPasswordEnc: userProfilesTable.smtpPasswordEnc,
+          smtpSecure:      userProfilesTable.smtpSecure,
+          smtpFromEmail:   userProfilesTable.smtpFromEmail,
+        })
+        .from(userProfilesTable)
+        .where(eq(userProfilesTable.userId, req.user!.id));
+
+      const [pin] = await db
+        .select({ ownerEmail: pinsTable.ownerEmail, address: pinsTable.address })
+        .from(pinsTable)
+        .where(eq(pinsTable.id, contract.pinId));
+
+      if (
+        !profile?.smtpHost ||
+        !profile.smtpPort ||
+        !profile.smtpUsername ||
+        !profile.smtpPasswordEnc ||
+        !pin?.ownerEmail
+      ) {
+        return; // SMTP not configured or no homeowner email — skip silently
+      }
+
+      const password = decryptSmtpPassword(profile.smtpPasswordEnc);
+      const smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+      const transport = nodemailer.createTransport({
+        host: smtpAddress,
+        port: profile.smtpPort,
+        secure: profile.smtpSecure ?? profile.smtpPort === 465,
+        name: undefined,
+        auth: { user: profile.smtpUsername, pass: password },
+        tls: { servername: profile.smtpHost },
+        connectionTimeout: 15_000,
+        socketTimeout:     30_000,
+      });
+
+      const from = profile.smtpFromEmail || profile.smtpUsername;
+      const propertyLabel = pin.address ?? 'your property';
+      // Build the portal URL from the access code (now set to 'sent' status so accessCode is exposed)
+      const portalUrl = `/signing-portal/contract/${updated!.accessCode}`;
+
+      await transport.sendMail({
+        from,
+        to: pin.ownerEmail,
+        subject: `Your Contract Is Ready — ${propertyLabel}`,
+        text: [
+          `Your roofing contract is ready to review and sign.`,
+          ``,
+          `Property: ${propertyLabel}`,
+          ``,
+          `Please follow this link to view your contract, make your selections, and sign:`,
+          portalUrl,
+          ``,
+          `If you have any questions, please contact your contractor directly.`,
+        ].join('\n'),
+      });
+    } catch (err) {
+      // Non-blocking: log failure but do not surface to client
+      req.log?.warn({ err }, 'Contract send email failed');
+    }
+  })();
+
+  res.json({ contract: result });
 });
 
 // ── POST /contracts/:contractId/generate-document ────────────────────────────
@@ -465,7 +579,7 @@ router.post('/contracts/:contractId/generate-document', async (req: Request, res
 
   const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
-  if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable' }); return; }
+  if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
   if (contract.status === 'voided') { res.status(409).json({ error: 'Contract is voided' }); return; }
 
   const pdfBuffer = await generateContractPdf(contract.id);
@@ -503,17 +617,35 @@ router.post('/contracts/:contractId/void', async (req: Request, res: Response) =
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
   if (contract.voidedAt) { res.status(409).json({ error: 'Contract is already voided' }); return; }
 
+  const wasSigned = contract.status === 'signed';
+  const now = new Date();
+
+  // Atomic: void the contract; if it was signed, clear the pin write-back too
+  await db.transaction(async (tx) => {
+    await tx
+      .update(contractsTable)
+      .set({
+        status:           'voided',
+        voidedAt:         now,
+        voidedByUserId:   req.user!.id,
+        voidReason:       parsed.data.voidReason,
+        updatedAt:        now,
+      })
+      .where(eq(contractsTable.id, contract.id));
+
+    // Reverse the pin write-back that signing applied
+    if (wasSigned) {
+      await tx
+        .update(pinsTable)
+        .set({ contractAmount: '', bettermentsAmountCents: 0, updatedAt: now })
+        .where(eq(pinsTable.id, contract.pinId));
+    }
+  });
+
   const [updated] = await db
-    .update(contractsTable)
-    .set({
-      status:           'voided',
-      voidedAt:         new Date(),
-      voidedByUserId:   req.user.id,
-      voidReason:       parsed.data.voidReason,
-      updatedAt:        new Date(),
-    })
-    .where(eq(contractsTable.id, contract.id))
-    .returning();
+    .select()
+    .from(contractsTable)
+    .where(eq(contractsTable.id, contract.id));
 
   const [packages, sels] = await Promise.all([
     fetchPackages(contract.id),

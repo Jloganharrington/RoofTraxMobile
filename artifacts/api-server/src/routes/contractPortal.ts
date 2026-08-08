@@ -319,6 +319,12 @@ router.post('/portal/contract/:code/select/:pkgId', async (req: Request, res: Re
       ),
     );
 
+  // Rep-assisted selection: if the request carries a valid authenticated session,
+  // record the selection as rep-made so the portal can skip the selection step.
+  const isRepRequest = req.isAuthenticated && req.isAuthenticated();
+  const selectedBy       = isRepRequest ? 'rep'          : 'customer';
+  const selectedByUserId = isRepRequest ? (req.user?.id ?? null) : null;
+
   const [newSelection] = await db
     .insert(contractSelectionsTable)
     .values({
@@ -333,8 +339,8 @@ router.post('/portal/contract/:code/select/:pkgId', async (req: Request, res: Re
       unitDeltaCents,
       quantity:         String(quantity),
       extendedDeltaCents,
-      selectedBy:       'customer',
-      selectedByUserId: null,
+      selectedBy,
+      selectedByUserId,
     })
     .returning();
 

@@ -37,6 +37,15 @@ export default defineConfig({
           path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
           name: "customFetch",
         },
+        operations: {
+          // Portal endpoints live at /portal/..., not /api/portal/...
+          // Use the portalFetch mutator to strip the /api prefix for these.
+          getPortalContract:             { mutator: { path: path.resolve(apiClientReactSrc, "portal-fetch.ts"), name: "portalFetch" } },
+          portalSelectProduct:           { mutator: { path: path.resolve(apiClientReactSrc, "portal-fetch.ts"), name: "portalFetch" } },
+          getPortalContractDocument:     { mutator: { path: path.resolve(apiClientReactSrc, "portal-fetch.ts"), name: "portalFetch" } },
+          portalGenerateContractDocument:{ mutator: { path: path.resolve(apiClientReactSrc, "portal-fetch.ts"), name: "portalFetch" } },
+          portalSignContract:            { mutator: { path: path.resolve(apiClientReactSrc, "portal-fetch.ts"), name: "portalFetch" } },
+        },
       },
     },
   },

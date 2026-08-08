@@ -1,80 +1,41 @@
 /**
  * ContractBuilderTab — rep-facing contract creation & management.
- *
- * API surface (all authenticated, same-company scoped):
- *   GET    /api/pins/:pinId/contracts
- *   POST   /api/pins/:pinId/contracts
- *   PATCH  /api/contracts/:contractId
- *   POST   /api/contracts/:contractId/scope-packages
- *   PATCH  /api/contracts/:contractId/scope-packages/:pkgId
- *   DELETE /api/contracts/:contractId/scope-packages/:pkgId
- *   POST   /api/contracts/:contractId/send
- *   POST   /api/contracts/:contractId/generate-document
- *   POST   /api/contracts/:contractId/void
- *   GET    /api/selections/categories  (for the add-package dropdown)
+ * All API calls use generated hooks from @workspace/api-client-react.
+ * All query invalidations use generated getXxxQueryKey() functions.
  */
 
-import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { customFetch } from '@workspace/api-client-react';
+import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useListPinContracts,
+  getListPinContractsQueryKey,
+  useCreateContract,
+  useUpdateContract,
+  updateContract,
+  getGetContractQueryKey,
+  useAddContractScopePackage,
+  useDeleteContractScopePackage,
+  useSendContract,
+  useGenerateContractDocument,
+  useVoidContract,
+  useGetPinInspectionEstimate,
+  getGetPinInspectionEstimateQueryKey,
+  usePortalSelectProduct,
+  getGetPortalContractQueryKey,
+} from '@workspace/api-client-react';
+import { useListSelectionCategories } from '@workspace/api-client-react';
 import {
   Plus, Send, FileText, Trash2, Loader2, Shield, CheckCircle,
   AlertTriangle, Ban, ChevronDown, ChevronUp, Edit2, Copy, ExternalLink,
+  Info, UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type {
+  Contract,
+  SelectionCategoryListEnvelope,
+} from '@workspace/api-client-react';
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface Selection {
-  id: string;
-  productId: string;
-  optionId: string | null;
-  productName: string;
-  brandName: string;
-  optionName: string | null;
-  unitDeltaCents: number;
-  quantity: string;
-  extendedDeltaCents: number;
-  selectedBy: string;
-}
-
-interface ScopePackage {
-  id: string;
-  categoryId: string;
-  categoryName: string;
-  quantity: string;
-  unit: string;
-  coveredAmountCents: number;
-  sortOrder: number;
-  selection: Selection | null;
-}
-
-interface Contract {
-  id: string;
-  status: string;
-  accessCode: string | null;
-  sentAt: string | null;
-  coveredScopeCents: number;
-  bettermentsCents: number;
-  deductibleCents: number;
-  totalContractCents: number;
-  scopeSummary: string | null;
-  scopeSource: string | null;
-  documentObjectPath: string | null;
-  customerSignedAt: string | null;
-  customerPrintName: string | null;
-  voidedAt: string | null;
-  voidReason: string | null;
-  createdAt: string;
-  updatedAt: string;
-  scopePackages: ScopePackage[];
-}
-
-interface Category {
-  id: string;
-  name: string;
-  sortOrder: number;
-}
+type SelectionCategory = SelectionCategoryListEnvelope['categories'][number];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,6 +46,10 @@ function fmt(cents: number) {
 function parseCents(s: string): number {
   const n = parseFloat(s.replace(/[$,\s]/g, ''));
   return isNaN(n) ? 0 : Math.round(n * 100);
+}
+
+function fmtDollars(cents: number): string {
+  return (cents / 100).toFixed(2);
 }
 
 function statusBadge(status: string) {
@@ -108,26 +73,51 @@ function CreateContractForm({ pinId, onCreated }: { pinId: string; onCreated: ()
   const [coveredScope, setCoveredScope] = useState('');
   const [deductible, setDeductible] = useState('');
   const [summary, setSummary] = useState('');
+  const [sourceNote, setSourceNote] = useState<string | null>(null);
+  const [scopeSource, setScopeSource] = useState<'estimate' | 'manual'>('manual');
   const qc = useQueryClient();
 
-  const createMut = useMutation({
-    mutationFn: (body: object) =>
-      customFetch(`/api/pins/${pinId}/contracts`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', pinId] });
-      toast.success('Contract created');
-      onCreated();
+  // Prefill from inspection estimate
+  const { data: estimateData } = useGetPinInspectionEstimate(pinId);
+  useEffect(() => {
+    if (estimateData?.coveredScopeCents != null && estimateData.coveredScopeCents > 0 && !coveredScope) {
+      setCoveredScope(fmtDollars(estimateData.coveredScopeCents));
+      setScopeSource('estimate');
+      setSourceNote(`from inspection estimate — ${fmt(estimateData.coveredScopeCents)}`);
+    }
+  // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estimateData]);
+
+  const createMut = useCreateContract({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPinContractsQueryKey(pinId) });
+        toast.success('Contract created');
+        onCreated();
+      },
+      onError: () => toast.error('Could not create contract'),
     },
-    onError: () => toast.error('Could not create contract'),
   });
+
+  function handleCoveredScopeChange(v: string) {
+    setCoveredScope(v);
+    if (scopeSource === 'estimate') {
+      setScopeSource('manual');
+      setSourceNote(null);
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     createMut.mutate({
-      coveredScopeCents: parseCents(coveredScope),
-      deductibleCents:   parseCents(deductible),
-      scopeSummary:      summary.trim() || undefined,
-      scopeSource:       'manual',
+      pinId,
+      data: {
+        coveredScopeCents: parseCents(coveredScope),
+        deductibleCents:   parseCents(deductible),
+        scopeSummary:      summary.trim() || undefined,
+        scopeSource,
+      },
     });
   }
 
@@ -141,10 +131,16 @@ function CreateContractForm({ pinId, onCreated }: { pinId: string; onCreated: ()
           <input
             type="text"
             value={coveredScope}
-            onChange={(e) => setCoveredScope(e.target.value)}
+            onChange={(e) => handleCoveredScopeChange(e.target.value)}
             placeholder="0.00"
             className="w-full h-9 px-3 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
+          {sourceNote && (
+            <p className="text-[10px] text-blue-600 flex items-center gap-1 mt-0.5">
+              <Info className="h-3 w-3 shrink-0" />
+              {sourceNote}
+            </p>
+          )}
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Deductible ($)</label>
@@ -184,10 +180,11 @@ function CreateContractForm({ pinId, onCreated }: { pinId: string; onCreated: ()
 // ── Add Scope Package Form ────────────────────────────────────────────────────
 
 function AddScopePackageForm({
-  contractId, categories, onAdded,
+  contractId, pinId, categories, onAdded,
 }: {
   contractId: string;
-  categories: Category[];
+  pinId: string;
+  categories: SelectionCategory[];
   onAdded: () => void;
 }) {
   const [categoryId, setCategoryId] = useState('');
@@ -197,17 +194,18 @@ function AddScopePackageForm({
   const [open, setOpen]             = useState(false);
   const qc = useQueryClient();
 
-  const addMut = useMutation({
-    mutationFn: (body: object) =>
-      customFetch(`/api/contracts/${contractId}/scope-packages`, { method: 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contract-detail', contractId] });
-      toast.success('Scope package added');
-      setCategoryId(''); setQuantity(''); setCovered(''); setUnit('square');
-      setOpen(false);
-      onAdded();
+  const addMut = useAddContractScopePackage({
+    mutation: {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListPinContractsQueryKey(pinId) });
+        qc.invalidateQueries({ queryKey: getGetContractQueryKey(contractId) });
+        toast.success('Scope package added');
+        setCategoryId(''); setQuantity(''); setCovered(''); setUnit('square');
+        setOpen(false);
+        onAdded();
+      },
+      onError: () => toast.error('Could not add scope package'),
     },
-    onError: () => toast.error('Could not add scope package'),
   });
 
   if (!open) {
@@ -225,10 +223,13 @@ function AddScopePackageForm({
     e.preventDefault();
     if (!categoryId || !quantity) { toast.error('Category and quantity are required'); return; }
     addMut.mutate({
-      categoryId,
-      quantity:           parseFloat(quantity),
-      unit:               unit.trim() || 'square',
-      coveredAmountCents: parseCents(covered),
+      contractId,
+      data: {
+        categoryId,
+        quantity:           parseFloat(quantity),
+        unit:               unit.trim() || 'square',
+        coveredAmountCents: parseCents(covered),
+      },
     });
   }
 
@@ -252,9 +253,7 @@ function AddScopePackageForm({
         <div className="col-span-1 space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Qty</label>
           <input
-            type="number"
-            step="0.01"
-            min="0"
+            type="number" step="0.01" min="0"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             placeholder="1"
@@ -318,71 +317,76 @@ function ContractDetail({
   const [showVoidForm, setShowVoidForm] = useState(false);
 
   // Editing state
-  const [coveredScope, setCoveredScope] = useState(String(contract.coveredScopeCents / 100));
-  const [deductible, setDeductible]     = useState(String(contract.deductibleCents / 100));
+  const [coveredScope, setCoveredScope] = useState(String((contract.coveredScopeCents ?? 0) / 100));
+  const [deductible, setDeductible]     = useState(String((contract.deductibleCents ?? 0) / 100));
   const [summary, setSummary]           = useState(contract.scopeSummary ?? '');
 
-  const { data: categoriesData } = useQuery<{ categories: Category[] }>({
-    queryKey: ['selection-categories'],
-    queryFn: () => customFetch('/api/selections/categories'),
-    staleTime: 300_000,
-  });
+  const { data: categoriesData } = useListSelectionCategories();
   const categories = categoriesData?.categories ?? [];
 
-  const patchMut = useMutation({
-    mutationFn: (body: object) =>
-      customFetch(`/api/contracts/${contract.id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', pinId] });
-      qc.invalidateQueries({ queryKey: ['contract-detail', contract.id] });
-      toast.success('Contract updated');
-      setEditing(false);
-    },
-    onError: () => toast.error('Could not update contract'),
-  });
+  function invalidateAll() {
+    qc.invalidateQueries({ queryKey: getListPinContractsQueryKey(pinId) });
+    qc.invalidateQueries({ queryKey: getGetContractQueryKey(contract.id) });
+  }
 
-  const sendMut = useMutation({
-    mutationFn: () =>
-      customFetch(`/api/contracts/${contract.id}/send`, { method: 'POST' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', pinId] });
-      toast.success('Contract sent to customer');
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { data?: { error?: string } })?.data?.error;
-      toast.error(msg ?? 'Could not send contract');
+  const patchMut = useUpdateContract({
+    mutation: {
+      onSuccess: () => { invalidateAll(); toast.success('Contract updated'); setEditing(false); },
+      onError: () => toast.error('Could not update contract'),
     },
   });
 
-  const genMut = useMutation({
-    mutationFn: () =>
-      customFetch(`/api/contracts/${contract.id}/generate-document`, { method: 'POST' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', pinId] });
-      toast.success('Contract document generated');
+  const sendMut = useSendContract({
+    mutation: {
+      onSuccess: (data) => {
+        invalidateAll();
+        // Copy portal link to clipboard (non-blocking)
+        const code = data.contract?.accessCode;
+        if (code) {
+          const url = `${signingPortalBase}/contract/${code}`;
+          navigator.clipboard.writeText(url).catch(() => {});
+          toast.success('Contract sent — link copied to clipboard');
+        } else {
+          toast.success('Contract sent to customer');
+        }
+      },
+      onError: (err: unknown) => {
+        const msg = (err as { data?: { error?: string } })?.data?.error;
+        toast.error(msg ?? 'Could not send contract');
+      },
     },
-    onError: () => toast.error('Could not generate document'),
   });
 
-  const voidMut = useMutation({
-    mutationFn: (reason: string) =>
-      customFetch(`/api/contracts/${contract.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', pinId] });
-      toast.success('Contract voided');
-      setShowVoidForm(false);
+  const genMut = useGenerateContractDocument({
+    mutation: {
+      onSuccess: () => { invalidateAll(); toast.success('Contract document generated'); },
+      onError: () => toast.error('Could not generate document'),
     },
-    onError: () => toast.error('Could not void contract'),
   });
 
-  const deletePkgMut = useMutation({
-    mutationFn: (pkgId: string) =>
-      customFetch(`/api/contracts/${contract.id}/scope-packages/${pkgId}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['contracts', pinId] });
-      toast.success('Package removed');
+  const voidMut = useVoidContract({
+    mutation: {
+      onSuccess: () => { invalidateAll(); toast.success('Contract voided'); setShowVoidForm(false); },
+      onError: () => toast.error('Could not void contract'),
     },
-    onError: () => toast.error('Could not remove package'),
+  });
+
+  const deletePkgMut = useDeleteContractScopePackage({
+    mutation: {
+      onSuccess: () => { invalidateAll(); toast.success('Package removed'); },
+      onError: () => toast.error('Could not remove package'),
+    },
+  });
+
+  // Rep-assisted selection: record a selection on behalf of the customer for a sent contract
+  const repSelectMut = usePortalSelectProduct({
+    mutation: {
+      onSuccess: () => {
+        invalidateAll();
+        toast.success('Selection saved for customer');
+      },
+      onError: () => toast.error('Could not save selection'),
+    },
   });
 
   const isDraft  = contract.status === 'draft';
@@ -394,13 +398,27 @@ function ContractDetail({
     ? `${signingPortalBase}/contract/${contract.accessCode}`
     : null;
 
+  // Readiness check: packages missing a selection
+  const unselectedPackages = (contract.scopePackages ?? []).filter((p) => !p.selection);
+  const hasDocument = !!contract.documentObjectPath;
+  const isReady = unselectedPackages.length === 0 && hasDocument;
+
   function saveEdits() {
     patchMut.mutate({
-      coveredScopeCents: parseCents(coveredScope),
-      deductibleCents:   parseCents(deductible),
-      scopeSummary:      summary.trim() || null,
+      contractId: contract.id,
+      data: {
+        coveredScopeCents: parseCents(coveredScope),
+        deductibleCents:   parseCents(deductible),
+        scopeSummary:      summary.trim() || null,
+        scopeSource:       'manual',
+      },
     });
   }
+
+  // Rep-assisted product picker state
+  const [repAssistPkgId, setRepAssistPkgId] = useState<string | null>(null);
+  const [repSelectedProductId, setRepSelectedProductId] = useState('');
+  const [repSelectedOptionId, setRepSelectedOptionId] = useState('');
 
   return (
     <div className="space-y-5">
@@ -412,6 +430,9 @@ function ContractDetail({
             Contract · {new Date(contract.createdAt).toLocaleDateString()}
           </span>
           {statusBadge(contract.status)}
+          {contract.scopeSource === 'estimate' && (
+            <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">from estimate</span>
+          )}
         </div>
         {isDraft && !editing && (
           <button onClick={() => setEditing(true)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
@@ -507,23 +528,23 @@ function ContractDetail({
         <div className="border rounded-xl divide-y text-sm">
           <div className="flex justify-between px-4 py-2.5">
             <span className="text-muted-foreground">Covered Scope</span>
-            <span>{fmt(contract.coveredScopeCents)}</span>
+            <span>{fmt(contract.coveredScopeCents ?? 0)}</span>
           </div>
-          {contract.deductibleCents > 0 && (
+          {(contract.deductibleCents ?? 0) > 0 && (
             <div className="flex justify-between px-4 py-2.5">
               <span className="text-muted-foreground">Deductible</span>
-              <span>{fmt(contract.deductibleCents)}</span>
+              <span>{fmt(contract.deductibleCents ?? 0)}</span>
             </div>
           )}
-          {contract.bettermentsCents > 0 && (
+          {(contract.bettermentsCents ?? 0) > 0 && (
             <div className="flex justify-between px-4 py-2.5 text-blue-700">
               <span>Upgrade Betterments</span>
-              <span>+{fmt(contract.bettermentsCents)}</span>
+              <span>+{fmt(contract.bettermentsCents ?? 0)}</span>
             </div>
           )}
           <div className="flex justify-between px-4 py-2.5 font-semibold">
             <span>Total Contract</span>
-            <span>{fmt(contract.totalContractCents)}</span>
+            <span>{fmt(contract.totalContractCents ?? 0)}</span>
           </div>
           {contract.scopeSummary && (
             <div className="px-4 py-2.5 text-muted-foreground text-xs">{contract.scopeSummary}</div>
@@ -534,34 +555,92 @@ function ContractDetail({
       {/* Scope packages */}
       <div className="space-y-2">
         <p className="text-xs font-semibold text-muted-foreground">
-          Scope Packages ({contract.scopePackages.length})
+          Scope Packages ({(contract.scopePackages ?? []).length})
         </p>
-        {contract.scopePackages.length === 0 ? (
+        {(contract.scopePackages ?? []).length === 0 ? (
           <p className="text-xs text-muted-foreground">No packages yet. Add one below.</p>
         ) : (
           <div className="border rounded-xl divide-y">
-            {contract.scopePackages.map((pkg) => (
-              <div key={pkg.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{pkg.categoryName}</span>
-                    {pkg.selection && (
-                      <CheckCircle className="h-3.5 w-3.5 text-green-600 shrink-0" />
+            {(contract.scopePackages ?? []).map((pkg) => (
+              <div key={pkg.id} className="px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{pkg.categoryName}</span>
+                      {pkg.selection && (
+                        <CheckCircle className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                      )}
+                      {pkg.selection?.selectedBy === 'rep' && (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                          <UserCheck className="h-2.5 w-2.5" /> Rep selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {pkg.quantity} {pkg.unit} · {fmt(pkg.coveredAmountCents ?? 0)}
+                      {pkg.selection && ` · ${pkg.selection.brandName} ${pkg.selection.productName}`}
+                    </p>
+                  </div>
+                  {isDraft && (
+                    <button
+                      onClick={() => deletePkgMut.mutate({ contractId: contract.id, pkgId: pkg.id })}
+                      disabled={deletePkgMut.isPending}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Rep-assisted selection for sent contracts */}
+                {isSent && contract.accessCode && !pkg.selection && (
+                  <div>
+                    {repAssistPkgId === pkg.id ? (
+                      <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                        <p className="text-xs font-medium text-amber-900 flex items-center gap-1">
+                          <UserCheck className="h-3.5 w-3.5" /> Select on behalf of customer
+                        </p>
+                        <p className="text-[10px] text-amber-700">
+                          You're making this selection — the customer must still sign in the portal.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              if (!repSelectedProductId) { toast.error('Choose a product first'); return; }
+                              repSelectMut.mutate({
+                                code: contract.accessCode!,
+                                pkgId: pkg.id,
+                                data: {
+                                  productId: repSelectedProductId,
+                                  optionId: repSelectedOptionId || null,
+                                },
+                              });
+                              setRepAssistPkgId(null);
+                              setRepSelectedProductId('');
+                              setRepSelectedOptionId('');
+                            }}
+                            disabled={!repSelectedProductId || repSelectMut.isPending}
+                            className="h-7 px-3 rounded-lg bg-amber-700 text-white text-xs font-medium disabled:opacity-50"
+                          >
+                            Save Selection
+                          </button>
+                          <button
+                            onClick={() => { setRepAssistPkgId(null); setRepSelectedProductId(''); }}
+                            className="h-7 px-3 rounded-lg border text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setRepAssistPkgId(pkg.id); setRepSelectedProductId(''); }}
+                        className="text-[11px] text-amber-700 hover:underline flex items-center gap-1"
+                      >
+                        <UserCheck className="h-3 w-3" /> Select for customer
+                      </button>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {pkg.quantity} {pkg.unit} · {fmt(pkg.coveredAmountCents)}
-                    {pkg.selection && ` · ${pkg.selection.brandName} ${pkg.selection.productName}`}
-                  </p>
-                </div>
-                {isDraft && (
-                  <button
-                    onClick={() => deletePkgMut.mutate(pkg.id)}
-                    disabled={deletePkgMut.isPending}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
                 )}
               </div>
             ))}
@@ -570,29 +649,48 @@ function ContractDetail({
         {isDraft && (
           <AddScopePackageForm
             contractId={contract.id}
-            categories={categories}
-            onAdded={() => qc.invalidateQueries({ queryKey: ['contracts', pinId] })}
+            pinId={pinId}
+            categories={categories as SelectionCategory[]}
+            onAdded={invalidateAll}
           />
         )}
       </div>
+
+      {/* Readiness gate (draft only, before send) */}
+      {isDraft && (contract.scopePackages ?? []).length > 0 && (
+        <div className={`rounded-xl p-4 space-y-2 ${isReady ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+          <p className={`text-xs font-semibold ${isReady ? 'text-green-900' : 'text-amber-900'}`}>
+            {isReady ? '✓ Ready to send' : 'Not ready to send'}
+          </p>
+          {unselectedPackages.length > 0 && (
+            <p className="text-xs text-amber-800">
+              Packages without a product selection:{' '}
+              {unselectedPackages.map((p) => p.categoryName).join(', ')}
+            </p>
+          )}
+          {!hasDocument && (
+            <p className="text-xs text-amber-800">No contract document generated yet.</p>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2">
         {isDraft && (
           <button
-            onClick={() => sendMut.mutate()}
-            disabled={sendMut.isPending || contract.scopePackages.length === 0}
+            onClick={() => sendMut.mutate({ contractId: contract.id })}
+            disabled={sendMut.isPending || (contract.scopePackages ?? []).length === 0}
             className="h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium flex items-center gap-2 disabled:opacity-50"
-            title={contract.scopePackages.length === 0 ? 'Add at least one scope package first' : ''}
+            title={(contract.scopePackages ?? []).length === 0 ? 'Add at least one scope package first' : ''}
           >
             {sendMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             Send to Customer
           </button>
         )}
 
-        {(isSent || isSigned) && (
+        {(isDraft || isSent) && (
           <button
-            onClick={() => genMut.mutate()}
+            onClick={() => genMut.mutate({ contractId: contract.id })}
             disabled={genMut.isPending}
             className="h-9 px-4 rounded-lg border text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           >
@@ -601,7 +699,7 @@ function ContractDetail({
           </button>
         )}
 
-        {(isDraft || isSent) && isManager && (
+        {(isDraft || isSent || isSigned) && isManager && (
           <button
             onClick={() => setShowVoidForm((v) => !v)}
             className="h-9 px-4 rounded-lg border border-destructive/50 text-destructive text-sm font-medium flex items-center gap-2 hover:bg-destructive/5"
@@ -618,6 +716,11 @@ function ContractDetail({
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <p className="text-sm font-semibold">Void this contract</p>
           </div>
+          {isSigned && (
+            <p className="text-xs text-destructive/80 font-medium">
+              ⚠ This contract was signed. Voiding will clear the contract value from the lead's financial record.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             This cannot be undone. You can create a replacement contract for this lead afterwards.
           </p>
@@ -630,7 +733,10 @@ function ContractDetail({
           />
           <div className="flex gap-2">
             <button
-              onClick={() => { if (!voidReason.trim()) { toast.error('Reason required'); return; } voidMut.mutate(voidReason.trim()); }}
+              onClick={() => {
+                if (!voidReason.trim()) { toast.error('Reason required'); return; }
+                voidMut.mutate({ contractId: contract.id, data: { voidReason: voidReason.trim() } });
+              }}
               disabled={voidMut.isPending || !voidReason.trim()}
               className="h-8 px-3 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
             >
@@ -657,11 +763,7 @@ export default function ContractBuilderTab({
   const [expanded, setExpanded]     = useState<Record<string, boolean>>({});
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery<{ contracts: Contract[] }>({
-    queryKey: ['contracts', pinId],
-    queryFn: () => customFetch(`/api/pins/${pinId}/contracts`),
-    staleTime: 30_000,
-  });
+  const { data, isLoading } = useListPinContracts(pinId);
 
   const contracts = data?.contracts ?? [];
   const activeContracts = contracts.filter((c) => c.status !== 'voided');
@@ -708,7 +810,10 @@ export default function ContractBuilderTab({
       {showCreate && (
         <CreateContractForm
           pinId={pinId}
-          onCreated={() => { setShowCreate(false); qc.invalidateQueries({ queryKey: ['contracts', pinId] }); }}
+          onCreated={() => {
+            setShowCreate(false);
+            qc.invalidateQueries({ queryKey: getListPinContractsQueryKey(pinId) });
+          }}
         />
       )}
 
@@ -741,7 +846,7 @@ export default function ContractBuilderTab({
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             {expanded['voided'] ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            {voidedContracts.length} voided contract{voidedContracts.length > 1 ? 's' : ''}
+            {voidedContracts.length} voided contract{voidedContracts.length !== 1 ? 's' : ''}
           </button>
           {expanded['voided'] && voidedContracts.map((c) => (
             <ContractDetail

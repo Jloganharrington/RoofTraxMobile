@@ -50,6 +50,16 @@ tags:
       Selections Library — internal catalog of categories, brands, products
       (tiers), and colour options. Admin-only for writes; any authenticated
       company member may read.
+  - name: Contracts
+    description: >-
+      Contract Builder — authenticated rep-facing endpoints for creating and
+      managing roofing contracts, scope packages, and sending contracts to
+      customers for signing.
+  - name: ContractPortal
+    description: >-
+      Contract Signing Portal — public endpoints gated by access code only.
+      Customers use these to view contract details, make product selections,
+      and sign their contract.
 paths:
   /healthz:
     get:
@@ -6853,6 +6863,433 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ── Contract Builder (authenticated) ──────────────────────────────────────
+
+  /pins/{pinId}/inspection-estimate:
+    get:
+      tags: [Contracts]
+      operationId: getPinInspectionEstimate
+      summary: Latest inspection estimate total for prefilling covered scope
+      parameters:
+        - { name: pinId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Estimate summary; coveredScopeCents is null when no estimate exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InspectionEstimateForContractEnvelope"
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Lead not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /pins/{pinId}/contracts:
+    get:
+      tags: [Contracts]
+      operationId: listPinContracts
+      summary: List all contracts for a lead
+      parameters:
+        - { name: pinId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Contract list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractListEnvelope"
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Lead not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    post:
+      tags: [Contracts]
+      operationId: createContract
+      summary: Create a draft contract for a lead
+      parameters:
+        - { name: pinId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContractInput"
+      responses:
+        "201":
+          description: Contract created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractEnvelope"
+        "400":
+          description: Invalid input.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: A live contract already exists for this lead.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /contracts/{contractId}:
+    get:
+      tags: [Contracts]
+      operationId: getContract
+      summary: Get contract detail including scope packages and selections
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Contract detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractEnvelope"
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    patch:
+      tags: [Contracts]
+      operationId: updateContract
+      summary: Update draft/sent contract fields (signed contracts are immutable)
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContractInput"
+      responses:
+        "200":
+          description: Contract updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractEnvelope"
+        "400":
+          description: Invalid input.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Signed or voided contracts are immutable.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /contracts/{contractId}/scope-packages:
+    post:
+      tags: [Contracts]
+      operationId: addContractScopePackage
+      summary: Add a scope package to a draft/sent contract
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContractScopePackageInput"
+      responses:
+        "201":
+          description: Scope package added.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractScopePackageEnvelope"
+        "400":
+          description: Invalid input or category not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Signed or voided contracts are immutable.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /contracts/{contractId}/scope-packages/{pkgId}:
+    patch:
+      tags: [Contracts]
+      operationId: updateContractScopePackage
+      summary: Update a scope package (draft/sent only)
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+        - { name: pkgId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContractScopePackageInput"
+      responses:
+        "200":
+          description: Package updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractScopePackageEnvelope"
+        "400":
+          description: Invalid input.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract or package not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Signed or voided contracts are immutable.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+    delete:
+      tags: [Contracts]
+      operationId: deleteContractScopePackage
+      summary: Remove a scope package from a draft contract
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+        - { name: pkgId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Package removed.
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract or package not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Only draft contracts allow package removal.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /contracts/{contractId}/send:
+    post:
+      tags: [Contracts]
+      operationId: sendContract
+      summary: Transition contract from draft to sent; activates the access code
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Contract sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractEnvelope"
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Contract is not in draft status.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "422":
+          description: No scope packages on this contract.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /contracts/{contractId}/generate-document:
+    post:
+      tags: [Contracts]
+      operationId: generateContractDocument
+      summary: Generate (or regenerate) the contract PDF and store it
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Document generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractEnvelope"
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Signed or voided contracts cannot be regenerated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /contracts/{contractId}/void:
+    post:
+      tags: [Contracts]
+      operationId: voidContract
+      summary: Void a contract (manager+ only, reason required)
+      parameters:
+        - { name: contractId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoidContractInput"
+      responses:
+        "200":
+          description: Contract voided.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractEnvelope"
+        "400":
+          description: Missing or empty voidReason.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "401":
+          description: Not authenticated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "403":
+          description: Manager or above required.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "409":
+          description: Contract is already voided.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  # ── Contract Signing Portal (public, access-code gated) ────────────────────
+
+  /portal/contract/{code}:
+    get:
+      tags: [ContractPortal]
+      operationId: getPortalContract
+      summary: Load contract details by access code (customer-facing)
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Contract detail with packages and available products.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalContractEnvelope"
+        "404":
+          description: Contract not found or not available.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "429":
+          description: Rate limited.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /portal/contract/{code}/select/{pkgId}:
+    post:
+      tags: [ContractPortal]
+      operationId: portalSelectProduct
+      summary: Record a product selection for a scope package
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+        - { name: pkgId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalSelectProductInput"
+      responses:
+        "200":
+          description: Selection recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSelectionEnvelope"
+        "400":
+          description: Invalid product or option.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract or package not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "429":
+          description: Rate limited.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /portal/contract/{code}/document:
+    get:
+      tags: [ContractPortal]
+      operationId: getPortalContractDocument
+      summary: Stream the generated contract PDF
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: PDF bytes.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Contract or document not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "429":
+          description: Rate limited.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /portal/contract/{code}/generate-document:
+    post:
+      tags: [ContractPortal]
+      operationId: portalGenerateContractDocument
+      summary: Generate the contract PDF from the customer portal (requires all packages selected)
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Document generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalGenerateDocumentResponse"
+        "404":
+          description: Contract not found.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "429":
+          description: Rate limited.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
+  /portal/contract/{code}/sign:
+    post:
+      tags: [ContractPortal]
+      operationId: portalSignContract
+      summary: Submit customer signature (requires all packages selected and document generated)
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalSignInput"
+      responses:
+        "200":
+          description: Contract signed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSignResponse"
+        "400":
+          description: Invalid input.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "404":
+          description: Contract not found or not available.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "422":
+          description: Missing selections or no document generated.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "429":
+          description: Rate limited.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+
 
 components:
   parameters:
@@ -12871,3 +13308,274 @@ components:
           items:
             type: string
           minItems: 1
+
+    # ── Contract Builder schemas ─────────────────────────────────────────────
+
+    ContractSelection:
+      type: object
+      required: [id, productId, productName, brandName, unitDeltaCents, quantity, extendedDeltaCents, selectedBy, selectedAt]
+      properties:
+        id:                  { type: string }
+        productId:           { type: string }
+        optionId:            { type: string, nullable: true }
+        productName:         { type: string }
+        brandName:           { type: string }
+        optionName:          { type: string, nullable: true }
+        unitDeltaCents:      { type: integer }
+        quantity:            { type: string }
+        extendedDeltaCents:  { type: integer }
+        selectedBy:          { type: string }
+        selectedAt:          { type: string, format: date-time }
+
+    ContractScopePackage:
+      type: object
+      required: [id, categoryId, categoryName, quantity, unit, coveredAmountCents, sortOrder]
+      properties:
+        id:                  { type: string }
+        categoryId:          { type: string }
+        categoryName:        { type: string }
+        quantity:            { type: string }
+        unit:                { type: string }
+        coveredAmountCents:  { type: integer }
+        sortOrder:           { type: integer }
+        selection:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/ContractSelection"
+
+    Contract:
+      type: object
+      required: [id, companyId, pinId, status, coveredScopeCents, bettermentsCents, deductibleCents, totalContractCents, createdByUserId, createdAt, updatedAt, scopePackages]
+      properties:
+        id:                  { type: string }
+        companyId:           { type: string }
+        pinId:               { type: string }
+        accessCode:          { type: string, nullable: true }
+        accessCodeExpiresAt: { type: string, format: date-time, nullable: true }
+        status:              { type: string, enum: [draft, sent, signed, voided] }
+        sentAt:              { type: string, format: date-time, nullable: true }
+        coveredScopeCents:   { type: integer }
+        bettermentsCents:    { type: integer }
+        deductibleCents:     { type: integer }
+        totalContractCents:  { type: integer }
+        scopeSummary:        { type: string, nullable: true }
+        scopeSource:         { type: string, nullable: true }
+        templateId:          { type: string, nullable: true }
+        documentObjectPath:  { type: string, nullable: true }
+        documentSha256:      { type: string, nullable: true }
+        customerSignedAt:    { type: string, format: date-time, nullable: true }
+        customerPrintName:   { type: string, nullable: true }
+        repSignedAt:         { type: string, format: date-time, nullable: true }
+        voidedAt:            { type: string, format: date-time, nullable: true }
+        voidedByUserId:      { type: string, nullable: true }
+        voidReason:          { type: string, nullable: true }
+        createdByUserId:     { type: string }
+        createdAt:           { type: string, format: date-time }
+        updatedAt:           { type: string, format: date-time }
+        scopePackages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContractScopePackage"
+
+    ContractEnvelope:
+      type: object
+      required: [contract]
+      properties:
+        contract:
+          $ref: "#/components/schemas/Contract"
+
+    ContractListEnvelope:
+      type: object
+      required: [contracts]
+      properties:
+        contracts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contract"
+
+    ContractScopePackageEnvelope:
+      type: object
+      required: [scopePackage]
+      properties:
+        scopePackage:
+          type: object
+          description: Raw scope package row (without nested selection; refetch contract for full shape).
+
+    CreateContractInput:
+      type: object
+      properties:
+        coveredScopeCents: { type: integer, minimum: 0 }
+        deductibleCents:   { type: integer, minimum: 0 }
+        scopeSummary:      { type: string }
+        scopeSource:       { type: string, enum: [estimate, manual] }
+        templateId:        { type: string }
+
+    UpdateContractInput:
+      type: object
+      properties:
+        coveredScopeCents: { type: integer, minimum: 0 }
+        deductibleCents:   { type: integer, minimum: 0 }
+        scopeSummary:      { type: string, nullable: true }
+        scopeSource:       { type: string, enum: [estimate, manual], nullable: true }
+        templateId:        { type: string, nullable: true }
+
+    CreateContractScopePackageInput:
+      type: object
+      required: [categoryId, quantity, unit]
+      properties:
+        categoryId:         { type: string }
+        quantity:           { type: number }
+        unit:               { type: string }
+        coveredAmountCents: { type: integer, minimum: 0 }
+        sortOrder:          { type: integer }
+
+    UpdateContractScopePackageInput:
+      type: object
+      properties:
+        quantity:           { type: number }
+        unit:               { type: string }
+        coveredAmountCents: { type: integer, minimum: 0 }
+        sortOrder:          { type: integer }
+
+    VoidContractInput:
+      type: object
+      required: [voidReason]
+      properties:
+        voidReason: { type: string, minLength: 1 }
+
+    InspectionEstimateForContractEnvelope:
+      type: object
+      required: [coveredScopeCents]
+      properties:
+        coveredScopeCents: { type: integer, nullable: true }
+        source:            { type: string, enum: [estimate], nullable: true }
+
+    # ── Contract Portal schemas (public) ─────────────────────────────────────
+
+    PortalProductOption:
+      type: object
+      required: [id, name]
+      properties:
+        id:           { type: string }
+        name:         { type: string }
+        optionGroup:  { type: string, nullable: true }
+        swatchHex:    { type: string, nullable: true }
+        hoaCompliant: { type: boolean, nullable: true }
+
+    PortalProduct:
+      type: object
+      required: [id, name, brandName, isBase, priceDeltaCents, unit, options]
+      properties:
+        id:              { type: string }
+        name:            { type: string }
+        brandName:       { type: string }
+        isBase:          { type: boolean }
+        priceDeltaCents: { type: integer }
+        unit:            { type: string }
+        description:     { type: string, nullable: true }
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalProductOption"
+
+    PortalPackageSelection:
+      type: object
+      required: [productId, productName, brandName, unitDeltaCents, quantity, extendedDeltaCents]
+      properties:
+        productId:          { type: string }
+        optionId:           { type: string, nullable: true }
+        productName:        { type: string }
+        brandName:          { type: string }
+        optionName:         { type: string, nullable: true }
+        unitDeltaCents:     { type: integer }
+        quantity:           { type: string }
+        extendedDeltaCents: { type: integer }
+
+    PortalScopePackage:
+      type: object
+      required: [id, categoryName, quantity, unit, coveredAmountCents, sortOrder, products]
+      properties:
+        id:                 { type: string }
+        categoryId:         { type: string }
+        categoryName:       { type: string }
+        quantity:           { type: string }
+        unit:               { type: string }
+        coveredAmountCents: { type: integer }
+        sortOrder:          { type: integer }
+        selection:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/PortalPackageSelection"
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalProduct"
+
+    PortalContractEnvelope:
+      type: object
+      required: [contract, property, company, packages]
+      properties:
+        contract:
+          type: object
+          required: [id, status, coveredScopeCents, bettermentsCents, deductibleCents, totalContractCents]
+          properties:
+            id:                 { type: string }
+            status:             { type: string }
+            coveredScopeCents:  { type: integer }
+            bettermentsCents:   { type: integer }
+            deductibleCents:    { type: integer }
+            totalContractCents: { type: integer }
+            scopeSummary:       { type: string, nullable: true }
+            documentObjectPath: { type: string, nullable: true }
+            customerSignedAt:   { type: string, format: date-time, nullable: true }
+        property:
+          type: object
+          required: [address]
+          properties:
+            address: { type: string, nullable: true }
+        company:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, nullable: true }
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalScopePackage"
+
+    PortalSelectProductInput:
+      type: object
+      required: [productId]
+      properties:
+        productId: { type: string }
+        optionId:  { type: string, nullable: true }
+
+    PortalSelectionEnvelope:
+      type: object
+      required: [selection]
+      properties:
+        selection:
+          type: object
+          description: Raw selection row snapshot.
+
+    PortalGenerateDocumentResponse:
+      type: object
+      required: [documentObjectPath, documentSha256]
+      properties:
+        documentObjectPath: { type: string }
+        documentSha256:     { type: string }
+
+    PortalSignInput:
+      type: object
+      required: [customerPrintName]
+      properties:
+        customerSignatureBase64: { type: string }
+        customerSignaturePath:   { type: string }
+        customerPrintName:       { type: string, minLength: 1 }
+
+    PortalSignResponse:
+      type: object
+      required: [status, customerSignedAt]
+      properties:
+        status:           { type: string }
+        customerSignedAt: { type: string, format: date-time }

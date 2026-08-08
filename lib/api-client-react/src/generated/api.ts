@@ -47,10 +47,15 @@ import type {
   CompanyReportSettingsEnvelope,
   CompileInspectionReport200,
   CompileReportInput,
+  ContractEnvelope,
+  ContractListEnvelope,
+  ContractScopePackageEnvelope,
   CreateAttestationInput,
   CreateBugReportInput,
   CreateChangeOrderInput,
   CreateCompanyRequest,
+  CreateContractInput,
+  CreateContractScopePackageInput,
   CreateCustomerInvoiceInput,
   CreateDamageInstanceInput,
   CreateInspectionAddendumInput,
@@ -107,6 +112,7 @@ import type {
   InspectionElevationEnvelope,
   InspectionEnvelope,
   InspectionEstimateEnvelope,
+  InspectionEstimateForContractEnvelope,
   InspectionListEnvelope,
   InspectionPenetrationEnvelope,
   InspectionPhotoEnvelope,
@@ -143,8 +149,14 @@ import type {
   PinEnvelope,
   PinListEnvelope,
   PipelineFunnelEnvelope,
+  PortalContractEnvelope,
   PortalEnvelope,
+  PortalGenerateDocumentResponse,
   PortalReportHtmlEnvelope,
+  PortalSelectProductInput,
+  PortalSelectionEnvelope,
+  PortalSignInput,
+  PortalSignResponse,
   PreflightResultEnvelope,
   PriceBookItemEnvelope,
   PriceBookItemListEnvelope,
@@ -183,6 +195,8 @@ import type {
   UpdateChangeOrderInput,
   UpdateCommissionsInput,
   UpdateCompanyReportSettingsInput,
+  UpdateContractInput,
+  UpdateContractScopePackageInput,
   UpdateCustomerInvoiceInput,
   UpdateFipsaSettingsInput,
   UpdateInspectionComponentInput,
@@ -214,11 +228,13 @@ import type {
   VendorExpenseEnvelope,
   VendorExpenseListEnvelope,
   VoidChangeOrderInput,
+  VoidContractInput,
   WeatherCandidatesEnvelope
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
 import type { ErrorType , BodyType } from '../custom-fetch';
+import { portalFetch } from '../portal-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -13052,5 +13068,1184 @@ export const useDeleteSelectionProductOption = <TError = ErrorType<ErrorEnvelope
         TContext
       > => {
       return useMutation(getDeleteSelectionProductOptionMutationOptions(options));
+    }
+
+export const getGetPinInspectionEstimateUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/inspection-estimate`
+}
+
+/**
+ * @summary Latest inspection estimate total for prefilling covered scope
+ */
+export const getPinInspectionEstimate = async (pinId: string, options?: RequestInit): Promise<InspectionEstimateForContractEnvelope> => {
+
+  return customFetch<InspectionEstimateForContractEnvelope>(getGetPinInspectionEstimateUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPinInspectionEstimateQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/inspection-estimate`
+    ] as const;
+    }
+
+
+export const getGetPinInspectionEstimateQueryOptions = <TData = Awaited<ReturnType<typeof getPinInspectionEstimate>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPinInspectionEstimate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPinInspectionEstimateQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPinInspectionEstimate>>> = ({ signal }) => getPinInspectionEstimate(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPinInspectionEstimate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPinInspectionEstimateQueryResult = NonNullable<Awaited<ReturnType<typeof getPinInspectionEstimate>>>
+export type GetPinInspectionEstimateQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Latest inspection estimate total for prefilling covered scope
+ */
+
+export function useGetPinInspectionEstimate<TData = Awaited<ReturnType<typeof getPinInspectionEstimate>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPinInspectionEstimate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPinInspectionEstimateQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListPinContractsUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/contracts`
+}
+
+/**
+ * @summary List all contracts for a lead
+ */
+export const listPinContracts = async (pinId: string, options?: RequestInit): Promise<ContractListEnvelope> => {
+
+  return customFetch<ContractListEnvelope>(getListPinContractsUrl(pinId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPinContractsQueryKey = (pinId: string,) => {
+    return [
+    `/api/pins/${pinId}/contracts`
+    ] as const;
+    }
+
+
+export const getListPinContractsQueryOptions = <TData = Awaited<ReturnType<typeof listPinContracts>>, TError = ErrorType<ErrorEnvelope>>(pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPinContracts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPinContractsQueryKey(pinId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPinContracts>>> = ({ signal }) => listPinContracts(pinId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: pinId !== null && pinId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPinContracts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPinContractsQueryResult = NonNullable<Awaited<ReturnType<typeof listPinContracts>>>
+export type ListPinContractsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List all contracts for a lead
+ */
+
+export function useListPinContracts<TData = Awaited<ReturnType<typeof listPinContracts>>, TError = ErrorType<ErrorEnvelope>>(
+ pinId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPinContracts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPinContractsQueryOptions(pinId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateContractUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/contracts`
+}
+
+/**
+ * @summary Create a draft contract for a lead
+ */
+export const createContract = async (pinId: string,
+    createContractInput: CreateContractInput, options?: RequestInit): Promise<ContractEnvelope> => {
+
+  return customFetch<ContractEnvelope>(getCreateContractUrl(pinId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createContractInput)
+  }
+);}
+
+
+
+
+
+export const getCreateContractMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createContract>>, TError,{pinId: string;data: BodyType<CreateContractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createContract>>, TError,{pinId: string;data: BodyType<CreateContractInput>}, TContext> => {
+
+const mutationKey = ['createContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createContract>>, {pinId: string;data: BodyType<CreateContractInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  createContract(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateContractMutationResult = NonNullable<Awaited<ReturnType<typeof createContract>>>
+    export type CreateContractMutationBody = BodyType<CreateContractInput>
+    export type CreateContractMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a draft contract for a lead
+ */
+export const useCreateContract = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createContract>>, TError,{pinId: string;data: BodyType<CreateContractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createContract>>,
+        TError,
+        {pinId: string;data: BodyType<CreateContractInput>},
+        TContext
+      > => {
+      return useMutation(getCreateContractMutationOptions(options));
+    }
+
+export const getGetContractUrl = (contractId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}`
+}
+
+/**
+ * @summary Get contract detail including scope packages and selections
+ */
+export const getContract = async (contractId: string, options?: RequestInit): Promise<ContractEnvelope> => {
+
+  return customFetch<ContractEnvelope>(getGetContractUrl(contractId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetContractQueryKey = (contractId: string,) => {
+    return [
+    `/api/contracts/${contractId}`
+    ] as const;
+    }
+
+
+export const getGetContractQueryOptions = <TData = Awaited<ReturnType<typeof getContract>>, TError = ErrorType<ErrorEnvelope>>(contractId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getContract>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetContractQueryKey(contractId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getContract>>> = ({ signal }) => getContract(contractId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: contractId !== null && contractId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getContract>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetContractQueryResult = NonNullable<Awaited<ReturnType<typeof getContract>>>
+export type GetContractQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get contract detail including scope packages and selections
+ */
+
+export function useGetContract<TData = Awaited<ReturnType<typeof getContract>>, TError = ErrorType<ErrorEnvelope>>(
+ contractId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getContract>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetContractQueryOptions(contractId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateContractUrl = (contractId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}`
+}
+
+/**
+ * @summary Update draft/sent contract fields (signed contracts are immutable)
+ */
+export const updateContract = async (contractId: string,
+    updateContractInput: UpdateContractInput, options?: RequestInit): Promise<ContractEnvelope> => {
+
+  return customFetch<ContractEnvelope>(getUpdateContractUrl(contractId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateContractInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateContractMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateContract>>, TError,{contractId: string;data: BodyType<UpdateContractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateContract>>, TError,{contractId: string;data: BodyType<UpdateContractInput>}, TContext> => {
+
+const mutationKey = ['updateContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateContract>>, {contractId: string;data: BodyType<UpdateContractInput>}> = (props) => {
+          const {contractId,data} = props ?? {};
+
+          return  updateContract(contractId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateContractMutationResult = NonNullable<Awaited<ReturnType<typeof updateContract>>>
+    export type UpdateContractMutationBody = BodyType<UpdateContractInput>
+    export type UpdateContractMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update draft/sent contract fields (signed contracts are immutable)
+ */
+export const useUpdateContract = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateContract>>, TError,{contractId: string;data: BodyType<UpdateContractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateContract>>,
+        TError,
+        {contractId: string;data: BodyType<UpdateContractInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateContractMutationOptions(options));
+    }
+
+export const getAddContractScopePackageUrl = (contractId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}/scope-packages`
+}
+
+/**
+ * @summary Add a scope package to a draft/sent contract
+ */
+export const addContractScopePackage = async (contractId: string,
+    createContractScopePackageInput: CreateContractScopePackageInput, options?: RequestInit): Promise<ContractScopePackageEnvelope> => {
+
+  return customFetch<ContractScopePackageEnvelope>(getAddContractScopePackageUrl(contractId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createContractScopePackageInput)
+  }
+);}
+
+
+
+
+
+export const getAddContractScopePackageMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addContractScopePackage>>, TError,{contractId: string;data: BodyType<CreateContractScopePackageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addContractScopePackage>>, TError,{contractId: string;data: BodyType<CreateContractScopePackageInput>}, TContext> => {
+
+const mutationKey = ['addContractScopePackage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addContractScopePackage>>, {contractId: string;data: BodyType<CreateContractScopePackageInput>}> = (props) => {
+          const {contractId,data} = props ?? {};
+
+          return  addContractScopePackage(contractId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddContractScopePackageMutationResult = NonNullable<Awaited<ReturnType<typeof addContractScopePackage>>>
+    export type AddContractScopePackageMutationBody = BodyType<CreateContractScopePackageInput>
+    export type AddContractScopePackageMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Add a scope package to a draft/sent contract
+ */
+export const useAddContractScopePackage = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addContractScopePackage>>, TError,{contractId: string;data: BodyType<CreateContractScopePackageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addContractScopePackage>>,
+        TError,
+        {contractId: string;data: BodyType<CreateContractScopePackageInput>},
+        TContext
+      > => {
+      return useMutation(getAddContractScopePackageMutationOptions(options));
+    }
+
+export const getUpdateContractScopePackageUrl = (contractId: string,
+    pkgId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}/scope-packages/${pkgId}`
+}
+
+/**
+ * @summary Update a scope package (draft/sent only)
+ */
+export const updateContractScopePackage = async (contractId: string,
+    pkgId: string,
+    updateContractScopePackageInput: UpdateContractScopePackageInput, options?: RequestInit): Promise<ContractScopePackageEnvelope> => {
+
+  return customFetch<ContractScopePackageEnvelope>(getUpdateContractScopePackageUrl(contractId,pkgId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateContractScopePackageInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateContractScopePackageMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateContractScopePackage>>, TError,{contractId: string;pkgId: string;data: BodyType<UpdateContractScopePackageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateContractScopePackage>>, TError,{contractId: string;pkgId: string;data: BodyType<UpdateContractScopePackageInput>}, TContext> => {
+
+const mutationKey = ['updateContractScopePackage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateContractScopePackage>>, {contractId: string;pkgId: string;data: BodyType<UpdateContractScopePackageInput>}> = (props) => {
+          const {contractId,pkgId,data} = props ?? {};
+
+          return  updateContractScopePackage(contractId,pkgId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateContractScopePackageMutationResult = NonNullable<Awaited<ReturnType<typeof updateContractScopePackage>>>
+    export type UpdateContractScopePackageMutationBody = BodyType<UpdateContractScopePackageInput>
+    export type UpdateContractScopePackageMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a scope package (draft/sent only)
+ */
+export const useUpdateContractScopePackage = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateContractScopePackage>>, TError,{contractId: string;pkgId: string;data: BodyType<UpdateContractScopePackageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateContractScopePackage>>,
+        TError,
+        {contractId: string;pkgId: string;data: BodyType<UpdateContractScopePackageInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateContractScopePackageMutationOptions(options));
+    }
+
+export const getDeleteContractScopePackageUrl = (contractId: string,
+    pkgId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}/scope-packages/${pkgId}`
+}
+
+/**
+ * @summary Remove a scope package from a draft contract
+ */
+export const deleteContractScopePackage = async (contractId: string,
+    pkgId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteContractScopePackageUrl(contractId,pkgId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteContractScopePackageMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteContractScopePackage>>, TError,{contractId: string;pkgId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteContractScopePackage>>, TError,{contractId: string;pkgId: string}, TContext> => {
+
+const mutationKey = ['deleteContractScopePackage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteContractScopePackage>>, {contractId: string;pkgId: string}> = (props) => {
+          const {contractId,pkgId} = props ?? {};
+
+          return  deleteContractScopePackage(contractId,pkgId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteContractScopePackageMutationResult = NonNullable<Awaited<ReturnType<typeof deleteContractScopePackage>>>
+
+    export type DeleteContractScopePackageMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Remove a scope package from a draft contract
+ */
+export const useDeleteContractScopePackage = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteContractScopePackage>>, TError,{contractId: string;pkgId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteContractScopePackage>>,
+        TError,
+        {contractId: string;pkgId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteContractScopePackageMutationOptions(options));
+    }
+
+export const getSendContractUrl = (contractId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}/send`
+}
+
+/**
+ * @summary Transition contract from draft to sent; activates the access code
+ */
+export const sendContract = async (contractId: string, options?: RequestInit): Promise<ContractEnvelope> => {
+
+  return customFetch<ContractEnvelope>(getSendContractUrl(contractId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendContractMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendContract>>, TError,{contractId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendContract>>, TError,{contractId: string}, TContext> => {
+
+const mutationKey = ['sendContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendContract>>, {contractId: string}> = (props) => {
+          const {contractId} = props ?? {};
+
+          return  sendContract(contractId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendContractMutationResult = NonNullable<Awaited<ReturnType<typeof sendContract>>>
+
+    export type SendContractMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Transition contract from draft to sent; activates the access code
+ */
+export const useSendContract = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendContract>>, TError,{contractId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendContract>>,
+        TError,
+        {contractId: string},
+        TContext
+      > => {
+      return useMutation(getSendContractMutationOptions(options));
+    }
+
+export const getGenerateContractDocumentUrl = (contractId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}/generate-document`
+}
+
+/**
+ * @summary Generate (or regenerate) the contract PDF and store it
+ */
+export const generateContractDocument = async (contractId: string, options?: RequestInit): Promise<ContractEnvelope> => {
+
+  return customFetch<ContractEnvelope>(getGenerateContractDocumentUrl(contractId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getGenerateContractDocumentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContractDocument>>, TError,{contractId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateContractDocument>>, TError,{contractId: string}, TContext> => {
+
+const mutationKey = ['generateContractDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateContractDocument>>, {contractId: string}> = (props) => {
+          const {contractId} = props ?? {};
+
+          return  generateContractDocument(contractId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateContractDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof generateContractDocument>>>
+
+    export type GenerateContractDocumentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Generate (or regenerate) the contract PDF and store it
+ */
+export const useGenerateContractDocument = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContractDocument>>, TError,{contractId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateContractDocument>>,
+        TError,
+        {contractId: string},
+        TContext
+      > => {
+      return useMutation(getGenerateContractDocumentMutationOptions(options));
+    }
+
+export const getVoidContractUrl = (contractId: string,) => {
+
+
+
+
+  return `/api/contracts/${contractId}/void`
+}
+
+/**
+ * @summary Void a contract (manager+ only, reason required)
+ */
+export const voidContract = async (contractId: string,
+    voidContractInput: VoidContractInput, options?: RequestInit): Promise<ContractEnvelope> => {
+
+  return customFetch<ContractEnvelope>(getVoidContractUrl(contractId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(voidContractInput)
+  }
+);}
+
+
+
+
+
+export const getVoidContractMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidContract>>, TError,{contractId: string;data: BodyType<VoidContractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voidContract>>, TError,{contractId: string;data: BodyType<VoidContractInput>}, TContext> => {
+
+const mutationKey = ['voidContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidContract>>, {contractId: string;data: BodyType<VoidContractInput>}> = (props) => {
+          const {contractId,data} = props ?? {};
+
+          return  voidContract(contractId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoidContractMutationResult = NonNullable<Awaited<ReturnType<typeof voidContract>>>
+    export type VoidContractMutationBody = BodyType<VoidContractInput>
+    export type VoidContractMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Void a contract (manager+ only, reason required)
+ */
+export const useVoidContract = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidContract>>, TError,{contractId: string;data: BodyType<VoidContractInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voidContract>>,
+        TError,
+        {contractId: string;data: BodyType<VoidContractInput>},
+        TContext
+      > => {
+      return useMutation(getVoidContractMutationOptions(options));
+    }
+
+export const getGetPortalContractUrl = (code: string,) => {
+
+
+
+
+  return `/api/portal/contract/${code}`
+}
+
+/**
+ * @summary Load contract details by access code (customer-facing)
+ */
+export const getPortalContract = async (code: string, options?: RequestInit): Promise<PortalContractEnvelope> => {
+
+  return portalFetch<PortalContractEnvelope>(getGetPortalContractUrl(code),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalContractQueryKey = (code: string,) => {
+    return [
+    `/api/portal/contract/${code}`
+    ] as const;
+    }
+
+
+export const getGetPortalContractQueryOptions = <TData = Awaited<ReturnType<typeof getPortalContract>>, TError = ErrorEnvelope>(code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContract>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalContractQueryKey(code);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalContract>>> = ({ signal }) => getPortalContract(code, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: code !== null && code !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalContract>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalContractQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalContract>>>
+export type GetPortalContractQueryError = ErrorEnvelope
+
+
+/**
+ * @summary Load contract details by access code (customer-facing)
+ */
+
+export function useGetPortalContract<TData = Awaited<ReturnType<typeof getPortalContract>>, TError = ErrorEnvelope>(
+ code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContract>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalContractQueryOptions(code,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPortalSelectProductUrl = (code: string,
+    pkgId: string,) => {
+
+
+
+
+  return `/api/portal/contract/${code}/select/${pkgId}`
+}
+
+/**
+ * @summary Record a product selection for a scope package
+ */
+export const portalSelectProduct = async (code: string,
+    pkgId: string,
+    portalSelectProductInput: PortalSelectProductInput, options?: RequestInit): Promise<PortalSelectionEnvelope> => {
+
+  return portalFetch<PortalSelectionEnvelope>(getPortalSelectProductUrl(code,pkgId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalSelectProductInput)
+  }
+);}
+
+
+
+
+
+export const getPortalSelectProductMutationOptions = <TError = ErrorEnvelope,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalSelectProduct>>, TError,{code: string;pkgId: string;data: PortalSelectProductInput}, TContext>, request?: SecondParameter<typeof portalFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalSelectProduct>>, TError,{code: string;pkgId: string;data: PortalSelectProductInput}, TContext> => {
+
+const mutationKey = ['portalSelectProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalSelectProduct>>, {code: string;pkgId: string;data: PortalSelectProductInput}> = (props) => {
+          const {code,pkgId,data} = props ?? {};
+
+          return  portalSelectProduct(code,pkgId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalSelectProductMutationResult = NonNullable<Awaited<ReturnType<typeof portalSelectProduct>>>
+    export type PortalSelectProductMutationBody = PortalSelectProductInput
+    export type PortalSelectProductMutationError = ErrorEnvelope
+
+    /**
+ * @summary Record a product selection for a scope package
+ */
+export const usePortalSelectProduct = <TError = ErrorEnvelope,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalSelectProduct>>, TError,{code: string;pkgId: string;data: PortalSelectProductInput}, TContext>, request?: SecondParameter<typeof portalFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalSelectProduct>>,
+        TError,
+        {code: string;pkgId: string;data: PortalSelectProductInput},
+        TContext
+      > => {
+      return useMutation(getPortalSelectProductMutationOptions(options));
+    }
+
+export const getGetPortalContractDocumentUrl = (code: string,) => {
+
+
+
+
+  return `/api/portal/contract/${code}/document`
+}
+
+/**
+ * @summary Stream the generated contract PDF
+ */
+export const getPortalContractDocument = async (code: string, options?: RequestInit): Promise<Blob> => {
+
+  return portalFetch<Blob>(getGetPortalContractDocumentUrl(code),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalContractDocumentQueryKey = (code: string,) => {
+    return [
+    `/api/portal/contract/${code}/document`
+    ] as const;
+    }
+
+
+export const getGetPortalContractDocumentQueryOptions = <TData = Awaited<ReturnType<typeof getPortalContractDocument>>, TError = ErrorEnvelope>(code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContractDocument>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalContractDocumentQueryKey(code);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalContractDocument>>> = ({ signal }) => getPortalContractDocument(code, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: code !== null && code !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalContractDocument>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalContractDocumentQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalContractDocument>>>
+export type GetPortalContractDocumentQueryError = ErrorEnvelope
+
+
+/**
+ * @summary Stream the generated contract PDF
+ */
+
+export function useGetPortalContractDocument<TData = Awaited<ReturnType<typeof getPortalContractDocument>>, TError = ErrorEnvelope>(
+ code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContractDocument>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalContractDocumentQueryOptions(code,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPortalGenerateContractDocumentUrl = (code: string,) => {
+
+
+
+
+  return `/api/portal/contract/${code}/generate-document`
+}
+
+/**
+ * @summary Generate the contract PDF from the customer portal (requires all packages selected)
+ */
+export const portalGenerateContractDocument = async (code: string, options?: RequestInit): Promise<PortalGenerateDocumentResponse> => {
+
+  return portalFetch<PortalGenerateDocumentResponse>(getPortalGenerateContractDocumentUrl(code),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalGenerateContractDocumentMutationOptions = <TError = ErrorEnvelope,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalGenerateContractDocument>>, TError,{code: string}, TContext>, request?: SecondParameter<typeof portalFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalGenerateContractDocument>>, TError,{code: string}, TContext> => {
+
+const mutationKey = ['portalGenerateContractDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalGenerateContractDocument>>, {code: string}> = (props) => {
+          const {code} = props ?? {};
+
+          return  portalGenerateContractDocument(code,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalGenerateContractDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof portalGenerateContractDocument>>>
+
+    export type PortalGenerateContractDocumentMutationError = ErrorEnvelope
+
+    /**
+ * @summary Generate the contract PDF from the customer portal (requires all packages selected)
+ */
+export const usePortalGenerateContractDocument = <TError = ErrorEnvelope,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalGenerateContractDocument>>, TError,{code: string}, TContext>, request?: SecondParameter<typeof portalFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalGenerateContractDocument>>,
+        TError,
+        {code: string},
+        TContext
+      > => {
+      return useMutation(getPortalGenerateContractDocumentMutationOptions(options));
+    }
+
+export const getPortalSignContractUrl = (code: string,) => {
+
+
+
+
+  return `/api/portal/contract/${code}/sign`
+}
+
+/**
+ * @summary Submit customer signature (requires all packages selected and document generated)
+ */
+export const portalSignContract = async (code: string,
+    portalSignInput: PortalSignInput, options?: RequestInit): Promise<PortalSignResponse> => {
+
+  return portalFetch<PortalSignResponse>(getPortalSignContractUrl(code),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalSignInput)
+  }
+);}
+
+
+
+
+
+export const getPortalSignContractMutationOptions = <TError = ErrorEnvelope,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalSignContract>>, TError,{code: string;data: PortalSignInput}, TContext>, request?: SecondParameter<typeof portalFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalSignContract>>, TError,{code: string;data: PortalSignInput}, TContext> => {
+
+const mutationKey = ['portalSignContract'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalSignContract>>, {code: string;data: PortalSignInput}> = (props) => {
+          const {code,data} = props ?? {};
+
+          return  portalSignContract(code,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalSignContractMutationResult = NonNullable<Awaited<ReturnType<typeof portalSignContract>>>
+    export type PortalSignContractMutationBody = PortalSignInput
+    export type PortalSignContractMutationError = ErrorEnvelope
+
+    /**
+ * @summary Submit customer signature (requires all packages selected and document generated)
+ */
+export const usePortalSignContract = <TError = ErrorEnvelope,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalSignContract>>, TError,{code: string;data: PortalSignInput}, TContext>, request?: SecondParameter<typeof portalFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalSignContract>>,
+        TError,
+        {code: string;data: PortalSignInput},
+        TContext
+      > => {
+      return useMutation(getPortalSignContractMutationOptions(options));
     }
 
