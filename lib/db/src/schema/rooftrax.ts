@@ -839,3 +839,86 @@ export const changeOrderLineItemsTable = pgTable('change_order_line_items', {
 
 export type ChangeOrderLineItem = typeof changeOrderLineItemsTable.$inferSelect;
 export type InsertChangeOrderLineItem = typeof changeOrderLineItemsTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Selections Library (migration 2026-08-07)
+// Hierarchy: Category → Brand → Product (tier) → Options (colours)
+// ---------------------------------------------------------------------------
+
+export const selectionCategoriesTable = pgTable('selection_categories', {
+  id:        varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id').notNull().references(() => companiesTable.id),
+  name:      varchar('name', { length: 120 }).notNull(),
+  slug:      varchar('slug', { length: 80 }).notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  isActive:  boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type SelectionCategory = typeof selectionCategoriesTable.$inferSelect;
+export type InsertSelectionCategory = typeof selectionCategoriesTable.$inferInsert;
+
+export const selectionBrandsTable = pgTable('selection_brands', {
+  id:         varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:  varchar('company_id').notNull().references(() => companiesTable.id),
+  categoryId: varchar('category_id').notNull().references(() => selectionCategoriesTable.id),
+  name:       varchar('name', { length: 120 }).notNull(),
+  logoPath:   text('logo_path'),
+  sortOrder:  integer('sort_order').notNull().default(0),
+  isActive:   boolean('is_active').notNull().default(true),
+  createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:  timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type SelectionBrand = typeof selectionBrandsTable.$inferSelect;
+export type InsertSelectionBrand = typeof selectionBrandsTable.$inferInsert;
+
+export const selectionProductsTable = pgTable('selection_products', {
+  id:               varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:        varchar('company_id').notNull().references(() => companiesTable.id),
+  categoryId:       varchar('category_id').notNull().references(() => selectionCategoriesTable.id),
+  brandId:          varchar('brand_id').notNull().references(() => selectionBrandsTable.id),
+  name:             varchar('name', { length: 200 }).notNull(),
+  description:      text('description'),
+  specs:            jsonb('specs'),
+  isBase:           boolean('is_base').notNull().default(false),
+  priceDeltaCents:  integer('price_delta_cents').notNull().default(0),
+  unit:             varchar('unit', { length: 60 }).notNull(),
+  sortOrder:        integer('sort_order').notNull().default(0),
+  isActive:         boolean('is_active').notNull().default(true),
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:        timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type SelectionProduct = typeof selectionProductsTable.$inferSelect;
+export type InsertSelectionProduct = typeof selectionProductsTable.$inferInsert;
+
+export const selectionOptionsTable = pgTable('selection_options', {
+  id:               varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:        varchar('company_id').notNull().references(() => companiesTable.id),
+  brandId:          varchar('brand_id').notNull().references(() => selectionBrandsTable.id),
+  name:             varchar('name', { length: 120 }).notNull(),
+  optionGroup:      varchar('option_group', { length: 80 }),
+  swatchHex:        varchar('swatch_hex', { length: 7 }),
+  swatchImagePath:  text('swatch_image_path'),
+  hoaCompliant:     boolean('hoa_compliant'),
+  sortOrder:        integer('sort_order').notNull().default(0),
+  isActive:         boolean('is_active').notNull().default(true),
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:        timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type SelectionOption = typeof selectionOptionsTable.$inferSelect;
+export type InsertSelectionOption = typeof selectionOptionsTable.$inferInsert;
+
+export const selectionProductOptionsTable = pgTable('selection_product_options', {
+  id:        varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id').notNull().references(() => companiesTable.id),
+  productId: varchar('product_id').notNull().references(() => selectionProductsTable.id),
+  optionId:  varchar('option_id').notNull().references(() => selectionOptionsTable.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type SelectionProductOption = typeof selectionProductOptionsTable.$inferSelect;
+export type InsertSelectionProductOption = typeof selectionProductOptionsTable.$inferInsert;

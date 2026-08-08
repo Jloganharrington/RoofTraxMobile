@@ -68,10 +68,12 @@ import {
   Sun,
   Moon,
   Monitor,
+  Layers,
 } from "lucide-react";
 import { applyTheme, type ThemeValue } from "@/lib/applyTheme";
 import { PriceBookPanel } from "@/pages/price-book/PriceBookList";
 import { TemplatesPanel } from "@/pages/TemplatesPage";
+import { SelectionsLibraryPanel } from "@/pages/settings/SelectionsLibraryPanel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -120,7 +122,7 @@ function displayDollarsToCents(value: string): number | null {
 // ---------------------------------------------------------------------------
 
 type PersonalTabId = "my_profile" | "appearance" | "dashboard_tab" | "email_settings";
-type CompanyTabId  = "company_profile" | "branding" | "preferences" | "price_book" | "templates";
+type CompanyTabId  = "company_profile" | "branding" | "preferences" | "price_book" | "templates" | "selections_library";
 type TabId = PersonalTabId | CompanyTabId;
 
 interface Tab {
@@ -137,11 +139,12 @@ const PERSONAL_TABS: Tab[] = [
 ];
 
 const COMPANY_TABS: Tab[] = [
-  { id: "company_profile", label: "Company Profile",     icon: Building2  },
-  { id: "branding",        label: "Branding",             icon: Palette    },
-  { id: "preferences",     label: "Platform Preferences", icon: Sliders    },
-  { id: "price_book",      label: "Price Book",           icon: DollarSign },
-  { id: "templates",       label: "Templates",            icon: FileText   },
+  { id: "company_profile",    label: "Company Profile",     icon: Building2  },
+  { id: "branding",           label: "Branding",             icon: Palette    },
+  { id: "preferences",        label: "Platform Preferences", icon: Sliders    },
+  { id: "price_book",         label: "Price Book",           icon: DollarSign },
+  { id: "templates",          label: "Templates",            icon: FileText   },
+  { id: "selections_library", label: "Selections Library",   icon: Layers     },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1414,6 +1417,7 @@ export default function SettingsPage() {
             )}
             {activeTab === "price_book" && isAdminOrAbove && <PriceBookPanel />}
             {activeTab === "templates" && isAdminOrAbove && <TemplatesPanel />}
+            {activeTab === "selections_library" && isAdminOrAbove && <SelectionsLibraryPanel />}
           </div>
         </div>
       </div>

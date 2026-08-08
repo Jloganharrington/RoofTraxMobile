@@ -8279,3 +8279,506 @@ export const GetPinProfitabilityResponse = zod.object({
 })
 
 
+/**
+ * @summary List all categories for the current company
+ */
+export const ListSelectionCategoriesResponse = zod.object({
+  "categories": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a category (admin only)
+ */
+export const createSelectionCategoryBodyNameMax = 120;
+
+export const createSelectionCategoryBodySlugMax = 80;
+
+
+export const createSelectionCategoryBodySlugRegExp = new RegExp('^[a-z0-9-]+$');
+export const createSelectionCategoryBodySortOrderDefault = 0;
+
+export const CreateSelectionCategoryBody = zod.object({
+  "name": zod.string().max(createSelectionCategoryBodyNameMax),
+  "slug": zod.string().max(createSelectionCategoryBodySlugMax).regex(createSelectionCategoryBodySlugRegExp),
+  "sortOrder": zod.number().default(createSelectionCategoryBodySortOrderDefault)
+})
+
+export const CreateSelectionCategoryResponse = zod.object({
+  "category": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update a category (admin only)
+ */
+export const UpdateSelectionCategoryParams = zod.object({
+  "categoryId": zod.coerce.string()
+})
+
+export const updateSelectionCategoryBodyNameMax = 120;
+
+export const updateSelectionCategoryBodySlugMax = 80;
+
+
+export const updateSelectionCategoryBodySlugRegExp = new RegExp('^[a-z0-9-]+$');
+
+
+export const UpdateSelectionCategoryBody = zod.object({
+  "name": zod.string().max(updateSelectionCategoryBodyNameMax).optional(),
+  "slug": zod.string().max(updateSelectionCategoryBodySlugMax).regex(updateSelectionCategoryBodySlugRegExp).optional(),
+  "sortOrder": zod.number().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateSelectionCategoryResponse = zod.object({
+  "category": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete or deactivate a category (admin only)
+ */
+export const DeleteSelectionCategoryParams = zod.object({
+  "categoryId": zod.coerce.string()
+})
+
+export const DeleteSelectionCategoryResponse = zod.object({
+  "ok": zod.boolean(),
+  "softDeleted": zod.boolean().optional().describe('Present when the row had references and was deactivated rather than hard-deleted. Absent on a hard delete.')
+})
+
+
+/**
+ * @summary List brands for the current company (optionally filtered by categoryId)
+ */
+export const ListSelectionBrandsQueryParams = zod.object({
+  "categoryId": zod.coerce.string().optional()
+})
+
+export const ListSelectionBrandsResponse = zod.object({
+  "brands": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "categoryId": zod.string(),
+  "name": zod.string(),
+  "logoPath": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a brand (admin only)
+ */
+export const createSelectionBrandBodyNameMax = 120;
+
+export const createSelectionBrandBodySortOrderDefault = 0;
+
+export const CreateSelectionBrandBody = zod.object({
+  "categoryId": zod.string(),
+  "name": zod.string().max(createSelectionBrandBodyNameMax),
+  "logoPath": zod.string().nullish(),
+  "sortOrder": zod.number().default(createSelectionBrandBodySortOrderDefault)
+})
+
+export const CreateSelectionBrandResponse = zod.object({
+  "brand": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "categoryId": zod.string(),
+  "name": zod.string(),
+  "logoPath": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update a brand (admin only)
+ */
+export const UpdateSelectionBrandParams = zod.object({
+  "brandId": zod.coerce.string()
+})
+
+export const updateSelectionBrandBodyNameMax = 120;
+
+
+
+export const UpdateSelectionBrandBody = zod.object({
+  "name": zod.string().max(updateSelectionBrandBodyNameMax).optional(),
+  "logoPath": zod.string().nullish(),
+  "sortOrder": zod.number().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateSelectionBrandResponse = zod.object({
+  "brand": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "categoryId": zod.string(),
+  "name": zod.string(),
+  "logoPath": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete or deactivate a brand (admin only); cascades to its products and options
+ */
+export const DeleteSelectionBrandParams = zod.object({
+  "brandId": zod.coerce.string()
+})
+
+export const DeleteSelectionBrandResponse = zod.object({
+  "ok": zod.boolean(),
+  "softDeleted": zod.boolean().optional().describe('Present when the row had references and was deactivated rather than hard-deleted. Absent on a hard delete.')
+})
+
+
+/**
+ * @summary List products (tiers) for the current company
+ */
+export const ListSelectionProductsQueryParams = zod.object({
+  "categoryId": zod.coerce.string().optional(),
+  "brandId": zod.coerce.string().optional()
+})
+
+export const ListSelectionProductsResponse = zod.object({
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "categoryId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "specs": zod.record(zod.string(), zod.unknown()).nullish(),
+  "isBase": zod.boolean(),
+  "priceDeltaCents": zod.number().describe('Delta per unit above the category base. 0 for the base product itself.'),
+  "unit": zod.string().describe('e.g. \'per square\', \'per LF\''),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a product / tier (admin only)
+ */
+export const createSelectionProductBodyNameMax = 200;
+
+export const createSelectionProductBodyIsBaseDefault = false;
+export const createSelectionProductBodyPriceDeltaCentsDefault = 0;
+export const createSelectionProductBodyUnitMax = 60;
+
+export const createSelectionProductBodySortOrderDefault = 0;
+
+export const CreateSelectionProductBody = zod.object({
+  "categoryId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string().max(createSelectionProductBodyNameMax),
+  "description": zod.string().nullish(),
+  "specs": zod.record(zod.string(), zod.unknown()).nullish(),
+  "isBase": zod.boolean().default(createSelectionProductBodyIsBaseDefault),
+  "priceDeltaCents": zod.number().default(createSelectionProductBodyPriceDeltaCentsDefault),
+  "unit": zod.string().max(createSelectionProductBodyUnitMax),
+  "sortOrder": zod.number().default(createSelectionProductBodySortOrderDefault)
+})
+
+export const CreateSelectionProductResponse = zod.object({
+  "product": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "categoryId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "specs": zod.record(zod.string(), zod.unknown()).nullish(),
+  "isBase": zod.boolean(),
+  "priceDeltaCents": zod.number().describe('Delta per unit above the category base. 0 for the base product itself.'),
+  "unit": zod.string().describe('e.g. \'per square\', \'per LF\''),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update a product / tier (admin only)
+ */
+export const UpdateSelectionProductParams = zod.object({
+  "productId": zod.coerce.string()
+})
+
+export const updateSelectionProductBodyNameMax = 200;
+
+export const updateSelectionProductBodyUnitMax = 60;
+
+
+
+export const UpdateSelectionProductBody = zod.object({
+  "name": zod.string().max(updateSelectionProductBodyNameMax).optional(),
+  "description": zod.string().nullish(),
+  "specs": zod.record(zod.string(), zod.unknown()).nullish(),
+  "isBase": zod.boolean().optional(),
+  "priceDeltaCents": zod.number().optional(),
+  "unit": zod.string().max(updateSelectionProductBodyUnitMax).optional(),
+  "sortOrder": zod.number().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateSelectionProductResponse = zod.object({
+  "product": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "categoryId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "specs": zod.record(zod.string(), zod.unknown()).nullish(),
+  "isBase": zod.boolean(),
+  "priceDeltaCents": zod.number().describe('Delta per unit above the category base. 0 for the base product itself.'),
+  "unit": zod.string().describe('e.g. \'per square\', \'per LF\''),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete or deactivate a product (admin only)
+ */
+export const DeleteSelectionProductParams = zod.object({
+  "productId": zod.coerce.string()
+})
+
+export const DeleteSelectionProductResponse = zod.object({
+  "ok": zod.boolean(),
+  "softDeleted": zod.boolean().optional().describe('Present when the row had references and was deactivated rather than hard-deleted. Absent on a hard delete.')
+})
+
+
+/**
+ * @summary List colour options for the current company (optionally filtered by brandId)
+ */
+export const ListSelectionOptionsQueryParams = zod.object({
+  "brandId": zod.coerce.string().optional()
+})
+
+export const ListSelectionOptionsResponse = zod.object({
+  "options": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string(),
+  "optionGroup": zod.string().nullish(),
+  "swatchHex": zod.string().nullish().describe('#RRGGBB'),
+  "swatchImagePath": zod.string().nullish(),
+  "hoaCompliant": zod.boolean().nullish().describe('tri-state: true\/false\/null (unknown)'),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Create a colour option (admin only)
+ */
+export const createSelectionOptionBodyNameMax = 120;
+
+export const createSelectionOptionBodyOptionGroupMax = 80;
+
+export const createSelectionOptionBodySortOrderDefault = 0;
+
+export const CreateSelectionOptionBody = zod.object({
+  "brandId": zod.string(),
+  "name": zod.string().max(createSelectionOptionBodyNameMax),
+  "optionGroup": zod.string().max(createSelectionOptionBodyOptionGroupMax).nullish(),
+  "swatchHex": zod.string().nullish().describe('#RRGGBB — required if swatchImagePath is absent'),
+  "swatchImagePath": zod.string().nullish().describe('Object storage path — required if swatchHex is absent'),
+  "hoaCompliant": zod.boolean().nullish(),
+  "sortOrder": zod.number().default(createSelectionOptionBodySortOrderDefault)
+})
+
+export const CreateSelectionOptionResponse = zod.object({
+  "option": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string(),
+  "optionGroup": zod.string().nullish(),
+  "swatchHex": zod.string().nullish().describe('#RRGGBB'),
+  "swatchImagePath": zod.string().nullish(),
+  "hoaCompliant": zod.boolean().nullish().describe('tri-state: true\/false\/null (unknown)'),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update a colour option (admin only)
+ */
+export const UpdateSelectionOptionParams = zod.object({
+  "optionId": zod.coerce.string()
+})
+
+export const updateSelectionOptionBodyNameMax = 120;
+
+export const updateSelectionOptionBodyOptionGroupMax = 80;
+
+
+
+export const UpdateSelectionOptionBody = zod.object({
+  "name": zod.string().max(updateSelectionOptionBodyNameMax).optional(),
+  "optionGroup": zod.string().max(updateSelectionOptionBodyOptionGroupMax).nullish(),
+  "swatchHex": zod.string().nullish(),
+  "swatchImagePath": zod.string().nullish(),
+  "hoaCompliant": zod.boolean().nullish(),
+  "sortOrder": zod.number().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateSelectionOptionResponse = zod.object({
+  "option": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "brandId": zod.string(),
+  "name": zod.string(),
+  "optionGroup": zod.string().nullish(),
+  "swatchHex": zod.string().nullish().describe('#RRGGBB'),
+  "swatchImagePath": zod.string().nullish(),
+  "hoaCompliant": zod.boolean().nullish().describe('tri-state: true\/false\/null (unknown)'),
+  "sortOrder": zod.number(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Delete or deactivate a colour option (admin only)
+ */
+export const DeleteSelectionOptionParams = zod.object({
+  "optionId": zod.coerce.string()
+})
+
+export const DeleteSelectionOptionResponse = zod.object({
+  "ok": zod.boolean(),
+  "softDeleted": zod.boolean().optional().describe('Present when the row had references and was deactivated rather than hard-deleted. Absent on a hard delete.')
+})
+
+
+/**
+ * @summary List product–option availability mappings
+ */
+export const ListSelectionProductOptionsQueryParams = zod.object({
+  "productId": zod.coerce.string().optional()
+})
+
+export const ListSelectionProductOptionsResponse = zod.object({
+  "productOptions": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Map an option onto a product (admin only; brand-match enforced)
+ */
+export const CreateSelectionProductOptionBody = zod.object({
+  "productId": zod.string(),
+  "optionId": zod.string()
+})
+
+export const CreateSelectionProductOptionResponse = zod.object({
+  "productOption": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "productId": zod.string(),
+  "optionId": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Apply one or more options to ALL products in a brand (admin only)
+ */
+
+
+
+export const BulkApplySelectionOptionsBody = zod.object({
+  "brandId": zod.string(),
+  "optionIds": zod.array(zod.string()).min(1)
+})
+
+export const BulkApplySelectionOptionsResponse = zod.object({
+  "created": zod.number()
+})
+
+
+/**
+ * @summary Remove a product–option mapping (admin only)
+ */
+export const DeleteSelectionProductOptionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteSelectionProductOptionResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+

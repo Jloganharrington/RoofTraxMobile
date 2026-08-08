@@ -1,0 +1,214 @@
+SELECTIONS LIBRARY — BUILD ORDER (rev. 2 — Brand tier added)
+
+The internal catalog the Selections Portal will render from. Nothing
+customer-facing in this build.
+
+Hierarchy:  Category → Brand → Product (tier) → Options (colours)
+            Siding   → Mastic → Quest         → Cedar / Classic White / …
+
+Three steps, forced order. STOP at each ▶ CHECKPOINT, paste the real output,
+push to git, wait for confirmation.
+
+STANDING BOUNDARIES:
+  - Never modify artifacts/mobile/. Every checkpoint shows
+    `git diff --stat -- artifacts/mobile/` returning empty.
+  - Never hand-edit lib/api-client-react/src/generated/ or
+    lib/api-zod/src/generated/. Edit lib/api-spec/openapi.yaml, regenerate.
+  - Never hand-write a query key for a generated hook — import get*QueryKey.
+  - Server enforcement authoritative; UI hiding is not access control.
+  - Integer cents for money.
+
+═══════════════════════════════════════════════════════════
+CONTEXT — why this is shaped the way it is
+═══════════════════════════════════════════════════════════
+Selections split into two kinds with different contractual weight:
+
+  TIER selection is PRICE-BEARING. Choosing a premium product over the
+  insurance-covered base creates a betterment the homeowner pays. This feeds
+  pins.betterments_amount_cents and the contract price.
+
+  OPTION selection (colour/finish) carries NO price. It's an operational
+  detail for the material order and can be decided after contract signature
+  without a change order.
+
+Reference prototype (hardcoded — do NOT copy its structure):
+github.com/Jloganharrington/Responsive-Builder → artifacts/nuhome-portal.
+Three siding tiers, ~70 colours in five groups, per-tier availability. The
+shape is right; the hardcoding is what this replaces.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 — SCHEMA + API                    migration 033    ║
+╚═══════════════════════════════════════════════════════════╝
+
+1a [LOCKED] Five tables in data-migrations/033_selections_library.sql plus
+Drizzle schema in lib/db/src/schema/rooftrax.ts (verify 033 is free).
+All company-scoped, varchar PK gen_random_uuid(), created_at/updated_at
+timestamptz, and is_active boolean NOT NULL DEFAULT true.
+
+  selection_categories
+      company_id, name, slug, sort_order, is_active
+      Seed each company with: Roofing, Siding, Gutters, Interior.
+      Company-configurable — do NOT hardcode as an enum.
+
+  selection_brands                                        ← NEW LEVEL
+      company_id, category_id FK, name, logo_path text NULL,
+      sort_order, is_active
+      A brand belongs to exactly one category. "Mastic" under Siding and
+      "Mastic" under Roofing are two rows — manufacturers' product lines and
+      colour palettes differ by category, and sharing the row would blend
+      palettes that don't belong together.
+      A "Generic" or "Builder Grade" brand is a normal thing to create for
+      unbranded base material.
+
+  selection_products          (the TIERS — price-bearing)
+      company_id, category_id FK, brand_id FK NOT NULL,
+      name, description text, specs jsonb,
+      is_base boolean NOT NULL DEFAULT false,
+      price_delta_cents integer NOT NULL DEFAULT 0,   ← PER UNIT
+      unit varchar NOT NULL,                          ← "per square", "per LF"
+      sort_order, is_active
+
+      PRICING IS PER UNIT. price_delta_cents is the delta per unit above the
+      category's base product. Contract Builder multiplies by job quantity.
+      A flat total would be wrong across differing job sizes — the reference
+      prototype's flat figures worked only because it was one specific house.
+
+      ⚠ is_base IS SCOPED TO CATEGORY, NOT BRAND. There is exactly one
+      insurance-covered product per category, and every product in that
+      category — across all brands — prices its delta relative to it.
+      Partial unique index:
+        CREATE UNIQUE INDEX ... ON selection_products (company_id, category_id)
+          WHERE is_base = true AND is_active = true;
+      The base product MUST have price_delta_cents = 0 — enforce server-side.
+      Setting a new base clears the old one IN THE SAME TRANSACTION. Do not
+      surface a constraint violation the user has to untangle manually.
+
+  selection_options           (the COLOURS — no price)
+      company_id, brand_id FK NOT NULL,                ← BRAND, not category
+      name, option_group varchar NULL   ("Light", "Deep", "Cedar Colors"),
+      swatch_hex varchar NULL,          #RRGGBB
+      swatch_image_path text NULL,      object storage; textures/woodgrain
+      hoa_compliant boolean NULL,       tri-state: true / false / unknown
+      sort_order, is_active
+      At least one of swatch_hex or swatch_image_path required — validate
+      server-side.
+      Options attach to BRAND because colour palettes are published per
+      manufacturer.
+
+  selection_product_options   (which colours are on which tier)
+      company_id, product_id FK, option_id FK
+      UNIQUE (product_id, option_id)
+      ⚠ VALIDATE that the option's brand_id matches the product's brand_id.
+      A CertainTeed colour must never be mappable onto a Mastic product.
+      Reject with 400, do not silently allow it.
+
+1b [LOCKED] Soft-delete only — is_active = false, never DELETE, on brands,
+products, and options. Once a selection lands on a signed contract the record
+must remain resolvable forever; an audit trail that can lose its referents is
+not an audit trail. Hard DELETE only when nothing references the row —
+verify first, 409 otherwise.
+Deactivating a brand must deactivate or hide its products and options
+consistently. State how you handled the cascade.
+
+1c [LOCKED] API, openapi-first then regenerate. Full CRUD on all five tables,
+company-scoped. ADMIN+ for every WRITE (same gate as Templates and Price
+Book — this is company configuration).
+READS are open to any authenticated user: the Portal will need them and reps
+benefit from seeing what's offered. Do not gate reads to admin.
+Swatch and brand-logo uploads reuse the EXISTING presigned-upload +
+object_ownership flow. Do not write a new upload path.
+
+▶ CHECKPOINT 1
+  VERIFY:
+   - seed creates the four categories per company
+   - a brand belongs to one category; two same-named brands in different
+     categories coexist
+   - setting a second base in a category clears the first (paste before/after),
+     including when the two bases are under DIFFERENT brands — this is the
+     case the category-scoped index exists for
+   - base product with nonzero delta → 400
+   - option with neither hex nor image → 400
+   - mapping a CertainTeed option onto a Mastic product → 400
+   - deactivating a product hides it from active queries, row remains
+   - field_rep and manager writes → 403; admin → 200; all reads → 200
+   - cross-company read and write both blocked
+  INTEGRATION:
+   - Templates and Price Book Settings tabs unaffected
+   - Company tab gating still admin+; Personal tabs still all-users
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 — SETTINGS UI: CATEGORIES → BRANDS → PRODUCTS      ║
+╚═══════════════════════════════════════════════════════════╝
+
+2a [LOCKED] New "Selections Library" tab in the Settings COMPANY group,
+admin+ gated, following the Templates and Price Book pattern exactly — the
+tab-list filter AND the render guard must both check isAdminOrAbove, so the
+tab is never renderable by a role that can't see it.
+
+2b [REASONING OK] Three-level navigation: category → brand → product. Design
+is yours, but a user must always know which level they're at and be able to
+get back up. Three nested levels is where this UI will succeed or fail.
+
+2c [REASONING OK] Category and brand management: list, add, rename, reorder,
+activate/deactivate. Brand logo upload optional.
+
+2d [REASONING OK] Product/tier management within a brand:
+  - The base tier is visually unmistakable, and its badge must make clear it
+    is the base for the whole CATEGORY, not just its brand — otherwise a user
+    seeing "Mastic Quest" with no base badge under CertainTeed will assume
+    each brand has its own.
+  - Deltas always render as "+$X.XX per square" with the unit. Never a bare
+    number a reader has to interpret as absolute or relative.
+  - Changing the base warns that it re-prices every product in the category
+    across all brands.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - screenshots: category list, brands within a category, products within a
+     brand with the base clearly marked and its category scope evident
+   - manager at the Settings URL cannot see or render the tab
+   - reorder persists at all three levels
+  INTEGRATION:
+   - every other Settings tab still renders and saves
+   - Settings opens on a valid tab for every role, no blank pane
+   - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 — OPTIONS, SWATCHES, AVAILABILITY                  ║
+╚═══════════════════════════════════════════════════════════╝
+
+3a [REASONING OK] Option management within a BRAND: name, group, swatch (hex
+picker or image upload), HOA flag, ordering, activate/deactivate.
+Render actual swatches — a colour library showing only names is unusable.
+
+3b [LOCKED] Product availability mapping. An admin must set which options are
+on which tier WITHOUT re-entering colours per tier. Provide a bulk action
+("apply to all products in this brand"). With ~70 colours across three tiers,
+per-tier entry is the difference between usable and abandoned.
+The brand-match validation from 1c applies here — the bulk action can only
+ever target products within the same brand.
+
+3c [REASONING OK] Group swatches by option_group, matching how manufacturers
+publish them.
+
+▶ CHECKPOINT 3
+  VERIFY:
+   - screenshots: swatch grid grouped, hex and image swatches both rendering
+   - bulk "apply to all products in this brand" works and is reversible
+   - image upload → object storage with tenant-scoped ACL; a second company
+     cannot read the first's swatch object
+   - deactivating an option removes it from availability lists but leaves
+     existing mappings intact
+  INTEGRATION — full pass, closes the library:
+   - Build a complete realistic category end to end and paste a screenshot:
+     Siding → Mastic → three tiers (one base at $0/sq, two upgrades priced
+     per square) → ~10 colours grouped → availability mapped. The Portal
+     build renders from this, so it must be real data, not two dummy rows.
+   - Templates upload/replace/delete still works (shares the presigned flow)
+   - Price Book unaffected
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; git diff --stat -- artifacts/mobile/ empty

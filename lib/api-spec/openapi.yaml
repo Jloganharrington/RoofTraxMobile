@@ -45,6 +45,11 @@ tags:
       Proof Package versions only; agreement/FIPSA content is never served.
   - name: PriceBook
     description: Company price book items for estimate line-item lookup.
+  - name: Selections
+    description: >-
+      Selections Library — internal catalog of categories, brands, products
+      (tiers), and colour options. Admin-only for writes; any authenticated
+      company member may read.
 paths:
   /healthz:
     get:
@@ -6129,6 +6134,726 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
 
+  # ── Selections Library ───────────────────────────────────────────────────
+
+  /selections/categories:
+    get:
+      tags: [Selections]
+      operationId: listSelectionCategories
+      summary: List all categories for the current company
+      responses:
+        "200":
+          description: Categories list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionCategoryListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Selections]
+      operationId: createSelectionCategory
+      summary: Create a category (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSelectionCategoryInput"
+      responses:
+        "201":
+          description: Category created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionCategoryEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/categories/{categoryId}:
+    patch:
+      tags: [Selections]
+      operationId: updateSelectionCategory
+      summary: Update a category (admin only)
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSelectionCategoryInput"
+      responses:
+        "200":
+          description: Category updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionCategoryEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Selections]
+      operationId: deleteSelectionCategory
+      summary: Delete or deactivate a category (admin only)
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted or deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResultEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/brands:
+    get:
+      tags: [Selections]
+      operationId: listSelectionBrands
+      summary: List brands for the current company (optionally filtered by categoryId)
+      parameters:
+        - name: categoryId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Brands list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionBrandListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Selections]
+      operationId: createSelectionBrand
+      summary: Create a brand (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSelectionBrandInput"
+      responses:
+        "201":
+          description: Brand created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionBrandEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/brands/{brandId}:
+    patch:
+      tags: [Selections]
+      operationId: updateSelectionBrand
+      summary: Update a brand (admin only)
+      parameters:
+        - name: brandId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSelectionBrandInput"
+      responses:
+        "200":
+          description: Brand updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionBrandEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Selections]
+      operationId: deleteSelectionBrand
+      summary: Delete or deactivate a brand (admin only); cascades to its products and options
+      parameters:
+        - name: brandId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted or deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResultEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/products:
+    get:
+      tags: [Selections]
+      operationId: listSelectionProducts
+      summary: List products (tiers) for the current company
+      parameters:
+        - name: categoryId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: brandId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Products list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionProductListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Selections]
+      operationId: createSelectionProduct
+      summary: Create a product / tier (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSelectionProductInput"
+      responses:
+        "201":
+          description: Product created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionProductEnvelope"
+        "400":
+          description: Invalid payload or business-rule violation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/products/{productId}:
+    patch:
+      tags: [Selections]
+      operationId: updateSelectionProduct
+      summary: Update a product / tier (admin only)
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSelectionProductInput"
+      responses:
+        "200":
+          description: Product updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionProductEnvelope"
+        "400":
+          description: Invalid payload or business-rule violation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Selections]
+      operationId: deleteSelectionProduct
+      summary: Delete or deactivate a product (admin only)
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted or deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResultEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/options:
+    get:
+      tags: [Selections]
+      operationId: listSelectionOptions
+      summary: List colour options for the current company (optionally filtered by brandId)
+      parameters:
+        - name: brandId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Options list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionOptionListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Selections]
+      operationId: createSelectionOption
+      summary: Create a colour option (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSelectionOptionInput"
+      responses:
+        "201":
+          description: Option created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionOptionEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/options/{optionId}:
+    patch:
+      tags: [Selections]
+      operationId: updateSelectionOption
+      summary: Update a colour option (admin only)
+      parameters:
+        - name: optionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSelectionOptionInput"
+      responses:
+        "200":
+          description: Option updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionOptionEnvelope"
+        "400":
+          description: Invalid payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [Selections]
+      operationId: deleteSelectionOption
+      summary: Delete or deactivate a colour option (admin only)
+      parameters:
+        - name: optionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted or deactivated (existing product mappings preserved).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResultEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/product-options:
+    get:
+      tags: [Selections]
+      operationId: listSelectionProductOptions
+      summary: List product–option availability mappings
+      parameters:
+        - name: productId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mappings list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionProductOptionListEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Selections]
+      operationId: createSelectionProductOption
+      summary: Map an option onto a product (admin only; brand-match enforced)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSelectionProductOptionInput"
+      responses:
+        "201":
+          description: Mapping created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelectionProductOptionEnvelope"
+        "400":
+          description: Invalid payload or brand-match violation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/product-options/bulk:
+    post:
+      tags: [Selections]
+      operationId: bulkApplySelectionOptions
+      summary: Apply one or more options to ALL products in a brand (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkApplySelectionOptionsInput"
+      responses:
+        "200":
+          description: Bulk mappings applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created]
+                properties:
+                  created:
+                    type: integer
+        "400":
+          description: Invalid payload or brand-match violation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /selections/product-options/{id}:
+    delete:
+      tags: [Selections]
+      operationId: deleteSelectionProductOption
+      summary: Remove a product–option mapping (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mapping removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -11879,3 +12604,270 @@ components:
       properties:
         profitability:
           $ref: "#/components/schemas/ProfitabilitySummary"
+
+    DeleteResultEnvelope:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        softDeleted:
+          type: boolean
+          description: >-
+            Present when the row had references and was deactivated rather than
+            hard-deleted. Absent on a hard delete.
+
+    # ── Selections Library ─────────────────────────────────────────────────
+
+    SelectionCategory:
+      type: object
+      required: [id, companyId, name, slug, sortOrder, isActive, createdAt, updatedAt]
+      properties:
+        id:         { type: string }
+        companyId:  { type: string }
+        name:       { type: string }
+        slug:       { type: string }
+        sortOrder:  { type: integer }
+        isActive:   { type: boolean }
+        createdAt:  { type: string, format: date-time }
+        updatedAt:  { type: string, format: date-time }
+
+    SelectionCategoryEnvelope:
+      type: object
+      required: [category]
+      properties:
+        category:
+          $ref: "#/components/schemas/SelectionCategory"
+
+    SelectionCategoryListEnvelope:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/SelectionCategory"
+
+    CreateSelectionCategoryInput:
+      type: object
+      required: [name, slug]
+      properties:
+        name:       { type: string, maxLength: 120 }
+        slug:       { type: string, maxLength: 80, pattern: "^[a-z0-9-]+$" }
+        sortOrder:  { type: integer, default: 0 }
+
+    UpdateSelectionCategoryInput:
+      type: object
+      properties:
+        name:       { type: string, maxLength: 120 }
+        slug:       { type: string, maxLength: 80, pattern: "^[a-z0-9-]+$" }
+        sortOrder:  { type: integer }
+        isActive:   { type: boolean }
+
+    SelectionBrand:
+      type: object
+      required: [id, companyId, categoryId, name, sortOrder, isActive, createdAt, updatedAt]
+      properties:
+        id:         { type: string }
+        companyId:  { type: string }
+        categoryId: { type: string }
+        name:       { type: string }
+        logoPath:   { type: string, nullable: true }
+        sortOrder:  { type: integer }
+        isActive:   { type: boolean }
+        createdAt:  { type: string, format: date-time }
+        updatedAt:  { type: string, format: date-time }
+
+    SelectionBrandEnvelope:
+      type: object
+      required: [brand]
+      properties:
+        brand:
+          $ref: "#/components/schemas/SelectionBrand"
+
+    SelectionBrandListEnvelope:
+      type: object
+      required: [brands]
+      properties:
+        brands:
+          type: array
+          items:
+            $ref: "#/components/schemas/SelectionBrand"
+
+    CreateSelectionBrandInput:
+      type: object
+      required: [categoryId, name]
+      properties:
+        categoryId: { type: string }
+        name:       { type: string, maxLength: 120 }
+        logoPath:   { type: string, nullable: true }
+        sortOrder:  { type: integer, default: 0 }
+
+    UpdateSelectionBrandInput:
+      type: object
+      properties:
+        name:       { type: string, maxLength: 120 }
+        logoPath:   { type: string, nullable: true }
+        sortOrder:  { type: integer }
+        isActive:   { type: boolean }
+
+    SelectionProduct:
+      type: object
+      required: [id, companyId, categoryId, brandId, name, isBase, priceDeltaCents, unit, sortOrder, isActive, createdAt, updatedAt]
+      properties:
+        id:               { type: string }
+        companyId:        { type: string }
+        categoryId:       { type: string }
+        brandId:          { type: string }
+        name:             { type: string }
+        description:      { type: string, nullable: true }
+        specs:            { type: object, nullable: true, additionalProperties: true }
+        isBase:           { type: boolean }
+        priceDeltaCents:  { type: integer, description: "Delta per unit above the category base. 0 for the base product itself." }
+        unit:             { type: string, description: "e.g. 'per square', 'per LF'" }
+        sortOrder:        { type: integer }
+        isActive:         { type: boolean }
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+
+    SelectionProductEnvelope:
+      type: object
+      required: [product]
+      properties:
+        product:
+          $ref: "#/components/schemas/SelectionProduct"
+
+    SelectionProductListEnvelope:
+      type: object
+      required: [products]
+      properties:
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/SelectionProduct"
+
+    CreateSelectionProductInput:
+      type: object
+      required: [categoryId, brandId, name, unit]
+      properties:
+        categoryId:       { type: string }
+        brandId:          { type: string }
+        name:             { type: string, maxLength: 200 }
+        description:      { type: string, nullable: true }
+        specs:            { type: object, nullable: true, additionalProperties: true }
+        isBase:           { type: boolean, default: false }
+        priceDeltaCents:  { type: integer, default: 0 }
+        unit:             { type: string, maxLength: 60 }
+        sortOrder:        { type: integer, default: 0 }
+
+    UpdateSelectionProductInput:
+      type: object
+      properties:
+        name:             { type: string, maxLength: 200 }
+        description:      { type: string, nullable: true }
+        specs:            { type: object, nullable: true, additionalProperties: true }
+        isBase:           { type: boolean }
+        priceDeltaCents:  { type: integer }
+        unit:             { type: string, maxLength: 60 }
+        sortOrder:        { type: integer }
+        isActive:         { type: boolean }
+
+    SelectionOption:
+      type: object
+      required: [id, companyId, brandId, name, sortOrder, isActive, createdAt, updatedAt]
+      properties:
+        id:               { type: string }
+        companyId:        { type: string }
+        brandId:          { type: string }
+        name:             { type: string }
+        optionGroup:      { type: string, nullable: true }
+        swatchHex:        { type: string, nullable: true, description: "#RRGGBB" }
+        swatchImagePath:  { type: string, nullable: true }
+        hoaCompliant:     { type: boolean, nullable: true, description: "tri-state: true/false/null (unknown)" }
+        sortOrder:        { type: integer }
+        isActive:         { type: boolean }
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+
+    SelectionOptionEnvelope:
+      type: object
+      required: [option]
+      properties:
+        option:
+          $ref: "#/components/schemas/SelectionOption"
+
+    SelectionOptionListEnvelope:
+      type: object
+      required: [options]
+      properties:
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/SelectionOption"
+
+    CreateSelectionOptionInput:
+      type: object
+      required: [brandId, name]
+      properties:
+        brandId:          { type: string }
+        name:             { type: string, maxLength: 120 }
+        optionGroup:      { type: string, maxLength: 80, nullable: true }
+        swatchHex:        { type: string, nullable: true, description: "#RRGGBB — required if swatchImagePath is absent" }
+        swatchImagePath:  { type: string, nullable: true, description: "Object storage path — required if swatchHex is absent" }
+        hoaCompliant:     { type: boolean, nullable: true }
+        sortOrder:        { type: integer, default: 0 }
+
+    UpdateSelectionOptionInput:
+      type: object
+      properties:
+        name:             { type: string, maxLength: 120 }
+        optionGroup:      { type: string, maxLength: 80, nullable: true }
+        swatchHex:        { type: string, nullable: true }
+        swatchImagePath:  { type: string, nullable: true }
+        hoaCompliant:     { type: boolean, nullable: true }
+        sortOrder:        { type: integer }
+        isActive:         { type: boolean }
+
+    SelectionProductOption:
+      type: object
+      required: [id, companyId, productId, optionId, createdAt]
+      properties:
+        id:         { type: string }
+        companyId:  { type: string }
+        productId:  { type: string }
+        optionId:   { type: string }
+        createdAt:  { type: string, format: date-time }
+
+    SelectionProductOptionEnvelope:
+      type: object
+      required: [productOption]
+      properties:
+        productOption:
+          $ref: "#/components/schemas/SelectionProductOption"
+
+    SelectionProductOptionListEnvelope:
+      type: object
+      required: [productOptions]
+      properties:
+        productOptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SelectionProductOption"
+
+    CreateSelectionProductOptionInput:
+      type: object
+      required: [productId, optionId]
+      properties:
+        productId: { type: string }
+        optionId:  { type: string }
+
+    BulkApplySelectionOptionsInput:
+      type: object
+      required: [brandId, optionIds]
+      properties:
+        brandId:   { type: string }
+        optionIds:
+          type: array
+          items:
+            type: string
+          minItems: 1

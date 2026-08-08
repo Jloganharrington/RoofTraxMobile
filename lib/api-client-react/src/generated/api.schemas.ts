@@ -4347,6 +4347,228 @@ export interface ProfitabilitySummaryEnvelope {
   profitability: ProfitabilitySummary;
 }
 
+export interface DeleteResultEnvelope {
+  ok: boolean;
+  /** Present when the row had references and was deactivated rather than hard-deleted. Absent on a hard delete. */
+  softDeleted?: boolean;
+}
+
+export interface SelectionCategory {
+  id: string;
+  companyId: string;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SelectionCategoryEnvelope {
+  category: SelectionCategory;
+}
+
+export interface SelectionCategoryListEnvelope {
+  categories: SelectionCategory[];
+}
+
+export interface CreateSelectionCategoryInput {
+  /** @maxLength 120 */
+  name: string;
+  /**
+     * @maxLength 80
+     * @pattern ^[a-z0-9-]+$
+     */
+  slug: string;
+  sortOrder?: number;
+}
+
+export interface UpdateSelectionCategoryInput {
+  /** @maxLength 120 */
+  name?: string;
+  /**
+     * @maxLength 80
+     * @pattern ^[a-z0-9-]+$
+     */
+  slug?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface SelectionBrand {
+  id: string;
+  companyId: string;
+  categoryId: string;
+  name: string;
+  logoPath?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SelectionBrandEnvelope {
+  brand: SelectionBrand;
+}
+
+export interface SelectionBrandListEnvelope {
+  brands: SelectionBrand[];
+}
+
+export interface CreateSelectionBrandInput {
+  categoryId: string;
+  /** @maxLength 120 */
+  name: string;
+  logoPath?: string | null;
+  sortOrder?: number;
+}
+
+export interface UpdateSelectionBrandInput {
+  /** @maxLength 120 */
+  name?: string;
+  logoPath?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export type SelectionProductSpecs = { [key: string]: unknown } | null;
+
+export interface SelectionProduct {
+  id: string;
+  companyId: string;
+  categoryId: string;
+  brandId: string;
+  name: string;
+  description?: string | null;
+  specs?: SelectionProductSpecs;
+  isBase: boolean;
+  /** Delta per unit above the category base. 0 for the base product itself. */
+  priceDeltaCents: number;
+  /** e.g. 'per square', 'per LF' */
+  unit: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SelectionProductEnvelope {
+  product: SelectionProduct;
+}
+
+export interface SelectionProductListEnvelope {
+  products: SelectionProduct[];
+}
+
+export type CreateSelectionProductInputSpecs = { [key: string]: unknown } | null;
+
+export interface CreateSelectionProductInput {
+  categoryId: string;
+  brandId: string;
+  /** @maxLength 200 */
+  name: string;
+  description?: string | null;
+  specs?: CreateSelectionProductInputSpecs;
+  isBase?: boolean;
+  priceDeltaCents?: number;
+  /** @maxLength 60 */
+  unit: string;
+  sortOrder?: number;
+}
+
+export type UpdateSelectionProductInputSpecs = { [key: string]: unknown } | null;
+
+export interface UpdateSelectionProductInput {
+  /** @maxLength 200 */
+  name?: string;
+  description?: string | null;
+  specs?: UpdateSelectionProductInputSpecs;
+  isBase?: boolean;
+  priceDeltaCents?: number;
+  /** @maxLength 60 */
+  unit?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface SelectionOption {
+  id: string;
+  companyId: string;
+  brandId: string;
+  name: string;
+  optionGroup?: string | null;
+  /** #RRGGBB */
+  swatchHex?: string | null;
+  swatchImagePath?: string | null;
+  /** tri-state: true/false/null (unknown) */
+  hoaCompliant?: boolean | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SelectionOptionEnvelope {
+  option: SelectionOption;
+}
+
+export interface SelectionOptionListEnvelope {
+  options: SelectionOption[];
+}
+
+export interface CreateSelectionOptionInput {
+  brandId: string;
+  /** @maxLength 120 */
+  name: string;
+  /** @maxLength 80 */
+  optionGroup?: string | null;
+  /** #RRGGBB — required if swatchImagePath is absent */
+  swatchHex?: string | null;
+  /** Object storage path — required if swatchHex is absent */
+  swatchImagePath?: string | null;
+  hoaCompliant?: boolean | null;
+  sortOrder?: number;
+}
+
+export interface UpdateSelectionOptionInput {
+  /** @maxLength 120 */
+  name?: string;
+  /** @maxLength 80 */
+  optionGroup?: string | null;
+  swatchHex?: string | null;
+  swatchImagePath?: string | null;
+  hoaCompliant?: boolean | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface SelectionProductOption {
+  id: string;
+  companyId: string;
+  productId: string;
+  optionId: string;
+  createdAt: string;
+}
+
+export interface SelectionProductOptionEnvelope {
+  productOption: SelectionProductOption;
+}
+
+export interface SelectionProductOptionListEnvelope {
+  productOptions: SelectionProductOption[];
+}
+
+export interface CreateSelectionProductOptionInput {
+  productId: string;
+  optionId: string;
+}
+
+export interface BulkApplySelectionOptionsInput {
+  brandId: string;
+  /** @minItems 1 */
+  optionIds: string[];
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */
@@ -4470,4 +4692,29 @@ export const GetPipelineFunnelWidgetPipeline = {
   insurance: 'insurance',
   project: 'project',
 } as const;
+
+export type ListSelectionBrandsParams = {
+categoryId?: string;
+};
+
+export type ListSelectionProductsParams = {
+categoryId?: string;
+brandId?: string;
+};
+
+export type ListSelectionOptionsParams = {
+brandId?: string;
+};
+
+export type ListSelectionProductOptionsParams = {
+productId?: string;
+};
+
+export type BulkApplySelectionOptions200 = {
+  created: number;
+};
+
+export type DeleteSelectionProductOption200 = {
+  ok: boolean;
+};
 

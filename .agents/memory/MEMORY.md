@@ -1,6 +1,7 @@
 # Memory Index
 
 - [createSession call signature](createSession-call-signature.md) — takes one SessionData object; positional args silently store a string → all requests 401.
+- [Express req.params string union](express-params-string-union.md) — ParamsDictionary is `string | string[]` in this workspace; always cast `req.params.xxx as string` before passing to Drizzle eq().
 - [Payments ledger schema](payments-ledger-schema.md) — migration 023; LeadProfileBody bypass route closed; orval hook signatures for payments endpoints.
 - [lib/db composite build quirk](lib-db-composite-build.md) — `tsc --build` even with `--clean` does not regenerate dist after schema edits; run plain `npx tsc` (no --build) inside lib/db to force full re-emit.
 - [Profitability view](profitability-view.md) — migrations 026-029; 029 corrects revised_contract formula + adds net_project_margin_pct; projectedMarginPct removed from API; ProjectFinancialsPanel waterfall replaces CostBreakdownPanel.

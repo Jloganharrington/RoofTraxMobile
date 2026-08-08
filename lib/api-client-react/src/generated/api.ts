@@ -31,6 +31,8 @@ import type {
   BeginBrowserLoginParams,
   BugReportEnvelope,
   BugReportListEnvelope,
+  BulkApplySelectionOptions200,
+  BulkApplySelectionOptionsInput,
   BulkCreatePinsInput,
   CanvassingCurrentEnvelope,
   CanvassingHeatmapEnvelope,
@@ -66,6 +68,11 @@ import type {
   CreatePaymentInput,
   CreatePinInput,
   CreatePriceBookItemInput,
+  CreateSelectionBrandInput,
+  CreateSelectionCategoryInput,
+  CreateSelectionOptionInput,
+  CreateSelectionProductInput,
+  CreateSelectionProductOptionInput,
   CreateTemplateInput,
   CreateTestSquareHitInput,
   CreateTestSquareInput,
@@ -81,6 +88,8 @@ import type {
   DashboardManifestEnvelope,
   DeleteCompanyJurisdictionPack200,
   DeletePriceBookItem200,
+  DeleteResultEnvelope,
+  DeleteSelectionProductOption200,
   DeleteSuccess,
   EmailReportInput,
   EmailReportResult,
@@ -114,6 +123,10 @@ import type {
   KnockToLeadEnvelope,
   ListInspectionReportCodeCitations200,
   ListPinsParams,
+  ListSelectionBrandsParams,
+  ListSelectionOptionsParams,
+  ListSelectionProductOptionsParams,
+  ListSelectionProductsParams,
   LocationPingBody,
   LocationPingSuccess,
   LogoutBrowserSessionParams,
@@ -145,6 +158,16 @@ import type {
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
   SearchAddressParams,
+  SelectionBrandEnvelope,
+  SelectionBrandListEnvelope,
+  SelectionCategoryEnvelope,
+  SelectionCategoryListEnvelope,
+  SelectionOptionEnvelope,
+  SelectionOptionListEnvelope,
+  SelectionProductEnvelope,
+  SelectionProductListEnvelope,
+  SelectionProductOptionEnvelope,
+  SelectionProductOptionListEnvelope,
   SignChangeOrderInput,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
@@ -177,6 +200,10 @@ import type {
   UpdateProfileSmtpInput,
   UpdateReportBrandingInput,
   UpdateReportBrandingResult,
+  UpdateSelectionBrandInput,
+  UpdateSelectionCategoryInput,
+  UpdateSelectionOptionInput,
+  UpdateSelectionProductInput,
   UpdateSummaryInput,
   UpdateTeamUserInput,
   UpdateTemplateInput,
@@ -11544,4 +11571,1486 @@ export function useGetPinProfitability<TData = Awaited<ReturnType<typeof getPinP
 
 
 
+
+export const getListSelectionCategoriesUrl = () => {
+
+
+
+
+  return `/api/selections/categories`
+}
+
+/**
+ * @summary List all categories for the current company
+ */
+export const listSelectionCategories = async ( options?: RequestInit): Promise<SelectionCategoryListEnvelope> => {
+
+  return customFetch<SelectionCategoryListEnvelope>(getListSelectionCategoriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSelectionCategoriesQueryKey = () => {
+    return [
+    `/api/selections/categories`
+    ] as const;
+    }
+
+
+export const getListSelectionCategoriesQueryOptions = <TData = Awaited<ReturnType<typeof listSelectionCategories>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSelectionCategoriesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSelectionCategories>>> = ({ signal }) => listSelectionCategories({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSelectionCategories>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSelectionCategoriesQueryResult = NonNullable<Awaited<ReturnType<typeof listSelectionCategories>>>
+export type ListSelectionCategoriesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List all categories for the current company
+ */
+
+export function useListSelectionCategories<TData = Awaited<ReturnType<typeof listSelectionCategories>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSelectionCategoriesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSelectionCategoryUrl = () => {
+
+
+
+
+  return `/api/selections/categories`
+}
+
+/**
+ * @summary Create a category (admin only)
+ */
+export const createSelectionCategory = async (createSelectionCategoryInput: CreateSelectionCategoryInput, options?: RequestInit): Promise<SelectionCategoryEnvelope> => {
+
+  return customFetch<SelectionCategoryEnvelope>(getCreateSelectionCategoryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSelectionCategoryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSelectionCategoryMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionCategory>>, TError,{data: BodyType<CreateSelectionCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSelectionCategory>>, TError,{data: BodyType<CreateSelectionCategoryInput>}, TContext> => {
+
+const mutationKey = ['createSelectionCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSelectionCategory>>, {data: BodyType<CreateSelectionCategoryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSelectionCategory(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSelectionCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof createSelectionCategory>>>
+    export type CreateSelectionCategoryMutationBody = BodyType<CreateSelectionCategoryInput>
+    export type CreateSelectionCategoryMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a category (admin only)
+ */
+export const useCreateSelectionCategory = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionCategory>>, TError,{data: BodyType<CreateSelectionCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSelectionCategory>>,
+        TError,
+        {data: BodyType<CreateSelectionCategoryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSelectionCategoryMutationOptions(options));
+    }
+
+export const getUpdateSelectionCategoryUrl = (categoryId: string,) => {
+
+
+
+
+  return `/api/selections/categories/${categoryId}`
+}
+
+/**
+ * @summary Update a category (admin only)
+ */
+export const updateSelectionCategory = async (categoryId: string,
+    updateSelectionCategoryInput: UpdateSelectionCategoryInput, options?: RequestInit): Promise<SelectionCategoryEnvelope> => {
+
+  return customFetch<SelectionCategoryEnvelope>(getUpdateSelectionCategoryUrl(categoryId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSelectionCategoryInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSelectionCategoryMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionCategory>>, TError,{categoryId: string;data: BodyType<UpdateSelectionCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSelectionCategory>>, TError,{categoryId: string;data: BodyType<UpdateSelectionCategoryInput>}, TContext> => {
+
+const mutationKey = ['updateSelectionCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSelectionCategory>>, {categoryId: string;data: BodyType<UpdateSelectionCategoryInput>}> = (props) => {
+          const {categoryId,data} = props ?? {};
+
+          return  updateSelectionCategory(categoryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSelectionCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof updateSelectionCategory>>>
+    export type UpdateSelectionCategoryMutationBody = BodyType<UpdateSelectionCategoryInput>
+    export type UpdateSelectionCategoryMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a category (admin only)
+ */
+export const useUpdateSelectionCategory = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionCategory>>, TError,{categoryId: string;data: BodyType<UpdateSelectionCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSelectionCategory>>,
+        TError,
+        {categoryId: string;data: BodyType<UpdateSelectionCategoryInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSelectionCategoryMutationOptions(options));
+    }
+
+export const getDeleteSelectionCategoryUrl = (categoryId: string,) => {
+
+
+
+
+  return `/api/selections/categories/${categoryId}`
+}
+
+/**
+ * @summary Delete or deactivate a category (admin only)
+ */
+export const deleteSelectionCategory = async (categoryId: string, options?: RequestInit): Promise<DeleteResultEnvelope> => {
+
+  return customFetch<DeleteResultEnvelope>(getDeleteSelectionCategoryUrl(categoryId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSelectionCategoryMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionCategory>>, TError,{categoryId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionCategory>>, TError,{categoryId: string}, TContext> => {
+
+const mutationKey = ['deleteSelectionCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSelectionCategory>>, {categoryId: string}> = (props) => {
+          const {categoryId} = props ?? {};
+
+          return  deleteSelectionCategory(categoryId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSelectionCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSelectionCategory>>>
+
+    export type DeleteSelectionCategoryMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete or deactivate a category (admin only)
+ */
+export const useDeleteSelectionCategory = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionCategory>>, TError,{categoryId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSelectionCategory>>,
+        TError,
+        {categoryId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSelectionCategoryMutationOptions(options));
+    }
+
+export const getListSelectionBrandsUrl = (params?: ListSelectionBrandsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/selections/brands?${stringifiedParams}` : `/api/selections/brands`
+}
+
+/**
+ * @summary List brands for the current company (optionally filtered by categoryId)
+ */
+export const listSelectionBrands = async (params?: ListSelectionBrandsParams, options?: RequestInit): Promise<SelectionBrandListEnvelope> => {
+
+  return customFetch<SelectionBrandListEnvelope>(getListSelectionBrandsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSelectionBrandsQueryKey = (params?: ListSelectionBrandsParams,) => {
+    return [
+    `/api/selections/brands`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSelectionBrandsQueryOptions = <TData = Awaited<ReturnType<typeof listSelectionBrands>>, TError = ErrorType<ErrorEnvelope>>(params?: ListSelectionBrandsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionBrands>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSelectionBrandsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSelectionBrands>>> = ({ signal }) => listSelectionBrands(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSelectionBrands>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSelectionBrandsQueryResult = NonNullable<Awaited<ReturnType<typeof listSelectionBrands>>>
+export type ListSelectionBrandsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List brands for the current company (optionally filtered by categoryId)
+ */
+
+export function useListSelectionBrands<TData = Awaited<ReturnType<typeof listSelectionBrands>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: ListSelectionBrandsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionBrands>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSelectionBrandsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSelectionBrandUrl = () => {
+
+
+
+
+  return `/api/selections/brands`
+}
+
+/**
+ * @summary Create a brand (admin only)
+ */
+export const createSelectionBrand = async (createSelectionBrandInput: CreateSelectionBrandInput, options?: RequestInit): Promise<SelectionBrandEnvelope> => {
+
+  return customFetch<SelectionBrandEnvelope>(getCreateSelectionBrandUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSelectionBrandInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSelectionBrandMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionBrand>>, TError,{data: BodyType<CreateSelectionBrandInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSelectionBrand>>, TError,{data: BodyType<CreateSelectionBrandInput>}, TContext> => {
+
+const mutationKey = ['createSelectionBrand'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSelectionBrand>>, {data: BodyType<CreateSelectionBrandInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSelectionBrand(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSelectionBrandMutationResult = NonNullable<Awaited<ReturnType<typeof createSelectionBrand>>>
+    export type CreateSelectionBrandMutationBody = BodyType<CreateSelectionBrandInput>
+    export type CreateSelectionBrandMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a brand (admin only)
+ */
+export const useCreateSelectionBrand = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionBrand>>, TError,{data: BodyType<CreateSelectionBrandInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSelectionBrand>>,
+        TError,
+        {data: BodyType<CreateSelectionBrandInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSelectionBrandMutationOptions(options));
+    }
+
+export const getUpdateSelectionBrandUrl = (brandId: string,) => {
+
+
+
+
+  return `/api/selections/brands/${brandId}`
+}
+
+/**
+ * @summary Update a brand (admin only)
+ */
+export const updateSelectionBrand = async (brandId: string,
+    updateSelectionBrandInput: UpdateSelectionBrandInput, options?: RequestInit): Promise<SelectionBrandEnvelope> => {
+
+  return customFetch<SelectionBrandEnvelope>(getUpdateSelectionBrandUrl(brandId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSelectionBrandInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSelectionBrandMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionBrand>>, TError,{brandId: string;data: BodyType<UpdateSelectionBrandInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSelectionBrand>>, TError,{brandId: string;data: BodyType<UpdateSelectionBrandInput>}, TContext> => {
+
+const mutationKey = ['updateSelectionBrand'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSelectionBrand>>, {brandId: string;data: BodyType<UpdateSelectionBrandInput>}> = (props) => {
+          const {brandId,data} = props ?? {};
+
+          return  updateSelectionBrand(brandId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSelectionBrandMutationResult = NonNullable<Awaited<ReturnType<typeof updateSelectionBrand>>>
+    export type UpdateSelectionBrandMutationBody = BodyType<UpdateSelectionBrandInput>
+    export type UpdateSelectionBrandMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a brand (admin only)
+ */
+export const useUpdateSelectionBrand = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionBrand>>, TError,{brandId: string;data: BodyType<UpdateSelectionBrandInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSelectionBrand>>,
+        TError,
+        {brandId: string;data: BodyType<UpdateSelectionBrandInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSelectionBrandMutationOptions(options));
+    }
+
+export const getDeleteSelectionBrandUrl = (brandId: string,) => {
+
+
+
+
+  return `/api/selections/brands/${brandId}`
+}
+
+/**
+ * @summary Delete or deactivate a brand (admin only); cascades to its products and options
+ */
+export const deleteSelectionBrand = async (brandId: string, options?: RequestInit): Promise<DeleteResultEnvelope> => {
+
+  return customFetch<DeleteResultEnvelope>(getDeleteSelectionBrandUrl(brandId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSelectionBrandMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionBrand>>, TError,{brandId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionBrand>>, TError,{brandId: string}, TContext> => {
+
+const mutationKey = ['deleteSelectionBrand'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSelectionBrand>>, {brandId: string}> = (props) => {
+          const {brandId} = props ?? {};
+
+          return  deleteSelectionBrand(brandId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSelectionBrandMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSelectionBrand>>>
+
+    export type DeleteSelectionBrandMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete or deactivate a brand (admin only); cascades to its products and options
+ */
+export const useDeleteSelectionBrand = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionBrand>>, TError,{brandId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSelectionBrand>>,
+        TError,
+        {brandId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSelectionBrandMutationOptions(options));
+    }
+
+export const getListSelectionProductsUrl = (params?: ListSelectionProductsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/selections/products?${stringifiedParams}` : `/api/selections/products`
+}
+
+/**
+ * @summary List products (tiers) for the current company
+ */
+export const listSelectionProducts = async (params?: ListSelectionProductsParams, options?: RequestInit): Promise<SelectionProductListEnvelope> => {
+
+  return customFetch<SelectionProductListEnvelope>(getListSelectionProductsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSelectionProductsQueryKey = (params?: ListSelectionProductsParams,) => {
+    return [
+    `/api/selections/products`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSelectionProductsQueryOptions = <TData = Awaited<ReturnType<typeof listSelectionProducts>>, TError = ErrorType<ErrorEnvelope>>(params?: ListSelectionProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSelectionProductsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSelectionProducts>>> = ({ signal }) => listSelectionProducts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSelectionProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSelectionProductsQueryResult = NonNullable<Awaited<ReturnType<typeof listSelectionProducts>>>
+export type ListSelectionProductsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List products (tiers) for the current company
+ */
+
+export function useListSelectionProducts<TData = Awaited<ReturnType<typeof listSelectionProducts>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: ListSelectionProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSelectionProductsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSelectionProductUrl = () => {
+
+
+
+
+  return `/api/selections/products`
+}
+
+/**
+ * @summary Create a product / tier (admin only)
+ */
+export const createSelectionProduct = async (createSelectionProductInput: CreateSelectionProductInput, options?: RequestInit): Promise<SelectionProductEnvelope> => {
+
+  return customFetch<SelectionProductEnvelope>(getCreateSelectionProductUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSelectionProductInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSelectionProductMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionProduct>>, TError,{data: BodyType<CreateSelectionProductInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSelectionProduct>>, TError,{data: BodyType<CreateSelectionProductInput>}, TContext> => {
+
+const mutationKey = ['createSelectionProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSelectionProduct>>, {data: BodyType<CreateSelectionProductInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSelectionProduct(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSelectionProductMutationResult = NonNullable<Awaited<ReturnType<typeof createSelectionProduct>>>
+    export type CreateSelectionProductMutationBody = BodyType<CreateSelectionProductInput>
+    export type CreateSelectionProductMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a product / tier (admin only)
+ */
+export const useCreateSelectionProduct = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionProduct>>, TError,{data: BodyType<CreateSelectionProductInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSelectionProduct>>,
+        TError,
+        {data: BodyType<CreateSelectionProductInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSelectionProductMutationOptions(options));
+    }
+
+export const getUpdateSelectionProductUrl = (productId: string,) => {
+
+
+
+
+  return `/api/selections/products/${productId}`
+}
+
+/**
+ * @summary Update a product / tier (admin only)
+ */
+export const updateSelectionProduct = async (productId: string,
+    updateSelectionProductInput: UpdateSelectionProductInput, options?: RequestInit): Promise<SelectionProductEnvelope> => {
+
+  return customFetch<SelectionProductEnvelope>(getUpdateSelectionProductUrl(productId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSelectionProductInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSelectionProductMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionProduct>>, TError,{productId: string;data: BodyType<UpdateSelectionProductInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSelectionProduct>>, TError,{productId: string;data: BodyType<UpdateSelectionProductInput>}, TContext> => {
+
+const mutationKey = ['updateSelectionProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSelectionProduct>>, {productId: string;data: BodyType<UpdateSelectionProductInput>}> = (props) => {
+          const {productId,data} = props ?? {};
+
+          return  updateSelectionProduct(productId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSelectionProductMutationResult = NonNullable<Awaited<ReturnType<typeof updateSelectionProduct>>>
+    export type UpdateSelectionProductMutationBody = BodyType<UpdateSelectionProductInput>
+    export type UpdateSelectionProductMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a product / tier (admin only)
+ */
+export const useUpdateSelectionProduct = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionProduct>>, TError,{productId: string;data: BodyType<UpdateSelectionProductInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSelectionProduct>>,
+        TError,
+        {productId: string;data: BodyType<UpdateSelectionProductInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSelectionProductMutationOptions(options));
+    }
+
+export const getDeleteSelectionProductUrl = (productId: string,) => {
+
+
+
+
+  return `/api/selections/products/${productId}`
+}
+
+/**
+ * @summary Delete or deactivate a product (admin only)
+ */
+export const deleteSelectionProduct = async (productId: string, options?: RequestInit): Promise<DeleteResultEnvelope> => {
+
+  return customFetch<DeleteResultEnvelope>(getDeleteSelectionProductUrl(productId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSelectionProductMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionProduct>>, TError,{productId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionProduct>>, TError,{productId: string}, TContext> => {
+
+const mutationKey = ['deleteSelectionProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSelectionProduct>>, {productId: string}> = (props) => {
+          const {productId} = props ?? {};
+
+          return  deleteSelectionProduct(productId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSelectionProductMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSelectionProduct>>>
+
+    export type DeleteSelectionProductMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete or deactivate a product (admin only)
+ */
+export const useDeleteSelectionProduct = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionProduct>>, TError,{productId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSelectionProduct>>,
+        TError,
+        {productId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSelectionProductMutationOptions(options));
+    }
+
+export const getListSelectionOptionsUrl = (params?: ListSelectionOptionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/selections/options?${stringifiedParams}` : `/api/selections/options`
+}
+
+/**
+ * @summary List colour options for the current company (optionally filtered by brandId)
+ */
+export const listSelectionOptions = async (params?: ListSelectionOptionsParams, options?: RequestInit): Promise<SelectionOptionListEnvelope> => {
+
+  return customFetch<SelectionOptionListEnvelope>(getListSelectionOptionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSelectionOptionsQueryKey = (params?: ListSelectionOptionsParams,) => {
+    return [
+    `/api/selections/options`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSelectionOptionsQueryOptions = <TData = Awaited<ReturnType<typeof listSelectionOptions>>, TError = ErrorType<ErrorEnvelope>>(params?: ListSelectionOptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSelectionOptionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSelectionOptions>>> = ({ signal }) => listSelectionOptions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSelectionOptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSelectionOptionsQueryResult = NonNullable<Awaited<ReturnType<typeof listSelectionOptions>>>
+export type ListSelectionOptionsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List colour options for the current company (optionally filtered by brandId)
+ */
+
+export function useListSelectionOptions<TData = Awaited<ReturnType<typeof listSelectionOptions>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: ListSelectionOptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSelectionOptionsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSelectionOptionUrl = () => {
+
+
+
+
+  return `/api/selections/options`
+}
+
+/**
+ * @summary Create a colour option (admin only)
+ */
+export const createSelectionOption = async (createSelectionOptionInput: CreateSelectionOptionInput, options?: RequestInit): Promise<SelectionOptionEnvelope> => {
+
+  return customFetch<SelectionOptionEnvelope>(getCreateSelectionOptionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSelectionOptionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSelectionOptionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionOption>>, TError,{data: BodyType<CreateSelectionOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSelectionOption>>, TError,{data: BodyType<CreateSelectionOptionInput>}, TContext> => {
+
+const mutationKey = ['createSelectionOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSelectionOption>>, {data: BodyType<CreateSelectionOptionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSelectionOption(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSelectionOptionMutationResult = NonNullable<Awaited<ReturnType<typeof createSelectionOption>>>
+    export type CreateSelectionOptionMutationBody = BodyType<CreateSelectionOptionInput>
+    export type CreateSelectionOptionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a colour option (admin only)
+ */
+export const useCreateSelectionOption = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionOption>>, TError,{data: BodyType<CreateSelectionOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSelectionOption>>,
+        TError,
+        {data: BodyType<CreateSelectionOptionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSelectionOptionMutationOptions(options));
+    }
+
+export const getUpdateSelectionOptionUrl = (optionId: string,) => {
+
+
+
+
+  return `/api/selections/options/${optionId}`
+}
+
+/**
+ * @summary Update a colour option (admin only)
+ */
+export const updateSelectionOption = async (optionId: string,
+    updateSelectionOptionInput: UpdateSelectionOptionInput, options?: RequestInit): Promise<SelectionOptionEnvelope> => {
+
+  return customFetch<SelectionOptionEnvelope>(getUpdateSelectionOptionUrl(optionId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSelectionOptionInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSelectionOptionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionOption>>, TError,{optionId: string;data: BodyType<UpdateSelectionOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSelectionOption>>, TError,{optionId: string;data: BodyType<UpdateSelectionOptionInput>}, TContext> => {
+
+const mutationKey = ['updateSelectionOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSelectionOption>>, {optionId: string;data: BodyType<UpdateSelectionOptionInput>}> = (props) => {
+          const {optionId,data} = props ?? {};
+
+          return  updateSelectionOption(optionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSelectionOptionMutationResult = NonNullable<Awaited<ReturnType<typeof updateSelectionOption>>>
+    export type UpdateSelectionOptionMutationBody = BodyType<UpdateSelectionOptionInput>
+    export type UpdateSelectionOptionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Update a colour option (admin only)
+ */
+export const useUpdateSelectionOption = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSelectionOption>>, TError,{optionId: string;data: BodyType<UpdateSelectionOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSelectionOption>>,
+        TError,
+        {optionId: string;data: BodyType<UpdateSelectionOptionInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSelectionOptionMutationOptions(options));
+    }
+
+export const getDeleteSelectionOptionUrl = (optionId: string,) => {
+
+
+
+
+  return `/api/selections/options/${optionId}`
+}
+
+/**
+ * @summary Delete or deactivate a colour option (admin only)
+ */
+export const deleteSelectionOption = async (optionId: string, options?: RequestInit): Promise<DeleteResultEnvelope> => {
+
+  return customFetch<DeleteResultEnvelope>(getDeleteSelectionOptionUrl(optionId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSelectionOptionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionOption>>, TError,{optionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionOption>>, TError,{optionId: string}, TContext> => {
+
+const mutationKey = ['deleteSelectionOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSelectionOption>>, {optionId: string}> = (props) => {
+          const {optionId} = props ?? {};
+
+          return  deleteSelectionOption(optionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSelectionOptionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSelectionOption>>>
+
+    export type DeleteSelectionOptionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Delete or deactivate a colour option (admin only)
+ */
+export const useDeleteSelectionOption = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionOption>>, TError,{optionId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSelectionOption>>,
+        TError,
+        {optionId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSelectionOptionMutationOptions(options));
+    }
+
+export const getListSelectionProductOptionsUrl = (params?: ListSelectionProductOptionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/selections/product-options?${stringifiedParams}` : `/api/selections/product-options`
+}
+
+/**
+ * @summary List product–option availability mappings
+ */
+export const listSelectionProductOptions = async (params?: ListSelectionProductOptionsParams, options?: RequestInit): Promise<SelectionProductOptionListEnvelope> => {
+
+  return customFetch<SelectionProductOptionListEnvelope>(getListSelectionProductOptionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSelectionProductOptionsQueryKey = (params?: ListSelectionProductOptionsParams,) => {
+    return [
+    `/api/selections/product-options`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSelectionProductOptionsQueryOptions = <TData = Awaited<ReturnType<typeof listSelectionProductOptions>>, TError = ErrorType<ErrorEnvelope>>(params?: ListSelectionProductOptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionProductOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSelectionProductOptionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSelectionProductOptions>>> = ({ signal }) => listSelectionProductOptions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSelectionProductOptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSelectionProductOptionsQueryResult = NonNullable<Awaited<ReturnType<typeof listSelectionProductOptions>>>
+export type ListSelectionProductOptionsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List product–option availability mappings
+ */
+
+export function useListSelectionProductOptions<TData = Awaited<ReturnType<typeof listSelectionProductOptions>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: ListSelectionProductOptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSelectionProductOptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSelectionProductOptionsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSelectionProductOptionUrl = () => {
+
+
+
+
+  return `/api/selections/product-options`
+}
+
+/**
+ * @summary Map an option onto a product (admin only; brand-match enforced)
+ */
+export const createSelectionProductOption = async (createSelectionProductOptionInput: CreateSelectionProductOptionInput, options?: RequestInit): Promise<SelectionProductOptionEnvelope> => {
+
+  return customFetch<SelectionProductOptionEnvelope>(getCreateSelectionProductOptionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSelectionProductOptionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSelectionProductOptionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionProductOption>>, TError,{data: BodyType<CreateSelectionProductOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSelectionProductOption>>, TError,{data: BodyType<CreateSelectionProductOptionInput>}, TContext> => {
+
+const mutationKey = ['createSelectionProductOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSelectionProductOption>>, {data: BodyType<CreateSelectionProductOptionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSelectionProductOption(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSelectionProductOptionMutationResult = NonNullable<Awaited<ReturnType<typeof createSelectionProductOption>>>
+    export type CreateSelectionProductOptionMutationBody = BodyType<CreateSelectionProductOptionInput>
+    export type CreateSelectionProductOptionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Map an option onto a product (admin only; brand-match enforced)
+ */
+export const useCreateSelectionProductOption = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSelectionProductOption>>, TError,{data: BodyType<CreateSelectionProductOptionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSelectionProductOption>>,
+        TError,
+        {data: BodyType<CreateSelectionProductOptionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSelectionProductOptionMutationOptions(options));
+    }
+
+export const getBulkApplySelectionOptionsUrl = () => {
+
+
+
+
+  return `/api/selections/product-options/bulk`
+}
+
+/**
+ * @summary Apply one or more options to ALL products in a brand (admin only)
+ */
+export const bulkApplySelectionOptions = async (bulkApplySelectionOptionsInput: BulkApplySelectionOptionsInput, options?: RequestInit): Promise<BulkApplySelectionOptions200> => {
+
+  return customFetch<BulkApplySelectionOptions200>(getBulkApplySelectionOptionsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkApplySelectionOptionsInput)
+  }
+);}
+
+
+
+
+
+export const getBulkApplySelectionOptionsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkApplySelectionOptions>>, TError,{data: BodyType<BulkApplySelectionOptionsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkApplySelectionOptions>>, TError,{data: BodyType<BulkApplySelectionOptionsInput>}, TContext> => {
+
+const mutationKey = ['bulkApplySelectionOptions'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkApplySelectionOptions>>, {data: BodyType<BulkApplySelectionOptionsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkApplySelectionOptions(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkApplySelectionOptionsMutationResult = NonNullable<Awaited<ReturnType<typeof bulkApplySelectionOptions>>>
+    export type BulkApplySelectionOptionsMutationBody = BodyType<BulkApplySelectionOptionsInput>
+    export type BulkApplySelectionOptionsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Apply one or more options to ALL products in a brand (admin only)
+ */
+export const useBulkApplySelectionOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkApplySelectionOptions>>, TError,{data: BodyType<BulkApplySelectionOptionsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkApplySelectionOptions>>,
+        TError,
+        {data: BodyType<BulkApplySelectionOptionsInput>},
+        TContext
+      > => {
+      return useMutation(getBulkApplySelectionOptionsMutationOptions(options));
+    }
+
+export const getDeleteSelectionProductOptionUrl = (id: string,) => {
+
+
+
+
+  return `/api/selections/product-options/${id}`
+}
+
+/**
+ * @summary Remove a product–option mapping (admin only)
+ */
+export const deleteSelectionProductOption = async (id: string, options?: RequestInit): Promise<DeleteSelectionProductOption200> => {
+
+  return customFetch<DeleteSelectionProductOption200>(getDeleteSelectionProductOptionUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSelectionProductOptionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionProductOption>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionProductOption>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteSelectionProductOption'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSelectionProductOption>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSelectionProductOption(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSelectionProductOptionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSelectionProductOption>>>
+
+    export type DeleteSelectionProductOptionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Remove a product–option mapping (admin only)
+ */
+export const useDeleteSelectionProductOption = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSelectionProductOption>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSelectionProductOption>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSelectionProductOptionMutationOptions(options));
+    }
 

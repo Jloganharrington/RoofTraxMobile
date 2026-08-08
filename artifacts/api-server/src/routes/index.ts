@@ -30,6 +30,7 @@ import changeOrdersRouter from "./changeOrders";
 import profitabilityRouter from "./profitability";
 import financialsExportRouter from "./financialsExport";
 import insuranceRouter from "./insurance";
+import selectionsRouter from "./selections";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(changeOrdersRouter);
 router.use(profitabilityRouter);
 router.use(financialsExportRouter);
 router.use(insuranceRouter);
+router.use(selectionsRouter);
 
 export default router;
