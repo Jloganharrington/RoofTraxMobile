@@ -1,0 +1,158 @@
+SIGNING PORTAL — FINISH & FIX
+
+artifacts/signing-portal already has AccessCodeEntry (86 lines), ContractView
+(592 lines) with a touch-capable SignaturePad, per-package selection with
+extended-delta math, and an out-of-pocket summary. The five server endpoints
+in routes/contractPortal.ts are built, spec'd, and generating hooks.
+
+Do NOT rebuild any of that. This order closes gaps and hardens the surface.
+
+⚠ THIS IS A PUBLIC, UNAUTHENTICATED, WRITE-CAPABLE SURFACE that captures a
+legally binding signature. It gets a higher bar than internal UI. Anything
+marked [LOCKED] is locked because getting it wrong either leaks data or
+produces a signature that won't hold up.
+
+STANDING BOUNDARIES: never modify artifacts/mobile/; never hand-edit
+generated client files; integer cents. STOP at each ▶ CHECKPOINT, paste real
+output, push, wait for confirmation.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 [LOCKED] — CLIENT HYGIENE + BUNDLE AUDIT           ║
+╚═══════════════════════════════════════════════════════════╝
+1a. AccessCodeEntry.tsx line 19 uses customFetch with a hand-written path.
+    ContractView already uses generated hooks. Make AccessCodeEntry match —
+    use the generated hook for GET /portal/contract/{code}.
+
+1b. BUNDLE AUDIT — the important part. Build the artifact and confirm the
+    output does NOT contain: the CRM API surface beyond the five portal
+    endpoints, session/OIDC auth code, internal route names, role or
+    capability vocabulary from @workspace/authz, or any Settings/dashboard
+    component. A public bundle is readable by anyone with the URL; it must
+    not describe the internal application.
+    Paste what you found. If importing from @workspace/api-client-react pulls
+    the whole generated client into the bundle, report the size and say
+    whether tree-shaking eliminated the unused endpoints.
+
+▶ CHECKPOINT 1
+  - zero customFetch in signing-portal
+  - bundle audit findings pasted, with build output size
+  - typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 [LOCKED] — THE SIGNATURE MUST BIND TO THE DOCUMENT ║
+╚═══════════════════════════════════════════════════════════╝
+This is the step that decides whether the signature is defensible.
+
+2a. The customer MUST see the rendered contract document before signing, in
+    the same session, and the signature control must not be reachable until
+    they have. A signature attached to a document the signer never viewed is
+    the weakest possible position in a dispute.
+    Verify the current flow enforces this. If the sign action is available
+    while the document is unviewed or ungenerated, fix it.
+
+2b. Bind the signature to the exact bytes signed. The sign request must carry
+    the document_sha256 the customer viewed, and the server must reject the
+    signature if it does not match the stored hash — 409, not a silent
+    accept. This closes the window where selections change between document
+    generation and signature.
+    Report whether contractPortal.ts already does this; if not, add it.
+
+2c. Server-stamp everything evidentiary. customer_signed_at must be set
+    server-side, never from the client. Same for any IP or user-agent capture
+    if you add it (recommended — it strengthens the record; say if you do).
+
+2d. Re-signing must be impossible. A contract already signed rejects a second
+    signature with 409. Verify.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - attempt to sign without viewing/generating the document → blocked
+   - change a selection AFTER generating the document, then sign with the
+     stale hash → 409. Paste it.
+   - sign a second time → 409
+   - customer_signed_at is server time, not client-supplied
+  INTEGRATION:
+   - a successful sign still writes back pins.contract_amount and
+     betterments_amount_cents in one transaction — paste the profitability
+     row before and after
+   - voiding that contract still reverses the write-back
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 [REASONING OK] — THE THREE ARRIVAL STATES          ║
+╚═══════════════════════════════════════════════════════════╝
+The portal must handle arriving in any of these without confusion:
+
+  NOTHING SELECTED — customer self-serving. Full flow: select each package,
+      review the document, sign.
+  ALREADY SELECTED — a rep made the selections at the kitchen table and
+      handed over the phone. Do NOT re-ask. Show what was chosen, allow
+      changing it, and go straight to review-and-sign.
+  ALREADY SIGNED — read-only confirmation with the executed document
+      downloadable. No selection controls, no signature pad.
+
+Also handle: invalid or expired code, and a voided contract. Both need a
+plain-language dead end — "this link is no longer active, please contact
+{company}" — never a stack trace, a blank screen, or a JSON error.
+
+▶ CHECKPOINT 3
+  VERIFY: screenshots of all five states (fresh, pre-selected, signed,
+          invalid code, voided). Test on a phone viewport — this is
+          overwhelmingly a mobile surface, either the customer's phone or
+          the rep's handed across the table.
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 [LOCKED] — PRICE CLARITY                           ║
+╚═══════════════════════════════════════════════════════════╝
+The customer is agreeing to pay money. Ambiguity here is the thing that
+generates disputes, and the numbers must reconcile on screen.
+
+4a. Every upgrade shows its per-unit rate AND the extended amount:
+    "+$85.00 per square × 28 squares = +$2,380.00". Never a bare delta the
+    customer has to multiply, and never an extended figure with no derivation.
+
+4b. The base tier must be unmistakably free — "Included, no additional cost"
+    — not "+$0.00", which reads as a charge.
+
+4c. State out-of-pocket separately from contract total, and label who pays
+    what. The customer cares about ONE number: deductible + betterments.
+    The total contract value is context, not their bill. Do not let the
+    larger number be the visually dominant one.
+
+4d. The on-screen figures must equal the PDF. If they can diverge, that is a
+    dispute waiting to happen — confirm both derive from the same server
+    values, not from client-side recomputation.
+
+▶ CHECKPOINT 4
+  VERIFY: screenshot showing per-unit derivation, a free base tier, and the
+          out-of-pocket line; paste a generated PDF and confirm every figure
+          matches the screen exactly
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 5 [LOCKED] — CLOSE THE LOOP                          ║
+╚═══════════════════════════════════════════════════════════╝
+5a. On signature: email the executed PDF to the customer via the company's
+    configured SMTP, and record the send. The customer must leave with a copy
+    — this is standard practice and in many states required for home
+    improvement contracts.
+5b. Notify the rep/company that the contract was signed. A signed contract
+    nobody notices is a delayed job.
+5c. The signed contract must be retrievable later from the same link, so the
+    customer can return for their copy.
+
+▶ CHECKPOINT 5 — closes the portal
+  VERIFY:
+   - sign end-to-end → customer receives the PDF; company is notified
+   - revisit the link after signing → read-only, document downloadable
+  INTEGRATION — full pass:
+   - Financials waterfall moves on signature; Claim Value Tracker reflects
+     the new contract value
+   - change orders still work against the signed contract
+   - Contract Builder shows the signed state and blocks edits with 409
+   - photo-portal still functions and is still read-only — confirm no write
+     endpoint leaked into it
+   - api-server vitest green; authz 51/51; acceptance fixture 42/42
+   - typechecks ×3; git diff --stat -- artifacts/mobile/ empty

@@ -1,7 +1,14 @@
+/**
+ * AccessCodeEntry — the landing page where customers enter their portal code.
+ *
+ * Uses the generated getPortalContract() function (imperative, not a hook) to
+ * validate the code exists before navigating — no customFetch hand-wiring.
+ */
+
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { Shield, ArrowRight, Loader2 } from 'lucide-react';
-import { customFetch } from '@workspace/api-client-react';
+import { getPortalContract } from '@workspace/api-client-react';
 
 export default function AccessCodeEntry() {
   const [code, setCode] = useState('');
@@ -16,12 +23,17 @@ export default function AccessCodeEntry() {
     setError('');
     setLoading(true);
     try {
-      await customFetch(`/portal/contract/${encodeURIComponent(trimmed)}`);
+      // Validate the code resolves to a real, available contract.
+      // getPortalContract() is the generated imperative async function —
+      // it throws on non-2xx, so any error means "don't navigate".
+      await getPortalContract(encodeURIComponent(trimmed));
       navigate(`/contract/${encodeURIComponent(trimmed)}`);
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
       if (status === 404) {
         setError('Code not found or expired. Please check the link sent to you.');
+      } else if (status === 410) {
+        setError('This contract is no longer active. Please contact your contractor.');
       } else if (status === 429) {
         setError('Too many attempts. Please wait a minute and try again.');
       } else {

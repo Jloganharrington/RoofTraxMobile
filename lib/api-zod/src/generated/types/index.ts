@@ -300,6 +300,7 @@ export * from './portalSelectionEnvelopeSelection';
 export * from './portalSelectProductInput';
 export * from './portalSignInput';
 export * from './portalSignResponse';
+export * from './portalVoidedResponse';
 export * from './preflightResult';
 export * from './preflightResultEnvelope';
 export * from './preliminaryPhotoRole';

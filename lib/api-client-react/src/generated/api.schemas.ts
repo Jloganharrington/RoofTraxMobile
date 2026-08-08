@@ -4749,6 +4749,8 @@ export interface PortalPackageSelection {
   unitDeltaCents: number;
   quantity: string;
   extendedDeltaCents: number;
+  /** 'customer' or 'rep' */
+  selectedBy: string;
 }
 
 export interface PortalScopePackage {
@@ -4772,6 +4774,7 @@ export type PortalContractEnvelopeContract = {
   totalContractCents: number;
   scopeSummary?: string | null;
   documentObjectPath?: string | null;
+  documentSha256?: string | null;
   customerSignedAt?: string | null;
 };
 
@@ -4810,11 +4813,22 @@ export interface PortalGenerateDocumentResponse {
   documentSha256: string;
 }
 
+export interface PortalVoidedResponse {
+  error: string;
+  companyName?: string | null;
+}
+
 export interface PortalSignInput {
   customerSignatureBase64?: string;
   customerSignaturePath?: string;
   /** @minLength 1 */
   customerPrintName: string;
+  /**
+     * SHA-256 hex of the document the customer viewed; server rejects if it doesn't match the stored hash.
+     * @minLength 64
+     * @maxLength 64
+     */
+  documentSha256: string;
 }
 
 export interface PortalSignResponse {

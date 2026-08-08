@@ -15,4 +15,6 @@ export interface PortalPackageSelection {
   unitDeltaCents: number;
   quantity: string;
   extendedDeltaCents: number;
+  /** 'customer' or 'rep' */
+  selectedBy: string;
 }

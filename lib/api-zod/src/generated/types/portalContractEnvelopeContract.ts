@@ -15,5 +15,6 @@ export type PortalContractEnvelopeContract = {
   totalContractCents: number;
   scopeSummary?: string | null;
   documentObjectPath?: string | null;
+  documentSha256?: string | null;
   customerSignedAt?: Date | null;
 };

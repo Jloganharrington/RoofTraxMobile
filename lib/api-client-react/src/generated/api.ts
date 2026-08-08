@@ -157,6 +157,7 @@ import type {
   PortalSelectionEnvelope,
   PortalSignInput,
   PortalSignResponse,
+  PortalVoidedResponse,
   PreflightResultEnvelope,
   PriceBookItemEnvelope,
   PriceBookItemListEnvelope,
@@ -13911,7 +13912,7 @@ export const getGetPortalContractQueryKey = (code: string,) => {
     }
 
 
-export const getGetPortalContractQueryOptions = <TData = Awaited<ReturnType<typeof getPortalContract>>, TError = ErrorEnvelope>(code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContract>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
+export const getGetPortalContractQueryOptions = <TData = Awaited<ReturnType<typeof getPortalContract>>, TError = ErrorEnvelope | PortalVoidedResponse>(code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContract>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -13930,14 +13931,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetPortalContractQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalContract>>>
-export type GetPortalContractQueryError = ErrorEnvelope
+export type GetPortalContractQueryError = ErrorEnvelope | PortalVoidedResponse
 
 
 /**
  * @summary Load contract details by access code (customer-facing)
  */
 
-export function useGetPortalContract<TData = Awaited<ReturnType<typeof getPortalContract>>, TError = ErrorEnvelope>(
+export function useGetPortalContract<TData = Awaited<ReturnType<typeof getPortalContract>>, TError = ErrorEnvelope | PortalVoidedResponse>(
  code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalContract>>, TError, TData>, request?: SecondParameter<typeof portalFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

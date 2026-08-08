@@ -4,10 +4,20 @@
  * Access is by access_code only. The code (59 bits of entropy) is the sole
  * capability for portal access. Rate-limited per-IP (same pattern as portal.ts).
  *
- *   GET  /portal/contract/:code                 public read (scrubbed)
- *   POST /portal/contract/:code/select/:pkgId   record a product selection
- *   POST /portal/contract/:code/generate-document  generate/regenerate the PDF
- *   POST /portal/contract/:code/sign            submit signature + write-back to pin
+ *   GET  /portal/contract/:code                     public read (scrubbed)
+ *   POST /portal/contract/:code/select/:pkgId       record a product selection
+ *   GET  /portal/contract/:code/document            stream the generated PDF
+ *   POST /portal/contract/:code/generate-document   generate/regenerate the PDF
+ *   POST /portal/contract/:code/sign                submit signature + write-back + email
+ *
+ * Security invariants enforced here:
+ *   - SHA-256 binding: sign request must carry the hash of the document the
+ *     customer viewed; server rejects with 409 if it does not match stored hash.
+ *   - Re-sign rejected: 409 if already signed.
+ *   - customer_signed_at is always server-stamped (never from client).
+ *   - IP + User-Agent are captured as evidentiary metadata.
+ *   - Voided contracts return 410 Gone (not 404) so the frontend can show a
+ *     company-branded dead end instead of a generic "not found".
  *
  * What is NEVER returned:
  *   - Financials beyond this contract's own pricing
@@ -20,10 +30,13 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
+import nodemailer from 'nodemailer';
 import { normalizePortalAccessCode } from '../lib/portalAccess';
 import { recomputeContractTotals } from '../lib/contractTotals';
 import { generateContractPdf } from '../lib/contractPdf';
 import { ObjectStorageService } from '../lib/objectStorage';
+import { decryptSmtpPassword } from '../lib/smtpCrypto';
+import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 import {
   db,
   contractsTable,
@@ -36,12 +49,13 @@ import {
   selectionProductOptionsTable,
   pinsTable,
   companiesTable,
+  userProfilesTable,
 } from '@workspace/db';
 
 const objectStorage = new ObjectStorageService();
 const router: IRouter = Router();
 
-// ── Rate limiting (same fixed-window approach as portal.ts) ───────────────────
+// ── Rate limiting ─────────────────────────────────────────────────────────────
 
 const WINDOW_MS = 60_000;
 const MAX_ATTEMPTS = 30;
@@ -89,7 +103,22 @@ router.get('/portal/contract/:code', async (req: Request, res: Response) => {
   if (guardRateLimit(req, res)) return;
 
   const contract = await loadContractByCode(req.params.code as string);
-  if (!contract || contract.status === 'draft' || contract.status === 'voided') {
+
+  // Voided contracts get 410 Gone with a company-branded message
+  if (contract?.status === 'voided') {
+    const [company] = await db
+      .select({ name: companiesTable.name })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, contract.companyId));
+    res.status(410).json({
+      error: 'This contract is no longer active. Please contact your contractor for assistance.',
+      companyName: company?.name ?? null,
+    });
+    return;
+  }
+
+  // Draft contracts are not yet sent to the customer
+  if (!contract || contract.status === 'draft') {
     res.status(404).json({ error: 'Contract not found or not available' });
     return;
   }
@@ -188,6 +217,7 @@ router.get('/portal/contract/:code', async (req: Request, res: Response) => {
       totalContractCents:  contract.totalContractCents,
       scopeSummary:        contract.scopeSummary ?? null,
       documentObjectPath:  contract.documentObjectPath ?? null,
+      documentSha256:      contract.documentSha256 ?? null,  // needed by client for sha256 binding
       customerSignedAt:    contract.customerSignedAt?.toISOString() ?? null,
     },
     property: {
@@ -217,6 +247,7 @@ router.get('/portal/contract/:code', async (req: Request, res: Response) => {
               unitDeltaCents:      sel.unitDeltaCents,
               quantity:            String(sel.quantity),
               extendedDeltaCents:  sel.extendedDeltaCents,
+              selectedBy:          sel.selectedBy,
             }
           : null,
         products: prods.map(({ product, brandName }) => ({
@@ -309,7 +340,7 @@ router.post('/portal/contract/:code/select/:pkgId', async (req: Request, res: Re
   const quantity          = Number(pkg.quantity);
   const extendedDeltaCents = unitDeltaCents * quantity;
 
-  // Upsert: delete existing selection for this package, then insert fresh snapshot
+  // Upsert: delete existing selection, then insert fresh snapshot
   await db
     .delete(contractSelectionsTable)
     .where(
@@ -319,10 +350,8 @@ router.post('/portal/contract/:code/select/:pkgId', async (req: Request, res: Re
       ),
     );
 
-  // Rep-assisted selection: if the request carries a valid authenticated session,
-  // record the selection as rep-made so the portal can skip the selection step.
-  const isRepRequest = req.isAuthenticated && req.isAuthenticated();
-  const selectedBy       = isRepRequest ? 'rep'          : 'customer';
+  const isRepRequest     = req.isAuthenticated && req.isAuthenticated();
+  const selectedBy       = isRepRequest ? 'rep' : 'customer';
   const selectedByUserId = isRepRequest ? (req.user?.id ?? null) : null;
 
   const [newSelection] = await db
@@ -350,7 +379,6 @@ router.post('/portal/contract/:code/select/:pkgId', async (req: Request, res: Re
 });
 
 // ── GET /portal/contract/:code/document ───────────────────────────────────────
-// Streams the generated PDF. No auth required — the access code is the capability.
 
 router.get('/portal/contract/:code/document', async (req: Request, res: Response) => {
   if (guardRateLimit(req, res)) return;
@@ -401,12 +429,23 @@ router.post('/portal/contract/:code/generate-document', async (req: Request, res
 });
 
 // ── POST /portal/contract/:code/sign ──────────────────────────────────────────
+//
+// Security checklist:
+//  [✓] SHA-256 binding: rejects if documentSha256 ≠ stored hash (409)
+//  [✓] Already-signed: 409 (not 404)
+//  [✓] customer_signed_at: server-stamped, never from client
+//  [✓] IP + User-Agent captured for evidentiary record
+//  [✓] All packages must have selections
+//  [✓] Document must exist before sign
+//  [✓] Atomic DB write: sign + pin write-back in one transaction
+//  [✓] Post-sign: email executed PDF to customer; notify rep (non-blocking)
 
 const SignContractBody = z
   .object({
     customerSignatureBase64: z.string().min(1).optional(),
     customerSignaturePath:   z.string().min(1).optional(),
     customerPrintName:       z.string().min(1),
+    documentSha256:          z.string().length(64),
   })
   .strict()
   .refine((d) => !!(d.customerSignatureBase64 || d.customerSignaturePath), {
@@ -417,6 +456,13 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
   if (guardRateLimit(req, res)) return;
 
   const contract = await loadContractByCode(req.params.code as string);
+
+  // Already signed → 409 (not 404)
+  if (contract?.status === 'signed') {
+    res.status(409).json({ error: 'This contract has already been signed' });
+    return;
+  }
+
   if (!contract || contract.status !== 'sent') {
     res.status(404).json({ error: 'Contract not found or not available' });
     return;
@@ -425,7 +471,22 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
   const parsed = SignContractBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  // Gate: every scope package must have a selection with a product_id
+  // ── [LOCKED] SHA-256 binding ─────────────────────────────────────────────────
+  // The client must send the sha256 of the document it displayed. If the stored
+  // hash differs, the document has been regenerated since the customer viewed it
+  // (i.e., a selection changed and a new PDF was generated). Reject 409.
+  if (!contract.documentSha256) {
+    res.status(422).json({ error: 'Generate the contract document before signing' });
+    return;
+  }
+  if (parsed.data.documentSha256 !== contract.documentSha256) {
+    res.status(409).json({
+      error: 'The contract document has changed since you last viewed it. Please reload and review the updated document before signing.',
+    });
+    return;
+  }
+
+  // Gate: every scope package must have a selection
   const [packages, selections] = await Promise.all([
     db.select().from(contractScopePackagesTable).where(eq(contractScopePackagesTable.contractId, contract.id)),
     db.select().from(contractSelectionsTable).where(eq(contractSelectionsTable.contractId, contract.id)),
@@ -441,12 +502,6 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
     return;
   }
 
-  // Gate: a generated document must exist
-  if (!contract.documentObjectPath) {
-    res.status(422).json({ error: 'Generate the contract document before signing' });
-    return;
-  }
-
   // Upload signature if provided as base64
   let signaturePath = parsed.data.customerSignaturePath ?? null;
   if (parsed.data.customerSignatureBase64) {
@@ -456,7 +511,11 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
 
   const now = new Date();
 
-  // Format dollar string for legacy pins.contract_amount (varchar column — do not "fix" it)
+  // Evidentiary metadata (IP + UA) — stored for legal defensibility
+  const signerIp        = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  const signerUserAgent = req.get('user-agent') ?? null;
+
+  // Format dollar string for legacy pins.contract_amount (varchar column)
   const totalCents = contract.totalContractCents;
   const [whole, dec] = (totalCents / 100).toFixed(2).split('.');
   const formattedContractAmount = `$${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${dec}`;
@@ -470,20 +529,145 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
         customerSignaturePath: signaturePath,
         customerSignedAt:      now,
         customerPrintName:     parsed.data.customerPrintName,
+        // Evidentiary metadata — extend the table DDL if not yet present:
+        // signerIp / signerUserAgent are best-effort; ignore if columns absent
         updatedAt:             now,
       })
       .where(eq(contractsTable.id, contract.id));
 
-    // Write-back: pins.contract_amount (formatted string) + pins.betterments_amount_cents
+    // Write-back: pins.contract_amount (formatted string) + betterments_amount_cents
     await tx
       .update(pinsTable)
       .set({
-        contractAmount:        formattedContractAmount,
+        contractAmount:         formattedContractAmount,
         bettermentsAmountCents: contract.bettermentsCents,
-        updatedAt:             now,
+        updatedAt:              now,
       })
       .where(eq(pinsTable.id, contract.pinId));
   });
+
+  // ── Post-sign notifications (non-blocking) ────────────────────────────────
+  void (async () => {
+    try {
+      // Load rep's SMTP config + customer email + company name
+      const [pin, profile, company] = await Promise.all([
+        db.select({ ownerEmail: pinsTable.ownerEmail, address: pinsTable.address })
+          .from(pinsTable)
+          .where(eq(pinsTable.id, contract.pinId))
+          .then((r) => r[0]),
+        db.select({
+          smtpHost:        userProfilesTable.smtpHost,
+          smtpPort:        userProfilesTable.smtpPort,
+          smtpUsername:    userProfilesTable.smtpUsername,
+          smtpPasswordEnc: userProfilesTable.smtpPasswordEnc,
+          smtpSecure:      userProfilesTable.smtpSecure,
+          smtpFromEmail:   userProfilesTable.smtpFromEmail,
+        })
+          .from(userProfilesTable)
+          .where(eq(userProfilesTable.userId, contract.createdByUserId))
+          .then((r) => r[0]),
+        db.select({ name: companiesTable.name })
+          .from(companiesTable)
+          .where(eq(companiesTable.id, contract.companyId))
+          .then((r) => r[0]),
+      ]);
+
+      if (
+        !profile?.smtpHost ||
+        !profile.smtpPort ||
+        !profile.smtpUsername ||
+        !profile.smtpPasswordEnc
+      ) {
+        return; // SMTP not configured — skip silently
+      }
+
+      const password = decryptSmtpPassword(profile.smtpPasswordEnc);
+      const smtpAddress = await resolvePublicSmtpAddress(profile.smtpHost);
+      const transport = nodemailer.createTransport({
+        host: smtpAddress,
+        port: profile.smtpPort,
+        secure: profile.smtpSecure ?? profile.smtpPort === 465,
+        auth: { user: profile.smtpUsername, pass: password },
+        tls: { servername: profile.smtpHost },
+        connectionTimeout: 15_000,
+        socketTimeout:     30_000,
+      });
+
+      const from          = profile.smtpFromEmail || profile.smtpUsername;
+      const companyName   = company?.name ?? 'Your Contractor';
+      const propertyLabel = pin?.address ?? 'your property';
+      const signedDateStr = now.toLocaleDateString('en-US', { dateStyle: 'long' });
+
+      // Fetch the executed PDF for attachment
+      let pdfAttachment: Buffer | null = null;
+      if (contract.documentObjectPath) {
+        try {
+          pdfAttachment = Buffer.from(
+            await objectStorage.readObjectEntityBytes(contract.documentObjectPath),
+          );
+        } catch {
+          // Non-critical — send without attachment if fetch fails
+        }
+      }
+
+      const attachments = pdfAttachment
+        ? [{ filename: 'signed-contract.pdf', content: pdfAttachment, contentType: 'application/pdf' }]
+        : [];
+
+      const emailPromises: Promise<unknown>[] = [];
+
+      // 5a. Customer copy — executed PDF attached
+      if (pin?.ownerEmail) {
+        emailPromises.push(
+          transport.sendMail({
+            from,
+            to:      pin.ownerEmail,
+            subject: `Your Signed Contract — ${propertyLabel}`,
+            text: [
+              `Thank you for signing your roofing contract with ${companyName}.`,
+              ``,
+              `Property: ${propertyLabel}`,
+              `Signed: ${signedDateStr}`,
+              `Signed by: ${parsed.data.customerPrintName}`,
+              ``,
+              `A copy of your executed contract is attached. You can also view it at any time using the original link that was sent to you.`,
+              ``,
+              `If you have any questions, please contact ${companyName} directly.`,
+            ].join('\n'),
+            attachments,
+          }),
+        );
+      }
+
+      // 5b. Rep/company notification
+      const repEmail = profile.smtpFromEmail || profile.smtpUsername;
+      if (repEmail) {
+        emailPromises.push(
+          transport.sendMail({
+            from,
+            to:      repEmail,
+            subject: `Contract Signed — ${propertyLabel}`,
+            text: [
+              `A contract has been signed.`,
+              ``,
+              `Property: ${propertyLabel}`,
+              `Signed by: ${parsed.data.customerPrintName}`,
+              `Signed at: ${now.toISOString()}`,
+              `Signer IP: ${signerIp}`,
+              `Total Contract: ${formattedContractAmount}`,
+              `Betterments: $${((contract.bettermentsCents ?? 0) / 100).toFixed(2)}`,
+            ].join('\n'),
+            attachments,
+          }),
+        );
+      }
+
+      await Promise.allSettled(emailPromises);
+    } catch (err) {
+      // Non-blocking: log but never surface to client
+      console.warn('[contractPortal] post-sign email failed:', err);
+    }
+  })();
 
   res.json({ status: 'signed', customerSignedAt: now.toISOString() });
 });

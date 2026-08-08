@@ -11,4 +11,10 @@ export interface PortalSignInput {
   customerSignaturePath?: string;
   /** @minLength 1 */
   customerPrintName: string;
+  /**
+     * SHA-256 hex of the document the customer viewed; server rejects if it doesn't match the stored hash.
+     * @minLength 64
+     * @maxLength 64
+     */
+  documentSha256: string;
 }

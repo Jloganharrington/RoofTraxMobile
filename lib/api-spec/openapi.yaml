@@ -7179,6 +7179,12 @@ paths:
         "404":
           description: Contract not found or not available.
           content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
+        "410":
+          description: Contract has been voided; link is no longer active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalVoidedResponse"
         "429":
           description: Rate limited.
           content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } }
@@ -13480,7 +13486,7 @@ components:
 
     PortalPackageSelection:
       type: object
-      required: [productId, productName, brandName, unitDeltaCents, quantity, extendedDeltaCents]
+      required: [productId, productName, brandName, unitDeltaCents, quantity, extendedDeltaCents, selectedBy]
       properties:
         productId:          { type: string }
         optionId:           { type: string, nullable: true }
@@ -13490,6 +13496,7 @@ components:
         unitDeltaCents:     { type: integer }
         quantity:           { type: string }
         extendedDeltaCents: { type: integer }
+        selectedBy:         { type: string, description: "'customer' or 'rep'" }
 
     PortalScopePackage:
       type: object
@@ -13527,6 +13534,7 @@ components:
             totalContractCents: { type: integer }
             scopeSummary:       { type: string, nullable: true }
             documentObjectPath: { type: string, nullable: true }
+            documentSha256:     { type: string, nullable: true }
             customerSignedAt:   { type: string, format: date-time, nullable: true }
         property:
           type: object
@@ -13565,13 +13573,21 @@ components:
         documentObjectPath: { type: string }
         documentSha256:     { type: string }
 
+    PortalVoidedResponse:
+      type: object
+      required: [error]
+      properties:
+        error:       { type: string }
+        companyName: { type: string, nullable: true }
+
     PortalSignInput:
       type: object
-      required: [customerPrintName]
+      required: [customerPrintName, documentSha256]
       properties:
         customerSignatureBase64: { type: string }
         customerSignaturePath:   { type: string }
         customerPrintName:       { type: string, minLength: 1 }
+        documentSha256:          { type: string, minLength: 64, maxLength: 64, description: "SHA-256 hex of the document the customer viewed; server rejects if it doesn't match the stored hash." }
 
     PortalSignResponse:
       type: object

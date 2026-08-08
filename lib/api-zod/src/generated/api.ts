@@ -9330,6 +9330,7 @@ export const GetPortalContractResponse = zod.object({
   "totalContractCents": zod.number(),
   "scopeSummary": zod.string().nullish(),
   "documentObjectPath": zod.string().nullish(),
+  "documentSha256": zod.string().nullish(),
   "customerSignedAt": zod.coerce.date().nullish()
 }),
   "property": zod.object({
@@ -9354,7 +9355,8 @@ export const GetPortalContractResponse = zod.object({
   "optionName": zod.string().nullish(),
   "unitDeltaCents": zod.number(),
   "quantity": zod.string(),
-  "extendedDeltaCents": zod.number()
+  "extendedDeltaCents": zod.number(),
+  "selectedBy": zod.string().describe('\'customer\' or \'rep\'')
 }).nullish(),
   "products": zod.array(zod.object({
   "id": zod.string(),
@@ -9427,12 +9429,16 @@ export const PortalSignContractParams = zod.object({
 })
 
 
+export const portalSignContractBodyDocumentSha256Min = 64;
+export const portalSignContractBodyDocumentSha256Max = 64;
+
 
 
 export const PortalSignContractBody = zod.object({
   "customerSignatureBase64": zod.string().optional(),
   "customerSignaturePath": zod.string().optional(),
-  "customerPrintName": zod.string().min(1)
+  "customerPrintName": zod.string().min(1),
+  "documentSha256": zod.string().min(portalSignContractBodyDocumentSha256Min).max(portalSignContractBodyDocumentSha256Max).describe('SHA-256 hex of the document the customer viewed; server rejects if it doesn\'t match the stored hash.')
 })
 
 export const PortalSignContractResponse = zod.object({
