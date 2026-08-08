@@ -466,7 +466,7 @@ export interface FullLead {
   address: string | null;
   latitude: number;
   longitude: number;
-  workflow: 'retail' | 'insurance';
+  workflow: 'retail' | 'insurance' | 'project';
   damageType: string | null;
   photoUrl: string | null;
   doorKnockResult: string | null;

@@ -156,15 +156,10 @@ function WidgetCard({
 }) {
   return (
     <div className="flex flex-col h-full rounded-lg border bg-card shadow-sm overflow-hidden">
-      {/* Header */}
-      <div className="px-3 pt-2.5 pb-2 border-b border-border/50 flex-shrink-0 flex items-center gap-2">
+      {/* Header — full bar is the drag handle in edit mode */}
+      <div className={`px-3 pt-2.5 pb-2 border-b border-border/50 flex-shrink-0 flex items-center gap-2${editMode ? ' widget-drag-header cursor-grab active:cursor-grabbing select-none' : ''}`}>
         {editMode && (
-          <span
-            className="drag-handle cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground/70 flex-shrink-0 -ml-0.5 transition-colors"
-            aria-hidden
-          >
-            <GripVertical className="h-4 w-4" />
-          </span>
+          <GripVertical className="h-4 w-4 flex-shrink-0 -ml-0.5 text-muted-foreground/40" aria-hidden />
         )}
         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground truncate">
           {title}
@@ -251,9 +246,14 @@ export function DashboardGrid({
       <style>{`
         .rt-dashboard-grid .react-grid-item > .react-resizable-handle {
           display: ${editMode ? 'block' : 'none'};
+          width: 28px;
+          height: 28px;
         }
         .rt-dashboard-grid .react-grid-item > .react-resizable-handle::after {
-          border-color: hsl(var(--primary) / 0.5);
+          width: 10px;
+          height: 10px;
+          border-color: hsl(var(--primary) / 0.6);
+          border-width: 2.5px;
         }
         .rt-dashboard-grid .react-grid-item.react-grid-placeholder {
           background: hsl(var(--primary) / 0.12);
@@ -291,7 +291,7 @@ export function DashboardGrid({
               margin:    GRID_MARGIN,
             }}
             dragConfig={
-              editMode ? { handle: '.drag-handle' } : undefined
+              editMode ? { handle: '.widget-drag-header' } : undefined
             }
             onLayoutChange={handleLayoutChange}
             compactor={verticalCompactor}

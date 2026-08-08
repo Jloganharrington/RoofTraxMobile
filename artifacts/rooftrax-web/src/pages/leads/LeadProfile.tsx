@@ -3449,6 +3449,11 @@ export default function LeadProfile() {
   const isInsurance = !lead?.workflow || lead.workflow === 'insurance';
   const isRetail = lead?.workflow === 'retail';
 
+  // Back button destination — parent pipeline for this lead's workflow
+  const backPath = lead?.workflow === 'retail'   ? '/retail-pipeline'
+                 : lead?.workflow === 'project'  ? '/project-pipeline'
+                 : '/insurance-pipeline'; // insurance + legacy null → insurance pipeline
+
   // Derive the linked inspection ID (for the Inspection Flow tab)
   const inspectionId = useMemo(() => {
     if (!lead) return null;
@@ -3584,7 +3589,7 @@ export default function LeadProfile() {
 
           {/* Row 1 — back · name · badges */}
           <div className="flex items-center gap-3 py-3">
-            <button onClick={() => navigate('/leads')}
+            <button onClick={() => navigate(backPath)}
               className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
               <ArrowLeft className="h-5 w-5" />
             </button>
