@@ -1012,3 +1012,25 @@ export const contractSelectionsTable = pgTable('contract_selections', {
 
 export type ContractSelection = typeof contractSelectionsTable.$inferSelect;
 export type InsertContractSelection = typeof contractSelectionsTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Claim Status History (migration 038)
+// ---------------------------------------------------------------------------
+// Forward-only log of every claim_status change on a pin. Written in the same
+// transaction as the PATCH /pins/:pinId/insurance update, with a no-op guard
+// so setting the SAME status twice produces no row. No backfill — there is no
+// retroactive source for prior changes, and fabricating timestamps would be
+// misleading. The live activity feed starts empty for this event type.
+
+export const claimStatusHistoryTable = pgTable('claim_status_history', {
+  id:               varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:        varchar('company_id').notNull().references(() => companiesTable.id),
+  pinId:            varchar('pin_id').notNull().references(() => pinsTable.id, { onDelete: 'cascade' }),
+  fromStatus:       varchar('from_status'),           // null on first-ever set
+  toStatus:         varchar('to_status').notNull(),
+  changedByUserId:  varchar('changed_by_user_id').notNull().references(() => usersTable.id),
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ClaimStatusHistory = typeof claimStatusHistoryTable.$inferSelect;
+export type InsertClaimStatusHistory = typeof claimStatusHistoryTable.$inferInsert;

@@ -29,12 +29,13 @@ const WIDGET_KEYS = [
   'knock_to_lead',
   'production_pipeline',
   'live_team',
+  'live_activity',
 ] as const;
 
 export type Capability = (typeof WIDGET_KEYS)[number];
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
-// Exactly 12 entries in spec order. Do NOT add revenue / commission / quota /
+// Exactly 13 entries in spec order. Do NOT add revenue / commission / quota /
 // A-R aging / crew widgets — those tables do not exist in this schema.
 
 export const WIDGET_CATALOG: readonly WidgetEntry[] = [
@@ -66,6 +67,12 @@ export const WIDGET_CATALOG: readonly WidgetEntry[] = [
   { key: 'knock_to_lead',       title: 'Knock to Lead',       size: 'md', minRole: 'manager' },
   { key: 'production_pipeline', title: 'Production Pipeline', size: 'lg', minRole: 'manager' },
   { key: 'live_team',           title: 'Live Team',           size: 'md', minRole: 'manager' },
+  {
+    key:     'live_activity',
+    title:   'Live Activity',
+    size:    'lg',
+    minRole: 'manager',
+  },
 ];
 
 // ── Resolver ─────────────────────────────────────────────────────────────────

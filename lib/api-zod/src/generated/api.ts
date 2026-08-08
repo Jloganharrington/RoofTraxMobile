@@ -6759,6 +6759,31 @@ export const GetRecentActivityWidgetResponse = zod.object({
 
 
 /**
+ * Reverse-chronological feed of eight financial and legal event types across the company: payment_recorded, contract_signed, contract_voided, fipsa_signed, fipsa_voided, change_order_signed, change_order_approved, claim_status_changed. Capped at 50 items; total and capped are always returned. Supports a `since` query parameter for incremental polling. Requires the live_activity widget capability (manager+).
+ * @summary Business-events feed — money and legally binding actions (manager+)
+ */
+export const GetLiveActivityWidgetQueryParams = zod.object({
+  "since": zod.date().optional().describe('ISO 8601 datetime. When provided, returns only events that occurred after this timestamp.')
+})
+
+export const GetLiveActivityWidgetResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().describe('Stable, source-prefixed. e.g. \"pay:<uuid>\", \"ctr-sign:<uuid>\"'),
+  "type": zod.enum(['payment_recorded', 'contract_signed', 'contract_voided', 'fipsa_signed', 'fipsa_voided', 'change_order_signed', 'change_order_approved', 'claim_status_changed']),
+  "occurredAt": zod.coerce.date().nullable(),
+  "title": zod.string().describe('Human-readable event title. No raw enum keys.'),
+  "detail": zod.string().nullable().describe('Supporting detail such as a formatted dollar amount or a status transition.'),
+  "amountCents": zod.number().nullable().describe('Dollar amount in cents for money events; null otherwise.'),
+  "actorName": zod.string().nullable().describe('Display name of the staff actor; null for customer-side actions.'),
+  "pinId": zod.string().nullable(),
+  "inspectionId": zod.string().nullable()
+}).describe('One normalised business event from the live activity feed. No source-specific fields leak through — all eight event types map to this same shape.')),
+  "total": zod.number().describe('Total events matched before the cap was applied.'),
+  "capped": zod.boolean().describe('True when total > 50; the client should narrow the window or use `since` for incremental polling.')
+})
+
+
+/**
  * Company-scoped array of pin coordinates with door-knock outcomes for heatmap rendering. PII-free (no names, addresses, phone numbers). Capped at 2,000 points; total before cap is always returned. Requires the canvassing_heatmap widget capability (manager+).
  * @summary Canvassing heatmap data points for the company
  */

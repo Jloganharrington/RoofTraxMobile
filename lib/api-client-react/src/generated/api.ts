@@ -105,6 +105,7 @@ import type {
   GetActivityStatsParams,
   GetCalendarFeedParams,
   GetInspectionReportPreviewUrl200,
+  GetLiveActivityWidgetParams,
   GetPipelineFunnelWidgetParams,
   GetWeatherEventsParams,
   HandleBrowserLoginCallbackParams,
@@ -135,6 +136,7 @@ import type {
   ListSelectionOptionsParams,
   ListSelectionProductOptionsParams,
   ListSelectionProductsParams,
+  LiveActivityFeed,
   LocationPingBody,
   LocationPingSuccess,
   LogoutBrowserSessionParams,
@@ -8812,6 +8814,91 @@ export function useGetRecentActivityWidget<TData = Awaited<ReturnType<typeof get
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRecentActivityWidgetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetLiveActivityWidgetUrl = (params?: GetLiveActivityWidgetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dashboard/widgets/live_activity?${stringifiedParams}` : `/api/dashboard/widgets/live_activity`
+}
+
+/**
+ * Reverse-chronological feed of eight financial and legal event types across the company: payment_recorded, contract_signed, contract_voided, fipsa_signed, fipsa_voided, change_order_signed, change_order_approved, claim_status_changed. Capped at 50 items; total and capped are always returned. Supports a `since` query parameter for incremental polling. Requires the live_activity widget capability (manager+).
+ * @summary Business-events feed — money and legally binding actions (manager+)
+ */
+export const getLiveActivityWidget = async (params?: GetLiveActivityWidgetParams, options?: RequestInit): Promise<LiveActivityFeed> => {
+
+  return customFetch<LiveActivityFeed>(getGetLiveActivityWidgetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLiveActivityWidgetQueryKey = (params?: GetLiveActivityWidgetParams,) => {
+    return [
+    `/api/dashboard/widgets/live_activity`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetLiveActivityWidgetQueryOptions = <TData = Awaited<ReturnType<typeof getLiveActivityWidget>>, TError = ErrorType<ErrorEnvelope>>(params?: GetLiveActivityWidgetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveActivityWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLiveActivityWidgetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLiveActivityWidget>>> = ({ signal }) => getLiveActivityWidget(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLiveActivityWidget>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLiveActivityWidgetQueryResult = NonNullable<Awaited<ReturnType<typeof getLiveActivityWidget>>>
+export type GetLiveActivityWidgetQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Business-events feed — money and legally binding actions (manager+)
+ */
+
+export function useGetLiveActivityWidget<TData = Awaited<ReturnType<typeof getLiveActivityWidget>>, TError = ErrorType<ErrorEnvelope>>(
+ params?: GetLiveActivityWidgetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveActivityWidget>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLiveActivityWidgetQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

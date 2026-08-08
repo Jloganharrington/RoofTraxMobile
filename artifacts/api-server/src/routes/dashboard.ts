@@ -1,8 +1,8 @@
 import { GetDashboardManifestResponse, GetDashboardLayoutResponse, PatchDashboardLayoutBody } from '@workspace/api-zod';
-import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable, stageTransitionsTable, claimEventsTable } from '@workspace/db';
+import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable, stageTransitionsTable, claimEventsTable, paymentsTable, contractsTable, changeOrdersTable, signedAgreementsTable, claimStatusHistoryTable } from '@workspace/db';
 import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
 import { selectWidgetsFor, WIDGET_CATALOG, type Capability } from '@workspace/authz';
-import { and, eq, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { requireWidgetCapability } from '../lib/dashboardGuard';
 import { SERVER_STAGES_ARRAY, findServerStageByKey, type PipelineId } from '../lib/pipelineStages';
@@ -1015,6 +1015,351 @@ router.get(
         ...item,
         createdAt: item.createdAt instanceof Date ? item.createdAt.toISOString() : item.createdAt,
       })),
+      total,
+      capped,
+    });
+  },
+);
+
+// ── GET /dashboard/widgets/live_activity ─────────────────────────────────────
+// Business-events feed: money and legally binding actions.  Eight sources:
+//   payment_recorded | contract_signed | contract_voided
+//   fipsa_signed     | fipsa_voided
+//   change_order_signed | change_order_approved | claim_status_changed
+//
+// Manager+ only (live_activity capability, minRole:'manager').
+// Company-scoped on direct company_id columns throughout — no join-through-pins.
+// Capped at 50; total + capped reported for honesty.
+// `since` (ISO datetime) enables incremental polling.
+
+const LIVE_ACTIVITY_CAP = 50;
+
+const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  deposit:      'Deposit',
+  acv:          'ACV Payment',
+  betterment:   'Betterment',
+  supplement:   'Supplement',
+  final:        'Final Payment',
+  rcv_holdback: 'RCV Holdback',
+  deductible:   'Deductible',
+  other:        'Other Payment',
+};
+
+function humanizeStatus(s: string | null | undefined): string {
+  if (!s) return 'None';
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function fmtCents(cents: number | null | undefined): string | null {
+  if (cents == null) return null;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+router.get(
+  '/dashboard/widgets/live_activity',
+  requireWidgetCapability('live_activity'),
+  async (req: Request, res: Response) => {
+    const companyId = req.user!.companyId;
+    const sinceRaw  = req.query.since;
+    const since     = sinceRaw && typeof sinceRaw === 'string' ? new Date(sinceRaw) : null;
+
+    if (sinceRaw && since && isNaN(since.getTime())) {
+      res.status(400).json({ error: 'Invalid since parameter — must be an ISO 8601 datetime' });
+      return;
+    }
+
+    interface RawItem {
+      id:          string;
+      type:        string;
+      occurredAt:  Date | null;
+      amountCents: number | null;
+      actorUserId: string | null;
+      pinId:       string | null;
+      inspectionId: string | null;
+      extra:       Record<string, unknown>;
+    }
+
+    const all: RawItem[] = [];
+
+    // ── 1. payment_recorded ─────────────────────────────────────────────────
+    const payments = await db
+      .select()
+      .from(paymentsTable)
+      .where(and(
+        eq(paymentsTable.companyId, companyId),
+        since ? gt(paymentsTable.createdAt, since) : undefined,
+      ));
+    for (const p of payments) {
+      all.push({
+        id:          `pay:${p.id}`,
+        type:        'payment_recorded',
+        occurredAt:  p.createdAt,
+        amountCents: p.amountCents,
+        actorUserId: p.createdByUserId,
+        pinId:       p.pinId,
+        inspectionId: null,
+        extra:       { paymentType: p.type },
+      });
+    }
+
+    // ── 2. contract_signed ──────────────────────────────────────────────────
+    const contractsSigned = await db
+      .select()
+      .from(contractsTable)
+      .where(and(
+        eq(contractsTable.companyId, companyId),
+        isNotNull(contractsTable.customerSignedAt),
+        since ? gt(contractsTable.customerSignedAt, since) : undefined,
+      ));
+    for (const c of contractsSigned) {
+      all.push({
+        id:          `ctr-sign:${c.id}`,
+        type:        'contract_signed',
+        occurredAt:  c.customerSignedAt,
+        amountCents: c.totalContractCents,
+        actorUserId: null,   // customer-side action
+        pinId:       c.pinId,
+        inspectionId: null,
+        extra:       {},
+      });
+    }
+
+    // ── 3. contract_voided ──────────────────────────────────────────────────
+    const contractsVoided = await db
+      .select()
+      .from(contractsTable)
+      .where(and(
+        eq(contractsTable.companyId, companyId),
+        isNotNull(contractsTable.voidedAt),
+        since ? gt(contractsTable.voidedAt, since) : undefined,
+      ));
+    for (const c of contractsVoided) {
+      all.push({
+        id:          `ctr-void:${c.id}`,
+        type:        'contract_voided',
+        occurredAt:  c.voidedAt,
+        amountCents: c.totalContractCents,
+        actorUserId: c.voidedByUserId ?? null,
+        pinId:       c.pinId,
+        inspectionId: null,
+        extra:       {},
+      });
+    }
+
+    // ── 4. fipsa_signed ─────────────────────────────────────────────────────
+    // signed_agreements has no direct pin_id; resolve through inspections.
+    const fipsasSigned = await db
+      .select({
+        id:             signedAgreementsTable.id,
+        inspectionId:   signedAgreementsTable.inspectionId,
+        signedAt:       signedAgreementsTable.signedAt,
+        pinId:          inspectionsTable.pinId,
+      })
+      .from(signedAgreementsTable)
+      .innerJoin(inspectionsTable, eq(signedAgreementsTable.inspectionId, inspectionsTable.id))
+      .where(and(
+        eq(signedAgreementsTable.companyId, companyId),
+        since ? gt(signedAgreementsTable.signedAt, since) : undefined,
+      ));
+    for (const sa of fipsasSigned) {
+      all.push({
+        id:          `fipsa-sign:${sa.id}`,
+        type:        'fipsa_signed',
+        occurredAt:  sa.signedAt,
+        amountCents: null,
+        actorUserId: null,   // homeowner signs
+        pinId:       sa.pinId ?? null,
+        inspectionId: sa.inspectionId,
+        extra:       {},
+      });
+    }
+
+    // ── 5. fipsa_voided ─────────────────────────────────────────────────────
+    const fipsasVoided = await db
+      .select({
+        id:             signedAgreementsTable.id,
+        inspectionId:   signedAgreementsTable.inspectionId,
+        voidedAt:       signedAgreementsTable.voidedAt,
+        voidedByUserId: signedAgreementsTable.voidedByUserId,
+        pinId:          inspectionsTable.pinId,
+      })
+      .from(signedAgreementsTable)
+      .innerJoin(inspectionsTable, eq(signedAgreementsTable.inspectionId, inspectionsTable.id))
+      .where(and(
+        eq(signedAgreementsTable.companyId, companyId),
+        isNotNull(signedAgreementsTable.voidedAt),
+        since ? gt(signedAgreementsTable.voidedAt, since) : undefined,
+      ));
+    for (const sa of fipsasVoided) {
+      all.push({
+        id:          `fipsa-void:${sa.id}`,
+        type:        'fipsa_voided',
+        occurredAt:  sa.voidedAt,
+        amountCents: null,
+        actorUserId: sa.voidedByUserId ?? null,
+        pinId:       sa.pinId ?? null,
+        inspectionId: sa.inspectionId,
+        extra:       {},
+      });
+    }
+
+    // ── 6. change_order_signed ──────────────────────────────────────────────
+    const cosSigned = await db
+      .select()
+      .from(changeOrdersTable)
+      .where(and(
+        eq(changeOrdersTable.companyId, companyId),
+        isNotNull(changeOrdersTable.homeownerSignedAt),
+        since ? gt(changeOrdersTable.homeownerSignedAt, since) : undefined,
+      ));
+    for (const co of cosSigned) {
+      all.push({
+        id:          `co-sign:${co.id}`,
+        type:        'change_order_signed',
+        occurredAt:  co.homeownerSignedAt,
+        amountCents: co.amountCents,
+        actorUserId: null,   // homeowner signs
+        pinId:       co.pinId,
+        inspectionId: null,
+        extra:       {},
+      });
+    }
+
+    // ── 7. change_order_approved ────────────────────────────────────────────
+    const cosApproved = await db
+      .select()
+      .from(changeOrdersTable)
+      .where(and(
+        eq(changeOrdersTable.companyId, companyId),
+        eq(changeOrdersTable.status, 'approved'),
+        isNotNull(changeOrdersTable.approvedAt),
+        since ? gt(changeOrdersTable.approvedAt, since) : undefined,
+      ));
+    for (const co of cosApproved) {
+      all.push({
+        id:          `co-appr:${co.id}`,
+        type:        'change_order_approved',
+        occurredAt:  co.approvedAt,
+        amountCents: co.amountCents,
+        actorUserId: null,   // no approver column; staff action, actor unknown
+        pinId:       co.pinId,
+        inspectionId: null,
+        extra:       {},
+      });
+    }
+
+    // ── 8. claim_status_changed ─────────────────────────────────────────────
+    const statusHistory = await db
+      .select()
+      .from(claimStatusHistoryTable)
+      .where(and(
+        eq(claimStatusHistoryTable.companyId, companyId),
+        since ? gt(claimStatusHistoryTable.createdAt, since) : undefined,
+      ));
+    for (const h of statusHistory) {
+      all.push({
+        id:          `csh:${h.id}`,
+        type:        'claim_status_changed',
+        occurredAt:  h.createdAt,
+        amountCents: null,
+        actorUserId: h.changedByUserId,
+        pinId:       h.pinId,
+        inspectionId: null,
+        extra:       { fromStatus: h.fromStatus, toStatus: h.toStatus },
+      });
+    }
+
+    // ── Batch-resolve actor display names ────────────────────────────────────
+    const actorIds = [
+      ...new Set(all.map(r => r.actorUserId).filter((id): id is string => !!id)),
+    ];
+    const userRows = actorIds.length
+      ? await db
+          .select({
+            id:        usersTable.id,
+            firstName: usersTable.firstName,
+            lastName:  usersTable.lastName,
+          })
+          .from(usersTable)
+          .where(inArray(usersTable.id, actorIds))
+      : [];
+    const nameMap = new Map(
+      userRows.map(u => [
+        u.id,
+        [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown',
+      ]),
+    );
+
+    // ── Sort descending by occurredAt ────────────────────────────────────────
+    all.sort((a, b) => {
+      if (!a.occurredAt) return 1;
+      if (!b.occurredAt) return -1;
+      return b.occurredAt.getTime() - a.occurredAt.getTime();
+    });
+
+    const total  = all.length;
+    const capped = total > LIVE_ACTIVITY_CAP;
+
+    res.json({
+      items: all.slice(0, LIVE_ACTIVITY_CAP).map(r => {
+        const fmt = fmtCents(r.amountCents);
+        let title  = '';
+        let detail: string | null = null;
+
+        switch (r.type) {
+          case 'payment_recorded': {
+            const lbl = PAYMENT_TYPE_LABELS[r.extra.paymentType as string] ?? 'Payment';
+            title  = `${lbl} Received`;
+            detail = fmt;
+            break;
+          }
+          case 'contract_signed':
+            title  = 'Contract Signed by Customer';
+            detail = fmt ? `Contract value: ${fmt}` : null;
+            break;
+          case 'contract_voided':
+            title  = 'Contract Voided';
+            detail = fmt ? `Was: ${fmt}` : null;
+            break;
+          case 'fipsa_signed':
+            title  = 'Field Inspection Agreement Signed';
+            break;
+          case 'fipsa_voided':
+            title  = 'Field Inspection Agreement Voided';
+            break;
+          case 'change_order_signed':
+            title  = 'Change Order Signed by Homeowner';
+            detail = fmt;
+            break;
+          case 'change_order_approved':
+            title  = 'Change Order Approved';
+            detail = fmt;
+            break;
+          case 'claim_status_changed': {
+            const from = humanizeStatus(r.extra.fromStatus as string | null);
+            const to   = humanizeStatus(r.extra.toStatus   as string | null);
+            title  = 'Claim Status Updated';
+            detail = `${from} → ${to}`;
+            break;
+          }
+          default:
+            title = r.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        return {
+          id:          r.id,
+          type:        r.type,
+          occurredAt:  r.occurredAt?.toISOString() ?? null,
+          title,
+          detail:      detail ?? null,
+          amountCents: r.amountCents,
+          actorName:   r.actorUserId ? (nameMap.get(r.actorUserId) ?? null) : null,
+          pinId:       r.pinId,
+          inspectionId: r.inspectionId,
+        };
+      }),
       total,
       capped,
     });

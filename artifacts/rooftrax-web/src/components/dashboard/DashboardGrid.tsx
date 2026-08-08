@@ -24,6 +24,7 @@ const WIDGET_REGISTRY: Record<string, React.ComponentType> = {
   knock_to_lead:        Widgets.KnockToLeadWidget,
   production_pipeline:  Widgets.ProductionPipelineWidget,
   live_team:            Widgets.LiveTeamWidget,
+  live_activity:        Widgets.LiveActivityWidget,
 };
 
 // ── Grid constants ────────────────────────────────────────────────────────────

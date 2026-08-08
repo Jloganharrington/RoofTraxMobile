@@ -4457,6 +4457,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /dashboard/widgets/live_activity:
+    get:
+      tags: [Dashboard]
+      operationId: getLiveActivityWidget
+      summary: Business-events feed — money and legally binding actions (manager+)
+      description: >-
+        Reverse-chronological feed of eight financial and legal event types across
+        the company: payment_recorded, contract_signed, contract_voided,
+        fipsa_signed, fipsa_voided, change_order_signed, change_order_approved,
+        claim_status_changed. Capped at 50 items; total and capped are always
+        returned. Supports a `since` query parameter for incremental polling.
+        Requires the live_activity widget capability (manager+).
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: ISO 8601 datetime. When provided, returns only events that occurred after this timestamp.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Live activity feed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveActivityFeed"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller does not have the live_activity widget capability (manager+ required).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /dashboard/widgets/canvassing_heatmap:
     get:
       tags: [Dashboard]
@@ -10999,6 +11039,64 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScheduledInspection"
+
+    # ---- Live Activity Feed ----
+
+    LiveActivityItem:
+      type: object
+      required: [id, type, occurredAt, title, detail, amountCents, actorName, pinId, inspectionId]
+      description: >-
+        One normalised business event from the live activity feed. No source-specific
+        fields leak through — all eight event types map to this same shape.
+      properties:
+        id:
+          type: string
+          description: Stable, source-prefixed. e.g. "pay:<uuid>", "ctr-sign:<uuid>"
+        type:
+          type: string
+          enum:
+            - payment_recorded
+            - contract_signed
+            - contract_voided
+            - fipsa_signed
+            - fipsa_voided
+            - change_order_signed
+            - change_order_approved
+            - claim_status_changed
+        occurredAt:
+          type: [string, "null"]
+          format: date-time
+        title:
+          type: string
+          description: Human-readable event title. No raw enum keys.
+        detail:
+          type: [string, "null"]
+          description: Supporting detail such as a formatted dollar amount or a status transition.
+        amountCents:
+          type: [integer, "null"]
+          description: Dollar amount in cents for money events; null otherwise.
+        actorName:
+          type: [string, "null"]
+          description: Display name of the staff actor; null for customer-side actions.
+        pinId:
+          type: [string, "null"]
+        inspectionId:
+          type: [string, "null"]
+
+    LiveActivityFeed:
+      type: object
+      required: [items, total, capped]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveActivityItem"
+        total:
+          type: integer
+          description: Total events matched before the cap was applied.
+        capped:
+          type: boolean
+          description: True when total > 50; the client should narrow the window or use `since` for incremental polling.
 
     # ---- Retail appointment booking ----
 

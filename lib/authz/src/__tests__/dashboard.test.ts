@@ -6,7 +6,7 @@ function keys(input: Parameters<typeof selectWidgetsFor>[0]): string[] {
   return selectWidgetsFor(input).map(w => w.key);
 }
 
-// All 13 catalog keys in spec order — used for order-preservation checks
+// All 13 catalog keys in spec order (12 original + live_activity) — used for order-preservation checks
 const CATALOG_ORDER = WIDGET_CATALOG.map(w => w.key);
 
 describe('resolveCapabilities + selectWidgetsFor', () => {
@@ -63,13 +63,14 @@ describe('resolveCapabilities + selectWidgetsFor', () => {
       workflow: 'insurance_retail',
     } as const;
 
-    it('gets action_required, sales_funnel, insurance_claims, live_team, pending_inspections', () => {
+    it('gets action_required, sales_funnel, insurance_claims, live_team, pending_inspections, live_activity', () => {
       const caps = resolveCapabilities(input);
       expect(caps.has('action_required')).toBe(true);
       expect(caps.has('sales_funnel')).toBe(true);
       expect(caps.has('insurance_claims')).toBe(true);
       expect(caps.has('live_team')).toBe(true);
       expect(caps.has('pending_inspections')).toBe(true);
+      expect(caps.has('live_activity')).toBe(true);
     });
   });
 

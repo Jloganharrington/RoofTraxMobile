@@ -2820,6 +2820,60 @@ export interface ScheduledInspectionListEnvelope {
   scheduled: ScheduledInspection[];
 }
 
+export type LiveActivityItemType = typeof LiveActivityItemType[keyof typeof LiveActivityItemType];
+
+
+export const LiveActivityItemType = {
+  payment_recorded: 'payment_recorded',
+  contract_signed: 'contract_signed',
+  contract_voided: 'contract_voided',
+  fipsa_signed: 'fipsa_signed',
+  fipsa_voided: 'fipsa_voided',
+  change_order_signed: 'change_order_signed',
+  change_order_approved: 'change_order_approved',
+  claim_status_changed: 'claim_status_changed',
+} as const;
+
+/**
+ * One normalised business event from the live activity feed. No source-specific fields leak through — all eight event types map to this same shape.
+ */
+export interface LiveActivityItem {
+  /** Stable, source-prefixed. e.g. "pay:<uuid>", "ctr-sign:<uuid>" */
+  id: string;
+  type: LiveActivityItemType;
+  /** @nullable */
+  occurredAt: string | null;
+  /** Human-readable event title. No raw enum keys. */
+  title: string;
+  /**
+     * Supporting detail such as a formatted dollar amount or a status transition.
+     * @nullable
+     */
+  detail: string | null;
+  /**
+     * Dollar amount in cents for money events; null otherwise.
+     * @nullable
+     */
+  amountCents: number | null;
+  /**
+     * Display name of the staff actor; null for customer-side actions.
+     * @nullable
+     */
+  actorName: string | null;
+  /** @nullable */
+  pinId: string | null;
+  /** @nullable */
+  inspectionId: string | null;
+}
+
+export interface LiveActivityFeed {
+  items: LiveActivityItem[];
+  /** Total events matched before the cap was applied. */
+  total: number;
+  /** True when total > 50; the client should narrow the window or use `since` for incremental polling. */
+  capped: boolean;
+}
+
 /**
  * scheduled | completed | canceled | no_show. Null clears.
  * @nullable
@@ -5060,6 +5114,13 @@ export const GetPipelineFunnelWidgetPipeline = {
   insurance: 'insurance',
   project: 'project',
 } as const;
+
+export type GetLiveActivityWidgetParams = {
+/**
+ * ISO 8601 datetime. When provided, returns only events that occurred after this timestamp.
+ */
+since?: string;
+};
 
 export type ListSelectionBrandsParams = {
 categoryId?: string;

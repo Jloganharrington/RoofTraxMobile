@@ -13,12 +13,19 @@
  * adjusterName/Phone/Email, adjusterMeetingDate, deductibleAmount, rcvAmount)
  * as a legacy write path from before this dedicated endpoint existed. New
  * insurance writes should come here. Step 5B will update the frontend.
+ *
+ * Claim-status history (migration 038):
+ *   Every change to claim_status is logged to claim_status_history in the SAME
+ *   transaction as the pin update. Setting the SAME status twice is a no-op —
+ *   no history row is written. This is the ONLY code path that writes
+ *   claim_status; PATCH /pins/:pinId and PATCH /pins/:pinId/profile do NOT
+ *   include it (confirmed: profile.ts:267-273 explicitly excludes insurance fields).
  */
 
 import { z } from 'zod';
 import { Router, type Request, type Response } from 'express';
 import { and, eq } from 'drizzle-orm';
-import { db, pinsTable, userProfilesTable } from '@workspace/db';
+import { db, pinsTable, userProfilesTable, claimStatusHistoryTable } from '@workspace/db';
 import { isManagerOrAdmin } from '@workspace/authz';
 
 const router = Router();
@@ -127,8 +134,10 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
   }
 
   const pinId = req.params.pinId as string;
+
+  // Load pin — include claimStatus so we can detect changes for the history log.
   const [pin] = await db
-    .select({ id: pinsTable.id, companyId: pinsTable.companyId })
+    .select({ id: pinsTable.id, companyId: pinsTable.companyId, claimStatus: pinsTable.claimStatus })
     .from(pinsTable)
     .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
 
@@ -156,32 +165,64 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
   }
 
   const d = parsed.data;
-  const [updated] = await db
-    .update(pinsTable)
-    .set({
-      ...(d.insuranceCarrier       !== undefined && { insuranceCarrier:       d.insuranceCarrier ?? null }),
-      ...(d.policyNumber           !== undefined && { policyNumber:           d.policyNumber ?? null }),
-      ...(d.policyHolder           !== undefined && { policyHolder:           d.policyHolder ?? null }),
-      ...(d.coverageType           !== undefined && { coverageType:           d.coverageType ?? null }),
-      ...(d.deductibleAmount       !== undefined && { deductibleAmount:       d.deductibleAmount ?? null }),
-      ...(d.claimNumber            !== undefined && { claimNumber:            d.claimNumber ?? null }),
-      ...(d.claimFiledDate         !== undefined && { claimFiledDate:         toDateOrNull(d.claimFiledDate) }),
-      ...(d.dateOfLoss             !== undefined && { dateOfLoss:             toDateOrNull(d.dateOfLoss) }),
-      ...(d.inspectionDate         !== undefined && { inspectionDate:         toDateOrNull(d.inspectionDate) }),
-      ...(d.claimStatus            !== undefined && { claimStatus:            d.claimStatus ?? null }),
-      ...(d.adjusterName           !== undefined && { adjusterName:           d.adjusterName ?? null }),
-      ...(d.adjusterPhone          !== undefined && { adjusterPhone:          d.adjusterPhone ?? null }),
-      ...(d.adjusterEmail          !== undefined && { adjusterEmail:          d.adjusterEmail ?? null }),
-      ...(d.adjusterMeetingDate    !== undefined && { adjusterMeetingDate:    toDateOrNull(d.adjusterMeetingDate) }),
-      ...(d.adjusterLastContact    !== undefined && { adjusterLastContact:    toDateOrNull(d.adjusterLastContact) }),
-      ...(d.approvedRcvAmount      !== undefined && { approvedRcvAmount:      d.approvedRcvAmount ?? null }),
-      ...(d.approvedAcvAmount      !== undefined && { approvedAcvAmount:      d.approvedAcvAmount ?? null }),
-      ...(d.bettermentsAmountCents !== undefined && { bettermentsAmountCents: d.bettermentsAmountCents ?? null }),
-      ...(d.supplementNotes        !== undefined && { supplementNotes:        d.supplementNotes ?? null }),
-      updatedAt: new Date(),
-    })
-    .where(eq(pinsTable.id, pinId))
-    .returning();
+
+  // Determine whether claim_status is actually changing.
+  // Conditions for writing a history row:
+  //   1. claimStatus was present in the request body (d.claimStatus !== undefined)
+  //   2. The incoming value (normalised to null) differs from the current value
+  //   3. The incoming value is non-null  (to_status is NOT NULL; clearing the
+  //      status is allowed but not journaled — "null" is not a meaningful enum)
+  // Setting the SAME status again (including null → null) is a no-op.
+  const incomingStatus = d.claimStatus !== undefined ? (d.claimStatus ?? null) : undefined;
+  const statusChanging  =
+    incomingStatus !== undefined &&
+    incomingStatus !== null &&
+    incomingStatus !== (pin.claimStatus ?? null);
+
+  const updateSet = {
+    ...(d.insuranceCarrier       !== undefined && { insuranceCarrier:       d.insuranceCarrier ?? null }),
+    ...(d.policyNumber           !== undefined && { policyNumber:           d.policyNumber ?? null }),
+    ...(d.policyHolder           !== undefined && { policyHolder:           d.policyHolder ?? null }),
+    ...(d.coverageType           !== undefined && { coverageType:           d.coverageType ?? null }),
+    ...(d.deductibleAmount       !== undefined && { deductibleAmount:       d.deductibleAmount ?? null }),
+    ...(d.claimNumber            !== undefined && { claimNumber:            d.claimNumber ?? null }),
+    ...(d.claimFiledDate         !== undefined && { claimFiledDate:         toDateOrNull(d.claimFiledDate) }),
+    ...(d.dateOfLoss             !== undefined && { dateOfLoss:             toDateOrNull(d.dateOfLoss) }),
+    ...(d.inspectionDate         !== undefined && { inspectionDate:         toDateOrNull(d.inspectionDate) }),
+    ...(d.claimStatus            !== undefined && { claimStatus:            d.claimStatus ?? null }),
+    ...(d.adjusterName           !== undefined && { adjusterName:           d.adjusterName ?? null }),
+    ...(d.adjusterPhone          !== undefined && { adjusterPhone:          d.adjusterPhone ?? null }),
+    ...(d.adjusterEmail          !== undefined && { adjusterEmail:          d.adjusterEmail ?? null }),
+    ...(d.adjusterMeetingDate    !== undefined && { adjusterMeetingDate:    toDateOrNull(d.adjusterMeetingDate) }),
+    ...(d.adjusterLastContact    !== undefined && { adjusterLastContact:    toDateOrNull(d.adjusterLastContact) }),
+    ...(d.approvedRcvAmount      !== undefined && { approvedRcvAmount:      d.approvedRcvAmount ?? null }),
+    ...(d.approvedAcvAmount      !== undefined && { approvedAcvAmount:      d.approvedAcvAmount ?? null }),
+    ...(d.bettermentsAmountCents !== undefined && { bettermentsAmountCents: d.bettermentsAmountCents ?? null }),
+    ...(d.supplementNotes        !== undefined && { supplementNotes:        d.supplementNotes ?? null }),
+    updatedAt: new Date(),
+  };
+
+  // Always run inside a transaction so the pin update and the optional history
+  // row are atomic — if either fails, neither lands.
+  const [updated] = await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(pinsTable)
+      .set(updateSet)
+      .where(eq(pinsTable.id, pinId))
+      .returning();
+
+    if (statusChanging) {
+      await tx.insert(claimStatusHistoryTable).values({
+        companyId:        req.user!.companyId,
+        pinId,
+        fromStatus:       pin.claimStatus ?? null,
+        toStatus:         incomingStatus!,
+        changedByUserId:  req.user!.id,
+      });
+    }
+
+    return rows;
+  });
 
   res.json({ insurance: updated });
 });

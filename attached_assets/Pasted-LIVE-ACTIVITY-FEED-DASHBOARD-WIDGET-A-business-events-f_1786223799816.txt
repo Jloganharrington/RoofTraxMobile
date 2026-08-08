@@ -1,0 +1,160 @@
+LIVE ACTIVITY FEED — DASHBOARD WIDGET
+
+A business-events feed: money and legally binding actions. This is NOT the
+existing recent_activity widget, which merges claim_events (proof-package
+lifecycle: compiled, attested, delivered) and stage_transitions (pipeline
+moves). Different sources, different purpose, different sensitivity —
+build it as a separate widget.
+
+STANDING BOUNDARIES: never modify artifacts/mobile/; never hand-edit generated
+client files (edit lib/api-spec/openapi.yaml, regenerate); never hand-write a
+query key for a generated hook; server enforcement authoritative.
+STOP at each ▶ CHECKPOINT, paste real output, PUSH, wait for confirmation.
+
+═══════════════════════════════════════════════════════════
+EVENT SOURCES — verified against the schema
+═══════════════════════════════════════════════════════════
+  payment_recorded      payments — created_at, type, amount_cents, pin_id,
+                        created_by_user_id
+  contract_signed       contracts WHERE customer_signed_at IS NOT NULL
+  contract_voided       contracts WHERE voided_at IS NOT NULL
+  fipsa_signed          signed_agreements — signed_at
+  fipsa_voided          signed_agreements — voided_at
+  change_order_signed   change_orders — homeowner_signed_at
+  change_order_approved change_orders — status = 'approved'
+  claim_status_changed  ⚠ NO HISTORY EXISTS — see step 1
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 [LOCKED] — CLAIM STATUS HISTORY    migration 038   ║
+╚═══════════════════════════════════════════════════════════╝
+pins.claim_status is a single varchar with no history. stage_transitions
+records pipelineStage only — a different vocabulary. Claim status changes
+therefore cannot be reconstructed retroactively; they must be logged going
+forward.
+
+1a. Migration 038 (verify 038 is free), new table claim_status_history:
+      id                  varchar PK gen_random_uuid()
+      company_id          varchar NOT NULL REFERENCES companies(id)
+      pin_id              varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+      from_status         varchar NULL      -- null on first set
+      to_status           varchar NOT NULL
+      changed_by_user_id  varchar NOT NULL REFERENCES users(id)
+      created_at          timestamptz NOT NULL DEFAULT now()
+    Index on (company_id, created_at).
+
+1b. Write a row whenever claim_status changes, in the SAME TRANSACTION as the
+    pins update. The write path is PATCH /pins/:pinId/insurance — find it and
+    confirm that is the only path that can change claim_status. If any other
+    endpoint can, report it rather than patching one and leaving the other.
+
+1c. Do NOT backfill. There is no prior history to recover, and inventing one
+    from current values would fabricate timestamps. The feed starts empty for
+    this event type and fills as statuses change — say so in the UI empty state
+    rather than making it look broken.
+
+▶ CHECKPOINT 1
+  VERIFY:
+   - changing claim status writes exactly one history row with correct from/to
+   - setting a status for the first time writes from_status = null
+   - setting the SAME status again writes NO row (a no-op is not an event)
+   - the history row and the pins update are atomic — if one fails, neither lands
+   - report every code path that can write claim_status
+  INTEGRATION:
+   - Insurance fields still save normally; Claim Value Tracker unaffected
+   - seed-acceptance-claim.ts 42/42; authz 51/51; typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 [LOCKED] — FEED ENDPOINT                           ║
+╚═══════════════════════════════════════════════════════════╝
+2a. GET /dashboard/widgets/live_activity (openapi-first, then regenerate).
+    requireWidgetCapability('live_activity') as FIRST middleware — the
+    established pattern, see action_required.
+
+2b. Add 'live_activity' to WIDGET_CATALOG in lib/authz/src/dashboard.ts:
+      key: 'live_activity', title: 'Live Activity', size: 'lg',
+      minRole: 'manager'
+    ⚠ SCOPE DECISION — this feed contains ALL PAYMENTS and ALL SIGNED
+    CONTRACTS for the company. That is company-wide financial and legal
+    activity. Gate it at manager+ and do NOT clamp lower roles to a
+    self-scoped view — a field rep does not need a live feed of every
+    payment the company collects. If you believe a rep-scoped variant is
+    wanted, raise it; do not build it unasked.
+    The catalog test in lib/authz must be updated for the new key.
+
+2c. Union the eight event types above into ONE normalised item shape. No
+    source-specific fields leak into the response:
+      id            source-prefixed and stable (e.g. "pay:<uuid>")
+      type          one of the eight
+      occurredAt    ISO timestamp
+      title         human-readable, no raw enum keys at the user
+      detail        e.g. formatted amount, from→to status
+      amountCents   null where not a money event
+      actorName     who did it; null for customer-side actions
+      pinId         nullable, for deep-linking
+      inspectionId  nullable
+
+2d. Company-scope EVERY source on a direct company_id column. All eight
+    sources carry one — payments, contracts, signed_agreements,
+    change_orders, and claim_status_history. Do not scope through a join
+    where a direct column exists.
+
+2e. Cap and report. Default to the most recent N (e.g. 50) with a `total`
+    and `capped` in the payload — the same honesty rule as action_required.
+    Support a `since` parameter so polling fetches only new events rather
+    than re-pulling the whole list.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - all eight event types appear, correctly ordered by occurredAt descending
+   - field_rep calls the endpoint directly → 403
+   - manager → 200; admin → 200
+   - company A sees zero company B events
+   - money events carry amountCents; non-money events carry null
+   - `since` returns only newer events
+   - no raw enum keys in title or detail
+  INTEGRATION:
+   - recent_activity widget unchanged and still working — the two must not
+     interfere; paste both rendering
+   - manifest still returns the correct widget set per role
+   - a saved dashboard layout still loads (the catalog gained a key —
+     confirm layout can only filter, never grant)
+   - pnpm --filter @workspace/authz test — updated and green
+   - api-server vitest green; typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 [REASONING OK] — WIDGET UI                         ║
+╚═══════════════════════════════════════════════════════════╝
+Register LiveActivityWidget in the dashboard widget barrel and registry,
+following the existing pattern.
+
+GOAL: a scannable feed of what is happening across the business right now.
+
+Requirements:
+  - Poll on an interval (30s is the reference cadence). Pause polling when
+    the tab is hidden — a background tab hammering the endpoint is waste.
+  - Show an event count so a manager can see volume at a glance.
+  - Distinguish event types by icon AND label, not colour alone — the
+    accessibility pass is coming and colour-only encoding is a known gap
+    already logged.
+  - Money events show the formatted amount prominently.
+  - Clicking an event deep-links to the lead, contract, or inspection.
+  - Empty state must explain that claim status events only appear from now
+    on, since no history was backfilled.
+  - Works inside the resizable grid at both small and large sizes.
+
+▶ CHECKPOINT 3 — closes the widget
+  VERIFY:
+   - screenshot with real events of several types
+   - polling confirmed working; confirm it pauses on a hidden tab
+   - a manager sees it; a field_rep does not see it in the manifest AND gets
+     403 calling the endpoint directly
+   - deep links navigate correctly
+  INTEGRATION — full pass:
+   - every other dashboard widget still renders
+   - drag/resize still saves layout; layout still cannot grant an ungranted widget
+   - recording a payment, signing a contract, and approving a change order
+     each appear in the feed within one poll cycle — paste before/after
+   - seed-acceptance-claim.ts 42/42; authz 51/51; api-server vitest full
+   - typechecks ×3; git diff --stat -- artifacts/mobile/ empty
