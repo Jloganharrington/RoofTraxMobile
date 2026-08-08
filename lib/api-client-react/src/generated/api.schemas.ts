@@ -2790,10 +2790,12 @@ export interface CanvassingCurrentEnvelope {
 }
 
 /**
- * A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.
+ * A scheduled inspection returned by GET /inspections/scheduled. Includes both Phase 1 (preliminary) and Phase 2 (forensic) inspections whose status is 'scheduled' and scheduledFor is non-null. The phase field was added to support Phase 1 scheduling; existing consumers that ignore unknown fields are unaffected.
  */
 export interface ScheduledInspection {
   id: string;
+  /** 'preliminary' (Phase 1) or 'forensic' (Phase 2) */
+  phase: string;
   /** @nullable */
   scheduledFor: string | null;
   /** @nullable */
@@ -2816,6 +2818,94 @@ export interface ScheduledInspection {
 
 export interface ScheduledInspectionListEnvelope {
   scheduled: ScheduledInspection[];
+}
+
+/**
+ * scheduled | completed | canceled | no_show. Null clears.
+ * @nullable
+ */
+export type SetPinAppointmentBodyAppointmentStatus = typeof SetPinAppointmentBodyAppointmentStatus[keyof typeof SetPinAppointmentBodyAppointmentStatus] | null;
+
+
+export const SetPinAppointmentBodyAppointmentStatus = {
+  scheduled: 'scheduled',
+  completed: 'completed',
+  canceled: 'canceled',
+  no_show: 'no_show',
+} as const;
+
+/**
+ * Payload for PATCH /pins/{pinId}/appointment. All fields are optional — send only the ones being changed. At least one field is required. Completing an appointment (status=completed) is server-stamped; appointment_at is NOT updated by a status change.
+ */
+export interface SetPinAppointmentBody {
+  /**
+     * ISO timestamp for the appointment. Null clears it.
+     * @nullable
+     */
+  appointmentAt?: string | null;
+  /**
+     * User ID of the assigned rep. Null unassigns.
+     * @nullable
+     */
+  appointmentAssignedTo?: string | null;
+  /**
+     * scheduled | completed | canceled | no_show. Null clears.
+     * @nullable
+     */
+  appointmentStatus?: SetPinAppointmentBodyAppointmentStatus;
+}
+
+export interface PinAppointmentResponse {
+  pinId: string;
+  /** @nullable */
+  appointmentAt: string | null;
+  /** @nullable */
+  appointmentAssignedTo: string | null;
+  /** @nullable */
+  appointmentStatus: string | null;
+}
+
+export type CalendarItemType = typeof CalendarItemType[keyof typeof CalendarItemType];
+
+
+export const CalendarItemType = {
+  inspection_phase1: 'inspection_phase1',
+  inspection_phase2: 'inspection_phase2',
+  retail_appointment: 'retail_appointment',
+  adjuster_meeting: 'adjuster_meeting',
+} as const;
+
+/**
+ * One normalised calendar event. All four sources (inspection_phase1, inspection_phase2, retail_appointment, adjuster_meeting) map to this shape. No source-specific fields are included.
+ */
+export interface CalendarItem {
+  /** Stable, source-prefixed. e.g. "insp:<uuid>", "pin:<uuid>-appt", "pin:<uuid>-adj" */
+  id: string;
+  type: CalendarItemType;
+  startsAt: string;
+  /**
+     * Always null — no source carries duration.
+     * @nullable
+     */
+  endsAt: string | null;
+  title: string;
+  /** @nullable */
+  propertyAddress: string | null;
+  /** @nullable */
+  assignedUserId: string | null;
+  /** @nullable */
+  assignedUserName: string | null;
+  /** @nullable */
+  pinId: string | null;
+  /** @nullable */
+  inspectionId: string | null;
+  /** @nullable */
+  status: string | null;
+}
+
+export interface CalendarFeed {
+  /** Calendar items ordered by startsAt ascending. */
+  items: CalendarItem[];
 }
 
 /**
@@ -4899,6 +4989,17 @@ longitude?: number;
 
 export type DeletePriceBookItem200 = {
   ok: boolean;
+};
+
+export type GetCalendarFeedParams = {
+/**
+ * ISO 8601 start of range (inclusive).
+ */
+from: string;
+/**
+ * ISO 8601 end of range (exclusive).
+ */
+to: string;
 };
 
 export type ListInspectionReportCodeCitations200 = {

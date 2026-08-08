@@ -1340,6 +1340,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /pins/{pinId}/appointment:
+    patch:
+      tags: [Pins]
+      operationId: setPinAppointment
+      summary: Set, reassign, reschedule, or update the status of a retail appointment
+      description: >-
+        Writes appointment_at, appointment_assigned_to, and/or appointment_status on
+        the pin. All fields are optional — send only the ones changing. Completing an
+        appointment (status=completed) is server-stamped; no client-supplied completion
+        timestamp is accepted. Requires canEditPin access.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPinAppointmentBody"
+      responses:
+        "200":
+          description: Appointment updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinAppointmentResponse"
+        "400":
+          description: Invalid body or appointment status value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted to edit this pin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /admin/stats:
     get:
       tags: [Admin]
@@ -3187,6 +3241,53 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Inspection not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /calendar:
+    get:
+      tags: [Calendar]
+      operationId: getCalendarFeed
+      summary: Unified team calendar — all four scheduling sources in one normalised feed
+      description: >-
+        Returns CalendarItems from four sources: Phase 1 (preliminary) inspections,
+        Phase 2 (forensic) inspections, retail appointments (pins.appointment_at),
+        and adjuster meetings (pins.adjusterMeetingDate). Requires from and to
+        query parameters. The range is capped at 90 days; requests exceeding the
+        cap are rejected with 400. Field reps see only items assigned to them;
+        managers and above see the full company scope.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: ISO 8601 start of range (inclusive).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: ISO 8601 end of range (exclusive).
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Calendar items ordered by startsAt ascending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarFeed"
+        "400":
+          description: Missing/invalid from or to, or range exceeds 90 days.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
           content:
             application/json:
               schema:
@@ -10858,14 +10959,19 @@ components:
     ScheduledInspection:
       type: object
       description: >-
-        A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam —
-        for now the server returns an empty list; the shape is fixed so the
-        prefill path can be built ahead of the data.
+        A scheduled inspection returned by GET /inspections/scheduled. Includes
+        both Phase 1 (preliminary) and Phase 2 (forensic) inspections whose status
+        is 'scheduled' and scheduledFor is non-null. The phase field was added to
+        support Phase 1 scheduling; existing consumers that ignore unknown fields
+        are unaffected.
       required:
-        [id, scheduledFor, insuredName, propertyAddress, carrier, policyNumber, claimNumber, dateOfLoss, latitude, longitude]
+        [id, scheduledFor, insuredName, propertyAddress, carrier, policyNumber, claimNumber, dateOfLoss, latitude, longitude, phase]
       properties:
         id:
           type: string
+        phase:
+          type: string
+          description: "'preliminary' (Phase 1) or 'forensic' (Phase 2)"
         scheduledFor:
           type: [string, "null"]
           format: date-time
@@ -10893,6 +10999,90 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScheduledInspection"
+
+    # ---- Retail appointment booking ----
+
+    SetPinAppointmentBody:
+      type: object
+      description: >-
+        Payload for PATCH /pins/{pinId}/appointment. All fields are optional —
+        send only the ones being changed. At least one field is required.
+        Completing an appointment (status=completed) is server-stamped;
+        appointment_at is NOT updated by a status change.
+      properties:
+        appointmentAt:
+          type: [string, "null"]
+          format: date-time
+          description: ISO timestamp for the appointment. Null clears it.
+        appointmentAssignedTo:
+          type: [string, "null"]
+          description: User ID of the assigned rep. Null unassigns.
+        appointmentStatus:
+          type: [string, "null"]
+          enum: [scheduled, completed, canceled, no_show, null]
+          description: "scheduled | completed | canceled | no_show. Null clears."
+
+    PinAppointmentResponse:
+      type: object
+      required: [pinId, appointmentAt, appointmentAssignedTo, appointmentStatus]
+      properties:
+        pinId:
+          type: string
+        appointmentAt:
+          type: [string, "null"]
+          format: date-time
+        appointmentAssignedTo:
+          type: [string, "null"]
+        appointmentStatus:
+          type: [string, "null"]
+
+    # ---- Team calendar feed ----
+
+    CalendarItem:
+      type: object
+      required: [id, type, startsAt, endsAt, title, propertyAddress, assignedUserId, assignedUserName, pinId, inspectionId, status]
+      description: >-
+        One normalised calendar event. All four sources (inspection_phase1,
+        inspection_phase2, retail_appointment, adjuster_meeting) map to this shape.
+        No source-specific fields are included.
+      properties:
+        id:
+          type: string
+          description: Stable, source-prefixed. e.g. "insp:<uuid>", "pin:<uuid>-appt", "pin:<uuid>-adj"
+        type:
+          type: string
+          enum: [inspection_phase1, inspection_phase2, retail_appointment, adjuster_meeting]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: [string, "null"]
+          format: date-time
+          description: Always null — no source carries duration.
+        title:
+          type: string
+        propertyAddress:
+          type: [string, "null"]
+        assignedUserId:
+          type: [string, "null"]
+        assignedUserName:
+          type: [string, "null"]
+        pinId:
+          type: [string, "null"]
+        inspectionId:
+          type: [string, "null"]
+        status:
+          type: [string, "null"]
+
+    CalendarFeed:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: Calendar items ordered by startsAt ascending.
+          items:
+            $ref: "#/components/schemas/CalendarItem"
 
     # ---- M-F (F1) Pre-flight ----
     PreflightResult:

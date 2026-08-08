@@ -7,10 +7,12 @@
  */
 
 /**
- * A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.
+ * A scheduled inspection returned by GET /inspections/scheduled. Includes both Phase 1 (preliminary) and Phase 2 (forensic) inspections whose status is 'scheduled' and scheduledFor is non-null. The phase field was added to support Phase 1 scheduling; existing consumers that ignore unknown fields are unaffected.
  */
 export interface ScheduledInspection {
   id: string;
+  /** 'preliminary' (Phase 1) or 'forensic' (Phase 2) */
+  phase: string;
   /** @nullable */
   scheduledFor: Date | null;
   /** @nullable */

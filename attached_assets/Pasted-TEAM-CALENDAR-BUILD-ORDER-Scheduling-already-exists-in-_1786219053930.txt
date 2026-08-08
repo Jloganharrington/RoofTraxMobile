@@ -1,0 +1,193 @@
+TEAM CALENDAR — BUILD ORDER
+
+Scheduling already exists in this repo, fragmented across four incompatible
+shapes. This order unifies the READ side into a calendar and fixes the one
+source that is genuinely unusable. It does NOT introduce a new appointments
+table — that consolidation decision comes after two real lifecycles have run.
+
+Current state, verified:
+  inspections.scheduledFor        real timestamptz column, WORKING booking flow
+                                  (POST notify-schedule, PATCH /schedule,
+                                  GET /inspections/scheduled consumed by mobile)
+  pins.adjusterMeetingDate        real timestamptz column, set via the insurance
+                                  PATCH, no calendar surface
+  pins.retailData.appointmentDate STRING inside a jsonb blob — not queryable,
+                                  not sortable, cannot drive a calendar
+  phase1_scheduled                a pipeline stage with NOTHING that books it
+
+STANDING BOUNDARIES: never modify artifacts/mobile/; never hand-edit generated
+client files (edit lib/api-spec/openapi.yaml, regenerate); never hand-write a
+query key for a generated hook; server enforcement authoritative; integer cents.
+STOP at each ▶ CHECKPOINT, paste real output, PUSH, wait for confirmation.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 [LOCKED] — RETAIL APPOINTMENTS OUT OF JSONB        ║
+║                                         migration 037     ║
+╚═══════════════════════════════════════════════════════════╝
+pins.retailData.appointmentDate is a free-text string inside jsonb. It cannot
+be indexed, range-queried, or ordered, so a calendar would have to unpack every
+pin in the company to find next week's appointments. Promote it.
+
+1a. Migration 037 (verify 037 is free — 036 is the latest), on pins:
+      appointment_at            timestamptz NULL
+      appointment_assigned_to   varchar NULL REFERENCES users(id)
+      appointment_status        varchar NULL  -- scheduled | completed | canceled | no_show
+                                              -- const array, validated server-side
+    Index on (company_id, appointment_at).
+
+1b. Backfill from retailData.appointmentDate inside the same migration.
+    Values are dirty free text — parse defensively, SKIP anything that isn't a
+    resolvable date rather than inserting a garbage timestamp or epoch zero.
+    Must be idempotent; state how you guaranteed it.
+    Do NOT delete retailData.appointmentDate — leave it as a read-only legacy
+    source, same treatment as the legacy money columns.
+
+1c. Booking path: extend the existing pin PATCH surface (or add a dedicated
+    endpoint — your call, say which) so a retail appointment can be set,
+    reassigned, rescheduled, and marked completed/canceled/no-show.
+    Writes follow the same rule as pin edits. Completing an appointment
+    SERVER-STAMPS the status change; never accept a client-supplied timestamp.
+
+▶ CHECKPOINT 1
+  VERIFY:
+   - backfill row count plus 2–3 examples showing correct parse
+   - a malformed date string is SKIPPED, not stored as epoch or null-date
+   - migration run twice → no duplicates
+   - set, reassign, reschedule, complete a retail appointment
+  INTEGRATION:
+   - pin reads/writes otherwise unchanged; retailData still readable
+   - retail pipeline stages still advance normally
+   - seed-acceptance-claim.ts 42/42; authz 51/51; typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 [LOCKED] — PHASE 1 SCHEDULING                      ║
+╚═══════════════════════════════════════════════════════════╝
+The insurance pipeline has a phase1_scheduled stage and nothing books it.
+Phase 2 has a complete, working flow — mirror it rather than inventing a
+second pattern.
+
+2a. Study the Phase 2 flow first and report what you found:
+      POST /inspections/:id/notify-schedule   books + emails the homeowner
+      PATCH /inspections/:id/schedule         reschedules + re-notifies
+      GET  /inspections/scheduled             role-scoped feed (reps see own,
+                                              manager+ sees the company)
+    Phase 1 scheduling must use the SAME columns (scheduledFor, status) and the
+    SAME shape. Do not add a parallel mechanism.
+
+2b. Confirm whether the existing endpoints are phase-agnostic or hardcode
+    forensic. If they are phase-aware already, extend; if they assume Phase 2,
+    generalise carefully WITHOUT breaking the working Phase 2 path — that flow
+    is exercised by the mobile app and the acceptance fixture.
+
+2c. GET /inspections/scheduled must continue returning Phase 2 exactly as it
+    does today. Adding Phase 1 rows must not change the existing response shape
+    the mobile app depends on — add a phase field, do not restructure.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - a Phase 1 inspection can be scheduled, rescheduled, and shows in the feed
+   - the homeowner notification sends for Phase 1 as it does for Phase 2
+   - report on 2b: were the endpoints phase-agnostic, and what did you change
+  INTEGRATION — this is the risky step:
+   - Phase 2 scheduling STILL WORKS end to end. Book, reschedule, confirm the
+     email. Paste the result.
+   - GET /inspections/scheduled response shape unchanged for existing consumers
+   - mobile app's scheduled feed still renders (typecheck mobile; do not edit it)
+   - seed-acceptance-claim.ts 42/42
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 [LOCKED] — UNIFIED CALENDAR FEED                   ║
+╚═══════════════════════════════════════════════════════════╝
+One endpoint, four sources, one normalised item shape. This is a READ layer —
+it creates no new storage.
+
+3a. GET /calendar?from=&to=  (openapi-first, then regenerate)
+
+    Sources to union:
+      inspection_phase1   inspections.scheduledFor where phase='preliminary'
+      inspection_phase2   inspections.scheduledFor where phase='forensic'
+      retail_appointment  pins.appointment_at            (from step 1)
+      adjuster_meeting    pins.adjusterMeetingDate
+
+    Normalised item — every source maps to this, no source-specific fields
+    leaking into the response:
+      id            stable, source-prefixed (e.g. "insp:<uuid>", "pin:<uuid>")
+      type          one of the four above
+      startsAt      ISO timestamp
+      endsAt        null for now — no source carries duration. Do NOT invent one.
+      title         human-readable
+      propertyAddress
+      assignedUserId + assignedUserName   (null where the source has no assignee)
+      pinId, inspectionId  (nullable, for deep-linking)
+      status        where the source has one; null otherwise
+
+3b. SCOPING [LOCKED]. Mirror the rule /inspections/scheduled already uses —
+    do not invent a second visibility model:
+      field_rep  → only items assigned to them
+      manager+   → the whole company
+    Resolve the role from the DB profile row. A field_rep must not be able to
+    widen scope through any request parameter.
+
+3c. Company-scope every source. ⚠ Both pins and inspections carry company_id
+    directly — use it. Do not scope through a join where a direct column exists.
+
+3d. Require from/to and cap the range (e.g. 90 days). An unbounded calendar
+    query over a company with years of history is a table scan on every load.
+    Reject out-of-range with 400 rather than silently clamping.
+
+▶ CHECKPOINT 3
+  VERIFY:
+   - all four types appear in one feed, correctly ordered by startsAt
+   - field_rep sees only their own; manager sees the company. Paste both.
+   - a request attempting to widen scope via a param returns the caller's
+     normal scope unchanged
+   - company A sees zero company B items
+   - range over the cap → 400
+   - an inspection with no scheduledFor does not appear
+  INTEGRATION:
+   - GET /inspections/scheduled unchanged and still working
+   - dashboard widgets unaffected; pipelines unaffected
+   - api-server vitest green; typechecks ×3; mobile diff empty
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 [REASONING OK] — CALENDAR UI                       ║
+╚═══════════════════════════════════════════════════════════╝
+Replace the ComingSoon stub at /team-calendar in App.tsx.
+
+GOAL: a working shared calendar. Month and week views at minimum; day view if
+it earns its place. Colour-code by type, and — because the accessibility pass
+is coming — do not encode type by colour alone. Use an icon or label too.
+
+Requirements:
+  - Clicking an item deep-links to the lead or inspection
+  - Filter by type and by assignee (manager+ only; a field_rep has one assignee)
+  - Show unassigned items distinctly — an appointment nobody owns is the thing
+    a manager most needs to spot
+  - Items have no duration. Render them as points in time, not blocks. Do not
+    fabricate a default length to make the grid look tidy.
+  - Empty state that explains what appears here and how things get scheduled
+  - Works at 375px — the Shell drawer landed, so the CRM is now field-usable
+
+Do NOT add drag-to-reschedule in this build. Rescheduling goes through the
+existing endpoints so the homeowner notification fires; a drag that silently
+skips the notify path is worse than no drag.
+
+▶ CHECKPOINT 4 — closes Team Calendar
+  VERIFY:
+   - screenshots: month and week, at desktop and 375px
+   - all four item types visible and distinguishable without relying on colour
+   - field_rep and manager views side by side
+   - clicking an item navigates correctly
+   - unassigned items visually distinct
+   - empty state
+  INTEGRATION — full pass:
+   - Phase 2 scheduling still works end to end including the email
+   - mobile scheduled feed still renders
+   - retail appointments set in step 1 appear on the calendar
+   - adjuster meetings set from the Insurance fields appear
+   - dashboard widgets, pipelines, Lead Profile tabs all still render
+   - seed-acceptance-claim.ts 42/42; authz 51/51; api-server vitest full
+   - typechecks ×3; git diff --stat -- artifacts/mobile/ empty

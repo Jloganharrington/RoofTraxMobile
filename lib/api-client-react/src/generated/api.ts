@@ -34,6 +34,7 @@ import type {
   BulkApplySelectionOptions200,
   BulkApplySelectionOptionsInput,
   BulkCreatePinsInput,
+  CalendarFeed,
   CanvassingCurrentEnvelope,
   CanvassingHeatmapEnvelope,
   CanvassingSessionEnvelope,
@@ -102,6 +103,7 @@ import type {
   FipsaSettingsEnvelope,
   GenerateSummaryInput,
   GetActivityStatsParams,
+  GetCalendarFeedParams,
   GetInspectionReportPreviewUrl200,
   GetPipelineFunnelWidgetParams,
   GetWeatherEventsParams,
@@ -146,6 +148,7 @@ import type {
   PaymentEnvelope,
   PaymentListEnvelope,
   PendingInspectionsEnvelope,
+  PinAppointmentResponse,
   PinEnvelope,
   PinListEnvelope,
   PipelineFunnelEnvelope,
@@ -181,6 +184,7 @@ import type {
   SelectionProductListEnvelope,
   SelectionProductOptionEnvelope,
   SelectionProductOptionListEnvelope,
+  SetPinAppointmentBody,
   SignChangeOrderInput,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
@@ -3048,6 +3052,79 @@ export const useDeletePin = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getDeletePinMutationOptions(options));
+    }
+
+export const getSetPinAppointmentUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/appointment`
+}
+
+/**
+ * Writes appointment_at, appointment_assigned_to, and/or appointment_status on the pin. All fields are optional — send only the ones changing. Completing an appointment (status=completed) is server-stamped; no client-supplied completion timestamp is accepted. Requires canEditPin access.
+ * @summary Set, reassign, reschedule, or update the status of a retail appointment
+ */
+export const setPinAppointment = async (pinId: string,
+    setPinAppointmentBody: SetPinAppointmentBody, options?: RequestInit): Promise<PinAppointmentResponse> => {
+
+  return customFetch<PinAppointmentResponse>(getSetPinAppointmentUrl(pinId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setPinAppointmentBody)
+  }
+);}
+
+
+
+
+
+export const getSetPinAppointmentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<SetPinAppointmentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<SetPinAppointmentBody>}, TContext> => {
+
+const mutationKey = ['setPinAppointment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setPinAppointment>>, {pinId: string;data: BodyType<SetPinAppointmentBody>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  setPinAppointment(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetPinAppointmentMutationResult = NonNullable<Awaited<ReturnType<typeof setPinAppointment>>>
+    export type SetPinAppointmentMutationBody = BodyType<SetPinAppointmentBody>
+    export type SetPinAppointmentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Set, reassign, reschedule, or update the status of a retail appointment
+ */
+export const useSetPinAppointment = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<SetPinAppointmentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setPinAppointment>>,
+        TError,
+        {pinId: string;data: BodyType<SetPinAppointmentBody>},
+        TContext
+      > => {
+      return useMutation(getSetPinAppointmentMutationOptions(options));
     }
 
 export const getGetAdminStatsUrl = () => {
@@ -6224,6 +6301,91 @@ export const useSubmitInspection = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getSubmitInspectionMutationOptions(options));
     }
+
+export const getGetCalendarFeedUrl = (params: GetCalendarFeedParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/calendar?${stringifiedParams}` : `/api/calendar`
+}
+
+/**
+ * Returns CalendarItems from four sources: Phase 1 (preliminary) inspections, Phase 2 (forensic) inspections, retail appointments (pins.appointment_at), and adjuster meetings (pins.adjusterMeetingDate). Requires from and to query parameters. The range is capped at 90 days; requests exceeding the cap are rejected with 400. Field reps see only items assigned to them; managers and above see the full company scope.
+ * @summary Unified team calendar — all four scheduling sources in one normalised feed
+ */
+export const getCalendarFeed = async (params: GetCalendarFeedParams, options?: RequestInit): Promise<CalendarFeed> => {
+
+  return customFetch<CalendarFeed>(getGetCalendarFeedUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCalendarFeedQueryKey = (params?: GetCalendarFeedParams,) => {
+    return [
+    `/api/calendar`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCalendarFeedQueryOptions = <TData = Awaited<ReturnType<typeof getCalendarFeed>>, TError = ErrorType<ErrorEnvelope>>(params: GetCalendarFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendarFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCalendarFeedQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCalendarFeed>>> = ({ signal }) => getCalendarFeed(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCalendarFeed>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCalendarFeedQueryResult = NonNullable<Awaited<ReturnType<typeof getCalendarFeed>>>
+export type GetCalendarFeedQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Unified team calendar — all four scheduling sources in one normalised feed
+ */
+
+export function useGetCalendarFeed<TData = Awaited<ReturnType<typeof getCalendarFeed>>, TError = ErrorType<ErrorEnvelope>>(
+ params: GetCalendarFeedParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendarFeed>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCalendarFeedQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListScheduledInspectionsUrl = () => {
 

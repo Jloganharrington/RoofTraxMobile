@@ -25,6 +25,7 @@ import Leads from '@/pages/leads/Leads';
 import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
 import { ComingSoon } from '@/pages/ComingSoon';
+import TeamCalendar from '@/pages/TeamCalendar';
 import { ReportsPage } from '@/pages/ReportsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -118,10 +119,7 @@ function Router() {
 
       {/* Coming-soon routes — all tabs stay inside the portal */}
       <Route path="/team-calendar">
-        <ProtectedRoute>
-          <ComingSoon icon={Calendar} title="Team Calendar"
-            description="Schedule inspections, track rep availability, and manage your team's field calendar in one shared view." />
-        </ProtectedRoute>
+        <ProtectedRoute><TeamCalendar /></ProtectedRoute>
       </Route>
       <Route path="/map">
         <ProtectedRoute><MapPage /></ProtectedRoute>

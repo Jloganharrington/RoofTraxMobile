@@ -800,6 +800,7 @@ router.get('/inspections/scheduled', async (req: Request, res: Response) => {
 
   const localScheduled = rows.map((row) => ({
     id: row.id,
+    phase: row.phase,  // 'preliminary' | 'forensic' — added for Phase 1 support
     scheduledFor: row.scheduledFor ? row.scheduledFor.toISOString() : null,
     insuredName: row.insuredName ?? null,
     propertyAddress: row.address ?? null,
@@ -3448,9 +3449,10 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
   res.json({ sent: true });
 });
 
-// Reschedules a Phase 2 inspection: updates scheduledFor and re-sends the
-// appointment notification to the homeowner using the previously-saved ownerEmail.
-// Returns { scheduled: true, emailSent: boolean }. Status stays 'scheduled'.
+// Reschedules an inspection (Phase 1 or Phase 2): updates scheduledFor and
+// re-sends the appointment notification to the homeowner using the previously-
+// saved ownerEmail. Returns { scheduled: true, emailSent: boolean }.
+// Status stays 'scheduled'. The email subject/body is phase-aware.
 router.patch('/inspections/:inspectionId/schedule', async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
@@ -3539,9 +3541,9 @@ router.patch('/inspections/:inspectionId/schedule', async (req: Request, res: Re
     await transport.sendMail({
       from: profile.smtpFromEmail || profile.smtpUsername,
       to: ownerEmail,
-      subject: `Phase 2 Forensic Inspection Rescheduled — ${propertyLabel}`,
+      subject: `${inspection.phase === 'preliminary' ? 'Phase 1 Preliminary' : 'Phase 2 Forensic'} Inspection Rescheduled — ${propertyLabel}`,
       text: [
-        `Your Phase 2 forensic roof inspection has been rescheduled.`,
+        `Your ${inspection.phase === 'preliminary' ? 'Phase 1 preliminary' : 'Phase 2 forensic'} roof inspection has been rescheduled.`,
         '',
         `Property: ${propertyLabel}`,
         `New Date: ${dateLabel}`,
@@ -3686,9 +3688,9 @@ router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, r
     await transport.sendMail({
       from: profile.smtpFromEmail || profile.smtpUsername,
       to: ownerEmail,
-      subject: `Phase 2 Forensic Inspection Scheduled — ${propertyLabel}`,
+      subject: `${inspection.phase === 'preliminary' ? 'Phase 1 Preliminary' : 'Phase 2 Forensic'} Inspection Scheduled — ${propertyLabel}`,
       text: [
-        `Your Phase 2 forensic roof inspection has been scheduled.`,
+        `Your ${inspection.phase === 'preliminary' ? 'Phase 1 preliminary' : 'Phase 2 forensic'} roof inspection has been scheduled.`,
         '',
         `Property: ${propertyLabel}`,
         `Date:     ${dateLabel}`,
@@ -3720,9 +3722,9 @@ router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, r
     transport.sendMail({
       from: profile.smtpFromEmail || profile.smtpUsername,
       to: repEmail,
-      subject: `Phase 2 Scheduled — ${propertyLabel}`,
+      subject: `${inspection.phase === 'preliminary' ? 'Phase 1' : 'Phase 2'} Inspection Scheduled — ${propertyLabel}`,
       text: [
-        `Phase 2 forensic inspection scheduled.`,
+        `${inspection.phase === 'preliminary' ? 'Phase 1 preliminary' : 'Phase 2 forensic'} inspection scheduled.`,
         '',
         `Property: ${propertyLabel}`,
         `Date:     ${dateLabel}`,

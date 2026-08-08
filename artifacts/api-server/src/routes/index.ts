@@ -33,6 +33,7 @@ import insuranceRouter from "./insurance";
 import selectionsRouter from "./selections";
 import contractsRouter from "./contracts";
 import contractPortalRouter from "./contractPortal";
+import calendarRouter from "./calendar";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(insuranceRouter);
 router.use(selectionsRouter);
 router.use(contractsRouter);
 router.use(contractPortalRouter);
+router.use(calendarRouter);
 
 export default router;

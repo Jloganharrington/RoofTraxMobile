@@ -1391,6 +1391,28 @@ export const DeletePinResponse = zod.object({
 
 
 /**
+ * Writes appointment_at, appointment_assigned_to, and/or appointment_status on the pin. All fields are optional — send only the ones changing. Completing an appointment (status=completed) is server-stamped; no client-supplied completion timestamp is accepted. Requires canEditPin access.
+ * @summary Set, reassign, reschedule, or update the status of a retail appointment
+ */
+export const SetPinAppointmentParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const SetPinAppointmentBody = zod.object({
+  "appointmentAt": zod.coerce.date().nullish().describe('ISO timestamp for the appointment. Null clears it.'),
+  "appointmentAssignedTo": zod.string().nullish().describe('User ID of the assigned rep. Null unassigns.'),
+  "appointmentStatus": zod.union([zod.literal('scheduled'),zod.literal('completed'),zod.literal('canceled'),zod.literal('no_show'),zod.literal(null)]).nullish().describe('scheduled | completed | canceled | no_show. Null clears.')
+}).describe('Payload for PATCH \/pins\/{pinId}\/appointment. All fields are optional — send only the ones being changed. At least one field is required. Completing an appointment (status=completed) is server-stamped; appointment_at is NOT updated by a status change.')
+
+export const SetPinAppointmentResponse = zod.object({
+  "pinId": zod.string(),
+  "appointmentAt": zod.coerce.date().nullable(),
+  "appointmentAssignedTo": zod.string().nullable(),
+  "appointmentStatus": zod.string().nullable()
+})
+
+
+/**
  * Manager/admin only.
  * @summary Get overview KPI stats
  */
@@ -5841,11 +5863,38 @@ export const SubmitInspectionResponse = zod.object({
 
 
 /**
+ * Returns CalendarItems from four sources: Phase 1 (preliminary) inspections, Phase 2 (forensic) inspections, retail appointments (pins.appointment_at), and adjuster meetings (pins.adjusterMeetingDate). Requires from and to query parameters. The range is capped at 90 days; requests exceeding the cap are rejected with 400. Field reps see only items assigned to them; managers and above see the full company scope.
+ * @summary Unified team calendar — all four scheduling sources in one normalised feed
+ */
+export const GetCalendarFeedQueryParams = zod.object({
+  "from": zod.date().describe('ISO 8601 start of range (inclusive).'),
+  "to": zod.date().describe('ISO 8601 end of range (exclusive).')
+})
+
+export const GetCalendarFeedResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().describe('Stable, source-prefixed. e.g. \"insp:<uuid>\", \"pin:<uuid>-appt\", \"pin:<uuid>-adj\"'),
+  "type": zod.enum(['inspection_phase1', 'inspection_phase2', 'retail_appointment', 'adjuster_meeting']),
+  "startsAt": zod.coerce.date(),
+  "endsAt": zod.coerce.date().nullable().describe('Always null — no source carries duration.'),
+  "title": zod.string(),
+  "propertyAddress": zod.string().nullable(),
+  "assignedUserId": zod.string().nullable(),
+  "assignedUserName": zod.string().nullable(),
+  "pinId": zod.string().nullable(),
+  "inspectionId": zod.string().nullable(),
+  "status": zod.string().nullable()
+}).describe('One normalised calendar event. All four sources (inspection_phase1, inspection_phase2, retail_appointment, adjuster_meeting) map to this shape. No source-specific fields are included.')).describe('Calendar items ordered by startsAt ascending.')
+})
+
+
+/**
  * @summary List CRM-scheduled inspections (empty until the CRM seam is wired)
  */
 export const ListScheduledInspectionsResponse = zod.object({
   "scheduled": zod.array(zod.object({
   "id": zod.string(),
+  "phase": zod.string().describe('\'preliminary\' (Phase 1) or \'forensic\' (Phase 2)'),
   "scheduledFor": zod.coerce.date().nullable(),
   "insuredName": zod.string().nullable(),
   "propertyAddress": zod.string().nullable(),
@@ -5855,7 +5904,7 @@ export const ListScheduledInspectionsResponse = zod.object({
   "dateOfLoss": zod.string().nullable(),
   "latitude": zod.number().nullable(),
   "longitude": zod.number().nullable()
-}).describe('A CRM-scheduled inspection (B3). The scheduled feed is a CRM seam — for now the server returns an empty list; the shape is fixed so the prefill path can be built ahead of the data.'))
+}).describe('A scheduled inspection returned by GET \/inspections\/scheduled. Includes both Phase 1 (preliminary) and Phase 2 (forensic) inspections whose status is \'scheduled\' and scheduledFor is non-null. The phase field was added to support Phase 1 scheduling; existing consumers that ignore unknown fields are unaffected.'))
 })
 
 

@@ -402,6 +402,88 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
   res.json({ lead: { ...updated, repName } });
 });
 
+// ── Retail appointment booking ─────────────────────────────────────────────
+// PATCH /pins/:pinId/appointment
+// Sets, reassigns, reschedules, or marks a retail appointment. At least one
+// field must be supplied. Completing an appointment is server-controlled:
+// the endpoint sets appointment_status='completed'; the client never supplies
+// a completion timestamp.
+
+const APPOINTMENT_STATUSES = ['scheduled', 'completed', 'canceled', 'no_show'] as const;
+type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+
+const SetAppointmentBody = z
+  .object({
+    appointmentAt:         z.coerce.date().nullable().optional(),
+    appointmentAssignedTo: z.string().min(1).nullable().optional(),
+    appointmentStatus:     z.enum(APPOINTMENT_STATUSES).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (d) =>
+      d.appointmentAt !== undefined ||
+      d.appointmentAssignedTo !== undefined ||
+      d.appointmentStatus !== undefined,
+    { message: 'At least one of appointmentAt, appointmentAssignedTo, or appointmentStatus is required' },
+  );
+
+router.patch('/pins/:pinId/appointment', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const pinId = req.params.pinId as string;
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) {
+    res.status(404).json({ error: 'Pin not found' });
+    return;
+  }
+
+  const role = await getRole(req.user.id);
+  if (!canEditPin(role, req.user.id, pin.userId)) {
+    res.status(403).json({ error: 'Not permitted to edit this pin' });
+    return;
+  }
+
+  const parsed = SetAppointmentBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Invalid payload' });
+    return;
+  }
+
+  const d = parsed.data;
+
+  // Build the update set — only include supplied fields.
+  // appointmentAt and appointmentAssignedTo accept null (to clear them).
+  // appointmentStatus also accepts null (to clear it).
+  // Completing an appointment is server-controlled: we set the status but do
+  // NOT accept a client-supplied completion timestamp.
+  const updateSet: Partial<typeof pinsTable.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (d.appointmentAt !== undefined)         updateSet.appointmentAt         = d.appointmentAt;
+  if (d.appointmentAssignedTo !== undefined) updateSet.appointmentAssignedTo = d.appointmentAssignedTo;
+  if (d.appointmentStatus !== undefined)     updateSet.appointmentStatus     = d.appointmentStatus as AppointmentStatus | null;
+
+  const [updated] = await db
+    .update(pinsTable)
+    .set(updateSet)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)))
+    .returning();
+
+  res.json({
+    pinId:                  updated.id,
+    appointmentAt:          updated.appointmentAt?.toISOString() ?? null,
+    appointmentAssignedTo:  updated.appointmentAssignedTo ?? null,
+    appointmentStatus:      updated.appointmentStatus ?? null,
+  });
+});
+
 router.delete('/pins/:pinId', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: 'Unauthorized' });

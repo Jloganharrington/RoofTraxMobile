@@ -277,6 +277,16 @@ export const pinsTable = pgTable('pins', {
   bettermentsAmountCents: integer('betterments_amount_cents'),
   supplementNotes:        text('supplement_notes'),
 
+  // ── Retail appointments (migration 037) ───────────────────────────────
+  // Promoted out of retailData.appointmentDate (jsonb free-text, unqueryable).
+  // appointmentDate is KEPT in retailData as read-only legacy; these columns
+  // are the authoritative source for calendar and scheduling queries.
+  // appointment_status values: scheduled | completed | canceled | no_show
+  // (validated server-side, never an enum so additions need no migration).
+  appointmentAt:           timestamp('appointment_at',           { withTimezone: true }),
+  appointmentAssignedTo:   varchar('appointment_assigned_to').references(() => usersTable.id),
+  appointmentStatus:       varchar('appointment_status'),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
