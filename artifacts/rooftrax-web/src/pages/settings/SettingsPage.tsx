@@ -25,11 +25,6 @@ import {
   getGetMyProfileQueryKey,
   useUpdateProfileSmtp,
   useTestProfileSmtp,
-  useGetDashboardLayout,
-  getGetDashboardManifestQueryKey,
-  getGetDashboardLayoutQueryKey,
-  usePatchDashboardLayout,
-  useDeleteDashboardLayout,
   // Generated query-key functions — NEVER hand-write a key for a generated hook.
   // If a get*QueryKey() exists for an endpoint, use it in both useQuery and
   // invalidateQueries so cross-component cache consistency is guaranteed.
@@ -54,7 +49,6 @@ import {
   Megaphone,
   User,
   SunMoon,
-  LayoutGrid,
   Mail,
   CheckCircle2,
   AlertCircle,
@@ -62,9 +56,6 @@ import {
   XCircle,
   DollarSign,
   FileText,
-  Eye,
-  EyeOff,
-  GripVertical,
   Sun,
   Moon,
   Monitor,
@@ -121,7 +112,7 @@ function displayDollarsToCents(value: string): number | null {
 // Tab navigation
 // ---------------------------------------------------------------------------
 
-type PersonalTabId = "my_profile" | "appearance" | "dashboard_tab" | "email_settings";
+type PersonalTabId = "my_profile" | "appearance" | "email_settings";
 type CompanyTabId  = "company_profile" | "branding" | "preferences" | "price_book" | "templates" | "selections_library";
 type TabId = PersonalTabId | CompanyTabId;
 
@@ -134,7 +125,6 @@ interface Tab {
 const PERSONAL_TABS: Tab[] = [
   { id: "my_profile",     label: "Profile",     icon: User       },
   { id: "appearance",     label: "Appearance",  icon: SunMoon    },
-  { id: "dashboard_tab",  label: "Dashboard",   icon: LayoutGrid },
   { id: "email_settings", label: "Email",       icon: Mail       },
 ];
 
@@ -1402,7 +1392,6 @@ export default function SettingsPage() {
             {/* Personal tabs — stubs until S2–S4 */}
             {activeTab === "my_profile"     && <ProfileTab />}
             {activeTab === "appearance"     && <AppearanceTab />}
-            {activeTab === "dashboard_tab"  && <DashboardSettingsTab />}
             {activeTab === "email_settings" && <EmailSettingsTab />}
 
             {/* Company tabs — all gated at admin+, matching the sidebar filter */}
@@ -1863,187 +1852,3 @@ const EMPTY_SMTP: SmtpFormState = {
   fromEmail: "",
 };
 
-// ---------------------------------------------------------------------------
-// Dashboard Settings Tab — D1: widget visibility & order
-// ---------------------------------------------------------------------------
-
-interface WidgetRow {
-  key: string;
-  title: string;
-  visible: boolean;
-}
-
-function DashboardSettingsTab() {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-
-  // Source from GET /dashboard/layout, which returns ALL granted widgets
-  // (visible + hidden) so users can toggle individual widgets back on
-  // without a full "Restore defaults" reset.
-  const { data: layoutData, isLoading, isError } = useGetDashboardLayout();
-
-  const [rows, setRows] = useState<WidgetRow[]>([]);
-  const [dirty, setDirty] = useState(false);
-  const [initialised, setInitialised] = useState(false);
-
-  useEffect(() => {
-    if (!layoutData || initialised) return;
-    setRows(
-      layoutData.widgets.map((w) => ({ key: w.key, title: w.title, visible: !w.hidden }))
-    );
-    setInitialised(true);
-  }, [layoutData, initialised]);
-
-  const patchMutation = usePatchDashboardLayout();
-  const deleteMutation = useDeleteDashboardLayout();
-
-  const toggleVisibility = (idx: number) => {
-    const next = rows.map((r, i) => (i === idx ? { ...r, visible: !r.visible } : r));
-    setRows(next);
-    setDirty(true);
-  };
-
-  const handleSave = () => {
-    const order = rows.map((r) => r.key);
-    const hidden = rows.filter((r) => !r.visible).map((r) => r.key);
-    patchMutation.mutate(
-      { data: { order, hidden } },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getGetDashboardManifestQueryKey() });
-          qc.invalidateQueries({ queryKey: getGetDashboardLayoutQueryKey() });
-          setDirty(false);
-          toast({ title: "Dashboard layout saved" });
-        },
-        onError: () =>
-          toast({ title: "Failed to save layout", variant: "destructive" }),
-      }
-    );
-  };
-
-  const handleRestoreDefaults = () => {
-    deleteMutation.mutate(undefined, {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetDashboardManifestQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetDashboardLayoutQueryKey() });
-        setInitialised(false); // re-initialise from refreshed layout
-        setDirty(false);
-        toast({ title: "Dashboard layout reset to defaults" });
-      },
-      onError: () =>
-        toast({ title: "Failed to reset layout", variant: "destructive" }),
-    });
-  };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-12 w-full rounded-md" />
-        ))}
-      </div>
-    );
-  }
-
-  if (isError || !layoutData) {
-    return (
-      <div className="text-sm text-muted-foreground py-8 text-center">
-        Could not load dashboard widgets. Please refresh.
-      </div>
-    );
-  }
-
-  const saving = patchMutation.isPending;
-  const resetting = deleteMutation.isPending;
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Widget Visibility &amp; Order</CardTitle>
-          <CardDescription>
-            Choose which widgets appear on your dashboard and arrange them with the
-            up/down buttons. Changes take effect after saving.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No widgets are available for your account.
-            </p>
-          ) : (
-            <Reorder.Group
-              axis="y"
-              values={rows}
-              onReorder={(next) => { setRows(next); setDirty(true); }}
-              className="space-y-2"
-            >
-              {rows.map((row, idx) => (
-                <Reorder.Item
-                  key={row.key}
-                  value={row}
-                  className={`flex items-center gap-3 rounded-md border px-3 py-2.5 transition-opacity cursor-default select-none ${
-                    row.visible ? "bg-background" : "opacity-50 bg-muted/40"
-                  }`}
-                >
-                  {/* Drag handle */}
-                  <span
-                    className="text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
-                    aria-label={`Drag to reorder ${row.title}`}
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </span>
-
-                  {/* Visibility toggle */}
-                  <button
-                    type="button"
-                    onClick={() => toggleVisibility(idx)}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={row.visible ? `Hide ${row.title}` : `Show ${row.title}`}
-                  >
-                    {row.visible ? (
-                      <Eye className="h-4 w-4" />
-                    ) : (
-                      <EyeOff className="h-4 w-4" />
-                    )}
-                  </button>
-
-                  {/* Widget name */}
-                  <span className="flex-1 text-sm font-medium">{row.title}</span>
-                </Reorder.Item>
-              ))}
-            </Reorder.Group>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Actions */}
-      <div className="flex items-center justify-between gap-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRestoreDefaults}
-          disabled={resetting || saving}
-          className="text-muted-foreground"
-        >
-          {resetting ? (
-            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Resetting…</>
-          ) : (
-            "Restore defaults"
-          )}
-        </Button>
-        <Button
-          size="sm"
-          onClick={handleSave}
-          disabled={!dirty || saving || resetting}
-        >
-          {saving ? (
-            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Saving…</>
-          ) : (
-            "Save layout"
-          )}
-        </Button>
-      </div>
-    </div>
-  );
-}

@@ -126,6 +126,7 @@ import {
   type ChangeOrder as ChangeOrderRecord,
 } from '@/lib/changeOrdersApi';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
+import ContractBuilderTab from '@/components/contracts/ContractBuilderTab';
 
 // ---------------------------------------------------------------------------
 // Tab config
@@ -873,17 +874,7 @@ const CLAIM_STATUS_BADGE: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// ContractBuilderTab — placeholder; content coming soon
-// ---------------------------------------------------------------------------
-function ContractBuilderTab() {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground gap-3">
-      <Shield className="h-10 w-10 opacity-20" />
-      <p className="text-sm font-medium">Contract Builder</p>
-      <p className="text-xs max-w-xs">This tab is ready for new content.</p>
-    </div>
-  );
-}
+// ContractBuilderTab lives in its own file — imported at top of this module.
 
 // ---------------------------------------------------------------------------
 // Payments ledger helpers
@@ -3744,7 +3735,7 @@ export default function LeadProfile() {
             <>
               {activeTab === 'dashboard'       && lead && <DashboardTab form={form} onField={handleField} onCheck={handleCheckField} isInsurance={isInsurance} lead={lead} isManager={isManager} pinId={id!} />}
               {activeTab === 'inspection_flow' && inspectionId && <InspectionFlowTab inspectionId={inspectionId} />}
-              {activeTab === 'contract_builder' && isInsurance && <ContractBuilderTab />}
+              {activeTab === 'contract_builder' && isInsurance && <ContractBuilderTab pinId={id!} isManager={isManager} />}
               {activeTab === 'financials'      && lead && <FinancialsTab form={form} onField={handleField} pinId={id!} isManager={isManager} isInsurance={isInsurance} lead={lead} />}
               {activeTab === 'communication'   && <CommunicationTab  form={form} onField={handleField} />}
               {activeTab === 'scope'           && <ScopeTab          form={form} onField={handleField} />}

@@ -922,3 +922,83 @@ export const selectionProductOptionsTable = pgTable('selection_product_options',
 
 export type SelectionProductOption = typeof selectionProductOptionsTable.$inferSelect;
 export type InsertSelectionProductOption = typeof selectionProductOptionsTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Contracts (migration 036)
+// Tables: contracts, contract_scope_packages, contract_selections
+// Pricing rule (LOCKED):
+//   betterments_cents    = SUM(contract_selections.extended_delta_cents)
+//   total_contract_cents = covered_scope_cents + betterments_cents
+// ---------------------------------------------------------------------------
+
+export const CONTRACT_STATUSES = ['draft', 'sent', 'signed', 'voided'] as const;
+export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
+
+export const contractsTable = pgTable('contracts', {
+  id:                    varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:             varchar('company_id').notNull().references(() => companiesTable.id),
+  pinId:                 varchar('pin_id').notNull().references(() => pinsTable.id),
+  accessCode:            varchar('access_code').notNull(),
+  accessCodeExpiresAt:   timestamp('access_code_expires_at', { withTimezone: true }),
+  status:                varchar('status').notNull().default('draft'),
+  sentAt:                timestamp('sent_at', { withTimezone: true }),
+  coveredScopeCents:     integer('covered_scope_cents').notNull().default(0),
+  bettermentsCents:      integer('betterments_cents').notNull().default(0),
+  deductibleCents:       integer('deductible_cents').notNull().default(0),
+  totalContractCents:    integer('total_contract_cents').notNull().default(0),
+  scopeSummary:          text('scope_summary'),
+  scopeSource:           varchar('scope_source'),
+  templateId:            varchar('template_id'),     // FK: company_templates.id (SQL migration)
+  documentObjectPath:    text('document_object_path'),
+  documentSha256:        text('document_sha256'),
+  customerSignaturePath: text('customer_signature_path'),
+  customerSignedAt:      timestamp('customer_signed_at', { withTimezone: true }),
+  customerPrintName:     varchar('customer_print_name'),
+  repSignaturePath:      text('rep_signature_path'),
+  repSignedAt:           timestamp('rep_signed_at', { withTimezone: true }),
+  voidedAt:              timestamp('voided_at', { withTimezone: true }),
+  voidedByUserId:        varchar('voided_by_user_id').references(() => usersTable.id),
+  voidReason:            text('void_reason'),
+  createdByUserId:       varchar('created_by_user_id').notNull().references(() => usersTable.id),
+  createdAt:             timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:             timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type Contract = typeof contractsTable.$inferSelect;
+export type InsertContract = typeof contractsTable.$inferInsert;
+
+export const contractScopePackagesTable = pgTable('contract_scope_packages', {
+  id:                  varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:           varchar('company_id').notNull().references(() => companiesTable.id),
+  contractId:          varchar('contract_id').notNull().references(() => contractsTable.id),
+  categoryId:          varchar('category_id').notNull().references(() => selectionCategoriesTable.id),
+  quantity:            numeric('quantity').notNull(),
+  unit:                varchar('unit').notNull(),
+  coveredAmountCents:  integer('covered_amount_cents').notNull().default(0),
+  sortOrder:           integer('sort_order').notNull().default(0),
+});
+
+export type ContractScopePackage = typeof contractScopePackagesTable.$inferSelect;
+export type InsertContractScopePackage = typeof contractScopePackagesTable.$inferInsert;
+
+export const contractSelectionsTable = pgTable('contract_selections', {
+  id:                  varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyId:           varchar('company_id').notNull().references(() => companiesTable.id),
+  contractId:          varchar('contract_id').notNull().references(() => contractsTable.id),
+  scopePackageId:      varchar('scope_package_id').notNull().references(() => contractScopePackagesTable.id),
+  productId:           varchar('product_id').notNull().references(() => selectionProductsTable.id),
+  optionId:            varchar('option_id').references(() => selectionOptionsTable.id),
+  // Snapshot — resolved at selection time, never re-read from the library
+  productName:         varchar('product_name').notNull(),
+  brandName:           varchar('brand_name').notNull(),
+  optionName:          varchar('option_name'),
+  unitDeltaCents:      integer('unit_delta_cents').notNull(),
+  quantity:            numeric('quantity').notNull(),
+  extendedDeltaCents:  integer('extended_delta_cents').notNull(),
+  selectedBy:          varchar('selected_by').notNull(),   // 'customer' | 'rep'
+  selectedByUserId:    varchar('selected_by_user_id').references(() => usersTable.id),
+  selectedAt:          timestamp('selected_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ContractSelection = typeof contractSelectionsTable.$inferSelect;
+export type InsertContractSelection = typeof contractSelectionsTable.$inferInsert;

@@ -1,0 +1,219 @@
+CONTRACT RECORD — SHARED SPEC
+
+The data contract Contract Builder writes and the Selections/Signing Portal
+reads. Both builds code against this. Neither may change it unilaterally —
+if either needs a field the other doesn't provide, raise it before building.
+
+Money is integer cents. Company-scoped throughout.
+
+═══════════════════════════════════════════════════════════
+THE PRICING MODEL — read this first, everything follows from it
+═══════════════════════════════════════════════════════════
+The contract price decomposes into three parts with different payers:
+
+  covered_scope_cents    Carrier pays. Priced from OUR estimate — this is the
+                         settlement anchor and must be a real number, not a
+                         formula.
+  betterments_cents      Homeowner pays. DERIVED from selections.
+  deductible_cents       Homeowner pays. Known at signing.
+  ─────────────────────
+  total_contract_cents   = covered_scope + betterments
+
+Homeowner's out-of-pocket = deductible + betterments. Fully known at signature
+regardless of what the carrier ultimately approves. That is what makes the
+contract signable before settlement.
+
+BETTERMENTS ARE COMPUTED PER UNIT, NOT FLAT:
+
+  betterment for a scope package
+      = selected_product.price_delta_cents × package.quantity
+
+  Siding at 28 squares, upgraded to a tier at +$85.00/square
+      = 8500 cents × 28 = 238,000 cents = $2,380.00
+
+This is why the record carries a quantity per scope package. A flat delta
+would be wrong on every job that isn't the size it was priced for.
+
+═══════════════════════════════════════════════════════════
+TABLE 1 — contracts
+═══════════════════════════════════════════════════════════
+  id                     varchar PK gen_random_uuid()
+  company_id             varchar NOT NULL REFERENCES companies(id)
+  pin_id                 varchar NOT NULL REFERENCES pins(id) ON DELETE CASCADE
+
+  -- Access (customer reaches the portal with this, no session)
+  access_code            varchar NOT NULL   -- same generator as portalAccess.ts
+  access_code_expires_at timestamptz NULL
+
+  -- Status
+  status                 varchar NOT NULL DEFAULT 'draft'
+                         -- draft | sent | signed | voided
+  sent_at                timestamptz NULL
+
+  -- Pricing (all integer cents)
+  covered_scope_cents    integer NOT NULL DEFAULT 0
+  betterments_cents      integer NOT NULL DEFAULT 0   -- DERIVED, never hand-set
+  deductible_cents       integer NOT NULL DEFAULT 0
+  total_contract_cents   integer NOT NULL DEFAULT 0   -- DERIVED
+
+  -- Scope narrative
+  scope_summary          text NULL
+  scope_source           varchar NULL   -- 'estimate' | 'manual'
+                         -- insurance leads: inspections.estimate jsonb
+                         -- retail leads:    pins.contract_amount / contract_scope
+
+  -- Document + signature
+  template_id            varchar NULL REFERENCES company_templates(id)
+  document_object_path   text NULL
+  document_sha256        text NULL
+  customer_signature_path text NULL
+  customer_signed_at     timestamptz NULL
+  customer_print_name    varchar NULL
+  rep_signature_path     text NULL
+  rep_signed_at          timestamptz NULL
+
+  -- Void (contingency: claim denied, customer withdrew)
+  voided_at              timestamptz NULL
+  voided_by_user_id      varchar NULL REFERENCES users(id)
+  void_reason            text NULL
+
+  created_by_user_id     varchar NOT NULL REFERENCES users(id)
+  created_at / updated_at timestamptz NOT NULL DEFAULT now()
+
+  Partial unique index — one live contract per pin, mirroring
+  signed_agreements:
+    CREATE UNIQUE INDEX contracts_one_active_per_pin_idx
+      ON contracts (pin_id) WHERE voided_at IS NULL;
+  A voided contract frees the pin for a replacement.
+
+═══════════════════════════════════════════════════════════
+TABLE 2 — contract_scope_packages
+═══════════════════════════════════════════════════════════
+Which selection categories are in play, and the quantity that prices them.
+Contract Builder creates these; the Portal renders selections for exactly
+these categories and no others.
+
+  id                    varchar PK
+  company_id            varchar NOT NULL
+  contract_id           varchar NOT NULL REFERENCES contracts(id) ON DELETE CASCADE
+  category_id           varchar NOT NULL REFERENCES selection_categories(id)
+  quantity              numeric NOT NULL        -- 28 squares, 140 LF
+  unit                  varchar NOT NULL        -- must match the products' unit
+  covered_amount_cents  integer NOT NULL DEFAULT 0  -- carrier-covered portion
+  sort_order            integer NOT NULL DEFAULT 0
+  UNIQUE (contract_id, category_id)
+
+═══════════════════════════════════════════════════════════
+TABLE 3 — contract_selections
+═══════════════════════════════════════════════════════════
+What the customer chose. One row per scope package.
+
+  id                       varchar PK
+  company_id               varchar NOT NULL
+  contract_id              varchar NOT NULL REFERENCES contracts(id) ON DELETE CASCADE
+  scope_package_id         varchar NOT NULL REFERENCES contract_scope_packages(id)
+  product_id               varchar NOT NULL REFERENCES selection_products(id)
+  option_id                varchar NULL REFERENCES selection_options(id)
+
+  -- ⚠ SNAPSHOT — resolved at selection time, never re-read from the library
+  product_name             varchar NOT NULL
+  brand_name               varchar NOT NULL
+  option_name              varchar NULL
+  unit_delta_cents         integer NOT NULL
+  quantity                 numeric NOT NULL
+  extended_delta_cents     integer NOT NULL   -- unit_delta × quantity
+
+  selected_by              varchar NOT NULL   -- 'customer' | 'rep'
+  selected_by_user_id      varchar NULL REFERENCES users(id)  -- null when customer
+  selected_at              timestamptz NOT NULL DEFAULT now()
+  UNIQUE (contract_id, scope_package_id)
+
+  WHY SNAPSHOT: if an admin edits a product's price_delta_cents next month,
+  a signed contract must not silently change. Store the resolved values, keep
+  the FKs for reporting. Same principle as change_order_line_items.total_cents.
+
+  option_id is NULLABLE — tier is price-bearing and required to sign; colour
+  is operational and may be decided later without a change order.
+
+═══════════════════════════════════════════════════════════
+DERIVATION RULES [LOCKED — both builds must obey]
+═══════════════════════════════════════════════════════════
+  contracts.betterments_cents  = SUM(contract_selections.extended_delta_cents)
+  contracts.total_contract_cents = covered_scope_cents + betterments_cents
+
+Recompute BOTH on every selection write. Never accept either from a client.
+Compute them in ONE shared server module used by Contract Builder, the
+Portal, and document generation — three implementations will diverge.
+
+═══════════════════════════════════════════════════════════
+STATUS LIFECYCLE [LOCKED]
+═══════════════════════════════════════════════════════════
+  draft   Contract Builder assembling. No access code active. Fully editable.
+  sent    Access code live. Customer may select. Selections persist as made,
+          so abandoning mid-flow loses nothing. Contract still editable by
+          the contractor, but editing after send must bump/reissue rather
+          than silently change what the customer is looking at.
+  signed  IMMUTABLE. Contract, selections, and scope packages all frozen.
+          Any subsequent change is a CHANGE ORDER — that flow already exists.
+  voided  Soft-cancelled with a reason. Frees the pin for a new contract.
+
+Transitions are server-enforced:
+  - draft → sent requires ≥1 scope package and a template
+  - sent → signed requires: every scope package has a selection with a
+    product_id, a generated document, and a customer signature.
+    Colour (option_id) is NOT required.
+  - nothing → signed except through the signing endpoint
+  - signed → voided allowed (manager+, reason required)
+  - signed → draft NEVER
+
+═══════════════════════════════════════════════════════════
+WRITE-BACK ON SIGNATURE [LOCKED]
+═══════════════════════════════════════════════════════════
+Signing is what establishes contract value. In ONE transaction:
+    pins.contract_amount           ← total_contract_cents
+    pins.betterments_amount_cents  ← betterments_cents
+
+Those feed the existing profitability view: revised_contract_cents,
+net_project_margin_cents, and the Claim Value Tracker's base-scope split.
+If the write-back is missed, a signed contract shows $0 across every
+financial surface.
+
+pins.contract_amount is legacy varchar — write the formatted dollar string
+there, cents to betterments_amount_cents. Do not "fix" the legacy column in
+this build.
+
+═══════════════════════════════════════════════════════════
+DOCUMENT GENERATION [LOCKED]
+═══════════════════════════════════════════════════════════
+Two-phase, because selections change the price:
+  Phase 1 (Contract Builder): assemble scope, terms, covered price. No PDF.
+  Phase 2 (Portal, after selections, before signature): render the final PDF
+    server-side from the company template.
+
+The selections MUST appear as a schedule INSIDE the contract document —
+product, brand, colour, quantity, unit delta, extended delta, and the
+betterment total. One signature legally covers what the document contains,
+so selections must be in it. Do not generate a separate selections document.
+
+Deterministic template with fixed placeholders — same discipline as FIPSA and
+change orders. NO AI-generated legal language.
+
+The contract states the reconciliation clause (if the carrier approves more or
+less than estimated, the covered portion adjusts; the homeowner's out-of-pocket
+does not). Actual adjustments flow through supplements and change orders — the
+signed document is never mutated.
+
+═══════════════════════════════════════════════════════════
+ACCESS [LOCKED]
+═══════════════════════════════════════════════════════════
+Portal access is by access_code only, no session — reuse the generator and
+rate limiting in artifacts/api-server/src/lib/portalAccess.ts.
+The public read endpoint returns ONLY what the portal needs: property
+address, scope summary, the scope packages with quantities, the available
+products and options for those categories, pricing, and the document.
+It must NEVER return: financials beyond this contract's own pricing, other
+leads, other contracts, internal notes, cost or margin data, or any user PII
+beyond the contractor's business identity.
+
+The public write surface is exactly two operations — record a selection, and
+submit a signature. Nothing else.

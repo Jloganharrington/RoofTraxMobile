@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/signing-portal/"
+title = "Contract Signing Portal"
+description = "Customer-facing contract signing portal where homeowners review material upgrade options and sign their roofing contract via a secure access-code link."
+version = "1.0.0"
+id = "artifacts/signing-portal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/signing-portal/" ]
+localPort = 24332
+
+[services.development]
+run = "pnpm --filter @workspace/signing-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/signing-portal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/signing-portal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24332"
+BASE_PATH = "/signing-portal/"
