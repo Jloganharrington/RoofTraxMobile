@@ -43,6 +43,19 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # ── Security pins ────────────────────────────────────────────────────────────
+  # Runtime (api-server production surface)
+  postcss: '>=8.5.23'         # path-traversal + XSS via sourceMappingURL (GHSA-*)
+  nanoid: '>=3.3.17'          # infinite-loop DoS (via postcss>nanoid in sanitize-html)
+  fast-xml-parser: '>=5.10.1' # DOCTYPE entity-expansion reset (@google-cloud/storage)
+  # Dev/toolchain (never deployed, but kept clean)
+  undici: '>=6.28.0'          # CRLF injection + cookie injection (@expo/cli)
+  tar: '>=7.5.21'             # recursive mapHas DoS (@expo/cli)
+  fast-uri: '>=3.1.5'         # host-confusion via backslash (orval>ajv)
+  # ── @types/react pins ───────────────────────────────────────────────────────
+  '@types/react': 19.2.17
+  '@types/react-dom': 19.2.3
+  # ── Toolchain substitutions & platform-binary exclusions ────────────────────
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
