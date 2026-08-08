@@ -2824,10 +2824,10 @@ export interface ScheduledInspectionListEnvelope {
  * scheduled | completed | canceled | no_show. Null clears.
  * @nullable
  */
-export type SetPinAppointmentBodyAppointmentStatus = typeof SetPinAppointmentBodyAppointmentStatus[keyof typeof SetPinAppointmentBodyAppointmentStatus] | null;
+export type PinAppointmentInputAppointmentStatus = typeof PinAppointmentInputAppointmentStatus[keyof typeof PinAppointmentInputAppointmentStatus] | null;
 
 
-export const SetPinAppointmentBodyAppointmentStatus = {
+export const PinAppointmentInputAppointmentStatus = {
   scheduled: 'scheduled',
   completed: 'completed',
   canceled: 'canceled',
@@ -2837,7 +2837,7 @@ export const SetPinAppointmentBodyAppointmentStatus = {
 /**
  * Payload for PATCH /pins/{pinId}/appointment. All fields are optional — send only the ones being changed. At least one field is required. Completing an appointment (status=completed) is server-stamped; appointment_at is NOT updated by a status change.
  */
-export interface SetPinAppointmentBody {
+export interface PinAppointmentInput {
   /**
      * ISO timestamp for the appointment. Null clears it.
      * @nullable
@@ -2852,7 +2852,7 @@ export interface SetPinAppointmentBody {
      * scheduled | completed | canceled | no_show. Null clears.
      * @nullable
      */
-  appointmentStatus?: SetPinAppointmentBodyAppointmentStatus;
+  appointmentStatus?: PinAppointmentInputAppointmentStatus;
 }
 
 export interface PinAppointmentResponse {

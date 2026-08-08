@@ -10,10 +10,10 @@
  * scheduled | completed | canceled | no_show. Null clears.
  * @nullable
  */
-export type SetPinAppointmentBodyAppointmentStatus = typeof SetPinAppointmentBodyAppointmentStatus[keyof typeof SetPinAppointmentBodyAppointmentStatus] | null;
+export type PinAppointmentInputAppointmentStatus = typeof PinAppointmentInputAppointmentStatus[keyof typeof PinAppointmentInputAppointmentStatus] | null;
 
 
-export const SetPinAppointmentBodyAppointmentStatus = {
+export const PinAppointmentInputAppointmentStatus = {
   scheduled: 'scheduled',
   completed: 'completed',
   canceled: 'canceled',

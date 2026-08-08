@@ -148,6 +148,7 @@ import type {
   PaymentEnvelope,
   PaymentListEnvelope,
   PendingInspectionsEnvelope,
+  PinAppointmentInput,
   PinAppointmentResponse,
   PinEnvelope,
   PinListEnvelope,
@@ -184,7 +185,6 @@ import type {
   SelectionProductListEnvelope,
   SelectionProductOptionEnvelope,
   SelectionProductOptionListEnvelope,
-  SetPinAppointmentBody,
   SignChangeOrderInput,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
@@ -3067,14 +3067,14 @@ export const getSetPinAppointmentUrl = (pinId: string,) => {
  * @summary Set, reassign, reschedule, or update the status of a retail appointment
  */
 export const setPinAppointment = async (pinId: string,
-    setPinAppointmentBody: SetPinAppointmentBody, options?: RequestInit): Promise<PinAppointmentResponse> => {
+    pinAppointmentInput: PinAppointmentInput, options?: RequestInit): Promise<PinAppointmentResponse> => {
 
   return customFetch<PinAppointmentResponse>(getSetPinAppointmentUrl(pinId),
   {
     ...options,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(setPinAppointmentBody)
+    body: JSON.stringify(pinAppointmentInput)
   }
 );}
 
@@ -3083,8 +3083,8 @@ export const setPinAppointment = async (pinId: string,
 
 
 export const getSetPinAppointmentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<SetPinAppointmentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<SetPinAppointmentBody>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<PinAppointmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<PinAppointmentInput>}, TContext> => {
 
 const mutationKey = ['setPinAppointment'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3096,7 +3096,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setPinAppointment>>, {pinId: string;data: BodyType<SetPinAppointmentBody>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setPinAppointment>>, {pinId: string;data: BodyType<PinAppointmentInput>}> = (props) => {
           const {pinId,data} = props ?? {};
 
           return  setPinAppointment(pinId,data,requestOptions)
@@ -3110,18 +3110,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SetPinAppointmentMutationResult = NonNullable<Awaited<ReturnType<typeof setPinAppointment>>>
-    export type SetPinAppointmentMutationBody = BodyType<SetPinAppointmentBody>
+    export type SetPinAppointmentMutationBody = BodyType<PinAppointmentInput>
     export type SetPinAppointmentMutationError = ErrorType<ErrorEnvelope>
 
     /**
  * @summary Set, reassign, reschedule, or update the status of a retail appointment
  */
 export const useSetPinAppointment = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<SetPinAppointmentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPinAppointment>>, TError,{pinId: string;data: BodyType<PinAppointmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof setPinAppointment>>,
         TError,
-        {pinId: string;data: BodyType<SetPinAppointmentBody>},
+        {pinId: string;data: BodyType<PinAppointmentInput>},
         TContext
       > => {
       return useMutation(getSetPinAppointmentMutationOptions(options));

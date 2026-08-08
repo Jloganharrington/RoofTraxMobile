@@ -5,12 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { SetPinAppointmentBodyAppointmentStatus } from './setPinAppointmentBodyAppointmentStatus';
+import type { PinAppointmentInputAppointmentStatus } from './pinAppointmentInputAppointmentStatus';
 
 /**
  * Payload for PATCH /pins/{pinId}/appointment. All fields are optional — send only the ones being changed. At least one field is required. Completing an appointment (status=completed) is server-stamped; appointment_at is NOT updated by a status change.
  */
-export interface SetPinAppointmentBody {
+export interface PinAppointmentInput {
   /**
      * ISO timestamp for the appointment. Null clears it.
      * @nullable
@@ -25,5 +25,5 @@ export interface SetPinAppointmentBody {
      * scheduled | completed | canceled | no_show. Null clears.
      * @nullable
      */
-  appointmentStatus?: SetPinAppointmentBodyAppointmentStatus;
+  appointmentStatus?: PinAppointmentInputAppointmentStatus;
 }
