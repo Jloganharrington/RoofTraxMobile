@@ -170,13 +170,13 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
   // Conditions for writing a history row:
   //   1. claimStatus was present in the request body (d.claimStatus !== undefined)
   //   2. The incoming value (normalised to null) differs from the current value
-  //   3. The incoming value is non-null  (to_status is NOT NULL; clearing the
-  //      status is allowed but not journaled — "null" is not a meaningful enum)
-  // Setting the SAME status again (including null → null) is a no-op.
+  // The third condition handles null → null automatically: both sides are null
+  // so they compare equal and statusChanging stays false.
+  // Clearing a status ('approved' → null) DOES produce a history row with
+  // to_status = null — to_status is nullable (see migration 038 ALTER).
   const incomingStatus = d.claimStatus !== undefined ? (d.claimStatus ?? null) : undefined;
   const statusChanging  =
     incomingStatus !== undefined &&
-    incomingStatus !== null &&
     incomingStatus !== (pin.claimStatus ?? null);
 
   const updateSet = {
@@ -216,7 +216,7 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
         companyId:        req.user!.companyId,
         pinId,
         fromStatus:       pin.claimStatus ?? null,
-        toStatus:         incomingStatus!,
+        toStatus:         incomingStatus,   // null = status was cleared
         changedByUserId:  req.user!.id,
       });
     }

@@ -9,13 +9,14 @@
  */
 
 import {
+  claimStatusHistoryTable,
   companiesTable,
   db,
   pinsTable,
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -323,5 +324,88 @@ describe('PATCH /pins/:pinId/insurance — validation', () => {
     } finally {
       await db.delete(pinsTable).where(eq(pinsTable.id, repPinId));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// claim_status_history audit trail
+// ---------------------------------------------------------------------------
+// Two-step sequence: set a status, then clear it.
+// Expected history rows after both writes:
+//   Row 1: from_status = null,     to_status = 'filed'
+//   Row 2: from_status = 'filed',  to_status = null   (clearing event)
+//
+// Also verifies the no-op guard: writing the SAME status again adds no row.
+// ---------------------------------------------------------------------------
+
+describe('claim_status_history audit trail', () => {
+  let historyPinId: string;
+
+  beforeAll(async () => {
+    // Fresh pin with no prior claim_status for an isolated test sequence.
+    const [p] = await db
+      .insert(pinsTable)
+      .values({ companyId: COMPANY_A, userId: (await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.companyId, COMPANY_A)).limit(1))[0]!.id, latitude: 38.9, longitude: -77.0, workflow: 'insurance' })
+      .returning();
+    historyPinId = p!.id;
+  });
+
+  afterAll(async () => {
+    await db.delete(pinsTable).where(eq(pinsTable.id, historyPinId));
+  });
+
+  it('produces one history row when setting status for the first time', async () => {
+    const res = await request(app)
+      .patch(`/api/pins/${historyPinId}/insurance`)
+      .set(auth(s.managerSid))
+      .send({ claimStatus: 'filed' });
+    expect(res.status).toBe(200);
+
+    const rows = await db
+      .select()
+      .from(claimStatusHistoryTable)
+      .where(eq(claimStatusHistoryTable.pinId, historyPinId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fromStatus).toBeNull();     // no prior status
+    expect(rows[0]!.toStatus).toBe('filed');
+  });
+
+  it('produces no row when setting the SAME status again (no-op guard)', async () => {
+    const res = await request(app)
+      .patch(`/api/pins/${historyPinId}/insurance`)
+      .set(auth(s.managerSid))
+      .send({ claimStatus: 'filed' });          // same value — no change
+    expect(res.status).toBe(200);
+
+    const rows = await db
+      .select()
+      .from(claimStatusHistoryTable)
+      .where(eq(claimStatusHistoryTable.pinId, historyPinId));
+    expect(rows).toHaveLength(1);               // still only one row
+  });
+
+  it('produces a second history row with to_status = null when clearing the status', async () => {
+    const res = await request(app)
+      .patch(`/api/pins/${historyPinId}/insurance`)
+      .set(auth(s.managerSid))
+      .send({ claimStatus: null });             // clearing the status
+    expect(res.status).toBe(200);
+    expect(res.body.insurance.claimStatus).toBeNull();
+
+    const rows = await db
+      .select()
+      .from(claimStatusHistoryTable)
+      .where(eq(claimStatusHistoryTable.pinId, historyPinId))
+      .orderBy(claimStatusHistoryTable.createdAt);
+
+    expect(rows).toHaveLength(2);
+
+    // First row: null → 'filed'
+    expect(rows[0]!.fromStatus).toBeNull();
+    expect(rows[0]!.toStatus).toBe('filed');
+
+    // Second row: 'filed' → null  (the clearing event)
+    expect(rows[1]!.fromStatus).toBe('filed');
+    expect(rows[1]!.toStatus).toBeNull();
   });
 });

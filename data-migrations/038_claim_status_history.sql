@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS claim_status_history (
   company_id          VARCHAR         NOT NULL REFERENCES companies(id),
   pin_id              VARCHAR         NOT NULL REFERENCES pins(id) ON DELETE CASCADE,
   from_status         VARCHAR,        -- null on first-ever set
-  to_status           VARCHAR         NOT NULL,
+  to_status           VARCHAR,        -- null = status cleared; nullable so clearing events are auditable
   changed_by_user_id  VARCHAR         NOT NULL REFERENCES users(id),
   created_at          TIMESTAMPTZ     NOT NULL DEFAULT now()
 );

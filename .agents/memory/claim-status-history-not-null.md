@@ -1,26 +1,35 @@
 ---
-name: Claim status history NOT NULL guard
-description: Why clearing claim_status (setting to null) must not produce a claim_status_history row.
+name: Claim status history guard
+description: How the statusChanging guard for claim_status_history works — to_status is nullable, null→null is excluded by the third condition alone.
 ---
 
-# claim_status_history — to_status NOT NULL guard
+# claim_status_history — statusChanging guard
 
 ## The rule
 
-When writing a `claim_status_history` row in `PATCH /pins/:pinId/insurance`, the `statusChanging` guard must require **`incomingStatus !== null`** in addition to the usual "value actually changed" check:
+`to_status` in `claim_status_history` is **nullable** (DDL: `VARCHAR`, no NOT NULL). The `statusChanging` guard is:
 
 ```typescript
 const statusChanging =
   incomingStatus !== undefined &&
-  incomingStatus !== null &&           // ← required: to_status is NOT NULL
-  incomingStatus !== (pin.claimStatus ?? null);
+  incomingStatus !== (pin.claimStatus ?? null);   // handles null→null automatically
 ```
 
-**Why:** `claim_status_history.to_status` is `VARCHAR NOT NULL`. Clearing the claim status (sending `{ claimStatus: null }`) sets `incomingStatus = null`. Without this guard, the INSERT tries to store `null` into a NOT NULL column → 500.
+Two conditions are sufficient:
+- `!== undefined` — the field was present in the request body at all
+- `!== currentValue` — the value actually changed (both normalised to null)
 
-**How to apply:** Any code path that writes to `claim_status_history` must skip the INSERT when `toStatus` would be null. This means "approved → null (cleared)" produces no history row, which is acceptable — the clearing event isn't meaningful in claim-status vocabulary. The pin update itself still sets `claimStatus = null`.
+The null → null case is excluded by the second condition: both sides are null, so they compare equal → `statusChanging = false`. No extra `!== null` guard is needed, and adding one would silently swallow `'approved' → null` (status clearing), producing a pin update with no audit trace.
 
-## Impact
+**Why:** `to_status VARCHAR` (nullable) is the right shape — clearing a status IS an auditable business event. The live activity feed renders it as "Approved → None" (server-side `humanizeStatus(null)` → "None").
 
-- The live activity feed's `claim_status_changed` events only appear for non-null transitions (first set, or any change to a valid enum value). Clearing the status is invisible in the feed.
-- The authz test Case 3 now includes `live_activity` in the manager capability assertions.
+**How to apply:**
+- Do NOT add `&& incomingStatus !== null` to the statusChanging guard.
+- Do NOT make `to_status NOT NULL` — the ALTER in migration 038 made it nullable.
+- Tests: `insurance.test.ts` "claim_status_history audit trail" describe block verifies 2 rows (set → clear) and the no-op guard.
+
+## Verification
+
+Set 'filed', then clear to null → two history rows:
+- Row 1: `from_status = null`, `to_status = 'filed'`
+- Row 2: `from_status = 'filed'`, `to_status = null`

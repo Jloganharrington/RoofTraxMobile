@@ -1027,7 +1027,7 @@ export const claimStatusHistoryTable = pgTable('claim_status_history', {
   companyId:        varchar('company_id').notNull().references(() => companiesTable.id),
   pinId:            varchar('pin_id').notNull().references(() => pinsTable.id, { onDelete: 'cascade' }),
   fromStatus:       varchar('from_status'),           // null on first-ever set
-  toStatus:         varchar('to_status').notNull(),
+  toStatus:         varchar('to_status'),             // null = status was cleared
   changedByUserId:  varchar('changed_by_user_id').notNull().references(() => usersTable.id),
   createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
