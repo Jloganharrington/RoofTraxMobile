@@ -1,0 +1,40 @@
+CHECKPOINT 0 — REMEDIATION + PHASE 1 AUTHORIZATION
+Still report-only. No application code, schema, or config changes. Disclose every file the run touches, including incidental ones.
+
+0.5-R — Redo the route inventory at per-route granularity
+Walk the mounted router stack and emit one row per METHOD /path, not per file. For each row, three independent determinations:
+
+Auth: trace the actual handler body. A route counts as guarded only if it calls req.isAuthenticated(), requireSameCompanyAdmin, or an equivalent guard in its own handler or in middleware mounted on its own path. Inheriting a guard from a sibling route in the same file does not count. Validate the method by confirming it independently flags GET /companies/:companyId — if your output marks that route as guarded, the detector is wrong; fix the detector before continuing.
+
+Tenancy: for each route, does the handler constrain its query to the actor's company_id — directly, or through a join to a parent that does? Emit direct / join / none / n-a (unauthenticated by design). Every none on an authenticated route is a finding and becomes a Phase 3.1 target. Name the specific query site (file:line) for each.
+
+Spec: present in openapi.yaml — you already have this.
+
+Deliver the full table as test-results.json plus a summary count in TESTREPORT.md. I want the whole table, not a sample.
+
+0.2-R — Migration ledger gaps
+drizzle-kit check only compares Drizzle schema files to the DB. It does not cover raw SQL objects created by the numbered migrations. Verify these directly against the live DB and report existence + definition:
+
+pin_profitability view — already done ✓
+_parse_legacy_money_cents function — exists? Show its body.
+The two partial indexes on report_attestations from migration 018. Confirm they are partial and that no non-partial report_attestations_inspection_version_idx exists. If the non-partial one is present, that is a P0 — it breaks supplement attestation by preventing blob_version_index from restarting at 0. Also confirm post-merge.sh still runs db push, which is the mechanism that could recreate it.
+Any other views, functions, triggers, or partial indexes created by SQL migrations 001–040. Enumerate what the DB actually has versus what those files create.
+State plainly: with no __drizzle_migrations table, is there any way to determine which of the 40 migrations were applied, other than inspecting the resulting objects? If not, say so — that itself is a finding.
+
+0.6-R — Three data questions
+ahj_packs row count (you skipped it; the table name is ahj_packs, not ahj_jurisdiction_packs).
+selection_categories = 1,729 with 5 brands and 5 products. That is inverted from the intended shape — categories should be the small set. Report: what are those 1,729 rows, are they scoped by company_id, how many belong to any one company, and does this look like real structure or accumulated test/import junk? Do not delete anything.
+companies = 600, users = 1,021, pins = 93. Are these real signups or seeded/junk data? This determines whether the CORS and company-enumeration findings represent live exposure or dev-only exposure. Show the earliest and latest created_at and a count grouped by month.
+0.7-R
+Correct the push-notification catalog count in 0.7-A — the text says "all 5 push-enabled catalog types" and then lists 8. Give the accurate list; Phase 5.7 reconciles against it.
+
+PHASE 1 — Fixture Setup (begin now, in parallel)
+Per the original work order: two tenants, ten users, three leads. Three amendments given what Phase 0 found:
+
+Namespacing is now load-bearing. The dev DB has 600 companies and 1,021 users. Every artifact you create gets the ZZTEST_ prefix on company id, company name, and user email. Write the teardown script before creating anything, and paste it at the checkpoint. It must delete by prefix only and must be safe to run twice.
+
+Record the company IDs verbatim. Since companies.id is a user-facing varchar join code, note the exact format your two test companies get — that format is the evidence for whether 0.5-A enumeration is trivial or merely feasible.
+
+Use the 599 other tenants as free cross-tenant probes. In Phase 3.1, in addition to Alpha↔Bravo, pick three pre-existing non-test companies and confirm your test users cannot read any of their data. Read-only against those — never write to a non-test tenant.
+
+▶ CHECKPOINT 1 — Paste: the teardown script, the created IDs (company ids verbatim, user ids, pin ids), auth-token acquisition result per user, and git status --porcelain for the full repo. Stop.

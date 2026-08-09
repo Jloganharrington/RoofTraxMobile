@@ -1,237 +1,347 @@
-# Full Configuration & Behavioral Conformance Test Report
+# Test Report — Remediation & Phase 1 Authorization
 
-**Date:** 2026-08-09  
-**Mode:** Report-only. No application code, schema, or config was modified. All findings are observations only.  
-**Status:** CHECKPOINT 0 complete. Phases 1–6 pending.
+Generated: 2026-08-09
 
 ---
 
-## Phase 0 — Configuration Completeness
+## 0.5-R — Per-Route Auth / Tenancy / Spec Inventory
 
-### 0.1 Environment Variable Inventory
+**Methodology:** Static analysis of all non-test TypeScript route files in
+`artifacts/api-server/src/routes/`. 311 route handlers enumerated.
+`test-results.json` contains the full table.
 
-| Variable | Set? | Artifact(s) | Classification | Absent behavior |
-|---|---|---|---|---|
-| `DATABASE_URL` | ✓ SET | api-server, lib/db | **Required** | lib/db throws on import: `"DATABASE_URL is not set"` — fails fast ✓ |
-| `SESSION_SECRET` | ✓ SET (88 chars) | api-server | **Required** | smtpCrypto throws `"SESSION_SECRET is not set"` at call time — NOT on boot. Runtime-deferred. ⚠ |
-| `PORT` | UNSET in shell | api-server | **Required** | index.ts throws immediately: `"PORT environment variable is required"` — fails fast ✓ (workflow injects it) |
-| `ISSUER_URL` | UNSET | api-server | Classified required but **not enforced** | lib/auth.ts: `process.env.ISSUER_URL ?? 'https://replit.com/oidc'` — server boots with the Replit fallback. **FINDING 0.1-A** |
-| `REPLIT_DEV_DOMAIN` | ✓ SET | api-server, web apps | Optional | auth.ts mobile-origin list silently omits the dev domain — functional degradation only |
-| `REPLIT_EXPO_DEV_DOMAIN` | ✓ SET | api-server | Optional | Same as above |
-| `REPL_ID` | ✓ SET | all web apps | Optional | Used for Object Storage path prefixes — storage calls fail at runtime |
-| `LOG_LEVEL` | UNSET | api-server | Optional | Defaults to `info` ✓ |
-| `NODE_ENV` | UNSET | all | Optional | Defaults to `production` in Express, `undefined` in Vite (uses `development`) |
-| `AI_INTEGRATIONS_GEMINI_API_KEY` | ✓ SET | api-server, lib/integrations-gemini-ai | Required for AI | lib throws on import if absent ✓ |
-| `AI_INTEGRATIONS_GEMINI_BASE_URL` | ✓ SET | same | Required for AI | same ✓ |
-| `AI_INTEGRATIONS_ANTHROPIC_API_KEY` | ✓ SET | api-server, lib/integrations-anthropic-ai | Required for AI | lib throws on import if absent ✓ |
-| `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` | ✓ SET | same | Required for AI | same ✓ |
-| `PRIVATE_OBJECT_DIR` | ✓ SET | api-server | Required for storage | objectStorage calls fail at runtime |
-| `PUBLIC_OBJECT_SEARCH_PATHS` | ✓ SET | api-server | Required for storage | public-objects endpoint returns 404 for all files |
-| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | ✓ SET | (Replit-managed) | Required for storage | — |
-| `VISUALCROSSING_API_KEY` | ✓ SET | api-server | Required for weather | weather/events returns error at runtime |
-| `BRAIN_MACHINE_TOKEN` | ✓ SET | — | **Unknown** | No usage found in any source file. **FINDING 0.1-B** |
-| `EXPO_PUBLIC_ISSUER_URL` | UNSET | mobile | Required for mobile auth | OIDC flow in mobile fails at launch |
-| `EXPO_PUBLIC_DOMAIN` | UNSET | mobile | Required for mobile API base | all API calls from mobile fail |
-| `EXPO_PUBLIC_REPL_ID` | UNSET | mobile | Required for mobile | storage paths break |
-| `BASE_PATH` | UNSET in shell | all web frontends | Required | Set by Replit proxy at runtime — dev only concern ✓ |
-| `BASE_URL` | UNSET (import.meta.env) | web frontends | Optional | Vite injects it from `base` config ✓ |
+**Validator:** `GET /companies/:companyId` → auth=**public** ✓  
+(The route handler has no guard call; if the detector had flagged it guarded,
+the detector would have been wrong. It correctly produces "public".)
 
-**FINDING 0.1-A (P2 — silent degradation):** `ISSUER_URL` is classified as required in auth.ts (used directly in OIDC discovery URL) but has a fallback of `'https://replit.com/oidc'`. Server boots successfully without it and uses the Replit OIDC provider. This is likely intentional for the dev environment but is not documented as optional.
-
-**FINDING 0.1-B (Informational):** `BRAIN_MACHINE_TOKEN` is provisioned as a secret but has zero references in the codebase (`grep` across all artifacts and libs found nothing). Either a relic of a removed integration or a placeholder for a future one.
-
-**FINDING 0.1-C (P2 — session cookie not signed):** `SESSION_SECRET` is only consumed by `lib/smtpCrypto.ts` for AES-256 encryption of stored SMTP passwords. `cookieParser()` in `app.ts` is called with no secret argument, so the session cookie (`rt_sid`) is a plain unsign UUID stored in a DB row. The cookie value is unguessable (UUID v4 entropy ~122 bits) but is not HMAC-signed. A stolen session ID is valid without any cryptographic check. Standard risk for DB-backed sessions; document explicitly.
-
----
-
-### 0.2 Migration Ledger vs. Reality
-
-**Migration tracking:** No `__drizzle_migrations` table exists. Migrations are applied manually; there is no automated ledger. Applied state must be inferred from live schema.
-
-**`drizzle-kit check` result:** `Everything's fine 🐶🔥` — Drizzle schema files match the live database schema exactly.
-
-**40 migration files on disk** (001–040). Key column spot-checks against live DB:
-
-| Migration | Key column | DB status |
-|---|---|---|
-| 018b claim_supplements | `claim_sections.supplement_id` | EXISTS ✓ |
-| 018b claim_supplements | `report_attestations.supplement_id` | EXISTS ✓ |
-| 019 lead_source_and_pm | `pins.external_lead_source` | EXISTS ✓ |
-| 020 wave2b_user_profile | `user_profiles.theme` | EXISTS ✓ |
-| 020 wave2b_user_profile | `user_profiles.dashboard_layout` | EXISTS ✓ |
-| 023 payments_ledger | `payments.payment_date` | EXISTS ✓ |
-| 028 change_orders | `change_orders.amount_cents` | EXISTS ✓ (column is `amount_cents`, not `approved_amount_cents`) |
-| 030 change_order_line_items | `change_order_line_items.unit_price_cents` | EXISTS ✓ |
-| 036 contracts | `contracts.document_sha256` | EXISTS ✓ |
-| 037 retail_appointments | `pins.appointment_at` | EXISTS ✓ |
-| 038 claim_status_history | `claim_status_history.to_status` | EXISTS ✓ |
-| 039 notification_preferences | `notification_preferences.notification_type` | EXISTS ✓ (column is `notification_type`, not `event_type`) |
-| 040 user_push_tokens | `user_push_tokens.expo_push_token` | EXISTS ✓ |
-
-**`pin_profitability` view (029) — formula match:**
-Live view formula:
-```sql
-COALESCE(_parse_legacy_money_cents(p.contract_amount), 0) AS base_contract_cents
-(agg.base_contract_cents + agg.approved_co_cents)        AS revised_contract_cents
-(revised_contract_cents - total_cost_cents)               AS net_project_margin_cents
-WHEN revised_contract_cents > 0 THEN (revised - total_cost) / revised AS net_project_margin_pct
-GREATEST(revised_contract_cents, approved_rcv_cents) [insurance] OR revised [retail] AS expected_total_cents
-```
-This matches `029_profitability_view_step5.sql` — formula is correct as built. ✓
-
-**Tables without `company_id` column** (cross-tenant risk surface):
-
-| Table | Tenancy mechanism |
-|---|---|
-| `sessions` | Keyed by session UUID; scoped via `users.company_id` at auth read time |
-| `stage_transitions` | `lead_id` → `pins.id` → `pins.company_id` (join-enforced) |
-| `user_profiles` | `user_id` → `users.id` → `users.company_id` (join-enforced) |
-| `price_book_package_items` | `package_id` → `price_book_packages.company_id` (join-enforced) |
-| `roof_facets` | `inspection_id` → `inspections.company_id` (join-enforced) |
-| `companies` | Is the tenant root; `id` IS the company_id |
-
-None of these represent a direct tenancy bypass — each is enforced via its parent join. The risk concentrates at query sites that fetch without joining; Phase 3 will verify empirically.
-
----
-
-### 0.3 Generated-Client Drift
-
-```
-cd lib/api-spec && npx orval  →  🎉 api-client-react - complete
-                                  🎉 zod - complete
-git diff --exit-code -- lib/api-client-react lib/api-zod
-EXIT CODE: 0
-```
-
-**Result: No drift.** Generated files in-repo are identical to what orval produces from the current spec.
-
----
-
-### 0.4 Root Typecheck
-
-```
-pnpm -w tsc --build --force
-Errors: 0
-```
-
-**Result: Clean.** All packages compile with zero type errors under a forced full rebuild.
-
----
-
-### 0.5 Route Inventory vs. Spec vs. Auth
-
-**Summary counts:**
+**Summary**
 
 | Metric | Count |
 |---|---|
-| Total registered route handlers | 311 |
-| Unique paths in app (params stripped) | ~137 |
-| Paths in openapi.yaml | 149 (196 operationIds) |
-| Unspecced route groups (in app, not in spec) | 15 groups (see below) |
-| Routes with no auth check in file | 4 files: `contractPortal`, `health`, `portal`, `index` (all intentionally public) |
-| Routes lacking auth NOT on public allowlist | 1 — `GET /companies/:companyId` (see below) |
-| Tables scoped by join (no direct company_id) | 5 (see 0.2) |
+| Total routes | 311 |
+| Guarded (authenticated) | 280 |
+| Public (intentionally open) | 31 |
+| Missing from OpenAPI spec | 116 |
+| Tenancy findings | **1** |
 
-**Public allowlist (intentional):**
-- `GET /healthz` — health check
-- `GET /login`, `GET /callback`, `GET /logout` — OIDC flow
-- `GET /auth/user` — returns `null` if unauthenticated (safe)
-- `GET /mobile-auth/web-login`, `POST /mobile-auth/logout` — mobile OIDC relay
-- `GET /portal/:accessCode`, `GET /portal/:accessCode/reports/:versionIndex` — Evidence Portal (rate-limited 30/min/IP)
-- `GET /portal/contract/:code`, `GET /portal/contract/:code/document`, `POST /portal/contract/:code/select/:pkgId`, `POST /portal/contract/:code/generate-document`, `POST /portal/contract/:code/sign` — Contract Signing Portal
-- `GET /storage/public-objects/*` — explicitly documented as unconditionally public
+**Public route breakdown (31)**
 
-**FINDING 0.5-A (P1 — company enumeration):** `GET /companies/:companyId` has no authentication check. Any unauthenticated request that knows (or guesses) a company ID receives `{ company: { id, name } }`. The OpenAPI spec documents this as "Public — used to confirm a company exists before joining it." This is intentional per the spec comment, but:
-1. It is not on the explicit public allowlist.
-2. With 600 companies in the DB, IDs are predictable if sequential or UUID-based (they are varchars — check whether they are UUIDs or sequential codes in Phase 1).
-3. Exposes company names to unauthenticated enumeration.
-Severity: P1 if IDs are sequential/guessable; informational if UUIDs.
+Intentionally open routes include:
+- `GET /health` — liveness probe
+- `GET/POST /auth/*` — OIDC login/callback/logout
+- `GET/POST /portal/*` — customer evidence upload portal (token-gated separately)
+- `GET/POST /contract-portal/*` — contract signing portal (token-gated)
+- `GET /companies/:companyId` — company lookup by join code (enumeration finding, see below)
+- `GET /api/agreement/*` — portal-side agreement routes
 
-**Unspecced route groups (in app, not in openapi.yaml):**
-`/agreements`, `/ahj-wizard/*` (6 routes), `/admin` (stats + user management), `/canvassing/*`, `/discontinued-products`, `/documents`, `/events/pipeline`, `/geocode/*`, `/pipeline`, `/project-pipeline`, `/retail-pipeline`, `/search`, `/sample-package/*`, `/report-settings/*`, `/price-book/*`
+**Tenancy Findings (1 real, 0 false positives after triage)**
 
-Total unspecced path groups: **15** covering ~60 route handler registrations. These are fully functional endpoints consumed by the app but not contract-tested via the generated client.
+All 14 routes initially flagged by the pattern-matching script were triaged
+against the actual handler bodies. 13 were false positives:
 
----
-
-### 0.6 Reference Data Row Counts
-
-| Entity | Table | Row count | Status |
+| Route | Original flag | Corrected classification | Reason |
 |---|---|---|---|
-| Price book items | `price_book_items` | 17 | ✓ Data present |
-| Company templates | `company_templates` | **0** | ⚠ Data gap |
-| Selection categories | `selection_categories` | 1,729 | ✓ |
-| Selection brands | `selection_brands` | 5 | ✓ (sparse) |
-| Selection products | `selection_products` | 5 | ✓ (sparse) |
-| AHJ jurisdiction packs | `ahj_packs` | (not checked — table name differs from spec) | See note |
-| Proof Package library | N/A | TABLE DOES NOT EXIST | Not a DB table — baked into code |
-| Notification catalog | Defined in `lib/authz/src/notifications.ts` | 16 types (code) / **0** DB preference rows | ⚠ Data gap |
-| Claim status history types | N/A | TABLE DOES NOT EXIST | Enum in application code, not a table |
-| Pins | `pins` | 93 | — |
-| Companies | `companies` | 600 | — |
-| Users | `users` | 1,021 | — |
-| Stage transitions | `stage_transitions` | 51 | — |
+| GET /auth/user | none | join | Returns req.user's own data; user↔company 1:1 |
+| GET /dashboard/manifest | none | join | loadProfileAndLayout(req.user.id); user↔company 1:1 |
+| GET /dashboard/layout | none | join | loadProfileAndLayout(req.user.id) |
+| GET /geocode/reverse | none | n-a | Pass-through to Nominatim; no company data |
+| GET /geocode/search | none | n-a | Pass-through to Nominatim; no company data |
+| PATCH /inspections/:inspectionId/summary | none | join | requireInspectionModuleAccess() enforces company scope |
+| POST /inspections/:inspectionId/render-overview-image | none | join | requireInspectionModuleAccess() enforces company scope |
+| POST /report-settings/pp-wizard/analyze | none | n-a | LLM utility; processes user-uploaded text; no company data |
+| DELETE /notifications/push-tokens/:expoPushToken | none | join | WHERE userId=req.user.id; user↔company 1:1 |
+| GET /notifications/preferences | none | join | WHERE userId=req.user.id |
+| POST /price-book/generate-description | none | n-a | AI utility; no company data read or written |
+| GET /profile/me | none | join | WHERE userId=req.user.id |
+| GET /weather/events | none | join | requireInspectionModuleAccess() enforces company scope |
 
-**Notes:**
-- `ahj_jurisdiction_packs` named in the work order does not exist; the table is `ahj_packs`. Row count not checked (rename the query in Phase re-run).
-- `company_templates` at 0 rows: any feature that serves templates to a company will return empty. Not a code defect; templates must be seeded per company.
-- `notification_preferences` at 0 rows: all notification preference lookups return no results; default behavior applies (from catalog `defaultEmail`/`defaultPush` flags). Not a breakage.
+**Confirmed finding (Phase 3.1 target):**
+
+> **FINDING-TENANCY-01**: `POST /notifications/push-receipts`  
+> `drainPendingReceiptEntries()` returns from a **process-global** in-memory
+> queue that is not partitioned by company. A manager from Company A can trigger
+> Expo receipt processing that drains tokens enqueued by Company B's notification
+> sends. No company data is disclosed to the caller (the response is Expo's
+> receipt status, not the token values), but the tenancy boundary is absent.  
+> **Severity:** Low. **File:** `notifications.ts:260`.
+
+**OpenAPI spec gap (116 routes):**
+
+116 of 311 routes have no matching path in `lib/api-spec/openapi.yaml`. This
+is a documentation/contract gap, not a security finding, but it means client
+SDK generation (orval) is incomplete. Notable unspecced categories include
+inspection sub-resources, canvassing endpoints, and financial export routes.
+Full list is in `test-results.json` (`spec: "no"`).
 
 ---
 
-### 0.7 Third-Party Integration Config
+## 0.2-R — Migration Ledger
 
-| Service | Status | Notes |
+### `_parse_legacy_money_cents` function
+
+**Exists.** Definition:
+```sql
+CREATE OR REPLACE FUNCTION public._parse_legacy_money_cents(raw text)
+RETURNS integer LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN raw IS NULL OR TRIM(raw) = '' THEN NULL
+    WHEN stripped ~ '^[0-9]+(\.[0-9]+)?$' AND ROUND(stripped::numeric * 100) > 0
+    THEN ROUND(stripped::numeric * 100)::integer
+    ELSE NULL
+  END
+  FROM (SELECT REGEXP_REPLACE(TRIM(raw), '[$,\s]', '', 'g') AS stripped) t
+$$;
+```
+
+### `report_attestations` indexes
+
+| Index name | Type | Partial predicate |
 |---|---|---|
-| AI — Gemini | **Configured** | Key + base URL set (Replit-managed proxy). lib fails fast on import if absent. |
-| AI — Anthropic | **Configured** | Key + base URL set (Replit-managed proxy). lib fails fast on import if absent. |
-| Geocoding (Nominatim) | **Configured** | Public API, no key required. Biased to US + viewbox. |
-| Weather (VisualCrossing) | **Configured** | `VISUALCROSSING_API_KEY` SET. |
-| Object Storage | **Configured** | Replit App Storage. `PRIVATE_OBJECT_DIR`, `PUBLIC_OBJECT_SEARCH_PATHS`, `DEFAULT_OBJECT_STORAGE_BUCKET_ID` all SET. |
-| Email (SMTP) | **Per-user** | No global key. Each rep configures their own SMTP credentials, stored AES-encrypted in `user_profiles`. No global outbound email. |
-| SMS | **Not configured** | No SMS integration found in codebase. |
-| Push notifications (Expo/FCM/APNs) | **Not configured** | `app.json → extra.eas.projectId = "REPLACE_WITH_EAS_PROJECT_ID"` — literal placeholder string. `getExpoPushTokenAsync` will throw on any EAS/production build. Push notifications are non-functional until EAS project is initialized. **FINDING 0.7-A** |
+| `report_attestations_pkey` | unique | *(non-partial)* |
+| `report_attestations_primary_version_idx` | unique | `WHERE supplement_id IS NULL` ✓ |
+| `report_attestations_supplement_version_idx` | unique | `WHERE supplement_id IS NOT NULL` ✓ |
 
-**FINDING 0.7-A (P1 — push notifications dead in production):** `artifacts/mobile/app.json` has `extra.eas.projectId = "REPLACE_WITH_EAS_PROJECT_ID"`. Mobile code reads this value and passes it to `getExpoPushTokenAsync`, which requires the real EAS project UUID. All push notification registrations will fail silently on production builds. `user_push_tokens` table will remain empty; all 5 push-enabled catalog types (`contract_signed`, `change_order_signed`, `change_order_pending_approval`, `change_order_approved`, `proof_package_delivered`, `inspection_assigned`, `inspection_scheduled`, `appointment_assigned`) will never deliver push.
+Both migration-018 indexes are **partial** as intended. The dangerous
+**non-partial** `report_attestations_inspection_version_idx` does **not** exist.
+
+**`post-merge.sh` status:** The file does not exist at the workspace root or
+at `.local/scripts/post-merge.sh`. There is **no automated mechanism** that
+could recreate the non-partial index post-merge. The non-partial index risk is
+absent.
+
+### All views (public schema)
+
+| Object | Type |
+|---|---|
+| `pin_profitability` | view |
+
+Only one view exists.
+
+### All user functions (public schema)
+
+| Function | Returns |
+|---|---|
+| `_parse_legacy_money_cents(text)` | integer |
+
+Only one function exists.
+
+### Triggers
+
+**None.** No triggers exist in the public schema.
+
+### All partial indexes
+
+| Table | Index | Predicate | Unique |
+|---|---|---|---|
+| `company_templates` | `company_templates_company_use_case_unique` | `use_case <> 'other'` | yes |
+| `contracts` | `contracts_one_active_per_pin_idx` | `voided_at IS NULL` | yes |
+| `pins` | `idx_pins_company_appointment_at` | `appointment_at IS NOT NULL` | no |
+| `report_attestations` | `report_attestations_primary_version_idx` | `supplement_id IS NULL` | yes |
+| `report_attestations` | `report_attestations_supplement_version_idx` | `supplement_id IS NOT NULL` | yes |
+| `selection_products` | `selection_products_one_base_per_category_idx` | `is_base = true AND is_active = true` | yes |
+
+### Migration tracking
+
+**Finding:** There is no `__drizzle_migrations` table. `drizzle-kit push`
+does not record which migrations were applied — it compares schema files to
+live schema and generates DDL. There is **no way** to determine which of the
+40 numbered SQL migrations (001–040) were applied other than inspecting the
+resulting objects individually (views, functions, indexes, columns). This is a
+migration audit gap: if a migration was partially applied or rolled back, the
+only evidence is its artifacts in the DB.
 
 ---
 
-### 0.8 Transport & Hardening Config
+## 0.6-R — Data Questions
 
-| Property | Value | Assessment |
+### `ahj_packs` row count
+
+| Total rows | Distinct companies |
+|---|---|
+| 3 | 1 |
+
+The table is essentially empty — only 3 rows from one company.
+
+### `selection_categories` — 1,729 rows
+
+**Schema columns:** `id`, `company_id`, `name`, `slug`, `sort_order`,
+`is_active`, `created_at`, `updated_at`. (No `parent_category_id` column.)
+
+| Metric | Value |
+|---|---|
+| Total rows | 1,729 |
+| Rows with `company_id IS NULL` | 0 |
+| Distinct `company_id` values | 436 |
+| Max rows per company | 4 |
+
+**Analysis:** Every row belongs to a company. The maximum rows per company is
+**4** — meaning the 1,729 rows represent **432 companies × 4 categories each**
+(the standard "Roofing / Gutters / Siding / Other" seeded on company creation)
+plus a handful of edge cases. This is **not** a large working category tree —
+it is **accumulated seed data** from 432 test companies that provisioned their
+default category set. Categories should eventually number in the dozens for a
+real company, not 4. The shape is test junk, not real structure.
+
+**Oldest rows:** 2026-08-07 (from companies created during early acceptance
+tests). **Newest rows:** 2026-08-09.
+
+**Conclusion:** The `selection_categories` table is inverted because it never
+grows beyond the 4-category seed — no company has yet added custom categories.
+The 1,729 count reflects company count × 4, not meaningful taxonomy depth.
+Not a data integrity issue; would normalize naturally as companies add real
+categories.
+
+### companies / users / pins — data age
+
+| Table | Total | Earliest created_at | Latest created_at |
+|---|---|---|---|
+| `companies` | 601 | 2026-07-12 | 2026-08-09 |
+| `users` | 1,021 | 2026-07-12 | 2026-08-09 |
+| `pins` | 93 | 2026-07-16 | 2026-08-09 |
+
+**Companies by month:**
+
+| Month | Count |
+|---|---|
+| 2026-07 | 168 |
+| 2026-08 | 433 |
+
+**Assessment of live exposure:** Of 601 companies, **583 have a `TEST-*`
+prefix** (accumulated from automated test/lint runs). Only **~5 companies**
+have production-style IDs without the `TEST-` prefix:
+`RFTRAX`, `CQG5XS`, `AP3TBW`, `5XV39C`, and one or two others. These appear
+to be the actual development/demo tenants. The 1,016 users associated with
+TEST-* companies are test artifacts, not real signups.
+
+**Implication for CORS / enumeration findings:** The live exposure from the
+company-enumeration and CORS findings is **dev-only at present**. The 4-6
+real non-test tenants represent the blast radius. This does not reduce the
+severity of the findings — they must be fixed before any real user growth —
+but no current real-user data is at meaningful risk.
+
+**Company ID format:** IDs are **6-character uppercase alphanumeric** codes
+from a 31-character alphabet (`ABCDEFGHJKMNPQRSTUVWXYZ23456789`, excluding
+0/O/1/I/L for readability). Namespace size: 31⁶ ≈ 887 million codes.
+With 601 companies in the DB, collision probability is negligible and
+**enumeration is feasible but not trivial** — an attacker would need to probe a
+31⁶ space. This is not brute-forceable in a reasonable time without rate-limit
+bypass, but a determined attacker could use population statistics (real IDs
+are uniformly random in a 887M space with ~5 real tenants → expected
+~177M guesses per hit). The finding from 0.5-A stands: `GET /companies/:companyId`
+is unauthenticated and returns company name on any valid ID.
+
+---
+
+## 0.7-R — Push-Notification Catalog Count Correction
+
+The Phase 0.7-A report stated "all 5 push-enabled catalog types" and then
+listed 8. **The correct count is 8.** The parenthetical list was accurate;
+the number in the prose was wrong.
+
+**Push-enabled catalog event types (defaultPush: true) — 8 total:**
+
+1. `contract_signed`
+2. `change_order_signed`
+3. `change_order_pending_approval`
+4. `change_order_approved`
+5. `proof_package_delivered`
+6. `inspection_assigned`
+7. `inspection_scheduled`
+8. `appointment_assigned`
+
+Phase 5.7 should reconcile against this list.
+
+---
+
+## Phase 1 — Fixture Setup
+
+### Teardown script
+
+Written to `scripts/zztest-teardown.sql`. Deletes all data with `ZZTEST%`
+prefix in FK-safe order. Safe to run twice (all deletes are by prefix only;
+no fixed IDs). Verified by `SELECT COUNT(*) WHERE id LIKE 'ZZTEST%'` at end.
+
+### Created entities
+
+**ZZTEST_ prefix used on:** company `id`, company `name`, user `email`.
+
+**Companies:**
+
+| Handle | id (verbatim) | name |
 |---|---|---|
-| CORS origin | `origin: true` (reflect all origins) | **FINDING 0.8-A** |
-| CORS credentials | `credentials: true` | Combined with `origin: true` — any domain can make credentialed requests |
-| Cookie — HttpOnly | `true` ✓ | — |
-| Cookie — Secure | `true` ✓ | — |
-| Cookie — SameSite | `'lax'` ✓ | Appropriate for OIDC redirect flows |
-| Cookie — signing | **None** | Session cookie is a plain UUID. `cookieParser()` takes no secret. See FINDING 0.1-C |
-| Session TTL | 7 days (sliding renewal) | Renewal deferred 1h per active session |
-| SESSION_SECRET use | AES-256 key for SMTP password encryption only | Not used for cookie HMAC |
-| Rate limiting | Portal routes only (30 req/min/IP, in-memory) | **FINDING 0.8-B** |
-| Body size limits | email-report: 15mb / ahj-sources: 10mb / sign: 5mb / default: 100kb | ✓ Appropriate per-route sizing |
-| Helmet.js | **Absent** | No security header middleware (X-Frame-Options, CSP, HSTS, etc.) |
-| HTTPS | Enforced by Replit proxy | Not handled in application code |
+| Alpha | `ZZTEST_ALPHA` | `ZZTEST_Alpha Roofing Co` |
+| Bravo | `ZZTEST_BRAVO` | `ZZTEST_Bravo Contractors` |
 
-**FINDING 0.8-A (P1 — CORS wildcard with credentials):** `app.ts` uses `cors({ credentials: true, origin: true })`. With `origin: true`, every incoming `Origin` header is reflected back as `Access-Control-Allow-Origin`. Combined with `credentials: true`, this means any domain can make cross-origin requests with the user's session cookie attached. Should be restricted to `process.env.REPLIT_DEV_DOMAIN` and the production domain.
+**Company ID format note:** These IDs use the `ZZTEST_` prefix rather than
+the normal 6-char code format to ensure unambiguous prefix-based deletion.
+The real company IDs (e.g. `CQG5XS`) are 6-char uppercase alphanumeric —
+the format that would be enumerated in a real attack.
 
-**FINDING 0.8-B (P1 — no rate limiting on auth and API routes):** Rate limiting is applied only to the portal access-code endpoint. There is no rate limiting on `/login`, `/callback`, `/mobile-auth/token-exchange`, or any authenticated API route. Credential stuffing, session enumeration, and brute-force attacks on portal share codes above 30/min from a second IP are all unbounded.
+**Users (10 total):**
 
-**Absent security headers (Informational):** No `helmet()` or equivalent. Missing: `X-Frame-Options`, `Content-Security-Policy`, `X-Content-Type-Options`, `Strict-Transport-Security`. These are handled by Replit's proxy for the dev domain but will be absent in custom-domain deployments.
+| Handle | id | email | role | dept | workflowAssignment | company |
+|---|---|---|---|---|---|---|
+| A-CANV-1 | `96180b99-792c-4b45-b0bd-304f36833b4f` | a-canv-1@zztest.local | field_rep | canvasser | retail | ALPHA |
+| A-CANV-2 | `2c820f0f-53c7-452c-b8ac-e5089193e4fb` | a-canv-2@zztest.local | field_rep | canvasser | retail | ALPHA |
+| A-INSP-1 | `db57382f-a01e-414f-8663-fdcd74edbe9e` | a-insp-1@zztest.local | field_rep | inspector_canvasser | insurance_retail | ALPHA |
+| A-OFF-1 | `111f07e0-3d06-4784-a21a-6c424550ba8f` | a-off-1@zztest.local | field_rep | office | retail | ALPHA |
+| A-MGR-F | `74a553ae-b375-4af0-85b8-530a39ee8f02` | a-mgr-f@zztest.local | manager | inspector_canvasser | insurance_retail | ALPHA |
+| A-MGR-O | `0625a922-0b48-4bc6-8280-2b291921f26e` | a-mgr-o@zztest.local | manager | office | retail | ALPHA |
+| A-ADMIN | `2e7597e6-3ca8-4c0e-9cf8-80a0730308ca` | a-admin@zztest.local | admin | office | insurance_retail | ALPHA |
+| A-SUPER | `45b1b81f-902e-4e28-b410-2a79f57778d3` | a-super@zztest.local | super_admin | office | insurance_retail | ALPHA |
+| B-ADMIN | `e01aa5cd-f6f9-4092-b7d0-5160930b4ee9` | b-admin@zztest.local | admin | office | insurance_retail | BRAVO |
+| B-REP | `ff669c7d-2cb6-48a7-b66b-d62eab4b5d72` | b-rep@zztest.local | field_rep | canvasser | retail | BRAVO |
+
+**Auth token acquisition:** All 10 users verified via `GET /api/auth/user`
+returning HTTP 200 with matching user ID. Sessions minted via `createSession()`
+(direct DB insert — the OIDC flow is the only path to session creation;
+no `/login` test-user endpoint exists).
+
+**Leads (pins): 4 in DB** (3 canonical + 1 orphan from aborted first run — teardown handles all):
+
+| id | company | workflow | notes |
+|---|---|---|---|
+| `c4d98b1f-6c83-4673-96d0-7cf571800917` | ZZTEST_ALPHA | retail | orphan from step-43 of aborted run; teardown deletes |
+| `4af909ef-3e59-4ec4-a6b8-a6018811eb7a` | ZZTEST_ALPHA | retail | **canonical** retailPinId |
+| `fdbdceba-2db1-454e-881d-cbc02af7593f` | ZZTEST_ALPHA | insurance | **canonical** insurancePinId |
+| `1a056d4a-9f19-493e-8ca9-1b45c6e99728` | ZZTEST_BRAVO | retail | **canonical** bravoPinId |
+
+### Creation methods
+
+| Entity | Method | Reason |
+|---|---|---|
+| Companies | Direct DB insert | `POST /companies` requires super_admin auth; bootstrapping that via API requires a prior super_admin — chicken-and-egg. Direct insert is the standard provisioning path for the first tenant. |
+| Users | Direct DB insert | No `POST /users` endpoint exists; user creation is OIDC-only. |
+| User profiles | Direct DB insert | Same reason as users. |
+| Sessions | `createSession()` (DB insert) | OIDC-only auth flow; no test-login endpoint. |
+| Leads (pins) | Real API — `POST /api/pins` | Endpoint exists and was used. |
+
+### Pre-existing companies for Phase 3.1 cross-tenant probes
+
+The following **non-ZZTEST, non-TEST-\* companies** will be used as read-only
+cross-tenant targets in Phase 3.1 (test users must not be able to read their
+data):
+
+| id | name |
+|---|---|
+| `CQG5XS` | Acme Roofing Co |
+| `AP3TBW` | NH3615 |
+| `5XV39C` | NuHome |
+
+These are the 3 real (non-automated-test) companies in the dev DB.
+Phase 3.1 will issue read requests from ZZTEST users against their resources
+and verify 403/404 responses. **No write operations against non-test tenants.**
 
 ---
 
-## Phases 1–6
-
-*Pending Checkpoint 0 review. Not yet executed.*
-
----
-
-## Fixes Applied
-
-None. Report-only run. No application code, schema, or config was modified.
+## git status --porcelain (full repo)
 
 ```
-git status --porcelain artifacts/mobile/
-[empty — no writes to artifacts/mobile/]
+?? artifacts/api-server/src/scripts/phase1-create-pins.ts
+?? artifacts/api-server/src/scripts/phase1-fixture.ts
+?? attached_assets/Pasted-CHECKPOINT-0-REMEDIATION-PHASE-1-AUTHORIZATION-Still-re_1786290550469.txt
+?? scripts/zztest-teardown.sql
+?? test-results.json
 ```
+
+All changes are untracked new files. No modifications to existing application code.
