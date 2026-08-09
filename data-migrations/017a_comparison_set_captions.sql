@@ -2,7 +2,7 @@
 -- Creates the comparison_set_captions table that holds the pair-level
 -- set caption alongside the two per-photo captions for Class C exhibits.
 --
--- Applied manually: psql $DATABASE_URL -f data-migrations/017_comparison_set_captions.sql
+-- Applied manually: psql $DATABASE_URL -f data-migrations/017a_comparison_set_captions.sql
 
 CREATE TABLE IF NOT EXISTS comparison_set_captions (
   id                VARCHAR      PRIMARY KEY DEFAULT gen_random_uuid(),

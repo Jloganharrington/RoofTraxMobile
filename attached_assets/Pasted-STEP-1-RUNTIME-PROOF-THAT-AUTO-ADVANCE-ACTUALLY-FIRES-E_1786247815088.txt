@@ -1,0 +1,86 @@
+STEP 1 — RUNTIME PROOF THAT AUTO-ADVANCE ACTUALLY FIRES
+
+Eight emitters are wired and the matching logic is structurally sound, but
+nothing has been observed moving a pin. This produces the evidence.
+
+⚠ THE CRITICAL CONSTRAINT: trigger every transition through the REAL BUSINESS
+ACTION — sign the FIPSA, attest the record, record the payment. Do NOT POST to
+/events/pipeline directly. Posting the event proves the matching logic works;
+it proves nothing about whether the emitter is wired, and a missing emitter was
+the entire finding. If you shortcut this, the proof is worthless.
+
+═══════════════════════════════════════════════════════════
+THE EIGHT TRANSITIONS — from pipelineStages.ts
+═══════════════════════════════════════════════════════════
+  preliminary_record_synced   insurance  phase1_scheduled   → phase1_complete
+  fipsa_signed                insurance  phase1_complete    → fipsa_signed
+  forensic_record_attested    insurance  phase2_scheduled   → phase2_complete
+  report_attested             insurance  phase2_complete    → package_ready
+  package_delivered           insurance  package_ready      → claim_filed
+  proof_package_compiled      insurance  proof_package      → (next in that lane)
+  contract_signed             insurance  contract_pending   → contract_signed
+                                         AND contract_sent_ins (same event,
+                                         outcomeRules pipeline: insurance)
+  deposit_received            insurance  ins_contract_signed → (next)
+
+Note contract_signed has outcomeRules and matches in BOTH retail and insurance
+lanes. Confirm a retail contract does not advance an insurance pin and vice
+versa — the pipeline:key matching exists for exactly this, so prove it holds.
+
+═══════════════════════════════════════════════════════════
+DELIVERABLE 1 — make it permanent, not a screenshot
+═══════════════════════════════════════════════════════════
+Extend scripts/seed-acceptance-claim.ts with stage assertions at each point it
+already walks. That script already runs the full claim through real code paths
+and reports 42/42 — adding assertions there converts this from a one-time
+manual check into re-runnable regression coverage, and it is where a future
+regression would otherwise go unnoticed.
+
+For each transition the fixture reaches, assert the pin's pipelineStage BEFORE
+and AFTER the triggering action. Report the new pass count.
+
+For any of the eight the fixture does NOT currently reach, say which, and
+prove those manually instead (deliverable 2).
+
+═══════════════════════════════════════════════════════════
+DELIVERABLE 2 — manual proof for anything the fixture misses
+═══════════════════════════════════════════════════════════
+For each, paste the actual before/after values:
+
+    lead <id>  event <name>  before: <stage>  after: <stage>   PASS/FAIL
+
+═══════════════════════════════════════════════════════════
+DELIVERABLE 3 — the three behaviours that matter beyond "it fired"
+═══════════════════════════════════════════════════════════
+3a. IDEMPOTENCY. Re-trigger the same real action (re-sign, re-attest, record a
+    second deposit). Confirm NO second transition and NO duplicate
+    stage_transitions row. Paste the row count before and after.
+
+3b. FAILURE ISOLATION. Deliberately break emitPipelineEvent — throw inside it.
+    Confirm the business action still completes: the FIPSA still signs, the
+    payment still saves, the contract still signs. Then revert the break.
+    This is the property that stops a pipeline bug from eating a signature.
+
+3c. CROSS-PIPELINE. A retail contract_signed must not advance an insurance
+    pin sitting at contract_pending, and vice versa. Paste both directions.
+
+═══════════════════════════════════════════════════════════
+ALSO REPORT — outstanding from earlier steps
+═══════════════════════════════════════════════════════════
+  i.  The two write paths that can set pins.contract_amount OUTSIDE the
+      contract flow — pins.ts PATCH /pins/:pinId/profile and the inspections
+      pin-proxy PATCH. What UI surfaces them? Can a field_rep reach either?
+      Are they intentional overrides or pre-contract leftovers? REPORT ONLY,
+      change nothing. This is the most consequential unresolved audit item:
+      the profitability views parse that column into base_contract_cents, so
+      either path moves reported contract value and project margin with no
+      contract, no signature, and no audit trail.
+
+  ii. Recommendation on the three derived notification conditions —
+      item_overdue, claim_blocked, lead_needs_stage_review. Scheduled sweep
+      when a scheduler exists, or evaluation at a natural checkpoint such as
+      dashboard manifest load? Recommendation only. Build nothing.
+
+  iii. Trivial: 017a_comparison_set_captions.sql:5 and
+       018a_backfill_comparison_set_captions.sql:6 still cite their old
+       filenames in their own psql instructions. Fix while you're in there.

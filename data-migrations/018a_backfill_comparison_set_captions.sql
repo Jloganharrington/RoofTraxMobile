@@ -3,7 +3,7 @@
 -- comparison_set_captions row so caption generation and the lock gate
 -- can find it.  This is idempotent: it only inserts rows where none exist.
 --
--- Applied manually: psql $DATABASE_URL -f data-migrations/018_backfill_comparison_set_captions.sql
+-- Applied manually: psql $DATABASE_URL -f data-migrations/018a_backfill_comparison_set_captions.sql
 
 INSERT INTO comparison_set_captions (
   id,

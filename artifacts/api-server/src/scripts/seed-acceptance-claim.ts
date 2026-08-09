@@ -15,7 +15,23 @@
  */
 
 import request from 'supertest';
-import { companiesTable, companyJurisdictionPacksTable, db, userProfilesTable, usersTable } from '@workspace/db';
+import {
+  companiesTable,
+  companyJurisdictionPacksTable,
+  contractScopePackagesTable,
+  contractSelectionsTable,
+  contractsTable,
+  db,
+  inspectionsTable,
+  pinsTable,
+  selectionBrandsTable,
+  selectionCategoriesTable,
+  selectionProductsTable,
+  stageTransitionsTable,
+  userProfilesTable,
+  usersTable,
+} from '@workspace/db';
+import { eq } from 'drizzle-orm';
 
 import app from '../app';
 import { createSession } from '../lib/auth';
@@ -80,6 +96,58 @@ async function addPhoto(
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline assertion helpers (Deliverables 1 / 2 / 3)
+// ---------------------------------------------------------------------------
+
+/** Insert a bare pin at a specific stage; appends its id to `pinIds` for cleanup. */
+async function seedPipelinePin(
+  companyId: string,
+  userId: string,
+  workflow: 'retail' | 'insurance',
+  stage: string,
+  pinIds: string[],
+): Promise<string> {
+  const [pin] = await db
+    .insert(pinsTable)
+    .values({ companyId, userId, latitude: 38.9686, longitude: -77.3411, workflow, pipelineStage: stage, status: 'active' })
+    .returning();
+  pinIds.push(pin!.id);
+  return pin!.id;
+}
+
+/** Read the pin's current pipelineStage from the DB. */
+async function pinStageNow(pinId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ pipelineStage: pinsTable.pipelineStage })
+    .from(pinsTable)
+    .where(eq(pinsTable.id, pinId));
+  return row?.pipelineStage ?? null;
+}
+
+/**
+ * Poll until the pin reaches `expected` or the window expires.
+ * Returns the actual stage at the end of the poll window.
+ */
+async function pollPinStage(pinId: string, expected: string, timeoutMs = 2500): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stage = await pinStageNow(pinId);
+    if (stage === expected) return stage;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return pinStageNow(pinId);
+}
+
+/** Count stage_transitions rows written for a given pin. */
+async function stageTransitionCount(pinId: string): Promise<number> {
+  const rows = await db
+    .select({ id: stageTransitionsTable.id })
+    .from(stageTransitionsTable)
+    .where(eq(stageTransitionsTable.leadId, pinId));
+  return rows.length;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -100,6 +168,16 @@ async function main(): Promise<void> {
   const photoHashes: { photoId: string; sha256: string }[] = [];
   const elevationIds: string[] = [];
   let attestationId = '';
+
+  // ── Pipeline assertion state (Deliverables 1 / 2 / 3) ─────────────────────
+  // Each pin starts at the stage that autoAdvances on the given event, so the
+  // real business action (not POST /events/pipeline) drives the advance.
+  let userId         = '';  // stored from user creation; required by seedPipelinePin
+  let pipelinePinForensic = '';  // phase2_scheduled  → phase2_complete   (forensic_record_attested)
+  let pipelinePinSubmit   = '';  // package_ready     → claim_filed        (package_delivered)
+  let pipelinePinCompile  = '';  // proof_package     → contract_generated (proof_package_compiled)
+  let pipelinePinAttest   = '';  // phase2_complete   → package_ready      (report_attested)
+  const allPipelinePinIds: string[] = [];
 
   // ── 1. Company + manager user + session ────────────────────────────────────
   await step('Create test company (with licenses + qualifications)', async () => {
@@ -136,6 +214,7 @@ async function main(): Promise<void> {
         lastName: 'Manager',
       })
       .returning();
+    userId = user.id; // store for seedPipelinePin calls
     await db
       .insert(userProfilesTable)
       .values({ userId: user.id, role: 'manager', department: 'inspector_canvasser' });
@@ -181,6 +260,34 @@ async function main(): Promise<void> {
       });
     assert(r.status === 201, `Create inspection failed (${r.status}): ${JSON.stringify(r.body)}`);
     inspectionId = r.body.inspection.id as string;
+  });
+
+  // ── D1 setup: create assertion pins + link inspection ─────────────────────
+  //
+  // Four insurance pins are created at the stage that each event auto-advances
+  // FROM.  The inspection's pinId is swapped to the right pin immediately
+  // before each triggering business action so the real emitter fires.
+  // Setting phase='forensic' ensures emitForensicRecordAttested does not exit
+  // early on the phase guard at inspections.ts:2556.
+  await step('D1 setup: create 4 assertion pins + link inspection to forensic pin', async () => {
+    pipelinePinForensic = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'phase2_scheduled',  allPipelinePinIds);
+    pipelinePinSubmit   = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'package_ready',     allPipelinePinIds);
+    pipelinePinCompile  = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'proof_package',     allPipelinePinIds);
+    pipelinePinAttest   = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'phase2_complete',   allPipelinePinIds);
+
+    // Link the fixture inspection to pipelinePinForensic and force phase='forensic'
+    // so the emitForensicRecordAttested guard passes on the next attestation POST.
+    await db
+      .update(inspectionsTable)
+      .set({ pinId: pipelinePinForensic, phase: 'forensic' })
+      .where(eq(inspectionsTable.id, inspectionId));
+
+    const before = await pinStageNow(pipelinePinForensic);
+    assert(before === 'phase2_scheduled', `Pin_forensic should start at phase2_scheduled, got: ${before}`);
+    process.stdout.write(`    Pin_forensic ${pipelinePinForensic.slice(-8)}: stage = ${before}\n`);
+    process.stdout.write(`    Pin_submit   ${pipelinePinSubmit.slice(-8)}: stage = package_ready\n`);
+    process.stdout.write(`    Pin_compile  ${pipelinePinCompile.slice(-8)}: stage = proof_package\n`);
+    process.stdout.write(`    Pin_attest   ${pipelinePinAttest.slice(-8)}: stage = phase2_complete\n`);
   });
 
   // ── 3. Field capture ───────────────────────────────────────────────────────
@@ -581,6 +688,31 @@ async function main(): Promise<void> {
     assert(submit.status === 201, `Submit attestation failed (${submit.status}): ${JSON.stringify(submit.body)}`);
   });
 
+  // D1 assert: forensic_record_attested fired during the attestation step above.
+  // Both attestation POSTs (declaration + submit) fire emitForensicRecordAttested;
+  // the first advances the pin (phase2_scheduled → phase2_complete) and the
+  // second is a no-op (pin is no longer at the matching stage), so txCount = 1.
+  await step('D1 assert: forensic_record_attested (phase2_scheduled → phase2_complete)', async () => {
+    const after    = await pollPinStage(pipelinePinForensic, 'phase2_complete', 2500);
+    const txCount  = await stageTransitionCount(pipelinePinForensic);
+    assert(after === 'phase2_complete',
+      `Expected phase2_complete, got: ${after} — emitter may not be wired or phase guard failed (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected exactly 1 stage_transitions row, got: ${txCount}`);
+    process.stdout.write(`    Pin_forensic: phase2_scheduled → ${after} (${txCount} transition row) ✓\n`);
+  });
+
+  // Swap inspection.pinId to the package_ready pin BEFORE the submission
+  // route fires so the package_delivered emitter at inspections.ts:2779 fires.
+  await step('D1 switch: set inspection.pinId = pipelinePinSubmit (package_ready) before field-record lock', async () => {
+    await db
+      .update(inspectionsTable)
+      .set({ pinId: pipelinePinSubmit })
+      .where(eq(inspectionsTable.id, inspectionId));
+    const before = await pinStageNow(pipelinePinSubmit);
+    assert(before === 'package_ready', `Pin_submit should be at package_ready before submission, got: ${before}`);
+    process.stdout.write(`    Pin_submit ${pipelinePinSubmit.slice(-8)}: stage = ${before}\n`);
+  });
+
   await step('Submit (lock) field record', async () => {
     const manifest = {
       protocolVersion: 'v1',
@@ -603,6 +735,16 @@ async function main(): Promise<void> {
       r.status === 200 || r.status === 201,
       `Submit failed (${r.status}): ${defMsg || JSON.stringify(r.body).slice(0, 400)}`,
     );
+  });
+
+  // D1 assert: package_delivered fired during the submission step above.
+  await step('D1 assert: package_delivered (package_ready → claim_filed)', async () => {
+    const after   = await pollPinStage(pipelinePinSubmit, 'claim_filed', 2500);
+    const txCount = await stageTransitionCount(pipelinePinSubmit);
+    assert(after === 'claim_filed',
+      `Expected claim_filed, got: ${after} — emitter may not be wired (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected exactly 1 stage_transitions row, got: ${txCount}`);
+    process.stdout.write(`    Pin_submit: package_ready → ${after} (${txCount} transition row) ✓\n`);
   });
 
   // ── 4. AI Summary (required before compile) ────────────────────────────────
@@ -914,6 +1056,18 @@ async function main(): Promise<void> {
     assert(lr.status === 200, `Lock closing failed (${lr.status}): ${JSON.stringify(lr.body).slice(0, 200)}`);
   });
 
+  // Swap inspection.pinId to the proof_package pin BEFORE compile so the
+  // proof_package_compiled emitter at inspections.ts:6069 fires.
+  await step('D1 switch: set inspection.pinId = pipelinePinCompile (proof_package) before compile', async () => {
+    await db
+      .update(inspectionsTable)
+      .set({ pinId: pipelinePinCompile })
+      .where(eq(inspectionsTable.id, inspectionId));
+    const before = await pinStageNow(pipelinePinCompile);
+    assert(before === 'proof_package', `Pin_compile should be at proof_package before compile, got: ${before}`);
+    process.stdout.write(`    Pin_compile ${pipelinePinCompile.slice(-8)}: stage = ${before}\n`);
+  });
+
   // ── 10. Compile ────────────────────────────────────────────────────────────
   await step('Compile report (gemini-3.1-pro-preview — retries up to 3×)', async () => {
     // The compile route uses gemini-3.1-pro-preview which may have transient failures.
@@ -938,6 +1092,28 @@ async function main(): Promise<void> {
     const safePath = compiledPath as string;
     const lintStatus = r!.body.lintStatus as string | undefined;
     process.stdout.write(`    Blob written at ${safePath.slice(-12)}; lintStatus: ${lintStatus ?? 'unknown'}\n`);
+  });
+
+  // D1 assert: proof_package_compiled fired during the compile step above.
+  await step('D1 assert: proof_package_compiled (proof_package → contract_generated)', async () => {
+    const after   = await pollPinStage(pipelinePinCompile, 'contract_generated', 2500);
+    const txCount = await stageTransitionCount(pipelinePinCompile);
+    assert(after === 'contract_generated',
+      `Expected contract_generated, got: ${after} — emitter may not be wired (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected exactly 1 stage_transitions row, got: ${txCount}`);
+    process.stdout.write(`    Pin_compile: proof_package → ${after} (${txCount} transition row) ✓\n`);
+  });
+
+  // Swap inspection.pinId to the phase2_complete pin BEFORE attestation so the
+  // report_attested emitter at inspections.ts:3324 fires.
+  await step('D1 switch: set inspection.pinId = pipelinePinAttest (phase2_complete) before attest', async () => {
+    await db
+      .update(inspectionsTable)
+      .set({ pinId: pipelinePinAttest })
+      .where(eq(inspectionsTable.id, inspectionId));
+    const before = await pinStageNow(pipelinePinAttest);
+    assert(before === 'phase2_complete', `Pin_attest should be at phase2_complete before attest, got: ${before}`);
+    process.stdout.write(`    Pin_attest ${pipelinePinAttest.slice(-8)}: stage = ${before}\n`);
   });
 
   // ── 11. Attest ─────────────────────────────────────────────────────────────
@@ -981,6 +1157,16 @@ async function main(): Promise<void> {
     process.stdout.write(
       `    Signed blob written; reportAttestationId: ${attestationId.slice(0, 8)}…\n`,
     );
+  });
+
+  // D1 assert: report_attested fired during the attest step above.
+  await step('D1 assert: report_attested (phase2_complete → package_ready)', async () => {
+    const after   = await pollPinStage(pipelinePinAttest, 'package_ready', 2500);
+    const txCount = await stageTransitionCount(pipelinePinAttest);
+    assert(after === 'package_ready',
+      `Expected package_ready, got: ${after} — emitter may not be wired (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected exactly 1 stage_transitions row, got: ${txCount}`);
+    process.stdout.write(`    Pin_attest: phase2_complete → ${after} (${txCount} transition row) ✓\n`);
   });
 
   // ── 12. Deliver gate: out-of-order deliver must return 422 ─────────────────
@@ -1047,6 +1233,261 @@ async function main(): Promise<void> {
       `package_delivered event not found in claim timeline (events: ${events.map((e) => e.eventType).join(', ')})`,
     );
     process.stdout.write(`    package_delivered event written to claim timeline ✓\n`);
+  });
+
+  // ── DELIVERABLE 2: manual proofs for events the fixture does not reach ─────
+  //
+  // Each step calls the REAL BUSINESS ROUTE (not POST /events/pipeline) and
+  // asserts the before → after stage transition + a single transition row.
+  process.stdout.write(`\n  ── Deliverable 2: manual pipeline proofs ──\n`);
+
+  // D2a: preliminary_record_synced (phase1_scheduled → phase1_complete)
+  // Emitter: PATCH /api/inspections/:id at inspections.ts:1270
+  // Guard  : parsed.data.preliminaryCompletedAt && !inspection.preliminaryCompletedAt && effectivePinId
+  await step('D2a: preliminary_record_synced (phase1_scheduled → phase1_complete)', async () => {
+    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'phase1_scheduled', allPipelinePinIds);
+    assert((await pinStageNow(pin)) === 'phase1_scheduled', 'Pin not at phase1_scheduled');
+
+    // Fresh minimal inspection linked to the pin
+    const cr = await request(app)
+      .post('/api/inspections')
+      .set(auth(sid))
+      .send({ claimNumber: `VA-PRS-${RUN_ID}`, damageType: 'hail_and_wind' });
+    assert(cr.status === 201, `Create inspection failed (${cr.status}): ${JSON.stringify(cr.body)}`);
+    const proofInspId = cr.body.inspection.id as string;
+
+    await db.update(inspectionsTable).set({ pinId: pin }).where(eq(inspectionsTable.id, proofInspId));
+
+    // Real business action: PATCH with preliminaryCompletedAt (first-time set triggers emitter).
+    // Gate at inspections.ts:975 uses parsed.data.roofDamageFound ?? inspection.roofDamageFound,
+    // so sending roofDamageFound=true in the same PATCH satisfies the damage-surface check.
+    const r = await request(app)
+      .patch(`/api/inspections/${proofInspId}`)
+      .set(auth(sid))
+      .send({ roofDamageFound: true, preliminaryCompletedAt: new Date().toISOString() });
+    assert(r.status === 200, `PATCH preliminaryCompletedAt failed (${r.status}): ${JSON.stringify(r.body).slice(0, 200)}`);
+
+    const after   = await pollPinStage(pin, 'phase1_complete', 2500);
+    const txCount = await stageTransitionCount(pin);
+    assert(after === 'phase1_complete', `Expected phase1_complete, got: ${after} (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected 1 transition row, got: ${txCount}`);
+    process.stdout.write(`    Pin ${pin.slice(-8)}: phase1_scheduled → ${after} (${txCount} row) ✓\n`);
+  });
+
+  // D2b: fipsa_signed (phase1_complete → fipsa_signed)
+  // Emitter: POST /api/inspections/:id/agreement/sign at agreement.ts:231
+  // Guard  : inspection.phase === 'forensic' && inspection.pinId
+  await step('D2b: fipsa_signed (phase1_complete → fipsa_signed)', async () => {
+    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'phase1_complete', allPipelinePinIds);
+    assert((await pinStageNow(pin)) === 'phase1_complete', 'Pin not at phase1_complete');
+
+    const cr = await request(app)
+      .post('/api/inspections')
+      .set(auth(sid))
+      .send({ claimNumber: `VA-FIPSA-${RUN_ID}`, damageType: 'hail_and_wind' });
+    assert(cr.status === 201, `Create inspection failed (${cr.status}): ${JSON.stringify(cr.body)}`);
+    const proofInspId = cr.body.inspection.id as string;
+
+    // Phase must be 'forensic' for the FIPSA sign gate (agreement.ts:115)
+    await db.update(inspectionsTable)
+      .set({ pinId: pin, phase: 'forensic' })
+      .where(eq(inspectionsTable.id, proofInspId));
+
+    // Real business action: POST /agreement/sign
+    // pdfBase64 must: (a) start with %PDF magic bytes (agreement.ts:152),
+    // (b) be >= 100 base64 chars (SignAgreementBody: z.string().min(100)).
+    const pdfBase64 = Buffer.from('%PDF-1.4 ' + 'x'.repeat(100)).toString('base64');
+    const r = await request(app)
+      .post(`/api/inspections/${proofInspId}/agreement/sign`)
+      .set(auth(sid))
+      .send({ signerName: 'Robert A. Fixture', pdfBase64 });
+    assert(r.status === 201, `FIPSA sign failed (${r.status}): ${JSON.stringify(r.body).slice(0, 200)}`);
+
+    const after   = await pollPinStage(pin, 'fipsa_signed', 2500);
+    const txCount = await stageTransitionCount(pin);
+    assert(after === 'fipsa_signed', `Expected fipsa_signed, got: ${after} (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected 1 transition row, got: ${txCount}`);
+    process.stdout.write(`    Pin ${pin.slice(-8)}: phase1_complete → ${after} (${txCount} row) ✓\n`);
+  });
+
+  // D2c + 3c: contract_signed via portal + cross-pipeline guard
+  // Emitter: POST /api/portal/contract/:code/sign at contractPortal.ts:560
+  // Guard  : outcomeRules { pipeline } must match pin.workflow
+  //
+  // We prove BOTH directions: sign retail contract → retail pin advances,
+  // insurance pin is untouched; sign insurance contract → insurance pin advances.
+  await step('D2c + 3c: contract_signed retail/insurance + cross-pipeline guard', async () => {
+    const pinRetail    = await seedPipelinePin(COMPANY_ID, userId, 'retail',    'contract_pending', allPipelinePinIds);
+    const pinInsurance = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'contract_pending', allPipelinePinIds);
+    assert((await pinStageNow(pinRetail))    === 'contract_pending', 'Retail pin not at contract_pending');
+    assert((await pinStageNow(pinInsurance)) === 'contract_pending', 'Insurance pin not at contract_pending');
+
+    // Build minimal selection hierarchy once; both contracts share it
+    const [cat] = await db.insert(selectionCategoriesTable)
+      .values({ companyId: COMPANY_ID, name: 'Roofing', slug: `roofing-${RUN_ID}` })
+      .returning();
+    const [brand] = await db.insert(selectionBrandsTable)
+      .values({ companyId: COMPANY_ID, categoryId: cat!.id, name: 'TestBrand' })
+      .returning();
+    const [product] = await db.insert(selectionProductsTable)
+      .values({ companyId: COMPANY_ID, categoryId: cat!.id, brandId: brand!.id, name: 'Test Shingle', unit: 'SQ', isBase: true })
+      .returning();
+
+    // Helper: create contract → set sent + SHA256 via DB → sign via portal → return accessCode
+    const buildAndSignContract = async (pinId: string, shaTag: string): Promise<void> => {
+      // Create contract (draft)
+      const cRes = await request(app)
+        .post(`/api/pins/${pinId}/contracts`)
+        .set(auth(sid))
+        .send({ coveredScopeCents: 1500000 });
+      assert(cRes.status === 201, `Contract create failed (${cRes.status}): ${JSON.stringify(cRes.body).slice(0, 200)}`);
+      const contractId = cRes.body.contract.id as string;
+
+      // Add scope package (API route validates categoryId belongs to company)
+      const pkgRes = await request(app)
+        .post(`/api/contracts/${contractId}/scope-packages`)
+        .set(auth(sid))
+        .send({ categoryId: cat!.id, quantity: 20, unit: 'SQ', coveredAmountCents: 1500000, sortOrder: 1 });
+      assert(pkgRes.status === 201, `Scope package failed (${pkgRes.status}): ${JSON.stringify(pkgRes.body).slice(0, 200)}`);
+      const pkgId = pkgRes.body.scopePackage.id as string;
+
+      // Insert a selection directly (avoids full picker API; contractSelections only need FK-valid rows)
+      await db.insert(contractSelectionsTable).values({
+        companyId: COMPANY_ID, contractId, scopePackageId: pkgId, productId: product!.id,
+        productName: 'Test Shingle', brandName: 'TestBrand',
+        unitDeltaCents: 0, quantity: '20', extendedDeltaCents: 0, selectedBy: 'customer',
+      });
+
+      // Push contract to 'sent' + set documentSha256 directly in DB (bypasses PDF gen)
+      const sha256 = shaTag.padEnd(64, '0').slice(0, 64);
+      await db.update(contractsTable)
+        .set({ status: 'sent', documentSha256: sha256, updatedAt: new Date() })
+        .where(eq(contractsTable.id, contractId));
+
+      // Read the accessCode (only exposed when status = 'sent'; we just set it)
+      const [contractRow] = await db
+        .select({ accessCode: contractsTable.accessCode })
+        .from(contractsTable)
+        .where(eq(contractsTable.id, contractId));
+      const accessCode = contractRow!.accessCode!;
+
+      // Real business action: portal sign route at contractPortal.ts:458
+      // Use customerSignaturePath (not customerSignatureBase64) to avoid triggering
+      // the object storage upload path (contractPortal.ts:510-513) in test runs.
+      const signRes = await request(app)
+        .post(`/api/portal/contract/${accessCode}/sign`)
+        .send({
+          customerPrintName: 'Robert A. Fixture',
+          customerSignaturePath: 'acceptance-test-sig-proof',
+          documentSha256: sha256,
+        });
+      assert(signRes.status === 200, `Portal sign failed (${signRes.status}): ${JSON.stringify(signRes.body).slice(0, 300)}`);
+    };
+
+    // ── Sign retail contract ────────────────────────────────────────────────
+    await buildAndSignContract(pinRetail, 'retail-contract-sha256-acceptance-test-proof');
+
+    const afterRetail          = await pollPinStage(pinRetail,    'contract_signed', 3000);
+    const insuranceAfterRetail = await pinStageNow(pinInsurance);
+
+    // 3c guard: insurance pin must NOT have moved
+    assert(afterRetail === 'contract_signed',
+      `Retail pin: expected contract_signed, got: ${afterRetail}`);
+    assert(insuranceAfterRetail === 'contract_pending',
+      `CROSS-PIPELINE VIOLATION: insurance pin moved to ${insuranceAfterRetail} when retail contract was signed`);
+    process.stdout.write(`    Retail pin:    contract_pending → ${afterRetail} ✓\n`);
+    process.stdout.write(`    Insurance pin (guard): still at ${insuranceAfterRetail} ✓\n`);
+
+    // ── Sign insurance contract ─────────────────────────────────────────────
+    await buildAndSignContract(pinInsurance, 'insurance-contract-sha256-acceptance-test-proof');
+
+    const afterInsurance = await pollPinStage(pinInsurance, 'contract_signed', 3000);
+    assert(afterInsurance === 'contract_signed',
+      `Insurance pin: expected contract_signed, got: ${afterInsurance}`);
+    process.stdout.write(`    Insurance pin: contract_pending → ${afterInsurance} ✓\n`);
+
+    const retailTx    = await stageTransitionCount(pinRetail);
+    const insuranceTx = await stageTransitionCount(pinInsurance);
+    assert(retailTx === 1,    `Expected 1 transition for retail, got: ${retailTx}`);
+    assert(insuranceTx === 1, `Expected 1 transition for insurance, got: ${insuranceTx}`);
+  });
+
+  // D2d: deposit_received (legacy) — ins_contract_signed → ins_deposit_received
+  // Emitter: POST /api/pins/:id/payments at the payments route
+  await step('D2d: deposit_received (ins_contract_signed → ins_deposit_received)', async () => {
+    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'ins_contract_signed', allPipelinePinIds);
+    assert((await pinStageNow(pin)) === 'ins_contract_signed', 'Pin not at ins_contract_signed');
+
+    // Real business action: POST a deposit payment
+    const r = await request(app)
+      .post(`/api/pins/${pin}/payments`)
+      .set(auth(sid))
+      // paymentDate must be ISO 8601 datetime (z.string().datetime()), not date-only
+      .send({ type: 'deposit', amountCents: 500000, paymentDate: new Date().toISOString(), note: 'Acceptance test deposit' });
+    assert(r.status === 201, `Payment POST failed (${r.status}): ${JSON.stringify(r.body).slice(0, 200)}`);
+
+    const after   = await pollPinStage(pin, 'ins_deposit_received', 2500);
+    const txCount = await stageTransitionCount(pin);
+    assert(after === 'ins_deposit_received', `Expected ins_deposit_received, got: ${after} (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected 1 transition row, got: ${txCount}`);
+    process.stdout.write(`    Pin ${pin.slice(-8)}: ins_contract_signed → ${after} (${txCount} row) ✓\n`);
+  });
+
+  // ── DELIVERABLE 3a: IDEMPOTENCY ────────────────────────────────────────────
+  // Re-trigger the same real action on a pin that has already advanced.
+  // emitPipelineEvent fires again but the pin is no longer at the matching
+  // stage, so no second stage_transitions row is written.
+  await step('3a Idempotency: re-deposit does not double-advance (ins_contract_signed)', async () => {
+    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'ins_contract_signed', allPipelinePinIds);
+
+    // First deposit → pin advances, transitions = 1
+    const r1 = await request(app)
+      .post(`/api/pins/${pin}/payments`)
+      .set(auth(sid))
+      .send({ type: 'deposit', amountCents: 250000, paymentDate: new Date().toISOString() });
+    assert(r1.status === 201, `Payment 1 failed (${r1.status})`);
+    await pollPinStage(pin, 'ins_deposit_received', 2500);
+    const txAfterFirst = await stageTransitionCount(pin);
+    assert(txAfterFirst === 1, `Expected 1 transition after first deposit, got: ${txAfterFirst}`);
+
+    // Second deposit on the same pin: payment route fires emitPipelineEvent again
+    // (deposit_received), but the pin is now at ins_deposit_received, not ins_contract_signed.
+    // processPipelineEvent finds no matching autoAdvance → no transition row added.
+    const r2 = await request(app)
+      .post(`/api/pins/${pin}/payments`)
+      .set(auth(sid))
+      .send({ type: 'deposit', amountCents: 250000, paymentDate: new Date().toISOString() });
+    assert(r2.status === 201, `Payment 2 failed (${r2.status})`);
+    await new Promise((r) => setTimeout(r, 600)); // give any async advance time to (not) fire
+
+    const txAfterSecond  = await stageTransitionCount(pin);
+    const stageAfterBoth = await pinStageNow(pin);
+    assert(txAfterSecond === 1,
+      `IDEMPOTENCY FAIL: expected 1 transition after second deposit, got: ${txAfterSecond}`);
+    assert(stageAfterBoth === 'ins_deposit_received',
+      `Pin moved unexpectedly to: ${stageAfterBoth}`);
+    process.stdout.write(`    Before: 1 row → After re-deposit: ${txAfterSecond} row. Stage: ${stageAfterBoth} ✓\n`);
+  });
+
+  // ── DELIVERABLE 3b: FAILURE ISOLATION ──────────────────────────────────────
+  // Use a pin in a terminal stage (archived_lost) where no autoAdvance is
+  // defined for deposit_received.  emitPipelineEvent still fires (fire-and-
+  // forget) but finds no matching stage; the advance is a no-op.  The payment
+  // must still be saved (HTTP 201) — the business action is fully decoupled.
+  await step('3b Failure isolation: payment saves even when pipeline advance is a no-op', async () => {
+    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'archived_lost', allPipelinePinIds);
+
+    const r = await request(app)
+      .post(`/api/pins/${pin}/payments`)
+      .set(auth(sid))
+      .send({ type: 'deposit', amountCents: 100000, paymentDate: new Date().toISOString() });
+    assert(r.status === 201, `Payment save failed (${r.status}): ${JSON.stringify(r.body).slice(0, 200)}`);
+
+    const stageAfter = await pinStageNow(pin);
+    const txCount    = await stageTransitionCount(pin);
+    assert(stageAfter === 'archived_lost', `Expected archived_lost (no advance), got: ${stageAfter}`);
+    assert(txCount === 0, `Expected 0 transitions (no-op advance), got: ${txCount}`);
+    process.stdout.write(`    Payment saved (201). Stage unchanged: ${stageAfter}. Transitions: ${txCount} ✓\n`);
   });
 
   // ── Pass / fail table ──────────────────────────────────────────────────────
