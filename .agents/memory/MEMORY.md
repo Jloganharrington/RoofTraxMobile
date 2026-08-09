@@ -1,6 +1,6 @@
 # Memory Index
 
-- [Claim status history NOT NULL guard](claim-status-history-not-null.md) — clearing claim_status (to null) must NOT insert a history row; to_status is NOT NULL.
+- [Claim status history guard](claim-status-history-not-null.md) — to_status IS nullable (null = cleared); do NOT add !== null guard or it swallows approved→null audits.
 
 - [createSession call signature](createSession-call-signature.md) — takes one SessionData object; positional args silently store a string → all requests 401.
 - [Express req.params string union](express-params-string-union.md) — ParamsDictionary is `string | string[]` in this workspace; always cast `req.params.xxx as string` before passing to Drizzle eq().

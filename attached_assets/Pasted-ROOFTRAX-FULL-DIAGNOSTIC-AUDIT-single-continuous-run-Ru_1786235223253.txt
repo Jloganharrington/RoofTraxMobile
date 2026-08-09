@@ -1,0 +1,201 @@
+ROOFTRAX — FULL DIAGNOSTIC AUDIT (single continuous run)
+
+Run all seven passes without stopping. Fix what is safely fixable as you go,
+log every fix, and never invent a connection you cannot verify.
+
+═══════════════════════════════════════════════════════════
+THE ONE RULE THAT MATTERS MOST
+═══════════════════════════════════════════════════════════
+⚠ NEVER FABRICATE A CONNECTION.
+
+If you find something orphaned — a column nothing reads, a hook nothing
+imports, a field nothing populates — and you cannot determine from the code
+what it was meant to connect to, you LOG IT AS ORPHANED and move on. Do not
+wire it to the most plausible-looking consumer. Do not infer intent from a
+name. A wrong connection is far more damaging than a missing one, because a
+missing one stays visible and a wrong one looks finished.
+
+Same rule for values: if a number appears wrong, do not "correct" it to what
+seems right. Report the discrepancy with both sides cited.
+
+═══════════════════════════════════════════════════════════
+FIX AUTHORITY — a whitelist, not a judgment call
+═══════════════════════════════════════════════════════════
+You MAY fix, as you go, ONLY these:
+
+  1. Comments and docstrings that describe behaviour the code does not have.
+  2. A hand-written queryKey or invalidateQueries literal replaced with the
+     generated get*QueryKey function for that same endpoint.
+  3. Unused imports and unreachable local variables.
+  4. A customFetch call swapped for the existing generated hook for the SAME
+     endpoint, where the hook already exists and the shapes match exactly.
+  5. Obvious typos in user-facing strings.
+
+You MAY NOT fix, under any circumstances — log these instead:
+
+  - Anything touching money math, cents conversion, or the profitability view
+  - Anything touching authz, role gates, or tenancy scoping
+  - Any schema change, migration, or column
+  - Deleting ANY code, even if it appears dead
+  - Anything in artifacts/mobile — it is mid-build and app-store bound
+  - Adding a route, spec entry, or regenerating clients
+  - Wiring an orphan to a consumer (see THE ONE RULE)
+
+If a fix looks like it belongs on the allowed list but requires touching
+anything on the forbidden list to complete — stop that fix, revert it, and
+log it as a finding instead.
+
+═══════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════
+Classify every finding. No item may be classified without evidence, and
+cite file:line for both ends of any claimed connection.
+
+  WIRED      Verified end to end. Cite BOTH ends.
+  BROKEN     Connection expected but missing, mismatched, or dead.
+  ORPHANED   Exists, nothing references it. Cite the search that proved it.
+  LEGACY     Superseded. Cite the replacement.
+  FIXED      You repaired it. State exactly what changed and why it was on
+             the whitelist.
+  BLOCKED    Could not be tested or verified because something upstream is
+             broken. Name what blocked it, then MOVE ON — do not stall.
+  UNCERTAIN  Could not determine. State precisely what you could not
+             establish.
+
+⚠ "I searched and found nothing" and "I did not search" are different
+findings. Never report the second as the first.
+
+⚠ WRITE FINDINGS TO A FILE AS YOU GO — append after each pass, do not hold
+the whole audit in memory until the end. A crash at pass 6 must not lose
+passes 1 through 5.
+
+═══════════════════════════════════════════════════════════
+CALIBRATION — you must independently surface all eight
+═══════════════════════════════════════════════════════════
+These are already confirmed. Find them yourself; do not copy them across.
+If the audit misses any, its sensitivity is not trusted.
+
+  1. A hand-written API layer in rooftrax-web/src/lib/claimHubApi.ts calling
+     routes that may not be in the spec.
+  2. Legacy varchar money columns on pins superseded by the payments ledger.
+  3. pins.retailData.appointmentDate superseded by pins.appointment_at.
+  4. Migration numbering collisions in data-migrations/.
+  5. Three separate HTML sanitizer allowlists.
+  6. contracts.templateId is read by nothing — the contract PDF is hardcoded
+     and TEMPLATE_USE_CASES has no 'contract' value.
+  7. change_orders.selected_by can never be 'rep' — no write path exists.
+  8. A deductible panel was specified and never built.
+
+═══════════════════════════════════════════════════════════
+PASS 1 — API SURFACE
+═══════════════════════════════════════════════════════════
+Every route in api-server/src/routes/*.ts: registered in index.ts? present in
+openapi.yaml? generated hook exists? anything calls it?
+Table: METHOD PATH | file:line | in spec | hook | callers | class.
+Then the inverse: spec paths with no implementing route.
+
+PASS 2 — CLIENT WIRING
+Across rooftrax-web, signing-portal, photo-portal:
+  2a. customFetch calls with hand-written paths — does the path exist? Is
+      there a generated hook that should be used?
+  2b. Every queryKey and invalidateQueries — sourced from a generated
+      get*QueryKey? A literal key for an endpoint that HAS a generated hook
+      is BROKEN; the invalidation silently no-ops. This has caused two
+      production incidents here.
+  2c. Every mutation — does onSuccess invalidate EVERY query whose data it
+      changed? Cite any query it fails to refresh.
+  2d. Do the two public portals import CRM surface, session auth, or
+      @workspace/authz role vocabulary?
+
+PASS 3 — TENANCY & AUTHORIZATION
+  3a. Every table: direct company_id? For those without, list every query
+      touching it and state how tenancy is enforced. stage_transitions is a
+      known case — find any others.
+  3b. Every write endpoint: what role gate, applied how? Flag inline string
+      comparisons rather than roleRank from @workspace/authz.
+  3c. Every route the client gates with minRole — does the underlying data
+      endpoint enforce the same server-side? A UI-only gate is BROKEN.
+  3d. Every route reachable without a session: exactly what data does it
+      return, and is any of it beyond what that recipient needs?
+
+PASS 4 — BUSINESS FLOW WIRING
+Trace each chain in code and classify every link:
+  A. Contract signature → pins.contract_amount + betterments_amount_cents
+     → pin_profitability → waterfall → Claim Value Tracker
+  B. Contract void → reversal of that write-back
+  C. Change order approved → change_orders_cents → revised_contract_cents
+     → net_project_margin_cents
+  D. Selections → extended delta → betterments_cents → contract total
+     → the PDF's selections schedule
+  E. Payment → ledger → total_payments_cents → waterfall → deductible collected
+  F. Invoice marked paid → exactly one ledger row (idempotency)
+  G. Field submit → pre-flight → AI generation → compile → attest → deliver
+     → evidence portal
+  H. FIPSA signed → pipeline auto-advance
+  I. Business event → notify() → recipient resolution → email/push
+  J. Scheduling → Team Calendar → mobile scheduled feed
+  K. Claim status change → claim_status_history → Live Activity
+Is every link present? Does anything compute the same value in more than one
+place? Cite both sites.
+
+PASS 5 — LEGACY, DEAD CODE, ORPHANS
+  5a. Columns written but never read, or read but never written.
+  5b. Columns superseded by a newer mechanism — name the replacement, state
+      whether the old one still has live readers.
+  5c. Exported functions, components, modules with no importers.
+  5d. ComingSoon stubs and routes rendering nothing real.
+  5e. Every TODO, FIXME, "not implemented" — quote with file:line.
+  5f. Comments describing behaviour the code does not have.
+  5g. Remnants of removed features (Brain courier, QuickAdd widget, old
+      Insurance tab).
+Do NOT delete anything. State for each whether removal appears safe.
+
+PASS 6 — SCHEMA & MIGRATION INTEGRITY
+  6a. Drizzle schema columns vs migration columns — mismatches mean db push
+      and the migration files disagree.
+  6b. Numbering gaps, duplicates, anything breaking "apply in order".
+  6c. Migration files outside data-migrations/.
+  6d. Missing indexes on frequently-filtered columns, especially
+      company_id + timestamp pairs used by the dashboard and calendar.
+  6e. Values stored that are also derived elsewhere — two sources of truth.
+  6f. Nullable columns the code treats as guaranteed.
+
+PASS 7 — TESTS
+  7a. Run and paste real output:
+        npx tsc --build --force      ← from the REPO ROOT, not per-artifact.
+                                       Per-artifact checks pass against stale
+                                       dist and have hidden real library
+                                       build errors before.
+        pnpm --filter @workspace/authz test
+        cd artifacts/api-server && npx vitest run
+        npx tsx artifacts/api-server/src/scripts/seed-acceptance-claim.ts
+        typechecks for all four client artifacts
+  7b. Test files that do not compile or are not picked up by a runner.
+  7c. Assertions encoding behaviour that has since changed.
+  7d. Which Pass 4 chains have NO automated coverage — name the chain and
+      the missing case.
+
+═══════════════════════════════════════════════════════════
+FINAL REPORT
+═══════════════════════════════════════════════════════════
+1. FIX LOG — every fix applied: file:line, what changed, which whitelist
+   item authorised it. If this list is empty, say so.
+
+2. FINDINGS TABLE — all passes, sorted by severity:
+     CRITICAL  data loss, money corruption, cross-tenant leak, auth bypass,
+               or a legally binding document that can be produced wrongly
+     HIGH      broken wire with user-visible wrong behaviour
+     MEDIUM    drift risk, duplicate logic, missing coverage
+     LOW       dead code, stale comments, cosmetic debt
+   Columns: severity | area | file:line | finding | evidence | suggested fix.
+
+3. ORPHANS AWAITING A DECISION — everything you found unconnected where the
+   intended consumer could not be determined from the code. These need a
+   human decision, not a guess.
+
+4. BLOCKED — everything you could not verify because something upstream was
+   broken, and what blocked each one.
+
+5. NOT AUDITED — what you did not cover and why. This section matters as
+   much as the findings; an audit reporting only findings implies complete
+   coverage.
