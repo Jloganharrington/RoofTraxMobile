@@ -1,0 +1,149 @@
+WORK ORDER — Full Configuration & Behavioral Conformance Test
+Deliverable: TESTREPORT.md (repo root) + test-results.json (machine-readable).
+Mode: Report-only. Do not fix application code, schema, or config during this run. You may fix your own test harness. Log every finding; we triage after.
+Hard constraint: zero writes to artifacts/mobile/. Prove it at the end with git status --porcelain artifacts/mobile/ returning empty.
+Environment: dev database only. All test data namespaced with prefix ZZTEST_ and a documented teardown script.
+
+Run the phases in order. Do not start a phase until the prior checkpoint has real pasted output.
+
+PHASE 0 — Configuration Completeness (static, no data)
+Answer the question "is anything missing from config?" with evidence, not assertion.
+
+0.1 Environment variable inventory.
+Grep every process.env.X and import.meta.env.X across all artifacts and libs. Build a table: variable → files that read it → is it currently set → required or optional → what happens when absent. For each variable you classify as required, prove the classification: start the server in a scratch process with that one variable unset and record whether it fails fast or silently degrades. A required variable that boots successfully and fails later at runtime is a finding.
+
+0.2 Migration ledger vs. reality.
+List data-migrations/*.sql on disk. List what the DB records as applied. Diff them. Then diff the Drizzle schema against the live DB (drizzle-kit check or introspect). Report any drift in either direction. Explicitly confirm the pin_profitability view in the DB matches data-migrations/029_profitability_view_step5.sql.
+
+0.3 Generated-client drift.
+Regenerate orval output from lib/api-spec/openapi.yaml. Run git diff --exit-code -- lib/api-client-react lib/api-zod. Non-empty diff = generated files are stale in git = finding. Revert the regeneration afterward.
+
+0.4 Root typecheck.
+pnpm -w tsc --build --force from the repo root. Per-artifact checks pass against stale dist — the root force build is the only authoritative one. Paste the full error count and the first 20 errors.
+
+0.5 Route inventory vs. spec vs. auth.
+Walk the mounted Express router stack at boot and emit every registered METHOD /path. Produce three columns per route:
+
+present in openapi.yaml? (yes/no)
+auth middleware applied? (yes/no)
+tenancy filter applied? (yes / no / N-A / can't determine statically)
+Maintain an explicit allowlist of intentionally-public routes (health, login, portal share-code endpoints). Any route not on that allowlist and lacking auth middleware is a P0 finding. Report the count of unspecced routes as a number.
+
+0.6 Reference-data presence.
+Row counts for: price book, templates, selections categories / brands / products, pipeline stages, notification catalog, AHJ packs, Proof Package library. Zero-row tables that the app depends on at runtime are findings, flagged as data gap not code defect.
+
+0.7 Third-party integration config.
+For each of: push notifications (Expo project id / FCM / APNs), geocoding, object storage, email, SMS, any AI keys — report configured / not configured / configured-but-unverified. Where a cheap read-only liveness call exists, make it and paste the response status. Do not send anything outbound to a real third party.
+
+0.8 Transport & hardening config.
+CORS allowlist contents, cookie flags (Secure/HttpOnly/SameSite), session/JWT secret source and length, rate-limit configuration and which routes it covers, body-size limits.
+
+▶ CHECKPOINT 0 — Paste: the env-var table, the migration diff, the git diff --exit-code result, the root typecheck output, the route-inventory summary counts (total routes / unspecced / unauthenticated-not-on-allowlist / no-tenancy-filter), and the reference-data row counts. Stop.
+
+PHASE 1 — Fixture Setup: Two Tenants, Ten Users, Three Leads
+Create via the real API where an endpoint exists; direct DB insert only where none does, and say which you used for each.
+
+Tenants: ZZTEST_Alpha (primary) and ZZTEST_Bravo (the cross-tenant probe).
+
+User matrix — spans all three permission axes (ROLES, DEPARTMENTS, WORKFLOW_ASSIGNMENTS from lib/authz):
+
+Handle	Tenant	Role	Department	Workflow
+A-CANV-1	Alpha	field_rep	canvasser	retail
+A-CANV-2	Alpha	field_rep	canvasser	retail
+A-INSP-1	Alpha	field_rep	inspector_canvasser	insurance_retail
+A-OFF-1	Alpha	field_rep	office	retail
+A-MGR-F	Alpha	manager	inspector_canvasser	insurance_retail
+A-MGR-O	Alpha	manager	office	retail
+A-ADMIN	Alpha	admin	office	insurance_retail
+A-SUPER	Alpha	super_admin	office	insurance_retail
+B-ADMIN	Bravo	admin	office	insurance_retail
+B-REP	Bravo	field_rep	canvasser	retail
+A-CANV-2 exists specifically to test peer visibility: can one field rep see another field rep's leads, commissions, and photos.
+
+Leads: one retail lead owned by A-CANV-1, one insurance lead owned by A-INSP-1, one lead in Bravo owned by B-REP. Homeowner contact records on each.
+
+▶ CHECKPOINT 1 — Paste the created IDs (company ids, user ids, pin ids) and, for each of the 10 users, the auth token acquisition result. Stop.
+
+PHASE 2 — Positive Lifecycle Runs
+Drive both lifecycles end to end as the correct user at each step. Every step must be a real business action through the API, never a direct status write.
+
+2A — Insurance lifecycle (A-INSP-1 → A-MGR-F → A-ADMIN): lead created → inspection → report attestation → claim filed → claim status transitions → FIPSA → contract built → homeowner signs via portal → change order captured and approved → payment recorded → invoice → completion.
+
+2B — Retail lifecycle (A-CANV-1 → A-MGR-O → A-ADMIN): lead created → appointment → selections chosen → contract built → homeowner signs via portal → payment schedule → change order → completion.
+
+After each lifecycle, assert:
+
+Every pipeline stage the pin passed through has a stage_transitions row, with the actor and timestamp.
+pin_profitability for that pin returns the expected base_contract_cents, revised_contract_cents, expected_total_cents, net_project_margin_cents. Show the arithmetic.
+pins.contract_amount matches what the signing portal wrote.
+Notifications that should have fired, fired — and name the ones that should have but didn't.
+▶ CHECKPOINT 2 — Paste, per lifecycle: the ordered stage_transitions rows, the final pin_profitability row, and the notification list (fired vs. expected-but-missing). Stop.
+
+PHASE 3 — Negative Tests (the core of this run)
+Assertion rule, applies to every case below: record the HTTP status and query the database to prove no row changed. A 403 that still wrote is worse than a 200 that no-opped. Both are findings. Report status + side-effect independently; never infer one from the other.
+
+3.1 Cross-tenant isolation. As B-ADMIN and B-REP, attempt read and write against every Alpha resource: pins, contracts, change orders, invoices, payments, expenses, commissions, selections, price book, templates, users, notifications, documents/photos, stage transitions, dashboard manifest, profitability. Then invert (Alpha users against Bravo). Expect 404 over 403 on reads to avoid existence disclosure — note which you got. Separately, list every table lacking a company_id column and prove tenancy is enforced by join for each; this is where the audit said the risk concentrates.
+
+3.2 Vertical role escalation. As A-CANV-1 (field_rep), attempt: void a contract, approve a change order, edit the price book, edit templates, edit the selections library, create a user, change another user's role, view company P&L, view another rep's commissions, delete a pin, reach company settings. As A-MGR-O (manager), attempt super_admin-only surfaces (billing, subscription, tenant config).
+
+3.3 Self-elevation / mass assignment. For every PATCH and PUT route, resend the request with extra body fields: role, department, workflow, company_id, id, created_at, owner_user_id, status. Assert each is stripped, not merely that the request returned 200. A PATCH /users/me that accepts role is a P0.
+
+3.4 Department gating. Canvasser attempts inspector-only actions (start inspection, submit report attestation). Office user attempts field-capture routes. Inspector attempts office-only financial routes.
+
+3.5 Workflow gating. Retail-only user hits insurance routes (claim status, carrier fields, supplements, FIPSA). Insurance user hits retail-only routes.
+
+3.6 Dashboard manifest exactness. For each of the 10 users, fetch the manifest and assert the returned widget key set is exactly equal to selectWidgetsFor({role, department, workflow}) from lib/authz. Then attempt to force an ungranted widget into the stored layout order and confirm the manifest still refuses to return it — layout filters, never grants.
+
+3.7 Contract & signing integrity. Sign with a stale documentSha256 → expect 409, assert pins.contract_amount unchanged. Sign an already-signed contract. Sign a voided contract. Void a signed contract and assert contract_amount and betterments_amount_cents are cleared and pin_profitability recomputes. Approve a change order twice and assert the amount is counted once in approved_co_cents.
+
+3.8 Portal share codes. Submit 50 wrong codes and confirm rate limiting engages; record the threshold. Use a revoked/expired code. Use a valid Alpha code while holding a Bravo session and confirm no cross-contamination. Confirm the portal exposes only that one homeowner's record.
+
+3.9 IDOR by ID substitution. In every nested route, swap the child ID for one belonging to a different parent and a different tenant — e.g. /pins/{alpha_pin}/change-orders/{bravo_change_order_id}.
+
+3.10 Unauthenticated sweep. Replay every route from the Phase 0 inventory with no token, then with a tampered token, then with an expired token. Every route not on the public allowlist must return 401.
+
+3.11 The two manual pins.contract_amount write paths. pins.ts PATCH /pins/:pinId/profile and the inspections pin-proxy PATCH both write that column. Determine empirically: can A-CANV-1 (field_rep) reach either one? If yes, write a contract amount through it and show the resulting pin_profitability row moving. Record whether any audit trail captures the change. Report only — do not change these endpoints. The severity is that 027_profitability_view_margins.sql:69,72 and 029_profitability_view_step5.sql:91 parse this column into base_contract_cents, so reported contract value and project margin can move with no contract, no signature, and no audit record.
+
+3.12 Input validation. Negative and zero money amounts, floats where cents are expected, money as string, amounts exceeding contract total, absurd magnitudes, oversized text fields, malformed dates, null where required.
+
+▶ CHECKPOINT 3 — Paste a results table: test id / actor / target / expected / actual status / side-effect verified (yes-no) / verdict. Group by severity. Stop.
+
+PHASE 4 — UI-Layer Tests (artifacts/rooftrax-web)
+Log into the CRM as each of the 10 users. For each:
+
+Screenshot the dashboard; assert the rendered widget set matches the Phase 3.6 manifest.
+Record which nav items and action buttons are visible.
+For every forbidden action that still has a visible control, click it and record what happens.
+For every forbidden action where the control is correctly hidden, re-issue that same request directly against the API as that user. Hidden ≠ denied. A hidden control with an open endpoint is a finding, not a pass.
+Report every mismatch between what the UI shows and what the API enforces, in both directions.
+
+Do not run or modify the mobile app. Exercise the API endpoints the mobile app consumes instead, and say which ones you covered.
+
+▶ CHECKPOINT 4 — Paste the 10 dashboard screenshots and the UI-vs-API mismatch table. Stop.
+
+PHASE 5 — Integration Regression Against Prior Workflows
+These are named, previously-built workflows. Confirm none of the above broke them, and that each still behaves as built.
+
+artifacts/api-server/src/scripts/seed-acceptance-claim.ts — full run. Report the pass count as N/M (this number has been requested twice and not yet delivered).
+artifacts/api-server/src/routes/__tests__/contract-value.test.ts — all four write paths.
+Pipeline auto-advance (pipelineEvents.ts): re-confirm sub-tests 3a (idempotency), 3b (failure isolation via the stage_transitions table rename), 3c (cross-pipeline isolation).
+Dashboard manifest resolution (lib/authz/src/dashboard.ts → routes/dashboard.ts).
+Change-order approval → profitability recomputation.
+Selections Library → Contract Builder → Signing Portal chain.
+Notification dispatch: report which of the 16 catalog types actually fired during Phases 2–4 and which remain unwired.
+▶ CHECKPOINT 5 — Paste raw suite output for each, with pass/fail counts. Stop.
+
+PHASE 6 — Report
+TESTREPORT.md, structured as:
+
+Summary table: counts by severity (P0 / P1 / P2 / data-gap / informational).
+Config gaps (Phase 0) — separated into missing, misconfigured, and unverifiable.
+Permission findings — one entry each: id, actor, action attempted, expected, actual, side-effect on the DB, file and line where the gate should live, severity, and how it was reproduced.
+Business-rule findings.
+UI-vs-API divergences.
+Regression results (Phase 5).
+Explicitly not tested — anything you skipped and why. Do not silently omit.
+Fixes applied: must read "none" for application code. If you touched anything outside test files and the report, list it with a diff.
+Close with git status --porcelain artifacts/mobile/ (must be empty) and git diff --stat for the whole run.
+
+Also answer, as a written recommendation with no code written: the three derived notification conditions — item_overdue, claim_blocked, lead_needs_stage_review — scheduled sweep or evaluation at natural checkpoints? Recommend one, with the reasoning.
