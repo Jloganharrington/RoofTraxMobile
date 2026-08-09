@@ -538,7 +538,17 @@ router.post(
     const items = await fetchLineItems(co.id);
     res.json({ changeOrder: changeOrderShape(updated!, items) });
 
-    // Fire-and-forget — managers alerted that a CO needs approval.
+    // Fire-and-forget — rep + owner learn the CO was signed; managers alerted that it needs approval.
+    void notify({
+      type:        'change_order_signed',
+      companyId:   req.user.companyId,
+      pinId:       co.pinId,
+      actorUserId: req.user.id,
+      payload:     {
+        description: co.description ?? undefined,
+        amountCents: co.amountCents,
+      },
+    });
     void notify({
       type:        'change_order_pending_approval',
       companyId:   req.user.companyId,
@@ -681,6 +691,17 @@ router.post(
         { ...approved!, emailedAt: finalEmailedAt ?? approved!.emailedAt ?? null },
         items,
       ),
+    });
+
+    void notify({
+      type:        'change_order_approved',
+      companyId:   req.user.companyId,
+      pinId:       co.pinId,
+      actorUserId: req.user.id,
+      payload:     {
+        description: co.description ?? undefined,
+        amountCents: co.amountCents,
+      },
     });
   },
 );

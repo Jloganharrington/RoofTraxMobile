@@ -15,6 +15,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
 import { canDeletePin, canEditPin, isManagerOrAdmin } from '@workspace/authz';
+import { notify } from '../lib/notify';
 
 const router: IRouter = Router();
 
@@ -482,6 +483,21 @@ router.patch('/pins/:pinId/appointment', async (req: Request, res: Response) => 
     appointmentAssignedTo:  updated.appointmentAssignedTo ?? null,
     appointmentStatus:      updated.appointmentStatus ?? null,
   });
+
+  // Notify the assignee when a retail appointment is assigned (or reassigned)
+  // to them. Only fires when appointmentAssignedTo is being set (non-null) and
+  // it is actually changing — prevents self-notification noise on other field updates.
+  if (
+    d.appointmentAssignedTo &&
+    d.appointmentAssignedTo !== pin.appointmentAssignedTo
+  ) {
+    void notify({
+      type:        'appointment_assigned',
+      companyId:   req.user.companyId,
+      pinId:       pinId,
+      actorUserId: req.user.id,
+    });
+  }
 });
 
 router.delete('/pins/:pinId', async (req: Request, res: Response) => {

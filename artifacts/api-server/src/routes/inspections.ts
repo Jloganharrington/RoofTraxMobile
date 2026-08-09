@@ -120,6 +120,7 @@ import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEdi
 import { runAhjCheck } from '../lib/ahjLookup';
 import { getRole, LeadProfileBody, toDateOrNull } from './pins';
 import { advancePinStage, emitPipelineEvent } from './pipelineEvents';
+import { notify } from '../lib/notify';
 import { ALL_STAGE_KEYS, findServerStageByKey } from '../lib/pipelineStages';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { buildProofPackageHtml, type ProofPackageData } from '../lib/proofPackageTemplate';
@@ -753,6 +754,15 @@ router.post('/inspections', async (req: Request, res: Response) => {
     if (inserted) {
       const finished = await attachAutoPin(inserted);
       res.status(201).json(CreateInspectionResponse.parse({ inspection: finished }));
+      // Notify the assignee only when a manager assigns to a different rep.
+      if (requestedOwnerId !== actor.userId) {
+        void notify({
+          type:         'inspection_assigned',
+          companyId:    actor.companyId,
+          inspectionId: inserted.id,
+          actorUserId:  actor.userId,
+        });
+      }
       return;
     }
 
@@ -770,6 +780,15 @@ router.post('/inspections', async (req: Request, res: Response) => {
 
   const finished = await attachAutoPin(inspection);
   res.status(201).json(CreateInspectionResponse.parse({ inspection: finished }));
+  // Notify the assignee only when a manager assigns to a different rep.
+  if (requestedOwnerId !== actor.userId) {
+    void notify({
+      type:         'inspection_assigned',
+      companyId:    actor.companyId,
+      inspectionId: inspection.id,
+      actorUserId:  actor.userId,
+    });
+  }
 });
 
 // Scheduled inspections feed (B3 / M-F F4). Returns inspections the rep has
@@ -2766,6 +2785,15 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
   }
 
   res.json(SubmitInspectionResponse.parse({ inspection: updated }));
+
+  // Notify rep + managers that the proof package was delivered to the insurer.
+  void notify({
+    type:         'proof_package_delivered',
+    companyId:    actor.companyId,
+    inspectionId: inspectionId,
+    pinId:        updated?.pinId ?? undefined,
+    actorUserId:  actor.userId,
+  });
 });
 
 // POST /inspections/:inspectionId/unlock — { reason }
@@ -3554,6 +3582,17 @@ router.patch('/inspections/:inspectionId/schedule', async (req: Request, res: Re
         eq(inspectionsTable.companyId, actor.companyId),
       ),
     );
+
+  // Notify the assigned inspector that their appointment has been (re)scheduled.
+  // Fire-and-forget immediately after the DB commit; independent of whether the
+  // homeowner email succeeds below.
+  void notify({
+    type:         'inspection_scheduled',
+    companyId:    actor.companyId,
+    inspectionId: inspection.id,
+    actorUserId:  actor.userId,
+    payload:      { scheduledFor: scheduledFor.toISOString(), phase: inspection.phase },
+  });
 
   // If there's no stored ownerEmail we can still return success — the date is saved.
   if (!ownerEmail) {

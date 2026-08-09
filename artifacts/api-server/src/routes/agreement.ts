@@ -38,6 +38,7 @@ import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 import { runAhjCheck } from '../lib/ahjLookup';
 import { emitPipelineEvent } from './pipelineEvents';
+import { notify } from '../lib/notify';
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -233,6 +234,15 @@ router.post(
         eventType: 'fipsa_signed',
       });
     }
+
+    // Internal team notification — rep + managers learn that the FIPSA was signed.
+    void notify({
+      type:         'fipsa_signed',
+      companyId:    actor.companyId,
+      pinId:        inspection.pinId ?? undefined,
+      inspectionId: inspectionId,
+      actorUserId:  actor.userId,
+    });
 
     // ── Best-effort auto-email to rep + homeowner on sign ─────────────────────
     // Sends are non-blocking to the 201 response: failures are logged but do

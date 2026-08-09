@@ -42,6 +42,7 @@ import {
   inspectionsTable,
 } from '@workspace/db';
 import { isManagerOrAdmin, type Role } from '@workspace/authz';
+import { notify } from '../lib/notify';
 
 const objectStorage = new ObjectStorageService();
 const router = Router();
@@ -652,6 +653,14 @@ router.post('/contracts/:contractId/void', async (req: Request, res: Response) =
     fetchSelections(contract.id),
   ]);
   res.json({ contract: contractShape(updated!, packages, sels) });
+
+  void notify({
+    type:        'contract_voided',
+    companyId:   req.user!.companyId,
+    pinId:       contract.pinId,
+    actorUserId: req.user!.id,
+    payload:     { voidReason: parsed.data.voidReason },
+  });
 });
 
 export default router;
