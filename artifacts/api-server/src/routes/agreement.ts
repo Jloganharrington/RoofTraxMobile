@@ -515,6 +515,16 @@ router.delete(
       agreementId: activeAgreement.id,
       voidedAt: voidedAt.toISOString(),
     });
+
+    // Notify managers that the FIPSA was voided by a super_admin.
+    // recipientRule is 'managers' so only companyId + actorUserId are needed.
+    void notify({
+      type:         'fipsa_voided',
+      companyId:    req.user!.companyId,
+      inspectionId: inspectionId,
+      actorUserId:  req.user!.id,
+      payload:      { voidReason },
+    });
   },
 );
 
