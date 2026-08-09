@@ -1902,7 +1902,7 @@ export const reportAttestationsTable = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   // Uniqueness on (inspection_id, blob_version_index) is deliberately NOT
-  // declared here. 018_claim_supplements.sql replaces it with two partial
+  // declared here. 018b_claim_supplements.sql replaces it with two partial
   // unique indexes — primary-package (supplement_id IS NULL) and per-supplement
   // — which Drizzle cannot express, since uniqueIndex takes no WHERE clause.
   // Declaring it here makes `drizzle-kit push` (run by scripts/post-merge.sh on

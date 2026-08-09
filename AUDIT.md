@@ -265,12 +265,13 @@ Server-side: corresponding routes use `isManagerOrAdmin` from `@workspace/authz`
 
 **4. Migration numbering collisions — CONFIRMED**
 ```
-017_comparison_set_captions.sql
-017_standards_entries_title_column.sql    ← DUPLICATE prefix 017
-018_backfill_comparison_set_captions.sql
-018_claim_supplements.sql                  ← DUPLICATE prefix 018
+017a_comparison_set_captions.sql
+017b_standards_entries_title_column.sql
+018a_backfill_comparison_set_captions.sql
+018b_claim_supplements.sql
+021_remediation_plan_vocab.sql
 ```
-Additionally: `0009_remediation_plan_vocab.sql` uses a 4-digit prefix while all other files use 3-digit. In lexicographic sort (which filesystem/shell uses), `0009_` sorts BEFORE `001_`, placing it out of its intended position if the runner orders by filename. See Pass 6 for full analysis.
+**RESOLVED (Step 6):** All numbering anomalies corrected — see Pass 6 analysis and findings table.
 
 **5. Three separate HTML sanitizer allowlists — CONFIRMED**
 - `api-server/src/lib/htmlSanitize.ts:18-53` — user-supplied template HTML (most permissive: includes `a`, `img`, `section`, `article`, `header`, `footer`, `main`, `blockquote`, `pre`, `code`). Used by `templates.ts:24,234`.
@@ -331,7 +332,7 @@ No mismatches identified between schema definitions and migration DDL for tables
 
 Full sorted list of `data-migrations/`:
 ```
-0009_remediation_plan_vocab.sql            ← 4-digit prefix (anomaly)
+021_remediation_plan_vocab.sql            ← 4-digit prefix (anomaly)
 001_backfill_object_ownership.sql
 002_workflow_assignment_insurance_retail.sql
 003_seed_founder_super_admin.sql
@@ -348,10 +349,10 @@ Full sorted list of `data-migrations/`:
 014_inspections_unlock_log.sql
 015_project_pipeline_stage_key_rename.sql
 016_retail_pipeline_stage_key_rename.sql
-017_comparison_set_captions.sql            ← DUPLICATE 017
-017_standards_entries_title_column.sql     ← DUPLICATE 017
-018_backfill_comparison_set_captions.sql   ← DUPLICATE 018
-018_claim_supplements.sql                  ← DUPLICATE 018
+017a_comparison_set_captions.sql            ← DUPLICATE 017
+017b_standards_entries_title_column.sql     ← DUPLICATE 017
+018a_backfill_comparison_set_captions.sql   ← DUPLICATE 018
+018b_claim_supplements.sql                  ← DUPLICATE 018
 019_lead_source_and_pm.sql
 020_wave2b_user_profile_columns.sql
 022_company_templates.sql                  ← GAP: 021 missing
@@ -375,11 +376,11 @@ Full sorted list of `data-migrations/`:
 040_user_push_tokens.sql
 ```
 
-Issues:
-- **DUPLICATE 017**: `017_comparison_set_captions.sql` and `017_standards_entries_title_column.sql`. A runner applying migrations in lexicographic order applies both under the same logical sequence position.
-- **DUPLICATE 018**: `018_backfill_comparison_set_captions.sql` and `018_claim_supplements.sql`. Same problem.
-- **GAP 021**: `020_…` is followed immediately by `022_…`. No `021_` file exists. May be intentional (skipped or applied out-of-band) — **UNCERTAIN**.
-- **Prefix anomaly**: `0009_` sorts lexicographically before `001_` (since `'0' < '1'`). Any runner that sorts by filename puts `0009_` first, before `001_`. If that file has schema dependencies on tables created in `001_`+, it would fail on a fresh apply. **UNCERTAIN** (depends on runner ordering).
+Issues — **all resolved in Step 6**:
+- **DUPLICATE 017 → FIXED**: renamed to `017a_comparison_set_captions.sql` (creates table, anchor for 018a) and `017b_standards_entries_title_column.sql` (splits `entry_key`; must precede 021).
+- **DUPLICATE 018 → FIXED**: renamed to `018a_backfill_comparison_set_captions.sql` (depends on 017a) and `018b_claim_supplements.sql` (independent).
+- **GAP 021 → FILLED**: `021_remediation_plan_vocab.sql` (formerly `0009_remediation_plan_vocab.sql`) placed here. Dependency: must run after `017b_` (needs short-form `entry_key` values in `standards_entries`).
+- **Prefix anomaly `0009_` → FIXED**: file renamed to `021_remediation_plan_vocab.sql`; no longer sorts before `001_`.
 
 ### 6c — Migration files outside data-migrations/
 
@@ -474,7 +475,7 @@ Whitelist items #1, #3, #5: no stale docstrings, unused imports (tsc is clean wi
 
 | Severity | Area | file:line | Finding | Evidence | Suggested fix |
 |----------|------|-----------|---------|----------|---------------|
-| **CRITICAL** | Migrations | `data-migrations/017_*.sql` (×2), `018_*.sql` (×2) | Duplicate migration prefix numbers — `017` and `018` each have two files. A runner applying in lexicographic order applies two files at the same logical position; out-of-order applies on a fresh DB will fail or corrupt schema. | `ls data-migrations/ \| sort` shows four duplicate-prefixed files | Renumber the later duplicate in each pair: rename `017_standards_entries_title_column.sql` → `017b_…` or reassign a clean number after `018`. Do the same for `018_backfill_comparison_set_captions.sql`. Verify `018_claim_supplements.sql` dependencies are not on backfill data. |
+| ~~**CRITICAL**~~ **RESOLVED** | Migrations | `data-migrations/017a/b_*.sql`, `018a/b_*.sql` | ~~Duplicate migration prefix numbers~~ Fixed in Step 6: `017_` → `017a_`/`017b_`; `018_` → `018a_`/`018b_`. Dependency order: 017a → 018a (table→backfill); 017b must precede 021 (entry_key format). | `ls data-migrations/ \| sort` now shows clean sequence | Done |
 | **HIGH** | Business logic | `agreement.ts` (no pipeline call) / `pipelineEvents.ts:36-40` | **Chain H broken**: FIPSA signing never calls `advancePinStage`. After a FIPSA is signed, the pipeline stage does not automatically advance — reps must advance it manually. | `grep -n "advance\|pipeline\|stage" agreement.ts` returned 0 results for any `advancePinStage` call | Wire `await advancePinStage(…)` from the FIPSA `POST /agreements/:id/send` (or equivalent signing endpoint) after the signing transaction commits. |
 | **HIGH** | Business logic | `contractPortal.ts:354-356` / `rooftrax.ts:1009` | `contract_selections.selected_by = 'rep'` is a dead write path. The `isRepRequest` branch is never reached via any product UI surface; portal routes are accessed without a session. | `req.isAuthenticated()` returns `false` for all normal portal requests; no product UI directs an authenticated rep to trigger a selection via the portal endpoint | Either remove the `'rep'` branch and document that all portal selections are `'customer'`, or add a separate authenticated rep-selection endpoint and direct the rep-assisted flow there. (Calibration item 7 — table name in spec is `change_orders`, actual column is `contract_selections`.) |
 | **HIGH** | Data integrity | `rooftrax.ts:182-191`, `profitability_view.sql`, `contractPortal.ts:519-548`, `contracts.ts:637-642` | Two sources of truth for contract value: `pins.contract_amount` (varchar, written/cleared by contract sign/void) AND the profitability view which re-derives it. If the view SQL and the signing write-back ever diverge (e.g. the view formula changes but the varchar write-back does not), they report different values to different surfaces. | Calibration item 2 — legacy varchar still written on sign, view also computes contract value | Long-term: remove the signing write-back to `pins.contract_amount` and have all callers use the profitability view. Short-term: add a test asserting both values agree after sign and void. |
@@ -483,8 +484,8 @@ Whitelist items #1, #3, #5: no stale docstrings, unused imports (tsc is clean wi
 | **MEDIUM** | Schema | `rooftrax.ts:962`, `contracts.ts:103-144` | `contracts.templateId` is an orphaned column. Nothing reads it, `TEMPLATE_USE_CASES` has no `'contract'` value, the PDF is hardcoded. | Calibration item 6 — searched all of `api-server/src` and `rooftrax-web/src` | Either populate and use it (add `'contract'` to `TEMPLATE_USE_CASES`, wire the resolution in `contracts.ts`) or drop the column in a new migration. |
 | **MEDIUM** | Data integrity | `rooftrax.ts:776-778`, `changeOrders.ts` | `change_orders.amount_cents` is labeled "DERIVED — always the sum of line items; recomputed on every line-item write." If a line-item write fails after insert but before recompute, the stored total is stale. | Schema comment at `rooftrax.ts:776-778`; no idempotent recompute guard found in test suite | Add a test that verifies `amount_cents` stays correct if a recompute throws mid-write. Consider a DB trigger as a fallback. |
 | **MEDIUM** | Auth/roles | `inspections.ts:787`, `selections.ts:20,30`, `bugReports.ts:35-36`, `companies.ts:69` etc. | Inline role comparisons use raw string arrays/literals instead of `roleRank` from `@workspace/authz`. A new role inserted into the hierarchy would not automatically be included. | Pass 3b — searched all route files | Replace inline arrays/comparisons with `isManagerOrAdmin`, `roleRank`, or the existing authz helpers. |
-| **MEDIUM** | Migration integrity | `data-migrations/` | GAP: `021_` is missing between `020_` and `022_`. Ambiguous whether skipped intentionally or lost. | `ls data-migrations/ \| sort` | Confirm in version history whether `021_` was intentionally skipped or was lost. Add a README note. |
-| **MEDIUM** | Migration integrity | `0009_remediation_plan_vocab.sql` | 4-digit prefix sorts **before** `001_` in lexicographic order. On a fresh apply, this runs first — before tables it may depend on are created. | `ls \| sort` output — `0009_` appears first | Rename to `009b_remediation_plan_vocab.sql` or otherwise resolve the prefix anomaly. Verify there are no forward dependencies. |
+| ~~**MEDIUM**~~ **RESOLVED** | Migration integrity | `data-migrations/` | ~~GAP: `021_` missing~~ Fixed in Step 6: gap filled by `021_remediation_plan_vocab.sql` (formerly `0009_remediation_plan_vocab.sql`). | `ls data-migrations/ \| sort` | Done |
+| ~~**MEDIUM**~~ **RESOLVED** | Migration integrity | `021_remediation_plan_vocab.sql` | ~~4-digit prefix `0009_` sorted before `001_`~~ Fixed in Step 6: renamed to `021_remediation_plan_vocab.sql`. | `ls \| sort` | Done |
 | **MEDIUM** | Missing feature | `rooftrax-web/src/` | Deductible panel was specified but never built. Deductible is only handled inline in `LeadProfile.tsx` and via the payment ledger type `'deductible'`. No `DeductiblePanel` component exists. | Calibration item 8 — grep found zero results for any deductible panel/component | Build the panel or formally descope and remove the spec item. |
 | **MEDIUM** | Test coverage | Pass 4 chains | Chain D (PDF selections schedule), Chain H (FIPSA→pipeline, chain is broken), Chain K (mobile live activity) have no automated test coverage. | Pass 7d analysis | Add integration tests for Chain D PDF output; Chain H is moot until wired. |
 | **LOW** | Legacy | `rooftrax.ts:182-191` | Seven varchar money columns on `pins` are still written/read despite the payments ledger superseding them. `LeadProfile.tsx:748-803` and `claimHubApi.ts:518-527` are live readers. | Calibration items 2 and 3 | After all display surfaces are migrated to the ledger, add a migration to drop the varchar columns. `legacy_money_read.test.ts` can then be retired. |
