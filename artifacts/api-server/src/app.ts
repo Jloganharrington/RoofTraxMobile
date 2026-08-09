@@ -8,6 +8,12 @@ import { authMiddleware } from "./middlewares/authMiddleware";
 
 const app: Express = express();
 
+// Trust one reverse-proxy hop so req.ip is the client address (from
+// X-Forwarded-For), not the proxy's address. Replit's infrastructure
+// adds exactly one hop; trusting more would allow IP spoofing via
+// arbitrary X-Forwarded-For headers from untrusted sources.
+app.set('trust proxy', 1);
+
 app.use(
   pinoHttp({
     logger,

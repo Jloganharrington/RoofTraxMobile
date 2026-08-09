@@ -11,6 +11,7 @@ import {
 import { normalizePortalAccessCode } from '../lib/portalAccess';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { isVapArchiveOnlyPhoto } from '../lib/vapScorecard';
+import { RateLimiter } from '../lib/rateLimit';
 import { renderCompiledReportHtml } from './inspections';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -25,28 +26,9 @@ import { renderCompiledReportHtml } from './inspections';
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-// Simple fixed-window per-IP rate limit: unauthenticated code lookups are a
-// brute-force surface (even with 59-bit codes, throttling is cheap defense).
-const WINDOW_MS = 60_000;
-const MAX_ATTEMPTS_PER_WINDOW = 30;
-const attempts = new Map<string, { windowStart: number; count: number }>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = attempts.get(ip);
-  if (!entry || now - entry.windowStart > WINDOW_MS) {
-    // Bound the map: sweep expired windows before inserting.
-    if (attempts.size >= 10_000) {
-      for (const [key, val] of attempts) {
-        if (now - val.windowStart > WINDOW_MS) attempts.delete(key);
-      }
-    }
-    attempts.set(ip, { windowStart: now, count: 1 });
-    return false;
-  }
-  entry.count++;
-  return entry.count > MAX_ATTEMPTS_PER_WINDOW;
-}
+// Unauthenticated code lookups are a brute-force surface even with 59-bit
+// codes — throttling is cheap defense.
+const portalLimiter = new RateLimiter({ maxRequests: 30 });
 
 /** Resolve an access code to a live (non-revoked) inspection row, or null. */
 async function loadInspectionByCode(rawCode: string) {
@@ -64,18 +46,9 @@ async function loadInspectionByCode(rawCode: string) {
   return inspection ?? null;
 }
 
-function guardRateLimit(req: Request, res: Response): boolean {
-  const ip = req.ip ?? 'unknown';
-  if (isRateLimited(ip)) {
-    res.status(429).json({ error: 'Too many attempts. Please wait a minute and try again.' });
-    return false;
-  }
-  return true;
-}
-
 // GET /portal/:accessCode — inspection summary + photos + report versions.
 router.get('/portal/:accessCode', async (req: Request, res: Response) => {
-  if (!guardRateLimit(req, res)) return;
+  if (!portalLimiter.guard(req, res)) return;
 
   const inspection = await loadInspectionByCode(req.params.accessCode as string);
   if (!inspection) {
@@ -163,7 +136,7 @@ router.get('/portal/:accessCode', async (req: Request, res: Response) => {
 
 // GET /portal/:accessCode/reports/:versionIndex — rendered Proof Package HTML.
 router.get('/portal/:accessCode/reports/:versionIndex', async (req: Request, res: Response) => {
-  if (!guardRateLimit(req, res)) return;
+  if (!portalLimiter.guard(req, res)) return;
 
   const inspection = await loadInspectionByCode(req.params.accessCode as string);
   if (!inspection) {

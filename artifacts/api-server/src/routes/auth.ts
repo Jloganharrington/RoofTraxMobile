@@ -24,8 +24,12 @@ import {
   upsertUserOnLogin,
   type Claims,
 } from '../lib/onboarding';
+import { RateLimiter } from '../lib/rateLimit';
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
+
+// Rate-limit auth endpoints to slow brute-force session/code guessing.
+const authLimiter = new RateLimiter({ maxRequests: 20 });
 
 const router: IRouter = Router();
 
@@ -121,7 +125,7 @@ router.get('/auth/user', (req: Request, res: Response) => {
   );
 });
 
-router.get('/login', async (req: Request, res: Response) => {
+router.get('/login', authLimiter.middleware(), async (req: Request, res: Response) => {
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
 
@@ -154,7 +158,7 @@ router.get('/login', async (req: Request, res: Response) => {
 
 // Query params are not validated because the OIDC provider may include
 // parameters not expressed in the schema.
-router.get('/callback', async (req: Request, res: Response) => {
+router.get('/callback', authLimiter.middleware(), async (req: Request, res: Response) => {
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
 
@@ -427,6 +431,7 @@ router.get(
 
 router.post(
   '/mobile-auth/token-exchange',
+  authLimiter.middleware(),
   async (req: Request, res: Response) => {
     const parsed = ExchangeMobileAuthorizationCodeBody.safeParse(req.body);
     if (!parsed.success) {
