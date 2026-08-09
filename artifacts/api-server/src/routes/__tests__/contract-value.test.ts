@@ -14,7 +14,14 @@
  *   T3. Voiding a signed contract clears pins.contract_amount to '' and
  *       resets betterments_amount_cents to 0.
  *
- * ── Reader inventory (documented here; not tested here) ──────────────────────
+ * ── Reader inventory ─────────────────────────────────────────────────────────
+ *   The profitability view is the source most likely to diverge from the varchar.
+ *   T1/T2/T3 all query GET /pins/:pinId/profitability and compare:
+ *     • profitability.expectedTotalCents  ← _parse_legacy_money_cents(pins.contract_amount)
+ *     • profitability.revisedContractCents = expectedTotalCents + approvedCoCents
+ *   against pins.contractAmount parsed to cents, catching formula drift early.
+ *
+ *   Other readers (display/export only — not cross-checked here):
  *   • artifacts/api-server/src/routes/financialsExport.ts:92
  *       DB direct — display only ($-prefix); no arithmetic.
  *   • data-migrations/027_profitability_view_margins.sql:69,72
@@ -61,6 +68,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import app from '../../app';
 import { createSession } from '../../lib/auth';
 import { generatePortalAccessCode } from '../../lib/portalAccess';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Parse a legacy money varchar ('$10,500.00' or '' or null) to integer cents. */
+function parseToCents(s: string | null | undefined): number {
+  if (!s || !s.trim()) return 0;
+  const n = parseFloat(s.replace(/[$,\s]/g, ''));
+  return isNaN(n) ? 0 : Math.round(n * 100);
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -226,7 +244,7 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 
 describe('pins.contract_amount write-back accuracy', () => {
-  it('T1 — signing a contract writes the formatted amount to pins.contract_amount', async () => {
+  it('T1 — signing a contract writes the formatted amount to pins.contract_amount; view agrees', async () => {
     const res = await request(app)
       .post(`/api/portal/contract/${accessCode}/sign`)
       .send({
@@ -244,11 +262,28 @@ describe('pins.contract_amount write-back accuracy', () => {
       .from(pinsTable)
       .where(eq(pinsTable.id, pinId));
 
-    // $10,500.00 — confirm the formatted write-back is exact.
+    // Varchar write-back must be the formatted string.
     expect(pin!.contractAmount).toBe('$10,500.00');
+
+    // Profitability view must parse the varchar to the same cents value.
+    // Divergence here means the view formula drifted from the write-back format.
+    //
+    // The view does NOT expose base_contract_cents directly; derive it as:
+    //   base = revisedContractCents - approvedCoCents
+    // This is the invariant the view encodes:
+    //   revised = _parse_legacy_money_cents(contract_amount) + approved_co_cents
+    const prof = await request(app)
+      .get(`/api/pins/${pinId}/profitability`)
+      .set(mgr());
+    expect(prof.status).toBe(200);
+    const p = prof.body.profitability;
+    const varcharCents  = parseToCents(pin!.contractAmount);
+    const viewBaseCents = p.revisedContractCents - p.approvedCoCents;
+    expect(varcharCents).toBe(CONTRACT_CENTS);    // sanity: parser works
+    expect(viewBaseCents).toBe(varcharCents);     // view base_contract_cents agrees with varchar
   });
 
-  it('T2 — approving a CO does not alter pins.contract_amount (COs track separately)', async () => {
+  it('T2 — CO approval leaves pins.contract_amount alone; view separates base from CO delta', async () => {
     // Approve the change order.
     const res = await request(app)
       .post(`/api/change-orders/${coId}/approve`)
@@ -262,7 +297,6 @@ describe('pins.contract_amount write-back accuracy', () => {
       .select({ amountCents: changeOrdersTable.amountCents })
       .from(changeOrdersTable)
       .where(eq(changeOrdersTable.id, coId));
-
     expect(co!.amountCents).toBe(CO_CENTS);
 
     // pins.contract_amount must be unaffected — CO approval only writes
@@ -271,11 +305,28 @@ describe('pins.contract_amount write-back accuracy', () => {
       .select({ contractAmount: pinsTable.contractAmount })
       .from(pinsTable)
       .where(eq(pinsTable.id, pinId));
-
     expect(pin!.contractAmount).toBe('$10,500.00');
+
+    // Profitability view: derived base_contract_cents = revisedContractCents - approvedCoCents.
+    // After CO approval:
+    //   • base unchanged  (contract_amount varchar unmodified)
+    //   • revised = base + CO (CO delta added by the view)
+    // This is the critical invariant: CO approval must only move approvedCoCents,
+    // never touch the base derived from pins.contract_amount.
+    const prof = await request(app)
+      .get(`/api/pins/${pinId}/profitability`)
+      .set(mgr());
+    expect(prof.status).toBe(200);
+    const p = prof.body.profitability;
+    const viewBaseCents = p.revisedContractCents - p.approvedCoCents;
+    expect(viewBaseCents).toBe(CONTRACT_CENTS);                     // base unchanged
+    expect(p.approvedCoCents).toBe(CO_CENTS);                       // CO counted separately
+    expect(p.revisedContractCents).toBe(CONTRACT_CENTS + CO_CENTS); // 1_100_000
+    // Divergence sentinel: view base must agree with varchar parsed to cents.
+    expect(viewBaseCents).toBe(parseToCents(pin!.contractAmount));
   });
 
-  it('T3 — voiding a signed contract clears pins.contract_amount to empty string', async () => {
+  it('T3 — voiding a signed contract clears pins.contract_amount; view base drops to zero together', async () => {
     const res = await request(app)
       .post(`/api/contracts/${contractId}/void`)
       .set(mgr())
@@ -291,7 +342,24 @@ describe('pins.contract_amount write-back accuracy', () => {
       .from(pinsTable)
       .where(eq(pinsTable.id, pinId));
 
+    // Varchar cleared.
     expect(pin!.contractAmount).toBe('');
     expect(pin!.bettermentsAmountCents).toBe(0);
+
+    // Profitability view base must also read as zero — the two sources agree
+    // that the contract amount is gone. This is the divergence sentinel: if the
+    // view formula stopped parsing '' as 0, viewBaseCents would be non-zero
+    // while parseToCents(varchar) is 0, and they would disagree here.
+    const prof = await request(app)
+      .get(`/api/pins/${pinId}/profitability`)
+      .set(mgr());
+    expect(prof.status).toBe(200);
+    const p = prof.body.profitability;
+    const viewBaseCents = p.revisedContractCents - p.approvedCoCents;
+    expect(parseToCents(pin!.contractAmount)).toBe(0);  // varchar parses to 0
+    expect(viewBaseCents).toBe(0);                      // view base_contract_cents also 0
+    // approvedCoCents remains CO_CENTS — the CO was not voided; that is intentional
+    // and expected (CO and contract lifecycles are independent).
+    expect(p.approvedCoCents).toBe(CO_CENTS);
   });
 });
