@@ -31,7 +31,7 @@ import {
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import app from '../app';
 import { createSession } from '../lib/auth';
@@ -148,6 +148,83 @@ async function stageTransitionCount(pinId: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Contract-sign helper — reused by D2c, D3c, and 3b
+// Builds a draft contract on pinId, pushes it to 'sent' via DB, reads the
+// access code, and calls the portal sign route.  Uses customerSignaturePath
+// to avoid triggering the object-storage upload path in test runs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a contract on `pinId`, push it to 'sent' via DB, read the access
+ * code, and call the portal sign route.  Uses `customerSignaturePath` (not
+ * `customerSignatureBase64`) to avoid triggering the object-storage upload
+ * path in test runs.  `app` and `auth` are module-scope so are not repeated
+ * in the opts.
+ */
+async function buildAndSignContract(opts: {
+  sid: string;
+  pinId: string;
+  shaTag: string;
+  catId: string;
+  productId: string;
+  companyId: string;
+  /** Expected HTTP status of the portal sign call; default 200 */
+  expectSignStatus?: number;
+}): Promise<{ signStatus: number }> {
+  const { sid, pinId, shaTag, catId, productId, companyId, expectSignStatus = 200 } = opts;
+
+  // Create contract (draft)
+  const cRes = await request(app)
+    .post(`/api/pins/${pinId}/contracts`)
+    .set(auth(sid))
+    .send({ coveredScopeCents: 1500000 });
+  assert(cRes.status === 201, `Contract create failed (${cRes.status}): ${JSON.stringify(cRes.body).slice(0, 200)}`);
+  const contractId = cRes.body.contract.id as string;
+
+  // Add scope package
+  const pkgRes = await request(app)
+    .post(`/api/contracts/${contractId}/scope-packages`)
+    .set(auth(sid))
+    .send({ categoryId: catId, quantity: 20, unit: 'SQ', coveredAmountCents: 1500000, sortOrder: 1 });
+  assert(pkgRes.status === 201, `Scope package failed (${pkgRes.status}): ${JSON.stringify(pkgRes.body).slice(0, 200)}`);
+  const pkgId = pkgRes.body.scopePackage.id as string;
+
+  // Insert selection directly (avoids full picker API)
+  await db.insert(contractSelectionsTable).values({
+    companyId, contractId, scopePackageId: pkgId, productId,
+    productName: 'Test Shingle', brandName: 'TestBrand',
+    unitDeltaCents: 0, quantity: '20', extendedDeltaCents: 0, selectedBy: 'customer',
+  });
+
+  // Push to 'sent' + set SHA256 via DB (bypasses PDF generation)
+  const sha256 = shaTag.padEnd(64, '0').slice(0, 64);
+  await db.update(contractsTable)
+    .set({ status: 'sent', documentSha256: sha256, updatedAt: new Date() })
+    .where(eq(contractsTable.id, contractId));
+
+  // Read accessCode (only exposed when status = 'sent')
+  const [contractRow] = await db
+    .select({ accessCode: contractsTable.accessCode })
+    .from(contractsTable)
+    .where(eq(contractsTable.id, contractId));
+  const accessCode = contractRow!.accessCode!;
+
+  // Portal sign
+  const signRes = await request(app)
+    .post(`/api/portal/contract/${accessCode}/sign`)
+    .send({
+      customerPrintName: 'Robert A. Fixture',
+      customerSignaturePath: 'acceptance-test-sig-proof',
+      documentSha256: sha256,
+    });
+  assert(
+    signRes.status === expectSignStatus,
+    `Portal sign: expected ${expectSignStatus}, got ${signRes.status}: ${JSON.stringify(signRes.body).slice(0, 300)}`,
+  );
+  return { signStatus: signRes.status };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -178,6 +255,11 @@ async function main(): Promise<void> {
   let pipelinePinCompile  = '';  // proof_package     → contract_generated (proof_package_compiled)
   let pipelinePinAttest   = '';  // phase2_complete   → package_ready      (report_attested)
   const allPipelinePinIds: string[] = [];
+
+  // Selection hierarchy — created once before D2c; reused in D2c (retail +
+  // insurance contracts) and 3b (contract sign under broken pipeline).
+  let selCatId     = '';
+  let selProductId = '';
 
   // ── 1. Company + manager user + session ────────────────────────────────────
   await step('Create test company (with licenses + qualifications)', async () => {
@@ -680,6 +762,12 @@ async function main(): Promise<void> {
       .set(auth(sid))
       .send({ stage: 'declaration', attestationType: 'stage_signoff', signatureData: 'Robert A. Fixture' });
     assert(decl.status === 201, `Declaration attestation failed (${decl.status}): ${JSON.stringify(decl.body)}`);
+
+    // Fence: wait for the first void emitForensicRecordAttested to complete and
+    // advance pipelinePinForensic before the submit POST fires a second emitter.
+    // Without this, both fire-and-forget calls race: both find the pin at
+    // phase2_scheduled → advancePinStage runs twice → 2 transition rows.
+    await pollPinStage(pipelinePinForensic, 'phase2_complete', 2000);
 
     const submit = await request(app)
       .post(`/api/inspections/${inspectionId}/attestations`)
@@ -1310,6 +1398,23 @@ async function main(): Promise<void> {
     process.stdout.write(`    Pin ${pin.slice(-8)}: phase1_complete → ${after} (${txCount} row) ✓\n`);
   });
 
+  // D2c setup: seed the selection hierarchy once — reused by D2c (retail +
+  // insurance sign) and 3b (contract sign under broken pipeline).
+  await step('D2c setup: seed selection hierarchy (catId + productId for contract tests)', async () => {
+    const [cat] = await db.insert(selectionCategoriesTable)
+      .values({ companyId: COMPANY_ID, name: 'Roofing', slug: `roofing-${RUN_ID}` })
+      .returning();
+    const [brand] = await db.insert(selectionBrandsTable)
+      .values({ companyId: COMPANY_ID, categoryId: cat!.id, name: 'TestBrand' })
+      .returning();
+    const [product] = await db.insert(selectionProductsTable)
+      .values({ companyId: COMPANY_ID, categoryId: cat!.id, brandId: brand!.id, name: 'Test Shingle', unit: 'SQ', isBase: true })
+      .returning();
+    selCatId     = cat!.id;
+    selProductId = product!.id;
+    process.stdout.write(`    catId=${selCatId.slice(-8)} productId=${selProductId.slice(-8)}\n`);
+  });
+
   // D2c + 3c: contract_signed via portal + cross-pipeline guard
   // Emitter: POST /api/portal/contract/:code/sign at contractPortal.ts:560
   // Guard  : outcomeRules { pipeline } must match pin.workflow
@@ -1322,70 +1427,11 @@ async function main(): Promise<void> {
     assert((await pinStageNow(pinRetail))    === 'contract_pending', 'Retail pin not at contract_pending');
     assert((await pinStageNow(pinInsurance)) === 'contract_pending', 'Insurance pin not at contract_pending');
 
-    // Build minimal selection hierarchy once; both contracts share it
-    const [cat] = await db.insert(selectionCategoriesTable)
-      .values({ companyId: COMPANY_ID, name: 'Roofing', slug: `roofing-${RUN_ID}` })
-      .returning();
-    const [brand] = await db.insert(selectionBrandsTable)
-      .values({ companyId: COMPANY_ID, categoryId: cat!.id, name: 'TestBrand' })
-      .returning();
-    const [product] = await db.insert(selectionProductsTable)
-      .values({ companyId: COMPANY_ID, categoryId: cat!.id, brandId: brand!.id, name: 'Test Shingle', unit: 'SQ', isBase: true })
-      .returning();
-
-    // Helper: create contract → set sent + SHA256 via DB → sign via portal → return accessCode
-    const buildAndSignContract = async (pinId: string, shaTag: string): Promise<void> => {
-      // Create contract (draft)
-      const cRes = await request(app)
-        .post(`/api/pins/${pinId}/contracts`)
-        .set(auth(sid))
-        .send({ coveredScopeCents: 1500000 });
-      assert(cRes.status === 201, `Contract create failed (${cRes.status}): ${JSON.stringify(cRes.body).slice(0, 200)}`);
-      const contractId = cRes.body.contract.id as string;
-
-      // Add scope package (API route validates categoryId belongs to company)
-      const pkgRes = await request(app)
-        .post(`/api/contracts/${contractId}/scope-packages`)
-        .set(auth(sid))
-        .send({ categoryId: cat!.id, quantity: 20, unit: 'SQ', coveredAmountCents: 1500000, sortOrder: 1 });
-      assert(pkgRes.status === 201, `Scope package failed (${pkgRes.status}): ${JSON.stringify(pkgRes.body).slice(0, 200)}`);
-      const pkgId = pkgRes.body.scopePackage.id as string;
-
-      // Insert a selection directly (avoids full picker API; contractSelections only need FK-valid rows)
-      await db.insert(contractSelectionsTable).values({
-        companyId: COMPANY_ID, contractId, scopePackageId: pkgId, productId: product!.id,
-        productName: 'Test Shingle', brandName: 'TestBrand',
-        unitDeltaCents: 0, quantity: '20', extendedDeltaCents: 0, selectedBy: 'customer',
-      });
-
-      // Push contract to 'sent' + set documentSha256 directly in DB (bypasses PDF gen)
-      const sha256 = shaTag.padEnd(64, '0').slice(0, 64);
-      await db.update(contractsTable)
-        .set({ status: 'sent', documentSha256: sha256, updatedAt: new Date() })
-        .where(eq(contractsTable.id, contractId));
-
-      // Read the accessCode (only exposed when status = 'sent'; we just set it)
-      const [contractRow] = await db
-        .select({ accessCode: contractsTable.accessCode })
-        .from(contractsTable)
-        .where(eq(contractsTable.id, contractId));
-      const accessCode = contractRow!.accessCode!;
-
-      // Real business action: portal sign route at contractPortal.ts:458
-      // Use customerSignaturePath (not customerSignatureBase64) to avoid triggering
-      // the object storage upload path (contractPortal.ts:510-513) in test runs.
-      const signRes = await request(app)
-        .post(`/api/portal/contract/${accessCode}/sign`)
-        .send({
-          customerPrintName: 'Robert A. Fixture',
-          customerSignaturePath: 'acceptance-test-sig-proof',
-          documentSha256: sha256,
-        });
-      assert(signRes.status === 200, `Portal sign failed (${signRes.status}): ${JSON.stringify(signRes.body).slice(0, 300)}`);
-    };
-
     // ── Sign retail contract ────────────────────────────────────────────────
-    await buildAndSignContract(pinRetail, 'retail-contract-sha256-acceptance-test-proof');
+    await buildAndSignContract({
+      sid, pinId: pinRetail, shaTag: 'retail-contract-sha256-acceptance-test-proof',
+      catId: selCatId, productId: selProductId, companyId: COMPANY_ID,
+    });
 
     const afterRetail          = await pollPinStage(pinRetail,    'contract_signed', 3000);
     const insuranceAfterRetail = await pinStageNow(pinInsurance);
@@ -1399,7 +1445,10 @@ async function main(): Promise<void> {
     process.stdout.write(`    Insurance pin (guard): still at ${insuranceAfterRetail} ✓\n`);
 
     // ── Sign insurance contract ─────────────────────────────────────────────
-    await buildAndSignContract(pinInsurance, 'insurance-contract-sha256-acceptance-test-proof');
+    await buildAndSignContract({
+      sid, pinId: pinInsurance, shaTag: 'insurance-contract-sha256-acceptance-test-proof',
+      catId: selCatId, productId: selProductId, companyId: COMPANY_ID,
+    });
 
     const afterInsurance = await pollPinStage(pinInsurance, 'contract_signed', 3000);
     assert(afterInsurance === 'contract_signed',
@@ -1469,25 +1518,134 @@ async function main(): Promise<void> {
     process.stdout.write(`    Before: 1 row → After re-deposit: ${txAfterSecond} row. Stage: ${stageAfterBoth} ✓\n`);
   });
 
-  // ── DELIVERABLE 3b: FAILURE ISOLATION ──────────────────────────────────────
-  // Use a pin in a terminal stage (archived_lost) where no autoAdvance is
-  // defined for deposit_received.  emitPipelineEvent still fires (fire-and-
-  // forget) but finds no matching stage; the advance is a no-op.  The payment
-  // must still be saved (HTTP 201) — the business action is fully decoupled.
-  await step('3b Failure isolation: payment saves even when pipeline advance is a no-op', async () => {
-    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'archived_lost', allPipelinePinIds);
+  // ── DELIVERABLE 3b: FAILURE ISOLATION — real pipeline throw ────────────────
+  //
+  // The isolation guarantee is not "a no-match event is harmless" — it is
+  // specifically that emitPipelineEvent's try/catch (pipelineEvents.ts:219-226)
+  // swallows a real DB throw so the calling business route is unaffected.
+  //
+  // Injection: ALTER TABLE … RENAME temporarily makes stage_transitions
+  // invisible.  advancePinStage's INSERT INTO stage_transitions throws a
+  // PgError "relation does not exist".  emitPipelineEvent catches it and logs.
+  // The rename is reversed in a finally block so later steps are unharmed.
+  //
+  // Three routes are exercised (each has its own void emitPipelineEvent call):
+  //   - payments.ts    → deposit_received
+  //   - agreement.ts   → fipsa_signed
+  //   - contractPortal.ts → contract_signed
+  await step('3b (revised): real pipeline throw does not eat the business action', async () => {
+    // Seed all pins and the FIPSA inspection BEFORE breaking the table
+    // (seedPipelinePin itself writes to pinsTable, not stage_transitions)
+    const pinPay   = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'ins_contract_signed', allPipelinePinIds);
+    const pinFipsa = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'phase1_complete',     allPipelinePinIds);
+    const pinCo    = await seedPipelinePin(COMPANY_ID, userId, 'retail',    'contract_pending',    allPipelinePinIds);
 
-    const r = await request(app)
-      .post(`/api/pins/${pin}/payments`)
+    // FIPSA: link a fresh inspection with phase='forensic'
+    const criRes = await request(app)
+      .post('/api/inspections')
       .set(auth(sid))
-      .send({ type: 'deposit', amountCents: 100000, paymentDate: new Date().toISOString() });
-    assert(r.status === 201, `Payment save failed (${r.status}): ${JSON.stringify(r.body).slice(0, 200)}`);
+      .send({ claimNumber: `VA-3B-FIPSA-${RUN_ID}`, damageType: 'hail_and_wind' });
+    assert(criRes.status === 201, `3b inspection create failed (${criRes.status})`);
+    const b3InspId = criRes.body.inspection.id as string;
+    await db.update(inspectionsTable)
+      .set({ pinId: pinFipsa, phase: 'forensic' })
+      .where(eq(inspectionsTable.id, b3InspId));
 
-    const stageAfter = await pinStageNow(pin);
-    const txCount    = await stageTransitionCount(pin);
-    assert(stageAfter === 'archived_lost', `Expected archived_lost (no advance), got: ${stageAfter}`);
-    assert(txCount === 0, `Expected 0 transitions (no-op advance), got: ${txCount}`);
-    process.stdout.write(`    Payment saved (201). Stage unchanged: ${stageAfter}. Transitions: ${txCount} ✓\n`);
+    // CONTRACT: build draft + scope + selection BEFORE the rename
+    // (all writes go to contracts/pins tables — stage_transitions not touched)
+    const coRes = await request(app)
+      .post(`/api/pins/${pinCo}/contracts`)
+      .set(auth(sid))
+      .send({ coveredScopeCents: 1500000 });
+    assert(coRes.status === 201, `3b contract create failed (${coRes.status})`);
+    const b3ContractId = coRes.body.contract.id as string;
+
+    const pkgRes = await request(app)
+      .post(`/api/contracts/${b3ContractId}/scope-packages`)
+      .set(auth(sid))
+      .send({ categoryId: selCatId, quantity: 20, unit: 'SQ', coveredAmountCents: 1500000, sortOrder: 1 });
+    assert(pkgRes.status === 201, `3b scope package failed (${pkgRes.status})`);
+    await db.insert(contractSelectionsTable).values({
+      companyId: COMPANY_ID, contractId: b3ContractId,
+      scopePackageId: pkgRes.body.scopePackage.id as string, productId: selProductId,
+      productName: 'Test Shingle', brandName: 'TestBrand',
+      unitDeltaCents: 0, quantity: '20', extendedDeltaCents: 0, selectedBy: 'customer',
+    });
+    const b3Sha256 = '3b-failure-isolation-sha256'.padEnd(64, '0').slice(0, 64);
+    await db.update(contractsTable)
+      .set({ status: 'sent', documentSha256: b3Sha256, updatedAt: new Date() })
+      .where(eq(contractsTable.id, b3ContractId));
+    const [b3Row] = await db
+      .select({ accessCode: contractsTable.accessCode })
+      .from(contractsTable)
+      .where(eq(contractsTable.id, b3ContractId));
+    const b3AccessCode = b3Row!.accessCode!;
+
+    // ── Inject real failure: rename stage_transitions ───────────────────────
+    await db.execute(sql`ALTER TABLE stage_transitions RENAME TO stage_transitions_broken_3b`);
+
+    try {
+      // PAYMENT — emitter fires deposit_received → advancePinStage INSERT throws
+      const rPay = await request(app)
+        .post(`/api/pins/${pinPay}/payments`)
+        .set(auth(sid))
+        .send({ type: 'deposit', amountCents: 100000, paymentDate: new Date().toISOString() });
+      assert(rPay.status === 201,
+        `Payment should save even when pipeline throws (${rPay.status}): ${JSON.stringify(rPay.body).slice(0, 200)}`);
+      process.stdout.write(`    Payment   (payments.ts → deposit_received):     201 ✓\n`);
+
+      // FIPSA SIGN — emitter fires fipsa_signed → advancePinStage INSERT throws
+      const pdfBase64 = Buffer.from('%PDF-1.4 ' + 'x'.repeat(100)).toString('base64');
+      const rFipsa = await request(app)
+        .post(`/api/inspections/${b3InspId}/agreement/sign`)
+        .set(auth(sid))
+        .send({ signerName: 'Robert A. Fixture', pdfBase64 });
+      assert(rFipsa.status === 201,
+        `FIPSA should sign even when pipeline throws (${rFipsa.status}): ${JSON.stringify(rFipsa.body).slice(0, 200)}`);
+      process.stdout.write(`    FIPSA     (agreement.ts → fipsa_signed):         201 ✓\n`);
+
+      // CONTRACT SIGN — emitter fires contract_signed → advancePinStage INSERT throws
+      const rSign = await request(app)
+        .post(`/api/portal/contract/${b3AccessCode}/sign`)
+        .send({
+          customerPrintName:     'Robert A. Fixture',
+          customerSignaturePath: 'acceptance-test-sig-proof',
+          documentSha256:        b3Sha256,
+        });
+      assert(rSign.status === 200,
+        `Contract should sign even when pipeline throws (${rSign.status}): ${JSON.stringify(rSign.body).slice(0, 200)}`);
+      process.stdout.write(`    Contract  (contractPortal.ts → contract_signed): 200 ✓\n`);
+
+      // Give all three void emitPipelineEvent calls time to try, fail, and be caught
+      await new Promise((r) => setTimeout(r, 900));
+
+      // Verify NO pin stage changed: advancePinStage runs INSERT + pin UPDATE in
+      // one transaction — if INSERT fails, pin UPDATE also rolls back.
+      const stagePayAfter   = await pinStageNow(pinPay);
+      const stageFipsaAfter = await pinStageNow(pinFipsa);
+      const stageCoAfter    = await pinStageNow(pinCo);
+      assert(stagePayAfter   === 'ins_contract_signed',
+        `Pay pin should stay at ins_contract_signed (tx rolled back), got: ${stagePayAfter}`);
+      assert(stageFipsaAfter === 'phase1_complete',
+        `FIPSA pin should stay at phase1_complete (tx rolled back), got: ${stageFipsaAfter}`);
+      assert(stageCoAfter    === 'contract_pending',
+        `Contract pin should stay at contract_pending (tx rolled back), got: ${stageCoAfter}`);
+      process.stdout.write(`    Pin stages unchanged: pay=${stagePayAfter} fipsa=${stageFipsaAfter} co=${stageCoAfter} ✓\n`);
+    } finally {
+      await db.execute(sql`ALTER TABLE stage_transitions_broken_3b RENAME TO stage_transitions`);
+      process.stdout.write(`    stage_transitions restored ✓\n`);
+    }
+
+    // After restore: zero transition rows for all three pins (DB throw rolled back the insert)
+    const txPay   = await stageTransitionCount(pinPay);
+    const txFipsa = await stageTransitionCount(pinFipsa);
+    const txCo    = await stageTransitionCount(pinCo);
+    assert(txPay   === 0, `Expected 0 transitions for payment pin, got: ${txPay}`);
+    assert(txFipsa === 0, `Expected 0 transitions for FIPSA pin, got: ${txFipsa}`);
+    assert(txCo    === 0, `Expected 0 transitions for contract pin, got: ${txCo}`);
+    process.stdout.write(`    Transition rows (all 0): pay=${txPay} fipsa=${txFipsa} co=${txCo} ✓\n`);
+    process.stdout.write(`    emitPipelineEvent try/catch (pipelineEvents.ts:224) verified: ` +
+      `real DB throw does not propagate to caller ✓\n`);
   });
 
   // ── Pass / fail table ──────────────────────────────────────────────────────
