@@ -1,0 +1,43 @@
+CHECKPOINT 1 — CORRECTIONS + PHASE 2 AUTHORIZATION
+Constraint restatement
+Report-only means no application code, schema, or config changes, including changes that fix findings you discovered. From Phase 2 onward this is absolute: a fix applied during the negative-test phases silently invalidates results, and I have no way to detect it except by diffing every commit. If you find something you believe must be fixed before testing can proceed, stop and say so — do not fix it and continue.
+
+a635a2c stays in (it's a reasonable change and reverting churns the baseline further). But:
+
+Add a Baseline Changes section to TESTREPORT.md recording it: the commit SHA, what moved, and that findings 0.8-B is now remediated during-run, not open.
+Phase 3.8 (50 wrong portal codes) will now trip the 30/min limiter — expect 429 after 30 and assert that, rather than treating it as a failure.
+State whether the API runs as a single process. RateLimiter is in-memory fixed-window, so it is per-instance; under more than one instance the effective limit is 30 × N. One line, no fix.
+1-R.1 — Restore the report
+TESTREPORT.md must accumulate, never be replaced. Restore the full Phase 0 section from commit 3d9bcc0 and append the Checkpoint-0 remediation and Phase 1 content beneath it. Every finding raised in any phase carries forward to the final deliverable with its current status (open / remediated / withdrawn). Change 0.5-A's severity to P2 and record why: 31⁶ ≈ 887M namespace makes enumeration impractical; the finding is unauthenticated disclosure given a known ID.
+
+1-R.2 — Seed reference data for ZZTEST_ALPHA (blocking Phase 2)
+Phase 2 cannot run without it. Create, scoped to ZZTEST_ALPHA only:
+
+Selection categories, brands, and products sufficient to complete a retail selections flow — at minimum two categories with two brands and three products each, with one is_base product per category (there's a partial unique index enforcing that).
+Price book items covering the line items Phase 2 will use.
+At least one company_templates row for the contract use case.
+Before you seed: determine how a real company gets its default 4 categories. Phase 0 found 432 companies with exactly 4 each, but POST /companies at companies.ts:80 only inserts the company row — no seeding. Find the actual seeding path and report it. If it's an onboarding endpoint, use it rather than direct insert, and say so. If there is no such path, that is an onboarding finding in its own right: a new tenant provisions into an unusable state.
+
+Everything you seed gets the ZZTEST marker and goes into the teardown script.
+
+1-R.3 — Record the OIDC coverage gap
+Add to TESTREPORT: sessions are minted via direct createSession() insert, so the OIDC login path is not exercised by this test run. Enumerate what that leaves untested — specifically anything in /callback and upsertUserOnLogin that assigns or mutates company_id, role, department, or workflowAssignment. If any of those are derived from OIDC claims at login, say so explicitly; that becomes a separate manual test I run myself.
+
+1-R.4 — Tenancy detector caveat
+tenancy: direct is inferred from the handler referencing req.user.companyId, which cannot distinguish a scoped query from an incidental reference. I spot-checked POST /change-orders/:changeOrderId/approve — it genuinely resolves through resolveChangeOrder(id, req.user.companyId) at changeOrders.ts:582, so the classification held there. Rather than re-deriving it statically: Phase 3.1 must cover all 275 routes classified direct or join, not a sample. Empirical beats inference. Note in the report that the static column is a targeting aid, not evidence.
+
+PHASE 2 — Positive Lifecycle Runs
+Proceed once 1-R.2 is done. As specified in the original work order: 2A insurance (A-INSP-1 → A-MGR-F → A-ADMIN), 2B retail (A-CANV-1 → A-MGR-O → A-ADMIN), every step a real business action through the API, never a direct status write.
+
+Use the canonical pins only — 4af909ef (retail) and fdbdceba (insurance). Leave the orphan c4d98b1f alone.
+
+Three additions:
+
+Record the actual HTTP call sequence. For each lifecycle, emit an ordered log of METHOD /path → status as the actor handle. This becomes the reference trace the end-to-end test protocol is validated against, and it tells me which of the 116 unspecced routes are on the critical path.
+
+Assert stage transitions were caused, not written. For every stage_transitions row, confirm it was produced by emitPipelineEvent → processPipelineEvent matching on ${pipeline}:${key}, not by a direct status update. If any stage advanced without a matching emitted event, that's a finding.
+
+Show the profitability arithmetic. For each pin at completion, print base_contract_cents, approved_co_cents, revised_contract_cents, total_cost_cents, net_project_margin_cents, expected_total_cents, and hand-verify revised = base + approved_co and margin = revised − cost. For the insurance pin, show which branch of the GREATEST(revised, approved_rcv) expression won and why.
+
+▶ CHECKPOINT 2 — Paste, per lifecycle: the ordered call log, the stage_transitions rows with their causing event type, the final pin_profitability row with the arithmetic shown, and the notification list (fired vs. expected-but-missing, reconciled against the 8-type push list from 0.7-R). Plus git log --oneline for everything committed since 67aa983. Stop.
+
