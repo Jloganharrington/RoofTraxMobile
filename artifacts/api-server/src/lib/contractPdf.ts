@@ -10,6 +10,7 @@
 import PDFDocument from 'pdfkit';
 import { and, asc, eq } from 'drizzle-orm';
 import {
+  companyTemplatesTable,
   contractsTable,
   contractScopePackagesTable,
   contractSelectionsTable,
@@ -18,6 +19,9 @@ import {
   companiesTable,
   db,
 } from '@workspace/db';
+import { ObjectStorageService } from './objectStorage';
+
+const objectStorage = new ObjectStorageService();
 
 // Integer cents → "$X,XXX.XX"
 function fmt(cents: number): string {
@@ -49,6 +53,21 @@ export async function generateContractPdf(contractId: string): Promise<Buffer> {
   ]);
 
   if (!contractRow) throw new Error(`Contract ${contractId} not found`);
+
+  // ── Company template resolution ───────────────────────────────────────────
+  // If this contract carries a templateId, look up the uploaded company
+  // template and return its bytes directly — no PDFKit generation needed.
+  // Falls through to PDFKit when no template is attached, or when the
+  // template row has been deleted after the contract was created.
+  if (contractRow.templateId) {
+    const [tmpl] = await db
+      .select({ objectPath: companyTemplatesTable.objectPath })
+      .from(companyTemplatesTable)
+      .where(eq(companyTemplatesTable.id, contractRow.templateId));
+    if (tmpl) {
+      return objectStorage.readObjectEntityBytes(tmpl.objectPath);
+    }
+  }
 
   const [[pin], [company]] = await Promise.all([
     db.select().from(pinsTable).where(eq(pinsTable.id, contractRow.pinId)),

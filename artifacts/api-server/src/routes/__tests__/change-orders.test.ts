@@ -1005,6 +1005,134 @@ describe('outbox sign: pdfBase64 payload stores document and stamps timestamps',
   });
 });
 
+// ---------------------------------------------------------------------------
+// 4c — amount_cents stays correct on mid-recompute failures (no DB trigger)
+//
+// There is no database trigger enforcing change_orders.amount_cents = SUM(line_items).
+// Consistency is maintained solely by the application-level recomputeAmountCents()
+// helper, which runs after every successful line-item write.
+//
+// These tests verify:
+//   a) Failed writes (400/404) terminate before recomputeAmountCents runs, so
+//      amount_cents is never left in a stale state by an erroring request.
+//   b) After every successful write, the API-reported amount_cents matches the
+//      direct DB SUM of change_order_line_items — i.e., no silent divergence
+//      that would only be caught by a trigger.
+// ---------------------------------------------------------------------------
+
+describe('amount_cents consistency on failed line-item writes (no DB trigger)', () => {
+  let coId: string;
+  const BASE_CENTS = 40000;   // two items: 25000 + 15000
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .post(`/api/pins/${pinId}/change-orders`)
+      .set(mgr())
+      .send({
+        description: 'amount_cents consistency fixture',
+        lineItems: [
+          { description: 'Item A', quantity: 1, unitPriceCents: 25000 },
+          { description: 'Item B', quantity: 1, unitPriceCents: 15000 },
+        ],
+      });
+    expect(res.status).toBe(201);
+    coId = res.body.changeOrder.id;
+    expect(res.body.changeOrder.amountCents).toBe(BASE_CENTS);
+  });
+
+  it('invalid POST body (missing description) → 400; amount_cents unchanged', async () => {
+    // The route validates the body before any DB write, so recomputeAmountCents
+    // never runs on a 400 path.
+    const fail = await request(app)
+      .post(`/api/change-orders/${coId}/line-items`)
+      .set(mgr())
+      .send({ quantity: 1, unitPriceCents: 99900 });   // description required
+    expect(fail.status).toBe(400);
+
+    const [co] = await db
+      .select({ amountCents: changeOrdersTable.amountCents })
+      .from(changeOrdersTable)
+      .where(eq(changeOrdersTable.id, coId));
+    expect(co!.amountCents).toBe(BASE_CENTS);
+  });
+
+  it('PATCH non-existent line item → 404; amount_cents unchanged', async () => {
+    const ghostId = crypto.randomUUID();
+    const fail = await request(app)
+      .patch(`/api/change-orders/${coId}/line-items/${ghostId}`)
+      .set(mgr())
+      .send({ unitPriceCents: 1 });
+    expect(fail.status).toBe(404);
+
+    const [co] = await db
+      .select({ amountCents: changeOrdersTable.amountCents })
+      .from(changeOrdersTable)
+      .where(eq(changeOrdersTable.id, coId));
+    expect(co!.amountCents).toBe(BASE_CENTS);
+  });
+
+  it('DELETE non-existent line item → 404; amount_cents unchanged', async () => {
+    const ghostId = crypto.randomUUID();
+    const fail = await request(app)
+      .delete(`/api/change-orders/${coId}/line-items/${ghostId}`)
+      .set(mgr());
+    expect(fail.status).toBe(404);
+
+    const [co] = await db
+      .select({ amountCents: changeOrdersTable.amountCents })
+      .from(changeOrdersTable)
+      .where(eq(changeOrdersTable.id, coId));
+    expect(co!.amountCents).toBe(BASE_CENTS);
+  });
+
+  it('after a successful POST, API amount_cents == direct DB SUM (no trigger needed)', async () => {
+    const add = await request(app)
+      .post(`/api/change-orders/${coId}/line-items`)
+      .set(mgr())
+      .send({ description: 'Item C', quantity: 2, unitPriceCents: 5000 });
+    expect(add.status).toBe(201);
+
+    const apiTotal = add.body.changeOrder.amountCents;
+    expect(apiTotal).toBe(BASE_CENTS + 10000);   // 50000
+
+    // Direct DB SUM — the no-trigger invariant:
+    // if the application ever failed to call recomputeAmountCents after a
+    // successful write, these two values would diverge.
+    // totalCents is the stored per-row total (quantity × unitPriceCents, rounded).
+    // SUM(totalCents) is what recomputeAmountCents aggregates.
+    const rows = await db
+      .select({ amt: changeOrderLineItemsTable.totalCents })
+      .from(changeOrderLineItemsTable)
+      .where(eq(changeOrderLineItemsTable.changeOrderId, coId));
+    const dbSum = rows.reduce((acc, r) => acc + r.amt, 0);
+    expect(dbSum).toBe(apiTotal);
+  });
+
+  it('after a successful DELETE, API amount_cents == direct DB SUM', async () => {
+    // Identify the line item to delete via a direct DB query (avoids relying
+    // on a single-CO GET shape that may differ from the list endpoint).
+    const items = await db
+      .select()
+      .from(changeOrderLineItemsTable)
+      .where(eq(changeOrderLineItemsTable.changeOrderId, coId));
+    const itemId = items.find((i) => i.description === 'Item B')!.id;
+
+    const del = await request(app)
+      .delete(`/api/change-orders/${coId}/line-items/${itemId}`)
+      .set(mgr());
+    expect(del.status).toBe(200);
+
+    const apiTotal = del.body.changeOrder.amountCents;
+
+    const rows = await db
+      .select({ amt: changeOrderLineItemsTable.totalCents })
+      .from(changeOrderLineItemsTable)
+      .where(eq(changeOrderLineItemsTable.changeOrderId, coId));
+    const dbSum = rows.reduce((acc, r) => acc + r.amt, 0);
+    expect(dbSum).toBe(apiTotal);
+  });
+});
+
 describe('outbox ordering guard: sign / line-item before CO exists → 404', () => {
   it('POST /sign for a non-existent CO id → 404', async () => {
     const ghostId = crypto.randomUUID();

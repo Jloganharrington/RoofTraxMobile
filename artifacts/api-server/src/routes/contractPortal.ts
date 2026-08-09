@@ -352,9 +352,10 @@ router.post('/portal/contract/:code/select/:pkgId', async (req: Request, res: Re
       ),
     );
 
-  const isRepRequest     = req.isAuthenticated && req.isAuthenticated();
-  const selectedBy       = isRepRequest ? 'rep' : 'customer';
-  const selectedByUserId = isRepRequest ? (req.user?.id ?? null) : null;
+  // Portal selections are always attributed to the customer — reps assist
+  // in person but the legal act of choosing belongs to the homeowner.
+  const selectedBy       = 'customer' as const;
+  const selectedByUserId = null;
 
   const [newSelection] = await db
     .insert(contractSelectionsTable)

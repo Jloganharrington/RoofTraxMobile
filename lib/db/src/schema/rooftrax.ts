@@ -559,6 +559,7 @@ export const TEMPLATE_USE_CASES = [
   'homeowner_email',
   'claim_supplement',
   'change_order',
+  'contract',
   'other',
 ] as const;
 
