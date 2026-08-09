@@ -31,7 +31,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
 
-import { canAccessInspectionModule, canWriteInspection } from '@workspace/authz';
+import { canAccessInspectionModule, canWriteInspection, roleRank, type Role } from '@workspace/authz';
 import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage';
 import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
@@ -433,7 +433,7 @@ router.delete(
       .from(userProfilesTable)
       .where(eq(userProfilesTable.userId, req.user.id));
 
-    if (profile?.role !== 'super_admin') {
+    if (roleRank((profile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
       res.status(403).json({ error: 'Only super_admin may void a signed agreement' });
       return;
     }

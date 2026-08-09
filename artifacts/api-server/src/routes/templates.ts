@@ -10,6 +10,7 @@
  *  6. Partial unique index enforced: 409 with holder info on use_case conflict.
  */
 
+import { roleRank, type Role } from '@workspace/authz';
 import {
   db,
   companyTemplatesTable,
@@ -68,7 +69,7 @@ async function requireCompanyAdmin(
     .where(eq(userProfilesTable.userId, req.user.id));
 
   const role = actorProfile?.role ?? 'field_rep';
-  if (role !== 'admin' && role !== 'super_admin') {
+  if (roleRank(role as Role) < roleRank('admin')) {
     res.status(403).json({ error: 'Admin role required' });
     return null;
   }

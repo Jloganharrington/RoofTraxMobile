@@ -2,6 +2,7 @@ import {
   CreateBugReportBody,
   UpdateBugReportBody,
 } from '@workspace/api-zod';
+import { roleRank, type Role } from '@workspace/authz';
 import { db, bugReportsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -33,7 +34,7 @@ function isRateLimited(userId: string): boolean {
 }
 
 function isAdmin(role: string | null | undefined): boolean {
-  return role === 'admin' || role === 'super_admin';
+  return roleRank((role ?? 'field_rep') as Role) >= roleRank('admin');
 }
 
 async function loadActor(userId: string) {

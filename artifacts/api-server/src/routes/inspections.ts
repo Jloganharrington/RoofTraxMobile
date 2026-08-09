@@ -116,7 +116,7 @@ import type {
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '@workspace/authz';
+import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin, roleRank } from '@workspace/authz';
 import { runAhjCheck } from '../lib/ahjLookup';
 import { getRole, LeadProfileBody, toDateOrNull } from './pins';
 import { advancePinStage, emitPipelineEvent } from './pipelineEvents';
@@ -891,7 +891,7 @@ router.delete('/inspections/:inspectionId', async (req: Request, res: Response) 
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
-  if (actor.role !== 'super_admin') {
+  if (roleRank(actor.role as Role) < roleRank('super_admin')) {
     res.status(403).json({ error: 'Only super admins may delete inspections' });
     return;
   }

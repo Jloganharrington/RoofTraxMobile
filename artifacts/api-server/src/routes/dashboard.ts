@@ -1,7 +1,7 @@
 import { GetDashboardManifestResponse, GetDashboardLayoutResponse, PatchDashboardLayoutBody } from '@workspace/api-zod';
 import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable, stageTransitionsTable, claimEventsTable, paymentsTable, contractsTable, changeOrdersTable, signedAgreementsTable, claimStatusHistoryTable } from '@workspace/db';
 import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
-import { selectWidgetsFor, WIDGET_CATALOG, type Capability } from '@workspace/authz';
+import { isManagerOrAdmin, selectWidgetsFor, WIDGET_CATALOG, type Capability } from '@workspace/authz';
 import { and, eq, gt, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { requireWidgetCapability } from '../lib/dashboardGuard';
@@ -755,7 +755,7 @@ router.get(
       .from(userProfilesTable)
       .where(eq(userProfilesTable.userId, actorId));
 
-    const scopeToSelf = (profile?.role ?? 'field_rep') === 'field_rep';
+    const scopeToSelf = !isManagerOrAdmin((profile?.role ?? 'field_rep') as Role);
 
     const rows = await db
       .select({
@@ -821,7 +821,7 @@ router.get(
       .from(userProfilesTable)
       .where(eq(userProfilesTable.userId, actorId));
 
-    const scopeToSelf = (profile?.role ?? 'field_rep') === 'field_rep';
+    const scopeToSelf = !isManagerOrAdmin((profile?.role ?? 'field_rep') as Role);
 
     const blockedRows = await fetchBlockedClaims(companyId, {
       scopeToUserId: scopeToSelf ? actorId : undefined,

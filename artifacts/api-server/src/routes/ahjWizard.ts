@@ -6,6 +6,7 @@
  * Draft and rejected items are NEVER citable, renderable, or pack-eligible.
  */
 
+import { roleRank, type Role } from '@workspace/authz';
 import { Router, type Request, type Response } from 'express';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -52,7 +53,7 @@ async function requireSuperAdmin(
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, userId))
     .limit(1);
-  if ((profile?.role ?? 'field_rep') !== 'super_admin') {
+  if (roleRank((profile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
     res.status(403).json({ error: 'Forbidden — super_admin only' });
     return null;
   }

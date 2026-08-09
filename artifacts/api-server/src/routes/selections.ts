@@ -7,6 +7,7 @@ import {
   selectionOptionsTable,
   selectionProductOptionsTable,
 } from '@workspace/db';
+import { roleRank, type Role } from '@workspace/authz';
 import { and, eq, asc } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -27,7 +28,7 @@ async function requireAdminOrAbove(req: Request, res: Response) {
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, req.user.id));
   const role = profile?.role ?? 'field_rep';
-  if (role !== 'admin' && role !== 'super_admin') {
+  if (roleRank(role as Role) < roleRank('admin')) {
     res.status(403).json({ error: 'Admin role required' });
     return null;
   }

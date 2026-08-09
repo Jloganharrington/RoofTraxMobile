@@ -19,7 +19,7 @@ import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { roleRank } from '@workspace/authz';
+import { roleRank, type Role } from '@workspace/authz';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { buildSampleProofPackageHtml } from '../lib/proofPackageTemplate';
 import { isHexColor, resolveReportTheme } from '../lib/reportTemplate';
@@ -66,7 +66,7 @@ router.post('/companies', async (req: Request, res: Response) => {
     .select({ role: userProfilesTable.role })
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, req.user.id));
-  if (actorProfile?.role !== 'super_admin') {
+  if (roleRank((actorProfile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
     res.status(403).json({ error: 'Super admin access required' });
     return;
   }
