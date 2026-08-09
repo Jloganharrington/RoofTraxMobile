@@ -18,6 +18,7 @@ import {
 } from '../lib/pipelineStages';
 import { isManagerOrAdmin } from '@workspace/authz';
 import { getRole } from './pins';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
@@ -85,26 +86,29 @@ export async function advancePinStage(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/events/pipeline
+// Core event processing — shared by the HTTP route (manager-gated) and the
+// internal business-action emitters (system-driven, via emitPipelineEvent).
+//
+// IDEMPOTENCY GUARANTEE: a pin only advances when its *current* stage's
+// autoAdvance.eventType matches the emitted event. Once a pin has moved past
+// that stage, re-emitting the same event matches nothing — no backwards move,
+// no duplicate stage_transitions row.
 // ---------------------------------------------------------------------------
 
-router.post('/events/pipeline', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+export interface PipelineEventResult {
+  results: Array<{ leadId: string; fromStage: string; toStage: string }>;
+  reason: string | null;
+}
 
-  // Bulk auto-advance is restricted to manager/admin — plain reps cannot trigger
-  // company-wide stage transitions.
-  const callerRole = await getRole(req.user.id);
-  if (!isManagerOrAdmin(callerRole)) {
-    return void res.status(403).json({ error: 'Only managers and admins may trigger pipeline events' });
-  }
-
-  const parsed = PipelineEventBody.safeParse(req.body);
-  if (!parsed.success) {
-    return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
-  }
-
-  const { eventType, leadId, payload } = parsed.data;
-  const payloadObj = payload ?? {};
+export async function processPipelineEvent(opts: {
+  companyId: string;
+  eventType: string;
+  /** Restrict to a single lead — if omitted, advances all matching pins in company */
+  leadId?: string;
+  payload?: Record<string, unknown>;
+}): Promise<PipelineEventResult> {
+  const { companyId, eventType, leadId } = opts;
+  const payloadObj = opts.payload ?? {};
 
   // Collect matching pipeline:key pairs to avoid cross-pipeline key collision
   // (e.g. 'contract_signed' exists in both retail and insurance — tracking the
@@ -120,10 +124,7 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
   }
 
   if (matchingPipelineStageKeys.size === 0) {
-    return void res.json({
-      advanced: false, toStage: null, results: [],
-      reason: 'No stages match this event',
-    });
+    return { results: [], reason: 'No stages match this event' };
   }
 
   // Fetch active pins in this company (stage filter applied in JS because
@@ -131,7 +132,7 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
   const allActive = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.companyId, req.user.companyId), eq(pinsTable.status, 'active')));
+    .where(and(eq(pinsTable.companyId, companyId), eq(pinsTable.status, 'active')));
 
   const pinsToAdvance = allActive.filter((p) => {
     if (!p.pipelineStage) return false;
@@ -146,10 +147,7 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
   });
 
   if (pinsToAdvance.length === 0) {
-    return void res.json({
-      advanced: false, toStage: null, results: [],
-      reason: 'No pins are currently in matching stages',
-    });
+    return { results: [], reason: 'No pins are currently in matching stages' };
   }
 
   const results: Array<{ leadId: string; fromStage: string; toStage: string }> = [];
@@ -199,10 +197,67 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
     results.push({ leadId: pin.id, fromStage: currentKey, toStage });
   }
 
+  return { results, reason: null };
+}
+
+// ---------------------------------------------------------------------------
+// Internal emitter — called by business-action routes AFTER their transaction
+// commits (never inside it). Follows the notify() pattern: fire-and-forget,
+// all errors swallowed and logged, never throws. A pipeline advance failing
+// must never roll back or fail a signature, payment, or compile.
+//
+// Usage at call sites (after the business commit / res.json):
+//   void emitPipelineEvent({ ... });
+// ---------------------------------------------------------------------------
+
+export async function emitPipelineEvent(opts: {
+  companyId: string;
+  eventType: string;
+  leadId?: string;
+  payload?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const { results } = await processPipelineEvent(opts);
+    if (results.length > 0) {
+      logger.info({ eventType: opts.eventType, results }, 'pipeline auto-advance');
+    }
+  } catch (err) {
+    logger.error({ err, opts }, 'emitPipelineEvent: auto-advance failed (business action unaffected)');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/events/pipeline
+// ---------------------------------------------------------------------------
+
+router.post('/events/pipeline', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  // Bulk auto-advance is restricted to manager/admin — plain reps cannot trigger
+  // company-wide stage transitions.
+  const callerRole = await getRole(req.user.id);
+  if (!isManagerOrAdmin(callerRole)) {
+    return void res.status(403).json({ error: 'Only managers and admins may trigger pipeline events' });
+  }
+
+  const parsed = PipelineEventBody.safeParse(req.body);
+  if (!parsed.success) {
+    return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
+  }
+
+  const { eventType, leadId, payload } = parsed.data;
+  const { results, reason } = await processPipelineEvent({
+    companyId: req.user.companyId,
+    eventType,
+    leadId,
+    payload,
+  });
+
   return void res.json({
     advanced: results.length > 0,
     toStage:  results[0]?.toStage ?? null,
     results,
+    ...(reason ? { reason } : {}),
   });
 });
 

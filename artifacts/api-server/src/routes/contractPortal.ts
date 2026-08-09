@@ -33,6 +33,7 @@ import { z } from 'zod';
 import nodemailer from 'nodemailer';
 import { normalizePortalAccessCode } from '../lib/portalAccess';
 import { notify } from '../lib/notify';
+import { emitPipelineEvent } from './pipelineEvents';
 import { recomputeContractTotals } from '../lib/contractTotals';
 import { generateContractPdf } from '../lib/contractPdf';
 import { ObjectStorageService } from '../lib/objectStorage';
@@ -546,6 +547,22 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
       })
       .where(eq(pinsTable.id, contract.pinId));
   });
+
+  // ── Pipeline auto-advance (non-blocking, after the signing tx commits) ────
+  // A failed advance never rolls back the signature. Payload carries the
+  // pin's pipeline so outcomeRules ({ pipeline: 'retail' | 'insurance' }) match.
+  void (async () => {
+    const [pinRow] = await db
+      .select({ workflow: pinsTable.workflow })
+      .from(pinsTable)
+      .where(eq(pinsTable.id, contract.pinId));
+    await emitPipelineEvent({
+      companyId: contract.companyId,
+      leadId:    contract.pinId,
+      eventType: 'contract_signed',
+      payload:   { pipeline: pinRow?.workflow ?? 'retail' },
+    });
+  })().catch(() => { /* logged inside emitPipelineEvent; DB lookup failures are non-fatal */ });
 
   // ── Post-sign notifications (non-blocking) ────────────────────────────────
   void (async () => {

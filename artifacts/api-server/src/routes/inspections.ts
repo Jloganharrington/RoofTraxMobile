@@ -119,7 +119,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin } from '@workspace/authz';
 import { runAhjCheck } from '../lib/ahjLookup';
 import { getRole, LeadProfileBody, toDateOrNull } from './pins';
-import { advancePinStage } from './pipelineEvents';
+import { advancePinStage, emitPipelineEvent } from './pipelineEvents';
 import { ALL_STAGE_KEYS, findServerStageByKey } from '../lib/pipelineStages';
 import { buildReportHtml, escHtml, resolveReportTheme } from '../lib/reportTemplate';
 import { buildProofPackageHtml, type ProofPackageData } from '../lib/proofPackageTemplate';
@@ -2710,6 +2710,16 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
     actorId: actor.userId,
   });
 
+  // Pipeline auto-advance: package delivery advances insurance pins in
+  // package_ready → claim_filed. Fire-and-forget after the submission commits.
+  if (updated?.pinId) {
+    void emitPipelineEvent({
+      companyId: actor.companyId,
+      leadId:    updated.pinId,
+      eventType: 'package_delivered',
+    });
+  }
+
   res.json(SubmitInspectionResponse.parse({ inspection: updated }));
 });
 
@@ -3233,6 +3243,17 @@ router.post('/inspections/:inspectionId/report-attestation', async (req: Request
       statementHash,
     },
   });
+
+  // Pipeline auto-advance: report attestation advances insurance pins in
+  // phase2_complete → package_ready. Fire-and-forget after the attestation
+  // and audit event committed — a failed advance never affects the attestation.
+  if (inspection.pinId) {
+    void emitPipelineEvent({
+      companyId: actor.companyId,
+      leadId:    inspection.pinId,
+      eventType: 'report_attested',
+    });
+  }
 
   // Spec F-8: post-attest signed recompile — load the review blob, stamp the
   // attestation into generationSnapshot, and publish a new isSignedVersion
@@ -5956,6 +5977,17 @@ ${JSON.stringify(photoBrief)}
       compiledReportVersions: sql`${inspectionsTable.compiledReportVersions} || ${versionEntry}::jsonb`,
     })
     .where(eq(inspectionsTable.id, inspectionId));
+
+  // Pipeline auto-advance: a successful compile advances legacy insurance pins
+  // in proof_package → contract_generated. Fire-and-forget after the version
+  // append committed — a failed advance never affects the compiled package.
+  if (inspection.pinId) {
+    void emitPipelineEvent({
+      companyId: inspection.companyId,
+      leadId:    inspection.pinId,
+      eventType: 'proof_package_compiled',
+    });
+  }
 
   // Ensure the inspection has a public Evidence Portal share code so the
   // rendered package can print portal access details. Generated once at

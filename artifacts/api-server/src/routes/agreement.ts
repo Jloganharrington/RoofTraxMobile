@@ -37,6 +37,7 @@ import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 import { runAhjCheck } from '../lib/ahjLookup';
+import { emitPipelineEvent } from './pipelineEvents';
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -221,6 +222,17 @@ router.post(
       { inspectionId, agreementId: agreementRow.id },
       'Agreement signed and PDF stored',
     );
+
+    // Pipeline auto-advance: FIPSA signing advances insurance pins in
+    // phase1_complete → fipsa_signed. Fire-and-forget after the signing
+    // transaction committed — a failed advance never affects the signature.
+    if (inspection.pinId) {
+      void emitPipelineEvent({
+        companyId: actor.companyId,
+        leadId:    inspection.pinId,
+        eventType: 'fipsa_signed',
+      });
+    }
 
     // ── Best-effort auto-email to rep + homeowner on sign ─────────────────────
     // Sends are non-blocking to the 201 response: failures are logged but do

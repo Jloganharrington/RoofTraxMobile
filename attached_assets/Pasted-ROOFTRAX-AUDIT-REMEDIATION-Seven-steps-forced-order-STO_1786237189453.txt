@@ -1,0 +1,163 @@
+ROOFTRAX — AUDIT REMEDIATION
+
+Seven steps, forced order. STOP at each ▶ CHECKPOINT, paste real output,
+push to git, wait for confirmation.
+
+STANDING BOUNDARIES: never modify artifacts/mobile/ (mid-build, app-store
+bound); never hand-edit generated client files (edit lib/api-spec/openapi.yaml,
+regenerate); never hand-write a query key for a generated hook; server
+enforcement authoritative; integer cents.
+
+⚠ SAME RULE AS THE AUDIT: never fabricate a connection. Where this order says
+"determine where X should fire," if no source action exists, LOG THAT and move
+on. Do not invent a plausible call site.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 [LOCKED] — PIPELINE AUTO-ADVANCE IS DEAD           ║
+╚═══════════════════════════════════════════════════════════╝
+Larger than the audit reported. The audit found FIPSA. The real finding:
+of TEN autoAdvance eventTypes in pipelineStages.ts, only ONE
+(package_delivered) has a real emitter, and even that writes a claim event
+rather than driving the pipeline. Nothing anywhere POSTs /events/pipeline.
+advancePinStage's auto path has zero callers.
+
+Every stage transition in both pipelines is currently manual.
+
+1a. Confirm the diagnosis first and report before changing anything:
+    for each of the ten events below, state whether a source action exists
+    in the codebase today, and if so exactly where it should fire.
+      preliminary_record_synced      forensic_record_attested
+      fipsa_signed                   report_attested
+      proof_package_compiled         package_delivered
+      contract_signed                deposit_received
+      proposal_generated             completion_package_generated
+    Some may have NO corresponding action built yet (proposal_generated and
+    completion_package_generated are the likely candidates). Say so plainly —
+    do NOT invent a call site to make the list complete.
+
+1b. Wire ONLY the events whose source action genuinely exists. Emit after the
+    business transaction commits, never inside it — a pipeline advance failing
+    must not roll back a signature or a payment. Follow the notify() pattern:
+    fire-and-forget, errors swallowed and logged.
+
+1c. Auto-advance must be IDEMPOTENT. Re-emitting the same event for a pin
+    already past that stage must be a no-op, not a backwards move or a
+    duplicate stage_transitions row. Verify pipelineEvents.ts already
+    guarantees this; if not, add it.
+
+1d. Report which events remain unwired and why.
+
+▶ CHECKPOINT 1
+  VERIFY — paste the stage before and after for each:
+   - sign a FIPSA → pin advances from phase1_complete to fipsa_signed
+   - sync a preliminary record → advances from phase1_scheduled
+   - attest a forensic record → advances from phase2_scheduled
+   - attest a report → advances from phase2_complete
+   - sign a contract → advances to contract_signed
+   - record a deposit payment → advances to deposit_received
+   - re-emit any of the above → NO second transition, no duplicate row
+  INTEGRATION:
+   - manual stage advance still works and is unaffected
+   - a failing pipeline advance does not roll back the triggering action —
+     break it deliberately and confirm the signature/payment still saves
+   - seed-acceptance-claim.ts 42/42; api-server vitest green
+   - typechecks ×4; git diff --stat -- artifacts/mobile/ EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 [LOCKED] — NOTIFICATION FAN-OUT                    ║
+╚═══════════════════════════════════════════════════════════╝
+The catalog defines SIXTEEN types. There are FIVE notify() call sites. Twelve
+types are configurable in Settings and can never fire — a user toggles them
+on and nothing happens.
+
+Wire the remaining twelve at their real event sites:
+    contract_voided            change_order_signed
+    change_order_approved      fipsa_signed
+    fipsa_voided               proof_package_delivered
+    inspection_assigned        inspection_scheduled
+    appointment_assigned       item_overdue
+    claim_blocked              lead_needs_stage_review
+
+Note the last three (item_overdue, claim_blocked, lead_needs_stage_review)
+are DERIVED conditions, not discrete events — nothing "happens" to trigger
+them. They need either a scheduled sweep (no scheduler exists) or evaluation
+at a natural checkpoint. Report your assessment; do NOT build a setInterval.
+
+Same rules as the existing five: fire after the transaction, never notify the
+actor, failures never break the business action.
+
+▶ CHECKPOINT 2
+  VERIFY:
+   - each newly-wired type fires once, to the correct recipients
+   - the actor is excluded in every case
+   - disabling a type in preferences stops it
+   - report how you handled the three derived conditions
+  INTEGRATION:
+   - the original five still fire correctly
+   - api-server vitest green; typechecks ×4; mobile diff EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 [LOCKED] — CONTRACT VALUE: TWO SOURCES OF TRUTH    ║
+╚═══════════════════════════════════════════════════════════╝
+pins.contract_amount (legacy varchar) is written on signature and cleared on
+void, AND the profitability view independently derives contract value. If the
+view formula and the write-back diverge, different surfaces report different
+numbers.
+
+3a. DO NOT remove the write-back in this step. Other readers may exist —
+    find them first. Report every reader of pins.contract_amount across
+    api-server, rooftrax-web, and mobile.
+
+3b. Add a test asserting the two agree after sign, after void, and after a
+    change order is approved. That test is what makes a later removal safe.
+
+3c. Report whether removal appears safe, and what would have to change.
+    Do not remove.
+
+▶ CHECKPOINT 3
+  VERIFY: reader inventory pasted; the agreement test passes in all three cases
+  INTEGRATION: waterfall and Claim Value Tracker unchanged; vitest green
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 [LOCKED] — ORPHANS: DECIDE AND ACT                 ║
+╚═══════════════════════════════════════════════════════════╝
+4a. contracts.templateId is read by nothing; the contract PDF is hardcoded;
+    TEMPLATE_USE_CASES has no 'contract' value.
+    DECISION MADE — wire it. Add 'contract' to TEMPLATE_USE_CASES, have
+    contractPdf.ts resolve the company's configured contract template, and
+    fall back to the current hardcoded layout when none is configured.
+    Contract language must be per-tenant before a second company onboards.
+    Keep it deterministic — fixed placeholders, NO AI-generated legal text.
+
+4b. contract_selections.selected_by can never be 'rep' — portal routes have
+    no session, so the isRepRequest branch is unreachable.
+    DECISION MADE — remove the dead branch and document that all portal
+    selections are 'customer'. Do NOT build a rep-selection endpoint; reps
+    can open the portal link on their own device, which is the established
+    kitchen-table flow for change orders.
+
+4c. change_orders.amount_cents is documented as derived but stored. Add a
+    test proving it stays correct when a line-item write fails mid-recompute.
+    Do not add a DB trigger.
+
+▶ CHECKPOINT 4
+  VERIFY:
+   - a company contract template renders in the PDF; no template configured
+     falls back cleanly
+   - grep proves no remaining 'rep' branch in selection writes
+   - the amount_cents consistency test passes
+  INTEGRATION:
+   - contract signing still writes back; selections schedule still renders
+   - Templates page lists the new use case
+   - vitest green; typechecks ×4; mobile diff EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 5 [LOCKED] — ROLE GATE CONSOLIDATION                 ║
+╚═══════════════════════════════════════════════════════════╝
+Inline role comparisons — raw string arrays and literals — appear in
+inspections.ts:787, selections.ts:20 and :30, bugReports.ts:35-36,
+companies.ts:69, and elsewhere. They drift f

@@ -37,6 +37,7 @@ import {
 } from '@workspace/db';
 import { isManagerOrAdmin, type Role } from '@workspace/authz';
 import { notify } from '../lib/notify';
+import { emitPipelineEvent } from './pipelineEvents';
 
 const router = Router();
 
@@ -56,9 +57,9 @@ async function getRole(userId: string): Promise<Role> {
 async function resolvePin(
   pinId: string,
   companyId: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; workflow: string | null } | null> {
   const [pin] = await db
-    .select({ id: pinsTable.id })
+    .select({ id: pinsTable.id, workflow: pinsTable.workflow })
     .from(pinsTable)
     .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, companyId)));
   return pin ?? null;
@@ -180,6 +181,18 @@ router.post('/pins/:pinId/payments', async (req: Request, res: Response) => {
     actorUserId: req.user.id,
     payload:     { amountCents: payment.amountCents, paymentType: payment.type },
   });
+
+  // Pipeline auto-advance: a deposit payment advances legacy-stage pins whose
+  // current stage auto-advances on deposit_received. Fire-and-forget after the
+  // insert commits — a failed advance never affects the recorded payment.
+  if (d.type === 'deposit') {
+    void emitPipelineEvent({
+      companyId: req.user.companyId,
+      leadId:    pinId,
+      eventType: 'deposit_received',
+      payload:   { pipeline: pin.workflow ?? 'retail' },
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
