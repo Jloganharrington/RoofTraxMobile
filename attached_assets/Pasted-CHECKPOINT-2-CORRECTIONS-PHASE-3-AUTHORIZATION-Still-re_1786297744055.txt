@@ -1,0 +1,42 @@
+CHECKPOINT 2 — CORRECTIONS + PHASE 3 AUTHORIZATION
+Still report-only. Run 2-R.1 first; 2-R.2 and Phase 3.1–3.3 can proceed in parallel.
+
+2-R.1 — Re-measure profitability (blocking 3.11)
+Query the view with its actual projected columns. Get the real column list first with \d+ pin_profitability or information_schema.columns and paste it — do not infer names from the migration comments.
+
+For both canonical pins, report every projected column, then:
+
+Confirm revised_contract_cents matches the signed contract totals ($12,000 / $18,000).
+Confirm total_payments_cents reflects the deposit ($3,600) and the ACV payment ($16,500). If it doesn't, that becomes a real finding — but establish it with the correct column name.
+Read pins.contract_amount directly for both pins and show _parse_legacy_money_cents() applied to each value, so the base-contract chain is proven end to end rather than inferred.
+Then retract OBS 2-C and OBS 2-D in TESTREPORT and re-file whatever survives re-measurement. Mark the retractions explicitly — do not silently edit them out. Add a line to each stating it was a measurement error, so the pattern is visible in the final deliverable.
+
+Then answer the question 3.11 actually depends on: since base_contract_cents is not projected, what do consumers read to display contract value — the API route at profitability.ts:27, the web Financials UI, the Net Project Margin widget? Name the column each one reads. If nothing exposes base_contract_cents, then a manual write to pins.contract_amount still moves revised_contract_cents through line 152, and the severity is unchanged — confirm or refute that specific chain.
+
+2-R.2 — Close the 2-E coverage gap
+Seed the insurance test inspection with the minimum data POST /inspections/:id/report/compile requires — photos, slope/measurement data, carrier estimate — so compile succeeds and the two unexercised hops run for real:
+
+report_attested → phase2_complete → package_ready
+package_delivered → package_ready → claim_filed
+If compile can't be made to pass with synthetic data, say so and state exactly what real input it needs. Do not stub or bypass the Gemini call — a fake pass here is worse than a known gap.
+
+All seeded artifacts get the ZZTEST marker and enter the teardown script.
+
+2-R.3 — Settle the claim-approval path
+2A never entered claim_approved; step 13 jumped claim_review → contract_pending manually. Given FINDING 2-A, determine whether claim_review → claim_approved is reachable by any means at all, and if so, which one. If the only path is PATCH /leads/:id/advance-stage with an outcome, say that plainly. Report only — this is core insurance workflow and I need to know whether it works before the live test, not a fix.
+
+PHASE 3 — Negative Tests
+Run as specified in the original work order, 3.1 through 3.12. The assertion rule stands and is the thing that matters most: record the HTTP status and independently query the database to prove no row changed. Report both columns for every case. Never infer the side effect from the status code.
+
+Amendments:
+
+3.1 covers all 275 routes classified direct or join in test-results.json, not a sample. The static column is targeting only. Include the three real tenants (CQG5XS, AP3TBW, 5XV39C — that last one is NuHome, the live tenant) as read-only probes. No writes against any non-ZZTEST company, under any circumstance.
+
+3.8 expects 429 after 30 attempts — the portal limiter now exists per a635a2c. Record the exact attempt number at which it engages, and whether the counter is per-IP or global.
+
+3.11 uses the 2-R.1 result. Determine empirically whether A-CANV-1 (field_rep) can reach PATCH /pins/:pinId/profile at pins.ts:332 and the inspections pin-proxy PATCH. If reachable, write a contract amount through it and show the resulting revised_contract_cents movement using the correct column name. Record whether anything logs the change. Do not modify those endpoints.
+
+3.3 is the highest-value item in this phase. Mass-assignment on PATCH /users/me or any profile route that accepts role, department, workflowAssignment, or company_id is a P0 and would invalidate every other permission result in this report. Test it against all 10 users, not just the field reps.
+
+▶ CHECKPOINT 3 — Paste the results table: test id / actor / target / expected / actual status / side-effect verified (yes-no) / verdict, grouped by severity. Plus the 2-R.1 re-measurement, the 2-R.2 outcome, the 2-R.3 answer, and git log --oneline since d51173e. Stop.
+
