@@ -803,7 +803,7 @@ router.get('/inspections/scheduled', async (req: Request, res: Response) => {
   // Local Phase 2 appointments — inspections whose status was set to 'scheduled'
   // by notify-schedule. Field reps see their own; managers and above see all in
   // the company (matching the agreement tracker's visibility model).
-  const isManager = (['manager', 'admin', 'super_admin'] as string[]).includes(actor.role);
+  const isManager = isManagerOrAdmin(actor.role as Role);
   const rows = await db
     .select()
     .from(inspectionsTable)

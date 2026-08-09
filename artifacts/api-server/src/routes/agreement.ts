@@ -31,7 +31,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
 import { z } from 'zod';
 
-import { canAccessInspectionModule, canWriteInspection, roleRank, type Role } from '@workspace/authz';
+import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, roleRank, type Role } from '@workspace/authz';
 import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage';
 import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
@@ -779,7 +779,7 @@ router.get('/documents', async (req: Request, res: Response) => {
   if (!actor) return;
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-  const isManager = ['manager', 'admin', 'super_admin'].includes(actor.role);
+  const isManager = isManagerOrAdmin(actor.role as Role);
 
   const docs: DocumentListItem[] = [];
 
@@ -905,7 +905,7 @@ router.get('/agreements', async (req: Request, res: Response) => {
   if (!actor) return;
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-  const isManager = ['manager', 'admin', 'super_admin'].includes(actor.role);
+  const isManager = isManagerOrAdmin(actor.role as Role);
 
   // Build WHERE conditions — always company-scoped.
   const conditions: Parameters<typeof and>[0][] = [
