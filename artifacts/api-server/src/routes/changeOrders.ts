@@ -41,6 +41,7 @@
 import { and, eq, sum } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
 import nodemailer from 'nodemailer';
+import { notify } from '../lib/notify';
 import { z } from 'zod';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
@@ -536,6 +537,18 @@ router.post(
 
     const items = await fetchLineItems(co.id);
     res.json({ changeOrder: changeOrderShape(updated!, items) });
+
+    // Fire-and-forget — managers alerted that a CO needs approval.
+    void notify({
+      type:        'change_order_pending_approval',
+      companyId:   req.user.companyId,
+      pinId:       co.pinId,
+      actorUserId: req.user.id,
+      payload:     {
+        description: co.description ?? undefined,
+        amountCents: co.amountCents,
+      },
+    });
   },
 );
 

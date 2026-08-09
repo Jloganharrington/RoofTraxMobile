@@ -27,6 +27,7 @@ import { Router, type Request, type Response } from 'express';
 import { and, eq } from 'drizzle-orm';
 import { db, pinsTable, userProfilesTable, claimStatusHistoryTable } from '@workspace/db';
 import { isManagerOrAdmin } from '@workspace/authz';
+import { notify } from '../lib/notify';
 
 const router = Router();
 
@@ -225,6 +226,20 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
   });
 
   res.json({ insurance: updated });
+
+  // Fire-and-forget — only fires when claim status actually changed.
+  if (statusChanging) {
+    void notify({
+      type:        'claim_status_changed',
+      companyId:   req.user!.companyId,
+      pinId,
+      actorUserId: req.user!.id,
+      payload:     {
+        fromStatus: pin.claimStatus,
+        toStatus:   incomingStatus,
+      },
+    });
+  }
 });
 
 export default router;

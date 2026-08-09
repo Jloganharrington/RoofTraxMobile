@@ -36,6 +36,7 @@ import {
   userProfilesTable,
 } from '@workspace/db';
 import { isManagerOrAdmin, type Role } from '@workspace/authz';
+import { notify } from '../lib/notify';
 
 const router = Router();
 
@@ -170,6 +171,15 @@ router.post('/pins/:pinId/payments', async (req: Request, res: Response) => {
     .returning();
 
   res.status(201).json({ payment });
+
+  // Fire-and-forget — managers notified; actor excluded; response already sent.
+  void notify({
+    type:        'payment_recorded',
+    companyId:   req.user.companyId,
+    pinId,
+    actorUserId: req.user.id,
+    payload:     { amountCents: payment.amountCents, paymentType: payment.type },
+  });
 });
 
 // ---------------------------------------------------------------------------

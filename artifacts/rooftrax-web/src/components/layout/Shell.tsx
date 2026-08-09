@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   Settings,
   Plug,
-  Bell,
   LogOut,
   Loader2,
   Search,
@@ -83,7 +82,6 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "User Authorization", path: "/user-authorization", icon: ShieldCheck, minRole: 'manager' },
       { label: "Settings",           path: "/settings",           icon: Settings },
       { label: "Integrations",       path: "/integrations",       icon: Plug,        minRole: 'manager' },
-      { label: "Notifications",      path: "/notifications",      icon: Bell },
     ],
   },
 ];

@@ -9,6 +9,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
 
@@ -1034,3 +1035,58 @@ export const claimStatusHistoryTable = pgTable('claim_status_history', {
 
 export type ClaimStatusHistory = typeof claimStatusHistoryTable.$inferSelect;
 export type InsertClaimStatusHistory = typeof claimStatusHistoryTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Notification Preferences (migration 039)
+// ---------------------------------------------------------------------------
+// Rows are written ONLY when a user changes something from the catalog default.
+// Absence of a row = "use the catalog default" — this avoids backfilling every
+// new notification type for every existing user when new types are added.
+//
+// frequency stores all four values even though v1 only dispatches immediate/off.
+// UNIQUE (user_id, notification_type) enforces one row per type per user.
+
+export const notificationPreferencesTable = pgTable(
+  'notification_preferences',
+  {
+    id:               varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+    companyId:        varchar('company_id').notNull().references(() => companiesTable.id),
+    userId:           varchar('user_id').notNull().references(() => usersTable.id),
+    notificationType: varchar('notification_type').notNull(),
+    emailEnabled:     boolean('email_enabled').notNull(),
+    pushEnabled:      boolean('push_enabled').notNull(),
+    frequency:        varchar('frequency').notNull().default('immediate'),
+    createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:        timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userTypeUniq: uniqueIndex('notification_prefs_user_type_uniq').on(t.userId, t.notificationType),
+  }),
+);
+
+export type NotificationPreference = typeof notificationPreferencesTable.$inferSelect;
+export type InsertNotificationPreference = typeof notificationPreferencesTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// User push tokens — one row per device, one user may have many
+// ---------------------------------------------------------------------------
+
+export const userPushTokensTable = pgTable(
+  'user_push_tokens',
+  {
+    id:             varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+    companyId:      varchar('company_id').notNull().references(() => companiesTable.id, { onDelete: 'cascade' }),
+    userId:         varchar('user_id').notNull().references(() => usersTable.id, { onDelete: 'cascade' }),
+    expoPushToken:  varchar('expo_push_token').notNull(),
+    deviceLabel:    varchar('device_label'),
+    platform:       varchar('platform'),
+    lastSeenAt:     timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenUnique: uniqueIndex('user_push_tokens_token_uq').on(t.expoPushToken),
+  }),
+);
+
+export type UserPushToken = typeof userPushTokensTable.$inferSelect;
+export type InsertUserPushToken = typeof userPushTokensTable.$inferInsert;

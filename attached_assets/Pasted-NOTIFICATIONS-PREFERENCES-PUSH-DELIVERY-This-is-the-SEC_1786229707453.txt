@@ -1,0 +1,268 @@
+NOTIFICATIONS — PREFERENCES + PUSH DELIVERY
+
+⚠ This is the SECOND deliberate unfreeze of artifacts/mobile (the first was
+on-site change orders). It carries an app-store release cycle. Accept that
+before starting.
+
+⚠ PUSH CANNOT BE TESTED IN EXPO GO. Expo removed remote push support from
+Expo Go (Android as of SDK 53; this repo is on SDK 54). Testing requires an
+EAS development build. If your field testing currently runs through Expo Go,
+that workflow changes — plan for it in step 5, do not discover it there.
+
+Five steps, forced order. The frozen app is touched LAST, after everything
+server-side is proven independently.
+
+STANDING BOUNDARIES: never hand-edit generated client files (edit
+lib/api-spec/openapi.yaml, regenerate); never hand-write a query key for a
+generated hook; server enforcement authoritative; integer cents.
+STOP at each ▶ CHECKPOINT, paste real output, PUSH to git, wait for
+confirmation.
+
+═══════════════════════════════════════════════════════════
+DESIGN — read before building
+═══════════════════════════════════════════════════════════
+FREQUENCY: there is NO scheduler in this repo — no cron, no job queue,
+nothing in deps. Immediate sends work today; digests need infrastructure
+that does not exist. Store all four values (immediate | daily | weekly |
+off) so no migration is needed later, but implement ONLY immediate and off
+in v1. Do NOT improvise a setInterval in the API process — it double-sends
+on multiple instances and loses its schedule on restart.
+
+Digests are an email concept. Push is immediate-or-off; frequency applies
+to email only.
+
+CHANNELS: email and push are independent per notification type. A user may
+want a signed contract by email (searchable later) and an overdue item by
+push (interrupts them in a truck).
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 1 [LOCKED] — CATALOG + PREFERENCES   migration 039   ║
+╚═══════════════════════════════════════════════════════════╝
+
+1a. Notification catalog as DATA, in lib/authz alongside the widget catalog
+    (it is capability-shaped and lib/authz has zero runtime deps — keep it
+    that way). Each entry:
+      type            stable key
+      label           human-readable
+      group           'money' | 'claims' | 'my_work' | 'attention'
+      minRole         who may receive it at all
+      recipientRule   'assignee' | 'lead_owner' | 'managers'
+                      | 'lead_owner_and_managers'
+      defaultEmail    boolean
+      defaultPush     boolean
+      supportsDigest  boolean
+
+    The catalog (grounded in events this system actually emits):
+      MONEY     payment_recorded            managers
+                contract_signed             lead_owner_and_managers
+                contract_voided             managers
+                change_order_signed         lead_owner_and_managers
+                change_order_pending_approval  managers
+                change_order_approved       lead_owner_and_managers
+      CLAIMS    fipsa_signed                lead_owner_and_managers
+                fipsa_voided                managers
+                claim_status_changed        lead_owner_and_managers
+                proof_package_delivered     lead_owner_and_managers
+      MY WORK   inspection_assigned         assignee
+                inspection_scheduled        assignee
+                appointment_assigned        assignee
+      ATTENTION item_overdue                managers
+                claim_blocked               managers
+                lead_needs_stage_review     managers
+
+    If any recipient rule looks wrong for how you actually operate, STOP and
+    report rather than adjusting it silently — these determine who gets
+    woken up.
+
+1b. Migration 039 (verify 039 is free), table notification_preferences:
+      id, company_id, user_id (FK users), notification_type varchar,
+      email_enabled boolean NOT NULL,
+      push_enabled  boolean NOT NULL,
+      frequency     varchar NOT NULL DEFAULT 'immediate',
+      created_at / updated_at
+      UNIQUE (user_id, notification_type)
+
+    Do NOT seed a row per user per type. Absence of a row means "use the
+    catalog default" — rows are written only when a user changes something.
+    Seeding would mean backfilling every new notification type forever.
+
+1c. API (openapi-first, regenerate):
+      GET   /notifications/preferences   returns the catalog filtered to what
+                                         THIS user may receive, merged with
+                                         their stored overrides
+      PATCH /notifications/preferences   upsert one or many
+    Self-only. A user configures their own preferences and nobody else's —
+    no target-user parameter of any kind.
+    Filter the catalog SERVER-SIDE by role. A field_rep must not receive a
+    list containing change_order_pending_approval; do not return everything
+    and hide rows in the client.
+
+▶ CHECKPOINT 1
+  VERIFY:
+   - field_rep GET returns only their eligible types; manager gets more.
+     Paste both lists.
+   - PATCH with a type the caller cannot receive → 400/403, not silently stored
+   - PATCH with a target-user param → ignored, caller's own row updated
+   - no stored row → catalog defaults returned
+   - frequency accepts all four values but only immediate/off are honoured
+     downstream (documented, not enforced by rejecting the others)
+  INTEGRATION:
+   - authz tests green with the new catalog; widget catalog untouched
+   - seed-acceptance-claim.ts 42/42; typechecks ×3; mobile diff EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 2 [REASONING OK] — SETTINGS UI                       ║
+╚═══════════════════════════════════════════════════════════╝
+2a. Move Notifications from the Admin nav section into Settings → PERSONAL,
+    alongside Profile, Appearance, Dashboard, and Email. Remove the
+    /notifications top-level route and its ComingSoon stub; redirect it to
+    /settings so any existing link still lands somewhere sensible.
+
+2b. Panel grouped by the catalog's group field, one row per notification
+    type, with independent Email and Push toggles and a frequency selector
+    on email only.
+    Only render types the server returned — never the full catalog.
+    Daily and weekly must be visibly unavailable in v1 (disabled with a
+    short reason), not silently missing and not selectable-but-broken.
+
+▶ CHECKPOINT 2
+  VERIFY: screenshots as field_rep and as manager showing different type
+          lists; toggles persist across reload; /notifications redirects
+  INTEGRATION: every other Settings tab still renders and saves; Company
+          tabs still admin+; typechecks ×3; mobile diff EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 3 [LOCKED] — DISPATCH LAYER + EMAIL                  ║
+╚═══════════════════════════════════════════════════════════╝
+3a. ONE dispatch module. Every notification in the system goes through it.
+    Signature roughly:
+      notify({ type, companyId, pinId?, inspectionId?, actorUserId?, payload })
+    It resolves recipients from the catalog's recipientRule, loads each
+    recipient's preferences (falling back to catalog defaults), and sends on
+    the enabled channels.
+
+    NEVER send a notification from a route handler directly. Two send paths
+    means two places to fix when a rule changes — this repo has been bitten
+    by exactly that pattern more than once.
+
+3b. Recipient resolution rules:
+      assignee                 inspections.inspector_user_id /
+                               pins.appointment_assigned_to
+      lead_owner               pins.user_id
+      managers                 every manager+ in the company
+      lead_owner_and_managers  union, deduplicated
+    NEVER notify the actor about their own action. Someone who just recorded
+    a payment does not need an email telling them they recorded a payment.
+
+3c. Email via the existing per-user SMTP. If a recipient has no SMTP
+    configured, skip silently and log — do not fail the originating request.
+    A notification failure must NEVER roll back or break the business action
+    that triggered it. Dispatch is fire-and-forget relative to the
+    transaction.
+
+3d. Wire the first four event sites: payment recorded, contract signed,
+    change order pending approval, claim status changed. Do NOT wire all
+    sixteen yet — prove the layer works, then fan out.
+
+▶ CHECKPOINT 3
+  VERIFY:
+   - recording a payment emails the manager, NOT the actor
+   - a recipient with email disabled for that type gets nothing
+   - a recipient with no SMTP configured is skipped and logged; the payment
+     still saves
+   - deliberately break the mailer → the business action still succeeds
+  INTEGRATION:
+   - payments, contracts, change orders, insurance PATCH all still work
+   - api-server vitest green; seed-acceptance-claim.ts 42/42
+   - typechecks ×3; mobile diff EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 4 [LOCKED] — PUSH INFRASTRUCTURE (SERVER)   mig 040  ║
+╚═══════════════════════════════════════════════════════════╝
+Server side only. No mobile changes in this step — it must be verifiable
+before the frozen app is touched.
+
+4a. Migration 040, table user_push_tokens:
+      id, company_id, user_id (FK users),
+      expo_push_token varchar NOT NULL,
+      device_label    varchar NULL,
+      platform        varchar NULL,   -- ios | android
+      last_seen_at    timestamptz NOT NULL DEFAULT now(),
+      created_at
+      UNIQUE (expo_push_token)
+    One user may have MANY tokens — phone plus tablet. Do not model this as
+    a single column on users.
+
+4b. POST /notifications/push-tokens  — register or refresh. Self-only.
+    DELETE /notifications/push-tokens/:token — deregister on logout.
+
+4c. Send via Expo's push service. Use the expo-server-sdk package rather
+    than hand-rolling the HTTP call — it handles chunking and the batch
+    limits correctly.
+
+4d. RECEIPT HANDLING [LOCKED]. Expo returns tickets, then receipts. A
+    receipt with DeviceNotRegistered means the token is dead — DELETE it.
+    Without this, dead tokens accumulate forever and every send wastes
+    quota on uninstalled apps. This is the step most commonly skipped.
+
+4e. Add push to the dispatch layer from step 3 as a second channel. Same
+    recipient rules, same never-notify-the-actor rule.
+
+▶ CHECKPOINT 4
+  VERIFY:
+   - register a token, send a test push to it, paste the ticket response
+   - a DeviceNotRegistered receipt deletes the token — prove it with a
+     deliberately invalid token
+   - a user with push disabled for a type receives nothing
+   - a user with no registered token is skipped without error
+   - push failure does not break the business action
+  INTEGRATION:
+   - email delivery from step 3 still works; a user with BOTH enabled gets both
+   - api-server vitest green; typechecks ×3; mobile diff STILL EMPTY
+STOP + PUSH.
+
+╔═══════════════════════════════════════════════════════════╗
+║ STEP 5 [LOCKED] — MOBILE CLIENT                           ║
+╚═══════════════════════════════════════════════════════════╝
+Now the frozen app. Touch ONLY what this feature needs — no refactors, no
+restyling, no unrelated improvements.
+
+5a. Add expo-notifications. Configure EAS credentials for APNs and FCM.
+    Report what credential work was required — that is operational knowledge
+    that must not live only in Replit's session history.
+
+5b. Permission request placement. Do NOT prompt on first launch — a cold
+    permission prompt before any value is delivered is the reliable way to
+    get denied permanently. Prompt after a meaningful first action, or from
+    an explicit control in the Profile tab. State where you put it and why.
+
+5c. Register the push token on login and on token refresh; deregister on
+    logout. Handle the permission-denied path gracefully — the app must work
+    normally without notifications.
+
+5d. Tapping a notification deep-links to the relevant lead, inspection, or
+    change order.
+
+5e. TESTING [LOCKED]: build an EAS development build. Push does NOT work in
+    Expo Go on SDK 54. Report the build command and how the team should get
+    that build onto test devices.
+
+▶ CHECKPOINT 5 — closes notifications
+  VERIFY:
+   - real push received on a physical device — screenshot the lock screen
+   - tapping it deep-links correctly
+   - permission denied → app functions normally, no crash, no nag loop
+   - logout deregisters the token; log back in re-registers
+   - a second device on the same account gets its own token and both receive
+  INTEGRATION — full pass:
+   - EVERY existing mobile flow still works: pin drop, Phase 1, Phase 2,
+     FIPSA signing, on-site change orders with offline PDF generation,
+     the scheduled feed, photo capture
+   - offline outbox still syncs correctly
+   - authz 51/51; api-server vitest full; seed-acceptance-claim.ts 42/42
+   - typechecks ×3
+   - git diff --stat -- artifacts/mobile/ shows ONLY notification-related
+     files — paste it

@@ -5863,6 +5863,100 @@ export const SubmitInspectionResponse = zod.object({
 
 
 /**
+ * Upserts a push token for the caller's account. If the same expo_push_token is already registered (e.g. another device refresh), last_seen_at, device_label, and platform are updated in place. Self-only — always registers against the caller's user ID.
+ * @summary Register or refresh a push token for the authenticated user
+ */
+export const RegisterPushTokenBody = zod.object({
+  "expoPushToken": zod.string().describe('The ExponentPushToken[...] string from Expo.'),
+  "deviceLabel": zod.string().nullish().describe('Human-readable label for the device (e.g. \"iPhone 15 Pro\").'),
+  "platform": zod.enum(['ios', 'android']).nullish().describe('Device platform.')
+})
+
+export const RegisterPushTokenResponse = zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "expoPushToken": zod.string(),
+  "deviceLabel": zod.string().nullish(),
+  "platform": zod.string().nullish(),
+  "lastSeenAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * Deletes the push token from the caller's account. The token must belong to the authenticated user; attempts to delete another user's token return 404. Idempotent — deleting a token that does not exist returns 204.
+ * @summary Deregister a push token (on logout or token rotation)
+ */
+export const DeregisterPushTokenParams = zod.object({
+  "expoPushToken": zod.coerce.string().describe('The Expo push token string to deregister.')
+})
+
+export const DeregisterPushTokenResponse = zod.void()
+
+
+/**
+ * Fetches push receipts for the provided ticket IDs and deletes any tokens that Expo reports as DeviceNotRegistered. In production this is called by a background scheduler; the endpoint is exposed for testing and operational use. Manager+ only.
+ * @summary Check Expo push receipts and clean up dead tokens
+ */
+export const CheckPushReceiptsBody = zod.object({
+  "ticketIds": zod.array(zod.string()).describe('Expo push ticket IDs from a previous send.')
+})
+
+export const CheckPushReceiptsResponse = zod.object({
+  "checked": zod.number(),
+  "deleted": zod.number()
+})
+
+
+/**
+ * Returns the notification catalog filtered to types the caller may receive (by role), merged with any stored overrides. Absence of a stored row means the catalog default is used. Self-only — no target-user parameter.
+ * @summary Get notification preferences for the authenticated user
+ */
+export const GetNotificationPreferencesResponse = zod.object({
+  "preferences": zod.array(zod.object({
+  "type": zod.string().describe('Stable notification type key from the catalog.'),
+  "label": zod.string().describe('Human-readable display label.'),
+  "group": zod.enum(['money', 'claims', 'my_work', 'attention']),
+  "recipientRule": zod.enum(['assignee', 'lead_owner', 'managers', 'lead_owner_and_managers']),
+  "emailEnabled": zod.boolean().describe('Whether email delivery is enabled (may reflect catalog default).'),
+  "pushEnabled": zod.boolean().describe('Whether push delivery is enabled (may reflect catalog default).'),
+  "frequency": zod.enum(['immediate', 'daily', 'weekly', 'off']).describe('Delivery frequency for email. v1 honours only immediate and off; daily and weekly are stored but treated as immediate until digest infrastructure is available. Push is always immediate-or-off.'),
+  "supportsDigest": zod.boolean().describe('Whether this type will ever support daily\/weekly frequency.')
+})).describe('Catalog entries eligible for this user\'s role, merged with stored overrides. Order matches the catalog definition.')
+})
+
+
+/**
+ * Upserts one or more preference rows for the caller. Each item in `updates` must match a type the caller is eligible to receive (by role); ineligible types are rejected with 403. Self-only — any userId in the body is ignored; always updates the caller's own rows. Omitted fields within each update item are left unchanged.
+ * @summary Upsert notification preferences for the authenticated user
+ */
+
+
+
+export const PatchNotificationPreferencesBody = zod.object({
+  "updates": zod.array(zod.object({
+  "type": zod.string().describe('Notification type key to update.'),
+  "emailEnabled": zod.boolean().optional(),
+  "pushEnabled": zod.boolean().optional(),
+  "frequency": zod.enum(['immediate', 'daily', 'weekly', 'off']).optional()
+})).min(1)
+})
+
+export const PatchNotificationPreferencesResponse = zod.object({
+  "preferences": zod.array(zod.object({
+  "type": zod.string().describe('Stable notification type key from the catalog.'),
+  "label": zod.string().describe('Human-readable display label.'),
+  "group": zod.enum(['money', 'claims', 'my_work', 'attention']),
+  "recipientRule": zod.enum(['assignee', 'lead_owner', 'managers', 'lead_owner_and_managers']),
+  "emailEnabled": zod.boolean().describe('Whether email delivery is enabled (may reflect catalog default).'),
+  "pushEnabled": zod.boolean().describe('Whether push delivery is enabled (may reflect catalog default).'),
+  "frequency": zod.enum(['immediate', 'daily', 'weekly', 'off']).describe('Delivery frequency for email. v1 honours only immediate and off; daily and weekly are stored but treated as immediate until digest infrastructure is available. Push is always immediate-or-off.'),
+  "supportsDigest": zod.boolean().describe('Whether this type will ever support daily\/weekly frequency.')
+})).describe('Catalog entries eligible for this user\'s role, merged with stored overrides. Order matches the catalog definition.')
+})
+
+
+/**
  * Returns CalendarItems from four sources: Phase 1 (preliminary) inspections, Phase 2 (forensic) inspections, retail appointments (pins.appointment_at), and adjuster meetings (pins.adjusterMeetingDate). Requires from and to query parameters. The range is capped at 90 days; requests exceeding the cap are rejected with 400. Field reps see only items assigned to them; managers and above see the full company scope.
  * @summary Unified team calendar — all four scheduling sources in one normalised feed
  */

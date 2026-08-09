@@ -34,6 +34,7 @@ import selectionsRouter from "./selections";
 import contractsRouter from "./contracts";
 import contractPortalRouter from "./contractPortal";
 import calendarRouter from "./calendar";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(selectionsRouter);
 router.use(contractsRouter);
 router.use(contractPortalRouter);
 router.use(calendarRouter);
+router.use(notificationsRouter);
 
 export default router;

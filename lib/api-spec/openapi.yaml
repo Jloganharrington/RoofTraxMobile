@@ -3246,6 +3246,170 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /notifications/push-tokens:
+    post:
+      tags: [Notifications]
+      operationId: registerPushToken
+      summary: Register or refresh a push token for the authenticated user
+      description: >-
+        Upserts a push token for the caller's account. If the same
+        expo_push_token is already registered (e.g. another device refresh),
+        last_seen_at, device_label, and platform are updated in place.
+        Self-only — always registers against the caller's user ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterPushTokenInput"
+      responses:
+        "200":
+          description: Token registered or refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPushToken"
+        "400":
+          description: Invalid token format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /notifications/push-tokens/{expoPushToken}:
+    delete:
+      tags: [Notifications]
+      operationId: deregisterPushToken
+      summary: Deregister a push token (on logout or token rotation)
+      description: >-
+        Deletes the push token from the caller's account. The token must
+        belong to the authenticated user; attempts to delete another user's
+        token return 404. Idempotent — deleting a token that does not exist
+        returns 204.
+      parameters:
+        - name: expoPushToken
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The Expo push token string to deregister.
+      responses:
+        "204":
+          description: Token deregistered (or was not registered).
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /notifications/push-receipts:
+    post:
+      tags: [Notifications]
+      operationId: checkPushReceipts
+      summary: Check Expo push receipts and clean up dead tokens
+      description: >-
+        Fetches push receipts for the provided ticket IDs and deletes any
+        tokens that Expo reports as DeviceNotRegistered. In production this
+        is called by a background scheduler; the endpoint is exposed for
+        testing and operational use. Manager+ only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckPushReceiptsInput"
+      responses:
+        "200":
+          description: Receipt check result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checked, deleted]
+                properties:
+                  checked:
+                    type: integer
+                  deleted:
+                    type: integer
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /notifications/preferences:
+    get:
+      tags: [Notifications]
+      operationId: getNotificationPreferences
+      summary: Get notification preferences for the authenticated user
+      description: >-
+        Returns the notification catalog filtered to types the caller may
+        receive (by role), merged with any stored overrides. Absence of a
+        stored row means the catalog default is used. Self-only — no
+        target-user parameter.
+      responses:
+        "200":
+          description: Merged preference list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferencesResponse"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [Notifications]
+      operationId: patchNotificationPreferences
+      summary: Upsert notification preferences for the authenticated user
+      description: >-
+        Upserts one or more preference rows for the caller. Each item in
+        `updates` must match a type the caller is eligible to receive (by
+        role); ineligible types are rejected with 403. Self-only — any
+        userId in the body is ignored; always updates the caller's own rows.
+        Omitted fields within each update item are left unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationPreferenceUpdateInput"
+      responses:
+        "200":
+          description: Updated full preference list (same shape as GET).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferencesResponse"
+        "400":
+          description: Unknown notification type in updates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller not eligible to receive one of the requested types.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /calendar:
     get:
       tags: [Calendar]
@@ -11039,6 +11203,133 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScheduledInspection"
+
+    # ---- Notifications ----
+
+    CheckPushReceiptsInput:
+      type: object
+      required: [ticketIds]
+      properties:
+        ticketIds:
+          type: array
+          items:
+            type: string
+          description: Expo push ticket IDs from a previous send.
+
+    RegisterPushTokenInput:
+      type: object
+      required: [expoPushToken]
+      properties:
+        expoPushToken:
+          type: string
+          description: The ExponentPushToken[...] string from Expo.
+        deviceLabel:
+          type: string
+          nullable: true
+          description: Human-readable label for the device (e.g. "iPhone 15 Pro").
+        platform:
+          type: string
+          nullable: true
+          enum: [ios, android]
+          description: Device platform.
+
+    UserPushToken:
+      type: object
+      required: [id, userId, expoPushToken, lastSeenAt, createdAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        expoPushToken:
+          type: string
+        deviceLabel:
+          type: string
+          nullable: true
+        platform:
+          type: string
+          nullable: true
+        lastSeenAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationPreferenceEntry:
+      type: object
+      required:
+        - type
+        - label
+        - group
+        - recipientRule
+        - emailEnabled
+        - pushEnabled
+        - frequency
+        - supportsDigest
+      properties:
+        type:
+          type: string
+          description: Stable notification type key from the catalog.
+        label:
+          type: string
+          description: Human-readable display label.
+        group:
+          type: string
+          enum: [money, claims, my_work, attention]
+        recipientRule:
+          type: string
+          enum: [assignee, lead_owner, managers, lead_owner_and_managers]
+        emailEnabled:
+          type: boolean
+          description: Whether email delivery is enabled (may reflect catalog default).
+        pushEnabled:
+          type: boolean
+          description: Whether push delivery is enabled (may reflect catalog default).
+        frequency:
+          type: string
+          enum: [immediate, daily, weekly, off]
+          description: >-
+            Delivery frequency for email. v1 honours only immediate and off;
+            daily and weekly are stored but treated as immediate until digest
+            infrastructure is available. Push is always immediate-or-off.
+        supportsDigest:
+          type: boolean
+          description: Whether this type will ever support daily/weekly frequency.
+
+    NotificationPreferencesResponse:
+      type: object
+      required: [preferences]
+      properties:
+        preferences:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationPreferenceEntry"
+          description: >-
+            Catalog entries eligible for this user's role, merged with stored
+            overrides. Order matches the catalog definition.
+
+    NotificationPreferenceUpdateInput:
+      type: object
+      required: [updates]
+      properties:
+        updates:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [type]
+            properties:
+              type:
+                type: string
+                description: Notification type key to update.
+              emailEnabled:
+                type: boolean
+              pushEnabled:
+                type: boolean
+              frequency:
+                type: string
+                enum: [immediate, daily, weekly, off]
 
     # ---- Live Activity Feed ----
 

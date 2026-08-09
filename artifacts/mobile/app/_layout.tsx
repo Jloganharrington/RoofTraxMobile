@@ -9,6 +9,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { useOutboxSync } from '@/lib/outbox/useOutboxSync';
+import * as Notifications from 'expo-notifications';
+import { router } from 'expo-router';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -47,6 +49,36 @@ function AuthenticatedStack() {
   // Only runs once the session is authenticated — the outbox drainer needs
   // an authenticated API client to sync queued inspection writes.
   useOutboxSync();
+
+  // ── Push notification deep-link handler ─────────────────────────────────────
+  // Fires when the user taps a notification (background or quit-state).
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as {
+        type?:           string;
+        pinId?:          string;
+        inspectionId?:   string;
+        changeOrderId?:  string;
+      };
+
+      // Navigate to the most specific screen available.
+      if (data.inspectionId) {
+        router.push({
+          pathname: '/inspection/[id]' as const,
+          params:   { id: data.inspectionId },
+        });
+      } else if (
+        data.type === 'change_order_pending_approval' ||
+        data.changeOrderId
+      ) {
+        router.push('/(tabs)/change-orders');
+      } else {
+        // pinId-only or any other type → home tab (pin list).
+        router.push('/(tabs)');
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <View style={{ flex: 1 }}>

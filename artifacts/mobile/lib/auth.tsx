@@ -11,6 +11,7 @@ import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { getToken, setToken, deleteToken } from './tokenStorage';
+import { registerPushToken, deregisterPushToken } from './notifications';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -98,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data.user) {
         setUser(data.user);
+        // Fire-and-forget: only registers if permission is already granted.
+        // Never blocks auth flow or throws.
+        void registerPushToken();
       } else {
         await deleteToken(AUTH_TOKEN_KEY);
         setUser(null);
@@ -260,11 +264,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const token = await getToken(AUTH_TOKEN_KEY);
       if (token) {
+        // Deregister push token BEFORE deleting the auth token — it needs the
+        // Bearer token to authenticate the DELETE request to the server.
+        // Run alongside the logout API call; both fire while the token is live.
         const apiBase = getApiBaseUrl();
-        await fetch(`${apiBase}/api/mobile-auth/logout`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await Promise.allSettled([
+          deregisterPushToken(),
+          fetch(`${apiBase}/api/mobile-auth/logout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
       }
     } catch {
     } finally {

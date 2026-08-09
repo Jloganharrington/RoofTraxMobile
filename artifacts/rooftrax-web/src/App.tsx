@@ -3,7 +3,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import {
   Calendar, MapPin, FileText,
-  ShieldCheck, Settings, Plug, Bell,
+  ShieldCheck, Settings, Plug,
   Loader2,
 } from 'lucide-react';
 import { useGetCurrentAuthUser } from '@workspace/api-client-react';
@@ -147,11 +147,9 @@ function Router() {
             description="Connect your CRM, accounting software, and field tools to keep all your data in sync." />
         </ProtectedRoute>
       </Route>
+      {/* /notifications was a standalone page; now lives in Settings → Personal */}
       <Route path="/notifications">
-        <ProtectedRoute>
-          <ComingSoon icon={Bell} title="Notifications"
-            description="Configure automated alerts for claim milestones, team activity, and pipeline changes." />
-        </ProtectedRoute>
+        <Redirect to="/settings" />
       </Route>
 
       <Route component={NotFound} />

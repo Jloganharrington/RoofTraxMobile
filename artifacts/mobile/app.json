@@ -14,9 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.rooftrax.mobile"
     },
-    "android": {},
+    "android": {
+      "package": "com.rooftrax.mobile"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -43,8 +46,21 @@
           "locationAlwaysAndWhenInUsePermission": "RoofTrax uses your location to GPS-stamp inspection photos and dropped pins."
         }
       ],
-      "expo-mail-composer"
+      "expo-mail-composer",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#1e3a5f",
+          "defaultChannel": "default"
+        }
+      ]
     ],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

@@ -32,6 +32,7 @@ import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
 import nodemailer from 'nodemailer';
 import { normalizePortalAccessCode } from '../lib/portalAccess';
+import { notify } from '../lib/notify';
 import { recomputeContractTotals } from '../lib/contractTotals';
 import { generateContractPdf } from '../lib/contractPdf';
 import { ObjectStorageService } from '../lib/objectStorage';
@@ -668,6 +669,20 @@ router.post('/portal/contract/:code/sign', async (req: Request, res: Response) =
       console.warn('[contractPortal] post-sign email failed:', err);
     }
   })();
+
+  // Internal team notification — lead owner (rep) + managers via notify().
+  // The existing block above handles the customer-facing PDF delivery.
+  // actorUserId = contract creator (rep) so the rep isn't double-notified.
+  void notify({
+    type:        'contract_signed',
+    companyId:   contract.companyId,
+    pinId:       contract.pinId,
+    actorUserId: contract.createdByUserId,
+    payload:     {
+      customerName: parsed.data.customerPrintName,
+      totalCents:   contract.totalContractCents,
+    },
+  });
 
   res.json({ status: 'signed', customerSignedAt: now.toISOString() });
 });

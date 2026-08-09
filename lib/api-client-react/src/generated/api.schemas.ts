@@ -2820,6 +2820,119 @@ export interface ScheduledInspectionListEnvelope {
   scheduled: ScheduledInspection[];
 }
 
+export interface CheckPushReceiptsInput {
+  /** Expo push ticket IDs from a previous send. */
+  ticketIds: string[];
+}
+
+/**
+ * Device platform.
+ */
+export type RegisterPushTokenInputPlatform = typeof RegisterPushTokenInputPlatform[keyof typeof RegisterPushTokenInputPlatform] | null;
+
+
+export const RegisterPushTokenInputPlatform = {
+  ios: 'ios',
+  android: 'android',
+} as const;
+
+export interface RegisterPushTokenInput {
+  /** The ExponentPushToken[...] string from Expo. */
+  expoPushToken: string;
+  /** Human-readable label for the device (e.g. "iPhone 15 Pro"). */
+  deviceLabel?: string | null;
+  /** Device platform. */
+  platform?: RegisterPushTokenInputPlatform;
+}
+
+export interface UserPushToken {
+  id: string;
+  userId: string;
+  expoPushToken: string;
+  deviceLabel?: string | null;
+  platform?: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+}
+
+export type NotificationPreferenceEntryGroup = typeof NotificationPreferenceEntryGroup[keyof typeof NotificationPreferenceEntryGroup];
+
+
+export const NotificationPreferenceEntryGroup = {
+  money: 'money',
+  claims: 'claims',
+  my_work: 'my_work',
+  attention: 'attention',
+} as const;
+
+export type NotificationPreferenceEntryRecipientRule = typeof NotificationPreferenceEntryRecipientRule[keyof typeof NotificationPreferenceEntryRecipientRule];
+
+
+export const NotificationPreferenceEntryRecipientRule = {
+  assignee: 'assignee',
+  lead_owner: 'lead_owner',
+  managers: 'managers',
+  lead_owner_and_managers: 'lead_owner_and_managers',
+} as const;
+
+/**
+ * Delivery frequency for email. v1 honours only immediate and off; daily and weekly are stored but treated as immediate until digest infrastructure is available. Push is always immediate-or-off.
+ */
+export type NotificationPreferenceEntryFrequency = typeof NotificationPreferenceEntryFrequency[keyof typeof NotificationPreferenceEntryFrequency];
+
+
+export const NotificationPreferenceEntryFrequency = {
+  immediate: 'immediate',
+  daily: 'daily',
+  weekly: 'weekly',
+  off: 'off',
+} as const;
+
+export interface NotificationPreferenceEntry {
+  /** Stable notification type key from the catalog. */
+  type: string;
+  /** Human-readable display label. */
+  label: string;
+  group: NotificationPreferenceEntryGroup;
+  recipientRule: NotificationPreferenceEntryRecipientRule;
+  /** Whether email delivery is enabled (may reflect catalog default). */
+  emailEnabled: boolean;
+  /** Whether push delivery is enabled (may reflect catalog default). */
+  pushEnabled: boolean;
+  /** Delivery frequency for email. v1 honours only immediate and off; daily and weekly are stored but treated as immediate until digest infrastructure is available. Push is always immediate-or-off. */
+  frequency: NotificationPreferenceEntryFrequency;
+  /** Whether this type will ever support daily/weekly frequency. */
+  supportsDigest: boolean;
+}
+
+export interface NotificationPreferencesResponse {
+  /** Catalog entries eligible for this user's role, merged with stored overrides. Order matches the catalog definition. */
+  preferences: NotificationPreferenceEntry[];
+}
+
+export type NotificationPreferenceUpdateInputUpdatesItemFrequency = typeof NotificationPreferenceUpdateInputUpdatesItemFrequency[keyof typeof NotificationPreferenceUpdateInputUpdatesItemFrequency];
+
+
+export const NotificationPreferenceUpdateInputUpdatesItemFrequency = {
+  immediate: 'immediate',
+  daily: 'daily',
+  weekly: 'weekly',
+  off: 'off',
+} as const;
+
+export type NotificationPreferenceUpdateInputUpdatesItem = {
+  /** Notification type key to update. */
+  type: string;
+  emailEnabled?: boolean;
+  pushEnabled?: boolean;
+  frequency?: NotificationPreferenceUpdateInputUpdatesItemFrequency;
+};
+
+export interface NotificationPreferenceUpdateInput {
+  /** @minItems 1 */
+  updates: NotificationPreferenceUpdateInputUpdatesItem[];
+}
+
 export type LiveActivityItemType = typeof LiveActivityItemType[keyof typeof LiveActivityItemType];
 
 
@@ -5043,6 +5156,11 @@ longitude?: number;
 
 export type DeletePriceBookItem200 = {
   ok: boolean;
+};
+
+export type CheckPushReceipts200 = {
+  checked: number;
+  deleted: number;
 };
 
 export type GetCalendarFeedParams = {

@@ -41,6 +41,8 @@ import type {
   ChangeOrderEnvelope,
   ChangeOrderLineItemEnvelope,
   ChangeOrdersEnvelope,
+  CheckPushReceipts200,
+  CheckPushReceiptsInput,
   ClaimBlockerEnvelope,
   CodeResearchInput,
   CommissionsEnvelope,
@@ -146,6 +148,8 @@ import type {
   MeasurementsAnalysisResult,
   MobileTokenExchangeRequest,
   MobileTokenExchangeSuccess,
+  NotificationPreferenceUpdateInput,
+  NotificationPreferencesResponse,
   OverheadEnvelope,
   PaymentEnvelope,
   PaymentListEnvelope,
@@ -171,6 +175,7 @@ import type {
   ProfitabilitySummaryEnvelope,
   PutEstimateInput,
   RecentActivityEnvelope,
+  RegisterPushTokenInput,
   ReportBrandingEnvelope,
   ResearchJurisdictionCodes200,
   ReverseGeocodeCoordinatesParams,
@@ -232,6 +237,7 @@ import type {
   UploadUrlRequest,
   UploadUrlResponse,
   UpsertJurisdictionPackInput,
+  UserPushToken,
   VendorExpenseEnvelope,
   VendorExpenseListEnvelope,
   VoidChangeOrderInput,
@@ -6302,6 +6308,372 @@ export const useSubmitInspection = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getSubmitInspectionMutationOptions(options));
+    }
+
+export const getRegisterPushTokenUrl = () => {
+
+
+
+
+  return `/api/notifications/push-tokens`
+}
+
+/**
+ * Upserts a push token for the caller's account. If the same expo_push_token is already registered (e.g. another device refresh), last_seen_at, device_label, and platform are updated in place. Self-only — always registers against the caller's user ID.
+ * @summary Register or refresh a push token for the authenticated user
+ */
+export const registerPushToken = async (registerPushTokenInput: RegisterPushTokenInput, options?: RequestInit): Promise<UserPushToken> => {
+
+  return customFetch<UserPushToken>(getRegisterPushTokenUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(registerPushTokenInput)
+  }
+);}
+
+
+
+
+
+export const getRegisterPushTokenMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,{data: BodyType<RegisterPushTokenInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,{data: BodyType<RegisterPushTokenInput>}, TContext> => {
+
+const mutationKey = ['registerPushToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerPushToken>>, {data: BodyType<RegisterPushTokenInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerPushToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterPushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof registerPushToken>>>
+    export type RegisterPushTokenMutationBody = BodyType<RegisterPushTokenInput>
+    export type RegisterPushTokenMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Register or refresh a push token for the authenticated user
+ */
+export const useRegisterPushToken = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,{data: BodyType<RegisterPushTokenInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerPushToken>>,
+        TError,
+        {data: BodyType<RegisterPushTokenInput>},
+        TContext
+      > => {
+      return useMutation(getRegisterPushTokenMutationOptions(options));
+    }
+
+export const getDeregisterPushTokenUrl = (expoPushToken: string,) => {
+
+
+
+
+  return `/api/notifications/push-tokens/${expoPushToken}`
+}
+
+/**
+ * Deletes the push token from the caller's account. The token must belong to the authenticated user; attempts to delete another user's token return 404. Idempotent — deleting a token that does not exist returns 204.
+ * @summary Deregister a push token (on logout or token rotation)
+ */
+export const deregisterPushToken = async (expoPushToken: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeregisterPushTokenUrl(expoPushToken),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeregisterPushTokenMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deregisterPushToken>>, TError,{expoPushToken: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deregisterPushToken>>, TError,{expoPushToken: string}, TContext> => {
+
+const mutationKey = ['deregisterPushToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deregisterPushToken>>, {expoPushToken: string}> = (props) => {
+          const {expoPushToken} = props ?? {};
+
+          return  deregisterPushToken(expoPushToken,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeregisterPushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof deregisterPushToken>>>
+
+    export type DeregisterPushTokenMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Deregister a push token (on logout or token rotation)
+ */
+export const useDeregisterPushToken = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deregisterPushToken>>, TError,{expoPushToken: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deregisterPushToken>>,
+        TError,
+        {expoPushToken: string},
+        TContext
+      > => {
+      return useMutation(getDeregisterPushTokenMutationOptions(options));
+    }
+
+export const getCheckPushReceiptsUrl = () => {
+
+
+
+
+  return `/api/notifications/push-receipts`
+}
+
+/**
+ * Fetches push receipts for the provided ticket IDs and deletes any tokens that Expo reports as DeviceNotRegistered. In production this is called by a background scheduler; the endpoint is exposed for testing and operational use. Manager+ only.
+ * @summary Check Expo push receipts and clean up dead tokens
+ */
+export const checkPushReceipts = async (checkPushReceiptsInput: CheckPushReceiptsInput, options?: RequestInit): Promise<CheckPushReceipts200> => {
+
+  return customFetch<CheckPushReceipts200>(getCheckPushReceiptsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(checkPushReceiptsInput)
+  }
+);}
+
+
+
+
+
+export const getCheckPushReceiptsMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkPushReceipts>>, TError,{data: BodyType<CheckPushReceiptsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkPushReceipts>>, TError,{data: BodyType<CheckPushReceiptsInput>}, TContext> => {
+
+const mutationKey = ['checkPushReceipts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkPushReceipts>>, {data: BodyType<CheckPushReceiptsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  checkPushReceipts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckPushReceiptsMutationResult = NonNullable<Awaited<ReturnType<typeof checkPushReceipts>>>
+    export type CheckPushReceiptsMutationBody = BodyType<CheckPushReceiptsInput>
+    export type CheckPushReceiptsMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Check Expo push receipts and clean up dead tokens
+ */
+export const useCheckPushReceipts = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkPushReceipts>>, TError,{data: BodyType<CheckPushReceiptsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkPushReceipts>>,
+        TError,
+        {data: BodyType<CheckPushReceiptsInput>},
+        TContext
+      > => {
+      return useMutation(getCheckPushReceiptsMutationOptions(options));
+    }
+
+export const getGetNotificationPreferencesUrl = () => {
+
+
+
+
+  return `/api/notifications/preferences`
+}
+
+/**
+ * Returns the notification catalog filtered to types the caller may receive (by role), merged with any stored overrides. Absence of a stored row means the catalog default is used. Self-only — no target-user parameter.
+ * @summary Get notification preferences for the authenticated user
+ */
+export const getNotificationPreferences = async ( options?: RequestInit): Promise<NotificationPreferencesResponse> => {
+
+  return customFetch<NotificationPreferencesResponse>(getGetNotificationPreferencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetNotificationPreferencesQueryKey = () => {
+    return [
+    `/api/notifications/preferences`
+    ] as const;
+    }
+
+
+export const getGetNotificationPreferencesQueryOptions = <TData = Awaited<ReturnType<typeof getNotificationPreferences>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetNotificationPreferencesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getNotificationPreferences>>> = ({ signal }) => getNotificationPreferences({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getNotificationPreferences>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetNotificationPreferencesQueryResult = NonNullable<Awaited<ReturnType<typeof getNotificationPreferences>>>
+export type GetNotificationPreferencesQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get notification preferences for the authenticated user
+ */
+
+export function useGetNotificationPreferences<TData = Awaited<ReturnType<typeof getNotificationPreferences>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getNotificationPreferences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetNotificationPreferencesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPatchNotificationPreferencesUrl = () => {
+
+
+
+
+  return `/api/notifications/preferences`
+}
+
+/**
+ * Upserts one or more preference rows for the caller. Each item in `updates` must match a type the caller is eligible to receive (by role); ineligible types are rejected with 403. Self-only — any userId in the body is ignored; always updates the caller's own rows. Omitted fields within each update item are left unchanged.
+ * @summary Upsert notification preferences for the authenticated user
+ */
+export const patchNotificationPreferences = async (notificationPreferenceUpdateInput: NotificationPreferenceUpdateInput, options?: RequestInit): Promise<NotificationPreferencesResponse> => {
+
+  return customFetch<NotificationPreferencesResponse>(getPatchNotificationPreferencesUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(notificationPreferenceUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getPatchNotificationPreferencesMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchNotificationPreferences>>, TError,{data: BodyType<NotificationPreferenceUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof patchNotificationPreferences>>, TError,{data: BodyType<NotificationPreferenceUpdateInput>}, TContext> => {
+
+const mutationKey = ['patchNotificationPreferences'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchNotificationPreferences>>, {data: BodyType<NotificationPreferenceUpdateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  patchNotificationPreferences(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PatchNotificationPreferencesMutationResult = NonNullable<Awaited<ReturnType<typeof patchNotificationPreferences>>>
+    export type PatchNotificationPreferencesMutationBody = BodyType<NotificationPreferenceUpdateInput>
+    export type PatchNotificationPreferencesMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Upsert notification preferences for the authenticated user
+ */
+export const usePatchNotificationPreferences = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchNotificationPreferences>>, TError,{data: BodyType<NotificationPreferenceUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof patchNotificationPreferences>>,
+        TError,
+        {data: BodyType<NotificationPreferenceUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getPatchNotificationPreferencesMutationOptions(options));
     }
 
 export const getGetCalendarFeedUrl = (params: GetCalendarFeedParams,) => {

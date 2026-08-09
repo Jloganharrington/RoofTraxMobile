@@ -35,6 +35,11 @@ import type { DamageType, DoorKnockResult, Pin, PinWorkflow } from '@workspace/a
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
+import {
+  getCurrentPermissionStatus,
+  requestPushPermission,
+  registerPushToken,
+} from '@/lib/notifications';
 import { DiscontinuedProductsModal } from '@/components/DiscontinuedProductsModal';
 import { saveSignatureFromDataUrl } from '@/lib/profileSignature';
 import { uploadFile } from '@/lib/upload';
@@ -327,8 +332,34 @@ export default function ProfileScreen() {
     myProfile: false,
     company: false,
     email: false,
+    notifications: false,
     account: false,
   });
+
+  // ── Push permission status ───────────────────────────────────────────────────
+  const [pushStatus, setPushStatus] = React.useState<'granted' | 'denied' | 'undetermined' | 'loading'>('loading');
+  const [pushRequesting, setPushRequesting] = React.useState(false);
+
+  React.useEffect(() => {
+    getCurrentPermissionStatus().then(setPushStatus);
+  }, []);
+
+  async function handleRequestPushPermission() {
+    setPushRequesting(true);
+    try {
+      const granted = await requestPushPermission();
+      setPushStatus(granted ? 'granted' : 'denied');
+      if (granted) {
+        // Silently register the token now that permission has just been granted.
+        void registerPushToken();
+        Alert.alert('Notifications enabled', 'You will receive push notifications for payments, contract signings, and claim updates.');
+      } else {
+        Alert.alert('Permission denied', 'To enable notifications, open Settings and allow notifications for RoofTrax.');
+      }
+    } finally {
+      setPushRequesting(false);
+    }
+  }
 
   function toggleSection(key: string) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -618,7 +649,62 @@ export default function ProfileScreen() {
         </View>
       </AccordionSection>
 
-      {/* ── 5. Account ───────────────────────────────────────────────────────── */}
+      {/* ── 5. Notifications ─────────────────────────────────────────────────── */}
+      <AccordionSection
+        title="Notifications"
+        iconName="zap"
+        open={openSections.notifications}
+        onToggle={() => toggleSection('notifications')}
+        colors={colors}
+        badge={pushStatus === 'granted' ? { label: 'Enabled', variant: 'success' } : undefined}
+      >
+        <View style={[styles.innerCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <View style={styles.sigHeader}>
+            <Icon name="zap" size={16} color={colors.foreground} />
+            <Text style={[styles.sigTitle, { color: colors.foreground }]}>Push notifications</Text>
+            {pushStatus === 'granted' ? (
+              <View style={[styles.sigBadge, { backgroundColor: '#ecfdf5' }]}>
+                <Text style={[styles.sigBadgeText, { color: colors.success }]}>Enabled</Text>
+              </View>
+            ) : pushStatus === 'denied' ? (
+              <View style={[styles.sigBadge, { backgroundColor: '#fef2f2' }]}>
+                <Text style={[styles.sigBadgeText, { color: colors.destructive }]}>Denied</Text>
+              </View>
+            ) : pushStatus === 'loading' ? null : (
+              <View style={[styles.sigBadge, { backgroundColor: colors.muted }]}>
+                <Text style={[styles.sigBadgeText, { color: colors.mutedForeground }]}>Not enabled</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            {pushStatus === 'granted'
+              ? 'You will receive push notifications for payments, contract signings, claim updates, and more.'
+              : pushStatus === 'denied'
+              ? 'Notifications are blocked. To enable them, open Settings and allow notifications for RoofTrax.'
+              : 'Get notified on your device when payments are recorded, contracts are signed, or claim status changes.'}
+          </Text>
+          {pushStatus !== 'granted' && (
+            <Pressable
+              onPress={handleRequestPushPermission}
+              disabled={pushRequesting || pushStatus === 'denied'}
+              style={[
+                styles.sigButton,
+                { backgroundColor: colors.secondary, opacity: (pushRequesting || pushStatus === 'denied') ? 0.5 : 1 },
+              ]}
+            >
+              <Text style={styles.sigButtonText}>
+                {pushRequesting
+                  ? 'Requesting…'
+                  : pushStatus === 'denied'
+                  ? 'Open Settings to enable'
+                  : 'Enable push notifications'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </AccordionSection>
+
+      {/* ── 6. Account ───────────────────────────────────────────────────────── */}
       <AccordionSection
         title="Account"
         iconName="settings"

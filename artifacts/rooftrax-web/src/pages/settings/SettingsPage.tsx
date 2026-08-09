@@ -50,6 +50,7 @@ import {
   User,
   SunMoon,
   Mail,
+  Bell,
   CheckCircle2,
   AlertCircle,
   Send,
@@ -65,6 +66,7 @@ import { applyTheme, type ThemeValue } from "@/lib/applyTheme";
 import { PriceBookPanel } from "@/pages/price-book/PriceBookList";
 import { TemplatesPanel } from "@/pages/TemplatesPage";
 import { SelectionsLibraryPanel } from "@/pages/settings/SelectionsLibraryPanel";
+import { NotificationsTab } from "@/pages/settings/NotificationsTab";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,7 +114,7 @@ function displayDollarsToCents(value: string): number | null {
 // Tab navigation
 // ---------------------------------------------------------------------------
 
-type PersonalTabId = "my_profile" | "appearance" | "email_settings";
+type PersonalTabId = "my_profile" | "appearance" | "email_settings" | "notifications";
 type CompanyTabId  = "company_profile" | "branding" | "preferences" | "price_book" | "templates" | "selections_library";
 type TabId = PersonalTabId | CompanyTabId;
 
@@ -123,9 +125,10 @@ interface Tab {
 }
 
 const PERSONAL_TABS: Tab[] = [
-  { id: "my_profile",     label: "Profile",     icon: User       },
-  { id: "appearance",     label: "Appearance",  icon: SunMoon    },
-  { id: "email_settings", label: "Email",       icon: Mail       },
+  { id: "my_profile",     label: "Profile",        icon: User       },
+  { id: "appearance",     label: "Appearance",     icon: SunMoon    },
+  { id: "email_settings", label: "Email",          icon: Mail       },
+  { id: "notifications",  label: "Notifications",  icon: Bell       },
 ];
 
 const COMPANY_TABS: Tab[] = [
@@ -1393,6 +1396,7 @@ export default function SettingsPage() {
             {activeTab === "my_profile"     && <ProfileTab />}
             {activeTab === "appearance"     && <AppearanceTab />}
             {activeTab === "email_settings" && <EmailSettingsTab />}
+            {activeTab === "notifications"  && <NotificationsTab />}
 
             {/* Company tabs — all gated at admin+, matching the sidebar filter */}
             {activeTab === "company_profile" && isAdminOrAbove && (
