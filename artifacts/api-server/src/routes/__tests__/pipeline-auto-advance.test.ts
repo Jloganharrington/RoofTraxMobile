@@ -176,6 +176,20 @@ describe('processPipelineEvent — stage mapping for the six wired events', () =
   });
 });
 
+describe('processPipelineEvent — the two protocol-gated events', () => {
+  it('preliminary_record_synced: phase1_scheduled → phase1_complete (insurance)', async () => {
+    const pinId = await seedPin('insurance', 'phase1_scheduled');
+    await processPipelineEvent({ companyId: COMPANY, leadId: pinId, eventType: 'preliminary_record_synced' });
+    expect(await pinStage(pinId)).toBe('phase1_complete');
+  });
+
+  it('forensic_record_attested: phase2_scheduled → phase2_complete (insurance)', async () => {
+    const pinId = await seedPin('insurance', 'phase2_scheduled');
+    await processPipelineEvent({ companyId: COMPANY, leadId: pinId, eventType: 'forensic_record_attested' });
+    expect(await pinStage(pinId)).toBe('phase2_complete');
+  });
+});
+
 describe('idempotency', () => {
   it('re-emitting the same event is a no-op: no backwards move, no duplicate row', async () => {
     const pinId = await seedPin('insurance', 'phase1_complete');

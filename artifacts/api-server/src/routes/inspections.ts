@@ -1237,6 +1237,24 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
     );
   }
 
+  // Pipeline auto-advance: the FIRST time a preliminary record is marked
+  // complete (the Phase 1 sync moment) advances insurance pins in
+  // phase1_scheduled → phase1_complete. Gated on the prior value being null so
+  // idempotent offline replays don't re-emit; the advance itself is also
+  // structurally idempotent. Fire-and-forget after the update committed.
+  const effectivePinId = updated?.pinId ?? inspection.pinId;
+  if (
+    parsed.data.preliminaryCompletedAt &&
+    !inspection.preliminaryCompletedAt &&
+    effectivePinId
+  ) {
+    void emitPipelineEvent({
+      companyId: actor.companyId,
+      leadId:    effectivePinId,
+      eventType: 'preliminary_record_synced',
+    });
+  }
+
   res.json(
     UpdateInspectionResponse.parse({
       inspection: {
@@ -2472,6 +2490,7 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
 
     if (inserted) {
       res.status(201).json(CreateAttestationResponse.parse({ attestation: inserted }));
+      emitForensicRecordAttested(inspection, actor.companyId, values.attestationType);
       return;
     }
 
@@ -2496,7 +2515,33 @@ router.post('/inspections/:inspectionId/attestations', async (req: Request, res:
   const [attestation] = await db.insert(attestationsTable).values(values).returning();
 
   res.status(201).json(CreateAttestationResponse.parse({ attestation }));
+  emitForensicRecordAttested(inspection, actor.companyId, values.attestationType);
 });
+
+/**
+ * Pipeline auto-advance for forensic-record attestation.
+ *
+ * A `stage_signoff` attestation on a forensic-phase inspection is the
+ * field-record sign-off (the same qualification lib/readiness.ts uses for
+ * `field_record_attested`). Other attestation types (equipment, gps_override)
+ * are supporting records and must NOT advance the pipeline. Advances insurance
+ * pins in phase2_scheduled → phase2_complete. Fire-and-forget after the
+ * attestation insert committed; structurally idempotent on re-emit.
+ */
+function emitForensicRecordAttested(
+  inspection: { pinId: string | null; phase: string | null },
+  companyId: string,
+  attestationType: string | undefined,
+): void {
+  if (attestationType !== 'stage_signoff') return;
+  if (inspection.phase !== 'forensic') return;
+  if (!inspection.pinId) return;
+  void emitPipelineEvent({
+    companyId,
+    leadId:    inspection.pinId,
+    eventType: 'forensic_record_attested',
+  });
+}
 
 router.post(
   '/inspections/:inspectionId/interior-observations',
