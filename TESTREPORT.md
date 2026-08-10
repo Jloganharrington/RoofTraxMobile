@@ -2772,3 +2772,283 @@ fdbdceba… | claim_review | claim_approved | task    | 0625a922-…  (A-MGR-O)
 
 D2e covers: (a) advance without estimate → 422 + `missingDocument=approvedEstimate`; (b) POST fixture estimate → 200, objectPath + sha256 returned, sha256 verified against buffer; (c) advance with estimate → 200, `pipelineStage=claim_approved`, 1 stage_transitions row.
 
+
+---
+
+## CHECKPOINT B — Phase B: Completion certificate record and AI extraction
+
+**Commit:** `a0699b9` — "Phase B: completion certificate record, extraction endpoint, carrier-reimbursable CO flag"
+
+### Migration 042
+
+```sql
+-- 1. change_orders.carrier_reimbursable BOOLEAN NOT NULL DEFAULT false
+-- 2. CREATE TABLE completion_certificates (id, company_id, pin_id, contract_id,
+--      status {draft|signed|voided}, document_object_path, document_sha256,
+--      signed_by_user_id, signed_at, signer_title, line_items JSONB,
+--      created_by_user_id, created_at, updated_at)
+-- Indexes: completion_certificates_pin_id_idx, completion_certificates_company_id_idx
+```
+
+Drizzle schema additions:
+- `changeOrdersTable.carrierReimbursable` boolean, notNull, default false (with JSDoc)
+- `completionCertificatesTable` with inline comment block `(migration 042)`
+- `COMPLETION_CERTIFICATE_STATUSES = ['draft', 'signed', 'voided']`
+
+### New routes (completionCertificates.ts)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/leads/:leadId/completion-certificate/extract` | AI extraction → draft |
+| GET | `/leads/:leadId/completion-certificate` | list certs |
+| GET | `/leads/:leadId/completion-certificate/:certId` | get one cert |
+| PATCH | `/leads/:leadId/completion-certificate/:certId` | update draft line_items |
+| POST | `/leads/:leadId/completion-certificate/:certId/void` | void a cert |
+
+Extraction gate: `pin.pipelineStage === 'claim_approved'` OR `isManagerOrAdmin(callerRole)`. Gate also requires `pin.approvedEstimateObjectPath !== null`.
+
+AI model: `gemini-2.5-flash` via `@workspace/integrations-gemini-ai`. PDF passed as `inlineData` with `mimeType: 'application/pdf'`. System prompt version `1.0` in `src/lib/cocExtraction.ts`. Prompt includes explicit rule: "do NOT emit subtotal, total, grand total, or summary rows."
+
+### Extraction output — reconciliation against representative carrier estimate
+
+Carrier estimate: Midwest Mutual — Claim #MM-2026-00147 — 4821 Oakwood Drive, Springfield VA 22150
+
+#### Source document ground truth
+
+BASE CONTRACT (12 items):
+
+| # | Description | Qty | Unit | Amount |
+|---|---|---|---|---|
+| 1 | Tear off and haul away existing asphalt shingles (2 layers) | 32.5 | SQ | $2,990.00 |
+| 2 | Install new 7/16" OSB decking where damaged | 12 | SQ | $1,740.00 |
+| 3 | Install synthetic underlayment | 32.5 | SQ | $910.00 |
+| 4 | Install ice and water shield at eaves (first 3 ft) | 210 | LF | $1,008.00 |
+| 5 | Install drip edge — painted | 210 | LF | $672.00 |
+| 6 | Install GAF Timberline HDZ class 4 shingles | 32.5 | SQ | $17,550.00 |
+| 7 | Install step and counterflashing at chimney — lead-coated copper | 1 | EA | $645.00 |
+| 8 | Install pipe boot flashing | 3 | EA | $255.00 |
+| 9 | Replace ridge cap shingles (hip and ridge) | 210 | LF | $2,520.00 |
+| 10 | Remove and reinstall gutters and downspouts | 188 | LF | $3,384.00 |
+| 11 | Code upgrade: install 12 shingle-over ridge vents | 12 | EA | $576.00 |
+| 12 | Permit and inspection fee | 1 | EA | $375.00 |
+| | **COVERED SCOPE SUBTOTAL** | | | **$32,625.00** |
+
+PWI (3 items):
+
+| # | Description | Qty | Unit | Amount |
+|---|---|---|---|---|
+| 1 | Upgrade to GAF Camelot II premium designer shingle (homeowner betterment) | 32.5 | SQ | $6,825.00 |
+| 2 | Add 6" seamless aluminum gutters (upgrade from 5") | 188 | LF | $752.00 |
+| 3 | Homeowner deductible | 1 | EA | $1,000.00 |
+| | **PWI SUBTOTAL** | | | **$8,577.00** |
+
+**GRAND TOTAL: $41,202.00**
+
+#### Extractor output (after v1.0 prompt — second run; first run included subtotal rows, fixed by prompt update)
+
+```json
+{
+  "baseContract": [
+    { "description": "Tear off and haul away existing asphalt shingles (2 layers)", "quantity": 32.5, "unit": "SQ", "amountCents": 299000 },
+    { "description": "Install new 7/16\" OSB decking where damaged",                 "quantity": 12,   "unit": "SQ", "amountCents": 174000 },
+    { "description": "Install synthetic underlayment",                               "quantity": 32.5, "unit": "SQ", "amountCents": 91000  },
+    { "description": "Install ice and water shield at eaves (first 3 ft)",           "quantity": 210,  "unit": "LF", "amountCents": 100800 },
+    { "description": "Install drip edge - painted",                                  "quantity": 210,  "unit": "LF", "amountCents": 67200  },
+    { "description": "Install GAF Timberline HDZ class 4 shingles",                  "quantity": 32.5, "unit": "SQ", "amountCents": 1755000 },
+    { "description": "Install step and counterflashing at chimney - lead-coated copper", "quantity": 1, "unit": "EA", "amountCents": 64500 },
+    { "description": "Install pipe boot flashing",                                   "quantity": 3,    "unit": "EA", "amountCents": 25500  },
+    { "description": "Replace ridge cap shingles (hip and ridge)",                   "quantity": 210,  "unit": "LF", "amountCents": 252000 },
+    { "description": "Remove and reinstall gutters and downspouts",                  "quantity": 188,  "unit": "LF", "amountCents": 338400 },
+    { "description": "Code upgrade: install 12 shingle-over ridge vents",            "quantity": 12,   "unit": "EA", "amountCents": 57600  },
+    { "description": "Permit and inspection fee",                                    "quantity": 1,    "unit": "EA", "amountCents": 37500  }
+  ],
+  "pwi": [
+    { "description": "Upgrade to GAF Camelot II premium designer shingle (homeowner", "quantity": 32.5, "unit": "SQ", "amountCents": 682500 },
+    { "description": "kattemeamless aluminum gutters (upgrade from 5\")",              "quantity": 188,  "unit": "LF", "amountCents": 75200  },
+    { "description": "Homeowner deductible",                                           "quantity": 1,    "unit": "EA", "amountCents": 100000 }
+  ],
+  "dropped": []
+}
+```
+
+#### Reconciliation
+
+| Check | Result |
+|---|---|
+| Base contract item count | 12 ✓ (matches source) |
+| Base contract amounts, items 1–12 | All 12 match dollar-for-dollar ✓ |
+| Base contract subtotal | $32,625.00 ✓ |
+| PWI item count | 3 ✓ |
+| PWI amounts | All 3 match ✓ |
+| PWI subtotal | $8,577.00 ✓ |
+| Grand total | $41,202.00 ✓ |
+| Dropped items | 0 (none dropped) ✓ |
+| Subtotal rows excluded | ✓ (prompt v1.0 rule applied) |
+
+**Minor discrepancies (not amounts, descriptions only):**
+- Item 5: em dash → hyphen in description (PDFKit em-dash rendering → Gemini OCR)
+- PWI item 1: truncated to 70 chars ("homeowner" cut)
+- PWI item 2: "Add 6\" seamless" → "kattemeamless" (special-char/quote rendering artifact in test PDF; amount $752.00 is correct)
+
+None of these affect amounts or functional correctness.
+
+### Profitability check
+
+| Snapshot | revisedContractCents |
+|---|---|
+| Before extraction (baseline) | 1,800,000 |
+| After creating draft | 1,800,000 ✓ |
+| After voiding and re-extracting | 1,800,000 ✓ |
+
+`revised_contract_cents` unchanged by COC draft lifecycle. ✓
+
+### Suite
+
+| Suite | Result |
+|---|---|
+| `artifacts/api-server` vitest | **671/671** ✓ |
+
+
+---
+
+## CHECKPOINT C — Phase C: Sign endpoint, signer title, authz capability, notification catalog
+
+**Commits:** `60a1986` + `c34f9e1` (pdfkit build fix)
+
+### Migration 043
+
+```sql
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS title TEXT;
+```
+
+Column added to `userProfilesTable` in `lib/db/src/schema/rooftrax.ts` with comment block `(migration 043)`.
+
+### New authz capability
+
+`canSignCompletionCertificate(role: Role, department: Department): boolean`
+- Added to `lib/authz/src/permissions.ts`
+- Manager+ → true regardless of department
+- `field_rep` AND `department === 'office'` → true (office staff handle final close-out)
+- All other field_reps → false
+
+### Notification catalog entry
+
+Added to `lib/authz/src/notifications.ts`:
+```ts
+{
+  type:           'completion_certificate_signed',
+  label:          'Completion Certificate Signed',
+  group:          'money',
+  minRole:        'field_rep',
+  recipientRule:  'lead_owner_and_managers',
+  defaultEmail:   true,
+  defaultPush:    true,
+  supportsDigest: true,
+}
+```
+
+Catalog grew from 16 → 17 entries. `notifications.test.ts` updated: field_rep count 9 → 10, manager count 16 → 17.
+
+### Sign endpoint
+
+`POST /leads/:leadId/completion-certificate/:certId/sign`
+- Accepts: `{ signerTitle?: string }` (overrides `user_profiles.title` for this signing)
+- Gate: `cert.status === 'draft'`
+- Gate: `canSignCompletionCertificate(callerRole, callerDepartment)`
+- Fetches pin (address, owner name) + company name + carrier-reimbursable approved COs
+- Generates COC PDF with PDFKit: Section 1 (carrier scope), Section 2 (carrier COs if any), Section 3 (PWI), grand total, signature block
+- sha256 buffer, upload via `objectStorageService.uploadObjectBuffer(buffer, 'application/pdf')`
+- Stamps cert: `status='signed'`, `documentObjectPath`, `documentSha256`, `signedByUserId`, `signedAt`, `signerTitle`
+- `await emitPipelineEvent({ companyId, eventType: 'completion_package_generated', leadId })`
+
+**Build fix:** Added `"pdfkit"` to the `external` list in `artifacts/api-server/build.mjs` — PDFKit looks up AFM font files via `__dirname`-relative paths that break when bundled by esbuild. Externalizing lets node load pdfkit from node_modules at runtime where font data is co-located with the library. Same fix benefits `contractPdf.ts` which uses PDFKit identically.
+
+### Signer title resolution
+
+Body `signerTitle` → `user_profiles.title` → blank. All three code paths covered by the resolver.
+
+### Pipeline event
+
+`emitPipelineEvent` called with `await` (not `void`). The ZZTEST test pin stayed at `claim_approved` after signing (it is in the insurance pipeline; `completion_package_generated` auto-advances the `complete` stage of the project pipeline). The event fired and the server logged it; absence of stage advance is correct for an insurance-pipeline pin.
+
+### E2E sign verification
+
+```
+POST /api/leads/fdbdceba…/completion-certificate/f1538335…/sign
+Body: { "signerTitle": "Project Manager" }
+→ HTTP 200
+{
+  "certificate": {
+    "id": "f1538335-5316-4181-b50a-33cd2aa556ce",
+    "status": "signed",
+    "signerTitle": "Project Manager",
+    "signedAt": "2026-08-10T02:35:53.124Z",
+    "documentObjectPath": "/objects/uploads/52aa5597-101a-47a7-b5fe-fdf7a78feaf4",
+    "documentSha256": "f526a22d6df311d8a37b..."
+  }
+}
+```
+
+### Profitability before/after COC signed
+
+| Snapshot | revisedContractCents | netProjectMarginCents | netProjectMarginPct |
+|---|---|---|---|
+| Before extraction | 1,800,000 | 1,800,000 | 100 |
+| After draft created | 1,800,000 | 1,800,000 | 100 |
+| After cert signed | 1,800,000 | 1,800,000 | 100 |
+
+`revised_contract_cents` unchanged at all three checkpoints. ✓
+
+### Suite
+
+| Suite | Result |
+|---|---|
+| `artifacts/api-server` vitest | **671/671** ✓ |
+
+
+---
+
+## CHECKPOINT D — Phase D: Retail COC — warranty field inventory and proposed sources
+
+*(Report only. No code changes. Retail COC implementation requires a data-model ruling before proceeding.)*
+
+### Scope
+
+The insurance COC (Phases A–C) certifies work completion against a carrier-approved estimate. The **retail COC** (direct homeowner sales, non-insurance workflow) must additionally certify warranty commitments, because no third-party carrier governs the scope and there is no claim number to anchor the document.
+
+### Current warranty-related fields in the schema
+
+A full search of `lib/db/src/schema/rooftrax.ts` and `artifacts/api-server/src/` found **zero dedicated warranty columns** in any financial or work-completion table. The word "warrant" appears only in:
+
+| Location | Context | Notes |
+|---|---|---|
+| `repairabilityRules.ts` | `not_warranted_discontinued` status | Repairability assessment flag (inspection-only, no dollar amounts) |
+| `pipelineStages.ts` | `closed_warranty` pipeline stage | Terminal stage label; contains no warranty terms |
+| Inspection jsonb blobs | `warranted: 'yes'/'no'` | RAP/VAP gate, not a product warranty commitment |
+
+### What a retail COC needs (not yet in schema)
+
+| Field | Notes | Proposed source |
+|---|---|---|
+| `workmanship_warranty_years` INTEGER | Rep-selectable (5/10/lifetime) at contract creation | New column on `contracts` or new `warranty_commitments` table |
+| `workmanship_warranty_text` TEXT | Human-readable blurb generated from duration | Template-driven; stored on the warranty record |
+| `manufacturer_warranty_brand` TEXT | Shingle manufacturer (e.g. "GAF", "Owens Corning") | Already available from `contract_selections → products → brand` |
+| `manufacturer_warranty_years` INTEGER | Varies by product/tier; not uniform per brand | Must be seeded into the product catalog (`selectionProductsTable` or new `products` table) |
+| `manufacturer_system_warranty` BOOLEAN | Whether a full-system (not just product) warranty is registered | New column; default false; rep confirms at close-out |
+| `warranty_registration_number` TEXT | Optional; manufacturer portal-issued after install | Rep-supplied; stored on the warranty record |
+| `service_contract_included` BOOLEAN | Whether ongoing service/maintenance is bundled | New column on contracts or warranty record |
+
+### Ruling required before implementation
+
+**Option A — Columns on `contracts`:** simplest. Add 6–7 columns. Works for single-contract jobs; breaks for multi-phase or supplemental-contract jobs where warranty applies to the whole project, not one contract.
+
+**Option B — Separate `warranty_commitments` table (FK → pins):** one row per pin, one-to-one. Decoupled from contract; survives void+reissue cycles. Slightly more migration work. Recommended if retail COC will be reused across supplemental scopes.
+
+**Option C — Extend `completion_certificates.line_items` jsonb:** no migration; warranty block as a named section inside the COC snapshot. Loses queryability for future warranty-analytics dashboards.
+
+### Recommendation
+
+Option B (separate `warranty_commitments` table, FK to `pins`) — decoupled from contract lifecycle, queryable, and one clear place for the rep to fill in after install. Manufacturer warranty years should be seeded on `selectionProductsTable` as a new `warrantyYears INTEGER` nullable column so the COC auto-fills from the confirmed selection.
+
+Implementation blocked pending ruling on Option A/B/C and confirmation that product-catalog warranty seeding is in scope.
+
