@@ -3238,3 +3238,63 @@ No code changes implemented without a ruling.
 
 ### TESTREPORT complete. Outstanding items require policy rulings or out-of-scope work (EAS, CORS origin allowlist, onboarding flow).
 
+
+---
+
+## CHECKPOINT 3 (Complete) — Step 3 Full Remediation
+
+**Commit:** `94bdd49` — "Step 3 complete: pin_financial_changes audit table, reason required, GET endpoint, 11 tests"
+
+### Migration 044 — `pin_financial_changes`
+
+```sql
+CREATE TABLE pin_financial_changes (
+  id                  VARCHAR     PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  company_id          VARCHAR     NOT NULL REFERENCES companies(id),
+  pin_id              VARCHAR     NOT NULL REFERENCES pins(id),
+  field               TEXT        NOT NULL CHECK (field IN ('contract_amount', 'deductible_amount', 'rcv_amount')),
+  old_value           TEXT,
+  new_value           TEXT,
+  changed_by_user_id  VARCHAR     NOT NULL REFERENCES users(id),
+  changed_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reason              TEXT        NOT NULL
+);
+```
+
+Indexes: `pin_financial_changes_pin_id_idx`, `pin_financial_changes_company_id_idx`
+
+Design decision: purpose-built narrow table, company-scoped directly (no join for tenancy). Matches `stage_transitions` (pipeline) and `report_attestations` (report sign-off) pattern. JSONB-on-pins and extend-stage_transitions explicitly rejected.
+
+### Behavior
+
+**All three financial fields (`contractAmount`, `deductibleAmount`, `rcvAmount`) are now manager-and-above:**
+- Field rep attempting to change any of the three → 403
+- Manager changing any of the three without `reason` → 400
+- Manager changing with `reason` → 200 + audit row inserted for each field whose value actually changed
+- No-op change (same value supplied) → 200, no audit row
+- Non-financial PATCH (notes, ownerFirstName, etc.) → no `reason` required, no audit
+
+**GET /pins/:pinId/financial-changes** — returns audit history ordered by `changedAt DESC`. Manager+ only (403 for field_rep).
+
+### Test Coverage (11 new tests)
+
+| Test | Result |
+|---|---|
+| Manager changes contractAmount with reason → 200 + audit row (field, oldValue, newValue, reason, changedByUserId) | ✓ |
+| Manager changes contractAmount without reason → 400 | ✓ |
+| field_rep cannot change contractAmount → 403 | ✓ |
+| Non-financial PATCH (notes) → 200, no audit row | ✓ |
+| deductibleAmount requires reason → 400 | ✓ |
+| rcvAmount requires reason → 400 | ✓ |
+| No-op change (same value) → 200, no audit row | ✓ |
+| All three in one request → 3 audit rows, same reason | ✓ |
+| Manager GET financial-changes → 200 with history | ✓ |
+| field_rep GET financial-changes → 403 | ✓ |
+| Unauthenticated GET → 401 | ✓ |
+
+### Suite
+
+| Suite | Tests | Result |
+|---|---|---|
+| `artifacts/api-server` vitest | 682 | **682/682** ✓ |
+
