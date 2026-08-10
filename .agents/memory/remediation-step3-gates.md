@@ -34,8 +34,8 @@ Both PATCH handlers reject `contractAmount`, `deductibleAmount`, `rcvAmount` wit
 ### FINDING 3-B — inspection cross-tenant 403 → 404
 **Already addressed.** `loadInspectionInCompany` uses `WHERE id = ? AND company_id = ?`, returning 404 for cross-tenant. Verified empirically: BBTest manager trying to GET a ZZTEST inspection → HTTP 404.
 
-### Step 3 audit record
-No audit table for money-field changes. Three options remain open: `pin_field_changes` table (Option A), extend `stage_transitions` (Option B), or append-only JSONB on `pins` (Option C). Option A is recommended (most queryable). Needs ruling.
+### Step 3 audit record — IMPLEMENTED (migration 044)
+`pin_financial_changes` table: company_id, pin_id, field ('contract_amount'|'deductible_amount'|'rcv_amount'), old_value, new_value, changed_by_user_id, changed_at, reason (NOT NULL). All three financial fields now require manager+ AND reason. GET /pins/:pinId/financial-changes returns history (manager+ only). 11 tests — 682/682.
 
 ---
 
