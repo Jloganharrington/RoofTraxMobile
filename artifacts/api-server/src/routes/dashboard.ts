@@ -268,7 +268,7 @@ router.get(
   requireWidgetCapability('action_required'),
   async (req: Request, res: Response) => {
     // requireWidgetCapability already verified authentication; user is present.
-    const companyId = req.user!.companyId;
+    const companyId = req.actorCtx!.companyId;
     const now = Date.now();
 
     // Derive loop and terminal stage key sets from the server-side pipeline
@@ -552,7 +552,7 @@ router.get(
   '/dashboard/widgets/knock_to_lead',
   requireWidgetCapability('knock_to_lead'),
   async (req: Request, res: Response) => {
-    const companyId = req.user!.companyId;
+    const companyId = req.actorCtx!.companyId;
     const WINDOW_DAYS = 30;
     const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
@@ -608,7 +608,7 @@ router.get(
   '/dashboard/widgets/canvassing_heatmap',
   requireWidgetCapability('canvassing_heatmap'),
   async (req: Request, res: Response) => {
-    const companyId = req.user!.companyId;
+    const companyId = req.actorCtx!.companyId;
     const WINDOW_DAYS = 90;
     const CAP = 2_000;
     const windowStart = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -680,7 +680,7 @@ router.get(
   },
   async (req: Request, res: Response) => {
     const pipeline   = req.query.pipeline as PipelineId;
-    const companyId  = req.user!.companyId;
+    const companyId  = req.actorCtx!.companyId;
 
     // Stage definitions for this pipeline, sorted by `order`.
     // Labels come from SERVER_STAGES_ARRAY — never hardcoded.
@@ -735,7 +735,7 @@ router.get(
   '/dashboard/widgets/pending_inspections',
   requireWidgetCapability('pending_inspections'),
   async (req: Request, res: Response) => {
-    const companyId = req.user!.companyId;
+    const companyId = req.actorCtx!.companyId;
     const actorId   = req.actorCtx!.actorId;
     const CAP = 25;
 
@@ -801,7 +801,7 @@ router.get(
   '/dashboard/widgets/claim_blockers',
   requireWidgetCapability('claim_blockers'),
   async (req: Request, res: Response) => {
-    const companyId = req.user!.companyId;
+    const companyId = req.actorCtx!.companyId;
     const actorId   = req.actorCtx!.actorId;
     const CAP = 25;
 
@@ -912,7 +912,7 @@ router.get(
   '/dashboard/widgets/recent_activity',
   requireWidgetCapability('recent_activity'),
   async (req: Request, res: Response) => {
-    const companyId   = req.user!.companyId;
+    const companyId   = req.actorCtx!.companyId;
     const CAP         = 30;
     const FETCH_LIMIT = 50; // over-fetch to have headroom after merge + sort
 
@@ -1050,7 +1050,7 @@ router.get(
   '/dashboard/widgets/live_activity',
   requireWidgetCapability('live_activity'),
   async (req: Request, res: Response) => {
-    const companyId = req.user!.companyId;
+    const companyId = req.actorCtx!.companyId;
     const sinceRaw  = req.query.since;
     const since     = sinceRaw && typeof sinceRaw === 'string' ? new Date(sinceRaw) : null;
 

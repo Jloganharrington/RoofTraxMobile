@@ -20,11 +20,8 @@ const router: IRouter = Router();
 
 // ── POST /location/ping — auth-only ───────────────────────────────────────────
 
-router.post('/location/ping', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// location.ping
+router.post('/location/ping', requirePermission('location.ping'), async (req: Request, res: Response) => {
 
   const parsed = PingLocationBody.safeParse(req.body);
   if (!parsed.success) {
@@ -36,7 +33,7 @@ router.post('/location/ping', async (req: Request, res: Response) => {
 
   await db
     .insert(userLocationsTable)
-    .values({ userId: req.user.id, companyId: req.user.companyId, latitude, longitude })
+    .values({ userId: req.actorCtx!.actorId, companyId: req.actorCtx!.companyId, latitude, longitude })
     .onConflictDoUpdate({
       target: userLocationsTable.userId,
       set: { latitude, longitude, updatedAt: new Date() },

@@ -6,6 +6,7 @@ import { roleRank, type Role } from '@workspace/authz';
 import { db, bugReportsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
+import { requirePermission } from '../middlewares/requirePermission';
 
 // Beta bug reporting (temporary instrument, flag-gated client-side).
 // Writes are accepted even while the company flag is off: reports queue in
@@ -74,11 +75,8 @@ function toApiBugReport(
   };
 }
 
-router.post('/bug-reports', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// bug_report.submit
+router.post('/bug-reports', requirePermission('bug_report.submit'), async (req: Request, res: Response) => {
 
   const parsed = CreateBugReportBody.safeParse(req.body);
   if (!parsed.success) {
@@ -93,13 +91,13 @@ router.post('/bug-reports', async (req: Request, res: Response) => {
   const [existing] = await db
     .select()
     .from(bugReportsTable)
-    .where(and(eq(bugReportsTable.id, input.id), eq(bugReportsTable.userId, req.user.id)));
+    .where(and(eq(bugReportsTable.id, input.id), eq(bugReportsTable.userId, req.actorCtx!.actorId)));
   if (existing) {
     res.status(201).json({ bugReport: toApiBugReport(existing) });
     return;
   }
 
-  if (isRateLimited(req.user.id)) {
+  if (isRateLimited(req.actorCtx!.actorId)) {
     res.status(429).json({ error: 'Too many bug reports; try again later' });
     return;
   }
@@ -108,8 +106,8 @@ router.post('/bug-reports', async (req: Request, res: Response) => {
     .insert(bugReportsTable)
     .values({
       id: input.id,
-      companyId: req.user.companyId,
-      userId: req.user.id,
+      companyId: req.actorCtx!.companyId,
+      userId: req.actorCtx!.actorId,
       route: input.route,
       routeParams: input.routeParams ?? null,
       severity: input.severity,
@@ -132,16 +130,9 @@ router.post('/bug-reports', async (req: Request, res: Response) => {
   res.status(201).json({ bugReport: toApiBugReport(row) });
 });
 
-router.get('/bug-reports', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const actor = await loadActor(req.user.id);
-  if (!actor || !isAdmin(actor.role)) {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
-  }
+// bug_report.manage
+router.get('/bug-reports', requirePermission('bug_report.manage'), async (req: Request, res: Response) => {
+  const actor = { companyId: req.actorCtx!.companyId };
 
   const rows = await db
     .select({ report: bugReportsTable, reporter: usersTable })
@@ -158,16 +149,9 @@ function csvEscape(value: unknown): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-router.get('/bug-reports/export.csv', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const actor = await loadActor(req.user.id);
-  if (!actor || !isAdmin(actor.role)) {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
-  }
+// bug_report.manage
+router.get('/bug-reports/export.csv', requirePermission('bug_report.manage'), async (req: Request, res: Response) => {
+  const actor = { companyId: req.actorCtx!.companyId };
 
   const rows = await db
     .select({ report: bugReportsTable, reporter: usersTable })
@@ -220,16 +204,9 @@ router.get('/bug-reports/export.csv', async (req: Request, res: Response) => {
   res.send(lines.join('\n'));
 });
 
-router.patch('/bug-reports/:bugReportId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const actor = await loadActor(req.user.id);
-  if (!actor || !isAdmin(actor.role)) {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
-  }
+// bug_report.manage
+router.patch('/bug-reports/:bugReportId', requirePermission('bug_report.manage'), async (req: Request, res: Response) => {
+  const actor = { companyId: req.actorCtx!.companyId };
 
   const parsed = UpdateBugReportBody.safeParse(req.body);
   if (!parsed.success) {

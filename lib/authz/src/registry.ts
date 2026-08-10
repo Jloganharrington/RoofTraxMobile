@@ -48,9 +48,12 @@ export const DOMAINS = [
   'notification',
   'canvassing',
   'activity',
+  'bug_report',
   'calendar',
   'geocode',
   'crm',
+  'location',
+  'storage',
   'weather',
   'dashboard',
 ] as const;
@@ -58,7 +61,7 @@ export const DOMAINS = [
 export type Domain = (typeof DOMAINS)[number];
 
 // ── Permission keys ──────────────────────────────────────────────────────────
-// Exactly 113 keys. Keep sorted within each domain block.
+// Exactly 120 keys. Keep sorted within each domain block.
 
 export const PERMISSION_KEYS = [
   // lead (8)
@@ -170,6 +173,9 @@ export const PERMISSION_KEYS = [
   'catalog.price_book_view',
   'catalog.selections_manage',
 
+  // storage (2)
+  'storage.read_private',
+  'storage.upload',
   // team (7)
   'team.assign_manager',
   'team.delete',
@@ -209,6 +215,10 @@ export const PERMISSION_KEYS = [
   // activity (1)
   'activity.view',
 
+  // bug_report (2)
+  'bug_report.manage',
+  'bug_report.submit',
+
   // calendar (1)
   'calendar.view',
 
@@ -220,6 +230,9 @@ export const PERMISSION_KEYS = [
 
   // weather (1)
   'weather.view',
+
+  // location (1)
+  'location.ping',
 
   // dashboard (2)
   'dashboard.manage_layout',
@@ -979,6 +992,20 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     default: { kind: 'minRole', minRole: 'field_rep' },
   },
 
+  // ── bug_report (2) ───────────────────────────────────────────────────────────
+  {
+    key:    'bug_report.submit',
+    domain: 'bug_report',
+    label:  'Submit a bug report (any authenticated user)',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+  {
+    key:    'bug_report.manage',
+    domain: 'bug_report',
+    label:  'View, export, and update bug reports',
+    default: { kind: 'minRole', minRole: 'admin' },
+  },
+
   // ── calendar (1) ─────────────────────────────────────────────────────────────
   {
     key:    'calendar.view',
@@ -1024,6 +1051,28 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     label:  'Edit or reset own dashboard layout',
     default: { kind: 'minRole', minRole: 'field_rep' },
   },
+
+  // ── location (1) ─────────────────────────────────────────────────────────────
+  {
+    key:    'location.ping',
+    domain: 'location',
+    label:  'Ping own GPS location for live tracking',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── storage (2) ──────────────────────────────────────────────────────────────
+  {
+    key:    'storage.upload',
+    domain: 'storage',
+    label:  'Request a presigned upload URL for file storage',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+  {
+    key:    'storage.read_private',
+    domain: 'storage',
+    label:  'Read own company private object files',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
 ] as const satisfies readonly PermissionEntry[];
 
 // ── Lookup helpers ────────────────────────────────────────────────────────────
@@ -1040,8 +1089,8 @@ export function permissionsForDomain(domain: Domain): readonly PermissionEntry[]
 }
 
 // ── Compile-time count assertion ──────────────────────────────────────────────
-// This will produce a TS error if the registry diverges from 115.
+// This will produce a TS error if the registry diverges from 120.
 
-type AssertExactly115 = (typeof PERMISSION_KEYS)['length'] extends 115 ? true : never;
+type AssertExactly120 = (typeof PERMISSION_KEYS)['length'] extends 120 ? true : never;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _assert115: AssertExactly115 = true;
+const _assert120: AssertExactly120 = true;

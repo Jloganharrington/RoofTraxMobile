@@ -309,7 +309,7 @@ router.post('/companies/:companyId/templates', requirePermission('company.edit_s
         mimeType: mimeType.trim(),
         useCase: useCase.trim(),
         originalFilename: originalFilename.trim(),
-        uploadedByUserId: req.user!.id,
+        uploadedByUserId: req.actorCtx!.actorId,
       })
       .returning();
 

@@ -6,6 +6,7 @@ import {
 import { db, objectOwnershipTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
+import { requirePermission } from '../middlewares/requirePermission';
 
 import {
   ObjectNotFoundError,
@@ -23,14 +24,11 @@ const objectStorageService = new ObjectStorageService();
  * Then uploads the file directly to the returned presigned URL.
  * Requires auth middleware so public callers cannot mint write-capable URLs.
  */
+// storage.upload
 router.post(
   '/storage/uploads/request-url',
+  requirePermission('storage.upload'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-
-      return;
-    }
 
     const parsed = RequestUploadUrlBody.safeParse(req.body);
     if (!parsed.success) {
@@ -50,8 +48,8 @@ router.post(
       // without relying on GCS object metadata.
       await db.insert(objectOwnershipTable).values({
         objectPath,
-        userId: req.user.id,
-        companyId: req.user.companyId,
+        userId: req.actorCtx!.actorId,
+        companyId: req.actorCtx!.companyId,
       });
 
       res.json(
@@ -114,12 +112,9 @@ router.get(
  * These are served from a separate path from /public-objects and can optionally
  * be protected with authentication or ACL checks based on the use case.
  */
-router.get('/storage/objects/*path', async (req: Request, res: Response) => {
+// storage.read_private
+router.get('/storage/objects/*path', requirePermission('storage.read_private'), async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
 
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join('/') : raw;
@@ -135,7 +130,7 @@ router.get('/storage/objects/*path', async (req: Request, res: Response) => {
       return;
     }
 
-    if (ownership.companyId !== req.user.companyId) {
+    if (ownership.companyId !== req.actorCtx!.companyId) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }

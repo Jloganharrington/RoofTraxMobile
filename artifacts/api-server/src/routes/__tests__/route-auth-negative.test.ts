@@ -1019,4 +1019,71 @@ describe('route auth — negative gate suite', () => {
   });
 
   // ── Migration complete — all 99 inspection routes + leads routes covered ──
+
+  // ── D32: bug_report, storage, location domains ───────────────────────────
+
+  // bug_report.manage (admin+)
+  describe('[D32] GET /bug-reports [bug_report.manage — admin+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/bug-reports')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).get('/api/bug-reports').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('manager → 403', async () => {
+      expect((await request(app).get('/api/bug-reports').set(auth(fix.manager.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D32] GET /bug-reports/export.csv [bug_report.manage — admin+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/bug-reports/export.csv')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).get('/api/bug-reports/export.csv').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('manager → 403', async () => {
+      expect((await request(app).get('/api/bug-reports/export.csv').set(auth(fix.manager.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D32] PATCH /bug-reports/:id [bug_report.manage — admin+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/bug-reports/STUB00')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).patch('/api/bug-reports/STUB00').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('manager → 403', async () => {
+      expect((await request(app).patch('/api/bug-reports/STUB00').set(auth(fix.manager.sid))).status).toBe(403);
+    });
+  });
+
+  // bug_report.submit (field_rep+) — only unauthenticated test
+  describe('[D32] POST /bug-reports [bug_report.submit — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/bug-reports')).status).toBe(401);
+    });
+  });
+
+  // storage.upload (field_rep+) — only unauthenticated test
+  describe('[D32] POST /storage/uploads/request-url [storage.upload — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/storage/uploads/request-url')).status).toBe(401);
+    });
+  });
+
+  // storage.read_private (field_rep+) — only unauthenticated test
+  describe('[D32] GET /storage/objects/* [storage.read_private — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/storage/objects/test/path')).status).toBe(401);
+    });
+  });
+
+  // location.ping (field_rep+) — only unauthenticated test
+  describe('[D32] POST /location/ping [location.ping — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/location/ping')).status).toBe(401);
+    });
+  });
 });

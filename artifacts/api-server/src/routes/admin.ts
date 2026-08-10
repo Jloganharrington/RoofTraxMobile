@@ -133,7 +133,7 @@ router.patch('/team/users/:userId', requirePermission('team.edit'), async (req: 
 
   if (
     (parsed.data.role !== undefined || parsed.data.department !== undefined) &&
-    !canSetRoleDeptSpec(actorRole, req.user!.id, userId, targetRole, {
+    !canSetRoleDeptSpec(actorRole, req.actorCtx!.actorId, userId, targetRole, {
       role: parsed.data.role,
     })
   ) {
@@ -143,7 +143,7 @@ router.patch('/team/users/:userId', requirePermission('team.edit'), async (req: 
 
   if (
     parsed.data.workflowAssignment !== undefined &&
-    !canSetWorkflow(actorRole, req.user!.id, userId, targetRole)
+    !canSetWorkflow(actorRole, req.actorCtx!.actorId, userId, targetRole)
   ) {
     res.status(403).json({ error: 'Not permitted to change this workflow assignment' });
     return;
@@ -212,7 +212,7 @@ router.delete('/team/users/:userId', requirePermission('team.delete'), async (re
     .where(eq(userProfilesTable.userId, userId));
   const targetRole = targetProfile?.role ?? 'field_rep';
 
-  if (!canSetRoleDeptSpec(actorRole, req.user!.id, userId, targetRole)) {
+  if (!canSetRoleDeptSpec(actorRole, req.actorCtx!.actorId, userId, targetRole)) {
     res.status(403).json({ error: 'Not permitted to remove this user' });
     return;
   }
