@@ -243,6 +243,14 @@ describe('evaluate (protocol v2.1)', () => {
       interiorDamageFound: true,
     };
     const keys = applicableSteps(flags).map((s) => s.key);
+    // PROTOCOL_STEPS (stages.ts) is the authoritative spec. applicableSteps()
+    // filters that array in declaration order, so the expected sequence here
+    // must match the order= values in PROTOCOL_STEPS exactly:
+    //   homeowner  order=2  (before property_profile at 3)
+    //   repairability order=6  (before siding at 10 and interior at 12)
+    //   whenRoofOrSiding applies (sidingDamageFound=true), so repairability
+    //   appears immediately after elevation_access (facets/test_squares/
+    //   components/product are all filtered out by whenRoof=false).
     expect(keys).toEqual([
       'arrival',
       'homeowner',

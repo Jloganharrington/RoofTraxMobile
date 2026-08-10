@@ -78,3 +78,4 @@
 - [Permission resolver architecture](permission-resolver-arch.md) — resolve()/can() in lib/authz/src/resolver.ts; resolveResolution() exported for synthetic-kind tests and Step 5 overrides; coc.sign office shortcut is explicit special-case in resolver, not in registry kind.
 - [Permission STEP 3–7 complete](perm-step3-complete.md) — 120 keys / 31 domains / 1010 tests; useCapabilities hooks in web+mobile; STEP 7 req.user!.id cleanup done; inline isAuth guards remain (redundant, harmless).
 - [requireWritableInspection middleware](require-writable-inspection.md) — single decision point for all inspection write routes; replaces 3-check pattern; actorCtx.userId alias kept for backward compat during migration.
+- [Steps 4 and 5 schema](steps4-5-schema.md) — manager_user_id on user_profiles (migration 045) + user_permission_overrides (migration 046); requirePermission now checks overrides before registry default; 4 new admin.ts routes.

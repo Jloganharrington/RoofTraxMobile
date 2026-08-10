@@ -6713,20 +6713,15 @@ router.get('/inspections/:inspectionId/report/lint', requirePermission('inspecti
 // LATEST compiled version. Scoped to the exact blob path, so any subsequent
 // re-compile re-enters the gate. Content is never rewritten by this action.
 // inspection.update
-router.post('/inspections/:inspectionId/report/lint-resolve', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/report/lint-resolve', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
   if (!isManagerOrAdmin(actor.role)) {
     res.status(403).json({ error: 'Only a manager or admin can resolve report content findings' });
     return;
   }
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
   if (!inspection.compiledReportPath) {
     res.status(404).json({ error: 'No compiled report found — compile the report first.' });
     return;
@@ -6912,11 +6907,9 @@ router.get('/:inspectionId/curation', requirePermission('inspection.read'), asyn
 
 // POST /inspections/:inspectionId/curation/propose — AI-propose exhibit set
 // inspection.update
-router.post('/:inspectionId/curation/propose', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
-  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+router.post('/:inspectionId/curation/propose', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
   if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
 
   const photos = await db
@@ -7007,11 +7000,9 @@ router.post('/:inspectionId/curation/propose', requirePermission('inspection.rea
 
 // PATCH /inspections/:inspectionId/curation/photos/:photoId — select/deselect/reclassify
 // inspection.update
-router.patch('/:inspectionId/curation/photos/:photoId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
-  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+router.patch('/:inspectionId/curation/photos/:photoId', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const { selected, exhibitClass, sortOrder } = z.object({
     selected: z.boolean(),
@@ -7066,11 +7057,9 @@ router.patch('/:inspectionId/curation/photos/:photoId', requirePermission('inspe
 
 // POST /inspections/:inspectionId/curation/pairs — confirm a comparison pair
 // inspection.update
-router.post('/:inspectionId/curation/pairs', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
-  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+router.post('/:inspectionId/curation/pairs', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
   if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
 
   const { beforePhotoId, afterPhotoId, pairType, notes } = z.object({
@@ -7123,11 +7112,9 @@ router.post('/:inspectionId/curation/pairs', requirePermission('inspection.read'
 
 // DELETE /inspections/:inspectionId/curation/pairs/:pairId
 // inspection.update
-router.delete('/:inspectionId/curation/pairs/:pairId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
-  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+router.delete('/:inspectionId/curation/pairs/:pairId', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
   if (await checkCurationNotFinalized(inspection.id, actor.companyId, res)) return;
 
   const pairId = req.params.pairId as string;
@@ -8271,11 +8258,9 @@ Return a JSON array exactly:
 
 // PATCH /inspections/:inspectionId/sections/captions/:captionId — edit caption text
 // inspection.update
-router.patch('/:inspectionId/sections/captions/:captionId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-  const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
-  if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
+router.patch('/:inspectionId/sections/captions/:captionId', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const { captionText } = z.object({ captionText: z.string().min(1).max(500) }).parse(req.body);
   const captionId = req.params.captionId as string;
@@ -8809,9 +8794,9 @@ router.get('/inspections/:inspectionId/sections', requirePermission('inspection.
 // DAG-downstream sections are flipped to in_review (stale propagation).
 // ---------------------------------------------------------------------------
 // inspection.update
-router.post('/inspections/:inspectionId/sections/:sectionType/generate', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/sections/:sectionType/generate', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
   const rawType = req.params.sectionType as string;
@@ -8828,9 +8813,6 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', require
     return void res.status(400).json({ error: 'Unknown section type' });
   }
   const sectionType = rawType as GeneratableSectionType;
-
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
   // ── DAG enforcement ──────────────────────────────────────────────────────
   // DAG-last sections require all upstream sections to be approved or locked.
@@ -9168,9 +9150,9 @@ router.patch(
 // Manager-or-admin only for causation/detriment_application gates.
 // ---------------------------------------------------------------------------
 // inspection.update
-router.post('/inspections/:inspectionId/sections/:sectionType/approve', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/sections/:sectionType/approve', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
   const rawType = req.params.sectionType as string;
@@ -9179,9 +9161,6 @@ router.post('/inspections/:inspectionId/sections/:sectionType/approve', requireP
     return void res.status(400).json({ error: 'Unknown section type' });
   }
   const sectionType = rawType as GeneratableSectionType;
-
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
   const [sectionRow] = await db
     .select()
@@ -9513,13 +9492,11 @@ const UI_RECORDABLE_EVENT_TYPES = [...IDEMPOTENT_EVENT_TYPES, ...APPEND_ONLY_EVE
 type UiRecordableEventType = (typeof UI_RECORDABLE_EVENT_TYPES)[number];
 
 // inspection.update
-router.post('/inspections/:inspectionId/events', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/events', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
   const body = req.body as Record<string, unknown>;
   const eventType = body.eventType as string | undefined;
@@ -11068,13 +11045,11 @@ router.get('/inspections/:inspectionId/supplements/:suppId', requirePermission('
 // Update supplementReason (only before compile).
 // ---------------------------------------------------------------------------
 // inspection.update
-router.patch('/inspections/:inspectionId/supplements/:suppId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.patch('/inspections/:inspectionId/supplements/:suppId', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
   const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
   if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11109,14 +11084,12 @@ router.patch('/inspections/:inspectionId/supplements/:suppId', requirePermission
 // inspection.read
 router.get(
   '/inspections/:inspectionId/supplements/:suppId/sections',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11164,10 +11137,10 @@ router.get(
 // inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/generate',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId, sectionType: rawType } = req.params as {
       inspectionId: string; suppId: string; sectionType: string;
@@ -11179,9 +11152,6 @@ router.post(
       });
     }
     const sectionType = rawType as 'findings' | 'estimate_justifications' | 'closing_statement';
-
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11338,10 +11308,10 @@ router.post(
 // inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/approve',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId, sectionType: rawType } = req.params as {
       inspectionId: string; suppId: string; sectionType: string;
@@ -11350,9 +11320,6 @@ router.post(
     if (!SUPPLEMENT_SECTION_TYPES_SET.has(rawType)) {
       return void res.status(400).json({ error: 'Unknown supplement section type' });
     }
-
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11401,10 +11368,10 @@ router.post(
 // inspection.manage
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/lock',
-  requirePermission('inspection.read'),
+  requirePermission('inspection.manage'),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     if (!isManagerOrAdmin(actor.role)) {
       return void res.status(403).json({ error: 'Only a manager or admin can lock a section.' });
@@ -11417,9 +11384,6 @@ router.post(
     if (!SUPPLEMENT_SECTION_TYPES_SET.has(rawType)) {
       return void res.status(400).json({ error: 'Unknown supplement section type' });
     }
-
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11640,14 +11604,12 @@ router.post(
 // inspection.read
 router.get(
   '/inspections/:inspectionId/supplements/:suppId/attest',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11940,14 +11902,12 @@ router.post(
 // inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/deliver',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
-    const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-    if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });

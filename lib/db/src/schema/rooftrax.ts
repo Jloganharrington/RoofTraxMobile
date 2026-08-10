@@ -111,6 +111,12 @@ export const userProfilesTable = pgTable('user_profiles', {
   dashboardLayout: jsonb('dashboard_layout')
     .$type<{ hidden: string[]; order: string[] } | null>()
     .default(null),
+  // Step 4: direct manager assignment. Null means no manager assigned.
+  // SET NULL on cascade so deleting a manager row auto-clears their reports'
+  // assignment rather than cascading the delete. Admin+ required to set
+  // (team.assign_manager). Must stay same-company — enforced at write time.
+  managerUserId: varchar('manager_user_id')
+    .references(() => usersTable.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
