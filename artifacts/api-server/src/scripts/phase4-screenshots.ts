@@ -84,13 +84,13 @@ async function screenshotUser(user: typeof USERS[0]): Promise<UserResult> {
 
     // Collect visible nav items
     result.navItems = await page.$$eval('nav a, nav button, aside a, aside button, [role="navigation"] a',
-      (els) => [...new Set(els.map(el => (el as HTMLElement).textContent?.trim()).filter(Boolean))] as string[]
+      (els) => [...new Set(els.map(el => (el as unknown as { textContent?: string | null }).textContent?.trim()).filter(Boolean))] as string[]
     );
 
     // Collect visible widget text/headings
     result.widgets = await page.$$eval(
       '[class*="widget"], [class*="card"], h2, h3',
-      (els) => [...new Set(els.slice(0, 30).map(el => (el as HTMLElement).textContent?.trim()?.slice(0, 60)).filter(Boolean))] as string[]
+      (els) => [...new Set(els.slice(0, 30).map(el => (el as unknown as { textContent?: string | null }).textContent?.trim()?.slice(0, 60)).filter(Boolean))] as string[]
     );
 
     const screenshotPath = path.join(OUT_DIR, `${user.actor}-dashboard.png`);

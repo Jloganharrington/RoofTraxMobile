@@ -102,11 +102,11 @@ async function probe(actor: string, method: 'GET'|'POST'|'PATCH'|'DELETE'|'PUT',
 }
 
 // ── Unauthenticated probe ─────────────────────────────────────────────────────
-async function probeNoAuth(method: 'GET'|'POST'|'PATCH'|'DELETE', path: string, body?: unknown): Promise<{ status: number }> {
+async function probeNoAuth(method: 'GET'|'POST'|'PATCH'|'DELETE', path: string, body?: unknown): Promise<{ status: number; body: unknown }> {
   let req = request(app)[method.toLowerCase() as 'get'|'post'|'patch'|'delete'](path);
   if (body) req = req.send(body as object);
   const res = await req;
-  return { status: res.status };
+  return { status: res.status, body: res.body };
 }
 
 // ── DB snapshot helper ────────────────────────────────────────────────────────

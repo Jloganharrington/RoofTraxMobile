@@ -19,6 +19,11 @@ export function isManagerOrAdmin(role: Role): boolean {
   return roleRank(role) >= ROLE_RANK.manager;
 }
 
+// True for admin and super_admin only — excludes managers.
+export function isAdmin(role: Role): boolean {
+  return roleRank(role) >= ROLE_RANK.admin;
+}
+
 // True once the actor strictly outranks the target's current role, and (if
 // assigning a new role) strictly outranks the role being assigned too — you
 // can never promote someone to your own rank or above.

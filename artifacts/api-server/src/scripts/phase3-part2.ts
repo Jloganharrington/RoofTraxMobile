@@ -74,7 +74,8 @@ async function probe(actor: string, method: 'GET'|'POST'|'PATCH'|'DELETE'|'PUT',
 async function probeNoAuth(method: 'GET'|'POST'|'PATCH'|'DELETE', path: string, body?: unknown) {
   let req = request(app)[method.toLowerCase() as 'get'|'post'|'patch'|'delete'](path);
   if (body) req = req.send(body as object);
-  return { status: (await req).status };
+  const res = await req;
+  return { status: res.status, body: res.body as unknown };
 }
 
 async function snapshotPin(pinId: string) {

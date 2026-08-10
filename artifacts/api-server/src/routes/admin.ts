@@ -9,7 +9,7 @@ import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canSetRoleDeptSpec, canSetWorkflow, isManagerOrAdmin } from '@workspace/authz';
+import { canSetRoleDeptSpec, canSetWorkflow, isAdmin, isManagerOrAdmin } from '@workspace/authz';
 
 const router: IRouter = Router();
 
@@ -27,6 +27,26 @@ async function requireManagerOrAdmin(req: Request, res: Response) {
   const role = profile?.role ?? 'field_rep';
   if (!isManagerOrAdmin(role)) {
     res.status(403).json({ error: 'Manager/admin role required' });
+    return null;
+  }
+
+  return { role, companyId: req.user.companyId };
+}
+
+async function requireAdmin(req: Request, res: Response) {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+
+  const role = profile?.role ?? 'field_rep';
+  if (!isAdmin(role)) {
+    res.status(403).json({ error: 'Admin role required' });
     return null;
   }
 
@@ -206,7 +226,7 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
 });
 
 router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdmin(req, res);
   if (!actor) return;
 
   const userId = req.params.userId as string;
