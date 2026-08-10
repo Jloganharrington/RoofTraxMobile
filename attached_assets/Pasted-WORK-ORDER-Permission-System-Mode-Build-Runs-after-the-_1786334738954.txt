@@ -1,0 +1,83 @@
+WORK ORDER — Permission System
+Mode: Build. Runs after the remediation corrections and Step 6 clear — this refactors the same routes those corrections touch.
+Hard constraint: zero writes to artifacts/mobile/. Mobile consumes this API and cannot be changed, so no permission may tighten below what mobile relies on without being flagged first.
+One step per commit. Baseline: 800/801 workspace, plus the Phase 3 negative suite (130 tests) as a standing gate from Step 3 onward.
+
+STEP 1 — Permission registry
+Define all 94 permissions in lib/authz as a single registry: key, domain, human label, and default resolution. This becomes the only place a permission is described.
+
+Each entry declares how its default is computed — one of: minRole, department, workflow, ownerOrRole (the "Rep is Owner and Manager+" shape), selfOnly, or floor (never grantable).
+
+Apply the confirmed defaults. Deltas from what's in the codebase today:
+
+Permission	New default
+lead.assign	manager+ — not currently implemented, build it
+inspection.delete	admin+
+all Section 5 claim permissions	rep+
+all Section 6 contract permissions except contract.void	rep+
+all Section 7 change-order permissions except change_order.void	rep+
+Section 8 except expense.manage, commission.manage, overhead.manage	owner-rep or manager+
+Section 9 except coc.void	owner-rep or manager+
+catalog.ahj.add / catalog.ahj.edit	any authenticated member
+catalog.ahj.delete	admin+
+Everything else keeps its current default.
+
+Flag before implementing: inspection.delete moving to admin+ is the only tightening in this set. Check whether artifacts/mobile offers inspection deletion to inspectors. If it does, tightening breaks a frozen app — report it and stop rather than shipping it.
+
+▶ CHECKPOINT 1 — Paste the full registry and the mobile inspection.delete finding. Stop.
+
+STEP 2 — Single resolver
+Two entry points in lib/authz, and nothing else may decide authorization:
+
+resolvePermissions(actor) → Set<Permission> — static, for nav, widgets, and the settings UI.
+can(actor, permission, resource?) → boolean — resource-aware, for routes. Ownership-scoped permissions need the resource; passing one where it's required is a type error, not a runtime surprise.
+resolvePermissions subsumes the existing resolveCapabilities. Keep the widget catalog reading through it so the dashboard doesn't fork.
+
+Unit tests: every permission × every role × relevant department and workflow, plus owner and non-owner for the ownership-scoped ones. This is the safety net for Step 3.
+
+▶ CHECKPOINT 2 — Paste the resolver, the test count, and results.
+
+STEP 3 — Migrate every route
+Replace every inline gate across all 311 routes with a can() call. isManagerOrAdmin, isAdmin, requireAdminOrAbove, requireSameCompanyAdmin, roleRank comparisons, canEditPin, canDeletePin, canWriteInspection, canSignCompletionCertificate — all of it resolves through one function afterward.
+
+This is the risky step. Do it in domain-sized commits, not one sweep, and run the Phase 3 negative suite after each domain. Any test that changes verdict must be explained in the commit message — expected, because your rulings deliberately loosen Sections 5–9, so several 403s become 200s. An unexplained change is a bug.
+
+Tenancy stays structural. company_id scoping is never a permission and never resolves through can().
+
+▶ CHECKPOINT 3 — Per domain: the diff, the negative-suite result, and an explanation for every verdict change. Then the full 130-test run plus the workspace suite.
+
+STEP 4 — Reporting tree
+manager_user_id on user_profiles, nullable. Required on new onboarding, prompted but not enforced for the 1,021 existing users.
+
+Manager deletion authority becomes rank and assignment: a manager may delete only users assigned to them whom they strictly outrank. Admin and above keep pure rank. A manager with assigned reports cannot be deleted until those reports are reassigned — return a clear error naming how many.
+
+▶ CHECKPOINT 4 — Paste the migration, the deletion matrix across the 10-user fixture, and the reassignment-blocked case.
+
+STEP 5 — Per-user overrides
+user_permission_overrides: company_id, user_id, permission, effect (grant | revoke), granted_by_user_id, granted_at, reason (required).
+
+Resolution order, fixed and documented: default → revoke → grant, with floor permissions winning over everything. A floor permission can never be granted or revoked, at any level.
+
+Three rules the write path must enforce, each with its own test:
+
+You can only grant what you hold. An actor cannot grant a permission absent from their own resolved set.
+You can only act on someone you outrank — and for managers, only on their assigned reports, matching Step 4.
+Every change is audited. Same shape as pin_financial_changes, reason required.
+▶ CHECKPOINT 5 — Paste the migration, the resolution-order tests, and the three rule-enforcement tests including the escalation attempts.
+
+STEP 6 — Settings UI
+Per-user permission management in CRM settings, reachable from the team roster.
+
+Show the user's resolved permissions grouped by the 15 domains, each marked as default or modified. Overriding is a deliberate act, not a wall of checkboxes — the default state is visible and obviously the norm, and every override requires the reason before it saves.
+
+Show what the actor cannot change: permissions they don't hold themselves, floors, and users outside their authority render as read-only with the reason why. Never hide a control that would 403 — the whole audit turned on hidden not meaning denied.
+
+Include a "reset to default" per domain and per user.
+
+▶ CHECKPOINT 6 — Screenshots as a manager, an admin, and a super_admin, plus the read-only cases.
+
+STEP 7 — Verification
+Re-run the full 130-test negative suite, the workspace suite, and seed-acceptance-claim.ts. Add negative tests for the override system specifically: escalation attempts, granting an unheld permission, acting outside assignment, and attempting to override a floor.
+
+Confirm git status --porcelain artifacts/mobile/ is empty and that every endpoint the mobile app calls answers as it did before.
+

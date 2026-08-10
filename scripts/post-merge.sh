@@ -14,5 +14,9 @@ cd "$OLDPWD"
 cd lib/db && npx tsc --build
 cd "$OLDPWD"
 
-# Push any pending DB schema changes.
-pnpm --filter db push
+# Schema migrations are NOT applied automatically on merge.
+# See data-migrations/README.md — "Applying schema changes" — for the exact
+# command and when to run it.  The push step was removed because the interactive
+# TTY prompt drizzle-kit issues for new unique constraints cannot be answered in
+# a non-interactive merge environment, and a silent failure there would leave the
+# production DB out of sync with no indication.

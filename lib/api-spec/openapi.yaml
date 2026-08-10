@@ -1399,7 +1399,7 @@ paths:
       tags: [Admin]
       operationId: getAdminStats
       summary: Get overview KPI stats
-      description: Manager/admin only.
+      description: Admin-tier only (admin, super_admin).
       responses:
         "200":
           description: Overview stats.
@@ -1419,7 +1419,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-  /admin/users:
+  /team/users:
     get:
       tags: [Admin]
       operationId: listTeamUsers
@@ -1444,7 +1444,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-  /admin/users/{userId}:
+  /team/users/{userId}:
     patch:
       tags: [Admin]
       operationId: updateTeamUser

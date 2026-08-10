@@ -934,7 +934,10 @@ function InvoicingPanel({ pinId, isManager, lead }: { pinId: string; isManager: 
   const { toast } = useToast();
 
   // ── Profitability + insurance for amount pre-fills ─────────────────────────
-  const { data: profData } = useGetPinProfitability(pinId);
+  // canViewProfitability (lib/authz) — field reps may not fetch margin data.
+  const { data: profData } = useGetPinProfitability(pinId, {
+    query: { queryKey: getGetPinProfitabilityQueryKey(pinId), enabled: isManager },
+  });
   const { data: insData }  = useGetPinInsurance(pinId);
   const p   = profData?.profitability;
   const ins = insData?.insurance;
@@ -1842,8 +1845,10 @@ const OVERHEAD_FIELDS: CommissionField[] = [
 // COLLECTION TRACKER PANEL — donut chart of invoiced / collected / balance
 // ===========================================================================
 
-function CollectionTrackerPanel({ pinId }: { pinId: string }) {
-  const { data: profData } = useGetPinProfitability(pinId);
+function CollectionTrackerPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
+  const { data: profData } = useGetPinProfitability(pinId, {
+    query: { queryKey: getGetPinProfitabilityQueryKey(pinId), enabled: isManager },
+  });
   const p = profData?.profitability;
 
   const totalCents      = p?.revisedContractCents ?? 0;
@@ -1961,7 +1966,9 @@ function ClaimValueTrackerFinancialsPanel({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data: profData } = useGetPinProfitability(pinId);
+  const { data: profData } = useGetPinProfitability(pinId, {
+    query: { queryKey: getGetPinProfitabilityQueryKey(pinId), enabled: isManager },
+  });
   const { data: insData }  = useGetPinInsurance(pinId);
   const { mutateAsync: patchIns, isPending: saving } = usePatchPinInsurance({
     mutation: {
@@ -2305,7 +2312,9 @@ function ClaimValueTrackerFinancialsPanel({
 function ProjectFinancialsPanel({ pinId, isManager }: { pinId: string; isManager: boolean }) {
   const { toast }                  = useToast();
   const { data: leadData }         = useGetLead(pinId);
-  const { data: profData }         = useGetPinProfitability(pinId);
+  const { data: profData }         = useGetPinProfitability(pinId, {
+    query: { queryKey: getGetPinProfitabilityQueryKey(pinId), enabled: isManager },
+  });
   const updateMutation             = useUpdateCommissions();
   const salesMarkPaidMutation      = useMarkSalesCommissionPaid();
   const canvassingMarkPaidMutation = useMarkCanvassingCommissionPaid();
@@ -2539,12 +2548,16 @@ function FinKpiCards({
   pinId,
   contractAmount,
   onField,
+  isManager,
 }: {
   pinId: string;
   contractAmount: string;
   onField: (n: string, v: string) => void;
+  isManager: boolean;
 }) {
-  const { data: profData } = useGetPinProfitability(pinId);
+  const { data: profData } = useGetPinProfitability(pinId, {
+    query: { queryKey: getGetPinProfitabilityQueryKey(pinId), enabled: isManager },
+  });
   const p = profData?.profitability;
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -3049,7 +3062,7 @@ function FinancialsTab({
   return (
     <div className="space-y-4">
       {/* Zone 1 — KPI stat cards */}
-      <FinKpiCards pinId={pinId} contractAmount={form.contractAmount} onField={onField} />
+      <FinKpiCards pinId={pinId} contractAmount={form.contractAmount} onField={onField} isManager={isManager} />
 
       {/* Two-column layout — left 2/3 stacks all main panels;
                               right 1/3 stacks Collection Tracker + Change Orders */}
@@ -3071,7 +3084,7 @@ function FinancialsTab({
 
         {/* Column 3: Collection Tracker + Change Orders */}
         <div className="md:col-span-1 flex flex-col gap-4">
-          <CollectionTrackerPanel pinId={pinId} />
+          <CollectionTrackerPanel pinId={pinId} isManager={isManager} />
           <ChangeOrdersPanel pinId={pinId} isManager={isManager} isInsurance={isInsurance} />
           <BettermentsPanel pinId={pinId} isManager={isManager} />
         </div>

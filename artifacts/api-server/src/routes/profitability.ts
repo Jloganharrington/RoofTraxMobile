@@ -17,7 +17,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
 import { db, pinsTable, userProfilesTable } from '@workspace/db';
-import { isManagerOrAdmin } from '@workspace/authz';
+import { canViewProfitability } from '@workspace/authz';
 
 const router = Router();
 
@@ -38,7 +38,7 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, req.user.id));
   const role = profile?.role ?? 'field_rep';
-  if (!isManagerOrAdmin(role)) {
+  if (!canViewProfitability(role)) {
     res.status(403).json({ error: 'Not authorized to view profitability data' });
     return;
   }

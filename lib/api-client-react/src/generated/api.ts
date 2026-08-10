@@ -3144,7 +3144,7 @@ export const getGetAdminStatsUrl = () => {
 }
 
 /**
- * Manager/admin only.
+ * Admin-tier only (admin, super_admin).
  * @summary Get overview KPI stats
  */
 export const getAdminStats = async ( options?: RequestInit): Promise<AdminStatsEnvelope> => {
@@ -3218,7 +3218,7 @@ export const getListTeamUsersUrl = () => {
 
 
 
-  return `/api/admin/users`
+  return `/api/team/users`
 }
 
 /**
@@ -3242,7 +3242,7 @@ export const listTeamUsers = async ( options?: RequestInit): Promise<TeamUserLis
 
 export const getListTeamUsersQueryKey = () => {
     return [
-    `/api/admin/users`
+    `/api/team/users`
     ] as const;
     }
 
@@ -3296,7 +3296,7 @@ export const getUpdateTeamUserUrl = (userId: string,) => {
 
 
 
-  return `/api/admin/users/${userId}`
+  return `/api/team/users/${userId}`
 }
 
 /**
@@ -3371,7 +3371,7 @@ export const getRemoveTeamUserUrl = (userId: string,) => {
 
 
 
-  return `/api/admin/users/${userId}`
+  return `/api/team/users/${userId}`
 }
 
 /**

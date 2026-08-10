@@ -41,6 +41,7 @@ const ROLE_COLORS: Record<Role, string> = {
 const DEPT_LABELS: Record<Department, string> = {
   canvasser: "Canvasser",
   inspector_canvasser: "Inspector",
+  office: "Office",
 };
 
 const WORKFLOW_LABELS: Record<WorkflowAssignment, string> = {

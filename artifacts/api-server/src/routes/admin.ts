@@ -54,7 +54,7 @@ async function requireAdmin(req: Request, res: Response) {
 }
 
 router.get('/admin/stats', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
+  const actor = await requireAdmin(req, res); // PD-1: org-level stats are admin-tier only
   if (!actor) return;
 
   const [totals] = await db
@@ -91,7 +91,7 @@ router.get('/admin/stats', async (req: Request, res: Response) => {
   );
 });
 
-router.get('/admin/users', async (req: Request, res: Response) => {
+router.get('/team/users', async (req: Request, res: Response) => {
   const actor = await requireManagerOrAdmin(req, res);
   if (!actor) return;
 
@@ -130,7 +130,7 @@ router.get('/admin/users', async (req: Request, res: Response) => {
   );
 });
 
-router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
+router.patch('/team/users/:userId', async (req: Request, res: Response) => {
   const actor = await requireManagerOrAdmin(req, res);
   if (!actor) return;
 
@@ -225,8 +225,8 @@ router.patch('/admin/users/:userId', async (req: Request, res: Response) => {
   );
 });
 
-router.delete('/admin/users/:userId', async (req: Request, res: Response) => {
-  const actor = await requireAdmin(req, res);
+router.delete('/team/users/:userId', async (req: Request, res: Response) => {
+  const actor = await requireManagerOrAdmin(req, res); // actorOutranks enforces rank; managers may delete strictly-lower-ranked users
   if (!actor) return;
 
   const userId = req.params.userId as string;

@@ -1413,7 +1413,7 @@ export const SetPinAppointmentResponse = zod.object({
 
 
 /**
- * Manager/admin only.
+ * Admin-tier only (admin, super_admin).
  * @summary Get overview KPI stats
  */
 export const GetAdminStatsResponse = zod.object({

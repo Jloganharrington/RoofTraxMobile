@@ -121,6 +121,15 @@ export function canAccessInspectionModule(role: Role, department: Department): b
   return department === 'inspector_canvasser' || role === 'super_admin';
 }
 
+// Governs who may read the profitability summary for a lead
+// (GET /pins/:pinId/profitability). Financial data — margin, cost, payment
+// totals — is manager-and-above only; field reps see their leads but not
+// the money behind them. Named capability so server and client both refer to
+// the same rule. (FINDING 3-C)
+export function canViewProfitability(role: Role): boolean {
+  return isManagerOrAdmin(role);
+}
+
 // Who may sign a Completion Certificate.
 // - All managers, admins, and super_admins may sign regardless of department.
 // - field_reps in the 'office' department may sign (office staff handle final

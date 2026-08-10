@@ -261,17 +261,19 @@ async function test32() {
   // A-CANV-1 (field_rep) attempts privileged actions
   const cases32: Array<{ id: string; actor: string; method: 'GET'|'POST'|'PATCH'|'DELETE'; path: string; body?: unknown; needsAtLeast: string }> = [
     { id: '3.2-1',  actor: 'A-CANV-1', method: 'GET',    path: '/api/admin/stats',                         needsAtLeast: 'admin' },
-    { id: '3.2-2',  actor: 'A-CANV-1', method: 'GET',    path: '/api/admin/users',                         needsAtLeast: 'admin' },
-    { id: '3.2-3',  actor: 'A-CANV-1', method: 'PATCH',  path: `/api/admin/users/${USERS['A-CANV-2'].id}`,  body: { role: 'admin' }, needsAtLeast: 'admin' },
+    { id: '3.2-2',  actor: 'A-CANV-1', method: 'GET',    path: '/api/team/users',                          needsAtLeast: 'manager' },
+    { id: '3.2-3',  actor: 'A-CANV-1', method: 'PATCH',  path: `/api/team/users/${USERS['A-CANV-2'].id}`,   body: { role: 'admin' }, needsAtLeast: 'manager' },
     { id: '3.2-4',  actor: 'A-CANV-1', method: 'POST',   path: '/api/price-book/items',                    body: { name: 'x', unitPrice: 1, unit: 'SQ' }, needsAtLeast: 'admin' },
     { id: '3.2-5',  actor: 'A-CANV-1', method: 'PATCH',  path: '/api/price-book/items/00000000-0000-0000-0000-000000000001', body: { name: 'x' }, needsAtLeast: 'admin' },
     { id: '3.2-6',  actor: 'A-CANV-1', method: 'DELETE', path: '/api/price-book/items/00000000-0000-0000-0000-000000000001', needsAtLeast: 'admin' },
     { id: '3.2-7',  actor: 'A-CANV-1', method: 'POST',   path: `/api/contracts/${ALPHA_CONTRACT_R}/void`,  needsAtLeast: 'manager' },
     { id: '3.2-8',  actor: 'A-CANV-1', method: 'GET',    path: `/api/pins/${ALPHA_RETAIL_PIN}/profitability`, needsAtLeast: 'manager' },
     { id: '3.2-9',  actor: 'A-CANV-1', method: 'GET',    path: `/api/pins/${ALPHA_INS_PIN}/profitability`,  needsAtLeast: 'manager' },
-    // A-MGR-O (manager) attempts super_admin actions
-    { id: '3.2-10', actor: 'A-MGR-O',  method: 'GET',    path: '/api/admin/stats',                         needsAtLeast: 'admin' },
-    { id: '3.2-11', actor: 'A-MGR-O',  method: 'DELETE', path: `/api/admin/users/${USERS['A-CANV-2'].id}`, needsAtLeast: 'admin' },
+    // A-MGR-O (manager) attempts admin-only actions
+    { id: '3.2-10', actor: 'A-MGR-O',  method: 'GET',    path: '/api/admin/stats',                          needsAtLeast: 'admin' },
+    // NOTE: 3.2-11 (manager deleting a canvasser) is now PERMITTED (requireManagerOrAdmin + actorOutranks).
+    // Kept as positive-case documentation. Manager peer-delete is still gated: same-rank → 403.
+    // { id: '3.2-11', actor: 'A-MGR-O',  method: 'DELETE', path: `/api/team/users/${USERS['A-CANV-2'].id}`, needsAtLeast: 'manager' },
     { id: '3.2-12', actor: 'A-MGR-O',  method: 'POST',   path: `/api/contracts/${ALPHA_CONTRACT_R}/void`,  needsAtLeast: 'manager' },
     // A-CANV-2 (peer field_rep) accessing A-CANV-1's pin profitability
     { id: '3.2-13', actor: 'A-CANV-2', method: 'GET',    path: `/api/pins/${ALPHA_RETAIL_PIN}/profitability`, needsAtLeast: 'manager' },
@@ -761,7 +763,7 @@ async function test310() {
     { method: 'GET'    as const, path: '/api/pins' },
     { method: 'POST'   as const, path: '/api/pins' },
     { method: 'GET'    as const, path: '/api/admin/stats' },
-    { method: 'GET'    as const, path: '/api/admin/users' },
+    { method: 'GET'    as const, path: '/api/team/users' },
     { method: 'GET'    as const, path: '/api/dashboard/manifest' },
     { method: 'GET'    as const, path: '/api/profile' },
     { method: 'PATCH'  as const, path: '/api/profile' },

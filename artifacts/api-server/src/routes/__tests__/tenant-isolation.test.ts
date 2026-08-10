@@ -145,8 +145,8 @@ describe('multi-tenant data isolation', () => {
     expect(resB.body.stats.fieldRepCount).toBe(1);
   });
 
-  it('GET /admin/users never returns another company\'s users', async () => {
-    const res = await request(app).get('/api/admin/users').set(auth(companyA.adminSid));
+  it('GET /team/users never returns another company\'s users', async () => {
+    const res = await request(app).get('/api/team/users').set(auth(companyA.adminSid));
     expect(res.status).toBe(200);
     const ids: string[] = res.body.users.map((u: { id: string }) => u.id);
     expect(ids).toEqual(expect.arrayContaining([companyA.adminId, companyA.repId]));
@@ -154,9 +154,9 @@ describe('multi-tenant data isolation', () => {
     expect(ids).not.toContain(companyB.repId);
   });
 
-  it('PATCH /admin/users/:userId against a cross-company user returns 404, not 403', async () => {
+  it('PATCH /team/users/:userId against a cross-company user returns 404, not 403', async () => {
     const res = await request(app)
-      .patch(`/api/admin/users/${companyB.repId}`)
+      .patch(`/api/team/users/${companyB.repId}`)
       .set(auth(companyA.adminSid))
       .send({ role: 'manager' });
     expect(res.status).toBe(404);
@@ -169,9 +169,9 @@ describe('multi-tenant data isolation', () => {
     expect(stillRep.role).toBe('field_rep');
   });
 
-  it('DELETE /admin/users/:userId against a cross-company user returns 404, not 403 or success', async () => {
+  it('DELETE /team/users/:userId against a cross-company user returns 404, not 403 or success', async () => {
     const res = await request(app)
-      .delete(`/api/admin/users/${companyB.repId}`)
+      .delete(`/api/team/users/${companyB.repId}`)
       .set(auth(companyA.adminSid));
     expect(res.status).toBe(404);
 
@@ -222,7 +222,7 @@ describe('multi-tenant data isolation', () => {
       request(app).get('/api/pins'),
       request(app).get('/api/location/team'),
       request(app).get('/api/admin/stats'),
-      request(app).get('/api/admin/users'),
+      request(app).get('/api/team/users'),
     ]);
     expect(pins.status).toBe(401);
     expect(team.status).toBe(401);

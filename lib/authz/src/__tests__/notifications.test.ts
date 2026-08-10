@@ -38,11 +38,12 @@ const FIELD_REP_ELIGIBLE_TYPES = [
   'inspection_assigned',
   'inspection_scheduled',
   'appointment_assigned',
+  'completion_certificate_signed',
 ];
 
 describe('NOTIFICATION_CATALOG', () => {
-  it('contains exactly 16 entries', () => {
-    expect(NOTIFICATION_CATALOG).toHaveLength(16);
+  it('contains exactly 17 entries', () => {
+    expect(NOTIFICATION_CATALOG).toHaveLength(17);
   });
 
   it('covers the four expected groups', () => {
@@ -77,9 +78,9 @@ describe('NOTIFICATION_CATALOG', () => {
 });
 
 describe('catalogForRole', () => {
-  it('field_rep — returns exactly 9 types', () => {
+  it('field_rep — returns exactly 10 types', () => {
     const result = catalogForRole('field_rep');
-    expect(result).toHaveLength(9);
+    expect(result).toHaveLength(10);
   });
 
   it('field_rep — contains all expected assignee / lead_owner types', () => {
@@ -96,16 +97,16 @@ describe('catalogForRole', () => {
     }
   });
 
-  it('manager — returns all 16 types', () => {
-    expect(catalogForRole('manager')).toHaveLength(16);
+  it('manager — returns all 17 types', () => {
+    expect(catalogForRole('manager')).toHaveLength(17);
   });
 
-  it('admin — returns all 16 types', () => {
-    expect(catalogForRole('admin')).toHaveLength(16);
+  it('admin — returns all 17 types', () => {
+    expect(catalogForRole('admin')).toHaveLength(17);
   });
 
-  it('super_admin — returns all 16 types', () => {
-    expect(catalogForRole('super_admin')).toHaveLength(16);
+  it('super_admin — returns all 17 types', () => {
+    expect(catalogForRole('super_admin')).toHaveLength(17);
   });
 
   it('manager result includes all field_rep-eligible types', () => {

@@ -362,7 +362,7 @@ async function test310() {
     { method: 'GET',   path: '/api/pins' },
     { method: 'POST',  path: '/api/pins' },
     { method: 'GET',   path: '/api/admin/stats' },
-    { method: 'GET',   path: '/api/admin/users' },
+    { method: 'GET',   path: '/api/team/users' },
     { method: 'GET',   path: '/api/dashboard/manifest' },
     { method: 'GET',   path: '/api/profile' },
     { method: 'PATCH', path: '/api/profile' },

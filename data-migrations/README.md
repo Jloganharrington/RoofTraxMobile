@@ -1,8 +1,41 @@
 # One-time data migrations
 
-This project applies schema with `drizzle-kit push` (no generated migration
-files), so one-off **data** backfills that must accompany a schema change live
-here as hand-written, **idempotent, re-runnable** SQL. Each script is safe to
+## Applying schema changes
+
+Schema changes live in `lib/db/src/schema/` and are applied manually via
+`drizzle-kit push`. **This step is not run automatically on merge** — it was
+removed from `scripts/post-merge.sh` because drizzle-kit's interactive TTY
+prompt for new unique constraints cannot be answered in a non-interactive merge
+environment, and a silent failure would leave the database out of sync with no
+indication.
+
+**When to run it:** after merging any task-agent branch that modifies
+`lib/db/src/schema/`, or after editing schema yourself.
+
+**Command (dev database):**
+```bash
+cd lib/db && npx drizzle-kit push
+```
+
+**Command (production database):** use the Replit Database tool with
+`environment: "production"`, or set `DATABASE_URL` to the production connection
+string before running the command above.
+
+**Unique-constraint caveat:** if the push adds a new unique constraint,
+drizzle-kit v0.x pauses and asks whether to truncate the table. Answer `n`
+(no truncation) unless you are certain the table is empty or has no conflicts.
+If running non-interactively, apply the DDL directly with `psql` matching the
+constraint definition from `lib/db/src/schema/` instead.
+
+**Task agents:** if a task agent's work includes a schema change, the
+post-merge reconciliation script rebuilds `lib/authz` and `lib/db`
+declarations but does NOT push schema. You must run `drizzle-kit push` manually
+after approving and merging the agent's branch.
+
+---
+
+This project uses one-off **data** backfills that must accompany certain schema
+changes. These live here as hand-written, **idempotent, re-runnable** SQL. Each script is safe to
 run more than once and safe to run against a database that already has the
 fix applied (it becomes a no-op).
 

@@ -229,6 +229,59 @@ describe('pin financial changes — write path', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Write path 4 — inspections.ts proxy: PATCH /leads/:pinId/profile
+// Same Zod schema + DB logic as pins.ts; tests confirm the gate is NOT missing.
+// ---------------------------------------------------------------------------
+
+describe('pin financial changes — inspections proxy PATCH (write path 4)', () => {
+  it('manager PATCH /leads/:pinId/profile with reason → 200 + audit row', async () => {
+    const before = await auditRows();
+
+    const res = await request(app)
+      .patch(`/api/leads/${pinId}/profile`)
+      .set(auth(mgrSid))
+      .send({ contractAmount: '9000.00', reason: 'Rate revision via lead proxy' });
+
+    expect(res.status).toBe(200);
+
+    const after = await auditRows();
+    expect(after.length).toBe(before.length + 1);
+    const row = after[after.length - 1];
+    expect(row.field).toBe('contract_amount');
+    expect(row.reason).toBe('Rate revision via lead proxy');
+    expect(row.changedByUserId).toBe(mgrId);
+  });
+
+  it('field_rep owner PATCH /leads/:pinId/profile with financial field → 403 (manager+ only)', async () => {
+    // Pin is owned by repId — canEditPin passes — but financial gate rejects.
+    const res = await request(app)
+      .patch(`/api/leads/${pinId}/profile`)
+      .set(auth(repSid))
+      .send({ contractAmount: '999.00', reason: 'should be blocked' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('manager PATCH /leads/:pinId/profile without reason → 400', async () => {
+    const res = await request(app)
+      .patch(`/api/leads/${pinId}/profile`)
+      .set(auth(mgrSid))
+      .send({ contractAmount: '11000.00' }); // no reason
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/reason is required/i);
+  });
+
+  it('unauthenticated PATCH → 401', async () => {
+    const res = await request(app)
+      .patch(`/api/leads/${pinId}/profile`)
+      .send({ contractAmount: '500.00', reason: 'anon attempt' });
+
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('pin financial changes — read path', () => {
   it('manager can GET /financial-changes → list of audit rows', async () => {
     const res = await request(app)

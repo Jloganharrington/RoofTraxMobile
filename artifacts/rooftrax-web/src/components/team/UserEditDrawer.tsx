@@ -60,6 +60,7 @@ function getDepartmentLabel(dept: Department): string {
   const labels: Record<Department, string> = {
     canvasser: "Canvasser",
     inspector_canvasser: "Inspector / Canvasser",
+    office: "Office",
   };
   return labels[dept] ?? dept;
 }

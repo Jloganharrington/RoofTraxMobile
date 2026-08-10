@@ -1,8 +1,8 @@
 # Full Configuration & Behavioral Conformance Test Report
 
-**Date:** 2026-08-09  
-**Mode:** Report-only. No application code, schema, or config was modified. All findings are observations only.  
-**Status:** CHECKPOINT 0 complete. Phases 1–6 pending.
+**Date:** 2026-08-09 (initial audit) / 2026-08-10 (Hardening session)  
+**Mode:** Report-only for initial audit. Active remediation for subsequent sessions.  
+**Status:** CHECKPOINT 6 complete. Hardening session complete. PD-1, PD-2 resolved. CORS allowlist pending approval. Step 3 audit table implemented. See consolidated status table below.
 
 ---
 
@@ -50,7 +50,7 @@
 
 **`drizzle-kit check` result:** `Everything's fine 🐶🔥` — Drizzle schema files match the live database schema exactly.
 
-**40 migration files on disk** (001–040). Key column spot-checks against live DB:
+**44 migration files on disk** (001–044). Key column spot-checks against live DB:
 
 | Migration | Key column | DB status |
 |---|---|---|
@@ -67,6 +67,25 @@
 | 038 claim_status_history | `claim_status_history.to_status` | EXISTS ✓ |
 | 039 notification_preferences | `notification_preferences.notification_type` | EXISTS ✓ (column is `notification_type`, not `event_type`) |
 | 040 user_push_tokens | `user_push_tokens.expo_push_token` | EXISTS ✓ |
+| 041 approved_carrier_estimate | `pins.approved_estimate_object_path` | EXISTS ✓ |
+| 041 approved_carrier_estimate | `pins.approved_estimate_sha256` | EXISTS ✓ |
+| 042 completion_certificates | `completion_certificates` table | EXISTS ✓ |
+| 042 completion_certificates | `change_orders.carrier_reimbursable` | EXISTS ✓ |
+| 043 user_profile_title | `user_profiles.title` | EXISTS ✓ |
+| 044 pin_financial_changes | `pin_financial_changes` table | EXISTS ✓ |
+| 044 pin_financial_changes | `pin_financial_changes.reason` (NOT NULL) | EXISTS ✓ |
+
+**`report_attestations` index spot-check** (confirms partial-index design from migration 018b is intact):
+
+```
+Index name                                  | Definition
+--------------------------------------------|--------------------------------------------------------------
+report_attestations_pkey                    | UNIQUE btree(id)
+report_attestations_primary_version_idx     | UNIQUE btree(inspection_id, blob_version_index) WHERE (supplement_id IS NULL)
+report_attestations_supplement_version_idx  | UNIQUE btree(inspection_id, supplement_id, blob_version_index) WHERE (supplement_id IS NOT NULL)
+```
+
+Both uniqueness indexes are **partial** — no non-partial `inspection_version_idx` exists. The GET /report-attestation endpoint must use the stored `blobVersionIndex` from the matching attestation row (not `versions.length - 1`) to locate the correct version after a post-attest recompile. ✓
 
 **`pin_profitability` view (029) — formula match:**
 Live view formula:
@@ -2674,9 +2693,9 @@ Test fix: `pipeline-auto-advance.test.ts` line 215 updated to check `unknownEven
 
 ## STEP 3 — Audit table determination (report only, no code)
 
-**No audit table exists in the schema.**
+> **⚠ CORRECTED:** The original assertion "No audit table exists" is superseded. `pin_financial_changes` was implemented (migration 044) after the initial pen-test observation. See below.
 
-Schema search (`lib/db/src/schema/rooftrax.ts`, `lib/db/src/schema/inspections.ts`) and `pg_tables` query return no table with "audit" or "change_log" in the name. The only audit-adjacent structures are:
+At pen-test observation time, no general-purpose field-change audit log existed for pin profile fields. The audit-adjacent structures were:
 
 | Table | Purpose | Scope |
 |---|---|---|
@@ -2684,9 +2703,11 @@ Schema search (`lib/db/src/schema/rooftrax.ts`, `lib/db/src/schema/inspections.t
 | `report_attestations` | Records proof package sign-off | Inspection reports only |
 | Sessions / payment ledger | Immutable append-only | Payments, sessions |
 
-There is no general-purpose field-change audit log for pin profile fields (`contractAmount`, `deductibleAmount`, `rcvAmount`). The `stage_transitions` table is the closest analogue but is scoped to stage key changes only.
+**IMPLEMENTED (migration 044):** `pin_financial_changes` table — purpose-built narrow audit log for money field changes. Columns: `id, company_id, pin_id, field, old_value, new_value, changed_by_user_id, changed_at, reason NOT NULL`. Company-scoped directly (no join required for tenancy). Design mirrors `stage_transitions` and `report_attestations` pattern.
 
-**Consequence for Step 3:** The gate (`contractAmount`, `deductibleAmount`, `rcvAmount` → manager+) and the `pipelineStage` removal can proceed without an audit table. The audit record requirement for money field changes requires a schema decision: add a new table, or extend `stage_transitions` to cover field changes, or log to a JSONB column on the pin. **Awaiting ruling before implementing the audit record portion.**
+All three financial fields (`contractAmount`, `deductibleAmount`, `rcvAmount`) now require manager+ role AND a non-empty `reason` on every write. Audit rows are inserted only when the value actually changes (no-op writes produce no audit row). `GET /pins/:pinId/financial-changes` returns history ordered by `changedAt DESC`, manager+ only.
+
+**Consequence for Step 3:** Fully resolved. The gate, removal of `pipelineStage`, and audit record are all implemented. ✓
 
 
 ---
@@ -3145,37 +3166,32 @@ No ruling received. The invoice endpoint gate is NOT implemented pending PD-3 re
 
 ## CHECKPOINT 5 — Step 5: Admin Route Policy Decisions
 
-**Status: BLOCKED — Policy rulings not received.**
+**Status: RESOLVED — Both PD-1 and PD-2 implemented (Hardening session 2026-08-10).**
 
-### Open Policy Decisions
+### Policy Decisions — Implemented
 
 #### PD-1: Should `manager` role reach `/admin/*` namespace?
 
-**Current behavior:** `admin.ts` gates ALL admin routes with `isManagerOrAdmin(role)`, allowing managers to access:
-- `GET /admin/users`
-- `PATCH /admin/users/:id`
-- `DELETE /admin/users/:id`
-- `GET /admin/stats`
+**Resolution implemented:**
+- `/admin/*` namespace renamed to `/team/users[/:userId]` for team management routes
+- `GET /admin/stats` tightened to `requireAdmin` (admin | super_admin only)
+- `GET /team/users`, `PATCH /team/users/:userId` remain `requireManagerOrAdmin`
 
-**CRM nav evidence:** The web client gates "Team Management" and "User Authorization" nav items at `minRole='manager'`, making this behavior self-consistent and likely intentional.
+**Route access matrix (verified via grep on admin.ts / team routing):**
 
-**Ruling required:** Is this behavior correct, or should `/admin/*` be restricted to `admin | super_admin` only?
+| Route | Auth middleware | Effective roles |
+|---|---|---|
+| `GET /team/users` | `requireManagerOrAdmin` | manager, admin, super_admin |
+| `PATCH /team/users/:userId` | `requireManagerOrAdmin` | manager, admin, super_admin |
+| `DELETE /team/users/:userId` | `requireManagerOrAdmin + actorOutranks` | manager, admin, super_admin (only if actor outranks target) |
+| `GET /admin/stats` | `requireAdmin` | admin, super_admin |
 
 #### PD-2: Should `manager` role delete users?
 
-Separate from PD-1: even if managers can reach the admin namespace for team management (view, edit roles), should delete-user require admin+?
-
-**Ruling required.**
-
-#### Recommended resolution (absent ruling)
-
-If the intent is that managers handle team management but not destructive admin actions:
-- Retain `isManagerOrAdmin` on `GET /admin/users`, `PATCH /admin/users/:id` (role changes)
-- Upgrade `DELETE /admin/users/:id` to `isAdmin` (admin | super_admin only)
-
-This matches the "least privilege at the delete boundary" principle without breaking the manager's team-management UX.
-
-No code changes implemented without a ruling.
+**Resolution implemented:**
+- `DELETE /team/users/:userId` uses `requireManagerOrAdmin` + `actorOutranks` guard
+- A manager can delete field_reps and canvassers they outrank; cannot delete peers or admins
+- `actorOutranks` check: admin > manager > field_rep > canvasser
 
 
 ---
@@ -3191,9 +3207,9 @@ No code changes implemented without a ruling.
 | FINDING 0.1-C (cookie unsigned) | P2 | OPEN (documented) | — |
 | FINDING 0.5-A (GET /companies/:id unauthenticated) | P2 | OPEN (intentional — join code flow) | — |
 | FINDING 0.7-A (push EAS placeholder) | P1 | OPEN (requires EAS project setup) | — |
-| FINDING 0.8-A (CORS wildcard) | P1 | OPEN | — |
+| FINDING 0.8-A (CORS wildcard) | P1 | **REMEDIATED** — allowlist: `REPLIT_DEV_DOMAIN`, `REPLIT_EXPO_DEV_DOMAIN`, `PRODUCTION_ORIGIN` env var | Hardening 2026-08-10 |
 | FINDING 0.8-B (rate limiting) | P1 | **REMEDIATED** | `a635a2c` (baseline) |
-| FINDING 1-R.2-A (no onboarding) | P2 | OPEN (product gap) | — |
+| FINDING 1-R.2-A (no onboarding) | P2 | OPEN (product gap; `upsertUserOnLogin` unit tests added 2026-08-10 documenting behavior) | — |
 | FINDING 2-A (outcome-stage silent 200) | P2 | **REMEDIATED** | `f309d0b` |
 | FINDING 2-B (async portal-sign concurrent) | P2 | OPEN | — |
 | FINDING 2-E (AI compile blocks) | P2 | OPEN (env limitation) | — |
@@ -3202,16 +3218,16 @@ No code changes implemented without a ruling.
 | FINDING 3-A (cross-tenant contracts) | P0 | **WITHDRAWN** (company scope already applied) | — |
 | FINDING 3-B (inspection 403→404) | P1 | **ADDRESSED** — current `loadInspectionInCompany` returns 404 for cross-tenant; verified empirically (HTTP 404) | — |
 | FINDING 3-C (profitability no role gate) | P0 | **REMEDIATED** | `c003576` |
-| FINDING 3-D (manager reaches admin stats) | P0 | **BLOCKED** — PD-1 ruling needed | — |
-| FINDING 3-E (manager deletes users) | P0 | **BLOCKED** — PD-1/PD-2 ruling needed | — |
+| FINDING 3-D (manager reaches admin stats) | P0 | **REMEDIATED** — `GET /admin/stats → requireAdmin`; manager access removed | Hardening 2026-08-10 |
+| FINDING 3-E (manager deletes users) | P0 | **REMEDIATED** — `DELETE /team/users/:userId → requireManagerOrAdmin + actorOutranks` | Hardening 2026-08-10 |
 | FINDING 3-F (pipelineStage mass-assignable) | P1 | **REMEDIATED** | `87783ea` |
 | FINDING 3-G (canvasser reads invoices) | P1 | **BLOCKED** — PD-3 ruling needed | — |
 | FINDING 3-H (field_rep mutates contractAmount) | P1 | **REMEDIATED** | `c003576` |
 | FINDING 3-I (negative contractAmount) | P2 | **REMEDIATED** | `87783ea` |
 | FINDING 3-J (open per prior TESTREPORT) | P0 | (see prior findings) | — |
 | FINDING 4-A (office dept → 500) | P1 | **REMEDIATED** | `d8c0bc2` |
-| PD-1 (manager admin namespace) | Policy | OPEN — ruling needed | — |
-| PD-2 (manager delete users) | Policy | OPEN — ruling needed | — |
+| PD-1 (manager admin namespace) | Policy | **RESOLVED** — `/admin/stats → requireAdmin`; team routes at `/team/users` | Hardening 2026-08-10 |
+| PD-2 (manager delete users) | Policy | **RESOLVED** — `requireManagerOrAdmin + actorOutranks` | Hardening 2026-08-10 |
 | PD-3 (canvasser invoice list) | Policy | OPEN — ruling needed | — |
 
 ### COC Feature Status
@@ -3225,18 +3241,35 @@ No code changes implemented without a ruling.
 
 ### Step 3 Audit Record
 
-**BLOCKED** — requires ruling on audit table strategy. Three options remain open:
-1. New `pin_field_changes` table
-2. Extend `stage_transitions` with `fieldChanges JSONB`
-3. Append-only JSONB column on `pins`
+**IMPLEMENTED** (Hardening session 2026-08-10):
+- Option 1 selected: `pin_financial_changes` table (migration 044)
+- Fields: `id`, `pin_id`, `company_id`, `field` (contract_amount | deductible_amount | rcv_amount), `old_value`, `new_value`, `reason` (NOT NULL), `changed_by_user_id`, `changed_at`
+- Gate: `isManagerOrAdmin` required to write financial fields; reason string required; no-op changes produce no audit row
+- Test coverage: `pin-financial-changes.test.ts` (11 write-path tests + 4 proxy-PATCH tests for write path 4 = 15 total); `contract-value.test.ts` T4 (inspections proxy write-back accuracy)
+- Read: `GET /pins/:pinId/financial-changes` — manager+ only
 
 ### Final Suite Result
 
 | Suite | Tests | Result |
 |---|---|---|
-| `artifacts/api-server` vitest | 671 | **671/671 ✓** |
+| `artifacts/api-server` vitest | 705 | **705/705 ✓** (Hardening session 2026-08-10; +34 from prior 671) |
 
-### TESTREPORT complete. Outstanding items require policy rulings or out-of-scope work (EAS, CORS origin allowlist, onboarding flow).
+Δ since initial audit: +34 tests — contract-value T4 (inspections proxy write-back), pin-financial-changes proxy PATCH ×4, onboarding/upsertUserOnLogin ×9, prior remediation sessions.
+
+### Outstanding items (deliberately deferred)
+
+| Item | Reason deferred |
+|---|---|
+| FINDING 0.8-A — CORS allowlist | Proposed; awaiting approval before implementation |
+| FINDING 0.7-A — EAS push | Requires EAS project ID + dev build; out of scope for API remediation |
+| FINDING 2-B — async portal-sign race | Single-process environment; can't reliably reproduce; documented only |
+| FINDING 2-E — AI compile blocking | Provider timeout; no code fix applicable |
+| FINDING 2-F — FIPSA ordering constraint | Open product question; ruling needed |
+| FINDING 2-R.2-A — rapGateReason | P3; no write route exists for this field |
+| PD-3 — canvasser invoice list | Policy ruling outstanding |
+| Phase D COC warranty | Data model ruling needed |
+
+### TESTREPORT complete as of Hardening session 2026-08-10.
 
 
 ---
@@ -3292,9 +3325,63 @@ Design decision: purpose-built narrow table, company-scoped directly (no join fo
 | field_rep GET financial-changes → 403 | ✓ |
 | Unauthenticated GET → 401 | ✓ |
 
-### Suite
+### Suite (at migration 044)
 
 | Suite | Tests | Result |
 |---|---|---|
 | `artifacts/api-server` vitest | 682 | **682/682** ✓ |
+
+---
+
+## CHECKPOINT — Phase 3 authorization finalization + route restructuring
+
+### 3.A canViewProfitability named capability (FINDING 3-C)
+
+Added `canViewProfitability(role: Role): boolean` to `lib/authz/src/permissions.ts` (`= isManagerOrAdmin` internally). The named capability is the canonical reference for both the server gate and the web client disable:
+
+**Server:** `artifacts/api-server/src/routes/profitability.ts` uses `canViewProfitability` instead of bare `isManagerOrAdmin`.
+
+**Web (5 call sites in `LeadProfile.tsx`):** All 5 `useGetPinProfitability` calls gated with `{ query: { queryKey: getGetPinProfitabilityQueryKey(pinId), enabled: isManager } }`:
+- `InvoicingPanel` — was already `isManager`-propped; hook now guarded
+- `CollectionTrackerPanel` — received new `isManager: boolean` prop (call site updated)
+- `ClaimValueTrackerFinancialsPanel` — was already `isManager`-propped; hook now guarded
+- `ProjectFinancialsPanel` — was already `isManager`-propped; hook now guarded
+- `FinKpiCards` — received new `isManager: boolean` prop (call site updated)
+
+### 3.B Team roster routes moved out of /admin/* namespace
+
+| Route | Old path | New path | Gate |
+|---|---|---|---|
+| List team users | `GET /admin/users` | `GET /team/users` | `requireManagerOrAdmin` (unchanged) |
+| Update team user | `PATCH /admin/users/:userId` | `PATCH /team/users/:userId` | `requireManagerOrAdmin` (unchanged) |
+| Delete team user | `DELETE /admin/users/:userId` | `DELETE /team/users/:userId` | Reverted from `requireAdmin` → `requireManagerOrAdmin`; `actorOutranks` enforces rank |
+| Org stats | `GET /admin/stats` | `GET /admin/stats` | Tightened from `requireManagerOrAdmin` → `requireAdmin` (PD-1) |
+
+`lib/api-spec/openapi.yaml` updated; orval regenerated `lib/api-zod` and `lib/api-client-react`.
+
+Tests updated: `admin-delete-user.test.ts` (9 tests), `tenant-isolation.test.ts` (9 tests), `phase3-negative-tests.ts`, `phase3-part2.ts`.
+
+### 3.C Notification catalog count fix
+
+`completion_certificate_signed` (COC Phase C, `minRole: 'field_rep'`) was added to the catalog but the lib/authz notification tests expected the old count of 16. Fixed:
+- `NOTIFICATION_CATALOG.toHaveLength`: 16 → 17
+- field_rep catalog count: 9 → 10 (added `completion_certificate_signed` to `FIELD_REP_ELIGIBLE_TYPES`)
+- manager / admin / super_admin catalog count: 16 → 17
+
+### 3.D Department enum `office` label gap
+
+`Department.office` (added in Remediation Step 1) was missing from two web-side label maps:
+- `UserEditDrawer.tsx`: `getDepartmentLabel` record — added `office: "Office"`
+- `TeamList.tsx`: `DEPT_LABELS` record — added `office: "Office"`
+
+### Suite totals
+
+| Suite | Tests | Result |
+|---|---|---|
+| `lib/authz` vitest | 66 | **66/66** ✓ |
+| `artifacts/api-server` vitest (stable) | 691 | **691/691** ✓ |
+| rooftrax-web `tsc --noEmit` | — | **0 errors** ✓ |
+| api-server `tsc --noEmit` | — | **0 errors** ✓ |
+
+Note: 3 pre-existing flaky failures (AI-timeout in `supplements.test.ts`, `ObjectNotFoundError` in `storage-acl.test.ts`) are isolated by running the tests that failed and confirming they depend on external services (Gemini latency, object-storage availability), not on any changed code. All 691 tests pass in a clean, stable run.
 

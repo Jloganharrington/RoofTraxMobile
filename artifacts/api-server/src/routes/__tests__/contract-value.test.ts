@@ -43,8 +43,10 @@
  *        ← tested T1
  *   2. contracts.ts void route (POST /contracts/:contractId/void)
  *        ← tested T3
- *   3. pins.ts PATCH /pins/:pinId/profile — manual override, not tested here.
- *   4. inspections.ts pin-proxy PATCH — manual override, not tested here.
+ *   3. pins.ts PATCH /pins/:pinId/profile — manual override, not tested here (covered by
+ *      pin-financial-changes.test.ts which tests the gate and audit row; contract-value
+ *      accuracy for this path is exercised in T4 via the inspections proxy).
+ *   4. inspections.ts pin-proxy PATCH — manual override, tested T4 (added Step 5).
  */
 
 import {
@@ -55,6 +57,7 @@ import {
   contractScopePackagesTable,
   contractSelectionsTable,
   db,
+  pinFinancialChangesTable,
   pinsTable,
   selectionBrandsTable,
   selectionCategoriesTable,
@@ -230,6 +233,8 @@ afterAll(async () => {
   await db.delete(contractSelectionsTable).where(eq(contractSelectionsTable.companyId, COMPANY_ID));
   await db.delete(contractScopePackagesTable).where(eq(contractScopePackagesTable.companyId, COMPANY_ID));
   await db.delete(contractsTable).where(eq(contractsTable.companyId, COMPANY_ID));
+  // T4 writes a pin_financial_changes row; must be removed before the pin.
+  await db.delete(pinFinancialChangesTable).where(eq(pinFinancialChangesTable.companyId, COMPANY_ID));
   await db.delete(selectionProductsTable).where(eq(selectionProductsTable.companyId, COMPANY_ID));
   await db.delete(selectionBrandsTable).where(eq(selectionBrandsTable.companyId, COMPANY_ID));
   await db.delete(selectionCategoriesTable).where(eq(selectionCategoriesTable.companyId, COMPANY_ID));
@@ -324,6 +329,36 @@ describe('pins.contract_amount write-back accuracy', () => {
     expect(p.revisedContractCents).toBe(CONTRACT_CENTS + CO_CENTS); // 1_100_000
     // Divergence sentinel: view base must agree with varchar parsed to cents.
     expect(viewBaseCents).toBe(parseToCents(pin!.contractAmount));
+  });
+
+  it('T4 — PATCH /leads/:pinId/profile (inspections proxy write path 4) sets contract_amount; view agrees', async () => {
+    // At this point in the suite pins.contract_amount = '$10,500.00' (set by T1).
+    // T3 runs after T4 and clears it; ensure T4 runs before T3 by ordering the
+    // describe block.  Note: vitest runs `it` blocks in definition order.
+    const NEW_AMOUNT = '12500.00';
+
+    const res = await request(app)
+      .patch(`/api/leads/${pinId}/profile`)
+      .set(mgr())
+      .send({ contractAmount: NEW_AMOUNT, reason: 'Revised scope — write path 4 test' });
+
+    expect(res.status).toBe(200);
+
+    // The varchar column must hold the new value.
+    const [pin] = await db
+      .select({ contractAmount: pinsTable.contractAmount })
+      .from(pinsTable)
+      .where(eq(pinsTable.id, pinId));
+    expect(pin!.contractAmount).toBe(NEW_AMOUNT);
+
+    // Profitability view must parse the new varchar to the same cents.
+    const prof = await request(app)
+      .get(`/api/pins/${pinId}/profitability`)
+      .set(mgr());
+    expect(prof.status).toBe(200);
+    const p = prof.body.profitability;
+    const viewBaseCents = p.revisedContractCents - p.approvedCoCents;
+    expect(viewBaseCents).toBe(parseToCents(NEW_AMOUNT)); // 1_250_000 cents
   });
 
   it('T3 — voiding a signed contract clears pins.contract_amount; view base drops to zero together', async () => {

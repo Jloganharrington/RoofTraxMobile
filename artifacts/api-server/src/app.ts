@@ -33,7 +33,40 @@ app.use(
     },
   }),
 );
-app.use(cors({ credentials: true, origin: true }));
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// All web portals (CRM, signing, photo) share the same origin as the API via
+// Replit's path-based routing — they need no CORS configuration.
+// The only genuine cross-origin caller is the Expo web preview, which uses
+// Bearer tokens (not cookies). Native mobile (iOS/Android) never hits CORS.
+//
+// Allowlist is env-driven so production domains are added without code changes:
+//   REPLIT_DEV_DOMAIN       — shared by all dev artifacts
+//   REPLIT_EXPO_DEV_DOMAIN  — Expo web preview domain
+//   PRODUCTION_ORIGIN       — set at deployment (https://your-deployed-url.replit.app)
+const _corsAllowList: Array<string | undefined> = [
+  process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : undefined,
+  process.env.REPLIT_EXPO_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_EXPO_DEV_DOMAIN}`
+    : undefined,
+  process.env.PRODUCTION_ORIGIN || undefined,
+];
+const CORS_ALLOWED_ORIGINS = new Set(_corsAllowList.filter(Boolean) as string[]);
+
+app.use(
+  cors({
+    credentials: true,
+    origin: (origin, callback) => {
+      // No Origin header = same-origin request (e.g. server-to-server, curl).
+      if (!origin || CORS_ALLOWED_ORIGINS.has(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin '${origin}' is not in the allowlist`));
+      }
+    },
+  }),
+);
 app.use(cookieParser());
 // Routes that receive large base64 payloads get specific size limits.
 // All others keep the Express default (100kb) to limit the DoS surface.

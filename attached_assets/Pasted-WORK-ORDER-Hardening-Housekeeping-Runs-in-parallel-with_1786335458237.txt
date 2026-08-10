@@ -1,0 +1,67 @@
+WORK ORDER — Hardening & Housekeeping
+Runs in parallel with the Permission System order. Step 0 is the exception and must land before that order's Step 3.
+Hard constraint: zero writes to artifacts/mobile/. Steps 1 and 3 can break the frozen app if done carelessly — read the warnings.
+One step per commit. Baseline: 800/801 workspace plus the 130-test negative suite.
+
+STEP 0 — Prerequisite: undo the PD-2 inversion
+Do this first. The Permission System order's Step 4 moves this same gate, and if it builds on the current state it inherits the error instead of replacing it.
+
+DELETE /admin/users/:userId back to requireManagerOrAdmin. actorOutranks already enforces the ruling: managers act only on strictly-lower ranks, never on themselves, and field reps never clear the namespace gate.
+GET /admin/stats to requireAdmin — that's the PD-1 half that should have been tightened.
+Keep the isAdmin helper. It's correct; it was applied to the wrong route.
+▶ CHECKPOINT 0 — Paste the diff and the 10-user access matrix for both routes.
+
+STEP 1 — post-merge.sh
+Remove the pnpm --filter db push line. Keep the install and both tsc --build steps.
+
+Then document, in data-migrations/README.md, how a schema change actually gets applied now — the exact command and when to run it. If Replit's task agents depend on push happening automatically, say so plainly instead of removing it silently, and I'll decide.
+
+▶ CHECKPOINT 1 — Paste the new script and the README section.
+
+STEP 2 — Database verification (read-only, no changes)
+Answers the question the last batch left open. Query and paste raw output:
+
+pg_indexes for report_attestations — confirm both partial indexes exist with correct predicates and that no non-partial report_attestations_inspection_version_idx is present.
+Every view, function, trigger, and partial index in the public schema, compared against what migrations 001–044 create.
+Whether migrations 041–044 (carrier estimate, completion certificates, user profile title, pin financial changes) are fully applied, column by column.
+▶ CHECKPOINT 2 — Paste raw query output. No code changes in this step at all.
+
+STEP 3 — Transport hardening
+Four pre-launch items from the audit. All middleware and transport — none of it touches route authorization.
+
+3a. CORS. app.ts:30 is cors({ credentials: true, origin: true }), which reflects any origin back with credentials allowed. Replace with an explicit allowlist.
+
+⚠️ Enumerate the origins the mobile app uses before changing anything. REPLIT_DEV_DOMAIN and REPLIT_EXPO_DEV_DOMAIN exist for this. Get the list wrong and you break an app that's ready to ship and cannot be patched. Paste the allowlist and stop for approval before implementing.
+
+3b. Session cookie signing. cookieParser() takes no secret, so rt_sid is an unsigned UUID.
+
+⚠️ Signing invalidates every existing session — everyone gets logged out once. Harmless now, disruptive after launch. Confirm the timing before doing it.
+
+3c. Security headers. Add helmet() or equivalent: X-Frame-Options, Content-Security-Policy, X-Content-Type-Options, Strict-Transport-Security. Replit's proxy supplies some on the dev domain; a custom domain gets none. Verify a CSP doesn't break the CRM or the portals before shipping it.
+
+3d. GET /companies/:companyId. Unauthenticated, returns company name for any valid ID. Now P2 rather than P1 — 6 characters from a 31-character alphabet is ~887M, so enumeration isn't practical. Rate-limit it and leave it public, since it's the join-code confirmation flow.
+
+▶ CHECKPOINT 3 — Paste the CORS allowlist first and stop. Then, after approval: the diff, a mobile-origin request succeeding, and the full suite.
+
+STEP 4 — Rate limiter scope
+RateLimiter is in-memory and per-process, so under more than one instance the effective limit is 30 × N. State how many instances the API runs as today, and whether that's fixed or scales. No fix unless it's more than one — just the answer.
+
+▶ CHECKPOINT 4 — One paragraph.
+
+STEP 5 — Verification debt
+Three gaps recorded in the Test Validity Limits section that can be closed cheaply now:
+
+The OIDC login path has never been exercised. Every session in the audit was a direct DB insert, so /callback and upsertUserOnLogin are untested — including anything that assigns or mutates company_id, role, department, or workflowAssignment at login. Run one real login end to end and report what those functions actually set.
+contract-value.test.ts write path 4. Confirm whether the manual override path was added to that suite in remediation Step 3. If not, add it.
+The inspections pin-proxy PATCH. The second contract_amount write path, never empirically tested. Run the same permission matrix against it that 3.11 ran against PATCH /leads/:leadId/profile.
+▶ CHECKPOINT 5 — Paste all three results.
+
+STEP 6 — Close out the audit
+Update TESTREPORT.md so it reflects reality: every finding marked Fixed with a commit SHA, Open with severity, or Withdrawn with the reason. Reconcile the index against the body one final time.
+
+List what remains open and deliberately deferred, so the live test doesn't rediscover known issues as if they were new. At minimum: 2-B (async portal-sign race), 3-B (403 vs 404 existence disclosure), 2-D (from_stage null on first advance), 2-F (FIPSA phase ordering), 2-R.2-A (rapGateReason), 1-A (GET /admin/users pagination), and the EAS placeholder that keeps push notifications dead.
+
+Do not run the ZZTEST teardown. Those fixtures are the test bed for the permission work.
+
+▶ CHECKPOINT 6 — Paste the reconciled index and the deferred list.
+
