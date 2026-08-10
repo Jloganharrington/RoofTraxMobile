@@ -6,13 +6,13 @@
  * Draft and rejected items are NEVER citable, renderable, or pack-eligible.
  */
 
-import { roleRank, type Role } from '@workspace/authz';
+// catalog.ahj_wizard (super_admin+) — all 10 AHJ wizard admin routes.
+import { requirePermission } from '../middlewares/requirePermission';
 import { Router, type Request, type Response } from 'express';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   db,
-  userProfilesTable,
   codeSourcesTable,
   corpusChunksTable,
   wizardRunsTable,
@@ -37,28 +37,6 @@ const router = Router();
 // ---------------------------------------------------------------------------
 // Auth helper
 // ---------------------------------------------------------------------------
-
-async function requireSuperAdmin(
-  req: Request,
-  res: Response,
-): Promise<{ companyId: string; userId: string } | null> {
-  if (!req.isAuthenticated?.() || !req.user) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  const companyId: string = req.user.companyId;
-  const userId: string = req.user.id;
-  const [profile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId))
-    .limit(1);
-  if (roleRank((profile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
-    res.status(403).json({ error: 'Forbidden — super_admin only' });
-    return null;
-  }
-  return { companyId, userId };
-}
 
 // ---------------------------------------------------------------------------
 // Corpus chunking helper
@@ -351,9 +329,7 @@ const CodeSourceBody = z.object({
   corpusText: z.string().optional(),
 });
 
-router.post('/ahj-wizard/sources', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.post('/ahj-wizard/sources', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const body = CodeSourceBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
@@ -371,7 +347,7 @@ router.post('/ahj-wizard/sources', async (req: Request, res: Response) => {
   const [source] = await db
     .insert(codeSourcesTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       jurisdiction: body.data.jurisdiction,
       title: body.data.title,
       edition: body.data.edition,
@@ -381,7 +357,7 @@ router.post('/ahj-wizard/sources', async (req: Request, res: Response) => {
       licensingNote: body.data.licensingNote,
       storedCorpus,
       accessedAt: new Date(),
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -391,7 +367,7 @@ router.post('/ahj-wizard/sources', async (req: Request, res: Response) => {
       await db.insert(corpusChunksTable).values(
         chunks.map((c, idx) => ({
           codeSourceId: source.id,
-          companyId: actor.companyId,
+          companyId: req.actorCtx!.companyId,
           sectionId: c.sectionId,
           chunkIndex: idx,
           text: c.text,
@@ -407,14 +383,12 @@ router.post('/ahj-wizard/sources', async (req: Request, res: Response) => {
 // GET /ahj-wizard/sources
 // ---------------------------------------------------------------------------
 
-router.get('/ahj-wizard/sources', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.get('/ahj-wizard/sources', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const sources = await db
     .select()
     .from(codeSourcesTable)
-    .where(eq(codeSourcesTable.companyId, actor.companyId))
+    .where(eq(codeSourcesTable.companyId, req.actorCtx!.companyId))
     .orderBy(desc(codeSourcesTable.createdAt));
 
   res.json({ sources });
@@ -432,9 +406,7 @@ const WizardRunBody = z.object({
   edition: z.string().optional(),
 });
 
-router.post('/ahj-wizard/runs', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.post('/ahj-wizard/runs', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const body = WizardRunBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
@@ -447,7 +419,7 @@ router.post('/ahj-wizard/runs', async (req: Request, res: Response) => {
       .from(codeSourcesTable)
       .where(
         and(
-          eq(codeSourcesTable.companyId, actor.companyId),
+          eq(codeSourcesTable.companyId, req.actorCtx!.companyId),
           inArray(codeSourcesTable.id, codeSourceIds),
         ),
       );
@@ -459,21 +431,21 @@ router.post('/ahj-wizard/runs', async (req: Request, res: Response) => {
   const [run] = await db
     .insert(wizardRunsTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       jurisdiction,
       packType,
       codeSourceIds,
       promptVersion: AHJ_WIZARD_PROMPT_VERSION,
       model: 'gemini-2.5-flash',
       status: 'running',
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
   setImmediate(() => {
     void runExtractionBackground({
       runId: run.id,
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       jurisdiction,
       packType: packType as 'ahj_roof' | 'ahj_siding',
       codeSourceIds,
@@ -489,14 +461,12 @@ router.post('/ahj-wizard/runs', async (req: Request, res: Response) => {
 // GET /ahj-wizard/runs
 // ---------------------------------------------------------------------------
 
-router.get('/ahj-wizard/runs', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.get('/ahj-wizard/runs', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const runs = await db
     .select()
     .from(wizardRunsTable)
-    .where(eq(wizardRunsTable.companyId, actor.companyId))
+    .where(eq(wizardRunsTable.companyId, req.actorCtx!.companyId))
     .orderBy(desc(wizardRunsTable.createdAt));
 
   const runIds = runs.map((r) => r.id);
@@ -524,15 +494,13 @@ router.get('/ahj-wizard/runs', async (req: Request, res: Response) => {
 // DELETE /ahj-wizard/runs/:id
 // ---------------------------------------------------------------------------
 
-router.delete('/ahj-wizard/runs/:id', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.delete('/ahj-wizard/runs/:id', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const runId = String(req.params.id);
   const [run] = await db
     .select({ id: wizardRunsTable.id, status: wizardRunsTable.status })
     .from(wizardRunsTable)
-    .where(and(eq(wizardRunsTable.id, runId), eq(wizardRunsTable.companyId, actor.companyId)))
+    .where(and(eq(wizardRunsTable.id, runId), eq(wizardRunsTable.companyId, req.actorCtx!.companyId)))
     .limit(1);
 
   if (!run) return void res.status(404).json({ error: 'Run not found' });
@@ -550,15 +518,13 @@ router.delete('/ahj-wizard/runs/:id', async (req: Request, res: Response) => {
 // GET /ahj-wizard/runs/:id/items
 // ---------------------------------------------------------------------------
 
-router.get('/ahj-wizard/runs/:id/items', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.get('/ahj-wizard/runs/:id/items', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const runId = String(req.params.id);
   const [run] = await db
     .select({ id: wizardRunsTable.id })
     .from(wizardRunsTable)
-    .where(and(eq(wizardRunsTable.id, runId), eq(wizardRunsTable.companyId, actor.companyId)))
+    .where(and(eq(wizardRunsTable.id, runId), eq(wizardRunsTable.companyId, req.actorCtx!.companyId)))
     .limit(1);
 
   if (!run) return void res.status(404).json({ error: 'Run not found' });
@@ -625,16 +591,14 @@ const ItemPatchBody = z.discriminatedUnion('action', [
   }),
 ]);
 
-router.patch('/ahj-wizard/items/:id', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.patch('/ahj-wizard/items/:id', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const itemId = String(req.params.id);
   const [item] = await db
     .select()
     .from(ahjCandidateItemsTable)
     .where(
-      and(eq(ahjCandidateItemsTable.id, itemId), eq(ahjCandidateItemsTable.companyId, actor.companyId)),
+      and(eq(ahjCandidateItemsTable.id, itemId), eq(ahjCandidateItemsTable.companyId, req.actorCtx!.companyId)),
     )
     .limit(1);
 
@@ -692,7 +656,7 @@ router.patch('/ahj-wizard/items/:id', async (req: Request, res: Response) => {
   type ItemUpdate = Parameters<ReturnType<typeof db.update<typeof ahjCandidateItemsTable>>['set']>[0];
   const updates: ItemUpdate = {
     status: action === 'edit_verify' ? 'edited_verified' : 'verified',
-    verifiedBy: actor.userId,
+    verifiedBy: req.actorCtx!.actorId,
     verifiedAt: now,
     factualTrigger,
     updatedAt: now,
@@ -759,9 +723,7 @@ const BulkRejectBody = z.object({
   rejectionReason: z.string().min(1),
 });
 
-router.post('/ahj-wizard/items/bulk-reject', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.post('/ahj-wizard/items/bulk-reject', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const body = BulkRejectBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
@@ -772,7 +734,7 @@ router.post('/ahj-wizard/items/bulk-reject', async (req: Request, res: Response)
     .where(
       and(
         inArray(ahjCandidateItemsTable.id, body.data.itemIds),
-        eq(ahjCandidateItemsTable.companyId, actor.companyId),
+        eq(ahjCandidateItemsTable.companyId, req.actorCtx!.companyId),
       ),
     );
 
@@ -798,9 +760,7 @@ const AssembleBody = z.object({
   runIds: z.array(z.string()).min(1),
 });
 
-router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.post('/ahj-wizard/assemble', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   const body = AssembleBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
@@ -811,7 +771,7 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
     .select({ id: wizardRunsTable.id })
     .from(wizardRunsTable)
     .where(
-      and(inArray(wizardRunsTable.id, runIds), eq(wizardRunsTable.companyId, actor.companyId)),
+      and(inArray(wizardRunsTable.id, runIds), eq(wizardRunsTable.companyId, req.actorCtx!.companyId)),
     );
   if (ownedRuns.length !== runIds.length) {
     return void res.status(400).json({ error: 'One or more runIds not found for this company' });
@@ -826,7 +786,7 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
     .where(
       and(
         inArray(ahjCandidateItemsTable.wizardRunId, runIds),
-        eq(ahjCandidateItemsTable.companyId, actor.companyId),
+        eq(ahjCandidateItemsTable.companyId, req.actorCtx!.companyId),
         eq(ahjCandidateItemsTable.jurisdiction, jurisdiction),
         eq(ahjCandidateItemsTable.packType, packType),
         inArray(ahjCandidateItemsTable.status, ['verified', 'edited_verified']),
@@ -849,7 +809,7 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
       .where(
         and(
           inArray(ahjCandidateItemsTable.wizardRunId, runIds),
-          eq(ahjCandidateItemsTable.companyId, actor.companyId),
+          eq(ahjCandidateItemsTable.companyId, req.actorCtx!.companyId),
           eq(ahjCandidateItemsTable.jurisdiction, jurisdiction),
           eq(ahjCandidateItemsTable.packType, packType),
         ),
@@ -910,7 +870,7 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
   const versionResult = await db.execute(sql`
     SELECT COALESCE(MAX(version), 0) AS max_version
     FROM ahj_packs
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
       AND pack_type = ${packType}
       AND jurisdiction = ${jurisdiction}
   `);
@@ -920,12 +880,12 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
   const [newPack] = await db
     .insert(ahjPacksTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       packType: packType as typeof AHJ_PACK_TYPES[number],
       jurisdiction,
       items: packItems,
       version: nextVersion,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -938,9 +898,7 @@ router.post('/ahj-wizard/assemble', async (req: Request, res: Response) => {
 // Safe to call multiple times; skips if a seed run already exists.
 // ---------------------------------------------------------------------------
 
-router.post('/ahj-wizard/seed-virginia', async (req: Request, res: Response) => {
-  const actor = await requireSuperAdmin(req, res);
-  if (!actor) return;
+router.post('/ahj-wizard/seed-virginia', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
 
   // Idempotency: skip if we already seeded for this company
   const existing = await db
@@ -948,7 +906,7 @@ router.post('/ahj-wizard/seed-virginia', async (req: Request, res: Response) => 
     .from(wizardRunsTable)
     .where(
       and(
-        eq(wizardRunsTable.companyId, actor.companyId),
+        eq(wizardRunsTable.companyId, req.actorCtx!.companyId),
         eq(wizardRunsTable.jurisdiction, 'Virginia'),
         eq(wizardRunsTable.model, 'seed'),
       ),
@@ -962,7 +920,7 @@ router.post('/ahj-wizard/seed-virginia', async (req: Request, res: Response) => 
   const [source] = await db
     .insert(codeSourcesTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       jurisdiction: 'Virginia',
       title: '2021 Virginia Uniform Statewide Building Code (USBC) – Residential & Existing Building',
       edition: '2021',
@@ -971,7 +929,7 @@ router.post('/ahj-wizard/seed-virginia', async (req: Request, res: Response) => 
       acquisitionBasis: 'official_public_view',
       licensingNote: 'Public-access reference view of the Virginia USBC (2021 edition, effective January 18, 2025) as published by Virginia DHCD. Covers VRC, VCC (IBC framework), and VEBC. Used for citation reference and field training; no full-text reproduction.',
       storedCorpus: false,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning({ id: codeSourcesTable.id });
 
@@ -979,7 +937,7 @@ router.post('/ahj-wizard/seed-virginia', async (req: Request, res: Response) => 
   const [run] = await db
     .insert(wizardRunsTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       jurisdiction: 'Virginia',
       packType: 'ahj_roof',
       codeSourceIds: [source.id],
@@ -988,12 +946,13 @@ router.post('/ahj-wizard/seed-virginia', async (req: Request, res: Response) => 
       status: 'complete',
       completedAt: new Date(),
       stats: { itemsEmitted: 24, gapsEmitted: 1, seeded: true },
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning({ id: wizardRunsTable.id });
 
   const runId = run.id;
-  const { companyId, userId } = actor;
+  const companyId = req.actorCtx!.companyId;
+  const userId = req.actorCtx!.actorId;
   const now = new Date();
 
   // 3. Seed items — all verified except the gap marker

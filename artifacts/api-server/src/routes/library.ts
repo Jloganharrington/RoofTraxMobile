@@ -4,14 +4,14 @@
  * company identified by their session (no companyId URL param).
  */
 
-import { roleRank, type Role } from '@workspace/authz';
+// report.settings_view (GETs) / report.settings_edit (writes) — super_admin+.
+import { requirePermission } from '../middlewares/requirePermission';
 import { Router, type Request, type Response } from 'express';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import {
   db,
-  userProfilesTable,
   boilerplateSectionsTable,
   standardsEntriesTable,
   detrimentEntriesTable,
@@ -28,44 +28,20 @@ const router = Router();
 // Auth helper
 // ---------------------------------------------------------------------------
 
-async function requireLibrarySuperAdmin(
-  req: Request,
-  res: Response,
-): Promise<{ companyId: string; userId: string } | null> {
-  if (!req.isAuthenticated?.() || !req.user) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  const companyId: string = req.user.companyId;
-  const userId: string = req.user.id;
-  const [profile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId))
-    .limit(1);
-  if (roleRank((profile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
-    res.status(403).json({ error: 'Forbidden — super_admin only' });
-    return null;
-  }
-  return { companyId, userId };
-}
-
 // ---------------------------------------------------------------------------
 // Boilerplate Library
 // ---------------------------------------------------------------------------
 
 // GET /report-settings/bp-library
 // List the current version of every section key, with a content preview.
-router.get('/report-settings/bp-library', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.get('/report-settings/bp-library', requirePermission('report.settings_view'), async (req: Request, res: Response) => {
 
   // Fetch latest version per section key via window function.
   const rows = await db.execute(sql`
     SELECT DISTINCT ON (section_key)
       id, section_key, content, version, created_at, created_by
     FROM boilerplate_sections
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
     ORDER BY section_key, version DESC, created_at DESC
   `);
 
@@ -93,9 +69,7 @@ router.get('/report-settings/bp-library', async (req: Request, res: Response) =>
 
 // GET /report-settings/bp-library/:sectionKey
 // Fetch the full current content for a single section key.
-router.get('/report-settings/bp-library/:sectionKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.get('/report-settings/bp-library/:sectionKey', requirePermission('report.settings_view'), async (req: Request, res: Response) => {
 
   const sectionKey = req.params.sectionKey as string;
   if (!(BOILERPLATE_SECTION_KEYS as readonly string[]).includes(sectionKey)) {
@@ -107,7 +81,7 @@ router.get('/report-settings/bp-library/:sectionKey', async (req: Request, res: 
     .from(boilerplateSectionsTable)
     .where(
       and(
-        eq(boilerplateSectionsTable.companyId, actor.companyId),
+        eq(boilerplateSectionsTable.companyId, req.actorCtx!.companyId),
         eq(boilerplateSectionsTable.sectionKey, sectionKey as typeof BOILERPLATE_SECTION_KEYS[number]),
       ),
     )
@@ -119,9 +93,7 @@ router.get('/report-settings/bp-library/:sectionKey', async (req: Request, res: 
 
 // PUT /report-settings/bp-library/:sectionKey
 // Save a new version (immutable — creates a new row, never mutates).
-router.put('/report-settings/bp-library/:sectionKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.put('/report-settings/bp-library/:sectionKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
 
   const sectionKey = req.params.sectionKey as string;
   if (!(BOILERPLATE_SECTION_KEYS as readonly string[]).includes(sectionKey)) {
@@ -135,7 +107,7 @@ router.put('/report-settings/bp-library/:sectionKey', async (req: Request, res: 
   const result = await db.execute(sql`
     SELECT COALESCE(MAX(version), 0) + 1 AS next_version
     FROM boilerplate_sections
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
       AND section_key = ${sectionKey}
   `);
   const nextVersion = Number(result.rows[0]?.next_version ?? 1);
@@ -143,11 +115,11 @@ router.put('/report-settings/bp-library/:sectionKey', async (req: Request, res: 
   const [inserted] = await db
     .insert(boilerplateSectionsTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       sectionKey: sectionKey as typeof BOILERPLATE_SECTION_KEYS[number],
       content: body.data.content,
       version: nextVersion,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -159,9 +131,7 @@ router.put('/report-settings/bp-library/:sectionKey', async (req: Request, res: 
 // ---------------------------------------------------------------------------
 
 // GET /report-settings/standards-entries
-router.get('/report-settings/standards-entries', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.get('/report-settings/standards-entries', requirePermission('report.settings_view'), async (req: Request, res: Response) => {
 
   // Latest version per entry key. Include `title` so it is never dropped on
   // subsequent PUT calls that carry only the fields they want to update.
@@ -171,7 +141,7 @@ router.get('/report-settings/standards-entries', async (req: Request, res: Respo
       verified_at, authority_limit, locator_template,
       human_entered_provisions_only, version, created_at, created_by
     FROM standards_entries
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
     ORDER BY entry_key, version DESC, created_at DESC
   `);
 
@@ -196,9 +166,7 @@ const StandardsEntryBody = z.object({
   humanEnteredProvisionsOnly: z.boolean().optional(),
 });
 
-router.put('/report-settings/standards-entries/:entryKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.put('/report-settings/standards-entries/:entryKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
 
   const entryKey = req.params.entryKey as string;
   if (!entryKey || entryKey.length > 80) {
@@ -216,7 +184,7 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
            (ARRAY_AGG(title ORDER BY version DESC))[1] AS current_title,
            (ARRAY_AGG(human_entered_provisions_only ORDER BY version DESC))[1] AS current_human_only
     FROM standards_entries
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
       AND entry_key = ${entryKey}
   `);
   const nextVersion = Number(latestResult.rows[0]?.next_version ?? 1);
@@ -242,7 +210,7 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
   const [inserted] = await db
     .insert(standardsEntriesTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       entryKey,
       // Prefer explicitly supplied title; fall back to the inherited value so a
       // partial update (e.g. updating citationText only) never blanks the title
@@ -261,7 +229,7 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
           ? body.data.humanEnteredProvisionsOnly
           : inheritedHumanOnly,
       version: nextVersion,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -269,14 +237,12 @@ router.put('/report-settings/standards-entries/:entryKey', async (req: Request, 
 });
 
 // DELETE /report-settings/standards-entries/:entryKey
-router.delete('/report-settings/standards-entries/:entryKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.delete('/report-settings/standards-entries/:entryKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
   const entryKey = req.params.entryKey as string;
   if (!entryKey) return void res.status(400).json({ error: 'Invalid entryKey' });
   await db.delete(standardsEntriesTable).where(
     and(
-      eq(standardsEntriesTable.companyId, actor.companyId),
+      eq(standardsEntriesTable.companyId, req.actorCtx!.companyId),
       eq(standardsEntriesTable.entryKey, entryKey),
     ),
   );
@@ -288,16 +254,14 @@ router.delete('/report-settings/standards-entries/:entryKey', async (req: Reques
 // ---------------------------------------------------------------------------
 
 // GET /report-settings/detriment-entries
-router.get('/report-settings/detriment-entries', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.get('/report-settings/detriment-entries', requirePermission('report.settings_view'), async (req: Request, res: Response) => {
 
   const rows = await db.execute(sql`
     SELECT DISTINCT ON (entry_key)
       id, entry_key, applicability_conditions, statement,
       required_support, limitation, version, created_at, created_by
     FROM detriment_entries
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
     ORDER BY entry_key, version DESC, created_at DESC
   `);
 
@@ -312,9 +276,7 @@ const DetrimentEntryBody = z.object({
   limitation: z.string().optional(),
 });
 
-router.put('/report-settings/detriment-entries/:entryKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.put('/report-settings/detriment-entries/:entryKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
 
   const entryKey = req.params.entryKey as string;
   if (!entryKey || entryKey.length > 80) {
@@ -327,7 +289,7 @@ router.put('/report-settings/detriment-entries/:entryKey', async (req: Request, 
   const result = await db.execute(sql`
     SELECT COALESCE(MAX(version), 0) + 1 AS next_version
     FROM detriment_entries
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
       AND entry_key = ${entryKey}
   `);
   const nextVersion = Number(result.rows[0]?.next_version ?? 1);
@@ -335,14 +297,14 @@ router.put('/report-settings/detriment-entries/:entryKey', async (req: Request, 
   const [inserted] = await db
     .insert(detrimentEntriesTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       entryKey,
       applicabilityConditions: body.data.applicabilityConditions,
       statement: body.data.statement,
       requiredSupport: body.data.requiredSupport ?? null,
       limitation: body.data.limitation ?? null,
       version: nextVersion,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -350,14 +312,12 @@ router.put('/report-settings/detriment-entries/:entryKey', async (req: Request, 
 });
 
 // DELETE /report-settings/detriment-entries/:entryKey
-router.delete('/report-settings/detriment-entries/:entryKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.delete('/report-settings/detriment-entries/:entryKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
   const entryKey = req.params.entryKey as string;
   if (!entryKey) return void res.status(400).json({ error: 'Invalid entryKey' });
   await db.delete(detrimentEntriesTable).where(
     and(
-      eq(detrimentEntriesTable.companyId, actor.companyId),
+      eq(detrimentEntriesTable.companyId, req.actorCtx!.companyId),
       eq(detrimentEntriesTable.entryKey, entryKey),
     ),
   );
@@ -369,16 +329,14 @@ router.delete('/report-settings/detriment-entries/:entryKey', async (req: Reques
 // ---------------------------------------------------------------------------
 
 // GET /report-settings/ahj-packs
-router.get('/report-settings/ahj-packs', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.get('/report-settings/ahj-packs', requirePermission('report.settings_view'), async (req: Request, res: Response) => {
 
   // Latest version per (pack_type, jurisdiction).
   const rows = await db.execute(sql`
     SELECT DISTINCT ON (pack_type, jurisdiction)
       id, pack_type, jurisdiction, items, version, created_at, created_by
     FROM ahj_packs
-    WHERE company_id = ${actor.companyId}
+    WHERE company_id = ${req.actorCtx!.companyId}
     ORDER BY pack_type, jurisdiction, version DESC, created_at DESC
   `);
 
@@ -400,9 +358,7 @@ const AhjPackCreateBody = z.object({
   ),
 });
 
-router.post('/report-settings/ahj-packs', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.post('/report-settings/ahj-packs', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
 
   const body = AhjPackCreateBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
@@ -410,12 +366,12 @@ router.post('/report-settings/ahj-packs', async (req: Request, res: Response) =>
   const [inserted] = await db
     .insert(ahjPacksTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       packType: body.data.packType,
       jurisdiction: body.data.jurisdiction,
       items: body.data.items,
       version: 1,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -436,16 +392,14 @@ const AhjPackUpdateBody = z.object({
   ),
 });
 
-router.patch('/report-settings/ahj-packs/:packId', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.patch('/report-settings/ahj-packs/:packId', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
 
   const packId = req.params.packId as string;
   const [existing] = await db
     .select()
     .from(ahjPacksTable)
     .where(
-      and(eq(ahjPacksTable.id, packId), eq(ahjPacksTable.companyId, actor.companyId)),
+      and(eq(ahjPacksTable.id, packId), eq(ahjPacksTable.companyId, req.actorCtx!.companyId)),
     )
     .orderBy(desc(ahjPacksTable.version))
     .limit(1);
@@ -458,12 +412,12 @@ router.patch('/report-settings/ahj-packs/:packId', async (req: Request, res: Res
   const [inserted] = await db
     .insert(ahjPacksTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       packType: existing.packType,
       jurisdiction: existing.jurisdiction,
       items: body.data.items,
       version: existing.version + 1,
-      createdBy: actor.userId,
+      createdBy: req.actorCtx!.actorId,
     })
     .returning();
 
@@ -476,13 +430,11 @@ router.patch('/report-settings/ahj-packs/:packId', async (req: Request, res: Res
 
 // GET /report-settings/agent-prompts
 // Returns all configured custom prompts for the company.
-router.get('/report-settings/agent-prompts', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.get('/report-settings/agent-prompts', requirePermission('report.settings_view'), async (req: Request, res: Response) => {
   const prompts = await db
     .select()
     .from(agentPromptsTable)
-    .where(eq(agentPromptsTable.companyId, actor.companyId))
+    .where(eq(agentPromptsTable.companyId, req.actorCtx!.companyId))
     .orderBy(agentPromptsTable.agentKey);
   res.json({ prompts });
 });
@@ -493,9 +445,7 @@ const AgentPromptBody = z.object({
 
 // PUT /report-settings/agent-prompts/:agentKey
 // Upsert a custom prompt. Rejects unknown agent keys.
-router.put('/report-settings/agent-prompts/:agentKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.put('/report-settings/agent-prompts/:agentKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
   const agentKey = String(req.params.agentKey);
   if (!(AGENT_PROMPT_KEYS as readonly string[]).includes(agentKey)) {
     res.status(400).json({ error: `Unknown agent key: ${agentKey}` });
@@ -509,16 +459,16 @@ router.put('/report-settings/agent-prompts/:agentKey', async (req: Request, res:
   const [row] = await db
     .insert(agentPromptsTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       agentKey,
       systemPrompt: body.data.systemPrompt,
-      updatedBy: actor.userId,
+      updatedBy: req.actorCtx!.actorId,
     })
     .onConflictDoUpdate({
       target: [agentPromptsTable.companyId, agentPromptsTable.agentKey],
       set: {
         systemPrompt: body.data.systemPrompt,
-        updatedBy: actor.userId,
+        updatedBy: req.actorCtx!.actorId,
         updatedAt: new Date(),
       },
     })
@@ -528,15 +478,13 @@ router.put('/report-settings/agent-prompts/:agentKey', async (req: Request, res:
 
 // DELETE /report-settings/agent-prompts/:agentKey
 // Removes the custom prompt — agent reverts to built-in default.
-router.delete('/report-settings/agent-prompts/:agentKey', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.delete('/report-settings/agent-prompts/:agentKey', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
   const agentKey = String(req.params.agentKey);
   await db
     .delete(agentPromptsTable)
     .where(
       and(
-        eq(agentPromptsTable.companyId, actor.companyId),
+        eq(agentPromptsTable.companyId, req.actorCtx!.companyId),
         eq(agentPromptsTable.agentKey, agentKey),
       ),
     );
@@ -621,9 +569,7 @@ const PpWizardAnalyzeBody = z.object({
   ).min(1).max(8),
 });
 
-router.post('/report-settings/pp-wizard/analyze', async (req: Request, res: Response) => {
-  const actor = await requireLibrarySuperAdmin(req, res);
-  if (!actor) return;
+router.post('/report-settings/pp-wizard/analyze', requirePermission('report.settings_edit'), async (req: Request, res: Response) => {
 
   const body = PpWizardAnalyzeBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });

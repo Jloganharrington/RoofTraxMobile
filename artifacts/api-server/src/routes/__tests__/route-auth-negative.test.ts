@@ -31,6 +31,8 @@
  *   [D7] templates    — company.edit_settings (CRUD /companies/:id/templates)
  *   [D8] discontinued — catalog.price_book_{view,edit,delete}
  *   [D9] selections   — catalog.price_book_view (GETs), catalog.selections_manage (writes)
+ *   [D10] library     — report.settings_view (GETs), report.settings_edit (writes) — super_admin+
+ *   [D11] ahjWizard   — catalog.ahj_wizard (all 10 routes) — super_admin+
  */
 
 import { companiesTable, db, userProfilesTable, usersTable } from '@workspace/db';
@@ -345,10 +347,93 @@ describe('route auth — negative gate suite', () => {
     }
   });
 
+  // ── [D10] DOMAIN: BP/standards/detriment library ─────────────────────────
+  // report.settings_view (GETs) / report.settings_edit (writes) — both super_admin+.
+  // Verdict changes: none. Admin (< super_admin) tested explicitly.
+
+  describe('[D10] library GET routes [report.settings_view — super_admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['get', '/api/report-settings/bp-library'],
+      ['get', '/api/report-settings/bp-library/stub-key'],
+      ['get', '/api/report-settings/standards-entries'],
+      ['get', '/api/report-settings/detriment-entries'],
+      ['get', '/api/report-settings/ahj-packs'],
+      ['get', '/api/report-settings/agent-prompts'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 admin (super_admin gate)`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.admin.sid))).status).toBe(403);
+      });
+    }
+  });
+
+  describe('[D10] library write routes [report.settings_edit — super_admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['put',    '/api/report-settings/bp-library/stub-key'],
+      ['put',    '/api/report-settings/standards-entries/stub-key'],
+      ['delete', '/api/report-settings/standards-entries/stub-key'],
+      ['put',    '/api/report-settings/detriment-entries/stub-key'],
+      ['delete', '/api/report-settings/detriment-entries/stub-key'],
+      ['post',   '/api/report-settings/ahj-packs'],
+      ['patch',  '/api/report-settings/ahj-packs/stub-id'],
+      ['put',    '/api/report-settings/agent-prompts/stub-key'],
+      ['delete', '/api/report-settings/agent-prompts/stub-key'],
+      ['post',   '/api/report-settings/pp-wizard/analyze'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 admin (super_admin gate)`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.admin.sid))).status).toBe(403);
+      });
+    }
+  });
+
+  // ── [D11] DOMAIN: AHJ wizard ──────────────────────────────────────────────
+  // catalog.ahj_wizard (super_admin+) for all 10 wizard admin routes.
+  // Field-rep catalog.ahj_add/edit (field_rep+) are a DIFFERENT surface.
+  // Verdict changes: none. Admin tested explicitly (< super_admin).
+
+  describe('[D11] AHJ wizard [catalog.ahj_wizard — super_admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['post',   '/api/ahj-wizard/sources'],
+      ['get',    '/api/ahj-wizard/sources'],
+      ['post',   '/api/ahj-wizard/runs'],
+      ['get',    '/api/ahj-wizard/runs'],
+      ['delete', '/api/ahj-wizard/runs/stub-id'],
+      ['get',    '/api/ahj-wizard/runs/stub-id/items'],
+      ['patch',  '/api/ahj-wizard/items/stub-id'],
+      ['post',   '/api/ahj-wizard/items/bulk-reject'],
+      ['post',   '/api/ahj-wizard/assemble'],
+      ['post',   '/api/ahj-wizard/seed-virginia'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 admin (super_admin gate)`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.admin.sid))).status).toBe(403);
+      });
+    }
+  });
+
   // ── Additional domains are appended below as migration proceeds ───────────
   // Template:
   //
-  // describe('[D10] VERB /path [permission.key — minRole+]', () => {
+  // describe('[D12] VERB /path [permission.key — minRole+]', () => {
   //   it('no auth → 401', async () => { ... });
   //   it('field_rep → 403', async () => { ... });
   //   // If there is a verdict change: document it as a comment, not a failing test.

@@ -148,6 +148,7 @@ export const PERMISSION_KEYS = [
   'catalog.ahj_add',
   'catalog.ahj_delete',
   'catalog.ahj_edit',
+  'catalog.ahj_wizard',
   'catalog.price_book_add',
   'catalog.price_book_delete',
   'catalog.price_book_edit',
@@ -702,6 +703,13 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     note:   'Any authenticated member — rep+ — may correct AHJ data.',
   },
   {
+    key:    'catalog.ahj_wizard',
+    domain: 'catalog',
+    label:  'Manage AHJ wizard sources, runs, items, and pack assembly',
+    default: { kind: 'minRole', minRole: 'super_admin' },
+    note:   'All 10 AHJ wizard admin endpoints — source ingest, extraction runs, item verification, and pack assembly. Separate from catalog.ahj_add/edit which cover the field-rep submission surface.',
+  },
+  {
     key:    'catalog.price_book_add',
     domain: 'catalog',
     label:  'Add price book items or packages',
@@ -842,6 +850,6 @@ export function permissionsForDomain(domain: Domain): readonly PermissionEntry[]
 // ── Compile-time count assertion ──────────────────────────────────────────────
 // This will produce a TS error if the registry diverges from 94.
 
-type AssertExactly94 = (typeof PERMISSION_KEYS)['length'] extends 94 ? true : never;
+type AssertExactly95 = (typeof PERMISSION_KEYS)['length'] extends 95 ? true : never;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _assert94: AssertExactly94 = true;
+const _assert95: AssertExactly95 = true;
