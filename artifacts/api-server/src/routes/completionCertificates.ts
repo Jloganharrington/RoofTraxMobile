@@ -26,6 +26,7 @@ import {
   companiesTable,
 } from '@workspace/db';
 import { isManagerOrAdmin, canSignCompletionCertificate } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { getRole } from './pins';
@@ -107,15 +108,15 @@ type LineItemsSnapshot = z.infer<typeof LineItemsSnapshotSchema>;
 // exists before claim_approved, but we guard here too for belt-and-suspenders).
 // ---------------------------------------------------------------------------
 
-router.post('/leads/:leadId/completion-certificate/extract', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+// coc.create
+router.post('/leads/:leadId/completion-certificate/extract', requirePermission('coc.create'), async (req: Request, res: Response) => {
 
   const leadId = req.params['leadId'] as string;
-  const pin = await fetchPin(leadId, req.user.companyId);
+  const pin = await fetchPin(leadId, req.actorCtx!.companyId);
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
-  const callerRole = await getRole(req.user.id);
-  if (pin.userId !== req.user.id && !isManagerOrAdmin(callerRole)) {
+  const callerRole = await getRole(req.actorCtx!.actorId);
+  if (pin.userId !== req.actorCtx!.actorId && !isManagerOrAdmin(callerRole)) {
     return void res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -149,7 +150,7 @@ router.post('/leads/:leadId/completion-certificate/extract', async (req: Request
     .where(
       and(
         eq(contractsTable.pinId, leadId),
-        eq(contractsTable.companyId, req.user.companyId),
+        eq(contractsTable.companyId, req.actorCtx!.companyId),
       ),
     )
     .orderBy(desc(contractsTable.createdAt))
@@ -194,12 +195,12 @@ router.post('/leads/:leadId/completion-certificate/extract', async (req: Request
   const certId = randomUUID();
   await db.insert(completionCertificatesTable).values({
     id:                certId,
-    companyId:         req.user.companyId,
+    companyId:         req.actorCtx!.companyId,
     pinId:             leadId,
     contractId:        contract?.id ?? null,
     status:            'draft',
     lineItems:         snapshot as Record<string, unknown>,
-    createdByUserId:   req.user.id,
+    createdByUserId:   req.actorCtx!.actorId,
   });
 
   const [cert] = await db
@@ -226,11 +227,11 @@ router.post('/leads/:leadId/completion-certificate/extract', async (req: Request
 // GET /leads/:leadId/completion-certificate
 // ---------------------------------------------------------------------------
 
-router.get('/leads/:leadId/completion-certificate', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+// coc.read
+router.get('/leads/:leadId/completion-certificate', requirePermission('coc.read'), async (req: Request, res: Response) => {
 
   const leadId = req.params['leadId'] as string;
-  const pin = await fetchPin(leadId, req.user.companyId);
+  const pin = await fetchPin(leadId, req.actorCtx!.companyId);
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
   const certs = await db
@@ -239,7 +240,7 @@ router.get('/leads/:leadId/completion-certificate', async (req: Request, res: Re
     .where(
       and(
         eq(completionCertificatesTable.pinId, leadId),
-        eq(completionCertificatesTable.companyId, req.user.companyId),
+        eq(completionCertificatesTable.companyId, req.actorCtx!.companyId),
       ),
     )
     .orderBy(desc(completionCertificatesTable.createdAt));
@@ -251,13 +252,13 @@ router.get('/leads/:leadId/completion-certificate', async (req: Request, res: Re
 // GET /leads/:leadId/completion-certificate/:certId
 // ---------------------------------------------------------------------------
 
-router.get('/leads/:leadId/completion-certificate/:certId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+// coc.read
+router.get('/leads/:leadId/completion-certificate/:certId', requirePermission('coc.read'), async (req: Request, res: Response) => {
 
   const leadId = req.params['leadId'] as string;
   const certId = req.params['certId'] as string;
 
-  const cert = await fetchCert(certId, req.user.companyId);
+  const cert = await fetchCert(certId, req.actorCtx!.companyId);
   if (!cert || cert.pinId !== leadId) return void res.status(404).json({ error: 'Certificate not found' });
 
   return void res.json({ certificate: cert });
@@ -275,13 +276,13 @@ const UpdateCertBody = z.object({
   lineItems: LineItemsSnapshotSchema,
 });
 
-router.patch('/leads/:leadId/completion-certificate/:certId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+// coc.create
+router.patch('/leads/:leadId/completion-certificate/:certId', requirePermission('coc.create'), async (req: Request, res: Response) => {
 
   const leadId = req.params['leadId'] as string;
   const certId = req.params['certId'] as string;
 
-  const cert = await fetchCert(certId, req.user.companyId);
+  const cert = await fetchCert(certId, req.actorCtx!.companyId);
   if (!cert || cert.pinId !== leadId) return void res.status(404).json({ error: 'Certificate not found' });
 
   if (cert.status !== 'draft') {
@@ -290,7 +291,7 @@ router.patch('/leads/:leadId/completion-certificate/:certId', async (req: Reques
     });
   }
 
-  const callerRole = await getRole(req.user.id);
+  const callerRole = await getRole(req.actorCtx!.actorId);
   if (!isManagerOrAdmin(callerRole)) {
     return void res.status(403).json({ error: 'Only managers and admins may update a completion certificate' });
   }
@@ -460,13 +461,13 @@ async function generateCocPdfBuffer(opts: {
   });
 }
 
-router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+// coc.sign
+router.post('/leads/:leadId/completion-certificate/:certId/sign', requirePermission('coc.sign'), async (req: Request, res: Response) => {
 
   const leadId = req.params['leadId'] as string;
   const certId = req.params['certId'] as string;
 
-  const cert = await fetchCert(certId, req.user.companyId);
+  const cert = await fetchCert(certId, req.actorCtx!.companyId);
   if (!cert || cert.pinId !== leadId) return void res.status(404).json({ error: 'Certificate not found' });
 
   if (cert.status !== 'draft') {
@@ -476,11 +477,11 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
   }
 
   // Capability gate
-  const callerRole = await getRole(req.user.id);
+  const callerRole = await getRole(req.actorCtx!.actorId);
   const [callerProfile] = await db
     .select({ title: userProfilesTable.title, department: userProfilesTable.department })
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
   if (!callerProfile || !canSignCompletionCertificate(callerRole, callerProfile.department)) {
     return void res.status(403).json({
@@ -500,7 +501,7 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
   const [signerUser] = await db
     .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
     .from(usersTable)
-    .where(eq(usersTable.id, req.user.id));
+    .where(eq(usersTable.id, req.actorCtx!.actorId));
   const signerFullName = [signerUser?.firstName, signerUser?.lastName].filter(Boolean).join(' ');
 
   // Fetch pin + company for PDF header
@@ -513,12 +514,12 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
       companyId: pinsTable.companyId,
     })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   const [company] = await db
     .select({ name: companiesTable.name })
     .from(companiesTable)
-    .where(eq(companiesTable.id, req.user.companyId));
+    .where(eq(companiesTable.id, req.actorCtx!.companyId));
 
   // Fetch carrier-reimbursable approved change orders for this pin
   const carrierCos = await db
@@ -527,7 +528,7 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
     .where(
       and(
         eq(changeOrdersTable.pinId, leadId),
-        eq(changeOrdersTable.companyId, req.user.companyId),
+        eq(changeOrdersTable.companyId, req.actorCtx!.companyId),
         eq(changeOrdersTable.carrierReimbursable, true),
         eq(changeOrdersTable.status, 'approved'),
       ),
@@ -574,7 +575,7 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
       status:               'signed',
       documentObjectPath:   objectPath,
       documentSha256:       sha256,
-      signedByUserId:       req.user.id,
+      signedByUserId:       req.actorCtx!.actorId,
       signedAt:             signedAt,
       signerTitle:          signerTitle || null,
       updatedAt:            new Date(),
@@ -588,7 +589,7 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
 
   // Emit pipeline event — completion_package_generated auto-advances to 'complete'
   await emitPipelineEvent({
-    companyId: req.user.companyId,
+    companyId: req.actorCtx!.companyId,
     eventType: 'completion_package_generated',
     leadId,
   });
@@ -605,20 +606,20 @@ router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Re
 // Issue a new extraction to start a corrected draft.
 // ---------------------------------------------------------------------------
 
-router.post('/leads/:leadId/completion-certificate/:certId/void', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+// coc.create
+router.post('/leads/:leadId/completion-certificate/:certId/void', requirePermission('coc.create'), async (req: Request, res: Response) => {
 
   const leadId = req.params['leadId'] as string;
   const certId = req.params['certId'] as string;
 
-  const cert = await fetchCert(certId, req.user.companyId);
+  const cert = await fetchCert(certId, req.actorCtx!.companyId);
   if (!cert || cert.pinId !== leadId) return void res.status(404).json({ error: 'Certificate not found' });
 
   if (cert.status === 'voided') {
     return void res.status(409).json({ error: 'Certificate is already voided' });
   }
 
-  const callerRole = await getRole(req.user.id);
+  const callerRole = await getRole(req.actorCtx!.actorId);
   if (!isManagerOrAdmin(callerRole)) {
     return void res.status(403).json({ error: 'Only managers and admins may void a completion certificate' });
   }

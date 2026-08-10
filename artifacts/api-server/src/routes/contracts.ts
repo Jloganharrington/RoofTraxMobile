@@ -42,20 +42,13 @@ import {
   inspectionsTable,
 } from '@workspace/db';
 import { isManagerOrAdmin, type Role } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 import { notify } from '../lib/notify';
 
 const objectStorage = new ObjectStorageService();
 const router = Router();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function getRole(userId: string): Promise<Role> {
-  const [row] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId));
-  return (row?.role ?? 'field_rep') as Role;
-}
 
 async function resolveContract(contractId: string, companyId: string) {
   const [row] = await db
@@ -188,8 +181,8 @@ const VoidContractBody = z.object({
 // Returns the latest inspection estimate subtotalCents for the pin,
 // for use as a prefill when creating a new contract.
 
-router.get('/pins/:pinId/inspection-estimate', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.read
+router.get('/pins/:pinId/inspection-estimate', requirePermission('contract.read'), async (req: Request, res: Response) => {
 
   const pinId = req.params.pinId as string;
 
@@ -197,7 +190,7 @@ router.get('/pins/:pinId/inspection-estimate', async (req: Request, res: Respons
   const [pin] = await db
     .select({ id: pinsTable.id })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
   if (!pin) { res.status(404).json({ error: 'Lead not found' }); return; }
 
   // Fetch the most recent inspection with a non-null estimate
@@ -222,8 +215,8 @@ router.get('/pins/:pinId/inspection-estimate', async (req: Request, res: Respons
 
 // ── GET /pins/:pinId/contracts ────────────────────────────────────────────────
 
-router.get('/pins/:pinId/contracts', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.read
+router.get('/pins/:pinId/contracts', requirePermission('contract.read'), async (req: Request, res: Response) => {
 
   const contracts = await db
     .select()
@@ -231,7 +224,7 @@ router.get('/pins/:pinId/contracts', async (req: Request, res: Response) => {
     .where(
       and(
         eq(contractsTable.pinId, req.params.pinId as string),
-        eq(contractsTable.companyId, req.user.companyId),
+        eq(contractsTable.companyId, req.actorCtx!.companyId),
       ),
     )
     .orderBy(asc(contractsTable.createdAt));
@@ -248,8 +241,8 @@ router.get('/pins/:pinId/contracts', async (req: Request, res: Response) => {
 
 // ── POST /pins/:pinId/contracts ───────────────────────────────────────────────
 
-router.post('/pins/:pinId/contracts', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.create
+router.post('/pins/:pinId/contracts', requirePermission('contract.create'), async (req: Request, res: Response) => {
 
   const parsed = CreateContractBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -260,7 +253,7 @@ router.post('/pins/:pinId/contracts', async (req: Request, res: Response) => {
   const [pin] = await db
     .select({ id: pinsTable.id })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
   if (!pin) { res.status(404).json({ error: 'Lead not found' }); return; }
 
   // Enforce one-active-per-pin (the unique index enforces this at DB level too)
@@ -277,7 +270,7 @@ router.post('/pins/:pinId/contracts', async (req: Request, res: Response) => {
   const [contract] = await db
     .insert(contractsTable)
     .values({
-      companyId:         req.user.companyId,
+      companyId:         req.actorCtx!.companyId,
       pinId,
       accessCode,
       status:            'draft',
@@ -288,7 +281,7 @@ router.post('/pins/:pinId/contracts', async (req: Request, res: Response) => {
       scopeSummary:      parsed.data.scopeSummary ?? null,
       scopeSource:       parsed.data.scopeSource ?? null,
       templateId:        parsed.data.templateId ?? null,
-      createdByUserId:   req.user.id,
+      createdByUserId:   req.actorCtx!.actorId,
     })
     .returning();
 
@@ -297,10 +290,10 @@ router.post('/pins/:pinId/contracts', async (req: Request, res: Response) => {
 
 // ── GET /contracts/:contractId ────────────────────────────────────────────────
 
-router.get('/contracts/:contractId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.read
+router.get('/contracts/:contractId', requirePermission('contract.read'), async (req: Request, res: Response) => {
 
-  const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
 
   const [pkgs, sels] = await Promise.all([fetchPackages(contract.id), fetchSelections(contract.id)]);
@@ -309,10 +302,10 @@ router.get('/contracts/:contractId', async (req: Request, res: Response) => {
 
 // ── PATCH /contracts/:contractId ──────────────────────────────────────────────
 
-router.patch('/contracts/:contractId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.select
+router.patch('/contracts/:contractId', requirePermission('contract.select'), async (req: Request, res: Response) => {
 
-  const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
   if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
   if (contract.status === 'voided') { res.status(409).json({ error: 'Voided contracts cannot be edited' }); return; }
@@ -344,10 +337,10 @@ router.patch('/contracts/:contractId', async (req: Request, res: Response) => {
 
 // ── POST /contracts/:contractId/scope-packages ────────────────────────────────
 
-router.post('/contracts/:contractId/scope-packages', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.select
+router.post('/contracts/:contractId/scope-packages', requirePermission('contract.select'), async (req: Request, res: Response) => {
 
-  const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
   if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
   if (contract.status === 'voided') { res.status(409).json({ error: 'Cannot edit voided contract' }); return; }
@@ -362,7 +355,7 @@ router.post('/contracts/:contractId/scope-packages', async (req: Request, res: R
     .where(
       and(
         eq(selectionCategoriesTable.id, parsed.data.categoryId),
-        eq(selectionCategoriesTable.companyId, req.user.companyId),
+        eq(selectionCategoriesTable.companyId, req.actorCtx!.companyId),
       ),
     );
   if (!cat) { res.status(400).json({ error: 'Selection category not found' }); return; }
@@ -370,7 +363,7 @@ router.post('/contracts/:contractId/scope-packages', async (req: Request, res: R
   const [pkg] = await db
     .insert(contractScopePackagesTable)
     .values({
-      companyId:           req.user.companyId,
+      companyId:           req.actorCtx!.companyId,
       contractId:          contract.id,
       categoryId:          parsed.data.categoryId,
       quantity:            String(parsed.data.quantity),
@@ -385,12 +378,13 @@ router.post('/contracts/:contractId/scope-packages', async (req: Request, res: R
 
 // ── PATCH /contracts/:contractId/scope-packages/:pkgId ────────────────────────
 
+// contract.select
 router.patch(
   '/contracts/:contractId/scope-packages/:pkgId',
+  requirePermission('contract.select'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
-    const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  
+    const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
     if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
     if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
     if (contract.status === 'voided') { res.status(409).json({ error: 'Cannot edit voided contract' }); return; }
@@ -438,12 +432,13 @@ router.patch(
 
 // ── DELETE /contracts/:contractId/scope-packages/:pkgId ─────────────────────
 
+// contract.select
 router.delete(
   '/contracts/:contractId/scope-packages/:pkgId',
+  requirePermission('contract.select'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
-    const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  
+    const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
     if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
     if (contract.status !== 'draft') {
       res.status(409).json({ error: 'Scope packages can only be removed from draft contracts' });
@@ -467,10 +462,10 @@ router.delete(
 
 // ── POST /contracts/:contractId/send ──────────────────────────────────────────
 
-router.post('/contracts/:contractId/send', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.sign
+router.post('/contracts/:contractId/send', requirePermission('contract.sign'), async (req: Request, res: Response) => {
 
-  const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
   if (contract.status !== 'draft') {
     res.status(409).json({ error: `Cannot send a contract with status '${contract.status}'` });
@@ -514,7 +509,7 @@ router.post('/contracts/:contractId/send', async (req: Request, res: Response) =
           smtpFromEmail:   userProfilesTable.smtpFromEmail,
         })
         .from(userProfilesTable)
-        .where(eq(userProfilesTable.userId, req.user!.id));
+        .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
       const [pin] = await db
         .select({ ownerEmail: pinsTable.ownerEmail, address: pinsTable.address })
@@ -575,10 +570,10 @@ router.post('/contracts/:contractId/send', async (req: Request, res: Response) =
 
 // ── POST /contracts/:contractId/generate-document ────────────────────────────
 
-router.post('/contracts/:contractId/generate-document', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// contract.generate_document
+router.post('/contracts/:contractId/generate-document', requirePermission('contract.generate_document'), async (req: Request, res: Response) => {
 
-  const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
   if (contract.status === 'signed') { res.status(409).json({ error: 'Signed contracts are immutable; use the change-order flow' }); return; }
   if (contract.status === 'voided') { res.status(409).json({ error: 'Contract is voided' }); return; }
@@ -602,19 +597,13 @@ router.post('/contracts/:contractId/generate-document', async (req: Request, res
 
 // ── POST /contracts/:contractId/void ─────────────────────────────────────────
 
-router.post('/contracts/:contractId/void', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required to void a contract' });
-    return;
-  }
+// contract.void
+router.post('/contracts/:contractId/void', requirePermission('contract.void'), async (req: Request, res: Response) => {
 
   const parsed = VoidContractBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const contract = await resolveContract(req.params.contractId as string, req.user.companyId);
+  const contract = await resolveContract(req.params.contractId as string, req.actorCtx!.companyId);
   if (!contract) { res.status(404).json({ error: 'Contract not found' }); return; }
   if (contract.voidedAt) { res.status(409).json({ error: 'Contract is already voided' }); return; }
 
@@ -628,7 +617,7 @@ router.post('/contracts/:contractId/void', async (req: Request, res: Response) =
       .set({
         status:           'voided',
         voidedAt:         now,
-        voidedByUserId:   req.user!.id,
+        voidedByUserId:   req.actorCtx!.actorId,
         voidReason:       parsed.data.voidReason,
         updatedAt:        now,
       })
@@ -656,9 +645,9 @@ router.post('/contracts/:contractId/void', async (req: Request, res: Response) =
 
   void notify({
     type:        'contract_voided',
-    companyId:   req.user!.companyId,
+    companyId:   req.actorCtx!.companyId,
     pinId:       contract.pinId,
-    actorUserId: req.user!.id,
+    actorUserId: req.actorCtx!.actorId,
     payload:     { voidReason: parsed.data.voidReason },
   });
 });

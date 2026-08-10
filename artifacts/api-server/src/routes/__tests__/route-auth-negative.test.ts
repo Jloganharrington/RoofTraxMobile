@@ -658,10 +658,154 @@ describe('route auth — negative gate suite', () => {
     }
   });
 
+  // ── [D17] DOMAIN: changeOrders ───────────────────────────────────────────────
+
+  describe('[D17] GET /pins/:pinId/change-orders [change_order.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins/STUB00/change-orders')).status).toBe(401);
+    });
+    // field_rep+ → field_rep allowed; 401 is the only negative gate.
+  });
+
+  describe('[D17] POST /pins/:pinId/change-orders [change_order.create — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/pins/STUB00/change-orders')).status).toBe(401);
+    });
+  });
+
+  describe('[D17] DELETE /change-orders/:id [change_order.delete — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).delete('/api/change-orders/STUB00')).status).toBe(401);
+    });
+    // VERDICT CHANGE: was manager+; now field_rep+ per change_order.delete registry key.
+  });
+
+  describe('[D17] POST /change-orders/:id/approve [change_order.approve — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/change-orders/STUB00/approve')).status).toBe(401);
+    });
+    it('field_rep → 403 (below manager)', async () => {
+      expect((await request(app).post('/api/change-orders/STUB00/approve').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D17] POST /change-orders/:id/void [change_order.void — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/change-orders/STUB00/void')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/change-orders/STUB00/void').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D17] PATCH /pins/:pinId/overhead [expense.manage — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/pins/STUB00/overhead')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).patch('/api/pins/STUB00/overhead').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D17] POST overhead mark-paid routes [expense.manage — manager+]', () => {
+    const paths = [
+      '/api/pins/STUB00/overhead/lead-acquisition/mark-paid',
+      '/api/pins/STUB00/overhead/referral/mark-paid',
+      '/api/pins/STUB00/overhead/sales/mark-paid',
+      '/api/pins/STUB00/overhead/canvassing/mark-paid',
+      '/api/pins/STUB00/overhead/pm/mark-paid',
+    ];
+    for (const path of paths) {
+      it(`${path.split('/').pop()} → 401 without auth`, async () => {
+        expect((await request(app).post(path)).status).toBe(401);
+      });
+      it(`${path.split('/').pop()} field_rep → 403`, async () => {
+        expect((await request(app).post(path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+    }
+  });
+
+  // ── [D18] DOMAIN: completionCertificates (all coc.* — ownerOrRole manager+) ─
+
+  describe('[D18] POST /leads/:leadId/completion-certificate/extract [coc.create — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/leads/STUB00/completion-certificate/extract')).status).toBe(401);
+    });
+    it('field_rep → 403 (below manager)', async () => {
+      expect((await request(app).post('/api/leads/STUB00/completion-certificate/extract').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D18] GET /leads/:leadId/completion-certificate [coc.read — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/leads/STUB00/completion-certificate')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).get('/api/leads/STUB00/completion-certificate').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D18] PATCH /leads/:leadId/completion-certificate/:certId [coc.create — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/leads/STUB00/completion-certificate/CERT00')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).patch('/api/leads/STUB00/completion-certificate/CERT00').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D18] POST /leads/:leadId/completion-certificate/:certId/sign [coc.sign — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/leads/STUB00/completion-certificate/CERT00/sign')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/leads/STUB00/completion-certificate/CERT00/sign').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D18] POST /leads/:leadId/completion-certificate/:certId/void [coc.create — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/leads/STUB00/completion-certificate/CERT00/void')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/leads/STUB00/completion-certificate/CERT00/void').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  // ── [D19] DOMAIN: contracts ──────────────────────────────────────────────────
+
+  describe('[D19] GET /pins/:pinId/contracts [contract.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins/STUB00/contracts')).status).toBe(401);
+    });
+    // field_rep+ → only 401 gate needed.
+  });
+
+  describe('[D19] POST /pins/:pinId/contracts [contract.create — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/pins/STUB00/contracts')).status).toBe(401);
+    });
+  });
+
+  describe('[D19] GET /contracts/:contractId [contract.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/contracts/STUB00')).status).toBe(401);
+    });
+  });
+
+  describe('[D19] POST /contracts/:contractId/void [contract.void — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/contracts/STUB00/void')).status).toBe(401);
+    });
+    it('field_rep → 403 (below manager)', async () => {
+      expect((await request(app).post('/api/contracts/STUB00/void').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
   // ── Additional domains are appended below as migration proceeds ───────────
   // Template:
   //
-  // describe('[D17] VERB /path [permission.key — minRole+]', () => {
+  // describe('[D20] VERB /path [permission.key — minRole+]', () => {
   //   it('no auth → 401', async () => { ... });
   //   it('field_rep → 403', async () => { ... });
   //   // If there is a verdict change: document it as a comment, not a failing test.

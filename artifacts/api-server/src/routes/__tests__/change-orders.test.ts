@@ -402,7 +402,9 @@ describe('DELETE change order', () => {
     expect(del2.status).toBe(404);
   });
 
-  it('field_rep → 403 on DELETE', async () => {
+  // VERDICT CHANGE: change_order.delete is field_rep+ in the registry (was manager+).
+  // Field reps may now delete their own (and others') unsigned change orders.
+  it('field_rep → 204 on DELETE (now permitted by change_order.delete = field_rep+)', async () => {
     const create = await request(app)
       .post(`/api/pins/${pinId}/change-orders`)
       .set(mgr())
@@ -410,7 +412,7 @@ describe('DELETE change order', () => {
     const coId = create.body.changeOrder.id;
 
     const res = await request(app).delete(`/api/change-orders/${coId}`).set(rep());
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(204);
   });
 });
 

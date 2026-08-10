@@ -58,20 +58,13 @@ import {
   usersTable,
 } from '@workspace/db';
 import { isManagerOrAdmin, type Role } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function getRole(userId: string): Promise<Role> {
-  const [row] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId));
-  return (row?.role ?? 'field_rep') as Role;
-}
 
 async function resolvePin(pinId: string, companyId: string) {
   const [pin] = await db
@@ -269,14 +262,12 @@ const UpdateOverheadBody = z.object({
 // GET /pins/:pinId/change-orders
 // ---------------------------------------------------------------------------
 
+// change_order.read
 router.get(
   '/pins/:pinId/change-orders',
+  requirePermission('change_order.read'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) {
       res.status(404).json({ error: 'Pin not found' });
       return;
@@ -287,7 +278,7 @@ router.get(
       .where(
         and(
           eq(changeOrdersTable.pinId, pin.id),
-          eq(changeOrdersTable.companyId, req.user.companyId),
+          eq(changeOrdersTable.companyId, req.actorCtx!.companyId),
         ),
       )
       .orderBy(changeOrdersTable.createdAt);
@@ -300,7 +291,7 @@ router.get(
         .from(changeOrderLineItemsTable)
         .where(
           and(
-            eq(changeOrderLineItemsTable.companyId, req.user.companyId),
+            eq(changeOrderLineItemsTable.companyId, req.actorCtx!.companyId),
           ),
         );
       const filtered = allItems.filter((i) => coIds.includes(i.changeOrderId));
@@ -326,19 +317,17 @@ router.get(
 // Any authenticated company member (field reps capture on site).
 // ---------------------------------------------------------------------------
 
+// change_order.create
 router.post(
   '/pins/:pinId/change-orders',
+  requirePermission('change_order.create'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const parsed = CreateChangeOrderBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) {
       res.status(404).json({ error: 'Pin not found' });
       return;
@@ -358,12 +347,12 @@ router.post(
         .insert(changeOrdersTable)
         .values({
           ...(clientId ? { id: clientId } : {}),
-          companyId:              req.user.companyId,
+          companyId:              req.actorCtx!.companyId,
           pinId:                  pin.id,
           description,
           requiredToCompleteScope,
           amountCents:            initialAmount,
-          createdByUserId:        req.user.id,
+          createdByUserId:        req.actorCtx!.actorId,
         })
         .returning();
       co = inserted!;
@@ -374,7 +363,7 @@ router.post(
           .insert(changeOrderLineItemsTable)
           .values(
             lineItems.map((li) => ({
-              companyId:       req.user.companyId,
+              companyId:       req.actorCtx!.companyId,
               changeOrderId:   co.id,
               description:     li.description,
               quantity:        String(li.quantity),
@@ -405,13 +394,11 @@ router.post(
 // Any authenticated member (field reps may edit their own COs pre-signing).
 // ---------------------------------------------------------------------------
 
+// change_order.update
 router.patch(
   '/change-orders/:changeOrderId',
+  requirePermission('change_order.update'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const parsed = UpdateChangeOrderBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -419,7 +406,7 @@ router.patch(
     }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -449,21 +436,14 @@ router.patch(
 // DELETE /change-orders/:changeOrderId   — manager+
 // ---------------------------------------------------------------------------
 
+// change_order.delete
 router.delete(
   '/change-orders/:changeOrderId',
+  requirePermission('change_order.delete'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) {
-      res.status(403).json({ error: 'Manager or above required' });
-      return;
-    }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -482,13 +462,11 @@ router.delete(
 // Any authenticated member.
 // ---------------------------------------------------------------------------
 
+// change_order.sign
 router.post(
   '/change-orders/:changeOrderId/sign',
+  requirePermission('change_order.sign'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const parsed = SignChangeOrderBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -496,7 +474,7 @@ router.post(
     }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -541,9 +519,9 @@ router.post(
     // Fire-and-forget — rep + owner learn the CO was signed; managers alerted that it needs approval.
     void notify({
       type:        'change_order_signed',
-      companyId:   req.user.companyId,
+      companyId:   req.actorCtx!.companyId,
       pinId:       co.pinId,
-      actorUserId: req.user.id,
+      actorUserId: req.actorCtx!.actorId,
       payload:     {
         description: co.description ?? undefined,
         amountCents: co.amountCents,
@@ -551,9 +529,9 @@ router.post(
     });
     void notify({
       type:        'change_order_pending_approval',
-      companyId:   req.user.companyId,
+      companyId:   req.actorCtx!.companyId,
       pinId:       co.pinId,
-      actorUserId: req.user.id,
+      actorUserId: req.actorCtx!.actorId,
       payload:     {
         description: co.description ?? undefined,
         amountCents: co.amountCents,
@@ -567,21 +545,14 @@ router.post(
 // Gate: document_object_path AND homeowner_signed_at must both be present.
 // ---------------------------------------------------------------------------
 
+// change_order.approve
 router.post(
   '/change-orders/:changeOrderId/approve',
+  requirePermission('change_order.approve'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) {
-      res.status(403).json({ error: 'Manager or above required' });
-      return;
-    }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -628,7 +599,7 @@ router.post(
           })
           .from(usersTable)
           .innerJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
-          .where(eq(usersTable.id, req.user.id));
+          .where(eq(usersTable.id, req.actorCtx!.actorId));
 
         if (actor?.smtpHost && actor.smtpPort && actor.smtpUsername && actor.smtpPasswordEnc) {
           const pdfBuffer  = await objectStorageService.readObjectEntityBytes(approved!.documentObjectPath);
@@ -695,9 +666,9 @@ router.post(
 
     void notify({
       type:        'change_order_approved',
-      companyId:   req.user.companyId,
+      companyId:   req.actorCtx!.companyId,
       pinId:       co.pinId,
-      actorUserId: req.user.id,
+      actorUserId: req.actorCtx!.actorId,
       payload:     {
         description: co.description ?? undefined,
         amountCents: co.amountCents,
@@ -711,18 +682,11 @@ router.post(
 // Void in place; never hard-delete. A voided CO can be replaced with a new one.
 // ---------------------------------------------------------------------------
 
+// change_order.void
 router.post(
   '/change-orders/:changeOrderId/void',
+  requirePermission('change_order.void'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) {
-      res.status(403).json({ error: 'Manager or above required' });
-      return;
-    }
     const parsed = VoidChangeOrderBody.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -730,7 +694,7 @@ router.post(
     }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -745,7 +709,7 @@ router.post(
       .update(changeOrdersTable)
       .set({
         voidedAt:        new Date(),
-        voidedByUserId:  req.user.id,
+        voidedByUserId:  req.actorCtx!.actorId,
         voidReason:      parsed.data.voidReason ?? null,
         // If it was approved, retract the approval so it leaves contract value.
         status:          co.status === 'approved' ? 'rejected' : co.status,
@@ -765,13 +729,11 @@ router.post(
 // Any authenticated member.
 // ---------------------------------------------------------------------------
 
+// change_order.update
 router.post(
   '/change-orders/:changeOrderId/line-items',
+  requirePermission('change_order.update'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const parsed = CreateLineItemBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -779,7 +741,7 @@ router.post(
     }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -797,7 +759,7 @@ router.post(
         .insert(changeOrderLineItemsTable)
         .values({
           ...(parsed.data.id ? { id: parsed.data.id } : {}),
-          companyId:       req.user.companyId,
+          companyId:       req.actorCtx!.companyId,
           changeOrderId:   co.id,
           description:     parsed.data.description,
           quantity:        String(parsed.data.quantity),
@@ -836,13 +798,11 @@ router.post(
 // Any authenticated member.
 // ---------------------------------------------------------------------------
 
+// change_order.update
 router.patch(
   '/change-orders/:changeOrderId/line-items/:lineItemId',
+  requirePermission('change_order.update'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const parsed = UpdateLineItemBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
@@ -850,7 +810,7 @@ router.patch(
     }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -906,16 +866,14 @@ router.patch(
 // Any authenticated member.
 // ---------------------------------------------------------------------------
 
+// change_order.update
 router.delete(
   '/change-orders/:changeOrderId/line-items/:lineItemId',
+  requirePermission('change_order.update'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
     const co = await resolveChangeOrder(
       req.params.changeOrderId as string,
-      req.user.companyId,
+      req.actorCtx!.companyId,
     );
     if (!co) {
       res.status(404).json({ error: 'Change order not found' });
@@ -955,24 +913,17 @@ router.delete(
 // PATCH /pins/:pinId/overhead   — manager+
 // ---------------------------------------------------------------------------
 
+// expense.manage
 router.patch(
   '/pins/:pinId/overhead',
+  requirePermission('expense.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) {
-      res.status(403).json({ error: 'Manager or above required' });
-      return;
-    }
     const parsed = UpdateOverheadBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) {
       res.status(404).json({ error: 'Pin not found' });
       return;
@@ -1000,13 +951,12 @@ router.patch(
 // ---------------------------------------------------------------------------
 
 // POST /pins/:pinId/overhead/lead-acquisition/mark-paid
+// expense.manage
 router.post(
   '/pins/:pinId/overhead/lead-acquisition/mark-paid',
+  requirePermission('expense.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) { res.status(403).json({ error: 'Manager or above required' }); return; }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
     if (!pin.leadAcquisitionCostCents) {
       res.status(400).json({ error: 'No lead acquisition cost is set — set it before marking paid' });
@@ -1022,13 +972,12 @@ router.post(
 );
 
 // POST /pins/:pinId/overhead/referral/mark-paid
+// expense.manage
 router.post(
   '/pins/:pinId/overhead/referral/mark-paid',
+  requirePermission('expense.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) { res.status(403).json({ error: 'Manager or above required' }); return; }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
     if (!pin.referralFeeCents) {
       res.status(400).json({ error: 'No referral fee is set — set it before marking paid' });
@@ -1045,13 +994,12 @@ router.post(
 
 // POST /pins/:pinId/overhead/sales/mark-paid
 // Mirrors /pins/:pinId/commissions/sales/mark-paid at the unified /overhead path.
+// expense.manage
 router.post(
   '/pins/:pinId/overhead/sales/mark-paid',
+  requirePermission('expense.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) { res.status(403).json({ error: 'Manager or above required' }); return; }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
     if (!pin.salesCommissionCents) {
       res.status(400).json({ error: 'No sales commission is set — set it before marking paid' });
@@ -1067,13 +1015,12 @@ router.post(
 );
 
 // POST /pins/:pinId/overhead/canvassing/mark-paid
+// expense.manage
 router.post(
   '/pins/:pinId/overhead/canvassing/mark-paid',
+  requirePermission('expense.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) { res.status(403).json({ error: 'Manager or above required' }); return; }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
     if (!pin.canvassingCommissionCents) {
       res.status(400).json({ error: 'No canvassing commission is set — set it before marking paid' });
@@ -1090,13 +1037,12 @@ router.post(
 
 // POST /pins/:pinId/overhead/pm/mark-paid
 // Mirrors /pins/:pinId/commissions/pm/mark-paid at the unified /overhead path.
+// expense.manage
 router.post(
   '/pins/:pinId/overhead/pm/mark-paid',
+  requirePermission('expense.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const role = await getRole(req.user.id);
-    if (!isManagerOrAdmin(role)) { res.status(403).json({ error: 'Manager or above required' }); return; }
-    const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+    const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
     if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
     if (!pin.pmCommissionCents) {
       res.status(400).json({ error: 'No PM commission amount is set — set it before marking paid' });
