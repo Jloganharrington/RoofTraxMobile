@@ -104,6 +104,8 @@ import {
   stageTransitionsTable,
   claimSupplementsTable,
   SUPPLEMENT_REASONS,
+  pinFinancialChangesTable,
+  type PinFinancialChangeField,
 } from '@workspace/db';
 import type {
   Role,
@@ -10183,9 +10185,22 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
     }
   }
 
-  // FINDING 3-H: contractAmount flows into revised_contract_cents; gate to manager+.
-  if (d.contractAmount !== undefined && !isManagerOrAdmin(role as import('@workspace/authz').Role)) {
-    return void res.status(403).json({ error: 'Only managers and above may change the contract amount' });
+  // All three financial fields are manager-and-above; flow into profitability view
+  // and are audited in pin_financial_changes (migration 044).
+  const financialPresent =
+    d.contractAmount !== undefined ||
+    d.deductibleAmount !== undefined ||
+    d.rcvAmount !== undefined;
+
+  if (financialPresent) {
+    if (!isManagerOrAdmin(role as Role)) {
+      return void res.status(403).json({
+        error: 'Only managers and above may change financial amounts (contractAmount, deductibleAmount, rcvAmount)',
+      });
+    }
+    if (!d.reason?.trim()) {
+      return void res.status(400).json({ error: 'reason is required when changing financial amounts' });
+    }
   }
 
   const [updated] = await db
@@ -10224,6 +10239,29 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
     })
     .where(eq(pinsTable.id, leadId))
     .returning();
+
+  // Audit: insert a row for each financial field that actually changed.
+  if (financialPresent) {
+    const auditFields: { key: 'contractAmount' | 'deductibleAmount' | 'rcvAmount'; col: PinFinancialChangeField }[] = [
+      { key: 'contractAmount',   col: 'contract_amount'   },
+      { key: 'deductibleAmount', col: 'deductible_amount' },
+      { key: 'rcvAmount',        col: 'rcv_amount'        },
+    ];
+    const auditRows = auditFields
+      .filter(({ key }) => d[key] !== undefined && d[key] !== pin[key])
+      .map(({ key, col }) => ({
+        companyId:       req.user.companyId,
+        pinId:           leadId,
+        field:           col,
+        oldValue:        pin[key] ?? null,
+        newValue:        d[key] ?? null,
+        changedByUserId: req.user.id,
+        reason:          d.reason as string,
+      }));
+    if (auditRows.length > 0) {
+      await db.insert(pinFinancialChangesTable).values(auditRows);
+    }
+  }
 
   const [user] = await db
     .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })

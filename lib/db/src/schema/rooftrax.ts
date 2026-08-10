@@ -1164,3 +1164,39 @@ export const completionCertificatesTable = pgTable('completion_certificates', {
 
 export type CompletionCertificate = typeof completionCertificatesTable.$inferSelect;
 export type InsertCompletionCertificate = typeof completionCertificatesTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Migration 044: pin_financial_changes
+// Purpose-built audit log for manager edits to financial fields.
+// Pattern: stage_transitions (pipeline), report_attestations (report sign-off).
+// Company-scoped directly — no join needed for tenancy.
+// Consumer: Financials surface ("contract value changed from X to Y by Z").
+// ---------------------------------------------------------------------------
+export const PIN_FINANCIAL_CHANGE_FIELDS = [
+  'contract_amount',
+  'deductible_amount',
+  'rcv_amount',
+] as const;
+export type PinFinancialChangeField = (typeof PIN_FINANCIAL_CHANGE_FIELDS)[number];
+
+export const pinFinancialChangesTable = pgTable('pin_financial_changes', {
+  id: varchar('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id),
+  /** 'contract_amount' | 'deductible_amount' | 'rcv_amount' */
+  field: text('field').notNull().$type<PinFinancialChangeField>(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  changedByUserId: varchar('changed_by_user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+  reason: text('reason').notNull(),
+});
+
+export type PinFinancialChange = typeof pinFinancialChangesTable.$inferSelect;
+export type InsertPinFinancialChange = typeof pinFinancialChangesTable.$inferInsert;

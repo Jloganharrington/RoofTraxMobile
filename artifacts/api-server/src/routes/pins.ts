@@ -8,7 +8,14 @@ import {
   UpdatePinBody,
   UpdatePinResponse,
 } from '@workspace/api-zod';
-import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
+import {
+  db,
+  pinFinancialChangesTable,
+  type PinFinancialChangeField,
+  pinsTable,
+  userProfilesTable,
+  usersTable,
+} from '@workspace/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -262,6 +269,9 @@ export const LeadProfileBody = z.object({
   statusNotes:          z.string().nullable().optional(),
   statusLastUpdated:    z.string().nullable().optional(),
   contractAmount:       z.string().nullable().optional(),
+  // reason is required when any financial field (contractAmount | deductibleAmount |
+  // rcvAmount) is present; enforced conditionally in the handler, not by Zod here.
+  reason:               z.string().min(1).optional(),
   // depositAmount, depositDate, depositPaymentMethod, acvAmount,
   // supplementAmount, finalPaymentAmount removed — these are now managed
   // exclusively via the payments ledger (POST /pins/:pinId/payments).
@@ -378,12 +388,24 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
     }
   }
 
-  // FINDING 3-H: contractAmount flows into revised_contract_cents on the
-  // profitability view; allowing field reps to change it is a financial bypass.
-  // Gate contract amount writes to manager-and-above.
-  if (d.contractAmount !== undefined && !isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Only managers and above may change the contract amount' });
-    return;
+  // All three financial fields are manager-and-above; they flow into the
+  // profitability view and are audited in pin_financial_changes.
+  const financialPresent =
+    d.contractAmount !== undefined ||
+    d.deductibleAmount !== undefined ||
+    d.rcvAmount !== undefined;
+
+  if (financialPresent) {
+    if (!isManagerOrAdmin(role)) {
+      res.status(403).json({
+        error: 'Only managers and above may change financial amounts (contractAmount, deductibleAmount, rcvAmount)',
+      });
+      return;
+    }
+    if (!d.reason?.trim()) {
+      res.status(400).json({ error: 'reason is required when changing financial amounts' });
+      return;
+    }
   }
 
   const [updated] = await db
@@ -413,9 +435,33 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
       ...(d.statusLastUpdated    !== undefined && { statusLastUpdated:    d.statusLastUpdated ? new Date(d.statusLastUpdated) : null }),
       ...(d.externalLeadSource   !== undefined && { externalLeadSource:   d.externalLeadSource }),
       ...(d.projectManagerName   !== undefined && { projectManagerName:   d.projectManagerName }),
+      updatedAt: new Date(),
     })
     .where(eq(pinsTable.id, pinId))
     .returning();
+
+  // Audit: insert a row for each financial field that actually changed.
+  if (financialPresent) {
+    const auditFields: { key: 'contractAmount' | 'deductibleAmount' | 'rcvAmount'; col: PinFinancialChangeField }[] = [
+      { key: 'contractAmount',   col: 'contract_amount'   },
+      { key: 'deductibleAmount', col: 'deductible_amount' },
+      { key: 'rcvAmount',        col: 'rcv_amount'        },
+    ];
+    const rows = auditFields
+      .filter(({ key }) => d[key] !== undefined && d[key] !== pin[key])
+      .map(({ key, col }) => ({
+        companyId:         req.user.companyId,
+        pinId,
+        field:             col,
+        oldValue:          pin[key] ?? null,
+        newValue:          d[key] ?? null,
+        changedByUserId:   req.user.id,
+        reason:            d.reason as string,
+      }));
+    if (rows.length > 0) {
+      await db.insert(pinFinancialChangesTable).values(rows);
+    }
+  }
 
   const [user] = await db
     .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
@@ -427,6 +473,39 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
     : null;
 
   res.json({ lead: { ...updated, repName } });
+});
+
+// GET /pins/:pinId/financial-changes — audit log (manager+ only)
+router.get('/pins/:pinId/financial-changes', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const pinId = req.params.pinId as string;
+  const [pin] = await db
+    .select({ id: pinsTable.id })
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+
+  if (!pin) {
+    res.status(404).json({ error: 'Pin not found' });
+    return;
+  }
+
+  const role = await getRole(req.user.id);
+  if (!isManagerOrAdmin(role)) {
+    res.status(403).json({ error: 'Not authorized to view financial change history' });
+    return;
+  }
+
+  const changes = await db
+    .select()
+    .from(pinFinancialChangesTable)
+    .where(eq(pinFinancialChangesTable.pinId, pinId))
+    .orderBy(desc(pinFinancialChangesTable.changedAt));
+
+  res.json({ changes });
 });
 
 // ── Retail appointment booking ─────────────────────────────────────────────
