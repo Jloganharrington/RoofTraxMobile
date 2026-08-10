@@ -1,0 +1,67 @@
+WORK ORDER — Completion Certificate
+Mode: Build. Runs after remediation Step 6 clears. Phase A additionally depends on remediation Step 2 (claim_approved reachability).
+Hard constraint: zero writes to artifacts/mobile/. This is office-generated; nothing goes on-device.
+Rendering: server-side PDFKit following lib/contractPdf.ts — sha256 + object storage, same pattern as contracts. Not expo-print.
+One phase per commit. Baseline to hold: 800/801, with the known lib/protocol ordering failure.
+
+PHASE A — Approved claim estimate capture
+The COC's base line items come from this document, so it has to exist before anything else works.
+
+Change: the claim_approved stage advance accepts and requires an approved carrier estimate upload. Store it in tenant-scoped object storage with sha256, linked to the pin, following the existing document-storage pattern (objectOwnershipTable for read enforcement).
+
+Advancing to claim_approved without the estimate must fail with a clear message naming what's missing. This is a gate, not a suggestion — everything downstream reads from it.
+
+Verify: advance the ZZTEST insurance pin to claim_approved without the document → rejected; with it → 200, stage_transitions row written, document retrievable and sha256 matches.
+
+Integration checks: pipeline-auto-advance.test.ts 16/16; seed-acceptance-claim.ts 57/57 (it walks this stage — it will need the fixture document added); full suite.
+
+▶ CHECKPOINT A — Paste the rejected and accepted advances, the stored document record, and the three suite results.
+
+PHASE B — COC record and extraction
+Schema: a completion_certificates table — company_id, pin_id, contract_id, status (draft | signed | voided), document_object_path, document_sha256, signed_by_user_id, signed_at, signer_title, and a line_items jsonb snapshot.
+
+The snapshot holds both sections as extracted: base contract items and PWI items, each with description, optional quantity/unit, and amount in integer cents. Once a COC is signed, the snapshot is immutable — a correction voids and reissues, exactly like contracts.
+
+Extraction: AI pass over the stored approved estimate producing the two sections, following the existing pattern in ahjWizardExtraction.ts and the report compile. It must return line items with amounts in cents and must not invent items — anything it can't attribute to the estimate is omitted and reported, not guessed.
+
+Extraction produces a draft. Amounts are editable by the signer before signing; edits overwrite the snapshot while status is draft.
+
+Also add: change_orders.carrier_reimbursable boolean, default false, set explicitly. Only approved, non-voided, carrier-reimbursable change orders appear on the COC, as their own section between base and PWI. Do not reuse requiredToCompleteScope — it means something else.
+
+Verify: run extraction against the Glass estimate if you can obtain it, otherwise a representative carrier estimate. Paste the extracted sections and reconcile the subtotals against the source document line by line. Report every item the extractor dropped.
+
+Integration checks: pin_profitability unaffected — the COC reads contract and change-order data, it never writes to it. Prove revised_contract_cents is unchanged before and after a COC draft. Full suite.
+
+▶ CHECKPOINT B — Paste the migration, the extraction output with source reconciliation, the dropped-item list, and the profitability before/after.
+
+PHASE C — Insurance COC render, sign, emit
+Template matches the example: letterhead from companies.logoUrl / contractorLegalName / contractorAddress / contractorLicenses / reportBranding; certification line carrying contracts.signedAt as the contract date; claim block from pins.insuranceCarrier, policyNumber, claimNumber, owner name, property address; then Work Completed with its RCV subtotal, carrier-reimbursable change orders if any, PWI with its subtotal, and a total that is the sum of all three sections.
+
+Assert the arithmetic server-side before render. A COC whose sections don't sum to the total must fail to generate, not render wrong.
+
+Signature authority. "Supplement Manager" is neither a role nor a department. Add a named capability in lib/authz — resolved through resolveCapabilities, not an inline role check — and a title field on user_profiles for the printed line ("NuHome Exteriors, Inc. | Supplement Manager"). Grant the capability to manager+ in the office department unless told otherwise. Report the capability name and grant set before implementing; this touches the same surface as remediation Step 5.
+
+Signing uses the signer's signature-on-file — user_profiles.signatureUrl / signatureSha256 at rooftrax.ts:79. No signature on file blocks signing, same as inspection declarations.
+
+On signature: finalize the PDF, store sha256, then emit completion_package_generated. That closes the dead auto-advance at pipelineStages.ts:83 — project: complete → final_invoiced. Emit after the transaction commits, and await it rather than firing void; the duplicate-transition race from Phase 2 came from exactly that pattern.
+
+Verify: generate a COC on the ZZTEST insurance pin. Paste the rendered PDF. Then:
+
+A user without the capability gets 403 on sign; confirm no row changed.
+A user with the capability but no signature on file is blocked with a clear message.
+Signing emits the event and produces the complete → final_invoiced transition — paste the stage_transitions row with trigger = 'auto_event'.
+Re-signing a signed COC is rejected.
+Voiding and reissuing produces a new record; the original snapshot is untouched.
+Integration checks: pipeline-auto-advance.test.ts including 3a/3b/3c; the contract sign → portal → profitability chain unaffected; notification dispatch — decide whether a signed COC warrants a catalog entry and say so either way; full suite.
+
+▶ CHECKPOINT C — Paste the rendered PDF, the capability name and grant set, the full permission matrix, the auto-advance transition row, and the suite results.
+
+PHASE D — Retail COC
+Scoping only in this order. Do not build it.
+
+The retail variant is a different document with a different trigger — issued after final payment is received, carrying warranty information rather than a claim block or insurance-proceeds language. Two things are missing: a trigger on final payment receipt, and a warranty data model that does not exist anywhere in the schema.
+
+Report what warranty information the document needs to carry — manufacturer warranty from the installed product, workmanship warranty terms at the company level, term lengths, transferability, exclusions — and where each would have to live. Then stop. I'll rule on the model before anything is built.
+
+▶ CHECKPOINT D — Paste the warranty field inventory and proposed sources. No code.
+
