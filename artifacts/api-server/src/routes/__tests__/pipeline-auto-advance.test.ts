@@ -208,11 +208,12 @@ describe('idempotency', () => {
   });
 
   it('an event with no matching stage vocabulary is a no-op with a reason', async () => {
-    const { results, reason } = await processPipelineEvent({
+    const { results, reason, unknownEventType } = await processPipelineEvent({
       companyId: COMPANY, eventType: 'nonexistent_event',
     });
     expect(results).toHaveLength(0);
-    expect(reason).toBe('No stages match this event');
+    expect(unknownEventType).toBe(true);
+    expect(reason).toContain('not an autoAdvance event type');
   });
 });
 

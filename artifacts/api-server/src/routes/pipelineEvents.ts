@@ -98,6 +98,13 @@ export async function advancePinStage(opts: {
 export interface PipelineEventResult {
   results: Array<{ leadId: string; fromStage: string; toStage: string }>;
   reason: string | null;
+  /**
+   * True when the eventType has no autoAdvance mapping in any pipeline stage.
+   * Distinct from results.length === 0 (which can also mean "valid event but
+   * no pins are currently in a matching stage"). The HTTP route returns 422
+   * when this is true; internal emitters ignore it.
+   */
+  unknownEventType?: boolean;
 }
 
 export async function processPipelineEvent(opts: {
@@ -124,7 +131,11 @@ export async function processPipelineEvent(opts: {
   }
 
   if (matchingPipelineStageKeys.size === 0) {
-    return { results: [], reason: 'No stages match this event' };
+    return {
+      results: [],
+      reason: `'${eventType}' is not an autoAdvance event type — it maps to an outcome-only stage or is unknown. Use PATCH /leads/:id/advance-stage for outcome-driven transitions.`,
+      unknownEventType: true,
+    };
   }
 
   // Fetch active pins in this company (stage filter applied in JS because
@@ -246,12 +257,16 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
   }
 
   const { eventType, leadId, payload } = parsed.data;
-  const { results, reason } = await processPipelineEvent({
+  const { results, reason, unknownEventType } = await processPipelineEvent({
     companyId: req.user.companyId,
     eventType,
     leadId,
     payload,
   });
+
+  if (unknownEventType) {
+    return void res.status(422).json({ error: reason });
+  }
 
   return void res.json({
     advanced: results.length > 0,
