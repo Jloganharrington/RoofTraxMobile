@@ -2479,3 +2479,212 @@ All changes to the codebase made during or in preparation for this audit, with S
 
 `git log --oneline 113cc23..HEAD` returns no output. HEAD is `113cc23` (Phase 5 commit). This session's changes to `TESTREPORT.md`, `package.json`, and `.gitignore` are uncommitted.
 
+
+---
+
+# REMEDIATION — Steps 1 & 2
+
+---
+
+## CHECKPOINT 1 — Step 1: FINDING 4-A (Department enum drift)
+
+**Commit:** `d8c0bc2` — "Step 1: add 'office' to Department enum in OpenAPI spec and regenerate"
+
+### openapi.yaml diff
+
+```diff
+-      enum: [canvasser, inspector_canvasser]
++      enum: [canvasser, inspector_canvasser, office]
+```
+
+Location: `lib/api-spec/openapi.yaml:8122` — `Department` schema component. One line changed; no other spec content touched.
+
+### Generated-file diffstat
+
+```
+lib/api-client-react/src/generated/api.schemas.ts |  1 +
+lib/api-zod/src/generated/api.ts                  | 16 ++++++++--------
+lib/api-zod/src/generated/types/department.ts     |  1 +
+3 files changed, 10 insertions(+), 8 deletions(-)
+```
+
+Only enum sites changed. In `api.ts`: 8 occurrences of `zod.enum(['canvasser', 'inspector_canvasser'])` updated to `zod.enum(['canvasser', 'inspector_canvasser', 'office'])` (lines 843, 901, 959, 1013, 1084, 1443, 1463, 1475). In `api.schemas.ts`: `Department` const object gained `office: 'office'`. In `types/department.ts`: +1 enum value. No other file in either library changed.
+
+### Root typecheck output
+
+```
+pnpm -w tsc --build --force
+(no output — 0 errors)
+```
+
+### Five profile responses
+
+```
+=== A-MGR-O (HTTP 200) ===
+{ "email": "a-mgr-o@zztest.local", "role": "manager",     "department": "office",
+  "workflowAssignment": "retail",           "companyId": "ZZTEST_ALPHA" }
+
+=== A-ADMIN (HTTP 200) ===
+{ "email": "a-admin@zztest.local", "role": "admin",        "department": "office",
+  "workflowAssignment": "insurance_retail", "companyId": "ZZTEST_ALPHA" }
+
+=== A-SUPER (HTTP 200) ===
+{ "email": "a-super@zztest.local", "role": "super_admin",  "department": "office",
+  "workflowAssignment": "insurance_retail", "companyId": "ZZTEST_ALPHA" }
+
+=== B-ADMIN (HTTP 200) ===
+{ "email": "b-admin@zztest.local", "role": "admin",        "department": "office",
+  "workflowAssignment": "insurance_retail", "companyId": "ZZTEST_BRAVO" }
+
+=== A-OFF-1 (HTTP 200) ===
+{ "email": "a-off-1@zztest.local", "role": "field_rep",   "department": "office",
+  "workflowAssignment": "retail",           "companyId": "ZZTEST_ALPHA" }
+```
+
+All five: HTTP 200. `department: "office"` returned correctly and passes Zod validation. Previously all five returned HTTP 500.
+
+### GET /admin/users — team roster response
+
+```
+HTTP 200 — 8 users (full ZZTEST_ALPHA roster)
+  a-canv-1@zztest.local  | role=field_rep    | dept=canvasser
+  a-canv-2@zztest.local  | role=field_rep    | dept=canvasser
+  a-insp-1@zztest.local  | role=field_rep    | dept=inspector_canvasser
+  a-off-1@zztest.local   | role=field_rep    | dept=office           ← previously caused cascade 500
+  a-mgr-f@zztest.local   | role=manager      | dept=inspector_canvasser
+  a-mgr-o@zztest.local   | role=manager      | dept=office
+  a-admin@zztest.local   | role=admin        | dept=office
+  a-super@zztest.local   | role=super_admin  | dept=office
+```
+
+No cascade 500. A-OFF-1 is now correctly included with `dept=office`.
+
+### Nav count comparison (A-ADMIN + A-SUPER)
+
+NAV_SECTIONS in `Shell.tsx` has 13 total items: 7 navigation (no minRole), 2 data & tools (Reports: minRole='manager'; Proof Package Data: no minRole), 4 admin (Team Management, User Authorization, Integrations: minRole='manager'; Settings: no minRole).
+
+| User | Role | Before fix | After fix | Cause |
+|---|---|---|---|---|
+| A-ADMIN | admin (office) | 9 items | **13 items** | Profile was 500 → `useProfile` defaulted to `field_rep` → 9; now profile 200 role=admin → 13 |
+| A-SUPER | super_admin (office) | 9 items | **13 items** | Same root cause → now role=super_admin → 13 |
+| A-MGR-F | manager (inspector_canvasser) | 13 items | 13 items | Unaffected (canvasser in enum) |
+
+No second nav defect found. The nav filter uses `roleRank(profile.role) >= roleRank(item.minRole)` — admin and super_admin rank above manager, so all manager-gated items are visible.
+
+### Full suite totals
+
+```
+Test Files  48 passed (48)
+Tests       671 passed (671)
+```
+
+`lib/authz`: 66/66 ✓ | Dashboard suites: 29/29 ✓
+
+### git status --porcelain artifacts/mobile/
+
+```
+(empty)
+```
+
+No mobile files modified. Per instruction: `artifacts/mobile/hooks/useProfile.ts:20` default `department: 'canvasser'` masking behavior is logged, not fixed — mobile is frozen.
+
+---
+
+## CHECKPOINT 2 — Step 2: FINDING 2-A (claim_approved unreachable via event bus)
+
+**Commit:** `f309d0b` — "Step 2: POST /events/pipeline returns 422 for outcome-only/unknown event types"
+
+### Design determination
+
+`claim_review → claim_approved` is **outcome-only by design**. No `autoAdvance` was ever missing.
+
+Evidence from `artifacts/api-server/src/lib/pipelineStages.ts`:
+```ts
+{ pipeline: 'insurance', key: 'claim_review', ..., order: 8,
+  outcomes: [
+    { key: 'approved',         toStage: 'claim_approved'    },
+    { key: 'partial',          toStage: 'supplement_dispute' },
+    { key: 'denied',           toStage: 'supplement_dispute' },
+  ]
+  // No autoAdvance — outcome-only
+},
+{ pipeline: 'insurance', key: 'claim_approved', ..., order: 10
+  // No autoAdvance, no outcomes — terminal in this arc
+},
+```
+
+Evidence from `artifacts/rooftrax-web/src/lib/pipelineStages.ts`:
+```ts
+'insurance:claim_approved': define({ key: 'claim_approved', phase: 'outcome', ... })
+```
+
+`phase: 'outcome'` is the UI marker for outcome-only stages. The sole correct path is `PATCH /leads/:id/advance-stage { toStage: 'claim_approved', trigger: 'task' }` called after the user selects the "Claim Approved" outcome in the UI.
+
+**Fix applied:** `processPipelineEvent` now returns `{ unknownEventType: true, reason: '...' }` when `matchingPipelineStageKeys.size === 0`. The HTTP route handler returns 422 when `unknownEventType === true`. The internal `emitPipelineEvent` fire-and-forget emitter is unaffected (it ignores the flag).
+
+### 422 responses — all 8 outcome-only / unknown event types
+
+All eight returned HTTP 422 with the message:
+```
+"'<eventType>' is not an autoAdvance event type — it maps to an outcome-only stage or is unknown. Use PATCH /leads/:id/advance-stage for outcome-driven transitions."
+```
+
+| eventType | HTTP | Result |
+|---|---|---|
+| `approved` | **422** | ✓ |
+| `won` | **422** | ✓ |
+| `proposal_provided` | **422** | ✓ |
+| `follow_up` | **422** | ✓ |
+| `supplement_dispute` | **422** | ✓ |
+| `adjuster_review` | **422** | ✓ |
+| `appraisal` | **422** | ✓ |
+| `public_adjuster` | **422** | ✓ |
+
+Previously all returned HTTP 200 with `{ advanced: false, results: [] }`.
+
+### claim_approved transition row
+
+ZZTEST insurance pin `fdbdceba-2db1-454e-881d-cbc02af7593f` was set to `claim_review`, then:
+
+```
+PATCH /api/leads/fdbdceba.../advance-stage
+Body: { "toStage": "claim_approved", "trigger": "task" }
+→ HTTP 200  { "pipelineStage": "claim_approved" }
+```
+
+`stage_transitions` audit row:
+
+```
+lead_id    | from_stage   | to_stage       | trigger | user_id
+-----------+--------------+----------------+---------+------------------------------------
+fdbdceba…  | claim_review | claim_approved | task    | 0625a922-…  (A-MGR-O)
+```
+
+### Three suite results
+
+| Suite | Result |
+|---|---|
+| `pipeline-auto-advance.test.ts` | **16/16** ✓ (3a idempotency ✓, 3b failure isolation ✓, 3c cross-pipeline guard ✓) |
+| `seed-acceptance-claim.ts` | **57/57** ✓ |
+| Full vitest suite (`artifacts/api-server`) | **671/671** ✓ |
+
+Test fix: `pipeline-auto-advance.test.ts` line 215 updated to check `unknownEventType === true` and `reason.contains('not an autoAdvance event type')` instead of exact old string `'No stages match this event'`.
+
+---
+
+## STEP 3 — Audit table determination (report only, no code)
+
+**No audit table exists in the schema.**
+
+Schema search (`lib/db/src/schema/rooftrax.ts`, `lib/db/src/schema/inspections.ts`) and `pg_tables` query return no table with "audit" or "change_log" in the name. The only audit-adjacent structures are:
+
+| Table | Purpose | Scope |
+|---|---|---|
+| `stage_transitions` | Records pipeline stage changes | Pipeline stage advances only |
+| `report_attestations` | Records proof package sign-off | Inspection reports only |
+| Sessions / payment ledger | Immutable append-only | Payments, sessions |
+
+There is no general-purpose field-change audit log for pin profile fields (`contractAmount`, `deductibleAmount`, `rcvAmount`). The `stage_transitions` table is the closest analogue but is scoped to stage key changes only.
+
+**Consequence for Step 3:** The gate (`contractAmount`, `deductibleAmount`, `rcvAmount` → manager+) and the `pipelineStage` removal can proceed without an audit table. The audit record requirement for money field changes requires a schema decision: add a new table, or extend `stage_transitions` to cover field changes, or log to a JSONB column on the pin. **Awaiting ruling before implementing the audit record portion.**
+

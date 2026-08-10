@@ -1,0 +1,131 @@
+STEP 1 — FINDING 4-A: Department enum drift
+Blocking. Lands alone because regeneration touches shared generated code.
+
+Change: add office to the Department enum at openapi.yaml:8122. That is the only hand edit. Regenerate via orval, rebuild composites.
+
+Do not change toProfileEnvelope's strict .parse() to .passthrough(). Strict parsing is what surfaced this; loosening it hides the next drift.
+
+Verify:
+
+git diff --stat -- lib/api-zod lib/api-client-react shows only enum sites — 8 in lib/api-zod, plus the api-client-react counterparts. Anything else in that diff means the spec edit was wider than intended.
+pnpm -w tsc --build --force from repo root, 0 errors.
+GET /api/profile/me returns 200 for A-MGR-O, A-ADMIN, A-SUPER, B-ADMIN, and A-OFF-1. Paste all five response bodies.
+GET /api/team/users returns 200 with the full ZZTEST_ALPHA roster, no 500.
+Integration checks:
+
+Dashboard manifest suites (dashboard.test.ts, dashboard-batch-b.test.ts, dashboard-widget.test.ts) — unchanged pass.
+lib/authz — 66/66.
+Re-check the Phase 4 nav counts. A-ADMIN and A-SUPER previously rendered 9 items against A-MGR-F's 13. After this, admin and super_admin must render at least what a manager renders. If they don't, the nav filter has a second defect and I want it before Step 2.
+Full suite: 800/801.
+Log, do not fix: artifacts/mobile/hooks/useProfile.ts:20 defaults department to 'canvasser' when the query fails, which silently demoted office users. Fixing 4-A stops it triggering. The masking behavior stays as-is — mobile is frozen.
+
+▶ CHECKPOINT 1 — Paste: the openapi.yaml diff, the generated-file diffstat, root typecheck output, the five profile responses, the team roster response, the nav count comparison, full suite totals, and git status --porcelain artifacts/mobile/.
+
+STEP 2 — FINDING 2-A: claim_approved unreachable via the event bus
+Blocking, and probably smaller than it looks.
+
+First, report — do not code yet. Determine the intended path to claim_review → claim_approved. Read pipelineStages.ts and state whether claim_review was designed with an autoAdvance that's missing, or as outcome-only with PATCH /leads/:id/advance-stage as the sole path.
+
+Then implement whichever applies:
+
+If outcome-only is the design: fix the lie, not the architecture. POST /api/events/pipeline must return 422 with a message naming the event type and saying it maps to an outcome-only stage. A 200 that advances nothing is what cost us a full lifecycle step in Phase 2.
+If an autoAdvance is genuinely missing: add it, and say what event emits it and from where.
+Do not invent an auto-advance that wasn't designed. If it's ambiguous, stop and tell me.
+
+Verify:
+
+POST /events/pipeline { eventType: 'approved' } → 422, message pasted.
+Same for won, and for the other outcome-only stages named in FINDING 2-A: proposal_provided, follow_up, supplement_dispute, adjuster_review, appraisal, public_adjuster.
+PATCH /leads/:id/advance-stage with the approval outcome on the ZZTEST insurance pin reaches claim_approved and writes a stage_transitions row. Paste the row.
+Integration checks:
+
+pipeline-auto-advance.test.ts — 16/16, with 3a, 3b, 3c named individually.
+seed-acceptance-claim.ts — 57/57.
+Full suite: 800/801.
+▶ CHECKPOINT 2 — Paste the design determination, the 422 responses, the claim_approved transition row, and the three suite results.
+
+STEP 3 — FINDING 3-J: PATCH /leads/:leadId/profile write surface
+The largest real risk in the report. Four fields, three different problems.
+
+First, report — do not code yet. Test 3.11-1 noted "no audit_log row created." Determine whether an audit table exists in the schema. If one does, name it and its shape. If it doesn't, say so and stop — inventing an audit mechanism is a design decision, not a fix, and I'll rule on it before you build.
+
+Then, once the audit question is settled:
+
+pipelineStage — remove from LeadProfileBody entirely. Stage changes go through PATCH /leads/:id/advance-stage, which writes stage_transitions. A stage change that leaves no transition row is the defect; keeping the field and gating it by role does not fix that.
+
+contractAmount, deductibleAmount, rcvAmount — gate to manager+ and write an audit record on every change. The gate goes in lib/authz as a named capability, matching the resolveCapabilities pattern, not as an inline isManagerOrAdmin in the route.
+
+Validation — reject any of the three that parses to ≤ 0 cents. _parse_legacy_money_cents already exists; a .refine() on the schema is enough. Return 422, not 400, and not a silent clamp to zero.
+
+UI — LeadProfile.tsx renders Pipeline Stage (3659–3667), Contract Amount (2583–2609), and Deductible (469–479) as editable controls for any pin owner. Those must become read-only for anyone the API now rejects. A field rep must not see an editable control that 403s on blur.
+
+Verify — every case with status and a database check:
+
+A-CANV-1 (owner, field_rep): 403 on each of the three money fields; pipelineStage rejected as an unknown field. Confirm no row changed for all four.
+A-MGR-O: 200 on each money field, and an audit row written. Paste the rows.
+Negative value as manager: 422, no write.
+rcvAmount as manager on the insurance pin: show approved_rcv_cents and expected_total_cents before and after, and which GREATEST branch wins.
+The inspections pin-proxy PATCH — the second write path, never tested. Same matrix.
+Integration checks:
+
+contract-value.test.ts — all four write paths. Path 4 is now testable; add it.
+Portal sign → pins.contract_amount write-back still works, and void still clears it.
+pin_profitability recomputes correctly. Use revised_contract_cents and total_payments_cents — the real column names.
+Full suite: 800/801.
+▶ CHECKPOINT 3 — Paste the audit-table determination, the full permission matrix with side-effect columns, the RCV arithmetic, and the suite results.
+
+STEP 4 — FINDING 3-C + PD-3: financial visibility and canvasser CRM access
+One change, two halves, and the step most likely to break the frozen mobile app. Handle it carefully.
+
+First, report — do not code yet. Canvassers use the mobile app, which calls the same API. The gate cannot be "canvasser is rejected everywhere." Enumerate:
+
+Every route the mobile app actually calls, from artifacts/mobile source. Read-only; touch nothing.
+Every route that exists only to serve the CRM.
+The proposed boundary between them.
+Paste that boundary and stop. I'll approve it before you implement. Getting this wrong takes down an app that's ready to ship.
+
+Then implement:
+
+3-C — role gate on GET /pins/:id/profitability as a named capability in lib/authz. And gate the profitability widgets in LeadProfile.tsx — the five useGetPinProfitability call sites at 937, 1846, 1964, 2308, 2547 — on the same capability. Both layers, same source of truth.
+
+PD-3 — canvassers get no CRM. Server side: reject department = 'canvasser' on the CRM-only routes from the approved boundary. Client side: block entry at the shell with a message pointing them to the mobile app. Server first — the client message is UX, the server rejection is the control.
+
+Inspector-canvassers and office users keep full CRM access.
+
+Verify:
+
+A-CANV-1: blocked from CRM entry; blocked from GET /pins/:id/profitability; still succeeds on every mobile route in the approved list. That last one is the critical assertion — paste each result.
+A-INSP-1, A-OFF-1: CRM entry works, profitability 403s (both are field_rep).
+A-MGR-O, A-MGR-F, A-ADMIN, A-SUPER: profitability 200.
+B-REP (canvasser, other tenant): same blocks, no cross-tenant leakage.
+Integration checks:
+
+mb-routes.test.ts — canvassing sessions and M-B routes, unchanged pass.
+Every mobile-consumed endpoint answers exactly as before for a canvasser session. This is the regression that would silently break the app store build.
+git status --porcelain artifacts/mobile/ — empty.
+Full suite: 800/801.
+▶ CHECKPOINT 4 — Paste the route boundary (before implementing), then after: the per-user access matrix, the mobile-route results for A-CANV-1, and the suite results.
+
+STEP 5 — PD-1: /admin/* namespace split
+Change: move manager-appropriate routes — team roster, pipeline visibility — out of /admin/* into a manager-scoped namespace. Tighten what remains in /admin/* to admin or super_admin.
+
+PD-2 needs no code. actorOutranks at permissions.ts:26 already blocks equal-and-above and self-action, and field reps never clear requireManagerOrAdmin. Record it in TESTREPORT.md as closed-no-change with that reasoning, and note that the missing deletion audit record is tracked separately under Step 3's audit mechanism.
+
+Verify: the full 10-user matrix against both namespaces, status per user per route.
+
+Integration checks: any UI calling the moved routes still resolves; full suite 800/801.
+
+▶ CHECKPOINT 5 — Paste the route move list, the 10×N access matrix, and the suite results.
+
+STEP 6 — Full re-verification
+Re-run against the remediated build:
+
+The Phase 3 negative suite — all 130 tests, phase3-negative-tests.ts and phase3-part2.ts. Findings 3-C, 3-J, 3-F, 3-H, 3-I must now fail-closed. Anything that still passes when it should be blocked is a bad fix.
+Phase 5 in full — seed-acceptance-claim.ts 57/57, contract-value.test.ts with path 4 added, pipeline-auto-advance.test.ts 16/16, dashboard manifest suites, change-order → profitability chain.
+pnpm -w tsc --build --force, 0 errors in production source.
+Full suite totals.
+git status --porcelain artifacts/mobile/ and git diff --stat 113cc23..HEAD -- artifacts/mobile/ — both empty.
+Update the TESTREPORT.md finding index: each remediated finding marked Fixed with its commit SHA, and each remaining one left Open with its severity. Do not close anything this order didn't touch.
+
+▶ CHECKPOINT 6 — Paste all five, plus git log --oneline since cd124f4.
+
