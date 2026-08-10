@@ -71,10 +71,11 @@ export const PERMISSION_KEYS = [
   'lead.set_appointment',
   'lead.update',
 
-  // inspection (6)
+  // inspection (8)
   'inspection.assign',
   'inspection.create',
   'inspection.delete',
+  'inspection.manage',
   'inspection.read',
   'inspection.update',
   'inspection.delete_agreement',
@@ -334,7 +335,7 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     key:    'inspection.delete',
     domain: 'inspection',
     label:  'Delete an inspection permanently',
-    default: { kind: 'minRole', minRole: 'admin' },
+    default: { kind: 'minRole', minRole: 'super_admin' },
     note:   'Tightened from manager+ to admin+ (pen-test FINDING). ' +
             'Mobile only surfaces this action to super_admin (inspections.tsx:307), ' +
             'so no mobile breakage.',
@@ -350,6 +351,12 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     domain: 'inspection',
     label:  'Edit inspection data',
     default: { kind: 'ownerOrRole', minRole: 'manager' },
+  },
+  {
+    key:    'inspection.manage',
+    domain: 'inspection',
+    label:  'Perform manager-only inspection actions (unlock, finalize, caption manage, section lock)',
+    default: { kind: 'minRole', minRole: 'manager' },
   },
   {
     key:    'inspection.delete_agreement',
@@ -1033,8 +1040,8 @@ export function permissionsForDomain(domain: Domain): readonly PermissionEntry[]
 }
 
 // ── Compile-time count assertion ──────────────────────────────────────────────
-// This will produce a TS error if the registry diverges from 113.
+// This will produce a TS error if the registry diverges from 115.
 
-type AssertExactly114 = (typeof PERMISSION_KEYS)['length'] extends 114 ? true : never;
+type AssertExactly115 = (typeof PERMISSION_KEYS)['length'] extends 115 ? true : never;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _assert114: AssertExactly114 = true;
+const _assert115: AssertExactly115 = true;

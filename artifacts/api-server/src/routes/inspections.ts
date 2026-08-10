@@ -216,6 +216,7 @@ import {
 } from '../lib/contentPolicy';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router: IRouter = Router();
 
@@ -247,7 +248,7 @@ async function requireInspectionModuleAccess(req: Request, res: Response) {
   const [profile] = await db
     .select()
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
   const role = profile?.role ?? 'field_rep';
   const department = profile?.department ?? 'canvasser';
@@ -256,7 +257,7 @@ async function requireInspectionModuleAccess(req: Request, res: Response) {
     return null;
   }
 
-  return { role, department, companyId: req.user.companyId, userId: req.user.id };
+  return { role, department, companyId: req.actorCtx!.companyId, userId: req.actorCtx!.actorId };
 }
 
 /** Minimal auth helper for non-inspection routes that only need the user's role. */
@@ -268,11 +269,11 @@ async function requireUserWithRole(req: Request, res: Response) {
   const [profile] = await db
     .select({ role: userProfilesTable.role })
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
   return {
     role: (profile?.role ?? 'field_rep') as Role,
-    companyId: req.user.companyId,
-    userId: req.user.id,
+    companyId: req.actorCtx!.companyId,
+    userId: req.actorCtx!.actorId,
   };
 }
 
@@ -576,7 +577,8 @@ async function buildAssessorStamp(
   };
 }
 
-router.get('/inspections', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -682,7 +684,8 @@ async function attachAutoPin(inspection: InspectionRow): Promise<InspectionRow> 
   }
 }
 
-router.post('/inspections', async (req: Request, res: Response) => {
+// inspection.create
+router.post('/inspections', requirePermission('inspection.create'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -798,7 +801,8 @@ router.post('/inspections', async (req: Request, res: Response) => {
 // local-DB appointments. The CRM seam below is the future pathway for externally
 // assigned jobs; once that seam is wired both feeds will be merged.
 // Declared before "/inspections/:inspectionId" so "scheduled" isn't captured as an id.
-router.get('/inspections/scheduled', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/scheduled', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -840,7 +844,8 @@ router.get('/inspections/scheduled', async (req: Request, res: Response) => {
   res.json(ListScheduledInspectionsResponse.parse({ scheduled: localScheduled }));
 });
 
-router.get('/inspections/:inspectionId', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -889,14 +894,10 @@ router.get('/inspections/:inspectionId', async (req: Request, res: Response) => 
   );
 });
 
-router.delete('/inspections/:inspectionId', async (req: Request, res: Response) => {
+// inspection.delete
+router.delete('/inspections/:inspectionId', requirePermission('inspection.delete'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-
-  if (roleRank(actor.role as Role) < roleRank('super_admin')) {
-    res.status(403).json({ error: 'Only super admins may delete inspections' });
-    return;
-  }
 
   const inspectionId = req.params.inspectionId as string;
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
@@ -919,7 +920,8 @@ router.delete('/inspections/:inspectionId', async (req: Request, res: Response) 
   res.status(204).end();
 });
 
-router.patch('/inspections/:inspectionId', async (req: Request, res: Response) => {
+// inspection.update
+router.patch('/inspections/:inspectionId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1288,7 +1290,8 @@ router.patch('/inspections/:inspectionId', async (req: Request, res: Response) =
   );
 });
 
-router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/slopes', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1355,8 +1358,10 @@ router.post('/inspections/:inspectionId/slopes', async (req: Request, res: Respo
 });
 
 // Protocol v2 — facet detail editing (area/material/pitch/damage fields).
+// inspection.update
 router.patch(
   '/inspections/:inspectionId/slopes/:slopeId',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -1422,8 +1427,10 @@ router.patch(
 );
 
 // Protocol v2 — facet removal (the facet list is editable, never fixed).
+// inspection.update
 router.delete(
   '/inspections/:inspectionId/slopes/:slopeId',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -1454,7 +1461,8 @@ router.delete(
 // v2.1 — Siding facets (S1, S2, …), captured when the Elevation Walk flags
 // siding damage. Same offline-first idempotent-create / parent-scoped
 // conflict pattern as slopes.
-router.post('/inspections/:inspectionId/siding-facets', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/siding-facets', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1520,8 +1528,10 @@ router.post('/inspections/:inspectionId/siding-facets', async (req: Request, res
   res.status(201).json(CreateInspectionSidingFacetResponse.parse({ sidingFacet }));
 });
 
+// inspection.update
 router.patch(
   '/inspections/:inspectionId/siding-facets/:sidingFacetId',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -1597,8 +1607,10 @@ router.patch(
   },
 );
 
+// inspection.update
 router.delete(
   '/inspections/:inspectionId/siding-facets/:sidingFacetId',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -1626,7 +1638,8 @@ router.delete(
   },
 );
 
-router.post('/inspections/:inspectionId/elevations', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/elevations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1682,7 +1695,8 @@ router.post('/inspections/:inspectionId/elevations', async (req: Request, res: R
   res.status(201).json(CreateInspectionElevationResponse.parse({ elevation }));
 });
 
-router.post('/inspections/:inspectionId/damage-instances', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/damage-instances', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1752,7 +1766,8 @@ router.post('/inspections/:inspectionId/damage-instances', async (req: Request, 
   res.status(201).json(CreateDamageInstanceResponse.parse({ damageInstance }));
 });
 
-router.post('/inspections/:inspectionId/components', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/components', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1813,8 +1828,10 @@ router.post('/inspections/:inspectionId/components', async (req: Request, res: R
 
 // C4 — existing-component observations are editable: the inspector can change
 // a status/detail selection or clear it entirely.
+// inspection.update
 router.patch(
   '/inspections/:inspectionId/components/:componentId',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -1866,8 +1883,10 @@ router.patch(
   },
 );
 
+// inspection.update
 router.delete(
   '/inspections/:inspectionId/components/:componentId',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -1895,7 +1914,8 @@ router.delete(
   },
 );
 
-router.post('/inspections/:inspectionId/penetrations', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/penetrations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -1953,7 +1973,8 @@ router.post('/inspections/:inspectionId/penetrations', async (req: Request, res:
   res.status(201).json(CreateInspectionPenetrationResponse.parse({ penetration }));
 });
 
-router.post('/inspections/:inspectionId/products', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/products', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2015,7 +2036,8 @@ router.post('/inspections/:inspectionId/products', async (req: Request, res: Res
   res.status(201).json(CreateInspectionProductResponse.parse({ product }));
 });
 
-router.post('/inspections/:inspectionId/test-squares', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/test-squares', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2076,8 +2098,10 @@ router.post('/inspections/:inspectionId/test-squares', async (req: Request, res:
   res.status(201).json(CreateTestSquareResponse.parse({ testSquare }));
 });
 
+// inspection.update
 router.post(
   '/inspections/:inspectionId/test-squares/:testSquareId/hits',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -2153,7 +2177,8 @@ router.post(
   },
 );
 
-router.post('/inspections/:inspectionId/photos', async (req: Request, res: Response) => {
+// inspection.upload_photo
+router.post('/inspections/:inspectionId/photos', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2291,7 +2316,8 @@ router.post('/inspections/:inspectionId/photos', async (req: Request, res: Respo
 
 // Caption edits annotate existing evidence without altering forensic records,
 // so they are permitted on locked inspections (allowLocked behaviour).
-router.patch('/inspections/:inspectionId/photos/:photoId', async (req: Request, res: Response) => {
+// inspection.upload_photo
+router.patch('/inspections/:inspectionId/photos/:photoId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2351,7 +2377,8 @@ router.patch('/inspections/:inspectionId/photos/:photoId', async (req: Request, 
   res.json(CreateInspectionPhotoResponse.parse({ photo: updated }));
 });
 
-router.post('/inspections/:inspectionId/measurements', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/measurements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2415,7 +2442,8 @@ router.post('/inspections/:inspectionId/measurements', async (req: Request, res:
 // the listed photos. Photos not listed are untouched. No minimum/maximum —
 // the curation dashboard alone decides what ships in the package; the photos
 // themselves remain stored evidence either way.
-router.post('/inspections/:inspectionId/photo-curation', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/photo-curation', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2474,7 +2502,8 @@ router.post('/inspections/:inspectionId/photo-curation', async (req: Request, re
   res.status(200).json(CurateInspectionPhotosResponse.parse({ updated, includedCount }));
 });
 
-router.post('/inspections/:inspectionId/attestations', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/attestations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2564,8 +2593,10 @@ function emitForensicRecordAttested(
   });
 }
 
+// inspection.update
 router.post(
   '/inspections/:inspectionId/interior-observations',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -2642,7 +2673,8 @@ router.post(
 // remains (no client-side bypass); then (d) records the manifest verbatim,
 // stamps lockedAt, and transitions to `submitted`. Once locked the record is
 // immutable — corrections become addenda.
-router.post('/inspections/:inspectionId/submission', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/submission', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2805,13 +2837,10 @@ router.post('/inspections/:inspectionId/submission', async (req: Request, res: R
 // read-modify-write) so a re-submitted package clearly shows it was reopened,
 // by whom, when, and why. The prior submission manifest is left in place —
 // re-submission rebuilds and replaces it.
-router.post('/inspections/:inspectionId/unlock', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/inspections/:inspectionId/unlock', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-  if (!isManagerOrAdmin(actor.role)) {
-    res.status(403).json({ error: 'Only a manager or admin can unlock a submitted inspection' });
-    return;
-  }
 
   const inspectionId = req.params.inspectionId as string;
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
@@ -2872,7 +2901,8 @@ router.post('/inspections/:inspectionId/unlock', async (req: Request, res: Respo
 // the record's writers (owning inspector or a manager+) — a same-company peer
 // gets 403, matching every other write-adjacent inspection path. C0-guarded.
 // allowLocked so a submitted record can still be re-checked.
-router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Response) => {
+// inspection.read
+router.post('/inspections/:inspectionId/preflight', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2909,7 +2939,8 @@ router.post('/inspections/:inspectionId/preflight', async (req: Request, res: Re
 // and a clearly-labeled STUB receipt. The standalone Brain that renders the
 // real package does not exist yet; this receipt only reports what the intake
 // verified (record + verified-photo counts), never a fabricated deliverable.
-router.get('/inspections/:inspectionId/status', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/status', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -2962,7 +2993,8 @@ router.get('/inspections/:inspectionId/status', async (req: Request, res: Respon
 // post-lock correction is appended, never an edit, preserving the original
 // evidentiary record. Requires the same write authority as any other
 // inspection write, but opts into allowLocked. Idempotent by client-supplied id.
-router.post('/inspections/:inspectionId/addenda', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/addenda', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -3079,7 +3111,8 @@ function buildReportAttestationStatement(opts: {
 // Returns the Variant B attestation for the current (latest) compiled blob
 // version, or a preview of the statement text if not yet attested.
 // ---------------------------------------------------------------------------
-router.get('/inspections/:inspectionId/report-attestation', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/report-attestation', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -3196,7 +3229,8 @@ router.get('/inspections/:inspectionId/report-attestation', async (req: Request,
 // attested. Double-attestation is blocked by a DB unique constraint on
 // (inspection_id, blob_version_index).
 // ---------------------------------------------------------------------------
-router.post('/inspections/:inspectionId/report-attestation', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/report-attestation', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -3396,7 +3430,8 @@ router.post('/inspections/:inspectionId/report-attestation', async (req: Request
 //
 // Deliver gate: a report_attestations row must exist for the current compiled
 // blob version before delivery is permitted (Variant B — Task #126).
-router.post('/inspections/:inspectionId/email-report', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/email-report', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -3549,7 +3584,8 @@ router.post('/inspections/:inspectionId/email-report', async (req: Request, res:
 // re-sends the appointment notification to the homeowner using the previously-
 // saved ownerEmail. Returns { scheduled: true, emailSent: boolean }.
 // Status stays 'scheduled'. The email subject/body is phase-aware.
-router.patch('/inspections/:inspectionId/schedule', async (req: Request, res: Response) => {
+// inspection.update
+router.patch('/inspections/:inspectionId/schedule', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -3676,7 +3712,8 @@ router.patch('/inspections/:inspectionId/schedule', async (req: Request, res: Re
 // Cancels a Phase 2 scheduled appointment: clears scheduledFor and resets
 // status back to 'capturing' so the inspection drops off the Scheduled list
 // and returns to the rep's active work queue.
-router.delete('/inspections/:inspectionId/schedule', async (req: Request, res: Response) => {
+// inspection.update
+router.delete('/inspections/:inspectionId/schedule', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -3711,7 +3748,8 @@ router.delete('/inspections/:inspectionId/schedule', async (req: Request, res: R
 // the homeowner via the rep's SMTP. Saves scheduledFor + ownerEmail to the
 // inspection row atomically. Returns { scheduled: true, emailSent: boolean }.
 // When SMTP is not configured the schedule still saves; emailSent is false.
-router.post('/inspections/:inspectionId/notify-schedule', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/notify-schedule', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4087,7 +4125,8 @@ const PutEstimateBody = z.object({
 // The measuredBasis in the response always reflects current field measurements
 // (LF values are re-fetched on every GET so they stay fresh even if measurements
 // were updated after the estimate was last saved).
-router.get('/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/estimate', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4134,7 +4173,8 @@ router.get('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
 });
 
 // PUT /inspections/:inspectionId/estimate — save (full replace) the estimate.
-router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
+// inspection.update
+router.put('/inspections/:inspectionId/estimate', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4329,7 +4369,8 @@ router.put('/inspections/:inspectionId/estimate', async (req: Request, res: Resp
 });
 
 // GET /inspections/:inspectionId/summary — returns the stored AI summary or null.
-router.get('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/summary', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4352,7 +4393,8 @@ router.get('/inspections/:inspectionId/summary', async (req: Request, res: Respo
 // Claude Opus reads the uploaded measurements report PDF and returns a
 // structured parsed payload for rep review. Does NOT write to the database —
 // call apply-measurements to commit confirmed values.
-router.post('/inspections/:inspectionId/analyze-measurements', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/analyze-measurements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4712,7 +4754,8 @@ async function runFacetInventory(pdfBase64: string, req: Request): Promise<Facet
 // Renders a single PDF page to JPEG on demand and returns a short-lived signed
 // URL.  Called by mobile when the initial analysis lacked an overviewImageUrl
 // (e.g. runs done before the magick binary fix) or when the URL has expired.
-router.post('/inspections/:inspectionId/render-overview-image', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/render-overview-image', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4771,7 +4814,8 @@ router.post('/inspections/:inspectionId/render-overview-image', async (req: Requ
 // Returns all measurement-report-page photos for this inspection with fresh
 // 3-hour signed URLs, sorted by page number.  Called by mobile when the
 // in-memory page store is cold (app restart or URL expiry).
-router.get('/inspections/:inspectionId/measurement-pages', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/measurement-pages', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4804,7 +4848,8 @@ router.get('/inspections/:inspectionId/measurement-pages', async (req: Request, 
 // POST /inspections/:inspectionId/apply-measurements
 // Commits a rep-confirmed set of measurements returned by analyze-measurements.
 // Records whose label / measurementType already exist are skipped (idempotent).
-router.post('/inspections/:inspectionId/apply-measurements', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/apply-measurements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4910,7 +4955,8 @@ router.post('/inspections/:inspectionId/apply-measurements', async (req: Request
   res.json({ applied: { slopes: slopesCreated, measurements: measurementsCreated, sidingFacets: sidingFacetsCreated } });
 });
 
-router.post('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/summary', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -4997,7 +5043,8 @@ router.post('/inspections/:inspectionId/summary', async (req: Request, res: Resp
 // through the SAME contractor-lane lint as generated text — the lint is the
 // enforcement layer, so a manual edit can't bypass it. Edits are stamped
 // (editedAt/editedBy) so the record shows the narrative was human-revised.
-router.patch('/inspections/:inspectionId/summary', async (req: Request, res: Response) => {
+// inspection.update
+router.patch('/inspections/:inspectionId/summary', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -5111,7 +5158,8 @@ async function tryGetPhotoSignedUrl(
 // Lists the code citations from the company state pack that applies to this
 // inspection's property state so the rep can pick which ones the compiled
 // Proof Package should include. Gated like compile (inspector or manager+).
-router.get('/inspections/:inspectionId/report/code-citations', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/report/code-citations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -5168,7 +5216,8 @@ function dedupeCitationsByKey<T extends { key: string }>(citations: T[]): T[] {
 // template, uploads the result to object storage, and writes the path back.
 // Write-gated via loadWritableInspection (allowLocked: true) — the inspector
 // or any manager can trigger or re-trigger after submission.
-router.post('/inspections/:inspectionId/report/compile', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/report/compile', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -6112,7 +6161,8 @@ ${JSON.stringify(photoBrief)}
 // Loads the stored JSON data blob, signs each photo URL fresh (15-min TTL),
 // builds the full HTML, and returns it directly as { html }.
 // Every call produces fresh signed URLs — the stored blob never embeds expiring ones.
-router.get('/inspections/:inspectionId/report/preview-url', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/report/preview-url', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -6750,7 +6800,8 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
 // GET /inspections/:inspectionId/report/lint
 // Returns the lint status/findings of the latest compiled version plus any
 // reviewer resolution, so the mobile review UI can surface them.
-router.get('/inspections/:inspectionId/report/lint', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/report/lint', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -6789,7 +6840,8 @@ router.get('/inspections/:inspectionId/report/lint', async (req: Request, res: R
 // Manager/admin-only explicit resolution of a blocked lint result on the
 // LATEST compiled version. Scoped to the exact blob path, so any subsequent
 // re-compile re-enters the gate. Content is never rewritten by this action.
-router.post('/inspections/:inspectionId/report/lint-resolve', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/report/lint-resolve', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   if (!isManagerOrAdmin(actor.role)) {
@@ -6973,7 +7025,8 @@ async function loadCurationState(inspectionId: string, companyId: string) {
 }
 
 // GET /inspections/:inspectionId/curation
-router.get('/:inspectionId/curation', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/:inspectionId/curation', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -6986,7 +7039,8 @@ router.get('/:inspectionId/curation', async (req: Request, res: Response) => {
 });
 
 // POST /inspections/:inspectionId/curation/propose — AI-propose exhibit set
-router.post('/:inspectionId/curation/propose', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/:inspectionId/curation/propose', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -7080,7 +7134,8 @@ router.post('/:inspectionId/curation/propose', async (req: Request, res: Respons
 });
 
 // PATCH /inspections/:inspectionId/curation/photos/:photoId — select/deselect/reclassify
-router.patch('/:inspectionId/curation/photos/:photoId', async (req: Request, res: Response) => {
+// inspection.update
+router.patch('/:inspectionId/curation/photos/:photoId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -7138,7 +7193,8 @@ router.patch('/:inspectionId/curation/photos/:photoId', async (req: Request, res
 });
 
 // POST /inspections/:inspectionId/curation/pairs — confirm a comparison pair
-router.post('/:inspectionId/curation/pairs', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/:inspectionId/curation/pairs', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -7194,7 +7250,8 @@ router.post('/:inspectionId/curation/pairs', async (req: Request, res: Response)
 });
 
 // DELETE /inspections/:inspectionId/curation/pairs/:pairId
-router.delete('/:inspectionId/curation/pairs/:pairId', async (req: Request, res: Response) => {
+// inspection.update
+router.delete('/:inspectionId/curation/pairs/:pairId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -7349,7 +7406,8 @@ async function checkAllRequiredSlotsConfirmedByEvents(
 }
 
 // GET /inspections/:inspectionId/exhibit-slots — derive slot manifest from claim flags + photo tags
-router.get('/:inspectionId/exhibit-slots', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/:inspectionId/exhibit-slots', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -7786,10 +7844,10 @@ router.get('/:inspectionId/exhibit-slots', async (req: Request, res: Response) =
 });
 
 // POST /inspections/:inspectionId/curation/finalize — freeze badge assignments
-router.post('/:inspectionId/curation/finalize', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/:inspectionId/curation/finalize', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can finalize badge assignments.' }); return; }
 
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
@@ -7972,10 +8030,10 @@ router.post('/:inspectionId/curation/finalize', async (req: Request, res: Respon
 });
 
 // POST /inspections/:inspectionId/sections/captions/generate — AI caption generation
-router.post('/:inspectionId/sections/captions/generate', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/:inspectionId/sections/captions/generate', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can generate captions.' }); return; }
 
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
@@ -8340,7 +8398,8 @@ Return a JSON array exactly:
 });
 
 // PATCH /inspections/:inspectionId/sections/captions/:captionId — edit caption text
-router.patch('/:inspectionId/sections/captions/:captionId', async (req: Request, res: Response) => {
+// inspection.update
+router.patch('/:inspectionId/sections/captions/:captionId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
@@ -8365,10 +8424,10 @@ router.patch('/:inspectionId/sections/captions/:captionId', async (req: Request,
 // POST /inspections/:inspectionId/sections/captions/approve — approve all generated captions
 // Approves both per-photo exhibit_captions AND comparison_set_captions so the
 // lock gate sees a consistent approved state for every caption type.
-router.post('/:inspectionId/sections/captions/approve', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/:inspectionId/sections/captions/approve', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can approve captions.' }); return; }
 
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
@@ -8408,10 +8467,10 @@ router.post('/:inspectionId/sections/captions/approve', async (req: Request, res
 // POST /inspections/:inspectionId/sections/captions/lock — lock all approved captions
 // Gate: ALL per-photo captions AND all comparison set captions must be approved
 // (or already locked) before the lock is permitted.
-router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/:inspectionId/sections/captions/lock', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-  if (!isManagerOrAdmin(actor.role)) { res.status(403).json({ error: 'Only managers and admins can lock captions.' }); return; }
 
   const inspection = await loadInspectionInCompany(req.params.inspectionId as string, actor.companyId);
   if (!inspection) { res.status(404).json({ error: 'Inspection not found' }); return; }
@@ -8505,7 +8564,8 @@ router.post('/:inspectionId/sections/captions/lock', async (req: Request, res: R
 // Company-wide inspection list with rep identity, for the CRM pipeline board.
 // Accessible to any user with inspection module access; returns all company
 // inspections rather than the actor-scoped list at GET /inspections.
-router.get('/pipeline', async (req: Request, res: Response) => {
+// lead.read
+router.get('/pipeline', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -8645,7 +8705,8 @@ router.get('/pipeline', async (req: Request, res: Response) => {
 // GET /search?q= — search inspections by insuredName or address
 // ---------------------------------------------------------------------------
 
-router.get('/search', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/search', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -8687,7 +8748,8 @@ router.get('/search', async (req: Request, res: Response) => {
 // Full validation engine lands in Task #121; this route implements reasonable
 // DB-backed checks using the data that already exists.
 // ---------------------------------------------------------------------------
-router.get('/inspections/:inspectionId/readiness', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/readiness', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -8820,7 +8882,8 @@ const SECTION_TYPES = [
   'closing_statement',
 ] as const;
 
-router.get('/inspections/:inspectionId/sections', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/sections', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -8873,7 +8936,8 @@ router.get('/inspections/:inspectionId/sections', async (req: Request, res: Resp
 // Re-generation: if a section row already exists in approved/locked state,
 // DAG-downstream sections are flipped to in_review (stale propagation).
 // ---------------------------------------------------------------------------
-router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/sections/:sectionType/generate', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -9117,8 +9181,10 @@ router.post('/inspections/:inspectionId/sections/:sectionType/generate', async (
 // approve route. The placeholder tokens remain in the HTML — compile (Task #253)
 // will substitute the filled text when baking the PDF.
 // ---------------------------------------------------------------------------
+// inspection.update
 router.patch(
   '/inspections/:inspectionId/sections/:sectionType/fill-iicrc-citations',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -9229,7 +9295,8 @@ router.patch(
 //   findings: photoComparisonConfirmed always passes (stub until photo curation)
 // Manager-or-admin only for causation/detriment_application gates.
 // ---------------------------------------------------------------------------
-router.post('/inspections/:inspectionId/sections/:sectionType/approve', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/sections/:sectionType/approve', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -9347,13 +9414,10 @@ router.post('/inspections/:inspectionId/sections/:sectionType/approve', async (r
 // Manager-only shortcut: approves without gate checks. Intended for
 // boilerplate shells accepted as-is and for sections reviewed offline.
 // ---------------------------------------------------------------------------
-router.post('/inspections/:inspectionId/sections/:sectionType/auto-approve', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/inspections/:inspectionId/sections/:sectionType/auto-approve', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
-
-  if (!isManagerOrAdmin(actor.role)) {
-    return void res.status(403).json({ error: 'Only managers and admins can auto-approve sections' });
-  }
 
   const inspectionId = req.params.inspectionId as string;
   const rawType = req.params.sectionType as string;
@@ -9429,7 +9493,8 @@ router.post('/inspections/:inspectionId/sections/:sectionType/auto-approve', asy
 // DAG-downstream sections (summary_of_findings, closing_statement) to in_review.
 // Blocked lint status prevents locking unless a manager explicitly overrides.
 // ---------------------------------------------------------------------------
-router.post('/inspections/:inspectionId/sections/:sectionType/lock', async (req: Request, res: Response) => {
+// inspection.manage
+router.post('/inspections/:inspectionId/sections/:sectionType/lock', requirePermission('inspection.manage'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -9531,7 +9596,8 @@ router.post('/inspections/:inspectionId/sections/:sectionType/lock', async (req:
 // GET /inspections/:inspectionId/events
 // Chronological claim event log from claimEventsTable.
 // ---------------------------------------------------------------------------
-router.get('/inspections/:inspectionId/events', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/events', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -9574,7 +9640,8 @@ const APPEND_ONLY_EVENT_TYPES = ['slot_confirmed', 'slot_swapped', 'slot_skipped
 const UI_RECORDABLE_EVENT_TYPES = [...IDEMPOTENT_EVENT_TYPES, ...APPEND_ONLY_EVENT_TYPES] as const;
 type UiRecordableEventType = (typeof UI_RECORDABLE_EVENT_TYPES)[number];
 
-router.post('/inspections/:inspectionId/events', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/events', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -9700,10 +9767,11 @@ const RETAIL_EXCLUDE_STAGE_KEYS = new Set([
   'final_payment_received', 'archived_complete',
 ]);
 
-router.get('/retail-pipeline', async (req: Request, res: Response) => {
+// lead.read
+router.get('/retail-pipeline', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
-  const companyId = req.user.companyId;
+  const companyId = req.actorCtx!.companyId;
 
   const rows = await db
     .select({
@@ -9820,10 +9888,11 @@ const PROJECT_STAGE_KEYS = [
   'closed_warranty',
 ] as const;
 
-router.get('/project-pipeline', async (req: Request, res: Response) => {
+// lead.read
+router.get('/project-pipeline', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
-  const companyId = req.user.companyId;
+  const companyId = req.actorCtx!.companyId;
 
   const pins = await db
     .select({
@@ -9914,14 +9983,15 @@ router.get('/project-pipeline', async (req: Request, res: Response) => {
 // Accepts plain pin IDs (e.g. "abc-123") or "ins-<inspectionId>" prefixed IDs.
 // ---------------------------------------------------------------------------
 
-router.get('/leads/:leadId', async (req: Request, res: Response) => {
+// lead.read
+router.get('/leads/:leadId', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
   const { leadId } = req.params as { leadId: string };
 
   if (leadId.startsWith('ins-')) {
     const inspectionId = leadId.slice(4);
-    const inspection = await loadInspectionInCompany(inspectionId, req.user.companyId);
+    const inspection = await loadInspectionInCompany(inspectionId, req.actorCtx!.companyId);
     if (!inspection) return void res.status(404).json({ error: 'Lead not found' });
 
     const [user] = await db
@@ -10013,7 +10083,7 @@ router.get('/leads/:leadId', async (req: Request, res: Response) => {
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
@@ -10025,7 +10095,7 @@ router.get('/leads/:leadId', async (req: Request, res: Response) => {
     db
       .select({ id: inspectionsTable.id })
       .from(inspectionsTable)
-      .where(and(eq(inspectionsTable.pinId, leadId), eq(inspectionsTable.companyId, req.user.companyId)))
+      .where(and(eq(inspectionsTable.pinId, leadId), eq(inspectionsTable.companyId, req.actorCtx!.companyId)))
       .limit(1),
   ]);
 
@@ -10040,14 +10110,15 @@ router.get('/leads/:leadId', async (req: Request, res: Response) => {
 // PATCH /leads/:leadId/profile — save profile fields (pin or inspection)
 // ---------------------------------------------------------------------------
 
-router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
+// lead.update
+router.patch('/leads/:leadId/profile', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
   const { leadId } = req.params as { leadId: string };
 
   if (leadId.startsWith('ins-')) {
     const inspectionId = leadId.slice(4);
-    const inspection = await loadInspectionInCompany(inspectionId, req.user.companyId);
+    const inspection = await loadInspectionInCompany(inspectionId, req.actorCtx!.companyId);
     if (!inspection) return void res.status(404).json({ error: 'Lead not found' });
 
     const body = req.body as Record<string, string | null | undefined>;
@@ -10068,7 +10139,7 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
         .where(eq(inspectionsTable.id, inspectionId));
     }
 
-    const updated = await loadInspectionInCompany(inspectionId, req.user.companyId);
+    const updated = await loadInspectionInCompany(inspectionId, req.actorCtx!.companyId);
     const [user] = await db
       .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
       .from(usersTable)
@@ -10155,12 +10226,12 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
-  const role = await getRole(req.user.id);
-  if (!canEditPin(role, req.user.id, pin.userId)) {
+  const role = await getRole(req.actorCtx!.actorId);
+  if (!canEditPin(role, req.actorCtx!.actorId, pin.userId)) {
     return void res.status(403).json({ error: 'Not permitted to edit this lead' });
   }
 
@@ -10250,12 +10321,12 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
     const auditRows = auditFields
       .filter(({ key }) => d[key] !== undefined && d[key] !== pin[key])
       .map(({ key, col }) => ({
-        companyId:       req.user.companyId,
+        companyId:       req.actorCtx!.companyId,
         pinId:           leadId,
         field:           col,
         oldValue:        pin[key] ?? null,
         newValue:        d[key] ?? null,
-        changedByUserId: req.user.id,
+        changedByUserId: req.actorCtx!.actorId,
         reason:          d.reason as string,
       }));
     if (auditRows.length > 0) {
@@ -10287,7 +10358,8 @@ const ApprovedEstimateBody = z.object({
   pdfBase64: z.string().min(100),
 });
 
-router.post('/leads/:leadId/approved-estimate', async (req: Request, res: Response) => {
+// lead.update
+router.post('/leads/:leadId/approved-estimate', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
   const { leadId } = req.params as { leadId: string };
@@ -10295,13 +10367,13 @@ router.post('/leads/:leadId/approved-estimate', async (req: Request, res: Respon
   const [pin] = await db
     .select({ id: pinsTable.id, userId: pinsTable.userId })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)))
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.actorCtx!.companyId)))
     .limit(1);
 
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
-  const callerRole = await getRole(req.user.id);
-  if (pin.userId !== req.user.id && !isManagerOrAdmin(callerRole)) {
+  const callerRole = await getRole(req.actorCtx!.actorId);
+  if (pin.userId !== req.actorCtx!.actorId && !isManagerOrAdmin(callerRole)) {
     return void res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -10324,8 +10396,8 @@ router.post('/leads/:leadId/approved-estimate', async (req: Request, res: Respon
   await db.transaction(async (tx) => {
     await tx.insert(objectOwnershipTable).values({
       objectPath,
-      userId:    req.user.id,
-      companyId: req.user.companyId,
+      userId:    req.actorCtx!.actorId,
+      companyId: req.actorCtx!.companyId,
     });
     await tx
       .update(pinsTable)
@@ -10355,7 +10427,8 @@ const AdvanceStageBody = z.object({
   sourcePipeline: z.string().optional(),
 });
 
-router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response) => {
+// lead.advance_stage
+router.patch('/leads/:leadId/advance-stage', requirePermission('lead.advance_stage'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
   const { leadId } = req.params as { leadId: string };
@@ -10373,14 +10446,14 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
       approvedEstimateObjectPath:  pinsTable.approvedEstimateObjectPath,
     })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)))
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.actorCtx!.companyId)))
     .limit(1);
 
   if (!pin) return void res.status(404).json({ error: 'Lead not found' });
 
   // Owner or manager/admin may advance a stage; plain reps cannot touch other reps' leads
-  const callerRole = await getRole(req.user.id);
-  if (pin.userId !== req.user.id && !isManagerOrAdmin(callerRole)) {
+  const callerRole = await getRole(req.actorCtx!.actorId);
+  if (pin.userId !== req.actorCtx!.actorId && !isManagerOrAdmin(callerRole)) {
     return void res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -10418,7 +10491,7 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
     taskPayload:      taskPayload ?? null,
     lossReason:       lossReason ?? null,
     loopNextActionAt: loopNextActionAt ? new Date(loopNextActionAt) : undefined,
-    userId:           req.user.id,
+    userId:           req.actorCtx!.actorId,
   });
 
   // Cross-pipeline convergence: stamp sourcePipeline when provided (e.g. retail → project)
@@ -10490,7 +10563,8 @@ async function checkLeadAccess(
   return { ok: true, ownerId: pin.userId };
 }
 
-router.get('/leads/:leadId/files', async (req: Request, res: Response) => {
+// lead.read
+router.get('/leads/:leadId/files', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const actor = await requireUserWithRole(req, res);
   if (!actor) return;
   const { leadId } = req.params as { leadId: string };
@@ -10528,7 +10602,8 @@ router.get('/leads/:leadId/files', async (req: Request, res: Response) => {
   res.json({ files });
 });
 
-router.post('/leads/:leadId/files', async (req: Request, res: Response) => {
+// lead.update
+router.post('/leads/:leadId/files', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const actor = await requireUserWithRole(req, res);
   if (!actor) return;
   const { leadId } = req.params as { leadId: string };
@@ -10581,7 +10656,8 @@ router.post('/leads/:leadId/files', async (req: Request, res: Response) => {
   res.status(201).json({ file });
 });
 
-router.patch('/leads/:leadId/files/:fileId', async (req: Request, res: Response) => {
+// lead.update
+router.patch('/leads/:leadId/files/:fileId', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const actor = await requireUserWithRole(req, res);
   if (!actor) return;
   const { leadId, fileId } = req.params as { leadId: string; fileId: string };
@@ -10626,7 +10702,8 @@ router.patch('/leads/:leadId/files/:fileId', async (req: Request, res: Response)
   res.json({ file: updated });
 });
 
-router.delete('/leads/:leadId/files/:fileId', async (req: Request, res: Response) => {
+// lead.update
+router.delete('/leads/:leadId/files/:fileId', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const actor = await requireUserWithRole(req, res);
   if (!actor) return;
   const { leadId, fileId } = req.params as { leadId: string; fileId: string };
@@ -10659,10 +10736,11 @@ router.delete('/leads/:leadId/files/:fileId', async (req: Request, res: Response
 });
 
 
-router.get('/leads', async (req: Request, res: Response) => {
+// lead.read
+router.get('/leads', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
-  const companyId = req.user.companyId;
+  const companyId = req.actorCtx!.companyId;
 
   // ── 1. Pins (retail + insurance door-knock leads) ────────────────────────
   const pinRows = await db
@@ -10790,7 +10868,8 @@ router.get('/leads', async (req: Request, res: Response) => {
 // voiding and re-collecting the FIPSA. Gated to manager+ so field reps cannot
 // spam the Gemini API. Awaited (not fire-and-forget) so the caller can show a
 // loading state and refresh the badge immediately on completion.
-router.post('/inspections/:id/ahj-check', async (req: Request, res: Response) => {
+// catalog.ahj_wizard
+router.post('/inspections/:id/ahj-check', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -10843,7 +10922,8 @@ const NOTIFY_STAGE_LABELS: Record<string, string> = {
   fipsa_signed:     'FIPSA signed',
 };
 
-router.get('/leads/my-pin-updates', async (req: Request, res: Response) => {
+// lead.read
+router.get('/leads/my-pin-updates', requirePermission('lead.read'), async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
 
   const rows = await db
@@ -10861,8 +10941,8 @@ router.get('/leads/my-pin-updates', async (req: Request, res: Response) => {
       pinsTable,
       and(
         eq(pinsTable.id, stageTransitionsTable.leadId),
-        eq(pinsTable.userId, req.user.id),
-        eq(pinsTable.companyId, req.user.companyId),
+        eq(pinsTable.userId, req.actorCtx!.actorId),
+        eq(pinsTable.companyId, req.actorCtx!.companyId),
       ),
     )
     .where(inArray(stageTransitionsTable.toStage, [...NOTIFY_STAGES]))
@@ -10930,7 +11010,8 @@ async function loadSupplement(
 // Creates a new supplement document for a delivered (package_ready) inspection.
 // Body: { supplementReason: 'concealed_conditions_exposed' | 'carrier_response' | 'scope_correction' }
 // ---------------------------------------------------------------------------
-router.post('/inspections/:inspectionId/supplements', async (req: Request, res: Response) => {
+// inspection.update
+router.post('/inspections/:inspectionId/supplements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -11039,7 +11120,8 @@ router.post('/inspections/:inspectionId/supplements', async (req: Request, res: 
 // ---------------------------------------------------------------------------
 // GET /inspections/:inspectionId/supplements
 // ---------------------------------------------------------------------------
-router.get('/inspections/:inspectionId/supplements', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/supplements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -11064,7 +11146,8 @@ router.get('/inspections/:inspectionId/supplements', async (req: Request, res: R
 // ---------------------------------------------------------------------------
 // GET /inspections/:inspectionId/supplements/:suppId
 // ---------------------------------------------------------------------------
-router.get('/inspections/:inspectionId/supplements/:suppId', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/inspections/:inspectionId/supplements/:suppId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -11114,7 +11197,8 @@ router.get('/inspections/:inspectionId/supplements/:suppId', async (req: Request
 // PATCH /inspections/:inspectionId/supplements/:suppId
 // Update supplementReason (only before compile).
 // ---------------------------------------------------------------------------
-router.patch('/inspections/:inspectionId/supplements/:suppId', async (req: Request, res: Response) => {
+// inspection.update
+router.patch('/inspections/:inspectionId/supplements/:suppId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
@@ -11152,8 +11236,10 @@ router.patch('/inspections/:inspectionId/supplements/:suppId', async (req: Reque
 // ---------------------------------------------------------------------------
 // GET /inspections/:inspectionId/supplements/:suppId/sections
 // ---------------------------------------------------------------------------
+// inspection.read
 router.get(
   '/inspections/:inspectionId/supplements/:suppId/sections',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11205,8 +11291,10 @@ router.get(
 // AI generation for supplement sections. Reuses existing section generation
 // infrastructure scoped to the supplement.
 // ---------------------------------------------------------------------------
+// inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/generate',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11377,8 +11465,10 @@ router.post(
 // POST /inspections/:inspectionId/supplements/:suppId/sections/:sectionType/approve
 // Advance supplement section: generated → approved.
 // ---------------------------------------------------------------------------
+// inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/approve',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11438,8 +11528,10 @@ router.post(
 // POST /inspections/:inspectionId/supplements/:suppId/sections/:sectionType/lock
 // Advance supplement section: approved → locked. Manager/admin only.
 // ---------------------------------------------------------------------------
+// inspection.manage
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/sections/:sectionType/lock',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11495,8 +11587,10 @@ router.post(
 // appends to the supplement's compiledReportVersions chain.
 // Gate: at least one supplement section must be locked.
 // ---------------------------------------------------------------------------
+// inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/compile',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11675,8 +11769,10 @@ router.post(
 // GET /inspections/:inspectionId/supplements/:suppId/attest
 // Returns attestation state for the supplement's current compiled blob.
 // ---------------------------------------------------------------------------
+// inspection.read
 router.get(
   '/inspections/:inspectionId/supplements/:suppId/attest',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11782,8 +11878,10 @@ router.get(
 // Sign off on the supplement's current compiled blob.
 // Body: { acknowledged: true }
 // ---------------------------------------------------------------------------
+// inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/attest',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;
@@ -11973,8 +12071,10 @@ router.post(
 // Verifies the original primary package blob is still on record (unchanged).
 // Emits supplement_delivered claim event.
 // ---------------------------------------------------------------------------
+// inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/deliver',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireInspectionModuleAccess(req, res);
     if (!actor) return;

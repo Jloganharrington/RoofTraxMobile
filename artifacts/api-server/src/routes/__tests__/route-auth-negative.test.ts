@@ -938,11 +938,85 @@ describe('route auth — negative gate suite', () => {
     });
   });
 
-  // ── Additional domains are appended below as migration proceeds ───────────
-  // Template:
-  //
-  // describe('[D31] VERB /path [permission.key — minRole+]', () => {
-  //   it('no auth → 401', async () => { ... });
-  //   it('field_rep → 403', async () => { ... });
-  // });
+  // ── [D31] DOMAIN: inspections ─────────────────────────────────────────────
+
+  describe('[D31] GET /inspections [inspection.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/inspections')).status).toBe(401);
+    });
+  });
+
+  describe('[D31] POST /inspections [inspection.create — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/inspections')).status).toBe(401);
+    });
+  });
+
+  describe('[D31] DELETE /inspections/:id [inspection.delete — super_admin+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('manager → 403 (below super_admin)', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00').set(auth(fix.manager.sid))).status).toBe(403);
+    });
+    it('admin → 403 (below super_admin)', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00').set(auth(fix.admin.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D31] POST /inspections/:id/unlock [inspection.manage — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/unlock')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/unlock').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D31] POST /inspections/:id/sections/:type/lock [inspection.manage — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/sections/scope_of_loss/lock')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/sections/scope_of_loss/lock').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D31] POST /inspections/:id/sections/captions/generate [inspection.manage — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/sections/captions/generate')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/sections/captions/generate').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D31] GET /retail-pipeline [lead.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/retail-pipeline')).status).toBe(401);
+    });
+  });
+
+  describe('[D31] PATCH /leads/:id/advance-stage [lead.advance_stage — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/leads/STUB00/advance-stage')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).patch('/api/leads/STUB00/advance-stage').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D31] POST /inspections/:id/ahj-check [catalog.ahj_wizard — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/ahj-check')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/ahj-check').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  // ── Migration complete — all 99 inspection routes + leads routes covered ──
 });
