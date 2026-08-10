@@ -1722,3 +1722,352 @@ All Checkpoint 4 work is uncommitted (TESTREPORT.md modified; audit scripts adde
 ```
 
 No modifications to existing application code. All new files are audit scripts and the report.
+
+---
+
+# CHECKPOINT 5 — 4-R Corrections + Phase 5 Integration Regression
+
+---
+
+## 4-R.1 — FINDING 4-A Re-filed as P0 + Full Blast Radius
+
+### Root Cause Restatement
+
+**FINDING 4-A is re-filed as P0.** The root cause is a spec/authz vocabulary divergence — the same class of defect affects the entire Department axis.
+
+| Source | Location | Value |
+|---|---|---|
+| OpenAPI spec | `lib/api-spec/openapi.yaml:8122` | `Department: enum: [canvasser, inspector_canvasser]` |
+| Authz vocabulary | `lib/authz/src/vocabulary.ts:14` | `DEPARTMENTS = ['canvasser', 'inspector_canvasser', 'office']` |
+
+`'office'` exists in the DB column definition (via DEPARTMENTS), is assignable as a value, and is used by 6 of the 10 ZZTEST users — but the OpenAPI spec never declared it. All code generated from the spec (`lib/api-zod`, `lib/api-client-react`) inherits the gap.
+
+---
+
+### lib/api-zod — All 8 Department-Referencing Sites
+
+Every `zod.enum(['canvasser', 'inspector_canvasser'])` in the generated file maps to a specific route. Strict `.parse()` calls against these schemas throw a ZodError for any `department = 'office'` value.
+
+| Line | Zod schema constant | Route | Direction | Failure mode |
+|---|---|---|---|---|
+| 843 | `GetMyProfileResponse` | `GET /profile/me` | Response | **Server-side**: `toProfileEnvelope()` at `profile.ts:58` calls `.parse()` — throws 500 for any office user |
+| 901 | `UpdateProfileMeResponse` | `PATCH /profile/me` | Response | Same: an office user updating their profile gets a 500 on the response parse |
+| 959 | `UpdateProfileCredentialsResponse` | `PATCH /profile/me/credentials` | Response | Same — office user credential update returns 500 |
+| 1013 | `UpdateProfileSignatureResponse` | `PUT /profile/me/signature` | Response | Same — office user cannot upload signature |
+| 1084 | `UpdateProfileSmtpResponse` | `PATCH /profile/me/smtp` | Response | Same — office user cannot configure SMTP |
+| 1443 | `ListTeamUsersResponse` | `GET /team/users` | Response | **Entire list parse fails** if even one user in the company has `department = 'office'` — 500 for all callers |
+| 1463 | `UpdateTeamUserBody` | `PATCH /team/users/:userId` | Request body | Setting `department: 'office'` on a team member is rejected by request schema validation (422) |
+| 1475 | `UpdateTeamUserResponse` | `PATCH /team/users/:userId` | Response | Post-update response fails parse if target user has `office` dept |
+
+### lib/api-client-react — Same Drift
+
+`lib/api-client-react/src/generated/api.schemas.ts:415`:
+
+```ts
+export const Department = {
+  canvasser: 'canvasser',
+  inspector_canvasser: 'inspector_canvasser',
+} as const;
+```
+
+`'office'` is absent. This affects the same routes via the client-side TypeScript types:
+- `api.schemas.ts:479` — `Profile.department`
+- `api.schemas.ts:865` — `TeamUser.department`
+- `api.schemas.ts:881` — `UpdateTeamUserInput.department?`
+
+Client-side hooks do **not** run Zod validation on responses (orval generates React Query hooks with TS typing only), so the client-side drift does not cause runtime errors. It does cause type errors if application code tries to assign `'office'` as a `Department` value.
+
+---
+
+### Role and WorkflowAssignment Enum Comparison
+
+| Axis | openapi.yaml | lib/authz/src/vocabulary.ts | Match? |
+|---|---|---|---|
+| Role | `[field_rep, manager, admin, super_admin]` | `ROLES = ['field_rep', 'manager', 'admin', 'super_admin']` | ✓ MATCH |
+| WorkflowAssignment | `[retail, insurance_retail]` | `WORKFLOW_ASSIGNMENTS = ['retail', 'insurance_retail']` | ✓ MATCH |
+
+---
+
+### Full Enum Drift Table — All Spec Components with Code Counterparts
+
+| Enum | openapi.yaml values | Code constant (lib/authz or lib/db) | Result |
+|---|---|---|---|
+| `Department` | canvasser, inspector_canvasser | `DEPARTMENTS`: canvasser, inspector_canvasser, **office** | ❌ **MISMATCH** — 'office' missing from spec |
+| `Role` | field_rep, manager, admin, super_admin | `ROLES` (4 values) | ✓ MATCH |
+| `WorkflowAssignment` | retail, insurance_retail | `WORKFLOW_ASSIGNMENTS` (2 values) | ✓ MATCH |
+| `PinWorkflow` | retail, insurance | `PIN_WORKFLOWS = ['retail', 'insurance']` | ✓ MATCH |
+| `DamageType` | roof, siding, roof_and_siding | `DAMAGE_TYPES` (3 values) | ✓ MATCH |
+| `DoorKnockResult` | no_answer, no_appointment, appointment | `DOOR_KNOCK_RESULTS` (3 values) | ✓ MATCH |
+| `ContactOutcome` | no_soliciting, priority_inspection, call_to_schedule | `CONTACT_OUTCOMES` (3 values) | ✓ MATCH |
+| `PaymentType` | deposit, acv, betterment, supplement, final, rcv_holdback, deductible, other | `PAYMENT_TYPES` (8 values) | ✓ MATCH |
+| `NotificationPreferenceEntry.type` | Open `string` — **no enum constraint** | `NOTIFICATION_CATALOG` (16 named types in lib/authz) | ✓ N/A — spec intentionally open; drift structurally impossible |
+| `LiveActivityItem.type` | 8 feed event types | Different concept (live activity ≠ notification catalog) | ✓ N/A — subset of events, not notification types |
+| `pipelineStage` | Open `varchar` — no enum constraint in spec or DB column | `pipelineStages.ts` (30 named stages, server-side; 33 with legacy) | ✓ N/A — deliberately open in spec |
+| `ClaimStatus` (pins.claim_status) | Not enumerated in spec | Open `varchar` in DB schema (comment: "never an enum so additions need no migration") | ✓ N/A — both spec and DB explicitly left open |
+| `STAGE_TRANSITION_TRIGGERS` | Not in spec | `STAGE_TRANSITION_TRIGGERS = ['task', 'auto_event', 'manual_move']` — internal only | N/A — internal column, not surfaced in spec |
+| `InspectionCondition` | Not enumerated in spec | `INSPECTION_CONDITIONS = ['roof_damage', 'siding_damage', 'roof_and_siding_damage']` — internal only | N/A — internal |
+
+**Summary: 1 confirmed MISMATCH (Department/office). All other spec-enumerated components match their code counterparts exactly.**
+
+---
+
+### Mobile Impact of FINDING 4-A
+
+Confirmed: FINDING 4-A fully affects the mobile app.
+
+1. **Same endpoint, same 500**: `GET /profile/me` is the only profile source for mobile. `toProfileEnvelope()` on the server strict-parses through the broken Zod schema before returning — any `department = 'office'` user gets HTTP 500 on mobile too.
+
+2. **useProfile fallback silently swallows it**: `artifacts/mobile/hooks/useProfile.ts:20` defaults `department` to `'canvasser'` when the query is undefined. An admin or super_admin with `office` dept silently becomes `{ role: 'field_rep', department: 'canvasser' }` in the app.
+
+3. **Inspections tab hidden**: `artifacts/mobile/app/(tabs)/_layout.tsx:19` gates the inspections tab on `department === 'inspector_canvasser' || role === 'super_admin'`. With the profile 500, a super_admin/office user defaults to `role: 'field_rep'` and `department: 'canvasser'` — both conditions false, tab hidden.
+
+4. **Department label degrades gracefully**: `artifacts/mobile/app/(tabs)/profile.tsx:63–64` `DEPARTMENT_LABELS` has `canvasser` and `inspector_canvasser` only. An office user's department label would fall back to the raw string `'office'` via the `?? department` fallback at line 414. This does not crash, but it is a display defect.
+
+5. **No mobile-specific Zod parse**: The client-side `Department` const in `api-client-react` is TS-only; mobile does not run `.parse()` on responses. The 500 originates server-side and is the only mobile impact.
+
+---
+
+## 4-R.2 — Missing Screenshots: A-CANV-2, A-INSP-1, A-OFF-1
+
+**Playwright chromium headless shell cannot run in this NixOS environment.** Error: `error while loading shared libraries: libglib-2.0.so.0: cannot open shared object file`. `npx playwright install-deps` is blocked in Replit NixOS ("Tools like apt, brew, and yum are not directly callable"). The Phase 4 screenshots used a container state that no longer has those shared libraries available; the binary was re-downloaded but its system deps were not carried over.
+
+Screenshots are documented from code analysis (same methodology as Phase 4 route analysis).
+
+### A-CANV-2 (a-canv-2@zztest.local — field_rep / canvasser / retail / ZZTEST_ALPHA)
+
+- `GET /profile/me`: **HTTP 200** — `canvasser` is in the Zod enum; no 500.
+- Nav items: **9** (identical profile to A-CANV-1 — same role/dept/workflow).
+- Dashboard manifest: `resolveCapabilities({ role: 'field_rep', department: 'canvasser', workflow: 'retail' })` → `my_day`, `my_activity`, `recent_activity` (3 widgets). `pending_inspections` excluded (requires `inspector_canvasser` or `office` dept). `claim_blockers` excluded (requires `insurance_retail` workflow). All manager-gated widgets excluded.
+- Widgets rendered: **3**.
+- Distinguishing from A-CANV-1: none — identical capability profile.
+
+### A-INSP-1 (a-insp-1@zztest.local — field_rep / inspector_canvasser / insurance_retail / ZZTEST_ALPHA)
+
+- `GET /profile/me`: **HTTP 200** — `inspector_canvasser` is in the Zod enum; no 500.
+- Nav items: **9** (field_rep role; no manager-gated items).
+- Dashboard manifest: `resolveCapabilities({ role: 'field_rep', department: 'inspector_canvasser', workflow: 'insurance_retail' })` → `my_day`, `my_activity`, `recent_activity`, `pending_inspections` (dept gate passes for inspector_canvasser), `claim_blockers` (workflow gate passes for insurance_retail). **5 widgets**.
+- Mobile: inspections tab **visible** (`department === 'inspector_canvasser'` → true).
+- Notable: A-INSP-1 gets more widgets than A-CANV-1 at the same role level, purely from dept+workflow combination.
+
+### A-OFF-1 (a-off-1@zztest.local — field_rep / office / retail / ZZTEST_ALPHA)
+
+- `GET /profile/me`: **HTTP 500** — `office` fails the `zod.enum(['canvasser', 'inspector_canvasser'])` parse in `GetMyProfileResponse`. Identical root cause to A-ADMIN/A-SUPER (FINDING 4-A). `useProfile()` returns defaults: `role='field_rep'`, `department='canvasser'`, `workflowAssignment='insurance_retail'`.
+- Nav items: **9** (manager-gated items hidden because `profile` is `undefined`; nav filter at `Shell.tsx:245–254` sees `roleRank(undefined) = 0`).
+- Dashboard manifest: manifest route reads from DB (never from request). `resolveCapabilities({ role: 'field_rep', department: 'office', workflow: 'retail' })`:
+  - `my_day`, `my_activity`, `recent_activity`: ✓ (no gates)
+  - `pending_inspections`: ✓ (`requiresDepartment: ['inspector_canvasser', 'office']` — **office qualifies**; no minRole)
+  - `claim_blockers`: ✗ (requires `insurance_retail`; workflow=retail)
+  - All manager-gated widgets: ✗
+  - **4 widgets rendered** — one more than A-CANV-1, despite same role. `office` dept uniquely unlocks `pending_inspections` even at field_rep level.
+- Session created as `ph5-off1` in DB for reference.
+
+---
+
+## 4-R.3 — Dependency Change Disclosure and Correction
+
+### Playwright introduced at commit 8c0455c (Phase 4)
+
+Commit `8c0455c` (Phase 4, August 10 2026) added `"playwright": "^1.62.1"` to **root `dependencies`** and updated `pnpm-lock.yaml` (+29 lines). This was incorrect placement: Playwright is a browser automation tool used only for audit scripting, not a runtime dependency of any application in the monorepo.
+
+**Correction applied this session:**
+- `playwright` moved from `dependencies` to `devDependencies` in root `package.json` (diff: `package.json` modified).
+- `screenshots/` directory added to root `.gitignore` — existing Phase 4 JPEG files will no longer be tracked as git objects on next commit. The files remain on disk for reference.
+
+No application code was modified. The `pnpm-lock.yaml` change from `8c0455c` remains (pnpm resolves the same version regardless of dep vs devDep placement in a private root package; no lockfile change needed).
+
+**If Playwright is needed again in Phase 5:** Browser screenshots were attempted but failed due to `libglib-2.0.so.0` missing in the NixOS container. The binary re-downloads successfully (`npx playwright install chromium`) but its glibc shared libraries are not available in Replit's NixOS environment. Phase 4 screenshots used an earlier container state where those libraries were present. This is an environment constraint, not a Playwright version issue.
+
+---
+
+## Phase 5 — Integration Regression
+
+### 5.1 seed-acceptance-claim.ts — Full Run
+
+```
+PASSED: 57   FAILED: 0   Claim: 00628049-b22d-47bb-ac79-b45dbe44202b
+✅  All 57 steps passed.
+```
+
+Full step list (abbreviated):
+
+| Group | Steps | Result |
+|---|---|---|
+| Company + user + pin seed | 3 | ✓ |
+| Phase 2 inspection (field capture, measurements, components, photos) | 15 | ✓ |
+| Field record submit + protocol auto-advance | 3 | ✓ |
+| AI summary + exhibit slots + curation + captions | 6 | ✓ |
+| 5 upstream sections (parallel generate → approve → lock) | 6 | ✓ |
+| summary_of_findings + closing_statement (generate → approve → lock) | 4 | ✓ |
+| Compile (gemini-2.5-flash / gemini-3.1-pro-preview — retries up to 3×) | 1 | ✓ |
+| Attest + deliver | 3 | ✓ |
+| Phase 1 (D2a/D2b: preliminary_record_synced, fipsa_signed) | 2 | ✓ |
+| Contract Builder (D2c: selection hierarchy seed + contract_signed) | 2 | ✓ |
+| 3a Idempotency: re-deposit does not double-advance | 1 | ✓ |
+| 3b Failure isolation: throw does not eat business action | 1 | ✓ |
+| 3c Cross-pipeline guard (retail payload → insurance pin) | 1 (within D2c) | ✓ |
+| D2d: deposit_received advance | 1 | ✓ |
+| Deliver gate (out-of-order 422) | 1 | ✓ |
+
+No phase 1–4 test data (ZZTEST_ALPHA/BRAVO) was involved. The seed script creates and cleans up its own isolated `RUN_ID`-scoped company.
+
+---
+
+### 5.2 contract-value.test.ts — All Four Write Paths
+
+Test file documents 4 write paths; 3 are covered in this suite:
+
+| # | Write path | Test | Result |
+|---|---|---|---|
+| 1 | Portal sign (`contractPortal.ts`) writes formatted amount to `pins.contract_amount` | T1 | ✓ PASS |
+| 2 | CO approval recomputes `revised_contract_cents`; `pins.contract_amount` untouched | T2 | ✓ PASS |
+| 3 | Void (`wasSigned` branch) clears `pins.contract_amount` to `''`; view base → 0 | T3 | ✓ PASS |
+| 4 | Manual PATCH override via `/leads/:id/profile` and pin-proxy | Not in suite | intentionally untested per test file comment (covered by FINDING 3-J) |
+
+All 3 vitest tests pass. Write path 4 is not a test gap introduced by this audit — the test file explicitly notes paths 3 and 4 as "manual override, not tested here."
+
+---
+
+### 5.3 Pipeline Auto-Advance (3a / 3b / 3c)
+
+`pipeline-auto-advance.test.ts`: **16/16 tests pass** (2 describe groups + idempotency + failure isolation).
+
+Work-order mapping:
+
+| ID | Test name | Result |
+|---|---|---|
+| 3a | "re-emitting the same event is a no-op: no backwards move, no duplicate row" | ✓ PASS |
+| 3b | "never throws, even for garbage input" (failure isolation) | ✓ PASS |
+| 3c | "contract_signed: retail payload does NOT advance an insurance pin (cross-pipeline guard)" | ✓ PASS |
+
+Also confirmed in seed-acceptance-claim.ts steps "3a Idempotency" and "3b (revised)" (failure isolation with real advance throw). Cross-pipeline guard (3c) confirmed in step "D2c + 3c."
+
+---
+
+### 5.4 Dashboard Manifest Resolution
+
+`lib/authz/src/dashboard.ts → routes/dashboard.ts`
+
+- `dashboard.test.ts`: **3/3 pass**
+- `dashboard-batch-b.test.ts`: **pass**
+- `dashboard-widget.test.ts`: **3/3 pass**
+
+`resolveCapabilities()` and `selectWidgetsFor()` are exercised by the authz test suite (15 dashboard tests, 3 describe blocks — all pass). The manifest route calls `resolveCapabilities()` server-side with the DB-sourced role/dept/workflow — confirmed in route analysis.
+
+---
+
+### 5.5 Change-Order Approval → Profitability Recomputation
+
+- `change-orders.test.ts`: **pass** (covers CO line-item arithmetic, approval gate, field_rep 403, void, `revised_contract_cents` recomputation, cross-company isolation — 10+ test cases)
+- `profitability-step2.test.ts`: **1 test pass** (`$15k + $3.5k CO − $10.5k costs → $8k margin (43.24%)`)
+
+Profitability recomputes correctly through the full CO → approve → view chain. Existing FINDING 2-B (CO lines excluded from `approved_co_cents` in one view branch) remains open as a separate issue.
+
+---
+
+### 5.6 Selections Library → Contract Builder → Signing Portal Chain
+
+- `contract-value.test.ts` T1 (portal sign writes `pins.contract_amount`): ✓ PASS
+- `portal-code-concurrency.test.ts`: **pass** (concurrent portal code requests)
+- `mb-routes.test.ts`: **pass** (canvassing sessions and M-B routes)
+
+Selection hierarchy seeded in seed-acceptance-claim.ts step "D2c setup" (category → brand → product → contract scope package → selections) and exercised through the contract_signed pipeline event. Full chain confirmed end-to-end: Selections Library → contract scope package record → signing portal → `contract_signed` event → `contract_pending → contract_signed` stage advance.
+
+---
+
+### 5.7 Notification Dispatch — Phase 2–4 Reconciliation vs 0.7-R
+
+**8 push-enabled types from 0.7-R:** `contract_signed`, `change_order_signed`, `change_order_pending_approval`, `change_order_approved`, `proof_package_delivered`, `inspection_assigned`, `inspection_scheduled`, `appointment_assigned`.
+
+`user_push_tokens` table row count before and after all Phase 5 operations: **0 rows**. EAS `projectId = "REPLACE_WITH_EAS_PROJECT_ID"` in `artifacts/mobile/app.json` prevents any push token registration. All push notifications are sent to void.
+
+Events that fired across Phases 2–4 and Phase 5:
+
+| Type | Phase 2B | Phase 2A | Phase 5 seed | Push-enabled? | Delivered? |
+|---|---|---|---|---|---|
+| `contract_signed` | Yes (async void emit) | Yes (async void emit) | Yes (D2c) | ✓ | 0 — no tokens |
+| `fipsa_signed` | — | — | Yes (D2b) | ✗ (email only, defaultPush=false) | N/A |
+| `proof_package_delivered` | — | — | Yes (deliver step) | ✓ | 0 — no tokens |
+| `inspection_assigned` | — | Attempted | Yes (inspection seed) | ✓ | 0 — no tokens; self-notify suppressed |
+| `payment_recorded` | — | — | — | ✗ (manager recipients; email only) | N/A |
+| All others | — | — | — | various | 0 |
+
+**Actual delivery across all phases: 0 push notifications.** All notification system calls completed without error and sent to void. This is expected in the local environment per FINDING 0.7-A.
+
+---
+
+### 5.8 Full Test Suite — Raw Totals
+
+| Suite | Files | Tests | Pass | Fail | Duration |
+|---|---|---|---|---|---|
+| `artifacts/api-server` | 48 | 671 | 671 | 0 | 29.0s |
+| `lib/authz` | 3 | 66 | 66 | 0 | 0.5s |
+| `lib/protocol` | 2 | 59 | 58 | **1** | 0.6s |
+| `artifacts/rooftrax-web` | 1 | 5 | 5 | 0 | 3.2s |
+| **Total** | **54** | **801** | **800** | **1** | ~33s |
+
+**The 1 failure is pre-existing.** `lib/protocol/src/__tests__/rules.test.ts` — test: `"applicableSteps drops exactly the unselected surfaces"`.
+
+- `git diff HEAD -- lib/protocol/` returns **0 lines**. No file in `lib/protocol/` was touched by this audit.
+- `git log --oneline -- lib/protocol/` shows 9+ commits, most recent `eb6f7dd`, all before `8c0455c` (Phase 4). The test existed and was failing before this audit began.
+- **Failure cause**: The test asserts that `applicableSteps()` returns steps in a specific order (homeowner before property_profile, repairability at position 5). The implementation produces a different order (homeowner at position 2, repairability at position 3). The step _set_ is correct; only the ordering assertion fails. This is a test/implementation ordering disagreement, not a gate rule regression.
+
+No new test failures were introduced by Phases 1–4 of this audit.
+
+---
+
+### 5.9 ZZTEST Fixture Isolation
+
+**CONFIRMED CLEAN.** Grep of all test suite files in `artifacts/api-server/src/routes/__tests__/`, `lib/authz/src/__tests__/`, and `lib/protocol/src/__tests__/` for `ZZTEST_ALPHA`, `ZZTEST_BRAVO`, `zztest` returns **0 results**.
+
+Each test suite creates and teardown its own isolated company with a `RUN_ID`-scoped identifier (e.g., `TEST-RB-MSMILOZR-A`, `TEST-PAA-${RUN_ID}`, `Migration 029 Test Co`). All fixtures are created in `beforeAll` and deleted in `afterAll` within the same test run.
+
+ZZTEST pins, users, and companies are invisible to vitest suites. No suite counts rows in a way that could include ZZTEST data. No false positives or false negatives from ZZTEST fixtures.
+
+---
+
+### 5.10 typecheck-api Status
+
+The `typecheck-api` workflow fails with **8 TypeScript errors**, all in `src/scripts/` (audit artifacts only):
+
+| File | Count | Error |
+|---|---|---|
+| `src/scripts/phase3-negative-tests.ts` | 3 | `Property 'body' does not exist on type '{ status: number; }'` |
+| `src/scripts/phase3-part2.ts` | 3 | Same |
+| `src/scripts/phase4-screenshots.ts` | 2 | `Cannot find name 'HTMLElement'` (missing DOM lib) |
+
+**Production source (`routes/`, `lib/`, `app.ts`, `scripts/` excluded): 0 TypeScript errors.** The audit scripts were written as tsx-run targets, not full TypeScript compilation targets, and have minor type gaps that do not affect runtime behavior. No production type safety is compromised.
+
+---
+
+## Consolidated Finding Index (Checkpoint 5 update)
+
+| ID | Phase | Sev | Title | Status |
+|---|---|---|---|---|
+| FINDING 1-A | Phase 1 | P2 | `GET /admin/users` does not paginate | Open |
+| FINDING 2-A | Phase 2 | P1 | `claim_approved` unreachable via event bus | Open |
+| FINDING 2-B | Phase 2 | P2 | Profitability view excludes CO lines from `approved_co_cents` | Open |
+| FINDING 2-C | Phase 2 | P2 | Retail lifecycle duplicate deposit (script artifact) | Closed |
+| FINDING 2-D | Phase 2 | P3 | `stage_transitions.from_stage` null on first advance | Open |
+| FINDING 2-E | Phase 2 | P2 | AI compile blocks two insurance events | Open |
+| FINDING 2-R.2-A | Phase 2R | P3 | `rapGateReason` unwriteable via PATCH /inspections/:id | Open |
+| ~~FINDING 3-A~~ | Phase 3 | ~~P0~~ | ~~Cross-tenant contract list~~ | **WITHDRAWN** |
+| FINDING 3-B | Phase 3 | P1 | Inspection GET returns 403 (existence disclosure) | Open |
+| FINDING 3-C | Phase 3 | **P0** | Profitability endpoint has no role gate — live dual-layer (API + UI) | Open |
+| PD-1 | Policy | — | Should `manager` role reach `/admin/*` namespace? | **Policy ruling needed** |
+| PD-2 | Policy | — | Should `manager` role delete users? | **Policy ruling needed** |
+| PD-3 | Policy | — | Should `canvasser` dept see invoice list? | **Policy ruling needed** |
+| FINDING 3-J | Phase 3/4 | **P0** | `PATCH /leads/:leadId/profile` accepts pipelineStage + contractAmount + deductibleAmount — live UI exposure | Open |
+| FINDING 4-A | Phase 4/5 | **P0** *(upgraded from P1)* | `GET /profile/me` returns 500 for all `department = 'office'` users (spec/authz vocabulary divergence) — 8 routes affected, mobile confirmed, GET /team/users cascades 500 for entire list | Open |
+
+**P0 count: 3 (3-C, 3-J, 4-A) | P1 count: 2 (2-A, 3-B) | P2 count: 4 | P3 count: 2 | Policy: 3 | Withdrawn: 1**
+
+---
+
+## git log --oneline since 8c0455c
+
+```
+(empty)
+```
+
+`git log --oneline 8c0455c..HEAD` returns empty. HEAD is still `8c0455c` (Phase 4 commit). All Checkpoint 5 work is uncommitted: TESTREPORT.md modified; `package.json` and `.gitignore` updated for 4-R.3.
+

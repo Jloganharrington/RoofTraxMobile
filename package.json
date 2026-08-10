@@ -10,10 +10,10 @@
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1",
-    "playwright": "^1.62.1"
+    "@replit/connectors-sdk": "^0.4.1"
   },
   "devDependencies": {
+    "playwright": "^1.62.1",
     "prettier": "^3.9.4",
     "typescript": "~5.9.3"
   }

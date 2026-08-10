@@ -1,0 +1,41 @@
+CHECKPOINT 4 — CORRECTIONS + PHASE 5 AUTHORIZATION
+Still report-only.
+
+4-R.1 — Re-file 4-A and trace the full blast radius
+Re-file as P0 with the root cause stated as spec/authz vocabulary divergence, citing both openapi.yaml:8122 and vocabulary.ts:14.
+
+Then find everything else that breaks the same way. Do not fix any of it:
+
+Every generated schema referencing Department — you found 8 in lib/api-zod; check lib/api-client-react too, and list each route whose request or response validation would reject 'office'.
+Do the same comparison for the other two axes: does the spec's role enum match ROLES, and its workflow enum match WORKFLOW_ASSIGNMENTS? If either has drifted, it's the same class of defect and I want it found now rather than at the live test.
+Any other enum in openapi.yaml with a counterpart constant in lib/authz or lib/db — pipeline stages, notification types, claim statuses, payment types. Report matches and mismatches as a table. This is the highest-value thing left in the audit: one drifted enum silently breaks a whole persona.
+Also confirm whether 4-A affects the mobile app — it consumes the same generated client, and office users exist there too. Report only; artifacts/mobile stays untouched.
+
+4-R.2 — Finish the user matrix
+Screenshot A-CANV-2, A-INSP-1, and A-OFF-1. For A-OFF-1 specifically, record the full nav item list and whether the dashboard renders any widgets at all.
+
+4-R.3 — Disclose and unwind the dependency change
+Add playwright and the lockfile change to the Baseline Changes section with the commit SHA. Move it from dependencies to devDependencies — a browser automation package in root runtime deps affects every install of this monorepo. If Playwright is needed again in Phase 5, keep it; if not, say so and I'll decide whether it comes back out.
+
+Move the screenshots/ directory out of the repo or add it to .gitignore and state which you did.
+
+PHASE 5 — Integration Regression
+Run the named prior workflows per the original work order and confirm nothing in Phases 1–4 disturbed them:
+
+seed-acceptance-claim.ts — full run, pass count as N/M. This has been outstanding since before the audit started.
+contract-value.test.ts — all four write paths.
+Pipeline auto-advance 3a (idempotency), 3b (failure isolation via the stage_transitions rename), 3c (cross-pipeline isolation).
+Dashboard manifest resolution, lib/authz/src/dashboard.ts → routes/dashboard.ts.
+Change-order approval → profitability recomputation.
+Selections Library → Contract Builder → Signing Portal chain.
+Notification dispatch — which of the 8 push types fired across Phases 2–4, reconciled against the 0.7-R list.
+Two additions:
+
+Run the full test suite, not just these seven. Whatever pnpm test covers across the workspace. Paste the raw totals. If any suite was already failing before this audit began, say so and distinguish pre-existing failures from new ones — git stash isn't available to you mid-run, so establish it by reading the failure and judging whether Phases 1–4 could plausibly have caused it.
+
+Confirm the ZZTEST fixtures don't leak into the regression results. Several of those suites count rows or assert against seeded state. If any of them now see ZZTEST companies, users, or pins, that's a finding about the suites' isolation, not about the fixtures.
+
+▶ CHECKPOINT 5 — Paste raw suite output with pass/fail counts for each, the enum drift table from 4-R.1, the three missing screenshots, and git log --oneline since 8c0455c. Stop.
+
+After Checkpoint 5 the only thing left is Phase 6 — the consolidated report and the notification-conditions recommendation. Then we triage the finding list and decide what gets fixed before the live two-lifecycle test.
+

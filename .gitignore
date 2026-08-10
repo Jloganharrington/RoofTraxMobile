@@ -52,3 +52,5 @@ Thumbs.db
 attached_assets/*.zip
 # Stray pasted work-order docs (scratch) — keep on disk, out of git
 attached_assets/*Phase-M-B*.txt
+# Audit screenshots — kept on disk for reference, excluded from git
+screenshots/
