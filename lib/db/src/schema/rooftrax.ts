@@ -98,6 +98,10 @@ export const userProfilesTable = pgTable('user_profiles', {
   // Wave-2B personal profile columns
   // Per-user contact phone, editable via PATCH /profile/me.
   phone: text('phone'),
+  // Signer title shown on Completion Certificates (e.g. "Project Manager").
+  // Optional; supplied per-sign via the sign-endpoint body, else falls back
+  // to this stored value. (migration 043)
+  title: text('title'),
   // UI theme preference. Default 'dark' = no visual change for existing users
   // until they opt in via the Appearance settings tab (Task A1).
   theme: varchar('theme', { enum: ['light', 'dark', 'system'] }).notNull().default('dark'),

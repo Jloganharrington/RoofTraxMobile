@@ -218,6 +218,16 @@ export const NOTIFICATION_CATALOG: readonly NotificationEntry[] = [
     defaultPush:    false,
     supportsDigest: false,
   },
+  {
+    type:           'completion_certificate_signed',
+    label:          'Completion Certificate Signed',
+    group:          'money',
+    minRole:        'field_rep',
+    recipientRule:  'lead_owner_and_managers',
+    defaultEmail:   true,
+    defaultPush:    true,
+    supportsDigest: true,
+  },
 ];
 
 // ── Derived helpers (no runtime deps — pure array ops) ────────────────────────

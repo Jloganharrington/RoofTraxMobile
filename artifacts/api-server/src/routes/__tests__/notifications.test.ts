@@ -81,12 +81,12 @@ describe('GET /notifications/preferences', () => {
     expect(res.status).toBe(401);
   });
 
-  it('field_rep — returns exactly 9 types', async () => {
+  it('field_rep — returns exactly 10 types', async () => {
     const res = await request(app)
       .get('/api/notifications/preferences')
       .set(auth(s.repSid));
     expect(res.status).toBe(200);
-    expect(res.body.preferences).toHaveLength(9);
+    expect(res.body.preferences).toHaveLength(10);
   });
 
   it('field_rep — does NOT contain manager-only types', async () => {
@@ -103,12 +103,12 @@ describe('GET /notifications/preferences', () => {
     }
   });
 
-  it('manager — returns all 16 types', async () => {
+  it('manager — returns all 17 types', async () => {
     const res = await request(app)
       .get('/api/notifications/preferences')
       .set(auth(s.managerSid));
     expect(res.status).toBe(200);
-    expect(res.body.preferences).toHaveLength(16);
+    expect(res.body.preferences).toHaveLength(17);
   });
 
   it('no stored row → catalog defaults returned', async () => {

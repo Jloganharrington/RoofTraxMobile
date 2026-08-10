@@ -115,3 +115,14 @@ export function canSetWorkflow(
 export function canAccessInspectionModule(role: Role, department: Department): boolean {
   return department === 'inspector_canvasser' || role === 'super_admin';
 }
+
+// Who may sign a Completion Certificate.
+// - All managers, admins, and super_admins may sign regardless of department.
+// - field_reps in the 'office' department may sign (office staff handle final
+//   project close-out on behalf of the account manager).
+// - field_reps in all other departments may NOT sign.
+export function canSignCompletionCertificate(role: Role, department: Department): boolean {
+  if (isManagerOrAdmin(role)) return true;
+  if (role === 'field_rep' && department === 'office') return true;
+  return false;
+}

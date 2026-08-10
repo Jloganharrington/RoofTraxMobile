@@ -13,14 +13,19 @@
 import { Router, type Request, type Response } from 'express';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
+import PDFDocument from 'pdfkit';
 import {
   db,
   pinsTable,
   completionCertificatesTable,
   contractsTable,
+  usersTable,
+  userProfilesTable,
+  changeOrdersTable,
+  companiesTable,
 } from '@workspace/db';
-import { isManagerOrAdmin } from '@workspace/authz';
+import { isManagerOrAdmin, canSignCompletionCertificate } from '@workspace/authz';
 import { ai as geminiAi } from '@workspace/integrations-gemini-ai';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { getRole } from './pins';
@@ -29,6 +34,7 @@ import {
   COC_EXTRACTION_SYSTEM_PROMPT,
   COC_EXTRACTION_PROMPT_VERSION,
 } from '../lib/cocExtraction';
+import { emitPipelineEvent } from './pipelineEvents';
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -308,6 +314,288 @@ router.patch('/leads/:leadId/completion-certificate/:certId', async (req: Reques
     .where(eq(completionCertificatesTable.id, certId));
 
   return void res.json({ certificate: updated });
+});
+
+// ---------------------------------------------------------------------------
+// POST /leads/:leadId/completion-certificate/:certId/sign
+// ---------------------------------------------------------------------------
+// Locks the cert, generates the COC PDF, emits completion_package_generated.
+//
+// Gate: cert must be 'draft'.
+// Gate: caller must have canSignCompletionCertificate (manager+ OR office dept).
+//
+// Accepts: { signerTitle?: string }
+//   signerTitle  — overrides the caller's stored user_profiles.title for this
+//                  specific signing. If omitted and no title is on file the
+//                  line is left blank on the PDF.
+// ---------------------------------------------------------------------------
+
+const SignCertBody = z.object({
+  signerTitle: z.string().max(120).optional(),
+});
+
+/** Format integer cents as "$1,234.56" */
+function fmtCents(cents: number): string {
+  return '$' + (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+interface CocLineItem { description: string; quantity?: number | null; unit?: string | null; amountCents: number }
+
+async function generateCocPdfBuffer(opts: {
+  companyName: string;
+  propertyAddress: string | null;
+  ownerName: string;
+  baseContract: CocLineItem[];
+  carrierCos: Array<{ description: string; amountCents: number }>;
+  pwi: CocLineItem[];
+  signerFullName: string;
+  signerTitle: string;
+  signedAt: Date;
+}): Promise<Buffer> {
+  const { companyName, propertyAddress, ownerName, baseContract, carrierCos, pwi, signerFullName, signerTitle, signedAt } = opts;
+  const dateStr = signedAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+    const chunks: Uint8Array[] = [];
+    doc.on('data', (c: Uint8Array) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const W = doc.page.width - 100;
+    const L = 50;
+
+    // ── Header ─────────────────────────────────────────────────────────────
+    doc.fontSize(16).font('Helvetica-Bold').text(companyName, L, 50);
+    doc.fontSize(9).font('Helvetica').text(`Date: ${dateStr}`, L, 54, { align: 'right', width: W });
+    doc.moveDown(0.4);
+    doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor('#999999').stroke().strokeColor('black');
+    doc.moveDown(0.5);
+    doc.fontSize(14).font('Helvetica-Bold').text('COMPLETION CERTIFICATE', L, doc.y, { align: 'center', width: W });
+    doc.moveDown(0.6);
+
+    if (propertyAddress) {
+      doc.fontSize(9).font('Helvetica-Bold').text('Property:', L, doc.y, { continued: true }).font('Helvetica').text(`  ${propertyAddress}`);
+    }
+    if (ownerName) {
+      doc.fontSize(9).font('Helvetica-Bold').text('Owner:', L, doc.y, { continued: true }).font('Helvetica').text(`  ${ownerName}`);
+    }
+    doc.moveDown(0.8);
+
+    const cols = [W * 0.50, W * 0.10, W * 0.10, W * 0.30];
+
+    const renderSection = (title: string, items: CocLineItem[], subtotalLabel: string): number => {
+      doc.fontSize(10).font('Helvetica-Bold').text(title, L);
+      doc.moveDown(0.3);
+      let hx = L;
+      ['Description', 'Qty', 'Unit', 'Amount'].forEach((h, i) => {
+        doc.fontSize(7.5).font('Helvetica-Bold').text(h, hx, doc.y, { width: cols[i], continued: i < 3, align: i === 3 ? 'right' : 'left' });
+        hx += cols[i];
+      });
+      doc.moveDown(0.15);
+      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).stroke();
+      doc.moveDown(0.15);
+      let total = 0;
+      items.forEach(item => {
+        const y = doc.y;
+        doc.font('Helvetica').fontSize(7.5);
+        doc.text(item.description.slice(0, 80), L, y, { width: cols[0] });
+        doc.text(item.quantity != null ? String(item.quantity) : '', L + cols[0], y, { width: cols[1], align: 'right' });
+        doc.text(item.unit ?? '', L + cols[0] + cols[1], y, { width: cols[2] });
+        doc.text(fmtCents(item.amountCents), L + cols[0] + cols[1] + cols[2], y, { width: cols[3], align: 'right' });
+        total += item.amountCents;
+        doc.moveDown(0.45);
+      });
+      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).stroke();
+      doc.moveDown(0.15);
+      doc.font('Helvetica-Bold').fontSize(8).text(`${subtotalLabel}: ${fmtCents(total)}`, L, doc.y, { align: 'right', width: W });
+      doc.moveDown(0.7);
+      return total;
+    };
+
+    const baseCents = renderSection('SECTION 1 — WORK COMPLETED (CARRIER-APPROVED SCOPE)', baseContract, 'RCV SUBTOTAL');
+
+    let cosCents = 0;
+    if (carrierCos.length > 0) {
+      doc.fontSize(10).font('Helvetica-Bold').text('SECTION 2 — CARRIER-REIMBURSABLE CHANGE ORDERS', L);
+      doc.moveDown(0.3);
+      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).stroke();
+      doc.moveDown(0.15);
+      carrierCos.forEach(co => {
+        const y = doc.y;
+        doc.font('Helvetica').fontSize(7.5);
+        doc.text(co.description.slice(0, 80), L, y, { width: W * 0.70 });
+        doc.text(fmtCents(co.amountCents), L + W * 0.70, y, { width: W * 0.30, align: 'right' });
+        cosCents += co.amountCents;
+        doc.moveDown(0.45);
+      });
+      doc.moveTo(L, doc.y).lineTo(L + W, doc.y).stroke();
+      doc.moveDown(0.15);
+      doc.font('Helvetica-Bold').fontSize(8).text(`CHANGE ORDER SUBTOTAL: ${fmtCents(cosCents)}`, L, doc.y, { align: 'right', width: W });
+      doc.moveDown(0.7);
+    }
+
+    const pwiCents = renderSection('SECTION 3 — PRIVATE WORK ITEMS (HOMEOWNER RESPONSIBILITY)', pwi, 'PWI SUBTOTAL');
+
+    // Grand total
+    const grandTotal = baseCents + cosCents + pwiCents;
+    doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor('#333333').lineWidth(2).stroke().strokeColor('black').lineWidth(1);
+    doc.moveDown(0.2);
+    doc.fontSize(11).font('Helvetica-Bold').text(`GRAND TOTAL: ${fmtCents(grandTotal)}`, L, doc.y, { align: 'right', width: W });
+    doc.moveDown(1);
+
+    // Signature block
+    doc.moveTo(L, doc.y).lineTo(L + W, doc.y).strokeColor('#999999').stroke().strokeColor('black');
+    doc.moveDown(0.4);
+    doc.fontSize(9).font('Helvetica').text(`Completed and certified by: `, L, doc.y, { continued: true }).font('Helvetica-Bold').text(signerFullName);
+    if (signerTitle) {
+      doc.font('Helvetica').fontSize(9).text(`Title: ${signerTitle}`, L);
+    }
+    doc.font('Helvetica').fontSize(9).text(`Date: ${dateStr}`, L);
+    doc.moveDown(0.8);
+    doc.moveTo(L, doc.y).lineTo(L + 200, doc.y).strokeColor('#999999').stroke().strokeColor('black');
+    doc.fontSize(8).font('Helvetica').text('Authorized Signature', L, doc.y + 3);
+
+    doc.end();
+  });
+}
+
+router.post('/leads/:leadId/completion-certificate/:certId/sign', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const leadId = req.params['leadId'] as string;
+  const certId = req.params['certId'] as string;
+
+  const cert = await fetchCert(certId, req.user.companyId);
+  if (!cert || cert.pinId !== leadId) return void res.status(404).json({ error: 'Certificate not found' });
+
+  if (cert.status !== 'draft') {
+    return void res.status(409).json({
+      error: `Certificate is ${cert.status} and can no longer be signed. Void it and extract again to start a new draft.`,
+    });
+  }
+
+  // Capability gate
+  const callerRole = await getRole(req.user.id);
+  const [callerProfile] = await db
+    .select({ title: userProfilesTable.title, department: userProfilesTable.department })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+
+  if (!callerProfile || !canSignCompletionCertificate(callerRole, callerProfile.department)) {
+    return void res.status(403).json({
+      error: 'Only managers, admins, and office-department staff may sign a completion certificate',
+    });
+  }
+
+  const parsed = SignCertBody.safeParse(req.body);
+  if (!parsed.success) {
+    return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
+  }
+
+  // Resolve signer title: body > profile > blank
+  const signerTitle = parsed.data.signerTitle ?? callerProfile.title ?? '';
+
+  // Fetch signer full name
+  const [signerUser] = await db
+    .select({ firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user.id));
+  const signerFullName = [signerUser?.firstName, signerUser?.lastName].filter(Boolean).join(' ');
+
+  // Fetch pin + company for PDF header
+  const [pin] = await db
+    .select({
+      address: pinsTable.address,
+      ownerFirstName: pinsTable.ownerFirstName,
+      ownerLastName: pinsTable.ownerLastName,
+      customerName: pinsTable.customerName,
+      companyId: pinsTable.companyId,
+    })
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)));
+
+  const [company] = await db
+    .select({ name: companiesTable.name })
+    .from(companiesTable)
+    .where(eq(companiesTable.id, req.user.companyId));
+
+  // Fetch carrier-reimbursable approved change orders for this pin
+  const carrierCos = await db
+    .select({ description: changeOrdersTable.description, amountCents: changeOrdersTable.amountCents })
+    .from(changeOrdersTable)
+    .where(
+      and(
+        eq(changeOrdersTable.pinId, leadId),
+        eq(changeOrdersTable.companyId, req.user.companyId),
+        eq(changeOrdersTable.carrierReimbursable, true),
+        eq(changeOrdersTable.status, 'approved'),
+      ),
+    );
+
+  // Extract line items from the cert snapshot
+  const snapshot = cert.lineItems as { baseContract?: CocLineItem[]; pwi?: CocLineItem[] } | null;
+  const baseContract: CocLineItem[] = snapshot?.baseContract ?? [];
+  const pwi: CocLineItem[] = snapshot?.pwi ?? [];
+
+  const ownerName = [pin?.ownerFirstName, pin?.ownerLastName].filter(Boolean).join(' ')
+    || pin?.customerName
+    || '';
+
+  const signedAt = new Date();
+
+  // Generate PDF
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateCocPdfBuffer({
+      companyName: company?.name ?? 'Completion Certificate',
+      propertyAddress: pin?.address ?? null,
+      ownerName,
+      baseContract,
+      carrierCos,
+      pwi,
+      signerFullName,
+      signerTitle,
+      signedAt,
+    });
+  } catch (err) {
+    req.log.error({ err }, 'COC sign: PDF generation failed');
+    return void res.status(500).json({ error: 'PDF generation failed. Please try again.' });
+  }
+
+  // sha256 + upload
+  const sha256 = createHash('sha256').update(pdfBuffer).digest('hex');
+  const objectPath = await objectStorageService.uploadObjectBuffer(pdfBuffer, 'application/pdf');
+
+  // Stamp the cert as signed
+  await db
+    .update(completionCertificatesTable)
+    .set({
+      status:               'signed',
+      documentObjectPath:   objectPath,
+      documentSha256:       sha256,
+      signedByUserId:       req.user.id,
+      signedAt:             signedAt,
+      signerTitle:          signerTitle || null,
+      updatedAt:            new Date(),
+    })
+    .where(eq(completionCertificatesTable.id, certId));
+
+  const [signed] = await db
+    .select()
+    .from(completionCertificatesTable)
+    .where(eq(completionCertificatesTable.id, certId));
+
+  // Emit pipeline event — completion_package_generated auto-advances to 'complete'
+  await emitPipelineEvent({
+    companyId: req.user.companyId,
+    eventType: 'completion_package_generated',
+    leadId,
+  });
+
+  logger.info({ certId, pinId: leadId, signerTitle, sha256 }, 'COC signed and pipeline event emitted');
+
+  return void res.status(200).json({ certificate: signed });
 });
 
 // ---------------------------------------------------------------------------
