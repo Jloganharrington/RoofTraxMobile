@@ -33,10 +33,10 @@ import {
   db,
   EXPENSE_CATEGORIES,
   pinsTable,
-  userProfilesTable,
   vendorExpensesTable,
 } from '@workspace/db';
-import { isManagerOrAdmin, type Role } from '@workspace/authz';
+import { resolve } from '@workspace/authz';
+import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
 
 // TypeScript struggles to narrow string | null | undefined through a ternary
 // when it comes from a Zod-nullable field. Use an explicit helper instead.
@@ -52,14 +52,7 @@ const router = Router();
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getRole(userId: string): Promise<Role> {
-  const [row] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId));
-  return (row?.role ?? 'field_rep') as Role;
-}
-
+/** Resolve pin, confirming company scope. Returns userId for ownerOrRole checks. */
 async function resolvePin(pinId: string, companyId: string) {
   const [pin] = await db
     .select()
@@ -119,23 +112,24 @@ const UpdateCommissionsBody = z.object({
 // GET /pins/:pinId/expenses
 // ---------------------------------------------------------------------------
 
+// expense.view (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.get('/pins/:pinId/expenses', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
-  if (!pin) {
-    res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
+  if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
+
+  const result = resolve('expense.view', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   const expenses = await db
     .select()
     .from(vendorExpensesTable)
     .where(
       and(
         eq(vendorExpensesTable.pinId, pin.id),
-        eq(vendorExpensesTable.companyId, req.user.companyId),
+        eq(vendorExpensesTable.companyId, actorCtx.companyId),
       ),
     )
     .orderBy(vendorExpensesTable.createdAt);
@@ -146,21 +140,16 @@ router.get('/pins/:pinId/expenses', async (req: Request, res: Response) => {
 // POST /pins/:pinId/expenses
 // ---------------------------------------------------------------------------
 
+// expense.create (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.post('/pins/:pinId/expenses', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
-  if (!pin) {
-    res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
+  if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
+
+  const result = resolve('expense.create', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
   const parsed = CreateVendorExpenseBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', detail: parsed.error.issues });
@@ -170,7 +159,7 @@ router.post('/pins/:pinId/expenses', async (req: Request, res: Response) => {
   const [expense] = await db
     .insert(vendorExpensesTable)
     .values({
-      companyId:     req.user.companyId,
+      companyId:     actorCtx.companyId,
       pinId:         pin.id,
       vendorName,
       amountCents,
@@ -189,21 +178,18 @@ router.post('/pins/:pinId/expenses', async (req: Request, res: Response) => {
 // PATCH /expenses/:expenseId
 // ---------------------------------------------------------------------------
 
+// expense.update (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.patch('/expenses/:expenseId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const expense = await resolveExpense(req.params.expenseId as string, req.user.companyId);
-  if (!expense) {
-    res.status(404).json({ error: 'Expense not found' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const expense = await resolveExpense(req.params.expenseId as string, actorCtx.companyId);
+  if (!expense) { res.status(404).json({ error: 'Expense not found' }); return; }
+
+  // ownerOrRole gate: load pin to get pin owner.
+  const pin = await resolvePin(expense.pinId, actorCtx.companyId);
+  const result = resolve('expense.update', { ...actorCtx, ownerId: pin?.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
   const parsed = UpdateVendorExpenseBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', detail: parsed.error.issues });
@@ -231,21 +217,19 @@ router.patch('/expenses/:expenseId', async (req: Request, res: Response) => {
 // DELETE /expenses/:expenseId
 // ---------------------------------------------------------------------------
 
+// expense.delete (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.delete('/expenses/:expenseId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const expense = await resolveExpense(req.params.expenseId as string, req.user.companyId);
-  if (!expense) {
-    res.status(404).json({ error: 'Expense not found' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const expense = await resolveExpense(req.params.expenseId as string, actorCtx.companyId);
+  if (!expense) { res.status(404).json({ error: 'Expense not found' }); return; }
+
+  // ownerOrRole gate: load pin to get pin owner.
+  const pin = await resolvePin(expense.pinId, actorCtx.companyId);
+  const result = resolve('expense.delete', { ...actorCtx, ownerId: pin?.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   await db.delete(vendorExpensesTable).where(eq(vendorExpensesTable.id, expense.id));
   res.status(204).send();
 });
@@ -255,17 +239,8 @@ router.delete('/expenses/:expenseId', async (req: Request, res: Response) => {
 // paid_date is ALWAYS set server-side — clients cannot backdate it.
 // ---------------------------------------------------------------------------
 
-router.post('/expenses/:expenseId/mark-paid', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const expense = await resolveExpense(req.params.expenseId as string, req.user.companyId);
+router.post('/expenses/:expenseId/mark-paid', requirePermission('expense.manage'), async (req: Request, res: Response) => {
+  const expense = await resolveExpense(req.params.expenseId as string, req.actorCtx!.companyId);
   if (!expense) {
     res.status(404).json({ error: 'Expense not found' });
     return;
@@ -288,17 +263,8 @@ router.post('/expenses/:expenseId/mark-paid', async (req: Request, res: Response
 // Accepts amounts only — paid dates are controlled by mark-paid endpoints.
 // ---------------------------------------------------------------------------
 
-router.patch('/pins/:pinId/commissions', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+router.patch('/pins/:pinId/commissions', requirePermission('expense.manage'), async (req: Request, res: Response) => {
+  const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
@@ -336,17 +302,8 @@ router.patch('/pins/:pinId/commissions', async (req: Request, res: Response) => 
 // salesCommissionPaidDate set server-side (NOW()).
 // ---------------------------------------------------------------------------
 
-router.post('/pins/:pinId/commissions/sales/mark-paid', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+router.post('/pins/:pinId/commissions/sales/mark-paid', requirePermission('expense.manage'), async (req: Request, res: Response) => {
+  const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
@@ -377,17 +334,8 @@ router.post('/pins/:pinId/commissions/sales/mark-paid', async (req: Request, res
 // pmCommissionPaidDate set server-side (NOW()).
 // ---------------------------------------------------------------------------
 
-router.post('/pins/:pinId/commissions/pm/mark-paid', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-  const pin = await resolvePin(req.params.pinId as string, req.user.companyId);
+router.post('/pins/:pinId/commissions/pm/mark-paid', requirePermission('expense.manage'), async (req: Request, res: Response) => {
+  const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;

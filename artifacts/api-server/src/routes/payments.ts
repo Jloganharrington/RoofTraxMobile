@@ -9,7 +9,7 @@
  *
  * Bug-fix (i) — IDOR: company_id and pin_id are NEVER accepted from the
  * request body on PATCH or DELETE. The server re-verifies the stored row's
- * company against req.user.companyId before every write.
+ * company against req.actorCtx!.companyId before every write.
  *
  * Bug-fix (ii) — Idempotency: the UI disables submit while the mutation is
  * in flight (discrete button → no double-POSTs from double-clicks). The
@@ -33,9 +33,9 @@ import {
   PAYMENT_TYPES,
   paymentsTable,
   pinsTable,
-  userProfilesTable,
 } from '@workspace/db';
-import { isManagerOrAdmin, type Role } from '@workspace/authz';
+import { resolve } from '@workspace/authz';
+import { loadActorCtx } from '../middlewares/requirePermission';
 import { notify } from '../lib/notify';
 import { emitPipelineEvent } from './pipelineEvents';
 
@@ -45,21 +45,14 @@ const router = Router();
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getRole(userId: string): Promise<Role> {
-  const [row] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId));
-  return (row?.role ?? 'field_rep') as Role;
-}
-
-/** Resolve the pin, confirming it belongs to the caller's company. */
+/** Resolve the pin, confirming it belongs to the caller's company.
+ *  Returns userId (pin owner) for ownerOrRole checks. */
 async function resolvePin(
   pinId: string,
   companyId: string,
-): Promise<{ id: string; workflow: string | null } | null> {
+): Promise<{ id: string; userId: string; workflow: string | null } | null> {
   const [pin] = await db
-    .select({ id: pinsTable.id, workflow: pinsTable.workflow })
+    .select({ id: pinsTable.id, userId: pinsTable.userId, workflow: pinsTable.workflow })
     .from(pinsTable)
     .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, companyId)));
   return pin ?? null;
@@ -95,18 +88,17 @@ const UpdatePaymentBody = z
 // GET /api/pins/:pinId/payments
 // ---------------------------------------------------------------------------
 
+// payment.view (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.get('/pins/:pinId/payments', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const { pinId } = req.params as { pinId: string };
-  const pin = await resolvePin(pinId, req.user.companyId);
-  if (!pin) {
-    res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
+  const pin = await resolvePin(pinId, actorCtx.companyId);
+  if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
+
+  const result = resolve('payment.view', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const payments = await db
     .select()
@@ -114,7 +106,7 @@ router.get('/pins/:pinId/payments', async (req: Request, res: Response) => {
     .where(
       and(
         eq(paymentsTable.pinId, pinId),
-        eq(paymentsTable.companyId, req.user.companyId),
+        eq(paymentsTable.companyId, actorCtx.companyId),
       ),
     )
     .orderBy(paymentsTable.paymentDate);
@@ -126,24 +118,17 @@ router.get('/pins/:pinId/payments', async (req: Request, res: Response) => {
 // POST /api/pins/:pinId/payments
 // ---------------------------------------------------------------------------
 
+// payment.create (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.post('/pins/:pinId/payments', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const { pinId } = req.params as { pinId: string };
-  const pin = await resolvePin(pinId, req.user.companyId);
-  if (!pin) {
-    res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
+  const pin = await resolvePin(pinId, actorCtx.companyId);
+  if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
+
+  const result = resolve('payment.create', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const parsed = CreatePaymentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -160,34 +145,30 @@ router.post('/pins/:pinId/payments', async (req: Request, res: Response) => {
   const [payment] = await db
     .insert(paymentsTable)
     .values({
-      companyId: req.user.companyId,
+      companyId: actorCtx.companyId,
       pinId,
       type: d.type,
       amountCents: d.amountCents,
       method: d.method ?? null,
       paymentDate: new Date(d.paymentDate),
       notes: d.notes ?? null,
-      createdByUserId: req.user.id,
+      createdByUserId: actorCtx.actorId,
     })
     .returning();
 
   res.status(201).json({ payment });
 
-  // Fire-and-forget — managers notified; actor excluded; response already sent.
   void notify({
     type:        'payment_recorded',
-    companyId:   req.user.companyId,
+    companyId:   actorCtx.companyId,
     pinId,
-    actorUserId: req.user.id,
+    actorUserId: actorCtx.actorId,
     payload:     { amountCents: payment.amountCents, paymentType: payment.type },
   });
 
-  // Pipeline auto-advance: a deposit payment advances legacy-stage pins whose
-  // current stage auto-advances on deposit_received. Fire-and-forget after the
-  // insert commits — a failed advance never affects the recorded payment.
   if (d.type === 'deposit') {
     void emitPipelineEvent({
-      companyId: req.user.companyId,
+      companyId: actorCtx.companyId,
       leadId:    pinId,
       eventType: 'deposit_received',
       payload:   { pipeline: pin.workflow ?? 'retail' },
@@ -199,31 +180,28 @@ router.post('/pins/:pinId/payments', async (req: Request, res: Response) => {
 // PATCH /api/payments/:paymentId
 // ---------------------------------------------------------------------------
 
+// payment.update (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.patch('/payments/:paymentId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const { paymentId } = req.params as { paymentId: string };
 
-  // Bug fix (i): fetch the stored row FIRST, verify company scope from the DB —
-  // never trust company_id or pin_id from the request body.
+  // Bug fix (i): fetch the stored row FIRST, verify company scope from the DB.
   const [existing] = await db
     .select()
     .from(paymentsTable)
     .where(eq(paymentsTable.id, paymentId));
 
-  if (!existing || existing.companyId !== req.user.companyId) {
+  if (!existing || existing.companyId !== actorCtx.companyId) {
     res.status(404).json({ error: 'Payment not found' });
     return;
   }
+
+  // ownerOrRole gate: load pin to get pin owner.
+  const pin = await resolvePin(existing.pinId, actorCtx.companyId);
+  const result = resolve('payment.update', { ...actorCtx, ownerId: pin?.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const parsed = UpdatePaymentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -253,30 +231,28 @@ router.patch('/payments/:paymentId', async (req: Request, res: Response) => {
 // DELETE /api/payments/:paymentId
 // ---------------------------------------------------------------------------
 
+// payment.delete (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners now permitted.
 router.delete('/payments/:paymentId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const { paymentId } = req.params as { paymentId: string };
 
   // Bug fix (i): verify company scope from DB before deleting.
   const [existing] = await db
-    .select({ id: paymentsTable.id, companyId: paymentsTable.companyId })
+    .select({ id: paymentsTable.id, companyId: paymentsTable.companyId, pinId: paymentsTable.pinId })
     .from(paymentsTable)
     .where(eq(paymentsTable.id, paymentId));
 
-  if (!existing || existing.companyId !== req.user.companyId) {
+  if (!existing || existing.companyId !== actorCtx.companyId) {
     res.status(404).json({ error: 'Payment not found' });
     return;
   }
+
+  // ownerOrRole gate: load pin to get pin owner.
+  const pin = await resolvePin(existing.pinId, actorCtx.companyId);
+  const result = resolve('payment.delete', { ...actorCtx, ownerId: pin?.userId });
+  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   await db.delete(paymentsTable).where(eq(paymentsTable.id, paymentId));
   res.status(204).send();

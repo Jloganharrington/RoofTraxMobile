@@ -25,8 +25,9 @@
 import { z } from 'zod';
 import { Router, type Request, type Response } from 'express';
 import { and, eq } from 'drizzle-orm';
-import { db, pinsTable, userProfilesTable, claimStatusHistoryTable } from '@workspace/db';
-import { isManagerOrAdmin } from '@workspace/authz';
+import { db, pinsTable, claimStatusHistoryTable } from '@workspace/db';
+import { resolve } from '@workspace/authz';
+import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
 import { notify } from '../lib/notify';
 
 const router = Router();
@@ -81,19 +82,14 @@ function toDateOrNull(v: string | null | undefined): Date | null {
 }
 
 // ---------------------------------------------------------------------------
-// GET /pins/:pinId/insurance
+// GET /pins/:pinId/insurance — lead.read (field_rep+): any authenticated company member.
 // ---------------------------------------------------------------------------
-router.get('/pins/:pinId/insurance', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
+router.get('/pins/:pinId/insurance', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
@@ -126,36 +122,30 @@ router.get('/pins/:pinId/insurance', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /pins/:pinId/insurance — manager+ only
+// PATCH /pins/:pinId/insurance — lead.update (ownerOrRole:manager+).
+// VERDICT CHANGE: field_rep pin owners may now edit insurance data (previously manager+ only).
 // ---------------------------------------------------------------------------
 router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const pinId = req.params.pinId as string;
 
   // Load pin — include claimStatus so we can detect changes for the history log.
   const [pin] = await db
-    .select({ id: pinsTable.id, companyId: pinsTable.companyId, claimStatus: pinsTable.claimStatus })
+    .select({ id: pinsTable.id, companyId: pinsTable.companyId, claimStatus: pinsTable.claimStatus, userId: pinsTable.userId })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
   }
 
-  // Manager+ only — field reps see the insurance tab read-only.
-  const [profile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = profile?.role ?? 'field_rep';
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required to edit insurance data' });
+  // lead.update ownerOrRole: pin owner (field_rep) or manager+.
+  const result = resolve('lead.update', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) {
+    res.status(403).json({ error: 'Forbidden — lead owner or manager required' });
     return;
   }
 
@@ -214,11 +204,11 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
 
     if (statusChanging) {
       await tx.insert(claimStatusHistoryTable).values({
-        companyId:        req.user!.companyId,
+        companyId:        actorCtx.companyId,
         pinId,
         fromStatus:       pin.claimStatus ?? null,
         toStatus:         incomingStatus,   // null = status was cleared
-        changedByUserId:  req.user!.id,
+        changedByUserId:  actorCtx.actorId,
       });
     }
 
@@ -231,9 +221,9 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
   if (statusChanging) {
     void notify({
       type:        'claim_status_changed',
-      companyId:   req.user!.companyId,
+      companyId:   actorCtx.companyId,
       pinId,
-      actorUserId: req.user!.id,
+      actorUserId: actorCtx.actorId,
       payload:     {
         fromStatus: pin.claimStatus,
         toStatus:   incomingStatus,

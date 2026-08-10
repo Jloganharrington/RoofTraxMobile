@@ -9,7 +9,7 @@
  *   - PATCH with pin_id in body → pin_id in DB unchanged (bug fix i)
  *   - manager DELETE → 204, removed from subsequent GET
  *   - cross-company DELETE → 404 (IDOR guard)
- *   - field_rep GET → 200 (read is not gated to managers)
+ *   - field_rep GET own pin → 200 (ownerOrRole: owner passes); non-owner → 403
  *   - POST to non-existent pin → 404
  *   - POST with invalid type → 400
  *   - POST with zero amountCents → 400
@@ -230,11 +230,13 @@ describe('payments ledger', () => {
     expect(res.status).toBe(404);
   });
 
-  it('field_rep GET → 200 (reading is not manager-gated)', async () => {
+  // payment.view is ownerOrRole:manager+ — fieldRepA does NOT own pinIdA (owned by managerA),
+  // so this is a non-owner rep → 403.  VERDICT CHANGE from the old auth-only GET.
+  it('field_rep (non-owner) GET → 403 (ownerOrRole: rep does not own this pin)', async () => {
     const res = await request(app)
       .get(`/api/pins/${pinIdA}/payments`)
       .set(auth(fieldRepA.sid));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
   it('POST to non-existent pin → 404', async () => {

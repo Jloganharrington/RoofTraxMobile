@@ -3,7 +3,7 @@
  *
  * Covers every item in CHECKPOINT 3:
  *   1. company scoping (company B cannot access company A's expenses)
- *   2. field_rep → 403 on expense writes; 200 on reads
+ *   2. field_rep → 403 on expense writes; 403 on reads for non-owner (ownerOrRole:manager+)
  *   3. commission fields NOT writable via generic PATCH /pins/:pinId
  *   4. mark-paid (expense): paid_date set server-side (body ignored)
  *   5. mark-paid (commissions): date set server-side
@@ -192,7 +192,7 @@ describe('mark-paid (expense) — date is server-side', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. field_rep → 403 on writes; 200 on reads
+// 3. field_rep → 403 on writes; 403 on reads for non-owner (expense.view = ownerOrRole:manager+)
 // ---------------------------------------------------------------------------
 
 describe('field_rep cannot write expenses', () => {
@@ -227,10 +227,12 @@ describe('field_rep cannot write expenses', () => {
       (await request(app).post(`/api/expenses/${expenseId}/mark-paid`).set(rep())).status
     ).toBe(403);
   });
-  it('GET /pins/:pinId/expenses → 200 (reads not gated)', async () => {
+  // expense.view is ownerOrRole:manager+ — rep() user does NOT own pinId (owned by manager),
+  // so non-owner rep → 403. VERDICT CHANGE from the old auth-only GET.
+  it('GET /pins/:pinId/expenses → 403 (ownerOrRole: rep does not own this pin)', async () => {
     expect(
       (await request(app).get(`/api/pins/${pinId}/expenses`).set(rep())).status
-    ).toBe(200);
+    ).toBe(403);
   });
 });
 

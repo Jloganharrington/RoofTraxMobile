@@ -33,6 +33,9 @@
  *   [D9] selections   — catalog.price_book_view (GETs), catalog.selections_manage (writes)
  *   [D10] library     — report.settings_view (GETs), report.settings_edit (writes) — super_admin+
  *   [D11] ahjWizard   — catalog.ahj_wizard (all 10 routes) — super_admin+
+ *   [D12] insurance   — lead.read (GET, field_rep+), lead.update (PATCH, ownerOrRole:manager+)
+ *   [D13] payments    — payment.* (ownerOrRole:manager+) — VERDICT CHANGE: field_rep pin owners
+ *   [D14] expenses    — expense.view/create/update/delete (ownerOrRole), expense.manage (manager+)
  */
 
 import { companiesTable, db, userProfilesTable, usersTable } from '@workspace/db';
@@ -430,10 +433,89 @@ describe('route auth — negative gate suite', () => {
     }
   });
 
+  // ── [D12] DOMAIN: insurance ────────────────────────────────────────────────
+  // GET  /pins/:pinId/insurance — lead.read (field_rep+): auth-only gate, no role change.
+  // PATCH /pins/:pinId/insurance — lead.update (ownerOrRole:manager+).
+  //   VERDICT CHANGE: field_rep who OWN the pin may now edit insurance data (previously manager+).
+  //   Non-owner field_rep → 404 when pin stub-id doesn't exist (ownerOrRole flows: 404 before 403).
+  //   403 for non-owner requires a real pin setup; covered by integration tests not here.
+
+  describe('[D12] GET /pins/:pinId/insurance [lead.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins/stub-id/insurance')).status).toBe(401);
+    });
+    // field_rep+ is minimum role — all authenticated users pass the gate.
+  });
+
+  describe('[D12] PATCH /pins/:pinId/insurance [lead.update — ownerOrRole:manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/pins/stub-id/insurance')).status).toBe(401);
+    });
+    // VERDICT CHANGE: non-owner field_rep → 404 for stub-id (ownerOrRole runs after pin load).
+    // field_rep who IS the pin owner → 200 (new permission; previously 403).
+  });
+
+  // ── [D13] DOMAIN: payments ─────────────────────────────────────────────────
+  // All 4 routes: payment.* (ownerOrRole:manager+).
+  // VERDICT CHANGE: field_rep pin owners may now view and record payments.
+  // Negative tests cover unauthenticated only; non-owner 403 requires DB setup.
+
+  describe('[D13] payments [payment.* — ownerOrRole:manager+]', () => {
+    const routes: Array<[string, string]> = [
+      ['get',    '/api/pins/stub-id/payments'],
+      ['post',   '/api/pins/stub-id/payments'],
+      ['patch',  '/api/payments/stub-id'],
+      ['delete', '/api/payments/stub-id'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+    }
+    // VERDICT CHANGE: field_rep who OWNS the pin now passes payment.view/create/update/delete.
+    // Non-owner field_rep hits 404 on stub resource before reaching the ownerOrRole gate.
+  });
+
+  // ── [D14] DOMAIN: expenses ─────────────────────────────────────────────────
+  // expense.view/create/update/delete (ownerOrRole:manager+) — VERDICT CHANGE for pin owners.
+  // expense.manage (minRole:manager) — commission routes and mark-paid; no verdict change.
+
+  describe('[D14] expenses ownerOrRole routes [expense.* — ownerOrRole:manager+]', () => {
+    const routes: Array<[string, string]> = [
+      ['get',    '/api/pins/stub-id/expenses'],
+      ['post',   '/api/pins/stub-id/expenses'],
+      ['patch',  '/api/expenses/stub-id'],
+      ['delete', '/api/expenses/stub-id'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+    }
+    // VERDICT CHANGE: field_rep who OWNS the pin now passes expense.view/create/update/delete.
+  });
+
+  describe('[D14] expenses minRole:manager routes [expense.manage — manager+]', () => {
+    const routes: Array<[string, string]> = [
+      ['post',  '/api/expenses/stub-id/mark-paid'],
+      ['patch', '/api/pins/stub-id/commissions'],
+      ['post',  '/api/pins/stub-id/commissions/sales/mark-paid'],
+      ['post',  '/api/pins/stub-id/commissions/pm/mark-paid'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep (manager+)`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+    }
+  });
+
   // ── Additional domains are appended below as migration proceeds ───────────
   // Template:
   //
-  // describe('[D12] VERB /path [permission.key — minRole+]', () => {
+  // describe('[D15] VERB /path [permission.key — minRole+]', () => {
   //   it('no auth → 401', async () => { ... });
   //   it('field_rep → 403', async () => { ... });
   //   // If there is a verdict change: document it as a comment, not a failing test.
