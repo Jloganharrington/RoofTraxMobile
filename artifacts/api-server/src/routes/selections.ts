@@ -1,47 +1,18 @@
 import {
   db,
-  userProfilesTable,
   selectionCategoriesTable,
   selectionBrandsTable,
   selectionProductsTable,
   selectionOptionsTable,
   selectionProductOptionsTable,
 } from '@workspace/db';
-import { roleRank, type Role } from '@workspace/authz';
+// catalog.price_book_view (GETs) / catalog.selections_manage (writes) via requirePermission.
+import { requirePermission } from '../middlewares/requirePermission';
 import { and, eq, asc } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
 
 const router: IRouter = Router();
-
-// ---------------------------------------------------------------------------
-// Auth helpers (mirrors priceBook.ts pattern)
-// ---------------------------------------------------------------------------
-
-async function requireAdminOrAbove(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  const role = profile?.role ?? 'field_rep';
-  if (roleRank(role as Role) < roleRank('admin')) {
-    res.status(403).json({ error: 'Admin role required' });
-    return null;
-  }
-  return { role, companyId: req.user.companyId };
-}
-
-function requireAuthenticated(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  return { companyId: req.user.companyId };
-}
 
 // ---------------------------------------------------------------------------
 // CATEGORIES
@@ -61,23 +32,19 @@ const UpdateCategoryBody = z.object({
 });
 
 // GET /selections/categories
-router.get('/selections/categories', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/selections/categories', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const rows = await db
     .select()
     .from(selectionCategoriesTable)
-    .where(eq(selectionCategoriesTable.companyId, actor.companyId))
+    .where(eq(selectionCategoriesTable.companyId, req.actorCtx!.companyId))
     .orderBy(asc(selectionCategoriesTable.sortOrder), asc(selectionCategoriesTable.name));
 
   res.json({ categories: rows });
 });
 
 // POST /selections/categories
-router.post('/selections/categories', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/selections/categories', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = CreateCategoryBody.safeParse(req.body);
   if (!parsed.success) {
@@ -88,16 +55,14 @@ router.post('/selections/categories', async (req: Request, res: Response) => {
 
   const [row] = await db
     .insert(selectionCategoriesTable)
-    .values({ companyId: actor.companyId, name, slug, sortOrder })
+    .values({ companyId: req.actorCtx!.companyId, name, slug, sortOrder })
     .returning();
 
   res.status(201).json({ category: row });
 });
 
 // PATCH /selections/categories/:categoryId
-router.patch('/selections/categories/:categoryId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.patch('/selections/categories/:categoryId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = UpdateCategoryBody.safeParse(req.body);
   if (!parsed.success) {
@@ -117,7 +82,7 @@ router.patch('/selections/categories/:categoryId', async (req: Request, res: Res
     .set(updates)
     .where(and(
       eq(selectionCategoriesTable.id, categoryId),
-      eq(selectionCategoriesTable.companyId, actor.companyId),
+      eq(selectionCategoriesTable.companyId, req.actorCtx!.companyId),
     ))
     .returning();
 
@@ -126,9 +91,7 @@ router.patch('/selections/categories/:categoryId', async (req: Request, res: Res
 });
 
 // DELETE /selections/categories/:categoryId
-router.delete('/selections/categories/:categoryId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/selections/categories/:categoryId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const categoryId = req.params.categoryId as string;
 
@@ -137,7 +100,7 @@ router.delete('/selections/categories/:categoryId', async (req: Request, res: Re
     .from(selectionBrandsTable)
     .where(and(
       eq(selectionBrandsTable.categoryId, categoryId),
-      eq(selectionBrandsTable.companyId, actor.companyId),
+      eq(selectionBrandsTable.companyId, req.actorCtx!.companyId),
     ))
     .limit(1);
 
@@ -147,7 +110,7 @@ router.delete('/selections/categories/:categoryId', async (req: Request, res: Re
       .set({ isActive: false, updatedAt: new Date() })
       .where(and(
         eq(selectionCategoriesTable.id, categoryId),
-        eq(selectionCategoriesTable.companyId, actor.companyId),
+        eq(selectionCategoriesTable.companyId, req.actorCtx!.companyId),
       ))
       .returning();
     if (!row) { res.status(404).json({ error: 'Category not found' }); return; }
@@ -157,7 +120,7 @@ router.delete('/selections/categories/:categoryId', async (req: Request, res: Re
       .delete(selectionCategoriesTable)
       .where(and(
         eq(selectionCategoriesTable.id, categoryId),
-        eq(selectionCategoriesTable.companyId, actor.companyId),
+        eq(selectionCategoriesTable.companyId, req.actorCtx!.companyId),
       ))
       .returning();
     if (!row) { res.status(404).json({ error: 'Category not found' }); return; }
@@ -184,12 +147,10 @@ const UpdateBrandBody = z.object({
 });
 
 // GET /selections/brands?categoryId=
-router.get('/selections/brands', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/selections/brands', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const rows = await db
     .select()
@@ -205,9 +166,7 @@ router.get('/selections/brands', async (req: Request, res: Response) => {
 });
 
 // POST /selections/brands
-router.post('/selections/brands', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/selections/brands', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = CreateBrandBody.safeParse(req.body);
   if (!parsed.success) {
@@ -221,22 +180,20 @@ router.post('/selections/brands', async (req: Request, res: Response) => {
     .from(selectionCategoriesTable)
     .where(and(
       eq(selectionCategoriesTable.id, categoryId),
-      eq(selectionCategoriesTable.companyId, actor.companyId),
+      eq(selectionCategoriesTable.companyId, req.actorCtx!.companyId),
     ));
   if (!cat) { res.status(400).json({ error: 'Category not found' }); return; }
 
   const [row] = await db
     .insert(selectionBrandsTable)
-    .values({ companyId: actor.companyId, categoryId, name, logoPath: logoPath ?? null, sortOrder })
+    .values({ companyId: req.actorCtx!.companyId, categoryId, name, logoPath: logoPath ?? null, sortOrder })
     .returning();
 
   res.status(201).json({ brand: row });
 });
 
 // PATCH /selections/brands/:brandId
-router.patch('/selections/brands/:brandId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.patch('/selections/brands/:brandId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = UpdateBrandBody.safeParse(req.body);
   if (!parsed.success) {
@@ -245,7 +202,7 @@ router.patch('/selections/brands/:brandId', async (req: Request, res: Response) 
   }
 
   const brandId = req.params.brandId as string;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.name      !== undefined) updates.name      = parsed.data.name;
   if (parsed.data.logoPath  !== undefined) updates.logoPath  = parsed.data.logoPath;
@@ -275,12 +232,10 @@ router.patch('/selections/brands/:brandId', async (req: Request, res: Response) 
 });
 
 // DELETE /selections/brands/:brandId
-router.delete('/selections/brands/:brandId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/selections/brands/:brandId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const brandId = req.params.brandId as string;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const prodRefs = await db
     .select({ id: selectionProductsTable.id })
@@ -348,13 +303,11 @@ const UpdateProductBody = z.object({
 });
 
 // GET /selections/products?categoryId=&brandId=
-router.get('/selections/products', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/selections/products', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined;
   const brandId    = typeof req.query.brandId    === 'string' ? req.query.brandId    : undefined;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const where =
     categoryId && brandId
@@ -375,9 +328,7 @@ router.get('/selections/products', async (req: Request, res: Response) => {
 });
 
 // POST /selections/products
-router.post('/selections/products', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/selections/products', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = CreateProductBody.safeParse(req.body);
   if (!parsed.success) {
@@ -385,7 +336,7 @@ router.post('/selections/products', async (req: Request, res: Response) => {
     return;
   }
   const d = parsed.data;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   if (d.isBase && d.priceDeltaCents !== 0) {
     res.status(400).json({ error: 'Base product must have price_delta_cents = 0' });
@@ -434,9 +385,7 @@ router.post('/selections/products', async (req: Request, res: Response) => {
 });
 
 // PATCH /selections/products/:productId
-router.patch('/selections/products/:productId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.patch('/selections/products/:productId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = UpdateProductBody.safeParse(req.body);
   if (!parsed.success) {
@@ -445,7 +394,7 @@ router.patch('/selections/products/:productId', async (req: Request, res: Respon
   }
 
   const productId = req.params.productId as string;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
   const d = parsed.data;
 
   const [current] = await db
@@ -494,12 +443,10 @@ router.patch('/selections/products/:productId', async (req: Request, res: Respon
 });
 
 // DELETE /selections/products/:productId
-router.delete('/selections/products/:productId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/selections/products/:productId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const productId = req.params.productId as string;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const refs = await db
     .select({ id: selectionProductOptionsTable.id })
@@ -553,12 +500,10 @@ const UpdateOptionBody = z.object({
 });
 
 // GET /selections/options?brandId=
-router.get('/selections/options', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/selections/options', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const brandId = typeof req.query.brandId === 'string' ? req.query.brandId : undefined;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const rows = await db
     .select()
@@ -574,9 +519,7 @@ router.get('/selections/options', async (req: Request, res: Response) => {
 });
 
 // POST /selections/options
-router.post('/selections/options', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/selections/options', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = CreateOptionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -584,7 +527,7 @@ router.post('/selections/options', async (req: Request, res: Response) => {
     return;
   }
   const d = parsed.data;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const [brand] = await db
     .select({ id: selectionBrandsTable.id })
@@ -610,9 +553,7 @@ router.post('/selections/options', async (req: Request, res: Response) => {
 });
 
 // PATCH /selections/options/:optionId
-router.patch('/selections/options/:optionId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.patch('/selections/options/:optionId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = UpdateOptionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -621,7 +562,7 @@ router.patch('/selections/options/:optionId', async (req: Request, res: Response
   }
 
   const optionId = req.params.optionId as string;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
   const d = parsed.data;
 
   const [current] = await db
@@ -657,12 +598,10 @@ router.patch('/selections/options/:optionId', async (req: Request, res: Response
 });
 
 // DELETE /selections/options/:optionId
-router.delete('/selections/options/:optionId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/selections/options/:optionId', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const optionId = req.params.optionId as string;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const refs = await db
     .select({ id: selectionProductOptionsTable.id })
@@ -703,12 +642,10 @@ const BulkApplyBody = z.object({
 });
 
 // GET /selections/product-options?productId=
-router.get('/selections/product-options', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/selections/product-options', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const productId = typeof req.query.productId === 'string' ? req.query.productId : undefined;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const rows = await db
     .select()
@@ -723,9 +660,7 @@ router.get('/selections/product-options', async (req: Request, res: Response) =>
 });
 
 // POST /selections/product-options/bulk — must be registered BEFORE /:id routes
-router.post('/selections/product-options/bulk', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/selections/product-options/bulk', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = BulkApplyBody.safeParse(req.body);
   if (!parsed.success) {
@@ -733,7 +668,7 @@ router.post('/selections/product-options/bulk', async (req: Request, res: Respon
     return;
   }
   const { brandId, optionIds } = parsed.data;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const options = await db
     .select({ id: selectionOptionsTable.id })
@@ -765,9 +700,7 @@ router.post('/selections/product-options/bulk', async (req: Request, res: Respon
 });
 
 // POST /selections/product-options
-router.post('/selections/product-options', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/selections/product-options', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const parsed = CreateProductOptionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -775,7 +708,7 @@ router.post('/selections/product-options', async (req: Request, res: Response) =
     return;
   }
   const { productId, optionId } = parsed.data;
-  const { companyId } = actor;
+  const companyId = req.actorCtx!.companyId;
 
   const [product] = await db
     .select({ brandId: selectionProductsTable.brandId })
@@ -804,15 +737,13 @@ router.post('/selections/product-options', async (req: Request, res: Response) =
 });
 
 // DELETE /selections/product-options/:id
-router.delete('/selections/product-options/:id', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/selections/product-options/:id', requirePermission('catalog.selections_manage'), async (req: Request, res: Response) => {
 
   const [row] = await db
     .delete(selectionProductOptionsTable)
     .where(and(
       eq(selectionProductOptionsTable.id, req.params.id as string),
-      eq(selectionProductOptionsTable.companyId, actor.companyId),
+      eq(selectionProductOptionsTable.companyId, req.actorCtx!.companyId),
     ))
     .returning();
 

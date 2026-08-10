@@ -10,12 +10,12 @@
  *  6. Partial unique index enforced: 409 with holder info on use_case conflict.
  */
 
-import { roleRank, type Role } from '@workspace/authz';
+// company.edit_settings (admin+) wired via requirePermission.
+import { requirePermission } from '../middlewares/requirePermission';
 import {
   db,
   companyTemplatesTable,
   objectOwnershipTable,
-  userProfilesTable,
   TEMPLATE_USE_CASES,
 } from '@workspace/db';
 import { and, eq } from 'drizzle-orm';
@@ -47,36 +47,6 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 // Returns the resolved companyId string, or null after responding with an
 // appropriate error code.
 // ---------------------------------------------------------------------------
-async function requireCompanyAdmin(
-  req: Request,
-  res: Response,
-): Promise<string | null> {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-
-  const companyId = (req.params.companyId as string).toUpperCase();
-
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return null;
-  }
-
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = actorProfile?.role ?? 'field_rep';
-  if (roleRank(role as Role) < roleRank('admin')) {
-    res.status(403).json({ error: 'Admin role required' });
-    return null;
-  }
-
-  return companyId;
-}
-
 // ---------------------------------------------------------------------------
 // Verify that objectPath is owned by the target company. Returns true if the
 // ownership row exists and belongs to the same company; responds 400 and
@@ -272,9 +242,10 @@ async function cleanupStorageObject(objectPath: string, context: string): Promis
 // ---------------------------------------------------------------------------
 // GET /companies/:companyId/templates
 // ---------------------------------------------------------------------------
-router.get('/companies/:companyId/templates', async (req: Request, res: Response) => {
-  const companyId = await requireCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_settings (admin+) + same-company path guard. Verdict unchanged.
+router.get('/companies/:companyId/templates', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.actorCtx!.companyId !== companyId) return void res.status(403).json({ error: 'Forbidden' });
 
   const templates = await db
     .select()
@@ -287,9 +258,9 @@ router.get('/companies/:companyId/templates', async (req: Request, res: Response
 // ---------------------------------------------------------------------------
 // POST /companies/:companyId/templates
 // ---------------------------------------------------------------------------
-router.post('/companies/:companyId/templates', async (req: Request, res: Response) => {
-  const companyId = await requireCompanyAdmin(req, res);
-  if (!companyId) return;
+router.post('/companies/:companyId/templates', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (req.actorCtx!.companyId !== companyId) return void res.status(403).json({ error: 'Forbidden' });
 
   const { name, objectPath, mimeType, useCase, originalFilename } = req.body as {
     name?: unknown;
@@ -367,9 +338,10 @@ router.post('/companies/:companyId/templates', async (req: Request, res: Respons
 // ---------------------------------------------------------------------------
 router.patch(
   '/companies/:companyId/templates/:templateId',
+  requirePermission('company.edit_settings'),
   async (req: Request, res: Response) => {
-    const companyId = await requireCompanyAdmin(req, res);
-    if (!companyId) return;
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (req.actorCtx!.companyId !== companyId) return void res.status(403).json({ error: 'Forbidden' });
 
     const templateId = req.params.templateId as string;
 
@@ -535,9 +507,10 @@ router.patch(
 // ---------------------------------------------------------------------------
 router.delete(
   '/companies/:companyId/templates/:templateId',
+  requirePermission('company.edit_settings'),
   async (req: Request, res: Response) => {
-    const companyId = await requireCompanyAdmin(req, res);
-    if (!companyId) return;
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (req.actorCtx!.companyId !== companyId) return void res.status(403).json({ error: 'Forbidden' });
 
     const templateId = req.params.templateId as string;
 

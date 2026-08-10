@@ -3,9 +3,9 @@ import {
   priceBookItemsTable,
   priceBookPackageItemsTable,
   priceBookPackagesTable,
-  userProfilesTable,
 } from '@workspace/db';
-import { roleRank, type Role } from '@workspace/authz';
+// catalog.price_book_{view,add,edit,delete} wired via requirePermission.
+import { requirePermission } from '../middlewares/requirePermission';
 import { anthropic } from '@workspace/integrations-anthropic-ai';
 import { and, eq, inArray } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -13,36 +13,9 @@ import { z } from 'zod';
 
 const router: IRouter = Router();
 
-async function requireAdminOrAbove(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  const role = profile?.role ?? 'field_rep';
-  if (roleRank(role as Role) < roleRank('admin')) {
-    res.status(403).json({ error: 'Admin role required' });
-    return null;
-  }
-  return { role, companyId: req.user.companyId };
-}
-
 // ---------------------------------------------------------------------------
 // Line items
 // ---------------------------------------------------------------------------
-
-// Read access for any authenticated company member — field reps price
-// estimates from the book; only writes stay admin-gated.
-function requireAuthenticated(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  return { companyId: req.user.companyId };
-}
 
 // ── AI description generation (Claude Opus) ────────────────────────────────
 // Writes to the price book are admin-gated, so generation is too — it exists
@@ -71,9 +44,7 @@ const GenerateDescriptionBody = z.object({
   unit: z.string().trim().max(60).nullable().optional(),
 });
 
-router.post('/price-book/generate-description', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/price-book/generate-description', requirePermission('catalog.price_book_add'), async (req: Request, res: Response) => {
 
   const parsed = GenerateDescriptionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -128,22 +99,18 @@ const UpdateItemBody = z.object({
   unit: z.string().max(60).nullable().optional(),
 });
 
-router.get('/price-book/items', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/price-book/items', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const items = await db
     .select()
     .from(priceBookItemsTable)
-    .where(eq(priceBookItemsTable.companyId, actor.companyId))
+    .where(eq(priceBookItemsTable.companyId, req.actorCtx!.companyId))
     .orderBy(priceBookItemsTable.createdAt);
 
   res.json({ items });
 });
 
-router.post('/price-book/items', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/price-book/items', requirePermission('catalog.price_book_add'), async (req: Request, res: Response) => {
 
   const parsed = CreateItemBody.safeParse(req.body);
   if (!parsed.success) {
@@ -154,7 +121,7 @@ router.post('/price-book/items', async (req: Request, res: Response) => {
   const [item] = await db
     .insert(priceBookItemsTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       name: parsed.data.name,
       description: parsed.data.description ?? null,
       unitPrice: parsed.data.unitPrice,
@@ -165,9 +132,7 @@ router.post('/price-book/items', async (req: Request, res: Response) => {
   res.status(201).json({ item });
 });
 
-router.patch('/price-book/items/:itemId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.patch('/price-book/items/:itemId', requirePermission('catalog.price_book_edit'), async (req: Request, res: Response) => {
 
   const itemId = String(req.params.itemId);
 
@@ -183,7 +148,7 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
     .where(
       and(
         eq(priceBookItemsTable.id, itemId),
-        eq(priceBookItemsTable.companyId, actor.companyId),
+        eq(priceBookItemsTable.companyId, req.actorCtx!.companyId),
       ),
     );
 
@@ -207,9 +172,7 @@ router.patch('/price-book/items/:itemId', async (req: Request, res: Response) =>
   res.json({ item: updated });
 });
 
-router.delete('/price-book/items/:itemId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/price-book/items/:itemId', requirePermission('catalog.price_book_delete'), async (req: Request, res: Response) => {
 
   const itemId = String(req.params.itemId);
 
@@ -219,7 +182,7 @@ router.delete('/price-book/items/:itemId', async (req: Request, res: Response) =
     .where(
       and(
         eq(priceBookItemsTable.id, itemId),
-        eq(priceBookItemsTable.companyId, actor.companyId),
+        eq(priceBookItemsTable.companyId, req.actorCtx!.companyId),
       ),
     );
 
@@ -262,14 +225,12 @@ const UpdatePackageBody = z.object({
   itemAssignments: z.array(ItemAssignment).optional(),
 });
 
-router.get('/price-book/packages', async (req: Request, res: Response) => {
-  const actor = requireAuthenticated(req, res);
-  if (!actor) return;
+router.get('/price-book/packages', requirePermission('catalog.price_book_view'), async (req: Request, res: Response) => {
 
   const packages = await db
     .select()
     .from(priceBookPackagesTable)
-    .where(eq(priceBookPackagesTable.companyId, actor.companyId))
+    .where(eq(priceBookPackagesTable.companyId, req.actorCtx!.companyId))
     .orderBy(priceBookPackagesTable.createdAt);
 
   if (packages.length === 0) {
@@ -297,9 +258,7 @@ router.get('/price-book/packages', async (req: Request, res: Response) => {
   });
 });
 
-router.post('/price-book/packages', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.post('/price-book/packages', requirePermission('catalog.price_book_add'), async (req: Request, res: Response) => {
 
   const parsed = CreatePackageBody.safeParse(req.body);
   if (!parsed.success) {
@@ -310,7 +269,7 @@ router.post('/price-book/packages', async (req: Request, res: Response) => {
   const [pkg] = await db
     .insert(priceBookPackagesTable)
     .values({
-      companyId: actor.companyId,
+      companyId: req.actorCtx!.companyId,
       name: parsed.data.name,
       inspectionCondition: parsed.data.inspectionCondition ?? null,
     })
@@ -331,9 +290,7 @@ router.post('/price-book/packages', async (req: Request, res: Response) => {
   });
 });
 
-router.patch('/price-book/packages/:packageId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.patch('/price-book/packages/:packageId', requirePermission('catalog.price_book_edit'), async (req: Request, res: Response) => {
 
   const packageId = String(req.params.packageId);
 
@@ -349,7 +306,7 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
     .where(
       and(
         eq(priceBookPackagesTable.id, packageId),
-        eq(priceBookPackagesTable.companyId, actor.companyId),
+        eq(priceBookPackagesTable.companyId, req.actorCtx!.companyId),
       ),
     );
 
@@ -400,9 +357,7 @@ router.patch('/price-book/packages/:packageId', async (req: Request, res: Respon
   });
 });
 
-router.delete('/price-book/packages/:packageId', async (req: Request, res: Response) => {
-  const actor = await requireAdminOrAbove(req, res);
-  if (!actor) return;
+router.delete('/price-book/packages/:packageId', requirePermission('catalog.price_book_delete'), async (req: Request, res: Response) => {
 
   const packageId = String(req.params.packageId);
 
@@ -412,7 +367,7 @@ router.delete('/price-book/packages/:packageId', async (req: Request, res: Respo
     .where(
       and(
         eq(priceBookPackagesTable.id, packageId),
-        eq(priceBookPackagesTable.companyId, actor.companyId),
+        eq(priceBookPackagesTable.companyId, req.actorCtx!.companyId),
       ),
     );
 

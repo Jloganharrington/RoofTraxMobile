@@ -1,5 +1,6 @@
-import { roleRank, type Role } from '@workspace/authz';
-import { db, discontinuedProductsTable, userProfilesTable } from '@workspace/db';
+// catalog.price_book_view (GET) / catalog.price_book_edit (writes) via requirePermission.
+import { requirePermission } from '../middlewares/requirePermission';
+import { db, discontinuedProductsTable } from '@workspace/db';
 import { and, asc, eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -10,30 +11,6 @@ import { z } from 'zod';
 
 const router: IRouter = Router();
 
-function requireAuthenticated(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  return { companyId: req.user.companyId };
-}
-
-async function requireAdminOrAbove(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  const role = profile?.role ?? 'field_rep';
-  if (roleRank(role as Role) < roleRank('admin')) {
-    res.status(403).json({ error: 'Admin role required' });
-    return null;
-  }
-  return { companyId: req.user.companyId };
-}
 
 const productBodySchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -43,20 +20,16 @@ const productBodySchema = z.object({
   exposureInches: z.number().positive().max(1000).nullable().optional(),
 });
 
-router.get('/discontinued-products', async (req, res) => {
-  const auth = requireAuthenticated(req, res);
-  if (!auth) return;
+router.get('/discontinued-products', requirePermission('catalog.price_book_view'), async (req, res) => {
   const products = await db
     .select()
     .from(discontinuedProductsTable)
-    .where(eq(discontinuedProductsTable.companyId, auth.companyId))
+    .where(eq(discontinuedProductsTable.companyId, req.actorCtx!.companyId))
     .orderBy(asc(discontinuedProductsTable.name));
   res.json({ products });
 });
 
-router.post('/discontinued-products', async (req, res) => {
-  const auth = await requireAdminOrAbove(req, res);
-  if (!auth) return;
+router.post('/discontinued-products', requirePermission('catalog.price_book_edit'), async (req, res) => {
   const parsed = productBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid product', details: parsed.error.flatten() });
@@ -65,7 +38,7 @@ router.post('/discontinued-products', async (req, res) => {
   const [product] = await db
     .insert(discontinuedProductsTable)
     .values({
-      companyId: auth.companyId,
+      companyId: req.actorCtx!.companyId,
       name: parsed.data.name,
       photoPath: parsed.data.photoPath ?? null,
       widthInches: parsed.data.widthInches ?? null,
@@ -75,9 +48,7 @@ router.post('/discontinued-products', async (req, res) => {
   res.status(201).json({ product });
 });
 
-router.patch('/discontinued-products/:id', async (req, res) => {
-  const auth = await requireAdminOrAbove(req, res);
-  if (!auth) return;
+router.patch('/discontinued-products/:id', requirePermission('catalog.price_book_edit'), async (req, res) => {
   const parsed = productBodySchema.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid product', details: parsed.error.flatten() });
@@ -88,8 +59,8 @@ router.patch('/discontinued-products/:id', async (req, res) => {
     .set(parsed.data)
     .where(
       and(
-        eq(discontinuedProductsTable.id, req.params.id),
-        eq(discontinuedProductsTable.companyId, auth.companyId),
+        eq(discontinuedProductsTable.id, req.params.id as string),
+        eq(discontinuedProductsTable.companyId, req.actorCtx!.companyId),
       ),
     )
     .returning();
@@ -100,15 +71,13 @@ router.patch('/discontinued-products/:id', async (req, res) => {
   res.json({ product });
 });
 
-router.delete('/discontinued-products/:id', async (req, res) => {
-  const auth = await requireAdminOrAbove(req, res);
-  if (!auth) return;
+router.delete('/discontinued-products/:id', requirePermission('catalog.price_book_delete'), async (req, res) => {
   const deleted = await db
     .delete(discontinuedProductsTable)
     .where(
       and(
-        eq(discontinuedProductsTable.id, req.params.id),
-        eq(discontinuedProductsTable.companyId, auth.companyId),
+        eq(discontinuedProductsTable.id, req.params.id as string),
+        eq(discontinuedProductsTable.companyId, req.actorCtx!.companyId),
       ),
     )
     .returning({ id: discontinuedProductsTable.id });
