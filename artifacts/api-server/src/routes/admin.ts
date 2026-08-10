@@ -1,3 +1,12 @@
+/**
+ * Team roster and org-stats routes.
+ *
+ * Permission keys (from lib/authz registry):
+ *   team.view_stats — admin+    — GET /admin/stats           (PD-1)
+ *   team.view       — manager+  — GET /team/users
+ *   team.edit       — manager+  — PATCH /team/users/:userId  (+ actorOutranks via canSetRoleDeptSpec)
+ *   team.delete     — manager+  — DELETE /team/users/:userId (+ actorOutranks via canSetRoleDeptSpec)
+ */
 import {
   GetAdminStatsResponse,
   ListTeamUsersResponse,
@@ -9,63 +18,25 @@ import { db, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { canSetRoleDeptSpec, canSetWorkflow, isAdmin, isManagerOrAdmin } from '@workspace/authz';
+import { canSetRoleDeptSpec, canSetWorkflow } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router: IRouter = Router();
 
-async function requireManagerOrAdmin(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
+// ── GET /admin/stats — team.view_stats (admin+) ───────────────────────────────
 
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = profile?.role ?? 'field_rep';
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager/admin role required' });
-    return null;
-  }
-
-  return { role, companyId: req.user.companyId };
-}
-
-async function requireAdmin(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = profile?.role ?? 'field_rep';
-  if (!isAdmin(role)) {
-    res.status(403).json({ error: 'Admin role required' });
-    return null;
-  }
-
-  return { role, companyId: req.user.companyId };
-}
-
-router.get('/admin/stats', async (req: Request, res: Response) => {
-  const actor = await requireAdmin(req, res); // PD-1: org-level stats are admin-tier only
-  if (!actor) return;
+router.get('/admin/stats', requirePermission('team.view_stats'), async (req: Request, res: Response) => {
+  const { companyId } = req.actorCtx!;
 
   const [totals] = await db
     .select({
-      totalPins: sql<number>`count(*)`,
+      totalPins:     sql<number>`count(*)`,
       insurancePins: sql<number>`count(*) filter (where ${pinsTable.workflow} = 'insurance')`,
-      retailPins: sql<number>`count(*) filter (where ${pinsTable.workflow} = 'retail')`,
-      appointments: sql<number>`count(*) filter (where ${pinsTable.doorKnockResult} = 'appointment')`,
+      retailPins:    sql<number>`count(*) filter (where ${pinsTable.workflow} = 'retail')`,
+      appointments:  sql<number>`count(*) filter (where ${pinsTable.doorKnockResult} = 'appointment')`,
     })
     .from(pinsTable)
-    .where(eq(pinsTable.companyId, actor.companyId));
+    .where(eq(pinsTable.companyId, companyId));
 
   const [{ fieldRepCount }] = await db
     .select({ fieldRepCount: sql<number>`count(*)` })
@@ -74,67 +45,69 @@ router.get('/admin/stats', async (req: Request, res: Response) => {
     .where(
       and(
         eq(userProfilesTable.role, 'field_rep'),
-        eq(usersTable.companyId, actor.companyId),
+        eq(usersTable.companyId, companyId),
       ),
     );
 
   res.json(
     GetAdminStatsResponse.parse({
       stats: {
-        totalPins: Number(totals?.totalPins ?? 0),
+        totalPins:     Number(totals?.totalPins ?? 0),
         insurancePins: Number(totals?.insurancePins ?? 0),
-        retailPins: Number(totals?.retailPins ?? 0),
-        appointments: Number(totals?.appointments ?? 0),
+        retailPins:    Number(totals?.retailPins ?? 0),
+        appointments:  Number(totals?.appointments ?? 0),
         fieldRepCount: Number(fieldRepCount ?? 0),
       },
     }),
   );
 });
 
-router.get('/team/users', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
-  if (!actor) return;
+// ── GET /team/users — team.view (manager+) ────────────────────────────────────
+
+router.get('/team/users', requirePermission('team.view'), async (req: Request, res: Response) => {
+  const { companyId } = req.actorCtx!;
 
   const rows = await db
     .select({
-      id: usersTable.id,
-      email: usersTable.email,
-      firstName: usersTable.firstName,
-      lastName: usersTable.lastName,
-      profileImageUrl: usersTable.profileImageUrl,
-      createdAt: usersTable.createdAt,
-      role: userProfilesTable.role,
+      id:                 usersTable.id,
+      email:              usersTable.email,
+      firstName:          usersTable.firstName,
+      lastName:           usersTable.lastName,
+      profileImageUrl:    usersTable.profileImageUrl,
+      createdAt:          usersTable.createdAt,
+      role:               userProfilesTable.role,
       workflowAssignment: userProfilesTable.workflowAssignment,
-      department: userProfilesTable.department,
-      pinCount: sql<number>`(select count(*) from ${pinsTable} where ${pinsTable.userId} = ${usersTable.id})`,
+      department:         userProfilesTable.department,
+      pinCount:           sql<number>`(select count(*) from ${pinsTable} where ${pinsTable.userId} = ${usersTable.id})`,
     })
     .from(usersTable)
     .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
-    .where(eq(usersTable.companyId, actor.companyId));
+    .where(eq(usersTable.companyId, companyId));
 
   res.json(
     ListTeamUsersResponse.parse({
       users: rows.map((row) => ({
-        id: row.id,
-        email: row.email,
-        firstName: row.firstName,
-        lastName: row.lastName,
-        profileImageUrl: row.profileImageUrl,
-        role: row.role ?? 'field_rep',
+        id:                 row.id,
+        email:              row.email,
+        firstName:          row.firstName,
+        lastName:           row.lastName,
+        profileImageUrl:    row.profileImageUrl,
+        role:               row.role ?? 'field_rep',
         workflowAssignment: row.workflowAssignment ?? 'insurance_retail',
-        department: row.department ?? 'canvasser',
-        pinCount: Number(row.pinCount ?? 0),
-        joinedAt: row.createdAt,
+        department:         row.department ?? 'canvasser',
+        pinCount:           Number(row.pinCount ?? 0),
+        joinedAt:           row.createdAt,
       })),
     }),
   );
 });
 
-router.patch('/team/users/:userId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res);
-  if (!actor) return;
+// ── PATCH /team/users/:userId — team.edit (manager+, + actorOutranks) ─────────
 
+router.patch('/team/users/:userId', requirePermission('team.edit'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole } = req.actorCtx!;
   const userId = req.params.userId as string;
+
   const parsed = UpdateTeamUserBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload' });
@@ -146,9 +119,7 @@ router.patch('/team/users/:userId', async (req: Request, res: Response) => {
   const [targetUser] = await db
     .select()
     .from(usersTable)
-    .where(
-      and(eq(usersTable.id, userId), eq(usersTable.companyId, actor.companyId)),
-    );
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
   if (!targetUser) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -162,7 +133,7 @@ router.patch('/team/users/:userId', async (req: Request, res: Response) => {
 
   if (
     (parsed.data.role !== undefined || parsed.data.department !== undefined) &&
-    !canSetRoleDeptSpec(actor.role, req.user!.id, userId, targetRole, {
+    !canSetRoleDeptSpec(actorRole, req.user!.id, userId, targetRole, {
       role: parsed.data.role,
     })
   ) {
@@ -172,7 +143,7 @@ router.patch('/team/users/:userId', async (req: Request, res: Response) => {
 
   if (
     parsed.data.workflowAssignment !== undefined &&
-    !canSetWorkflow(actor.role, req.user!.id, userId, targetRole)
+    !canSetWorkflow(actorRole, req.user!.id, userId, targetRole)
   ) {
     res.status(403).json({ error: 'Not permitted to change this workflow assignment' });
     return;
@@ -182,21 +153,16 @@ router.patch('/team/users/:userId', async (req: Request, res: Response) => {
     .insert(userProfilesTable)
     .values({
       userId,
-      role: parsed.data.role ?? targetRole,
-      workflowAssignment:
-        parsed.data.workflowAssignment ??
-        targetProfile?.workflowAssignment ??
-        'insurance_retail',
-      department: parsed.data.department ?? targetProfile?.department ?? 'canvasser',
+      role:               parsed.data.role ?? targetRole,
+      workflowAssignment: parsed.data.workflowAssignment ?? targetProfile?.workflowAssignment ?? 'insurance_retail',
+      department:         parsed.data.department ?? targetProfile?.department ?? 'canvasser',
     })
     .onConflictDoUpdate({
       target: userProfilesTable.userId,
       set: {
-        ...(parsed.data.role ? { role: parsed.data.role } : {}),
-        ...(parsed.data.workflowAssignment
-          ? { workflowAssignment: parsed.data.workflowAssignment }
-          : {}),
-        ...(parsed.data.department ? { department: parsed.data.department } : {}),
+        ...(parsed.data.role               ? { role:               parsed.data.role               } : {}),
+        ...(parsed.data.workflowAssignment ? { workflowAssignment: parsed.data.workflowAssignment } : {}),
+        ...(parsed.data.department         ? { department:         parsed.data.department         } : {}),
         updatedAt: new Date(),
       },
     })
@@ -210,32 +176,31 @@ router.patch('/team/users/:userId', async (req: Request, res: Response) => {
   res.json(
     UpdateTeamUserResponse.parse({
       user: {
-        id: targetUser.id,
-        email: targetUser.email,
-        firstName: targetUser.firstName,
-        lastName: targetUser.lastName,
-        profileImageUrl: targetUser.profileImageUrl,
-        role: updated.role,
+        id:                 targetUser.id,
+        email:              targetUser.email,
+        firstName:          targetUser.firstName,
+        lastName:           targetUser.lastName,
+        profileImageUrl:    targetUser.profileImageUrl,
+        role:               updated.role,
         workflowAssignment: updated.workflowAssignment,
-        department: updated.department,
-        pinCount: Number(pinCount ?? 0),
-        joinedAt: targetUser.createdAt,
+        department:         updated.department,
+        pinCount:           Number(pinCount ?? 0),
+        joinedAt:           targetUser.createdAt,
       },
     }),
   );
 });
 
-router.delete('/team/users/:userId', async (req: Request, res: Response) => {
-  const actor = await requireManagerOrAdmin(req, res); // actorOutranks enforces rank; managers may delete strictly-lower-ranked users
-  if (!actor) return;
+// ── DELETE /team/users/:userId — team.delete (manager+, + actorOutranks) ──────
 
+router.delete('/team/users/:userId', requirePermission('team.delete'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole } = req.actorCtx!;
   const userId = req.params.userId as string;
+
   const [targetUser] = await db
     .select()
     .from(usersTable)
-    .where(
-      and(eq(usersTable.id, userId), eq(usersTable.companyId, actor.companyId)),
-    );
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
   if (!targetUser) {
     res.status(404).json({ error: 'User not found' });
     return;
@@ -247,7 +212,7 @@ router.delete('/team/users/:userId', async (req: Request, res: Response) => {
     .where(eq(userProfilesTable.userId, userId));
   const targetRole = targetProfile?.role ?? 'field_rep';
 
-  if (!canSetRoleDeptSpec(actor.role, req.user!.id, userId, targetRole)) {
+  if (!canSetRoleDeptSpec(actorRole, req.user!.id, userId, targetRole)) {
     res.status(403).json({ error: 'Not permitted to remove this user' });
     return;
   }

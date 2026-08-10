@@ -1,15 +1,24 @@
+/**
+ * Location routes.
+ *
+ * Permission keys (from lib/authz registry):
+ *   (none) — POST /location/ping    auth-only; any authenticated member
+ *   team.view — manager+            GET /location/team
+ */
 import {
   PingLocationBody,
   PingLocationResponse,
   ListTeamLocationsResponse,
 } from '@workspace/api-zod';
-import { db, userLocationsTable, userProfilesTable, usersTable, canvassingSessionsTable } from '@workspace/db';
+import { db, userLocationsTable, usersTable, canvassingSessionsTable } from '@workspace/db';
 import { and, eq, isNull, isNotNull } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { isManagerOrAdmin } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router: IRouter = Router();
+
+// ── POST /location/ping — auth-only ───────────────────────────────────────────
 
 router.post('/location/ping', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -36,31 +45,19 @@ router.post('/location/ping', async (req: Request, res: Response) => {
   res.json(PingLocationResponse.parse({ success: true }));
 });
 
-router.get('/location/team', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// ── GET /location/team — team.view (manager+) ─────────────────────────────────
 
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-
-  const role = profile?.role ?? 'field_rep';
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager/admin role required' });
-    return;
-  }
+router.get('/location/team', requirePermission('team.view'), async (req: Request, res: Response) => {
+  const { companyId } = req.actorCtx!;
 
   const rows = await db
     .select({
-      userId: usersTable.id,
-      firstName: usersTable.firstName,
-      lastName: usersTable.lastName,
-      latitude: userLocationsTable.latitude,
-      longitude: userLocationsTable.longitude,
-      updatedAt: userLocationsTable.updatedAt,
+      userId:     usersTable.id,
+      firstName:  usersTable.firstName,
+      lastName:   usersTable.lastName,
+      latitude:   userLocationsTable.latitude,
+      longitude:  userLocationsTable.longitude,
+      updatedAt:  userLocationsTable.updatedAt,
       isClockedIn: isNotNull(canvassingSessionsTable.id),
     })
     .from(userLocationsTable)
@@ -72,7 +69,7 @@ router.get('/location/team', async (req: Request, res: Response) => {
         isNull(canvassingSessionsTable.endedAt),
       ),
     )
-    .where(eq(usersTable.companyId, req.user.companyId));
+    .where(eq(usersTable.companyId, companyId));
 
   res.json(ListTeamLocationsResponse.parse({ locations: rows }));
 });

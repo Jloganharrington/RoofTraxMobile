@@ -18,24 +18,16 @@ import {
   db,
   paymentsTable,
   pinsTable,
-  userProfilesTable,
   vendorExpensesTable,
 } from '@workspace/db';
-import { isManagerOrAdmin, type Role } from '@workspace/authz';
+// profitability.export_csv — minRole: manager. Wired via requirePermission middleware.
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function getRole(userId: string): Promise<Role> {
-  const [row] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId));
-  return (row?.role ?? 'field_rep') as Role;
-}
 
 /** Format integer cents as a dollar string, e.g. 125000 → "$1,250.00" */
 function fmtCents(cents: number | null | undefined): string {
@@ -67,18 +59,7 @@ function pgInt(v: unknown): number {
 // GET /pins/:pinId/financials/export
 // ---------------------------------------------------------------------------
 
-router.get('/pins/:pinId/financials/export', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
-
+router.get('/pins/:pinId/financials/export', requirePermission('profitability.export_csv'), async (req: Request, res: Response) => {
   const pinId = req.params.pinId as string;
 
   // ── Fetch pin + company in parallel ──────────────────────────────────────
@@ -100,7 +81,7 @@ router.get('/pins/:pinId/financials/export', async (req: Request, res: Response)
         pmCommissionPaidDate: pinsTable.pmCommissionPaidDate,
       })
       .from(pinsTable)
-      .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId))),
+      .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId))),
 
     db
       .select({
@@ -108,7 +89,7 @@ router.get('/pins/:pinId/financials/export', async (req: Request, res: Response)
         reportBranding: companiesTable.reportBranding,
       })
       .from(companiesTable)
-      .where(eq(companiesTable.id, req.user.companyId)),
+      .where(eq(companiesTable.id, req.actorCtx!.companyId)),
   ]);
 
   if (!pin) {
@@ -121,19 +102,19 @@ router.get('/pins/:pinId/financials/export', async (req: Request, res: Response)
     db
       .select()
       .from(paymentsTable)
-      .where(and(eq(paymentsTable.pinId, pinId), eq(paymentsTable.companyId, req.user.companyId)))
+      .where(and(eq(paymentsTable.pinId, pinId), eq(paymentsTable.companyId, req.actorCtx!.companyId)))
       .orderBy(paymentsTable.paymentDate),
 
     db
       .select()
       .from(customerInvoicesTable)
-      .where(and(eq(customerInvoicesTable.pinId, pinId), eq(customerInvoicesTable.companyId, req.user.companyId)))
+      .where(and(eq(customerInvoicesTable.pinId, pinId), eq(customerInvoicesTable.companyId, req.actorCtx!.companyId)))
       .orderBy(customerInvoicesTable.createdAt),
 
     db
       .select()
       .from(vendorExpensesTable)
-      .where(and(eq(vendorExpensesTable.pinId, pinId), eq(vendorExpensesTable.companyId, req.user.companyId)))
+      .where(and(eq(vendorExpensesTable.pinId, pinId), eq(vendorExpensesTable.companyId, req.actorCtx!.companyId)))
       .orderBy(vendorExpensesTable.createdAt),
 
     db.execute(
@@ -153,7 +134,7 @@ router.get('/pins/:pinId/financials/export', async (req: Request, res: Response)
             net_profit_cents
           FROM pin_profitability
           WHERE pin_id     = ${pinId}
-            AND company_id = ${req.user.companyId}`,
+            AND company_id = ${req.actorCtx!.companyId}`,
     ),
   ]);
 

@@ -16,8 +16,9 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
-import { db, pinsTable, userProfilesTable } from '@workspace/db';
-import { canViewProfitability } from '@workspace/authz';
+import { db, pinsTable } from '@workspace/db';
+// Permission key: profitability.view (manager+). Wired via requirePermission middleware.
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -25,31 +26,15 @@ const router = Router();
 // GET /pins/:pinId/profitability
 // ---------------------------------------------------------------------------
 
-router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  // FINDING 3-C: financial data is manager-and-above only.
-  // Canvassers and field reps must not see margin, cost, or payment totals.
-  const [profile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  const role = profile?.role ?? 'field_rep';
-  if (!canViewProfitability(role)) {
-    res.status(403).json({ error: 'Not authorized to view profitability data' });
-    return;
-  }
-
+// profitability.view — minRole: manager (FINDING 3-C). Verdict unchanged.
+router.get('/pins/:pinId/profitability', requirePermission('profitability.view'), async (req: Request, res: Response) => {
   const pinId = req.params.pinId as string;
 
   // Confirm the pin belongs to this company before querying the view.
   const [pin] = await db
     .select({ id: pinsTable.id })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
@@ -94,7 +79,7 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
           base_scope_cents
         FROM pin_profitability
         WHERE pin_id   = ${pinId}
-          AND company_id = ${req.user.companyId}`,
+          AND company_id = ${req.actorCtx!.companyId}`,
   );
 
   const row = result.rows[0];

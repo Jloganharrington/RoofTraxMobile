@@ -234,7 +234,7 @@ Push-enabled types: `contract_signed`, `change_order_signed`, `change_order_pend
 | Helmet.js | **Absent** | No security header middleware (X-Frame-Options, CSP, HSTS, etc.) |
 | HTTPS | Enforced by Replit proxy | Not handled in application code |
 
-**FINDING 0.8-A (P1 — CORS wildcard with credentials):** `app.ts` uses `cors({ credentials: true, origin: true })`. With `origin: true`, every incoming `Origin` header is reflected back as `Access-Control-Allow-Origin`. Combined with `credentials: true`, this means any domain can make cross-origin requests with the user's session cookie attached. Should be restricted to `process.env.REPLIT_DEV_DOMAIN` and the production domain. **Status: OPEN.**
+**FINDING 0.8-A (P1 — CORS wildcard with credentials):** `app.ts` uses `cors({ credentials: true, origin: true })`. With `origin: true`, every incoming `Origin` header is reflected back as `Access-Control-Allow-Origin`. Combined with `credentials: true`, this means any domain can make cross-origin requests with the user's session cookie attached. Should be restricted to `process.env.REPLIT_DEV_DOMAIN` and the production domain. **Status: REMEDIATED — allowlist implemented, commit e68c3b6, 2026-08-10.**
 
 **FINDING 0.8-B (P1 — no rate limiting on auth routes): REMEDIATED** by baseline commit a635a2c (see Baseline Changes section). Auth routes now limited to 20/min/IP; portal routes use the shared `RateLimiter` class at 30/min/IP. Single-process deployment, so per-instance limit = effective limit.
 
@@ -2132,7 +2132,7 @@ FINDING 0.1-A/B/C, 0.5-A, 0.7-A, 0.8-A, 0.8-B have body sections (Phases 0.1, 0.
 | FINDING 0.1-C | Phase 0 | P2 | Session cookie unsigned — `cookieParser()` called without secret | Open |
 | FINDING 0.5-A | Phase 0 | P2 | `GET /companies/:companyId` unauthenticated — name disclosure given a known ID | Open |
 | FINDING 0.7-A | Phase 0 | P1 | Push notifications dead in production — EAS `projectId` is literal placeholder | Open |
-| FINDING 0.8-A | Phase 0 | P1 | CORS `origin: true` with `credentials: true` reflects any origin | Open |
+| FINDING 0.8-A | Phase 0 | P1 | CORS `origin: true` with `credentials: true` reflects any origin | **REMEDIATED** (e68c3b6) |
 | FINDING 0.8-B | Phase 0 | P1 | Auth routes had no rate limiting | **REMEDIATED** (a635a2c) |
 | FINDING 1-A | Phase 1 | P2 | `GET /admin/users` does not paginate | Open |
 | FINDING 2-A | Phase 2 | P1 | `claim_approved` unreachable via POST /events/pipeline event bus | Open |
@@ -2220,7 +2220,7 @@ A scheduled sweep would have the same re-notification problem as `claim_blocked`
 | ID | Finding | Status |
 |---|---|---|
 | 0.7-A | Push notifications dead in production — EAS `projectId` placeholder | Open |
-| 0.8-A | CORS `origin: true` + `credentials: true` reflects any origin with cookies | Open |
+| 0.8-A | CORS `origin: true` + `credentials: true` reflects any origin with cookies | **REMEDIATED** (e68c3b6) |
 | **0.8-B** | Auth routes had no rate limiting | **REMEDIATED** (a635a2c) |
 | 2-A | `claim_approved` stage unreachable via POST /events/pipeline | Open |
 | 3-B | `GET /inspections/:id` 403 cross-tenant = existence disclosure | Open |
@@ -3260,7 +3260,7 @@ No ruling received. The invoice endpoint gate is NOT implemented pending PD-3 re
 
 | Item | Reason deferred |
 |---|---|
-| FINDING 0.8-A — CORS allowlist | Proposed; awaiting approval before implementation |
+| FINDING 0.8-A — CORS allowlist | **Implemented** — commit e68c3b6, 2026-08-10; allowlist: `REPLIT_DEV_DOMAIN`, `REPLIT_EXPO_DEV_DOMAIN`, `PRODUCTION_ORIGIN` |
 | FINDING 0.7-A — EAS push | Requires EAS project ID + dev build; out of scope for API remediation |
 | FINDING 2-B — async portal-sign race | Single-process environment; can't reliably reproduce; documented only |
 | FINDING 2-E — AI compile blocking | Provider timeout; no code fix applicable |

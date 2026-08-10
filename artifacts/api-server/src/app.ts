@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
@@ -7,6 +8,13 @@ import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 
 const app: Express = express();
+
+// ── Security headers ──────────────────────────────────────────────────────────
+// This is a pure JSON API — it never serves HTML. Disable CSP because the
+// header is meaningless on JSON responses and could confuse future tooling.
+// All other helmet defaults apply: X-Frame-Options, HSTS, X-Content-Type-Options,
+// Referrer-Policy, X-XSS-Protection, etc.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 // Trust one reverse-proxy hop so req.ip is the client address (from
 // X-Forwarded-For), not the proxy's address. Replit's infrastructure

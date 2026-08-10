@@ -16,8 +16,9 @@ import {
   STAGES_BY_PIPELINE,
   type PipelineId,
 } from '../lib/pipelineStages';
-import { isManagerOrAdmin } from '@workspace/authz';
-import { getRole } from './pins';
+// Permission key: lead.advance_stage (ownerOrRole: manager — no resource ownerId at this
+// collection endpoint ⟹ effectively manager+). Wired via requirePermission middleware.
+import { requirePermission } from '../middlewares/requirePermission';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -241,16 +242,9 @@ export async function emitPipelineEvent(opts: {
 // POST /api/events/pipeline
 // ---------------------------------------------------------------------------
 
-router.post('/events/pipeline', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
-
-  // Bulk auto-advance is restricted to manager/admin — plain reps cannot trigger
-  // company-wide stage transitions.
-  const callerRole = await getRole(req.user.id);
-  if (!isManagerOrAdmin(callerRole)) {
-    return void res.status(403).json({ error: 'Only managers and admins may trigger pipeline events' });
-  }
-
+// lead.advance_stage — ownerOrRole: manager. No resource ownerId at this
+// collection endpoint, so the check collapses to manager+. Verdict unchanged.
+router.post('/events/pipeline', requirePermission('lead.advance_stage'), async (req: Request, res: Response) => {
   const parsed = PipelineEventBody.safeParse(req.body);
   if (!parsed.success) {
     return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
@@ -258,7 +252,7 @@ router.post('/events/pipeline', async (req: Request, res: Response) => {
 
   const { eventType, leadId, payload } = parsed.data;
   const { results, reason, unknownEventType } = await processPipelineEvent({
-    companyId: req.user.companyId,
+    companyId: req.actorCtx!.companyId,
     eventType,
     leadId,
     payload,
