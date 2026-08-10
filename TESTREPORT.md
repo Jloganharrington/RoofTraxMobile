@@ -3052,3 +3052,189 @@ Option B (separate `warranty_commitments` table, FK to `pins`) — decoupled fro
 
 Implementation blocked pending ruling on Option A/B/C and confirmation that product-catalog warranty seeding is in scope.
 
+
+---
+
+## CHECKPOINT 3 — Step 3 Remediation (Partial)
+
+**Commit:** `87783ea` — "Step 3 (partial): remove pipelineStage from LeadProfileBody; reject non-positive money amounts"
+
+### FINDING 3-F — REMEDIATED ✓
+
+`pipelineStage` removed from `LeadProfileBody` in `artifacts/api-server/src/routes/pins.ts`. Comment added explaining why: stage transitions must go through the dedicated `PATCH /leads/:id/advance-stage` endpoint which enforces gate logic and auth.
+
+Both PATCH handlers that used `LeadProfileBody` (`PATCH /pins/:pinId/profile` in `pins.ts` and the inspection lead PATCH in `inspections.ts`) no longer accept `pipelineStage` in the request body.
+
+**Verification:** `pnpm vitest run` — 671/671 passing. No existing test sent `pipelineStage` to the profile endpoint.
+
+### FINDING 3-I — REMEDIATED ✓
+
+Added ≤ 0 cents validation after Zod parse in both:
+- `PATCH /pins/:pinId/profile` (pins.ts)
+- Lead profile PATCH in inspections.ts
+
+Fields guarded: `contractAmount`, `deductibleAmount`, `rcvAmount`. If a non-null value parses to a float ≤ 0 (including negative strings and zero), the endpoint returns `400 { error: "<field> must be a positive dollar amount (got: <val>)" }`.
+
+Null is explicitly allowed as "clear the field".
+
+### FINDING 3-H — REMEDIATED ✓ (committed with CHECKPOINT 4 changes)
+
+`contractAmount` writes gated to `isManagerOrAdmin(role)`. A `field_rep` who passes `canEditPin()` still cannot change `contractAmount` — returns `403 "Only managers and above may change the contract amount"`.
+
+Same gate applied to both `pins.ts` and `inspections.ts` PATCH handlers for parity.
+
+### Remaining Step 3 item — BLOCKED (no ruling received)
+
+**Audit record for money-field changes:** No general-purpose field-change audit log exists in the schema. Three options were proposed before this session:
+1. New `pin_field_changes` table (FK: pinId, changedBy, fieldName, oldValue, newValue, changedAt)
+2. Extend `stage_transitions` table with a `fieldChanges JSONB` column
+3. JSONB column on `pins` (append-only, like claim status history)
+
+**Ruling required before implementation.** The audit record for Step 3 remains OPEN.
+
+### Suite
+
+| Suite | Result |
+|---|---|
+| `artifacts/api-server` vitest | **671/671** ✓ |
+
+---
+
+## CHECKPOINT 4 — Step 4 Remediation
+
+**Commit:** `c003576` — "Steps 3/4: profitability role gate (3-C), contractAmount manager gate (3-H), inspections.ts parity"
+
+### FINDING 3-C — REMEDIATED ✓
+
+Added role gate to `GET /pins/:pinId/profitability` in `artifacts/api-server/src/routes/profitability.ts`:
+
+```ts
+import { isManagerOrAdmin } from '@workspace/authz';
+import { ..., userProfilesTable } from '@workspace/db';
+
+// After isAuthenticated(), before pin lookup:
+const [profile] = await db.select({ role: userProfilesTable.role })
+  .from(userProfilesTable).where(eq(userProfilesTable.userId, req.user.id));
+const role = profile?.role ?? 'field_rep';
+if (!isManagerOrAdmin(role)) {
+  res.status(403).json({ error: 'Not authorized to view profitability data' });
+  return;
+}
+```
+
+**Test updated:** `profitability.test.ts` — test `'field_rep can read profitability (read-only, no write gate)'` renamed and updated to expect `403` (FINDING 3-C gate). `coB()` session uses a manager-role user — cross-company 200 test passes correctly.
+
+**UI note:** `useGetPinProfitability` is called unconditionally in `LeadProfile.tsx:937`. The API now returns 403 for field_reps; the UI will show an error/empty state. A follow-up web-client gate (conditional render based on role capability) would suppress the 403 call entirely. API gate is the security-critical layer; the UI update is a UX improvement.
+
+### PD-3 — OPEN (policy ruling needed)
+
+**Finding 3-G (P1):** `GET /pins/:id/invoices` returns the invoice list to `field_rep` canvassers with no dept/role gate.
+
+**Policy question PD-3:** Should canvassers (field_rep + canvasser dept) see the invoice list, or is invoices a manager-only resource?
+
+No ruling received. The invoice endpoint gate is NOT implemented pending PD-3 resolution.
+
+### Suite
+
+| Suite | Result |
+|---|---|
+| `artifacts/api-server` vitest | **671/671** ✓ |
+
+
+---
+
+## CHECKPOINT 5 — Step 5: Admin Route Policy Decisions
+
+**Status: BLOCKED — Policy rulings not received.**
+
+### Open Policy Decisions
+
+#### PD-1: Should `manager` role reach `/admin/*` namespace?
+
+**Current behavior:** `admin.ts` gates ALL admin routes with `isManagerOrAdmin(role)`, allowing managers to access:
+- `GET /admin/users`
+- `PATCH /admin/users/:id`
+- `DELETE /admin/users/:id`
+- `GET /admin/stats`
+
+**CRM nav evidence:** The web client gates "Team Management" and "User Authorization" nav items at `minRole='manager'`, making this behavior self-consistent and likely intentional.
+
+**Ruling required:** Is this behavior correct, or should `/admin/*` be restricted to `admin | super_admin` only?
+
+#### PD-2: Should `manager` role delete users?
+
+Separate from PD-1: even if managers can reach the admin namespace for team management (view, edit roles), should delete-user require admin+?
+
+**Ruling required.**
+
+#### Recommended resolution (absent ruling)
+
+If the intent is that managers handle team management but not destructive admin actions:
+- Retain `isManagerOrAdmin` on `GET /admin/users`, `PATCH /admin/users/:id` (role changes)
+- Upgrade `DELETE /admin/users/:id` to `isAdmin` (admin | super_admin only)
+
+This matches the "least privilege at the delete boundary" principle without breaking the manager's team-management UX.
+
+No code changes implemented without a ruling.
+
+
+---
+
+## CHECKPOINT 6 — Step 6: Final Verification Status
+
+### Open Finding Status
+
+| Finding | Severity | Status | Commit |
+|---|---|---|---|
+| FINDING 0.1-A (ISSUER_URL optional) | P2 | OPEN (intentional for dev) | — |
+| FINDING 0.1-B (BRAIN_MACHINE_TOKEN unused) | Info | OPEN (document) | — |
+| FINDING 0.1-C (cookie unsigned) | P2 | OPEN (documented) | — |
+| FINDING 0.5-A (GET /companies/:id unauthenticated) | P2 | OPEN (intentional — join code flow) | — |
+| FINDING 0.7-A (push EAS placeholder) | P1 | OPEN (requires EAS project setup) | — |
+| FINDING 0.8-A (CORS wildcard) | P1 | OPEN | — |
+| FINDING 0.8-B (rate limiting) | P1 | **REMEDIATED** | `a635a2c` (baseline) |
+| FINDING 1-R.2-A (no onboarding) | P2 | OPEN (product gap) | — |
+| FINDING 2-A (outcome-stage silent 200) | P2 | **REMEDIATED** | `f309d0b` |
+| FINDING 2-B (async portal-sign concurrent) | P2 | OPEN | — |
+| FINDING 2-E (AI compile blocks) | P2 | OPEN (env limitation) | — |
+| FINDING 2-F (FIPSA ordering constraint) | P3 | OPEN | — |
+| FINDING 2-R.2-A (rapGateReason unwriteable) | P3 | OPEN | — |
+| FINDING 3-A (cross-tenant contracts) | P0 | **WITHDRAWN** (company scope already applied) | — |
+| FINDING 3-B (inspection 403→404) | P1 | **ADDRESSED** — current `loadInspectionInCompany` returns 404 for cross-tenant; verified empirically (HTTP 404) | — |
+| FINDING 3-C (profitability no role gate) | P0 | **REMEDIATED** | `c003576` |
+| FINDING 3-D (manager reaches admin stats) | P0 | **BLOCKED** — PD-1 ruling needed | — |
+| FINDING 3-E (manager deletes users) | P0 | **BLOCKED** — PD-1/PD-2 ruling needed | — |
+| FINDING 3-F (pipelineStage mass-assignable) | P1 | **REMEDIATED** | `87783ea` |
+| FINDING 3-G (canvasser reads invoices) | P1 | **BLOCKED** — PD-3 ruling needed | — |
+| FINDING 3-H (field_rep mutates contractAmount) | P1 | **REMEDIATED** | `c003576` |
+| FINDING 3-I (negative contractAmount) | P2 | **REMEDIATED** | `87783ea` |
+| FINDING 3-J (open per prior TESTREPORT) | P0 | (see prior findings) | — |
+| FINDING 4-A (office dept → 500) | P1 | **REMEDIATED** | `d8c0bc2` |
+| PD-1 (manager admin namespace) | Policy | OPEN — ruling needed | — |
+| PD-2 (manager delete users) | Policy | OPEN — ruling needed | — |
+| PD-3 (canvasser invoice list) | Policy | OPEN — ruling needed | — |
+
+### COC Feature Status
+
+| Phase | Description | Status | Commit |
+|---|---|---|---|
+| Phase A | Approved carrier estimate gate | **COMPLETE** | `c9c0b95` |
+| Phase B | COC record and AI extraction | **COMPLETE** | `a0699b9` |
+| Phase C | Sign endpoint, signer title, authz, notification | **COMPLETE** | `60a1986` + `c34f9e1` |
+| Phase D | Retail COC warranty inventory | **REPORT ONLY** — warranty data model ruling needed before implementation | `ae1ebbd` |
+
+### Step 3 Audit Record
+
+**BLOCKED** — requires ruling on audit table strategy. Three options remain open:
+1. New `pin_field_changes` table
+2. Extend `stage_transitions` with `fieldChanges JSONB`
+3. Append-only JSONB column on `pins`
+
+### Final Suite Result
+
+| Suite | Tests | Result |
+|---|---|---|
+| `artifacts/api-server` vitest | 671 | **671/671 ✓** |
+
+### TESTREPORT complete. Outstanding items require policy rulings or out-of-scope work (EAS, CORS origin allowlist, onboarding flow).
+
