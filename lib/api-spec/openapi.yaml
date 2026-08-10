@@ -8119,7 +8119,7 @@ components:
       enum: [retail, insurance_retail]
     Department:
       type: string
-      enum: [canvasser, inspector_canvasser]
+      enum: [canvasser, inspector_canvasser, office]
     PinWorkflow:
       type: string
       enum: [retail, insurance]

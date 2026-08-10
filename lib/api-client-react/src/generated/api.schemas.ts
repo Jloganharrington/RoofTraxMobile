@@ -415,6 +415,7 @@ export type Department = typeof Department[keyof typeof Department];
 export const Department = {
   canvasser: 'canvasser',
   inspector_canvasser: 'inspector_canvasser',
+  office: 'office',
 } as const;
 
 export type PinWorkflow = typeof PinWorkflow[keyof typeof PinWorkflow];
