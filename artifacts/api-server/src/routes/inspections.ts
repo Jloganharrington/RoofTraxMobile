@@ -10183,6 +10183,11 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
     }
   }
 
+  // FINDING 3-H: contractAmount flows into revised_contract_cents; gate to manager+.
+  if (d.contractAmount !== undefined && !isManagerOrAdmin(role as import('@workspace/authz').Role)) {
+    return void res.status(403).json({ error: 'Only managers and above may change the contract amount' });
+  }
+
   const [updated] = await db
     .update(pinsTable)
     .set({

@@ -7,7 +7,7 @@
  *   3. cashMarginPct computed correctly
  *   4. Void invoices excluded from invoice_total_cents
  *   5. Company scoping — company B cannot read company A profitability (404)
- *   6. field_rep CAN read (no write restriction on this read-only endpoint)
+ *   6. field_rep is BLOCKED (FINDING 3-C gate: manager-and-above only)
  *   7. Migration idempotency — CREATE OR REPLACE VIEW is safe to re-run
  *
  * Migration 027 additions (expected_total_cents + cash margin pct):
@@ -289,9 +289,11 @@ describe('invoice totals exclude void invoices', () => {
 // ---------------------------------------------------------------------------
 
 describe('access control', () => {
-  it('field_rep can read profitability (read-only, no write gate)', async () => {
+  it('field_rep is blocked from profitability endpoint (FINDING 3-C gate)', async () => {
+    // FINDING 3-C remediation: profitability data (margin, costs, payments) is
+    // manager-and-above only. field_rep receives 403, not 200.
     const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(rep());
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
   it('unauthenticated → 401', async () => {

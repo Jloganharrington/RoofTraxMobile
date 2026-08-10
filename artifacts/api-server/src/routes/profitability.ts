@@ -16,7 +16,8 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
-import { db, pinsTable } from '@workspace/db';
+import { db, pinsTable, userProfilesTable } from '@workspace/db';
+import { isManagerOrAdmin } from '@workspace/authz';
 
 const router = Router();
 
@@ -27,6 +28,18 @@ const router = Router();
 router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  // FINDING 3-C: financial data is manager-and-above only.
+  // Canvassers and field reps must not see margin, cost, or payment totals.
+  const [profile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, req.user.id));
+  const role = profile?.role ?? 'field_rep';
+  if (!isManagerOrAdmin(role)) {
+    res.status(403).json({ error: 'Not authorized to view profitability data' });
     return;
   }
 

@@ -378,6 +378,14 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
     }
   }
 
+  // FINDING 3-H: contractAmount flows into revised_contract_cents on the
+  // profitability view; allowing field reps to change it is a financial bypass.
+  // Gate contract amount writes to manager-and-above.
+  if (d.contractAmount !== undefined && !isManagerOrAdmin(role)) {
+    res.status(403).json({ error: 'Only managers and above may change the contract amount' });
+    return;
+  }
+
   const [updated] = await db
     .update(pinsTable)
     .set({
