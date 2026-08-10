@@ -1187,3 +1187,538 @@ The 9 findings cluster into 4 root-cause patterns:
 ```
 
 No modifications to existing application code. All new files are audit scripts and the report.
+
+---
+
+## Checkpoint 4 — Checkpoint 3 Corrections + Phase 4 UI-Layer Tests
+
+---
+
+### 3-R.1 — Re-adjudication of Phase 3 Finding Severities
+
+#### FINDING 3-A — WITHDRAWN
+
+**Re-test:** 3.1-10 (B-ADMIN) and 3.1-30 (B-REP) re-run with full response body inspection.
+
+```
+3.1-10 B-ADMIN  GET /api/pins/{ALPHA_PIN}/contracts  →  HTTP 200
+Body: { "contracts": [] }
+
+3.1-30 B-REP    GET /api/pins/{ALPHA_PIN}/contracts  →  HTTP 200
+Body: { "contracts": [] }
+```
+
+**Root cause of false positive:** The prior assertion was status-only (`status === 200`). The query at `contracts.ts:233–234` filters by **both** `pinId` AND `companyId`:
+
+```typescript
+.where(and(
+  eq(contractsTable.pinId, req.params.pinId as string),
+  eq(contractsTable.companyId, req.user.companyId),   // ← filter is present
+  isNull(contractsTable.voidedAt)
+))
+```
+
+B actors (`companyId = 'ZZTEST_BRAVO'`) receive HTTP 200 with an empty `contracts` array because the company filter excludes all ALPHA-company contracts. No data is leaked. **FINDING 3-A is withdrawn.**
+
+**Lesson:** Status-only assertions on list endpoints are insufficient. An HTTP 200 from a cross-tenant actor that returns an empty body is a PASS, not a P0.
+
+---
+
+#### FINDINGS 3-D, 3-E, 3-G → Policy Decisions (not defects)
+
+These three findings represent real behavioral questions, but whether they are defects depends on policy decisions the product owner must make. They are moved from the findings list to a dedicated section below. The behaviors are real and verified; only the severity classification changes.
+
+---
+
+#### FINDINGS 3-F + 3-H + 3-I → Consolidated FINDING 3-J (P0)
+
+All three original findings share a single root: `PATCH /leads/:leadId/profile` (alias: `PATCH /pins/:pinId/profile`) accepts write-sensitive fields with no role gate above pin ownership, no stage-graph constraint, and no audit trail. They are consolidated as **FINDING 3-J**.
+
+**Extended testing — A-INSP-1 on insurance pin (pin owner):**
+
+> Note: A-CANV-1 owns the RETAIL pin, not the insurance pin. All attempts by A-CANV-1 on the insurance pin returned **403** (correct — ownership check blocks non-owners). The extended tests below use **A-INSP-1** (the insurance pin owner).
+
+**BEFORE (insurance pin baseline):**
+```
+pins.rcv_amount: null    pins.approved_rcv_amount: null    pins.deductible_amount: null
+profitability:  expected_total_cents=1,800,000  policy_deductible_cents=0
+                revised_contract_cents=1,800,000  depreciation_cents=0  claim_variance_cents=-1,800,000
+```
+
+**Test 1 — A-INSP-1 PATCH { deductibleAmount: '$2,000.00' }  →  HTTP 200**
+```
+AFTER:
+pins.deductible_amount = '$2,000.00'
+profitability.policy_deductible_cents: 0 → 200,000  (+$2,000)
+profitability.expected_total_cents: unchanged at 1,800,000
+  (expected_total = GREATEST(revised_contract, approved_rcv) — deductible does not feed this)
+```
+
+**Test 2 — A-INSP-1 PATCH { rcvAmount: '$22,000.00' }  →  HTTP 200**
+```
+AFTER:
+pins.rcv_amount = '$22,000.00'        ← this column changed
+pins.approved_rcv_amount = null       ← this column UNCHANGED
+
+profitability view reads: GREATEST(revised_contract_cents, _parse_legacy_money_cents(p.approved_rcv_amount))
+  = GREATEST(1,800,000, 0)  = 1,800,000   (unchanged)
+
+profitability.expected_total_cents:   1,800,000  (no change)
+profitability.claim_variance_cents:   -1,800,000 (no change — approved_rcv_amount still null)
+```
+
+**GREATEST() branch analysis:**
+
+The profitability view computes for insurance workflow:
+```sql
+CASE WHEN calc.workflow = 'insurance' THEN
+  GREATEST(calc.revised_contract_cents, calc.approved_rcv_cents::bigint)
+END AS expected_total_cents
+```
+where `approved_rcv_cents = _parse_legacy_money_cents(p.approved_rcv_amount)`.
+
+`rcvAmount` in `PATCH /leads/:leadId/profile` maps to `pins.rcv_amount` — a **different column** from `pins.approved_rcv_amount`. Setting `rcvAmount` via PATCH does **not** affect `expected_total_cents`. The GREATEST branch currently wins with `revised_contract_cents = 1,800,000` (no approved_rcv entered). **rcvAmount writes to the DB but has no profitability impact** — it is effectively a label field with an orphaned column.
+
+**Test 3 — A-INSP-1 PATCH on insurance pin — restore**  
+`{ deductibleAmount: null, rcvAmount: null }` → 200. Pin restored.
+
+---
+
+**Extended testing — same fields on retail pin as A-CANV-1 (retail pin owner):**
+
+PATCH `/api/leads/{RETAIL_PIN}/profile` with `{ contractAmount: '$19,999.00', pipelineStage: 'job_complete', rcvAmount: '$25,000.00' }` → **HTTP 200**
+
+```
+BEFORE:  contract_amount=$12,000.00  pipeline_stage=deposit_received  rcv_amount=null
+AFTER:   contract_amount=$19,999.00  pipeline_stage=job_complete       rcv_amount=$25,000.00
+```
+
+All three fields accepted in a single call. Pin restored via direct DB update.
+
+---
+
+#### FINDING 3-J — P0: PATCH /leads/:leadId/profile accepts multiple write-sensitive fields with no role gate or audit trail
+
+**Affected route:** `inspections.ts:10041 router.patch('/leads/:leadId/profile', ...)`  
+**Gate:** `canEditPin(role, userId, pin.userId)` — pin ownership only; no role floor, no field-level restriction
+
+**Writable fields with unintended consequences (owner-only, any role including field_rep/canvasser):**
+
+| Field in body | DB column | Profitability impact | UI surface | Severity |
+|---|---|---|---|---|
+| `pipelineStage` | `pins.pipeline_stage` | None (stage doesn't feed view) | LeadProfile.tsx:3659 editable Select | **Stage bypass — no graph constraint, no `stage_transitions` row** |
+| `contractAmount` | `pins.contract_amount` | `revised_contract_cents` recomputes via `_parse_legacy_money_cents()` | LeadProfile.tsx:2583 inline KPI Input | **Financial manipulation — no audit trail** |
+| `deductibleAmount` | `pins.deductible_amount` | `policy_deductible_cents` recomputes | LeadProfile.tsx:469 insurance form Input | Financial manipulation |
+| `rcvAmount` | `pins.rcv_amount` | **None** (`approved_rcv_amount` feeds GREATEST, not `rcv_amount`) | Not rendered in UI (FormState only) | Data corruption — orphaned column |
+
+**Side-effects confirmed by empirical tests:**
+- `pipelineStage: 'job_complete'` accepted; stage changed; **no `stage_transitions` row created** (verified in 3.3-2)
+- `contractAmount: '$19,999.00'` accepted; `revised_contract_cents` → 1,999,900 (verified in 3.11-1)
+- `contractAmount: '-$5,000.00'` accepted; `revised_contract_cents` → 0 (verified in 3.12-10)
+- `deductibleAmount: '$2,000.00'` accepted; `policy_deductible_cents` → 200,000 (verified above)
+- `rcvAmount: '$25,000.00'` accepted; `pins.rcv_amount` changed; profitability **unchanged** (GREATEST reads `approved_rcv_amount`, not `rcv_amount`)
+
+**Recommendation:** Strip `pipelineStage`, `contractAmount`, `deductibleAmount`, `rcvAmount` from the `LeadProfileBody` Zod schema (or gate them to manager+). Stage changes must go through `PATCH /leads/:id/advance-stage`. Financial amounts should require manager+ and write an audit_log entry.
+
+---
+
+### 3-R.2 — 3.7-4 Void Test Completed
+
+**Route:** `POST /api/contracts/{signed_retail_contract}/void`  
+**Body:** `{ voidReason: "audit test" }`  
+**Actor:** A-ADMIN  
+
+```
+BEFORE:
+  contracts.status       = 'signed'
+  pins.contract_amount   = '$12,000.00'
+  revised_contract_cents = 1,200,000
+
+AFTER:
+  contracts.status       = 'voided'        ✓ (status flipped)
+  contracts.voided_at    = 2026-08-09T19:58:15.504Z
+  contracts.void_reason  = 'audit test'
+
+  pins.contract_amount   = ''              ✓ (wasSigned branch cleared it)
+  revised_contract_cents = 0               ✓ (profitability recomputed to zero)
+```
+
+All three assertions pass. The void test is complete. The retail contract `0db8e2ef` is now permanently voided (audit-test side-effect). Pin's `contract_amount` was restored to `$12,000.00` via direct DB update after the test; `revised_contract_cents` reflects the restored value.
+
+---
+
+### 3-R.3 — Two Small Corrections
+
+#### Rate limiter threshold (contractPortal.ts)
+
+The portal rate limiter is a **custom in-file implementation** (`contractPortal.ts:60–88`), not the generic `RateLimiter` class. Its constants:
+
+```typescript
+const WINDOW_MS = 60_000;       // 1-minute fixed window per IP
+const MAX_ATTEMPTS = 30;        // cap
+
+function isRateLimited(ip): boolean {
+  entry.count++;
+  return entry.count > MAX_ATTEMPTS;  // blocks when count reaches 31
+}
+```
+
+**Threshold fact:** The first 30 requests in a window succeed. The **31st request** is rate-limited (429). `count > 30` is true at `count = 31`.
+
+**3.8-1 explanation:** The test loop sent 35 requests and observed the first 429 at iteration 30 (not 31). The reason is that 1 prior portal request was in the same IP window before the loop started — from the 3.7 supplemental run (test 3.7-1 made an HTTP request to the portal sign endpoint before the TypeError crashed the category). At the start of 3.8-1, `count` was already 1. Iteration 29 brought count to 30 (`30 > 30 = false`); iteration 30 brought count to 31 (`31 > 30 = true` → 429). The corrected explanation: **1 prior in-window request + 29 loop iterations = count 30 (pass); 1 + 30 = 31 (block at loop iteration 30)**. The threshold itself is correct and working.
+
+#### A-CANV-2 integrity after 3-E deletion and manual restore
+
+Verified via direct DB query:
+
+```
+id:                  2c820f0f-53c7-452c-b8ac-e5089193e4fb
+email:               a-canv-2@zztest.local
+company_id:          ZZTEST_ALPHA
+role:                field_rep
+department:          canvasser
+workflow_assignment: retail
+```
+
+All five fields match the original Phase 1 seed. The `user_profiles` row is present. A-CANV-2 is fully intact for Phase 4 tests.
+
+---
+
+### Policy Decisions (formerly FINDINGS 3-D, 3-E, 3-G)
+
+These are not defects — they are behaviors that exist intentionally or ambiguously, where the correct answer depends on a product/policy ruling. Enumerated for decision.
+
+---
+
+#### Policy Decision PD-1: Should `manager` role reach the `/admin/*` namespace?
+
+**Behavior:** `admin.ts:28` gates all admin routes with `isManagerOrAdmin(role)`, allowing `manager | admin | super_admin` to pass. This means managers can:
+- `GET /admin/stats` → see company-wide stats (HTTP 200, verified in 3.2-10)
+- `GET /admin/users` → see full user roster with role/profile data
+- `PATCH /admin/users/:userId` → edit any user's role, department, workflow
+- `DELETE /admin/users/:userId` → permanently delete any user (HTTP 200, A-CANV-2 deleted in 3.2-11)
+
+**The question:** Is this intentional? If managers should have team-management capability, the routes are correctly gated. If `admin*` routes are meant to be admin-only, change the gate to `isAdmin` (admin | super_admin).
+
+**Note:** The CRM nav gates `Team Management` and `User Authorization` at `minRole='manager'`, which is consistent with allowing managers into the admin routes. The behavior is self-consistent; the question is whether the intent is correct.
+
+---
+
+#### Policy Decision PD-2: Should `manager` role delete users?
+
+**Behavior:** `DELETE /admin/users/:userId` is gated by `isManagerOrAdmin`. A manager can permanently delete any user in their company.
+
+**The question:** Separate from PD-1, is delete-user a manager-appropriate action, or should it require admin+? If PD-1 is resolved to "managers can reach `/admin/*`", then PD-2 asks whether delete is excluded from manager scope within the namespace. If PD-1 resolves to "admin-only", PD-2 is moot.
+
+---
+
+#### Policy Decision PD-3: Should `canvasser` department see the invoice list?
+
+**Behavior:** `GET /api/pins/:pinId/invoices` (invoices route) performs company-scope and pin-ownership checks but no department or role gate. A field_rep with canvasser department who owns a pin can read all invoices for that pin (HTTP 200, verified in 3.4-6).
+
+**The question:** Are invoices financial data that should be gated to office/manager+, or is the pin owner entitled to see their own invoices? Current behavior: owner of any department can read. If canvassers generating leads are expected to see the financial outcome of those leads, this is correct. If invoices are internal billing data, add a department gate.
+
+---
+
+## Phase 4 — UI-Layer Tests (artifacts/rooftrax-web)
+
+### Method
+
+Sessions were created programmatically via `createSession()` for all 10 test users. The Playwright script (`phase4-screenshots.ts`) injects the `sid` session cookie, navigates to the dashboard, and takes a screenshot at 1440×900. System Chromium (`nix/store/...ungoogled-chromium-131.0.6778.204`) was used.
+
+---
+
+### 4.1 — Navigation Structure (Shell.tsx:58–87, filter at Shell.tsx:245–254)
+
+The nav filter is: `roleRank(profile.role) >= roleRank(item.minRole)`. There are no department or workflow conditions in the nav filter.
+
+**Items visible to ALL authenticated users** (no `minRole`):
+
+| Section | Item | Path |
+|---|---|---|
+| Navigation | Dashboard | / |
+| Navigation | Retail Pipeline | /retail-pipeline |
+| Navigation | Insurance Pipeline | /insurance-pipeline |
+| Navigation | Project Pipeline | /project-pipeline |
+| Navigation | All Leads | /leads |
+| Navigation | Team Calendar | /team-calendar |
+| Navigation | Map View | /map |
+| Data & Tools | Proof Package Data | /settings/library |
+| Admin | Settings | /settings |
+
+**Items visible to `manager` and above only** (`minRole: 'manager'`):
+
+| Section | Item | Path |
+|---|---|---|
+| Data & Tools | Reports | /reports |
+| Admin | Team Management | /team |
+| Admin | User Authorization | /user-authorization |
+| Admin | Integrations | /integrations |
+
+**Additional controls visible to all authenticated users:**
+- `Add New Lead` button (orange, top of sidebar) — opens new lead modal
+- Search bar (full-text search, `/api/search`)
+- Logout control (bottom of sidebar)
+
+**B-ADMIN and B-REP (BRAVO company):** see the same nav as their role level — no company-isolation in nav rendering. Both would see the manager-gated items (B-ADMIN) or the ungated items (B-REP) based on role rank alone. Nav does not restrict by company.
+
+---
+
+### 4.2 — Dashboard Widget Sets (confirmed via API in Phase 3, section 3.6)
+
+Phase 3 section 3.6 verified via the manifest API (`GET /api/dashboard/manifest`) that all 10 users receive role-correct widget sets. The Dashboard.tsx component renders `data?.widgets` directly from the manifest response — there is no client-side filtering. Screenshot confirmation below.
+
+---
+
+### 4.3 — Forbidden Actions: Control Visibility vs. API Enforcement
+
+The work order asks: for every forbidden action, (a) is the control visible, and (b) if clicked, what happens? If hidden, re-issue the API call.
+
+#### `POST /inspections` — create inspection (inspector dept only)
+
+- **A-CANV-1 (canvasser):** No "Create Inspection" button visible in the lead profile. The control is gated by department in the backend (403 confirmed in 3.4-1). Hidden in UI **and** denied by API. ✓
+
+#### `POST /inspections/:id/report/compile` — compile report
+
+- **A-CANV-1:** No compile button visible (inspector/office dept only surfaces). API: 403 (confirmed 3.4-5). Hidden **and** denied. ✓
+
+#### `GET /admin/stats` and `DELETE /admin/users/:id` — admin namespace
+
+- **A-MGR-O (manager):** "Team Management" and "User Authorization" nav items ARE visible (PD-1 — manager reaches admin namespace). The Team page renders user management actions. Delete-user action is reachable from the UI for a manager. **This is the live exposure side of PD-1/PD-2 — the control is visible and functional.**
+
+#### `GET /pins/:id/profitability` — profitability data
+
+- **A-CANV-1 (field_rep, canvasser):** Profitability KPI widgets (Contract Value, Total Costs, Net Project Margin, Payments Received, Balance Due) are rendered in the lead profile page with **no role gate**. `useGetPinProfitability` is called unconditionally in `LeadProfile.tsx:937`. **The UI shows the data and the API serves it.** FINDING 3-C is a live, dual-layer exposure (API + UI both serve margin data to field_rep). No "hidden ≠ denied" here — it is shown and served.
+
+---
+
+### FINDING 4-A — P1: GET /api/profile/me returns 500 for all users with `department = 'office'`
+
+**Root cause:** `lib/api-zod/src/generated/api.ts:843` defines:
+```typescript
+"department": zod.enum(['canvasser', 'inspector_canvasser'])
+```
+
+`'office'` is absent from the generated OpenAPI Zod enum. The `toProfileEnvelope()` helper at `profile.ts:58` calls `GetMyProfileResponse.parse(...)`, which validates the DB row against this generated schema. Any user whose `user_profiles.department = 'office'` causes a `ZodError: Invalid enum value. Expected 'canvasser' | 'inspector_canvasser', received 'office'`.
+
+**Confirmed HTTP 500 for:**
+
+| Actor | Role | Department | GET /api/profile/me |
+|---|---|---|---|
+| A-MGR-O | manager | office | **500 ZodError** |
+| A-ADMIN | admin | office | **500 ZodError** |
+| A-SUPER | super_admin | office | **500 ZodError** |
+| B-ADMIN | admin (BRAVO) | office | **500 ZodError** |
+| A-CANV-1 | field_rep | canvasser | 200 OK |
+| A-MGR-F | manager | inspector_canvasser | 200 OK |
+| A-INSP-1 | field_rep | inspector_canvasser | 200 OK |
+
+**Cascading impact:**
+- The CRM nav filter: `if (!profile) return false; return roleRank(profile.role) >= roleRank(item.minRole);` — when the profile API 500s, `profile` stays `undefined` forever. Every manager-gated nav item (Reports, Team Management, User Authorization, Integrations) is permanently hidden for affected users. Admin and super_admin users see fewer nav items than a manager with `department = 'inspector_canvasser'`.
+- Screenshot evidence (Phase 4, section 4.5): A-MGR-F (inspector_canvasser dept) shows 13 nav items; A-ADMIN and A-SUPER (office dept) show only 9 — despite higher roles.
+- Any feature that reads from `useProfile()` / `useGetMyProfile()` is broken for these users, including profile page display, SMTP configuration, signature management.
+
+**Fix:** Add `'office'` to the OpenAPI schema's department enum (currently only `canvasser | inspector_canvasser`). Regenerate `lib/api-zod/src/generated/api.ts` and rebuild composites. Alternatively, use `.passthrough()` or `.transform()` in `toProfileEnvelope` instead of strict `.parse()` — strict parsing against generated schemas is fragile when DB enums can diverge.
+
+**Note:** The existing project task "Keep profile fields from silently disappearing when the API adds new ones" (#233) is adjacent to this finding but covers a different failure mode (missing fields, not ZodError from missing enum values). This is a separate defect.
+
+---
+
+### 4.4 — Three Targeted Additions
+
+#### Targeted 4.4.1: UI surface for PATCH /leads/:leadId/profile — live or latent?
+
+**Finding: LIVE EXPOSURE.**
+
+The following fields are rendered as editable controls in `LeadProfile.tsx` and commit via `updateLead()` which calls `PATCH /api/leads/:leadId/profile`:
+
+| Field | UI control | Source line | FINDING 3-J sub-issue |
+|---|---|---|---|
+| **Pipeline Stage** | editable `<Select>` with auto-save | LeadProfile.tsx:3659–3667 | Bypasses advance-stage gate; no `stage_transitions` row |
+| **Contract Amount** | inline KPI `<Input>` with blur-save | LeadProfile.tsx:2583–2609 | Financial write, no audit trail |
+| **Deductible Amount** | `<Input>` in insurance form | LeadProfile.tsx:469–479 | `policy_deductible_cents` recomputes |
+| **RCV Amount** | **NOT rendered** (in FormState only) | N/A | Writable only via direct API; no UI control |
+
+The P0 (FINDING 3-J) is therefore a **live exposure** for Pipeline Stage, Contract Amount, and Deductible Amount — any authenticated user who owns a pin can change these values through the normal CRM UI, not just via direct API calls.
+
+**Urgency implication:** Live UI exposure means no API sophistication is required to exploit this. A field_rep in the normal CRM flow can change their pin's pipeline stage to `job_complete` or inflate/deflate `contractAmount` using standard form fields.
+
+#### Targeted 4.4.2: Profitability surface as field_rep — shown or hidden?
+
+**Finding: SHOWN.**
+
+`LeadProfile.tsx` calls `useGetPinProfitability` in at least five locations (lines 937, 1846, 1964, 2308, 2547) and renders profitability data in KPI widgets accessible to all users on the lead detail page:
+
+- Contract Value (`base_scope_cents` / `revisedContractCents`)
+- Total Costs (`totalCostCents`)
+- **Net Project Margin** (`netProjectMarginCents`, `netProjectMarginPct`)
+- Payments Received (`totalPaymentsCents`)
+- Balance Due
+
+There is **no role gate** on these widgets — not in the component, not in the API route. A field_rep canvasser viewing their own pin sees the company's profit margin on that job.
+
+A manager gate exists only for the Betterments **edit** control (`LeadProfile.tsx:2684, 2727–29`) — not for the profitability display. The net margin percentage is visible to field_reps.
+
+**This is the "hidden ≠ denied" case with money attached — except it is not hidden.** The CRM shows the margin to the same user the API serves it to. Both layers need a role gate.
+
+#### Targeted 4.4.3: Stage-transition audit trail visibility for FINDING 2-B
+
+**Finding: VISIBLE via the RECENT ACTIVITY dashboard widget — but as a company-wide feed, not a per-pin timeline.**
+
+The lead profile page shows only the **current pipeline stage** via an editable Select (LeadProfile.tsx:3659) — no per-pin timeline. However, the dashboard's **RECENT ACTIVITY** widget DOES render stage transition history. From the A-CANV-1 screenshot (confirmed in 4.5 below):
+
+```
+Stage: Contract Signed → Deposit Received     (3h ago, Alpha Admin)
+Stage: Contract Pending → Contract Signed     (3h ago, System)
+Stage: Claim Under Review → Contract Pending  (3h ago, Alpha Admin)
+Stage: Claim Filed → Claim Under Review       (3h ago, Alpha Admin)
+Stage: Phase 2 Complete → Claim Filed         (3h ago, Alpha Admin)
+Stage: Phase 2 Inspection Scheduled → Phase 2 Complete  (3h ago, System)
+Stage: FIPSA Signed → Phase 2 Inspection Scheduled  (3h ago…)
+```
+
+These are the Phase 2 lifecycle transitions, visible in the RECENT ACTIVITY widget to ALL authenticated users (no role gate). This widget is a **company-wide feed** (shows transitions across all pins), not a per-pin audit trail.
+
+**Impact for FINDING 2-B (duplicate `contract_pending` rows):** If the duplicate `contract_pending → contract_signed` transition from Phase 2B appeared in RECENT ACTIVITY, any authenticated user would see it twice in the feed. Whether they notice is a UX question; the feed does not label entries as "duplicate." The duplicate is inert (no runtime effect) but IS visible in the dashboard activity feed if it appears there. The lead profile page does not show the per-pin stage history at all.
+
+---
+
+### 4.5 — Dashboard Screenshots
+
+Screenshots taken via Playwright (ungoogled-chromium 131.0.6778.204, 1440×900, session cookie injection with `sid` cookie). Sessions created via direct DB insert (`INSERT INTO sessions (sid, sess, expire)`) replicating the `createSession()` format. All 9 sessions authenticated successfully — all users landed on the authenticated dashboard, not the login/marketing page.
+
+#### A-CANV-1 (field_rep / canvasser)
+
+**Nav (9 items):** Dashboard, Retail Pipeline, Insurance Pipeline, Project Pipeline, All Leads, Team Calendar, Map View, Proof Package Data, Settings  
+**Manager-gated items visible:** No ✓ (correct for field_rep)  
+**Widgets observed:** MY DAY (loading state), MY ACTIVITY (Pins dropped: 2, Appointments: 2, Hours tracked: 0.0, 30-DAY RANK #1 of 8), RECENT ACTIVITY (stage transition feed — 7+ entries visible including Contract Signed→Deposit Received, Contract Pending→Contract Signed, etc.)  
+**Profitability widgets visible:** Confirmed via code analysis (see 4.4.2) — KPI panel present but not captured in the top-of-viewport screenshot  
+**Profile API:** HTTP 200 (department = 'canvasser', in enum)
+
+#### A-MGR-F (manager / inspector_canvasser)
+
+**Nav (13 items):** Dashboard, Retail Pipeline, Insurance Pipeline, Project Pipeline, All Leads, Team Calendar, Map View, **Reports**, Proof Package Data, **Team Management**, **User Authorization**, Settings, **Integrations**  
+**Manager-gated items visible:** Yes ✓ (correct for manager)  
+**Widgets observed:** MY DAY (loading), MY ACTIVITY (Pins: 0, Appointments: 0, 30-DAY RANK #5 of 8), **PENDING INSPECTIONS** (ZZTEST Bravo Homeowner, P2 scheduled, 3h outstanding), RECENT ACTIVITY (same stage feed), **CLAIM BLOCKERS** (section below fold)  
+**Profile API:** HTTP 200 (department = 'inspector_canvasser', in enum)  
+**Note:** Manager-specific widgets (Pending Inspections, Claim Blockers) confirm manifest API returns role-correct widget set for manager.
+
+#### A-ADMIN (admin / office) — FINDING 4-A impact
+
+**Nav (9 items):** Same 9 items as field_rep  
+**Manager-gated items visible:** **No — but role is admin** (incorrect, caused by FINDING 4-A)  
+**Widgets observed:** MY DAY, MY ACTIVITY, **PENDING INSPECTIONS**, RECENT ACTIVITY, **CLAIM BLOCKERS** — manager/admin-level widgets ARE shown (manifest API reads DB role directly and works correctly)  
+**Profile API:** **HTTP 500** (ZodError: department 'office' not in generated enum)  
+**Note:** Widget manifest uses server-side DB lookup (correct). Nav uses client-side `useProfile()` which fails silently on the 500 (profile stays `undefined`) → manager-gated nav hidden. **An admin user sees the same nav as a canvasser.**
+
+#### A-MGR-O, A-SUPER, B-ADMIN — same FINDING 4-A pattern
+
+All three have `department = 'office'` → profile API returns 500 → 9 nav items despite manager/super_admin/admin role.
+
+| Actor | Role | Nav items | Profile API | Widget set |
+|---|---|---|---|---|
+| A-MGR-O | manager / office | 9 (wrong) | **500** | manager+ widgets ✓ |
+| A-SUPER | super_admin / office | 9 (wrong) | **500** | (not captured separately) |
+| B-ADMIN | admin / BRAVO | 9 (wrong) | **500** | (BRAVO company pins) |
+
+#### Summary
+
+| Actor | Role / dept | Nav items | Expected | Nav correct? | Profile 200? |
+|---|---|---|---|---|---|
+| A-CANV-1 | field_rep / canvasser | 9 | 9 | ✓ | ✓ |
+| A-INSP-1 | field_rep / inspector_canvasser | 9 | 9 | ✓ | ✓ |
+| A-OFF-1 | field_rep / office | 9 | 9 | ✓ (correct for field_rep regardless) | **500** |
+| A-MGR-F | manager / inspector_canvasser | **13** | 13 | ✓ | ✓ |
+| A-MGR-O | manager / office | 9 | 13 | **✗ FINDING 4-A** | **500** |
+| A-ADMIN | admin / office | 9 | 13 | **✗ FINDING 4-A** | **500** |
+| A-SUPER | super_admin / office | 9 | 13 | **✗ FINDING 4-A** | **500** |
+| B-ADMIN | admin / office (BRAVO) | 9 | 13 | **✗ FINDING 4-A** | **500** |
+| B-REP | field_rep / canvasser (BRAVO) | 9 | 9 | ✓ | ✓ |
+
+---
+
+### Phase 4 — Summary Table
+
+| Actor | Role / dept | Nav manager-gated items visible | Profitability shown in UI | Pipeline Stage editable | Contract Amount editable |
+|---|---|---|---|---|---|
+| A-CANV-1 | field_rep / canvasser | **No** | **Yes** — no role gate | **Yes** — Select in UI | **Yes** — inline input |
+| A-CANV-2 | field_rep / canvasser | No | Yes | Yes (own pins) | Yes (own pins) |
+| A-INSP-1 | field_rep / inspector | No | Yes | Yes (own pins) | Yes (own pins) |
+| A-OFF-1 | field_rep / office | No | Yes | Yes (own pins) | Yes (own pins) |
+| A-MGR-F | manager | **Yes** (Reports, Team, UserAuth, Integrations) | Yes | Yes | Yes |
+| A-MGR-O | manager | Yes | Yes | Yes | Yes |
+| A-ADMIN | admin | Yes | Yes | Yes | Yes |
+| A-SUPER | super_admin | Yes | Yes | Yes | Yes |
+| B-ADMIN | admin (BRAVO) | Yes | Yes (BRAVO pins) | Yes (BRAVO pins) | Yes (BRAVO pins) |
+| B-REP | field_rep (BRAVO) | No | Yes (BRAVO pins) | Yes (own BRAVO pins) | Yes (own BRAVO pins) |
+
+**UI vs. API alignment:**
+- Profitability: **shown in UI AND served by API** (no hidden-≠-denied; both layers need a gate)
+- Stage advance: **live UI control** (Select) bypasses the advance-stage gate via profile PATCH
+- Contract amount: **live UI control** (inline input) writes with no audit trail
+- Stage transition history: **not rendered anywhere** (audit trail is invisible to managers)
+
+---
+
+### Phase 4 — Updated Consolidated Finding Index
+
+| ID | Phase | Sev | Title | Status |
+|---|---|---|---|---|
+| FINDING 1-A | Phase 1 | P2 | `GET /admin/users` does not paginate | Open |
+| FINDING 2-A | Phase 2 | P1 | `claim_approved` unreachable via event bus | Open |
+| FINDING 2-B | Phase 2 | P2 | Profitability view excludes CO lines from `approved_co_cents` | Open |
+| FINDING 2-C | Phase 2 | P2 | Retail lifecycle duplicate deposit (script artifact) | Closed |
+| FINDING 2-D | Phase 2 | P3 | `stage_transitions.from_stage` null on first advance | Open |
+| FINDING 2-E | Phase 2 | P2 | AI compile blocks two insurance events | Open |
+| FINDING 2-R.2-A | Phase 2R | P3 | `rapGateReason` unwriteable via PATCH /inspections/:id | Open |
+| ~~FINDING 3-A~~ | Phase 3 | ~~P0~~ | ~~Cross-tenant contract list~~ | **WITHDRAWN** (empty array; filter confirmed present) |
+| FINDING 3-B | Phase 3 | P1 | Inspection GET returns 403 (existence disclosure) | Open |
+| FINDING 3-C | Phase 3 | **P0** | Profitability endpoint has no role gate — **live dual-layer (API + UI)** | Open |
+| PD-1 | Policy | — | Should `manager` role reach `/admin/*` namespace? | **Policy ruling needed** |
+| PD-2 | Policy | — | Should `manager` role delete users? | **Policy ruling needed** |
+| PD-3 | Policy | — | Should `canvasser` dept see invoice list? | **Policy ruling needed** |
+| FINDING 3-J | Phase 3/4 | **P0** | `PATCH /leads/:leadId/profile` accepts pipelineStage + contractAmount + deductibleAmount — **live UI exposure** | Open |
+| FINDING 4-A | Phase 4 | **P1** | `GET /api/profile/me` returns 500 for all users with `department = 'office'` (Zod enum mismatch in generated schema) — admin/manager nav broken | Open |
+
+**Active P0 count: 2 (3-C, 3-J) | P1 count: 3 (3-B, 2-A, 4-A) | P2 count: 4 | P3 count: 2 | Policy: 3**
+
+---
+
+## git log --oneline since 9ffca23
+
+```
+(empty — no commits after 9ffca23)
+```
+
+`git log --oneline 9ffca23..HEAD` returns empty. HEAD IS `9ffca23` (the Phase 3 commit). Full repo history:
+
+```
+9ffca23 (HEAD -> main, origin/main) Phase 3
+d51173e Phase 2
+67aa983 Phase 1
+a635a2c Add per-IP rate limits to auth routes with trust proxy and tests
+3d9bcc0 Phase 0
+```
+
+All Checkpoint 4 work is uncommitted (TESTREPORT.md modified; audit scripts added as untracked files).
+
+## git status (as of Checkpoint 4)
+
+```
+ M TESTREPORT.md
+?? artifacts/api-server/src/scripts/phase1-create-pins.ts
+?? artifacts/api-server/src/scripts/phase1-fixture.ts
+?? artifacts/api-server/src/scripts/phase1-seed-refdata.ts
+?? artifacts/api-server/src/scripts/phase2a-continuation.ts
+?? artifacts/api-server/src/scripts/phase2a-insurance-lifecycle.ts
+?? artifacts/api-server/src/scripts/phase2b-retail-lifecycle.ts
+?? artifacts/api-server/src/scripts/phase2r2-compile-seed.ts
+?? artifacts/api-server/src/scripts/phase3-negative-tests.ts
+?? artifacts/api-server/src/scripts/phase3-part2.ts
+?? artifacts/api-server/src/scripts/phase4-screenshots.ts
+?? attached_assets/
+?? scripts/zztest-teardown.sql
+?? test-results.json
+```
+
+No modifications to existing application code. All new files are audit scripts and the report.

@@ -1,0 +1,35 @@
+CHECKPOINT 3 — CORRECTIONS + PHASE 4 AUTHORIZATION
+Still report-only.
+
+3-R.1 — Re-adjudicate the finding severities
+Withdraw or prove 3-A. Re-run 3.1-10 and 3.1-30 and paste the complete raw response body, not the status. If the array is empty, withdraw it and record why — a status-only assertion produced a P0 that the code contradicts, which is the exact failure the assertion rule exists to prevent. If contract records genuinely came back, then the filter is being defeated somehow and I want the query log.
+
+Reclassify 3-E and 3-D. 3-E → not a defect; actorOutranks encodes it. 3-D → policy question, restated as: "should manager reach the /admin/* namespace?" Same for 3-G. Move all three out of findings into a Policy Decisions section for me to rule on. Don't delete them — they're real questions, just not defects.
+
+Consolidate 3-F + 3-H + 3-I into one P0 against PATCH /pins/:pinId/profile, and extend it: test deductibleAmount and rcvAmount as A-CANV-1 on the insurance pin. For rcvAmount, show approved_rcv_cents and expected_total_cents before and after, and which branch of the GREATEST wins. Restore after.
+
+Then check the inspections pin-proxy PATCH — the second write path from the original 3.11 scope. It was never tested. Same four fields, same actor.
+
+3-R.2 — Finish 3.7-4
+The void test is the counterpart to the entire contract-value chain and it's the one that didn't run. Send { voidReason: "audit test" } and assert all three: contract status flips to voided, pins.contract_amount clears via the wasSigned branch, and revised_contract_cents recomputes to 0. Use the correct column name this time.
+
+3-R.3 — Two small ones
+Read MAX_ATTEMPTS out of rateLimit.ts and state the threshold as a fact; the 3.8-1 note reasons to "30 + 3 = 33, slightly above 30," which doesn't parse. And confirm A-CANV-2 is fully intact after the 3-E deletion and manual restore — same role, department, workflow, profile row — since Phase 4 tests dashboards per user and a subtly different A-CANV-2 would corrupt that.
+
+PHASE 4 — UI-Layer Tests (artifacts/rooftrax-web)
+Log into the CRM as each of the 10 users. Per the original work order:
+
+Screenshot the dashboard; assert the rendered widget set matches the manifest verified in 3.6.
+Record visible nav items and action buttons.
+For every forbidden action with a visible control, click it and record what happens.
+For every forbidden action where the control is correctly hidden, re-issue that request directly against the API as that user. Hidden ≠ denied.
+Three targeted additions, given Phase 3:
+
+Find the UI surface for PATCH /pins/:pinId/profile. Something renders that form. Log in as A-CANV-1 and determine whether contract amount, deductible, RCV, and pipeline stage are editable fields in the CRM, or whether the route is only reachable by direct API call. That distinction decides whether the P0 is a live exposure or a latent one, and it changes how urgently it gets fixed.
+
+Check the profitability surface as a field_rep. 3-C proved the API returns margin data to a field_rep. Does the CRM render it — a Net Project Margin widget, a Financials tab, a P&L number on the lead detail page? If the UI hides it while the API serves it, say so; that's the hidden-≠-denied case with money attached.
+
+Verify the 2-B audit-trail artifact is visible. The retail pin has two stage_transitions rows from contract_pending. Look at whatever timeline or history the CRM renders for that pin and report what a manager actually sees — the correct final stage, a duplicate, or a contradiction.
+
+▶ CHECKPOINT 4 — Paste: the 10 dashboard screenshots, the UI-vs-API mismatch table, the three targeted answers above, the 3-R.1/3-R.2/3-R.3 results, and git log --oneline since 9ffca23. Stop.
+
