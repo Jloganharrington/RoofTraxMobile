@@ -35,6 +35,7 @@ import contractsRouter from "./contracts";
 import contractPortalRouter from "./contractPortal";
 import calendarRouter from "./calendar";
 import notificationsRouter from "./notifications";
+import completionCertificatesRouter from "./completionCertificates";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(contractsRouter);
 router.use(contractPortalRouter);
 router.use(calendarRouter);
 router.use(notificationsRouter);
+router.use(completionCertificatesRouter);
 
 export default router;

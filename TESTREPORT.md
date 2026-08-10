@@ -2688,3 +2688,87 @@ There is no general-purpose field-change audit log for pin profile fields (`cont
 
 **Consequence for Step 3:** The gate (`contractAmount`, `deductibleAmount`, `rcvAmount` → manager+) and the `pipelineStage` removal can proceed without an audit table. The audit record requirement for money field changes requires a schema decision: add a new table, or extend `stage_transitions` to cover field changes, or log to a JSONB column on the pin. **Awaiting ruling before implementing the audit record portion.**
 
+
+---
+
+## CHECKPOINT A — Phase A: Approved carrier estimate gate for claim_approved
+
+**Commit:** `c9c0b95` — "Phase A: approved carrier estimate gate for claim_approved"
+
+### Migration
+
+`data-migrations/041_approved_carrier_estimate.sql`:
+```sql
+ALTER TABLE pins ADD COLUMN IF NOT EXISTS approved_estimate_object_path TEXT;
+ALTER TABLE pins ADD COLUMN IF NOT EXISTS approved_estimate_sha256       TEXT;
+```
+
+Columns added to `pinsTable` in `lib/db/src/schema/rooftrax.ts` with comment block `(migration 041)`.
+
+### New endpoint
+
+`POST /api/leads/:leadId/approved-estimate` — accepts `{ pdfBase64: string }`, computes sha256, uploads via `objectStorageService.uploadObjectBuffer`, writes `objectOwnershipTable` row, stamps pin with objectPath + sha256 in one transaction. Returns `{ objectPath, sha256 }`.
+
+### Advance-stage gate
+
+`PATCH /api/leads/:leadId/advance-stage` — when `toStage === 'claim_approved'` and `pin.approvedEstimateObjectPath` is null: returns 422 with `{ error: "...", missingDocument: "approvedEstimate" }`. The existing `lossReason` gate is unchanged.
+
+### Rejected advance (no estimate)
+
+```
+PATCH /api/leads/fdbdceba…/advance-stage
+Body: { "toStage": "claim_approved", "trigger": "task" }
+→ HTTP 422
+{
+  "error": "An approved carrier estimate is required before advancing to claim_approved. Upload one via POST /leads/:id/approved-estimate.",
+  "missingDocument": "approvedEstimate"
+}
+```
+
+### Accepted advance (estimate uploaded)
+
+Upload:
+```
+POST /api/leads/fdbdceba…/approved-estimate
+Body: { "pdfBase64": "<base64 PDF…>" }
+→ HTTP 200
+{
+  "objectPath": "/objects/uploads/6e4bfaf4-b747-43be-a896-c2977dbdade9",
+  "sha256":     "261ddca3c8db7307bee5531705bfded93a2fa8a4dc37059c1d9227f401527454"
+}
+```
+
+Advance:
+```
+PATCH /api/leads/fdbdceba…/advance-stage
+Body: { "toStage": "claim_approved", "trigger": "task" }
+→ HTTP 200  { "pipelineStage": "claim_approved", "approvedEstimateObjectPath": "/objects/uploads/6e4bfaf4-…" }
+```
+
+### Stored document record
+
+```
+Pin approvedEstimateObjectPath: /objects/uploads/6e4bfaf4-b747-43be-a896-c2977dbdade9
+Pin approvedEstimateObjectSha256: 261ddca3c8db7307bee5531705bfded93a2fa8a4dc37059c1d9227f401527454
+objectOwnershipTable row written (companyId=ZZTEST_ALPHA, userId=A-MGR-O)
+sha256 verified: createHash('sha256').update(pdfBuffer).digest('hex') === stored value ✓
+```
+
+### stage_transitions row
+
+```
+lead_id   | from_stage   | to_stage       | trigger | user_id
+----------+--------------+----------------+---------+-----------------------------------
+fdbdceba… | claim_review | claim_approved | task    | 0625a922-…  (A-MGR-O)
+```
+
+### Three suite results
+
+| Suite | Result |
+|---|---|
+| `pipeline-auto-advance.test.ts` | **16/16** ✓ |
+| `seed-acceptance-claim.ts` (incl. new D2e step) | **58/58** ✓ (was 57 — +D2e: gate 422 + upload + advance) |
+| Full `artifacts/api-server` vitest | **671/671** ✓ |
+
+D2e covers: (a) advance without estimate → 422 + `missingDocument=approvedEstimate`; (b) POST fixture estimate → 200, objectPath + sha256 returned, sha256 verified against buffer; (c) advance with estimate → 200, `pipelineStage=claim_approved`, 1 stage_transitions row.
+

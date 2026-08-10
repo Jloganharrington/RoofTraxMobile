@@ -808,6 +808,13 @@ export const changeOrdersTable = pgTable('change_orders', {
   voidReason: text('void_reason'),
   /** Stamped when the signed PDF is successfully emailed on approval (best-effort). */
   emailedAt: timestamp('emailed_at', { withTimezone: true }),
+  /**
+   * When true, this approved + non-voided CO appears on the Completion
+   * Certificate as its own section between the base contract and PWI sections.
+   * Must be set explicitly; defaults false so legacy COs are never silently
+   * included. (migration 042)
+   */
+  carrierReimbursable: boolean('carrier_reimbursable').notNull().default(false),
   createdByUserId: varchar('created_by_user_id')
     .notNull()
     .references(() => usersTable.id),
@@ -1098,3 +1105,58 @@ export const userPushTokensTable = pgTable(
 
 export type UserPushToken = typeof userPushTokensTable.$inferSelect;
 export type InsertUserPushToken = typeof userPushTokensTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Completion Certificates (migration 042)
+// ---------------------------------------------------------------------------
+// One record per compile cycle for a claim_approved pin.
+// status: draft → signed → voided (never hard-deleted).
+// line_items is an immutable snapshot once status = 'signed'.
+// Corrections void the existing record and create a new draft.
+// ---------------------------------------------------------------------------
+
+export const COMPLETION_CERTIFICATE_STATUSES = ['draft', 'signed', 'voided'] as const;
+
+export const completionCertificatesTable = pgTable('completion_certificates', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  pinId: varchar('pin_id')
+    .notNull()
+    .references(() => pinsTable.id, { onDelete: 'cascade' }),
+  /** Linked contract; may be null if no contract has been signed yet. */
+  contractId: varchar('contract_id')
+    .references(() => contractsTable.id),
+  status: varchar('status', { enum: COMPLETION_CERTIFICATE_STATUSES })
+    .notNull()
+    .default('draft'),
+  documentObjectPath: text('document_object_path'),
+  documentSha256: text('document_sha256'),
+  signedByUserId: varchar('signed_by_user_id')
+    .references(() => usersTable.id),
+  signedAt: timestamp('signed_at', { withTimezone: true }),
+  signerTitle: text('signer_title'),
+  /**
+   * Immutable once status = 'signed'.
+   * Shape: { baseContract: LineItem[], pwi: LineItem[], dropped: DroppedItem[] }
+   * where LineItem = { description, quantity?, unit?, amountCents }
+   * and DroppedItem = { text, reason }
+   */
+  lineItems: jsonb('line_items'),
+  createdByUserId: varchar('created_by_user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+export type CompletionCertificate = typeof completionCertificatesTable.$inferSelect;
+export type InsertCompletionCertificate = typeof completionCertificatesTable.$inferInsert;
