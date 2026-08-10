@@ -255,7 +255,9 @@ export const LeadProfileBody = z.object({
   customerName:         z.string().nullable().optional(),
   customerPhone:        z.string().nullable().optional(),
   notes:                z.string().nullable().optional(),
-  pipelineStage:        z.string().nullable().optional(),
+  // pipelineStage intentionally omitted — stage transitions must go through
+  // PATCH /leads/:id/advance-stage. Accepting it here via canEditPin() would
+  // let field reps bypass the advance-stage auth gate and skip gate logic.
   profileStatus:        z.string().nullable().optional(),
   statusNotes:          z.string().nullable().optional(),
   statusLastUpdated:    z.string().nullable().optional(),
@@ -359,6 +361,23 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
   }
 
   const d = parsed.data;
+
+  // Reject non-positive money amounts. Null means "clear the field" — allowed.
+  // Prevents accidentally zeroing contract values via a stray PATCH.
+  for (const [field, val] of [
+    ['contractAmount',   d.contractAmount],
+    ['deductibleAmount', d.deductibleAmount],
+    ['rcvAmount',        d.rcvAmount],
+  ] as [string, string | null | undefined][]) {
+    if (val !== null && val !== undefined) {
+      const n = parseFloat(val);
+      if (isNaN(n) || n <= 0) {
+        res.status(400).json({ error: `${field} must be a positive dollar amount (got: ${val})` });
+        return;
+      }
+    }
+  }
+
   const [updated] = await db
     .update(pinsTable)
     .set({
@@ -370,7 +389,6 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
       ...(d.customerName         !== undefined && { customerName:         d.customerName }),
       ...(d.customerPhone        !== undefined && { customerPhone:        d.customerPhone }),
       ...(d.notes                !== undefined && { notes:                d.notes }),
-      ...(d.pipelineStage        !== undefined && { pipelineStage:        d.pipelineStage }),
       ...(d.contractAmount       !== undefined && { contractAmount:       d.contractAmount }),
       ...(d.deductibleAmount     !== undefined && { deductibleAmount:     d.deductibleAmount }),
       ...(d.rcvAmount            !== undefined && { rcvAmount:            d.rcvAmount }),

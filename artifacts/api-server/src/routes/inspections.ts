@@ -10168,6 +10168,21 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
   }
 
   const d = parsed.data;
+
+  // Reject non-positive money amounts. Null = "clear the field" (allowed).
+  for (const [field, val] of [
+    ['contractAmount',   d.contractAmount],
+    ['deductibleAmount', d.deductibleAmount],
+    ['rcvAmount',        d.rcvAmount],
+  ] as [string, string | null | undefined][]) {
+    if (val !== null && val !== undefined) {
+      const n = parseFloat(val);
+      if (isNaN(n) || n <= 0) {
+        return void res.status(400).json({ error: `${field} must be a positive dollar amount (got: ${val})` });
+      }
+    }
+  }
+
   const [updated] = await db
     .update(pinsTable)
     .set({
@@ -10179,7 +10194,6 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
       ...(d.customerName         !== undefined && { customerName:         d.customerName }),
       ...(d.customerPhone        !== undefined && { customerPhone:        d.customerPhone }),
       ...(d.notes                !== undefined && { notes:                d.notes }),
-      ...(d.pipelineStage        !== undefined && { pipelineStage:        d.pipelineStage }),
       ...(d.contractAmount       !== undefined && { contractAmount:       d.contractAmount }),
       ...(d.deductibleAmount     !== undefined && { deductibleAmount:     d.deductibleAmount }),
       ...(d.rcvAmount            !== undefined && { rcvAmount:            d.rcvAmount }),
