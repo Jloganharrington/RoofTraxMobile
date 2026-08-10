@@ -27,6 +27,10 @@
  *   [D3] pipeline   — lead.advance_stage (POST /events/pipeline)
  *   [D4] financials — profitability.export_csv (GET /pins/:id/financials/export)
  *   [D5] profitability — profitability.view (GET /pins/:id/profitability)
+ *   [D6] price-book   — catalog.price_book_{view,add,edit,delete}
+ *   [D7] templates    — company.edit_settings (CRUD /companies/:id/templates)
+ *   [D8] discontinued — catalog.price_book_{view,edit,delete}
+ *   [D9] selections   — catalog.price_book_view (GETs), catalog.selections_manage (writes)
  */
 
 import { companiesTable, db, userProfilesTable, usersTable } from '@workspace/db';
@@ -212,10 +216,139 @@ describe('route auth — negative gate suite', () => {
     });
   });
 
+  // ── [D6] DOMAIN: price-book ───────────────────────────────────────────────
+  // catalog.price_book_view (GETs) = field_rep+ → 401 only (field_rep passes).
+  // catalog.price_book_add/edit/delete (writes) = admin+ → 401 + 403 field_rep.
+  // Verdict changes: none.
+
+  describe('[D6] price-book reads [catalog.price_book_view — field_rep+]', () => {
+    for (const path of ['/api/price-book/items', '/api/price-book/packages']) {
+      it(`GET ${path} → 401 without auth`, async () => {
+        expect((await request(app).get(path)).status).toBe(401);
+      });
+    }
+  });
+
+  describe('[D6] price-book writes [catalog.price_book_add/edit/delete — admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['post',   '/api/price-book/generate-description'],
+      ['post',   '/api/price-book/items'],
+      ['patch',  '/api/price-book/items/stub-id'],
+      ['delete', '/api/price-book/items/stub-id'],
+      ['post',   '/api/price-book/packages'],
+      ['patch',  '/api/price-book/packages/stub-id'],
+      ['delete', '/api/price-book/packages/stub-id'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+    }
+  });
+
+  // ── [D7] DOMAIN: company templates ────────────────────────────────────────
+  // company.edit_settings (admin+). Old requireCompanyAdmin also checked admin+.
+  // The inline same-company path guard is NOT tested here (needs a real company).
+  // Verdict changes: none.
+
+  describe('[D7] company templates [company.edit_settings — admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['get',    '/api/companies/STUB-CO/templates'],
+      ['post',   '/api/companies/STUB-CO/templates'],
+      ['patch',  '/api/companies/STUB-CO/templates/stub-id'],
+      ['delete', '/api/companies/STUB-CO/templates/stub-id'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+    }
+  });
+
+  // ── [D8] DOMAIN: discontinued-products ───────────────────────────────────
+  // GET catalog.price_book_view (field_rep+) — 401 only.
+  // Writes catalog.price_book_edit/delete (admin+) — 401 + 403 field_rep.
+  // Verdict changes: none.
+
+  describe('[D8] discontinued-products GET [catalog.price_book_view — field_rep+]', () => {
+    it('GET /api/discontinued-products → 401 without auth', async () => {
+      expect((await request(app).get('/api/discontinued-products')).status).toBe(401);
+    });
+  });
+
+  describe('[D8] discontinued-products writes [catalog.price_book_edit — admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['post',   '/api/discontinued-products'],
+      ['patch',  '/api/discontinued-products/stub-id'],
+      ['delete', '/api/discontinued-products/stub-id'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+    }
+  });
+
+  // ── [D9] DOMAIN: selections ────────────────────────────────────────────────
+  // GETs catalog.price_book_view (field_rep+) — 401 only (field_rep passes).
+  // Writes catalog.selections_manage (admin+) — 401 + 403 field_rep.
+  // Verdict changes: none.
+
+  describe('[D9] selections GET routes [catalog.price_book_view — field_rep+]', () => {
+    for (const path of [
+      '/api/selections/categories',
+      '/api/selections/brands',
+      '/api/selections/products',
+      '/api/selections/options',
+      '/api/selections/product-options',
+    ]) {
+      it(`GET ${path} → 401 without auth`, async () => {
+        expect((await request(app).get(path)).status).toBe(401);
+      });
+    }
+  });
+
+  describe('[D9] selections write routes [catalog.selections_manage — admin+]', () => {
+    const routes: Array<[string, string]> = [
+      ['post',   '/api/selections/categories'],
+      ['patch',  '/api/selections/categories/stub-id'],
+      ['delete', '/api/selections/categories/stub-id'],
+      ['post',   '/api/selections/brands'],
+      ['patch',  '/api/selections/brands/stub-id'],
+      ['delete', '/api/selections/brands/stub-id'],
+      ['post',   '/api/selections/products'],
+      ['patch',  '/api/selections/products/stub-id'],
+      ['delete', '/api/selections/products/stub-id'],
+      ['post',   '/api/selections/options'],
+      ['patch',  '/api/selections/options/stub-id'],
+      ['delete', '/api/selections/options/stub-id'],
+      ['post',   '/api/selections/product-options/bulk'],
+      ['post',   '/api/selections/product-options'],
+      ['delete', '/api/selections/product-options/stub-id'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+      it(`${method.toUpperCase()} ${path} → 403 field_rep`, async () => {
+        expect((await (request(app) as any)[method](path).set(auth(fix.rep.sid))).status).toBe(403);
+      });
+    }
+  });
+
   // ── Additional domains are appended below as migration proceeds ───────────
   // Template:
   //
-  // describe('[D6] VERB /path [permission.key — minRole+]', () => {
+  // describe('[D10] VERB /path [permission.key — minRole+]', () => {
   //   it('no auth → 401', async () => { ... });
   //   it('field_rep → 403', async () => { ... });
   //   // If there is a verdict change: document it as a comment, not a failing test.
