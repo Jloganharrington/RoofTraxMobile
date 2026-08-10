@@ -60,6 +60,7 @@ async function buildAll() {
       "@mikro-orm/*",
       "@grpc/*",
       "@swc/*",
+      "pdfkit",   // uses __dirname-relative font paths that break when bundled
       "@aws-sdk/*",
       "@azure/*",
       "@opentelemetry/*",
