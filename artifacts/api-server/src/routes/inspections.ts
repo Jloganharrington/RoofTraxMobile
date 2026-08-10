@@ -119,6 +119,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, or, sql } fr
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, canEditPin, roleRank } from '@workspace/authz';
+import type { Department } from '@workspace/authz';
 import { runAhjCheck } from '../lib/ahjLookup';
 import { getRole, LeadProfileBody, toDateOrNull } from './pins';
 import { advancePinStage, emitPipelineEvent } from './pipelineEvents';
@@ -217,6 +218,7 @@ import {
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
 import { requirePermission } from '../middlewares/requirePermission';
+import { requireWritableInspection } from '../middlewares/requireWritableInspection';
 
 const router: IRouter = Router();
 
@@ -240,24 +242,17 @@ function stableStringify(value: unknown): string {
 // lib/protocol and later phases.
 
 async function requireInspectionModuleAccess(req: Request, res: Response) {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-
-  const [profile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
-
-  const role = profile?.role ?? 'field_rep';
-  const department = profile?.department ?? 'canvasser';
+  // actorCtx is loaded by the preceding requirePermission / requireWritableInspection
+  // middleware — role and department are already on the context; no extra DB
+  // round-trip needed.
+  const ctx = req.actorCtx!;
+  const role = ctx.role;
+  const department = (ctx.department ?? 'canvasser') as Department;
   if (!canAccessInspectionModule(role, department)) {
     res.status(403).json({ error: 'Inspection module not enabled for this user' });
     return null;
   }
-
-  return { role, department, companyId: req.actorCtx!.companyId, userId: req.actorCtx!.actorId };
+  return { role, department, companyId: ctx.companyId, userId: ctx.actorId };
 }
 
 /** Minimal auth helper for non-inspection routes that only need the user's role. */
@@ -921,13 +916,11 @@ router.delete('/inspections/:inspectionId', requirePermission('inspection.delete
 });
 
 // inspection.update
-router.patch('/inspections/:inspectionId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.patch('/inspections/:inspectionId', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = UpdateInspectionBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1291,13 +1284,11 @@ router.patch('/inspections/:inspectionId', requirePermission('inspection.read'),
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/slopes', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/slopes', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionSlopeBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1361,14 +1352,12 @@ router.post('/inspections/:inspectionId/slopes', requirePermission('inspection.r
 // inspection.update
 router.patch(
   '/inspections/:inspectionId/slopes/:slopeId',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const parsed = UpdateInspectionSlopeBody.safeParse(req.body);
     if (!parsed.success) {
@@ -1430,14 +1419,12 @@ router.patch(
 // inspection.update
 router.delete(
   '/inspections/:inspectionId/slopes/:slopeId',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const [deleted] = await db
       .delete(inspectionSlopesTable)
@@ -1462,13 +1449,11 @@ router.delete(
 // siding damage. Same offline-first idempotent-create / parent-scoped
 // conflict pattern as slopes.
 // inspection.update
-router.post('/inspections/:inspectionId/siding-facets', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/siding-facets', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionSidingFacetBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1531,14 +1516,12 @@ router.post('/inspections/:inspectionId/siding-facets', requirePermission('inspe
 // inspection.update
 router.patch(
   '/inspections/:inspectionId/siding-facets/:sidingFacetId',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const parsed = UpdateInspectionSidingFacetBody.safeParse(req.body);
     if (!parsed.success) {
@@ -1610,14 +1593,12 @@ router.patch(
 // inspection.update
 router.delete(
   '/inspections/:inspectionId/siding-facets/:sidingFacetId',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const [deleted] = await db
       .delete(inspectionSidingFacetsTable)
@@ -1639,13 +1620,11 @@ router.delete(
 );
 
 // inspection.update
-router.post('/inspections/:inspectionId/elevations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/elevations', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionElevationBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1696,13 +1675,11 @@ router.post('/inspections/:inspectionId/elevations', requirePermission('inspecti
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/damage-instances', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/damage-instances', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateDamageInstanceBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1767,13 +1744,11 @@ router.post('/inspections/:inspectionId/damage-instances', requirePermission('in
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/components', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/components', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionComponentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1831,14 +1806,12 @@ router.post('/inspections/:inspectionId/components', requirePermission('inspecti
 // inspection.update
 router.patch(
   '/inspections/:inspectionId/components/:componentId',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const parsed = UpdateInspectionComponentBody.safeParse(req.body);
     if (!parsed.success) {
@@ -1886,14 +1859,12 @@ router.patch(
 // inspection.update
 router.delete(
   '/inspections/:inspectionId/components/:componentId',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const [deleted] = await db
       .delete(inspectionComponentsTable)
@@ -1915,13 +1886,11 @@ router.delete(
 );
 
 // inspection.update
-router.post('/inspections/:inspectionId/penetrations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/penetrations', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionPenetrationBody.safeParse(req.body);
   if (!parsed.success) {
@@ -1974,13 +1943,11 @@ router.post('/inspections/:inspectionId/penetrations', requirePermission('inspec
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/products', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/products', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionProductBody.safeParse(req.body);
   if (!parsed.success) {
@@ -2037,13 +2004,11 @@ router.post('/inspections/:inspectionId/products', requirePermission('inspection
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/test-squares', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/test-squares', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateTestSquareBody.safeParse(req.body);
   if (!parsed.success) {
@@ -2101,15 +2066,13 @@ router.post('/inspections/:inspectionId/test-squares', requirePermission('inspec
 // inspection.update
 router.post(
   '/inspections/:inspectionId/test-squares/:testSquareId/hits',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
     const testSquareId = req.params.testSquareId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const [testSquare] = await db
       .select()
@@ -2178,13 +2141,11 @@ router.post(
 );
 
 // inspection.upload_photo
-router.post('/inspections/:inspectionId/photos', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/photos', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateInspectionPhotoBody.safeParse(req.body);
   if (!parsed.success) {
@@ -2317,22 +2278,12 @@ router.post('/inspections/:inspectionId/photos', requirePermission('inspection.r
 // Caption edits annotate existing evidence without altering forensic records,
 // so they are permitted on locked inspections (allowLocked behaviour).
 // inspection.upload_photo
-router.patch('/inspections/:inspectionId/photos/:photoId', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.patch('/inspections/:inspectionId/photos/:photoId', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
   const photoId = req.params.photoId as string;
-
-  const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
-  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
-    res.status(403).json({ error: 'Not authorized to modify this inspection' });
-    return;
-  }
 
   const parsed = z.object({ caption: z.string().max(200).nullable() }).safeParse(req.body);
   if (!parsed.success) {
@@ -2378,13 +2329,11 @@ router.patch('/inspections/:inspectionId/photos/:photoId', requirePermission('in
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/measurements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/measurements', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateMeasurementBody.safeParse(req.body);
   if (!parsed.success) {
@@ -2443,13 +2392,11 @@ router.post('/inspections/:inspectionId/measurements', requirePermission('inspec
 // the curation dashboard alone decides what ships in the package; the photos
 // themselves remain stored evidence either way.
 // inspection.update
-router.post('/inspections/:inspectionId/photo-curation', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/photo-curation', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CurateInspectionPhotosBody.safeParse(req.body);
   if (!parsed.success) {
@@ -2503,13 +2450,11 @@ router.post('/inspections/:inspectionId/photo-curation', requirePermission('insp
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/attestations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/attestations', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   const parsed = CreateAttestationBody.safeParse(req.body);
   if (!parsed.success) {
@@ -2596,14 +2541,12 @@ function emitForensicRecordAttested(
 // inspection.update
 router.post(
   '/inspections/:inspectionId/interior-observations',
-  requirePermission('inspection.read'),
+  requireWritableInspection(),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const inspectionId = req.params.inspectionId as string;
-    const inspection = await loadWritableInspection(inspectionId, actor, res);
-    if (!inspection) return;
 
     const parsed = CreateInteriorObservationBody.safeParse(req.body);
     if (!parsed.success) {
@@ -2674,15 +2617,13 @@ router.post(
 // stamps lockedAt, and transitions to `submitted`. Once locked the record is
 // immutable — corrections become addenda.
 // inspection.update
-router.post('/inspections/:inspectionId/submission', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-
-  const inspectionId = req.params.inspectionId as string;
+router.post('/inspections/:inspectionId/submission', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
   // allowLocked: an offline outbox may replay this after the record is already
   // locked. Rather than 409, we treat a locked record as an idempotent success.
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
+  const inspection = req.inspection!;
+
+  const inspectionId = req.params.inspectionId as string;
 
   // Idempotent replay: already locked/submitted → return the existing record.
   if (inspection.lockedAt) {
@@ -2902,13 +2843,11 @@ router.post('/inspections/:inspectionId/unlock', requirePermission('inspection.m
 // gets 403, matching every other write-adjacent inspection path. C0-guarded.
 // allowLocked so a submitted record can still be re-checked.
 // inspection.read
-router.post('/inspections/:inspectionId/preflight', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/preflight', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
   const evaluation = evaluateServerInspection({
@@ -2994,13 +2933,11 @@ router.get('/inspections/:inspectionId/status', requirePermission('inspection.re
 // evidentiary record. Requires the same write authority as any other
 // inspection write, but opts into allowLocked. Idempotent by client-supplied id.
 // inspection.update
-router.post('/inspections/:inspectionId/addenda', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/addenda', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   // An addendum is a POST-lock correction — it exists precisely because the
   // record is immutable. Before lock, the inspector edits the record directly,
@@ -3230,17 +3167,14 @@ router.get('/inspections/:inspectionId/report-attestation', requirePermission('i
 // (inspection_id, blob_version_index).
 // ---------------------------------------------------------------------------
 // inspection.update
-router.post('/inspections/:inspectionId/report-attestation', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/report-attestation', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
+  // Attestation is a legally meaningful mutation — requireWritableInspection
+  // enforces ownership (assigned inspector, manager+) and handles the lock
+  // bypass so only the right person can sign off on a claim.
 
   const inspectionId = req.params.inspectionId as string;
-  // Attestation is a legally meaningful mutation — use the full write gate so
-  // only the assigned inspector, a manager, or an admin can sign off on a claim.
-  // allowLocked: true because compiled packages are in a locked state but still
-  // need to accept attestation before delivery.
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const versions = (inspection.compiledReportVersions ?? []) as Array<{
     path: string;
@@ -3431,9 +3365,9 @@ router.post('/inspections/:inspectionId/report-attestation', requirePermission('
 // Deliver gate: a report_attestations row must exist for the current compiled
 // blob version before delivery is permitted (Variant B — Task #126).
 // inspection.update
-router.post('/inspections/:inspectionId/email-report', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/email-report', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const parsed = EmailInspectionReportBody.safeParse(req.body);
   if (!parsed.success) {
@@ -3443,15 +3377,6 @@ router.post('/inspections/:inspectionId/email-report', requirePermission('inspec
   const { recipient, pdfBase64, filename, subject, body } = parsed.data;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
     res.status(400).json({ error: 'Invalid recipient email address' });
-    return;
-  }
-
-  const inspection = await loadInspectionInCompany(
-    String(req.params.inspectionId),
-    actor.companyId,
-  );
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
     return;
   }
 
@@ -3585,26 +3510,13 @@ router.post('/inspections/:inspectionId/email-report', requirePermission('inspec
 // saved ownerEmail. Returns { scheduled: true, emailSent: boolean }.
 // Status stays 'scheduled'. The email subject/body is phase-aware.
 // inspection.update
-router.patch('/inspections/:inspectionId/schedule', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.patch('/inspections/:inspectionId/schedule', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const parsed = z.object({ scheduledFor: z.coerce.date() }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'scheduledFor (ISO date) is required' });
-    return;
-  }
-
-  const inspection = await loadInspectionInCompany(
-    String(req.params.inspectionId),
-    actor.companyId,
-  );
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
-  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
-    res.status(403).json({ error: 'Not authorized to modify this inspection' });
     return;
   }
 
@@ -3713,22 +3625,9 @@ router.patch('/inspections/:inspectionId/schedule', requirePermission('inspectio
 // status back to 'capturing' so the inspection drops off the Scheduled list
 // and returns to the rep's active work queue.
 // inspection.update
-router.delete('/inspections/:inspectionId/schedule', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
-
-  const inspection = await loadInspectionInCompany(
-    String(req.params.inspectionId),
-    actor.companyId,
-  );
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
-    return;
-  }
-  if (!canWriteInspection(actor.role, actor.userId, inspection.inspectorUserId)) {
-    res.status(403).json({ error: 'Not authorized to modify this inspection' });
-    return;
-  }
+router.delete('/inspections/:inspectionId/schedule', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   await db
     .update(inspectionsTable)
@@ -3749,9 +3648,9 @@ router.delete('/inspections/:inspectionId/schedule', requirePermission('inspecti
 // inspection row atomically. Returns { scheduled: true, emailSent: boolean }.
 // When SMTP is not configured the schedule still saves; emailSent is false.
 // inspection.update
-router.post('/inspections/:inspectionId/notify-schedule', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/notify-schedule', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const parsed = z.object({
     scheduledFor: z.coerce.date(),
@@ -3759,15 +3658,6 @@ router.post('/inspections/:inspectionId/notify-schedule', requirePermission('ins
   }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'scheduledFor (ISO date) and a valid ownerEmail are required' });
-    return;
-  }
-
-  const inspection = await loadInspectionInCompany(
-    String(req.params.inspectionId),
-    actor.companyId,
-  );
-  if (!inspection) {
-    res.status(404).json({ error: 'Inspection not found' });
     return;
   }
 
@@ -4174,9 +4064,9 @@ router.get('/inspections/:inspectionId/estimate', requirePermission('inspection.
 
 // PUT /inspections/:inspectionId/estimate — save (full replace) the estimate.
 // inspection.update
-router.put('/inspections/:inspectionId/estimate', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.put('/inspections/:inspectionId/estimate', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const parsed = PutEstimateBody.safeParse(req.body);
   if (!parsed.success) {
@@ -4185,8 +4075,6 @@ router.put('/inspections/:inspectionId/estimate', requirePermission('inspection.
   }
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   // Snapshot line items referencing the price book must belong to this
   // company — a cross-tenant id would silently launder another company's
@@ -4394,13 +4282,11 @@ router.get('/inspections/:inspectionId/summary', requirePermission('inspection.r
 // structured parsed payload for rep review. Does NOT write to the database —
 // call apply-measurements to commit confirmed values.
 // inspection.update
-router.post('/inspections/:inspectionId/analyze-measurements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/analyze-measurements', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   if (!inspection.measurementsReportUrl) {
     res.status(422).json({ error: 'No measurements report has been uploaded for this inspection.' });
@@ -4755,13 +4641,11 @@ async function runFacetInventory(pdfBase64: string, req: Request): Promise<Facet
 // URL.  Called by mobile when the initial analysis lacked an overviewImageUrl
 // (e.g. runs done before the magick binary fix) or when the URL has expired.
 // inspection.update
-router.post('/inspections/:inspectionId/render-overview-image', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/render-overview-image', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   if (!inspection.measurementsReportUrl) {
     res.status(422).json({ error: 'No measurements report has been uploaded for this inspection.' });
@@ -4815,13 +4699,11 @@ router.post('/inspections/:inspectionId/render-overview-image', requirePermissio
 // 3-hour signed URLs, sorted by page number.  Called by mobile when the
 // in-memory page store is cold (app restart or URL expiry).
 // inspection.read
-router.get('/inspections/:inspectionId/measurement-pages', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.get('/inspections/:inspectionId/measurement-pages', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const rows = await db
     .select()
@@ -4849,13 +4731,11 @@ router.get('/inspections/:inspectionId/measurement-pages', requirePermission('in
 // Commits a rep-confirmed set of measurements returned by analyze-measurements.
 // Records whose label / measurementType already exist are skipped (idempotent).
 // inspection.update
-router.post('/inspections/:inspectionId/apply-measurements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/apply-measurements', requireWritableInspection(), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res);
-  if (!inspection) return;
 
   type ApplyBody = {
     slopes?: Array<{ label: string; areaSqft?: number | null; pitchRise?: number | null; pitchRun?: number | null; materialType?: string | null; compassBearing?: number | null }>;
@@ -4956,13 +4836,11 @@ router.post('/inspections/:inspectionId/apply-measurements', requirePermission('
 });
 
 // inspection.update
-router.post('/inspections/:inspectionId/summary', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/summary', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const userPrompt =
     typeof (req.body as { userPrompt?: unknown })?.userPrompt === 'string'
@@ -5044,13 +4922,11 @@ router.post('/inspections/:inspectionId/summary', requirePermission('inspection.
 // enforcement layer, so a manual edit can't bypass it. Edits are stamped
 // (editedAt/editedBy) so the record shows the narrative was human-revised.
 // inspection.update
-router.patch('/inspections/:inspectionId/summary', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.patch('/inspections/:inspectionId/summary', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const existing = inspection.aiSummary;
   if (!existing) {
@@ -5159,13 +5035,11 @@ async function tryGetPhotoSignedUrl(
 // inspection's property state so the rep can pick which ones the compiled
 // Proof Package should include. Gated like compile (inspector or manager+).
 // inspection.read
-router.get('/inspections/:inspectionId/report/code-citations', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.get('/inspections/:inspectionId/report/code-citations', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const allPacks = await db
     .select()
@@ -5217,13 +5091,11 @@ function dedupeCitationsByKey<T extends { key: string }>(citations: T[]): T[] {
 // Write-gated via loadWritableInspection (allowLocked: true) — the inspector
 // or any manager can trigger or re-trigger after submission.
 // inspection.update
-router.post('/inspections/:inspectionId/report/compile', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/report/compile', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   // AI summary must exist — the Summary step must be completed first.
   const aiSummary = inspection.aiSummary as {
@@ -11011,13 +10883,11 @@ async function loadSupplement(
 // Body: { supplementReason: 'concealed_conditions_exposed' | 'carrier_response' | 'scope_correction' }
 // ---------------------------------------------------------------------------
 // inspection.update
-router.post('/inspections/:inspectionId/supplements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
-  const actor = await requireInspectionModuleAccess(req, res);
-  if (!actor) return;
+router.post('/inspections/:inspectionId/supplements', requireWritableInspection({ allowLocked: true }), async (req: Request, res: Response) => {
+  const actor = req.actorCtx!;
+  const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
-  const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-  if (!inspection) return;
 
   const body = req.body as { supplementReason?: string } | null;
   const reason = body?.supplementReason as string | undefined;
@@ -11590,14 +11460,12 @@ router.post(
 // inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/compile',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
-    const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-    if (!inspection) return;
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });
@@ -11881,14 +11749,12 @@ router.get(
 // inspection.update
 router.post(
   '/inspections/:inspectionId/supplements/:suppId/attest',
-  requirePermission('inspection.read'),
+  requireWritableInspection({ allowLocked: true }),
   async (req: Request, res: Response) => {
-    const actor = await requireInspectionModuleAccess(req, res);
-    if (!actor) return;
+    const actor = req.actorCtx!;
+    const inspection = req.inspection!;
 
     const { inspectionId, suppId } = req.params as { inspectionId: string; suppId: string };
-    const inspection = await loadWritableInspection(inspectionId, actor, res, { allowLocked: true });
-    if (!inspection) return;
 
     const supp = await loadSupplement(inspectionId, suppId, actor.companyId);
     if (!supp) return void res.status(404).json({ error: 'Supplement not found' });

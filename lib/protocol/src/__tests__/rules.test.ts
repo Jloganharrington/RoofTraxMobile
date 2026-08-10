@@ -245,13 +245,13 @@ describe('evaluate (protocol v2.1)', () => {
     const keys = applicableSteps(flags).map((s) => s.key);
     expect(keys).toEqual([
       'arrival',
+      'homeowner',
       'property_profile',
       'elevation_access',
+      'repairability',
       'siding',
       'interior',
-      'repairability',
       'mitigation',
-      'homeowner',
       'existing_conditions',
       'declaration',
       'summary',

@@ -348,10 +348,10 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     key:    'inspection.delete',
     domain: 'inspection',
     label:  'Delete an inspection permanently',
-    default: { kind: 'minRole', minRole: 'super_admin' },
-    note:   'Tightened from manager+ to admin+ (pen-test FINDING). ' +
-            'Mobile only surfaces this action to super_admin (inspections.tsx:307), ' +
-            'so no mobile breakage.',
+    default: { kind: 'minRole', minRole: 'admin' },
+    note:   'Tightened from manager+ to admin (pen-test FINDING). ' +
+            'Mobile surfaces this action to admin+ — update the mobile gate comment ' +
+            'in inspections.tsx if the screen guard changes.',
   },
   {
     key:    'inspection.read',

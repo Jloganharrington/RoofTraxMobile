@@ -33,6 +33,12 @@ export interface ActorCtx extends Omit<ResolveContext, 'role'> {
   role: Role;
   /** Drizzle-safe company scope for tenant isolation. */
   companyId: string;
+  /**
+   * @deprecated Backward-compat alias for `actorId`. Kept so inspection handler
+   * bodies using `actor.userId` continue to work during the write-route migration
+   * without requiring a mass rename. Remove once the migration is complete.
+   */
+  userId: string;
 }
 
 // Augment Express Request so handlers can read actorCtx without a second DB hit.
@@ -70,6 +76,7 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
     workflowAssignment: null,
     // ownerId is intentionally absent here — handlers supply it when checking
     // ownerOrRole permissions against a fetched resource.
+    userId: actorId, // @deprecated alias — remove after write-route migration is complete
   };
   // Also stamp req.actorCtx so Pattern-B handlers (which call loadActorCtx
   // directly without going through the middleware) can use req.actorCtx!.* in
