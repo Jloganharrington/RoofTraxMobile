@@ -62,7 +62,7 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, actorId));
   const profile = rows[0];
-  return {
+  const ctx: ActorCtx = {
     actorId,
     companyId,
     role:               (profile?.role ?? 'field_rep') as Role,
@@ -71,6 +71,11 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
     // ownerId is intentionally absent here — handlers supply it when checking
     // ownerOrRole permissions against a fetched resource.
   };
+  // Also stamp req.actorCtx so Pattern-B handlers (which call loadActorCtx
+  // directly without going through the middleware) can use req.actorCtx!.* in
+  // nested callbacks (e.g. notify(), audit inserts) alongside the local variable.
+  req.actorCtx = ctx;
+  return ctx;
 }
 
 // ── Middleware factory ─────────────────────────────────────────────────────────

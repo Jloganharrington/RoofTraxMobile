@@ -21,11 +21,14 @@ import { z } from 'zod';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
-import { canDeletePin, canEditPin, isManagerOrAdmin } from '@workspace/authz';
-import { notify } from '../lib/notify';
+import { isManagerOrAdmin, resolve } from '@workspace/authz';
+import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
 
-const router: IRouter = Router();
-
+/**
+ * getRole — retained for calendar.ts, completionCertificates.ts, inspections.ts which
+ * have not yet been migrated to requirePermission. Remove once those files are migrated.
+ * @deprecated Use req.actorCtx!.role (from requirePermission middleware) instead.
+ */
 export async function getRole(userId: string) {
   const [profile] = await db
     .select()
@@ -33,16 +36,15 @@ export async function getRole(userId: string) {
     .where(eq(userProfilesTable.userId, userId));
   return profile?.role ?? 'field_rep';
 }
+import { notify } from '../lib/notify';
 
-router.get('/pins', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+const router: IRouter = Router();
 
-  const role = await getRole(req.user.id);
+// lead.read (field_rep+): any authenticated company member may list/view leads.
+router.get('/pins', requirePermission('lead.read'), async (req: Request, res: Response) => {
+  const role = req.actorCtx!.role;
   const filterUserId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
-  const companyId = req.user.companyId;
+  const companyId = req.actorCtx!.companyId;
 
   // Every role can see every pin in their own company now (field reps see
   // other reps' pins as read-only context, rendered grey client-side).
@@ -65,12 +67,8 @@ router.get('/pins', async (req: Request, res: Response) => {
   res.json(ListPinsResponse.parse({ pins: rows }));
 });
 
-router.post('/pins', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
+// lead.create (field_rep+): any authenticated company member may create a lead.
+router.post('/pins', requirePermission('lead.create'), async (req: Request, res: Response) => {
   const parsed = CreatePinBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid pin payload' });
@@ -110,8 +108,8 @@ router.post('/pins', async (req: Request, res: Response) => {
   const [pin] = await db
     .insert(pinsTable)
     .values({
-      userId: req.user.id,
-      companyId: req.user.companyId,
+      userId: req.actorCtx!.actorId,
+      companyId: req.actorCtx!.companyId,
       latitude,
       longitude,
       address,
@@ -133,18 +131,9 @@ router.post('/pins', async (req: Request, res: Response) => {
   res.status(201).json(CreatePinResponse.parse({ pin }));
 });
 
-router.post('/pins/bulk', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Only managers/admins can bulk-upload pins' });
-    return;
-  }
-
+// lead.bulk_create (field_rep+) — VERDICT CHANGE: was manager+, now any authenticated member.
+// Registry intent: field reps may bulk-import from canvassing data.
+router.post('/pins/bulk', requirePermission('lead.bulk_create'), async (req: Request, res: Response) => {
   const parsed = BulkCreatePinsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload' });
@@ -157,8 +146,8 @@ router.post('/pins/bulk', async (req: Request, res: Response) => {
     const [pin] = await db
       .insert(pinsTable)
       .values({
-        userId: req.user.id,
-        companyId: req.user.companyId,
+        userId: req.actorCtx!.actorId,
+        companyId: req.actorCtx!.companyId,
         latitude: input.latitude,
         longitude: input.longitude,
         address,
@@ -172,25 +161,24 @@ router.post('/pins/bulk', async (req: Request, res: Response) => {
   res.status(201).json(BulkCreatePinsResponse.parse({ pins: created }));
 });
 
+// lead.update (ownerOrRole:manager+) — same behavior as canEditPin (pin owner or manager+).
 router.patch('/pins/:pinId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
   }
 
-  const role = await getRole(req.user.id);
-  if (!canEditPin(role, req.user.id, pin.userId)) {
+  const result = resolve('lead.update', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) {
     res.status(403).json({ error: 'Not permitted to edit this pin' });
     return;
   }
@@ -310,18 +298,13 @@ export function toDateOrNull(s: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// GET /pins/:pinId — full lead record with rep name
-router.get('/pins/:pinId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
+// GET /pins/:pinId — full lead record with rep name — lead.read (field_rep+).
+router.get('/pins/:pinId', requirePermission('lead.read'), async (req: Request, res: Response) => {
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
@@ -340,26 +323,25 @@ router.get('/pins/:pinId', async (req: Request, res: Response) => {
   res.json({ lead: { ...pin, repName } });
 });
 
-// PATCH /pins/:pinId/profile — update lead profile fields
+// PATCH /pins/:pinId/profile — lead.update (ownerOrRole:manager+). Financial fields inside
+// the handler still require manager+ explicitly (secondary inline check, not ownerOrRole).
 router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
   }
 
-  const role = await getRole(req.user.id);
-  if (!canEditPin(role, req.user.id, pin.userId)) {
+  const result = resolve('lead.update', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) {
     res.status(403).json({ error: 'Not permitted to edit this pin' });
     return;
   }
@@ -396,7 +378,7 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
     d.rcvAmount !== undefined;
 
   if (financialPresent) {
-    if (!isManagerOrAdmin(role)) {
+    if (!isManagerOrAdmin(actorCtx.role)) {
       res.status(403).json({
         error: 'Only managers and above may change financial amounts (contractAmount, deductibleAmount, rcvAmount)',
       });
@@ -450,12 +432,12 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
     const rows = auditFields
       .filter(({ key }) => d[key] !== undefined && d[key] !== pin[key])
       .map(({ key, col }) => ({
-        companyId:         req.user.companyId,
+        companyId:         req.actorCtx!.companyId,
         pinId,
         field:             col,
         oldValue:          pin[key] ?? null,
         newValue:          d[key] ?? null,
-        changedByUserId:   req.user.id,
+        changedByUserId:   req.actorCtx!.actorId,
         reason:            d.reason as string,
       }));
     if (rows.length > 0) {
@@ -476,26 +458,16 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
 });
 
 // GET /pins/:pinId/financial-changes — audit log (manager+ only)
-router.get('/pins/:pinId/financial-changes', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
+// profitability.view (manager+): only managers can view financial change history.
+router.get('/pins/:pinId/financial-changes', requirePermission('profitability.view'), async (req: Request, res: Response) => {
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select({ id: pinsTable.id })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Not authorized to view financial change history' });
     return;
   }
 
@@ -533,25 +505,24 @@ const SetAppointmentBody = z
     { message: 'At least one of appointmentAt, appointmentAssignedTo, or appointmentStatus is required' },
   );
 
+// lead.set_appointment (ownerOrRole:manager+) — same behavior as canEditPin.
 router.patch('/pins/:pinId/appointment', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
   }
 
-  const role = await getRole(req.user.id);
-  if (!canEditPin(role, req.user.id, pin.userId)) {
+  const result = resolve('lead.set_appointment', { ...actorCtx, ownerId: pin.userId });
+  if (!result.allowed) {
     res.status(403).json({ error: 'Not permitted to edit this pin' });
     return;
   }
@@ -579,7 +550,7 @@ router.patch('/pins/:pinId/appointment', async (req: Request, res: Response) => 
   const [updated] = await db
     .update(pinsTable)
     .set(updateSet)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)))
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)))
     .returning();
 
   res.json({
@@ -598,33 +569,23 @@ router.patch('/pins/:pinId/appointment', async (req: Request, res: Response) => 
   ) {
     void notify({
       type:        'appointment_assigned',
-      companyId:   req.user.companyId,
+      companyId:   req.actorCtx!.companyId,
       pinId:       pinId,
-      actorUserId: req.user.id,
+      actorUserId: req.actorCtx!.actorId,
     });
   }
 });
 
-router.delete('/pins/:pinId', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
+// lead.delete (manager+): only managers can delete a lead.
+router.delete('/pins/:pinId', requirePermission('lead.delete'), async (req: Request, res: Response) => {
   const pinId = req.params.pinId as string;
   const [pin] = await db
     .select()
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
-
-  const role = await getRole(req.user.id);
-  if (!canDeletePin(role)) {
-    res.status(403).json({ error: 'Not permitted to delete this pin' });
     return;
   }
 

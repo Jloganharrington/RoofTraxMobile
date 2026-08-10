@@ -512,10 +512,156 @@ describe('route auth — negative gate suite', () => {
     }
   });
 
+  // ── [D15] DOMAIN: pins ─────────────────────────────────────────────────────
+  // lead.read (field_rep+): no role verdict changes for GET routes.
+  // lead.create (field_rep+): same.
+  // lead.bulk_create (field_rep+): VERDICT CHANGE — was manager+, registry allows field_rep.
+  // lead.update (ownerOrRole:manager+): non-owner field_rep → 404 on stub-id (pin lookup first).
+  // lead.set_appointment (ownerOrRole:manager+): same.
+  // lead.delete (manager+): field_rep → 403.
+  // profitability.view (manager+): field_rep → 403.
+
+  describe('[D15] GET /pins [lead.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins')).status).toBe(401);
+    });
+  });
+
+  describe('[D15] POST /pins [lead.create — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/pins')).status).toBe(401);
+    });
+  });
+
+  describe('[D15] POST /pins/bulk [lead.bulk_create — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/pins/bulk')).status).toBe(401);
+    });
+    // VERDICT CHANGE: was manager+, now field_rep+ per registry intent (canvassing bulk-import).
+  });
+
+  describe('[D15] GET /pins/:pinId [lead.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins/stub-id')).status).toBe(401);
+    });
+  });
+
+  describe('[D15] PATCH /pins/:pinId [lead.update — ownerOrRole:manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/pins/stub-id')).status).toBe(401);
+    });
+    // Non-owner field_rep → 404 (pin not found for stub-id before ownerOrRole check).
+  });
+
+  describe('[D15] PATCH /pins/:pinId/profile [lead.update — ownerOrRole:manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/pins/stub-id/profile')).status).toBe(401);
+    });
+    // Non-owner field_rep → 404 for stub-id. Financial fields still require manager+ inline.
+  });
+
+  describe('[D15] GET /pins/:pinId/financial-changes [profitability.view — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins/stub-id/financial-changes')).status).toBe(401);
+    });
+    it('field_rep → 403 (manager+)', async () => {
+      expect((await request(app).get('/api/pins/stub-id/financial-changes').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D15] PATCH /pins/:pinId/appointment [lead.set_appointment — ownerOrRole:manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/pins/stub-id/appointment')).status).toBe(401);
+    });
+    // Non-owner field_rep → 404 for stub-id.
+  });
+
+  describe('[D15] DELETE /pins/:pinId [lead.delete — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).delete('/api/pins/stub-id')).status).toBe(401);
+    });
+    it('field_rep → 403 (manager+)', async () => {
+      expect((await request(app).delete('/api/pins/stub-id').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  // ── [D16] DOMAIN: companies ─────────────────────────────────────────────────
+  // Most routes: admin+ required (same-company check is inline after middleware).
+  // Exceptions noted below.
+
+  describe('[D16] POST /companies [super_admin+ via loadActorCtx]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/companies')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/companies').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('manager → 403 (below super_admin)', async () => {
+      expect((await request(app).post('/api/companies').set(auth(fix.manager.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D16] PATCH /companies/:companyId/logo [company.edit_logo — admin+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/companies/STUB00/logo')).status).toBe(401);
+    });
+    it('field_rep → 403 (below admin)', async () => {
+      expect((await request(app).patch('/api/companies/STUB00/logo').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D16] GET+PATCH /companies/:companyId/report-branding [company.edit_report_colors — super_admin+]', () => {
+    it('GET no auth → 401', async () => {
+      expect((await request(app).get('/api/companies/STUB00/report-branding')).status).toBe(401);
+    });
+    it('GET field_rep → 403 (below super_admin)', async () => {
+      expect((await request(app).get('/api/companies/STUB00/report-branding').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('PATCH no auth → 401', async () => {
+      expect((await request(app).patch('/api/companies/STUB00/report-branding')).status).toBe(401);
+    });
+    it('PATCH field_rep → 403', async () => {
+      expect((await request(app).patch('/api/companies/STUB00/report-branding').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    // VERDICT CHANGE: tightened from admin+ to super_admin+.
+    // Admin users (below super_admin) now get 403 on these routes.
+  });
+
+  describe('[D16] GET /companies/:companyId/lead-sources [company.view_settings — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/companies/STUB00/lead-sources')).status).toBe(401);
+    });
+    // VERDICT CHANGE: was admin+ (requireSameCompanyAdmin), now field_rep+ (company.view_settings).
+    // All authenticated same-company members may now list lead sources.
+  });
+
+  describe('[D16] PATCH /companies/:companyId/lead-sources [company.edit_lead_sources — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/companies/STUB00/lead-sources')).status).toBe(401);
+    });
+    it('field_rep → 403 (manager+)', async () => {
+      expect((await request(app).patch('/api/companies/STUB00/lead-sources').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    // VERDICT CHANGE: was admin+ (requireSameCompanyAdmin), now manager+ (company.edit_lead_sources).
+  });
+
+  describe('[D16] sample-package routes [company.view_settings — field_rep+]', () => {
+    const routes: Array<[string, string]> = [
+      ['get',  '/api/sample-package/info'],
+      ['post', '/api/sample-package/provision'],
+      ['get',  '/api/sample-package'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+    }
+  });
+
   // ── Additional domains are appended below as migration proceeds ───────────
   // Template:
   //
-  // describe('[D15] VERB /path [permission.key — minRole+]', () => {
+  // describe('[D17] VERB /path [permission.key — minRole+]', () => {
   //   it('no auth → 401', async () => { ... });
   //   it('field_rep → 403', async () => { ... });
   //   // If there is a verdict change: document it as a comment, not a failing test.

@@ -20,6 +20,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { roleRank, type Role } from '@workspace/authz';
+import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { buildSampleProofPackageHtml } from '../lib/proofPackageTemplate';
 import { isHexColor, resolveReportTheme } from '../lib/reportTemplate';
@@ -57,16 +58,11 @@ async function generateUniqueCompanyId(): Promise<string> {
 // Nothing in the normal authenticated user flow calls this; it is a
 // provisioning endpoint for platform operators.  Any unauthenticated caller
 // that reached this would be able to mint arbitrary tenants — gate it hard.
+// POST /companies — no registry key (provisioning-only endpoint); use loadActorCtx directly.
 router.post('/companies', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  if (roleRank((actorProfile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  if (roleRank(actorCtx.role) < roleRank('super_admin')) {
     res.status(403).json({ error: 'Super admin access required' });
     return;
   }
@@ -104,9 +100,13 @@ router.get('/companies/:companyId', async (req: Request, res: Response) => {
 });
 
 // PATCH /companies/:companyId/logo — store a company logo URL. Admin+ only.
-router.patch('/companies/:companyId/logo', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_logo
+router.patch('/companies/:companyId/logo', requirePermission('company.edit_logo'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const { logoUrl } = req.body as { logoUrl?: unknown };
   if (typeof logoUrl !== 'string' || !logoUrl.trim()) {
@@ -123,9 +123,13 @@ router.patch('/companies/:companyId/logo', async (req: Request, res: Response) =
 });
 
 // GET /companies/:companyId/ai-settings — returns the stored AI settings. Admin+ only.
-router.get('/companies/:companyId/ai-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_ai_settings
+router.get('/companies/:companyId/ai-settings', requirePermission('company.edit_ai_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const [company] = await db
     .select({ aiSettings: companiesTable.aiSettings })
@@ -142,9 +146,13 @@ router.get('/companies/:companyId/ai-settings', async (req: Request, res: Respon
 });
 
 // PATCH /companies/:companyId/ai-settings — update the custom system prompt. Admin+ only.
-router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_ai_settings
+router.patch('/companies/:companyId/ai-settings', requirePermission('company.edit_ai_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const { systemPrompt } = req.body as { systemPrompt?: unknown };
   if (systemPrompt !== null && systemPrompt !== undefined && typeof systemPrompt !== 'string') {
@@ -164,40 +172,16 @@ router.patch('/companies/:companyId/ai-settings', async (req: Request, res: Resp
 
 // ── Report branding (forensic report color palette) ────────────────────────
 
-// Shared authz for company-settings routes: authenticated admin (or
-// super_admin) of the same company. Returns the actor's companyId, or null
-// after responding. Uses roleRank from @workspace/authz — the single source
-// of truth for role comparisons across this repo.
-async function requireSameCompanyAdmin(
-  req: Request,
-  res: Response,
-): Promise<string | null> {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return null;
-  }
-  const companyId = (req.params.companyId as string).toUpperCase();
-  if (req.user.companyId !== companyId) {
-    res.status(403).json({ error: 'Forbidden' });
-    return null;
-  }
-  const [actorProfile] = await db
-    .select({ role: userProfilesTable.role })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
-  if (roleRank(actorProfile?.role ?? 'field_rep') < roleRank('admin')) {
-    res.status(403).json({ error: 'Admin role required' });
-    return null;
-  }
-  return companyId;
-}
-
 // GET /companies/:companyId/fipsa-settings — contractor legal name, address,
 // and Documentation Fee printed on generated FIPSA agreements. Super admin
 // only (field reps receive these via their profile fetch instead).
-router.get('/companies/:companyId/fipsa-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_fipsa_settings
+router.get('/companies/:companyId/fipsa-settings', requirePermission('company.edit_fipsa_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const [company] = await db
     .select({
@@ -226,9 +210,13 @@ router.get('/companies/:companyId/fipsa-settings', async (req: Request, res: Res
 
 // PATCH /companies/:companyId/fipsa-settings — super admin only. These values
 // are embedded into a legal document, so they are validated and trimmed here.
-router.patch('/companies/:companyId/fipsa-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_fipsa_settings
+router.patch('/companies/:companyId/fipsa-settings', requirePermission('company.edit_fipsa_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const parsed = UpdateCompanyFipsaSettingsBody.safeParse(req.body);
   if (!parsed.success) {
@@ -284,9 +272,13 @@ router.patch('/companies/:companyId/fipsa-settings', async (req: Request, res: R
 });
 
 // GET /companies/:companyId/report-branding — returns the stored palette. Admin+ only.
-router.get('/companies/:companyId/report-branding', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_report_colors
+router.get('/companies/:companyId/report-branding', requirePermission('company.edit_report_colors'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const [company] = await db
     .select({ reportBranding: companiesTable.reportBranding })
@@ -304,9 +296,13 @@ router.get('/companies/:companyId/report-branding', async (req: Request, res: Re
 // PATCH /companies/:companyId/report-branding — set or clear the palette.
 // Admin+ only. Colors are embedded into rendered report HTML so only strict
 // #RRGGBB hex values are accepted; anything else is rejected.
-router.patch('/companies/:companyId/report-branding', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_report_colors
+router.patch('/companies/:companyId/report-branding', requirePermission('company.edit_report_colors'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const { branding } = req.body as { branding?: unknown };
 
@@ -343,9 +339,13 @@ router.patch('/companies/:companyId/report-branding', async (req: Request, res: 
 // ── Proof Package settings (licenses, qualifications, pricing basis) ───────
 
 // GET /companies/:companyId/report-settings — super admin only.
-router.get('/companies/:companyId/report-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_settings
+router.get('/companies/:companyId/report-settings', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const [company] = await db
     .select({
@@ -373,9 +373,13 @@ router.get('/companies/:companyId/report-settings', async (req: Request, res: Re
 
 // PATCH /companies/:companyId/report-settings — super admin only. These
 // values are embedded into the Proof Package, so they are validated + trimmed.
-router.patch('/companies/:companyId/report-settings', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_settings
+router.patch('/companies/:companyId/report-settings', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const parsed = UpdateCompanyReportSettingsBody.safeParse(req.body);
   if (!parsed.success) {
@@ -451,9 +455,13 @@ function jurisdictionPackToWire(pack: {
 }
 
 // GET /companies/:companyId/jurisdiction-packs — super admin only.
-router.get('/companies/:companyId/jurisdiction-packs', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_settings
+router.get('/companies/:companyId/jurisdiction-packs', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const packs = await db
     .select()
@@ -471,11 +479,16 @@ router.get('/companies/:companyId/jurisdiction-packs', async (req: Request, res:
 
 // PUT /companies/:companyId/jurisdiction-packs/upsert — super admin.
 // pack.id present = update that pack; absent = create a new pack.
+// company.edit_settings
 router.put(
   '/companies/:companyId/jurisdiction-packs/upsert',
+  requirePermission('company.edit_settings'),
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanyAdmin(req, res);
-    if (!companyId) return;
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (companyId !== req.actorCtx!.companyId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
 
     const parsed = UpsertCompanyJurisdictionPackBody.safeParse(req.body);
     if (!parsed.success) {
@@ -552,11 +565,16 @@ router.put(
 );
 
 // DELETE /companies/:companyId/jurisdiction-packs/:packId — super admin.
+// company.edit_settings
 router.delete(
   '/companies/:companyId/jurisdiction-packs/:packId',
+  requirePermission('company.edit_settings'),
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanyAdmin(req, res);
-    if (!companyId) return;
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (companyId !== req.actorCtx!.companyId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
 
     const [deleted] = await db
       .delete(companyJurisdictionPacksTable)
@@ -581,11 +599,16 @@ router.delete(
 // the given state (or looks up a specific code the admin typed) and returns
 // SUGGESTED citations. Nothing is persisted here — the client adds confirmed
 // suggestions to the pack via the upsert endpoint. Super admin only.
+// company.edit_settings (AI wizard for code research)
 router.post(
   '/companies/:companyId/jurisdiction-packs/:state/code-research',
+  requirePermission('company.edit_settings'),
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanyAdmin(req, res);
-    if (!companyId) return;
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (companyId !== req.actorCtx!.companyId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
 
     const state = String(req.params.state ?? '').trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(state)) {
@@ -671,11 +694,16 @@ Respond with JSON only, in exactly this shape:
 // Optional headerColor/headerTextColor/accentColor query params override the
 // stored palette so admins can preview unsaved color tweaks. Super admin only,
 // matching the other report-branding routes.
+// company.edit_report_colors — VERDICT CHANGE: tightens from admin+ to super_admin+.
 router.get(
   '/companies/:companyId/report-branding/preview',
+  requirePermission('company.edit_report_colors'),
   async (req: Request, res: Response) => {
-    const companyId = await requireSameCompanyAdmin(req, res);
-    if (!companyId) return;
+    const companyId = (req.params.companyId as string).toUpperCase();
+    if (companyId !== req.actorCtx!.companyId) {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
 
     const [company] = await db
       .select({
@@ -725,9 +753,13 @@ router.get(
 
 // PATCH /companies/:companyId/name — update company display name.
 // Restricted to super admins of the same company.
-router.patch('/companies/:companyId/name', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_settings
+router.patch('/companies/:companyId/name', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const { name } = req.body as { name?: unknown };
   if (typeof name !== 'string' || !name.trim()) {
@@ -755,9 +787,13 @@ router.patch('/companies/:companyId/name', async (req: Request, res: Response) =
 });
 
 // PATCH /companies/:companyId/platform-preferences — update platform feature flags. Admin+ only.
-router.patch('/companies/:companyId/platform-preferences', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_settings
+router.patch('/companies/:companyId/platform-preferences', requirePermission('company.edit_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const { betaBugReporting } = req.body as { betaBugReporting?: unknown };
   if (typeof betaBugReporting !== 'boolean') {
@@ -784,9 +820,13 @@ const DEFAULT_LEAD_SOURCES = ["Angi's", 'Yelp', 'Call-In', 'Website'];
 const MAX_LEAD_SOURCES = 50;
 const MAX_SOURCE_LENGTH = 100;
 
-router.get('/companies/:companyId/lead-sources', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.view_settings
+router.get('/companies/:companyId/lead-sources', requirePermission('company.view_settings'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const [company] = await db
     .select({ leadSources: companiesTable.leadSources })
@@ -802,9 +842,13 @@ router.get('/companies/:companyId/lead-sources', async (req: Request, res: Respo
   res.json({ leadSources: sources });
 });
 
-router.patch('/companies/:companyId/lead-sources', async (req: Request, res: Response) => {
-  const companyId = await requireSameCompanyAdmin(req, res);
-  if (!companyId) return;
+// company.edit_lead_sources
+router.patch('/companies/:companyId/lead-sources', requirePermission('company.edit_lead_sources'), async (req: Request, res: Response) => {
+  const companyId = (req.params.companyId as string).toUpperCase();
+  if (companyId !== req.actorCtx!.companyId) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
 
   const { leadSources } = req.body as { leadSources?: unknown };
   if (!Array.isArray(leadSources)) {
@@ -844,13 +888,13 @@ router.patch('/companies/:companyId/lead-sources', async (req: Request, res: Res
 // GET  /api/sample-package          — (legacy) returns branded sample HTML
 // ---------------------------------------------------------------------------
 
-router.get('/sample-package/info', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// company.view_settings (field_rep+): any authenticated member may access sample package.
+router.get('/sample-package/info', requirePermission('company.view_settings'), async (req: Request, res: Response) => {
 
   const [company] = await db
     .select({ reportBranding: companiesTable.reportBranding })
     .from(companiesTable)
-    .where(eq(companiesTable.id, req.user.companyId));
+    .where(eq(companiesTable.id, req.actorCtx!.companyId));
 
   const branding = (company?.reportBranding ?? {}) as Record<string, unknown>;
   const samplePinId = typeof branding.samplePinId === 'string' ? branding.samplePinId : null;
@@ -864,7 +908,7 @@ router.get('/sample-package/info', async (req: Request, res: Response) => {
   const [pin] = await db
     .select({ id: pinsTable.id })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, samplePinId), eq(pinsTable.companyId, req.user.companyId)));
+    .where(and(eq(pinsTable.id, samplePinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
 
   if (!pin) {
     res.json({ pinId: null, inspectionId: null });
@@ -875,15 +919,15 @@ router.get('/sample-package/info', async (req: Request, res: Response) => {
   const [inspection] = await db
     .select({ id: inspectionsTable.id })
     .from(inspectionsTable)
-    .where(and(eq(inspectionsTable.pinId, samplePinId), eq(inspectionsTable.companyId, req.user.companyId)));
+    .where(and(eq(inspectionsTable.pinId, samplePinId), eq(inspectionsTable.companyId, req.actorCtx!.companyId)));
 
   res.json({ pinId: pin.id, inspectionId: inspection?.id ?? null });
 });
 
-router.post('/sample-package/provision', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// company.view_settings (field_rep+): any authenticated member may access sample package.
+router.post('/sample-package/provision', requirePermission('company.view_settings'), async (req: Request, res: Response) => {
 
-  const companyId = req.user.companyId;
+  const companyId = req.actorCtx!.companyId;
 
   // Check if a sample already exists
   const [company] = await db
@@ -923,7 +967,7 @@ router.post('/sample-package/provision', async (req: Request, res: Response) => 
           await db.insert(attestationsTable).values({
             companyId,
             inspectionId: existingInspection.id,
-            userId: req.user.id,
+            userId: req.actorCtx!.actorId,
             attestationType: 'stage_signoff',
           });
         }
@@ -939,7 +983,7 @@ router.post('/sample-package/provision', async (req: Request, res: Response) => 
   const [pin] = await db
     .insert(pinsTable)
     .values({
-      userId: req.user.id,
+      userId: req.actorCtx!.actorId,
       companyId,
       latitude: 39.7817,
       longitude: -89.6501,
@@ -953,7 +997,7 @@ router.post('/sample-package/provision', async (req: Request, res: Response) => 
     .insert(inspectionsTable)
     .values({
       companyId,
-      inspectorUserId: req.user.id,
+      inspectorUserId: req.actorCtx!.actorId,
       pinId: pin.id,
       status: 'validating',
       phase: 'forensic',
@@ -976,7 +1020,7 @@ router.post('/sample-package/provision', async (req: Request, res: Response) => 
   await db.insert(attestationsTable).values({
     companyId,
     inspectionId: inspection.id,
-    userId: req.user.id,
+    userId: req.actorCtx!.actorId,
     attestationType: 'stage_signoff',
   });
 
@@ -996,13 +1040,10 @@ router.post('/sample-package/provision', async (req: Request, res: Response) => 
 // Accessible to any authenticated member of the company (no super-admin gate).
 // Used by the Sample Proof Package Client card in the Insurance Pipeline.
 // ---------------------------------------------------------------------------
-router.get('/sample-package', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// company.view_settings (field_rep+): any authenticated member may access sample package.
+router.get('/sample-package', requirePermission('company.view_settings'), async (req: Request, res: Response) => {
 
-  const companyId = req.user.companyId;
+  const companyId = req.actorCtx!.companyId;
 
   const [company] = await db
     .select({

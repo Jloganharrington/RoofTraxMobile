@@ -101,18 +101,30 @@ describe('report-branding routes', () => {
     expect(repPatch.status).toBe(403);
   });
 
-  it('allows admin-rank users to read and write report branding', async () => {
+  // VERDICT CHANGE: company.edit_report_colors is super_admin+ (was admin+).
+  // Admin users are now rejected; only super_admin may read/write report branding.
+  it('rejects admin-rank users for report branding (super_admin+ required)', async () => {
     const get = await request(app).get(`/api/companies/${a.companyId}/report-branding`).set(auth(a.adminSid));
-    expect(get.status).toBe(200);
+    expect(get.status).toBe(403);
     const patch = await request(app)
       .patch(`/api/companies/${a.companyId}/report-branding`)
       .set(auth(a.adminSid))
+      .send({ branding: VALID });
+    expect(patch.status).toBe(403);
+  });
+
+  it('allows super_admin to read and write report branding', async () => {
+    const get = await request(app).get(`/api/companies/${a.companyId}/report-branding`).set(auth(a.superSid));
+    expect(get.status).toBe(200);
+    const patch = await request(app)
+      .patch(`/api/companies/${a.companyId}/report-branding`)
+      .set(auth(a.superSid))
       .send({ branding: VALID });
     expect(patch.status).toBe(200);
     // Reset so later "returns null" assertion starts from a clean state
     await request(app)
       .patch(`/api/companies/${a.companyId}/report-branding`)
-      .set(auth(a.adminSid))
+      .set(auth(a.superSid))
       .send({ branding: null });
   });
 
@@ -183,18 +195,22 @@ describe('report-branding routes', () => {
 describe('branding sample preview route', () => {
   const previewPath = (companyId: string) => `/api/companies/${companyId}/report-branding/preview`;
 
-  it('requires auth and admin+ role', async () => {
+  // VERDICT CHANGE: company.edit_report_colors is super_admin+ (was admin+).
+  it('requires auth and super_admin role for preview', async () => {
     const anon = await request(app).get(previewPath(a.companyId));
     expect(anon.status).toBe(401);
     // field_rep rejected
     const rep = await request(app).get(previewPath(a.companyId)).set(auth(a.repSid));
     expect(rep.status).toBe(403);
-    // cross-company super_admin rejected
+    // cross-company super_admin rejected (same-company check)
     const cross = await request(app).get(previewPath(a.companyId)).set(auth(b.superSid));
     expect(cross.status).toBe(403);
-    // same-company admin allowed
+    // same-company admin now rejected (tightened to super_admin+)
     const adm = await request(app).get(previewPath(a.companyId)).set(auth(a.adminSid));
-    expect(adm.status).toBe(200);
+    expect(adm.status).toBe(403);
+    // same-company super_admin allowed
+    const sup = await request(app).get(previewPath(a.companyId)).set(auth(a.superSid));
+    expect(sup.status).toBe(200);
   });
 
   it('renders a sample report with the stored palette and freshly-signed logo', async () => {
