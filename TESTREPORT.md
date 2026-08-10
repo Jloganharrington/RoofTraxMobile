@@ -2071,3 +2071,411 @@ The `typecheck-api` workflow fails with **8 TypeScript errors**, all in `src/scr
 
 `git log --oneline 8c0455c..HEAD` returns empty. HEAD is still `8c0455c` (Phase 4 commit). All Checkpoint 5 work is uncommitted: TESTREPORT.md modified; `package.json` and `.gitignore` updated for 4-R.3.
 
+
+---
+
+# CHECKPOINT 5 RECONCILIATION + PHASE 6
+
+---
+
+## 5-R.1 — Finding Index Reconciliation
+
+### Discrepancies Found in the Checkpoint 5 Index (lines 2044–2062)
+
+Three classes of error required correction:
+
+**Error 1 — FINDING 2-B title wrong in the Checkpoint 5 index (line 2048).**
+The Checkpoint 5 index entry reads: `"Profitability view excludes CO lines from approved_co_cents"`. The body (§FINDING 2-B, line 531) says: `"Async portal-sign auto-advance creates concurrent stage transitions"`. These are different findings. The body is authoritative — the portal-sign race was documented empirically in Phase 2B, with a 7-row stage_transitions audit confirming two rows from `contract_pending`. The CO lines claim was never backed by a body section and is factually wrong (see below). **Correction: FINDING 2-B = portal-sign race. Status: Open.**
+
+**Error 2 — CO lines claim orphaned and contradicted by evidence.**
+No body section in any checkpoint documents a finding that "profitability view excludes CO lines from `approved_co_cents`." The claim appeared only as an index entry, incorrectly numbered 2-B. On the evidence:
+- `data-migrations/029_profitability_view_step5.sql:121–122`: `SELECT pin_id, SUM(amount_cents) AS approved_co_cents FROM change_orders WHERE status = 'approved' AND voided_at IS NULL` — approved COs are aggregated.
+- `profitability-step2.test.ts` passes with a $3,500 CO counted in the $8,000 margin and 43.24% margin percentage.
+**Correction: CO lines claim WITHDRAWN — no body section, SQL contradicts it.**
+
+**Error 3 — Checkpoint 5 index omitted FINDING 3-D, 3-E, 3-F, 3-G, 3-H, 3-I.**
+These six Phase 3 empirical findings were in the Phase 3 consolidated index (line 1160–1165) and have body sections but were silently dropped when writing the Checkpoint 5 index. All are re-instated below.
+
+**Error 4 — FINDING 2-F never appeared in any index.**
+FINDING 2-F (FIPSA sign ordering constraint not surfaced, P3/note) has a body section (§2-F) but was omitted from both the Phase 3 and Checkpoint 5 indexes. Added to the reconciled index.
+
+**Error 5 — Phase 0 findings never in any consolidated index.**
+FINDING 0.1-A/B/C, 0.5-A, 0.7-A, 0.8-A, 0.8-B have body sections (Phases 0.1, 0.5, 0.7, 0.8) but were excluded from all prior consolidated indexes. Included in the reconciled index below as the authoritative master.
+
+---
+
+### Reconciled Finding Index — All Phases (Master)
+
+| ID | Phase | Sev | Title | Status |
+|---|---|---|---|---|
+| FINDING 0.1-A | Phase 0 | P2 | `ISSUER_URL` classified required but silently falls back to Replit OIDC | Open |
+| FINDING 0.1-B | Phase 0 | Info | `BRAIN_MACHINE_TOKEN` provisioned but zero codebase references | Open |
+| FINDING 0.1-C | Phase 0 | P2 | Session cookie unsigned — `cookieParser()` called without secret | Open |
+| FINDING 0.5-A | Phase 0 | P2 | `GET /companies/:companyId` unauthenticated — name disclosure given a known ID | Open |
+| FINDING 0.7-A | Phase 0 | P1 | Push notifications dead in production — EAS `projectId` is literal placeholder | Open |
+| FINDING 0.8-A | Phase 0 | P1 | CORS `origin: true` with `credentials: true` reflects any origin | Open |
+| FINDING 0.8-B | Phase 0 | P1 | Auth routes had no rate limiting | **REMEDIATED** (a635a2c) |
+| FINDING 1-A | Phase 1 | P2 | `GET /admin/users` does not paginate | Open |
+| FINDING 2-A | Phase 2 | P1 | `claim_approved` unreachable via POST /events/pipeline event bus | Open |
+| FINDING 2-B | Phase 2 | P2 | Async portal-sign race creates duplicate `contract_pending` stage transition rows *(index title corrected from prior entry — see 5-R.1)* | Open |
+| FINDING 2-C | Phase 2 | P2 | Retail lifecycle double deposit in Phase 2B run ($7,200 vs $3,600) | **Closed** — script artifact; closed |
+| FINDING 2-D | Phase 2 | P3 | `stage_transitions.from_stage` null on first advance per pin | Open |
+| FINDING 2-E | Phase 2 | P2 | AI compile blocks `report_attested` + `package_delivered` insurance events from API-only testing | Open |
+| FINDING 2-F | Phase 2 | P3 | FIPSA sign requires `phase='forensic'` — ordering constraint not surfaced to callers *(added to index in 5-R.1)* | Open |
+| FINDING 2-R.2-A | Phase 2R | P3 | `rapGateReason` unwriteable via PATCH /inspections/:id — Drizzle empty-set 500 | Open |
+| ~~FINDING 3-A~~ | Phase 3 | ~~P0~~ | ~~Cross-tenant contract list via GET /pins/:id/contracts~~ | **WITHDRAWN** (§3-R) |
+| FINDING 3-B | Phase 3 | P1 | `GET /inspections/:id` returns 403 for cross-tenant actors — existence disclosure | Open |
+| FINDING 3-C | Phase 3 | **P0** | `GET /pins/:id/profitability` has no role gate — field_rep readable | Open |
+| FINDING 3-D | Phase 3 | **P0** | `isManagerOrAdmin` gate on `GET /admin/stats` allows manager access *(reinstated — see 5-R.1 Error 3)* | Open — see PD-1 |
+| FINDING 3-E | Phase 3 | **P0** | `isManagerOrAdmin` gate on `DELETE /admin/users/:id` allows manager to delete users *(reinstated)* | Open — see PD-2 |
+| FINDING 3-F | Phase 3 | P1 | `pipelineStage` mass-assignable via `PATCH /pins/:id/profile` *(reinstated)* | Open |
+| FINDING 3-G | Phase 3 | P1 | Invoice list (`GET /pins/:id/invoices`) accessible to canvasser / field_rep *(reinstated)* | Open — see PD-3 |
+| FINDING 3-H | Phase 3 | P1 | field_rep pin owner writes `contractAmount` with no audit trail or approval gate *(reinstated)* | Open |
+| FINDING 3-I | Phase 3 | P2 | Negative `contractAmount` string accepted; `revised_contract_cents` zeroed *(reinstated)* | Open |
+| FINDING 3-J | Phase 3/4 | **P0** | `PATCH /leads/:leadId/profile` accepts `pipelineStage`, `contractAmount`, `deductibleAmount` — live UI exposure | Open |
+| FINDING 4-A | Phase 4/5 | **P0** | `GET /profile/me` returns 500 for any `department = 'office'` user — 8 routes affected; `GET /team/users` cascades 500 for whole list; mobile impact confirmed | Open |
+| PD-1 | Policy | — | Should `manager` role reach `/admin/*` namespace? (relates to 3-D) | Ruling needed |
+| PD-2 | Policy | — | Should `manager` role delete users? (relates to 3-E) | Ruling needed |
+| PD-3 | Policy | — | Should `canvasser` dept see the invoice list? (relates to 3-G) | Ruling needed |
+
+**Active P0: 5 (3-C, 3-D, 3-E, 3-J, 4-A) | P1: 5 (0.7-A, 0.8-A, 2-A, 3-B; 0.8-B remediated) | P2: 6 | P3: 4 | Info: 1 | Policy: 3 | Withdrawn: 1 | Closed: 2**
+
+---
+
+## 5-R.2 — Notification Trigger Recommendations
+
+Three catalog types have no dispatch caller anywhere in the route files (`item_overdue`, `claim_blocked`, `lead_needs_stage_review`). All three share the same catalog shape: `minRole: 'manager'`, `recipientRule: 'managers'`, `defaultEmail: true`, `defaultPush: false`, `supportsDigest: false`. None are push-enabled — the dead EAS `projectId` (FINDING 0.7-A) is irrelevant to all three. Email delivery is testable today.
+
+---
+
+### `item_overdue` — Scheduled Sweep
+
+**Recommendation: scheduled sweep, daily cadence.**
+
+Overdues are inherently time-crossing events — no application action causes them; time does. There is no natural code checkpoint at which "it is now past deadline" fires. A background job is the correct architecture.
+
+Suggested implementation: a cron that runs once per day at a configurable UTC time. Query selects all open items where `due_date < NOW()` and a deduplication guard is not set (e.g. a `overdue_notified_date` column on the item, or a row in a `sent_notifications` log keyed on `(item_id, 'item_overdue', date_trunc('day', NOW()))`). For each unnotified overdue item, look up the company's manager recipients and dispatch one email. The daily cadence is deliberate: `supportsDigest: false` says per-event firing, but firing every minute for every still-overdue item would be unacceptable. Daily is the right floor.
+
+Do not wire to a natural checkpoint — there is no "item became overdue" event in the existing event bus, and adding one would require a separate time-based trigger anyway.
+
+---
+
+### `claim_blocked` — Natural Checkpoint
+
+**Recommendation: fire at the code path that sets the blocked condition.**
+
+A claim enters a blocked state at a specific moment — a stage gate refusal, a status flag write, or an explicit review rejection. That moment is a natural code checkpoint. Fire `claim_blocked` inline when the block condition is created (e.g., when `claim_status` is set to a blocked value, or when an advance-stage call is refused due to a blocking dependency and the caller explicitly marks the claim as blocked). Track `blocked_notified_at` on the claim or use the existing notification preferences system to avoid re-firing for a claim that remains blocked across days.
+
+A scheduled sweep would be incorrect here: it would re-email managers every day for every still-blocked claim, which is noise. `supportsDigest: false` confirms per-event semantics; the catalog assumes one email per block event, not a daily reminder.
+
+---
+
+### `lead_needs_stage_review` — Natural Checkpoint
+
+**Recommendation: fire in the code path that sets `pins.needs_stage_review = true`.**
+
+This flag is set by the pipeline stage auto-mapping logic for pins that could not be placed into a known stage. The set-to-true moment is a well-defined code event. Fire `lead_needs_stage_review` inline there, with idempotency: if the flag is already true on that pin, do not re-fire. Clear the notification gate when the manager reviews and resolves the stage (when `needs_stage_review` is set back to false). Only re-fire if the flag is subsequently set to true again.
+
+A scheduled sweep would have the same re-notification problem as `claim_blocked` — it would email every day for every unreviewed pin. The natural checkpoint is cleaner and already pinpointed in the codebase.
+
+---
+
+# PHASE 6 — Consolidated Audit Report
+
+---
+
+## P6.1 — Summary by Severity
+
+### P0 — Critical (immediate remediation required)
+
+| ID | Route / Location | Finding | Empirically Confirmed |
+|---|---|---|---|
+| 3-C | `GET /pins/:id/profitability` | No role gate — any authenticated user reads profit margin | ✓ (Phase 3 test 3.5-1) |
+| 3-D | `GET /admin/stats` | `isManagerOrAdmin` gate admits manager — policy violation pending PD-1 | ✓ (Phase 3 test 3.7-2) |
+| 3-E | `DELETE /admin/users/:id` | `isManagerOrAdmin` gate admits manager — policy violation pending PD-2 | ✓ (Phase 3 test 3.7-6) |
+| 3-J | `PATCH /leads/:leadId/profile` | Accepts `pipelineStage`, `contractAmount`, `deductibleAmount` in same body as name/notes — any field_rep can mutate pipeline stage and contract value | ✓ (Phase 3 test 3.3-2, 3.11-1) |
+| 4-A | `GET /profile/me` + 7 related | `zod.enum(['canvasser','inspector_canvasser'])` missing `'office'` — 500 for all office-dept users; `GET /team/users` cascades 500 for entire company list if any member has office dept | ✓ (Phase 4 test A-OFF-1 + A-ADMIN + A-SUPER) |
+
+### P1 — High
+
+| ID | Finding | Status |
+|---|---|---|
+| 0.7-A | Push notifications dead in production — EAS `projectId` placeholder | Open |
+| 0.8-A | CORS `origin: true` + `credentials: true` reflects any origin with cookies | Open |
+| **0.8-B** | Auth routes had no rate limiting | **REMEDIATED** (a635a2c) |
+| 2-A | `claim_approved` stage unreachable via POST /events/pipeline | Open |
+| 3-B | `GET /inspections/:id` 403 cross-tenant = existence disclosure | Open |
+
+### P2 — Medium
+
+| ID | Finding | Status |
+|---|---|---|
+| 0.1-A | `ISSUER_URL` classified required, silently falls back to Replit OIDC | Open |
+| 0.1-C | Session cookie unsigned — `cookieParser()` without secret | Open |
+| 0.5-A | `GET /companies/:companyId` unauthenticated — name disclosure given known ID | Open |
+| 1-A | `GET /admin/users` does not paginate | Open |
+| 2-B | Async portal-sign race — duplicate stage transition rows from `contract_pending` | Open |
+| 2-E | AI compile blocks two insurance auto_event hops in API-only testing | Open |
+| 3-I | Negative `contractAmount` string accepted and persisted; profitability zeroed | Open |
+| **2-C** | Retail lifecycle double deposit | **Closed** (script artifact) |
+
+### P3 — Low / Informational
+
+| ID | Finding | Status |
+|---|---|---|
+| 0.1-B | `BRAIN_MACHINE_TOKEN` provisioned, zero references | Open |
+| 2-D | `stage_transitions.from_stage` null on first advance per pin | Open |
+| 2-F | FIPSA sign requires `phase='forensic'` — ordering constraint not surfaced | Open |
+| 2-R.2-A | `rapGateReason` unwriteable via PATCH /inspections/:id — Drizzle empty-set 500 | Open |
+| 3-H | field_rep pin owner writes `contractAmount` with no audit trail | Open |
+
+### Policy Rulings Pending
+
+| ID | Question | Relates to |
+|---|---|---|
+| PD-1 | Should `manager` role reach `/admin/*` namespace? | 3-D |
+| PD-2 | Should `manager` role delete users? | 3-E |
+| PD-3 | Should `canvasser` dept see the invoice list? | 3-G |
+
+---
+
+## P6.2 — Configuration Gaps
+
+### Missing (value not set, code expects it)
+
+| Secret / Env Var | Expected by | Current state | Impact |
+|---|---|---|---|
+| `ISSUER_URL` | `lib/auth.ts` — OIDC discovery URL | Not set; fallback `'https://replit.com/oidc'` active | **FINDING 0.1-A**: production traffic authenticates against Replit's own OIDC. If this is intentional for dev, document it as optional; if production should use a different issuer, this is a misconfiguration. |
+| EAS `projectId` | `artifacts/mobile/app.json` | Literal string `"REPLACE_WITH_EAS_PROJECT_ID"` | **FINDING 0.7-A**: `getExpoPushTokenAsync` throws on any EAS build; `user_push_tokens` table is permanently empty; 8 catalog push types never deliver. |
+
+### Misconfigured (value set but wrong)
+
+| Config | Location | Current value | Problem |
+|---|---|---|---|
+| CORS origin | `artifacts/api-server/src/app.ts` | `cors({ credentials: true, origin: true })` | **FINDING 0.8-A**: any origin is reflected back as `Access-Control-Allow-Origin`, enabling cross-origin cookie-bearing requests from any domain. Should restrict to the Replit dev domain and the production domain. |
+| Cookie signing | `artifacts/api-server/src/app.ts` | `cookieParser()` — no secret arg | **FINDING 0.1-C**: `rt_sid` cookie is plain unsigned UUID. Stolen session ID is usable without cryptographic verification. |
+
+### Unverifiable (no external oracle)
+
+| Item | Observation |
+|---|---|
+| `BRAIN_MACHINE_TOKEN` | Set as a secret; zero references in any source file. Integration removed without cleaning up the secret, or placeholder for future integration. Cannot audit without documentation. |
+| `SESSION_SECRET` rotation | Used only for AES-256 SMTP password encryption (`lib/smtpCrypto.ts`). No key rotation mechanism was observed. Rotating the secret would silently invalidate all stored SMTP credentials. Rotation policy undocumented. |
+
+---
+
+## P6.3 — Permission Findings
+
+All confirmed empirically from Phase 3 test sessions (users A-CANV-1, A-MGR-O, A-ADMIN, A-SUPER; ZZTEST_ALPHA company).
+
+### 3-C: Profitability endpoint — no role gate
+
+- **Route:** `GET /pins/:id/profitability`
+- **Gate in code:** `artifacts/api-server/src/routes/pins.ts` — `isAuthenticated` only; no role check
+- **Repro:** Session `A-CANV-1` (field_rep, canvasser) → `GET /api/leads/<pin>/profitability` → **HTTP 200**, full margin data
+- **Impact:** Any authenticated user who knows a pin ID reads contract value, COGS, overhead breakdown, and net margin
+
+### 3-D: Manager reaches /admin/stats
+
+- **Route:** `GET /admin/stats`
+- **Gate in code:** `artifacts/api-server/src/routes/admin.ts` → `isManagerOrAdmin` (admits field_rep+, not admin+)
+- **Repro:** Session `A-MGR-O` (manager) → `GET /api/admin/stats` → **HTTP 200**
+- **Policy question (PD-1):** If the intent is admin-only, the gate should be `isAdmin` (role ≥ admin). If manager access is intended, document it and close.
+
+### 3-E: Manager can delete users
+
+- **Route:** `DELETE /admin/users/:id`
+- **Gate in code:** `artifacts/api-server/src/routes/admin.ts` → `isManagerOrAdmin`
+- **Repro:** Session `A-MGR-O` → `DELETE /api/admin/users/<id>` → **HTTP 200**, user deleted
+- **Impact:** A compromised manager account can delete users including other managers. Policy question (PD-2): if manager deletion is intentional, document; otherwise gate to `isAdmin`.
+
+### 3-J: PATCH /leads/:leadId/profile mass-assigns pipeline stage and contract value
+
+- **Route:** `PATCH /leads/:leadId/profile`
+- **Gate in code:** `artifacts/api-server/src/routes/pins.ts` — `isAuthenticated`, company-scope, pin-owner-or-manager; `pipelineStage`, `contractAmount`, `deductibleAmount` all in the same Zod body schema as display fields
+- **File:line:** `artifacts/api-server/src/routes/pins.ts:~380`; body schema accepts `pipelineStage` without role guard
+- **Repro (pipelineStage):** Session `A-CANV-1` → `PATCH /api/leads/<pin>/profile { pipelineStage: 'job_complete' }` → **HTTP 200**, stage changed. Stage restored via direct DB update.
+- **Repro (contractAmount):** Session `A-CANV-1` → `PATCH /api/leads/<pin>/profile { contractAmount: '$12,000.00' }` → **HTTP 200**, `revised_contract_cents` updated, profitability recalculates. No audit entry written.
+- **Impact:** Any authenticated pin owner or manager can silently advance pipeline stage to any value and rewrite contract amount, bypassing the purpose-built advance-stage and contract endpoints with their guards and audit logic.
+
+### 3-F: pipelineStage mass-assignable (subset of 3-J)
+
+Documented under 3-J above. Separate ID retained for index continuity.
+
+### 3-B: Inspection GET 403 = existence disclosure
+
+- **Route:** `GET /inspections/:id`
+- **Gate in code:** `artifacts/api-server/src/routes/inspections.ts` — cross-tenant check returns 403 (not 404)
+- **Repro:** Session from ZZTEST_BRAVO company → `GET /api/inspections/<ALPHA_inspection_id>` → **HTTP 403**
+- **Impact:** 403 vs 404 leaks the existence of an inspection record to a cross-tenant actor. Should return 404 uniformly.
+
+### 3-G: Invoice list accessible to canvasser
+
+- **Route:** `GET /pins/:id/invoices`
+- **Gate in code:** `isAuthenticated` + company-scope; no dept or role guard
+- **Repro:** Session `A-CANV-1` (canvasser) → `GET /api/leads/<pin>/invoices` → **HTTP 200**, invoice list returned
+- **Policy question (PD-3):** If canvassers should not see financial documents, add a `requiresRole('manager')` or `requiresDept(['inspector_canvasser','office'])` guard.
+
+### 4-A: GET /profile/me 500 for office-dept users
+
+- **Route:** `GET /profile/me` (and 7 related profile routes)
+- **Root cause:** `lib/api-spec/openapi.yaml:8122` declares `Department: enum: [canvasser, inspector_canvasser]`; `lib/authz/src/vocabulary.ts:14` has `DEPARTMENTS = ['canvasser', 'inspector_canvasser', 'office']`. All generated code (`lib/api-zod`, `lib/api-client-react`) inherits the gap.
+- **File:line (generator):** `lib/api-zod/src/generated/api.ts:843` — `GetMyProfileResponse` contains `z.enum(['canvasser','inspector_canvasser'])`; `.parse()` called in `toProfileEnvelope()` at `profile.ts:58`
+- **Repro:** Session `A-OFF-1` (field_rep, office) → `GET /api/profile/me` → **HTTP 500** (ZodError thrown)
+- **Cascade:** `GET /team/users` (api.ts:1443) — entire company list fails to parse if any member has `office` dept → 500 for all callers
+- **Mobile:** `useProfile()` defaults to `{ department: 'canvasser', role: 'field_rep' }` on failure → inspections tab hidden, DEPARTMENT_LABELS degrades to raw `'office'` string
+
+---
+
+## P6.4 — Business-Rule Findings
+
+### 2-A: claim_approved unreachable via event bus
+
+`POST /events/pipeline { eventType: 'claim_approved' }` returns HTTP 200 with `results: []` — the `claim_approved` outcome-stage transition is not wired in `pipelineEvents.ts`. Stage jumps from `claim_review` directly to `contract_pending` via a manual advance in the Phase 2A audit trail.
+
+**Impact:** Any automation or integration using the pipeline event bus to fire `claim_approved` silently succeeds (200) with no effect. The transition requires a manual `PATCH /advance-stage` call.
+
+### 2-B: Async portal-sign race
+
+After committing the sign transaction, `contractPortal.ts` fires `void (async () => { await emitPipelineEvent({eventType: 'contract_signed', ...}) })()`. The `void` discards the promise. If `PATCH /advance-stage` is issued before the event loop resolves the async block, both write a stage_transitions row from `contract_pending`. Final pin stage is last-writer-wins. Confirmed in Phase 2B stage_transitions audit: 7 rows, two originating from `contract_pending`.
+
+**Impact:** Stage transition history contains orphaned auto_event rows. History-reconstruction logic would derive an incorrect current stage.
+
+### 2-D: from_stage null on first advance
+
+`stage_transitions.from_stage` is null for the first advance of any pin (no prior stage to record). This is a nullable column by design but the fact is undocumented. Queries that JOIN on `from_stage IS NOT NULL` silently exclude the first transition.
+
+### 2-E: AI compile blocks insurance events
+
+`POST /inspections/:id/report/compile` returns 400 when the inspection has no photos, measurements, or slope data. This blocked `report_attested` and `package_delivered` auto_event transitions in the Phase 2A insurance lifecycle. Two of five insurance auto_event hops are untested via the API event bus; manually advanced in the audit run.
+
+### 2-F: FIPSA ordering constraint not surfaced
+
+`POST /inspections/:id/agreement/sign` gates on `inspection.phase === 'forensic'` and returns 409 if phase is still `preliminary`. The required `PATCH inspection { phase: 'forensic' }` prior call is not mentioned in API error responses or advance-stage UI hints. First signal a caller gets is the 409.
+
+### 2-R.2-A: rapGateReason unwriteable
+
+`PATCH /inspections/:id { rapGateReason: '...' }` triggers a Drizzle empty-set 500 because `rapGateReason` is not in the PATCH Zod schema. Drizzle throws when `.set({})` is empty. The field is readable; writes via this endpoint are impossible.
+
+### 3-H: contractAmount writes without audit trail
+
+`PATCH /leads/:leadId/profile` (and `PATCH /pins/:id/profile`) accepts `contractAmount` for any pin owner or manager. The value flows into `pin_profitability.revised_contract_cents`. No audit log entry is written. Managers reviewing profitability cannot see who changed the contract value or when.
+
+### 3-I: Negative contractAmount accepted
+
+`contractAmount: '-$5,000.00'` passes `_parse_legacy_money_cents()` and is stored. The profitability view floors `revised_contract_cents` at 0 (`GREATEST(base_contract_cents + approved_co_cents, 0)`), so a negative string input does not corrupt the margin calculation — but the value persists in the raw column, is returned in API responses, and could confuse downstream integrations.
+
+---
+
+## P6.5 — UI-vs-API Divergences
+
+### 4-A: Department enum — silent mobile degradation
+
+The server returns HTTP 500 for office-dept users; the mobile `useProfile()` hook defaults to `{ role: 'field_rep', department: 'canvasser' }` on error. The UI masks a server failure as a lower-privilege identity. An admin with `office` dept silently becomes `field_rep/canvasser` on mobile — inspections tab hidden, no visible error, no retry.
+
+### 3-J: PATCH /leads/:leadId/profile accepts pipeline stage and contract value
+
+The web UI routes stage advances through `PATCH /leads/:id/advance-stage` (with guards and audit logging) and contract changes through the contract endpoints. The `profile` PATCH endpoint accepts the same fields without equivalent guards. The gap exists in the API regardless of what the UI does — any caller (mobile app, curl, integration) that discovers the profile endpoint can use it to bypass the purpose-built flows.
+
+### 3-B: 403 vs 404 on cross-tenant inspection
+
+The web UI would never navigate a user to another tenant's inspection. But an API caller (or an integration) that probes inspection IDs gets 403 instead of 404, confirming existence. The divergence is between the UI's assumption that callers won't probe cross-tenant IDs and the API's response that leaks existence.
+
+---
+
+## P6.6 — Regression Results
+
+### Full Test Suite — Phase 5 Run
+
+| Suite | Files | Tests | Pass | Fail |
+|---|---|---|---|---|
+| `artifacts/api-server` | 48 | 671 | 671 | 0 |
+| `lib/authz` | 3 | 66 | 66 | 0 |
+| `lib/protocol` | 2 | 59 | 58 | **1** |
+| `artifacts/rooftrax-web` | 1 | 5 | 5 | 0 |
+| **Total** | **54** | **801** | **800** | **1** |
+
+The 1 failure (`lib/protocol` — `applicableSteps drops exactly the unselected surfaces`) is pre-existing: `git diff HEAD -- lib/protocol/` = 0 lines. No file in `lib/protocol/` was touched by this audit. The test asserts step ordering; the implementation produces a different order. The step set is correct.
+
+### Phase 5 Sequence Results
+
+| Sequence | Result |
+|---|---|
+| seed-acceptance-claim.ts (Virginia wind+hail, full lifecycle) | **57/57** ✓ |
+| contract-value.test.ts (T1 portal-sign, T2 CO-approval, T3 void) | **3/3** ✓ |
+| Pipeline auto-advance 3a (idempotency) | ✓ |
+| Pipeline auto-advance 3b (failure isolation) | ✓ |
+| Pipeline auto-advance 3c (cross-pipeline guard) | ✓ |
+| Dashboard manifest (lib/authz → routes) | **6/6** ✓ |
+| Change-order → profitability recomputation | ✓ |
+| Selections → Contract Builder → Signing Portal → `contract_signed` event | ✓ |
+| Notification dispatch (8 push-enabled types, 0 tokens) | **0 delivered** — expected (EAS placeholder) |
+| ZZTEST fixture isolation check | **CLEAN** |
+
+### typecheck-api
+
+8 TS errors, all in `src/scripts/` (audit scripts only — `phase3-negative-tests.ts`, `phase3-part2.ts`, `phase4-screenshots.ts`). Production source (`routes/`, `lib/`, `app.ts`): **0 errors**.
+
+---
+
+## P6.7 — Not Tested
+
+These items were outside the scope of what the test environment could exercise. Green checkmarks in other sections do not cover these.
+
+| Item | Why not tested |
+|---|---|
+| OIDC login path (`/login`, `/callback`, token exchange) | Sessions were created as direct DB inserts; the full Replit OIDC flow was not exercised |
+| Browser-based CORS preflight enforcement | CORS was verified by code analysis; no real cross-origin browser request was issued |
+| Push notification delivery end-to-end | EAS `projectId` is a placeholder; `user_push_tokens` table has 0 rows; no push was delivered |
+| Multi-process / clustered race conditions | Single-process deployment; FINDING 2-B race window is narrower than in a scaled environment |
+| Session cookie HMAC integrity | No signing secret configured; no attack requiring HMAC was attempted |
+| `rcvAmount` and inspections pin-proxy write path | Not empirically tested — identified in FINDING 3-J code review but write path 4 not exercised via tests |
+| contract-value write path 4 (manual PATCH override via `/leads/:id/profile`) | Intentionally excluded per the test file's own comment; covered by FINDING 3-J finding but no assertion on the profitability side-effect |
+| A-CANV-2, A-INSP-1, A-OFF-1 dashboards (browser screenshots) | Playwright chromium headless shell blocked in NixOS environment — `libglib-2.0.so.0` not available; documented from code analysis only |
+| Production database state | All tests ran against the development DB; prod was not queried |
+| Mobile push token registration flow | Requires EAS build + device; `getExpoPushTokenAsync` was not exercised |
+
+---
+
+## P6.8 — Test Validity Limits
+
+A reader six months from now should know what the green checkmarks do and do not mean.
+
+**What "PASS" means in this report:**
+- API route tests (vitest + supertest): the route returned the expected status code and response shape for the tested input, using a direct DB-backed session (no browser, no OIDC, no real client). The test environment is single-process.
+- seed-acceptance-claim.ts: the 57-step script completed without an unhandled error. Each step asserts HTTP status; some assert response fields. It does not assert negative cases.
+- Phase 3 empirical tests: HTTP calls made from a test session confirmed the HTTP response code. They do not confirm what the UI renders or whether a user would ever trigger the call through normal app navigation.
+
+**What "PASS" does not mean:**
+- OIDC token issuance, cookie freshness, or session replay attacks are not exercised.
+- Browser-initiated CORS preflight, SameSite enforcement, or cookie scope was not exercised.
+- Mobile app behavior is confirmed by code analysis, not a running device test.
+- The lib/protocol `applicableSteps` step ordering failure is pre-existing and unresolved — gate rules that depend on step order are at risk.
+- Push notification delivery, token registration, and EAS project configuration are inert in the current environment.
+- Concurrency: the async portal-sign race (FINDING 2-B) is empirically confirmed from audit logs but the narrow single-process event loop makes it harder to reproduce in a controlled test than it would be under load.
+
+---
+
+## P6.9 — Baseline Changes
+
+All changes to the codebase made during or in preparation for this audit, with SHAs. These are not application features; they are audit infrastructure changes or remediations.
+
+| Change | SHA / Session | What changed | Net effect |
+|---|---|---|---|
+| Rate limiting added to auth + portal routes | `a635a2c` | Created `lib/rateLimit.ts` (shared `RateLimiter` class, fixed-window per-IP); `trust proxy 1` in `app.ts`; `authLimiter` (20 req/min/IP) on `/login`, `/callback`, `/mobile-auth/token-exchange`; portal limiter migrated to shared class (30 req/min/IP); 8 unit tests | **FINDING 0.8-B REMEDIATED.** Only code-quality change in the audit baseline. |
+| Migration numbering anomalies resolved | `f76e6c6` | 5 files in `data-migrations/` renamed (e.g. `0009_remediation_plan_vocab.sql` → `021_remediation_plan_vocab.sql`); `_journal.json` updated to match | No schema change; filename-to-sequence ordering corrected. Pre-audit commit by repo owner. |
+| `playwright` added to root `dependencies` + lockfile | `8c0455c` (Phase 4) | `package.json` root `dependencies` gained `"playwright": "^1.62.1"`; `pnpm-lock.yaml` +29 lines | Playwright is a devDependency by convention; it was placed in the wrong field. |
+| `playwright` moved from `dependencies` to `devDependencies` | This session (Checkpoint 5, uncommitted) | `package.json` root — moved entry from `dependencies` to `devDependencies` | Corrects the 8c0455c placement. |
+| Screenshots committed to git | `8c0455c` (Phase 4) | 10 JPEG files in `screenshots/` tracked by git (`a-admin-dashboard.jpg` … `a-super-nav.jpg`) | Audit artifacts in git history. |
+| `screenshots/` added to `.gitignore` | This session (Checkpoint 5, uncommitted) | Root `.gitignore` gained `screenshots/` entry | Prevents future screenshot files from being tracked. The 10 already-tracked files **remain in the git index** — `git rm --cached screenshots/` was **not run** per the work order instruction to preserve ZZTEST fixtures and defer teardown decisions. |
+
+---
+
+## git log --oneline since 113cc23
+
+```
+(empty)
+```
+
+`git log --oneline 113cc23..HEAD` returns no output. HEAD is `113cc23` (Phase 5 commit). This session's changes to `TESTREPORT.md`, `package.json`, and `.gitignore` are uncommitted.
+

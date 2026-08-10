@@ -1,0 +1,23 @@
+CHECKPOINT 5 — RECONCILIATION + PHASE 6
+5-R.1 — Reconcile the finding index against the body
+Every ID in the index must resolve to exactly one section in the body, and vice versa. Renumber where needed, but never reuse a retired ID — if 2-C was an observation that got retracted, it stays retracted and the duplicate-deposit artifact gets a new number.
+
+Specifically settle:
+
+The async portal-sign race (duplicate contract_pending → contract_signed row) — give it a stable ID and confirm it's still open.
+The "profitability view excludes CO lines from approved_co_cents" claim in 5.5. Either point to where that was established with evidence, or withdraw it. 029_profitability_view_step5.sql:97 aggregates SUM(amount_cents) FROM change_orders WHERE status = 'approved' AND voided_at IS NULL, and profitability-step2.test.ts passes with a $3.5k CO counted — so on its face that claim is wrong.
+5-R.2 — The notification recommendation
+Still outstanding after five checkpoints. Recommendation only, build nothing: for item_overdue, claim_blocked, and lead_needs_stage_review — scheduled sweep or evaluation at natural checkpoints? Give one recommendation per condition with the reasoning, accounting for the fact that push delivery is currently dead (EAS placeholder) so anything built now won't be observable until that's fixed.
+
+PHASE 6 — Consolidated report
+Per the original work order: summary table by severity, config gaps split into missing / misconfigured / unverifiable, permission findings with file:line and repro, business-rule findings, UI-vs-API divergences, regression results, and an explicit not tested section.
+
+Two required additions:
+
+A "Test Validity Limits" section. Everything this audit could not observe: the OIDC login path (sessions were direct inserts), the three code-analysis-only user profiles from 4-R.2 where Playwright couldn't run, rcvAmount and the inspections pin-proxy write path if those still aren't empirically tested, and write path 4 in contract-value.test.ts. A reader six months from now needs to know what the green checkmarks don't cover.
+
+A "Baseline Changes" consolidation listing all four constraint drifts with SHAs: a635a2c (rate limiting), _journal.json, playwright + lockfile, and the committed screenshots. The screenshots are gitignored going forward but the ten already-tracked files are still in the index — git rm --cached screenshots/ if you want them out, and say which you chose.
+
+Do not run the teardown script. I want the ZZTEST fixtures intact until I've reviewed the full report and decided what needs re-verification.
+
+▶ CHECKPOINT 6 — Paste the reconciled finding index, the notification recommendation, and git log --oneline since 113cc23.
