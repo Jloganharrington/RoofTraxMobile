@@ -10219,6 +10219,71 @@ router.patch('/leads/:leadId/profile', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /leads/:leadId/approved-estimate — store carrier-approved estimate
+// ---------------------------------------------------------------------------
+// Accepts the document as base64. Uploads to object storage, records
+// ownership, and stamps the pin.  Must be called before advance-stage can
+// move the pin to claim_approved.
+// ---------------------------------------------------------------------------
+
+const ApprovedEstimateBody = z.object({
+  pdfBase64: z.string().min(100),
+});
+
+router.post('/leads/:leadId/approved-estimate', async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: 'Unauthorized' });
+
+  const { leadId } = req.params as { leadId: string };
+
+  const [pin] = await db
+    .select({ id: pinsTable.id, userId: pinsTable.userId })
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)))
+    .limit(1);
+
+  if (!pin) return void res.status(404).json({ error: 'Lead not found' });
+
+  const callerRole = await getRole(req.user.id);
+  if (pin.userId !== req.user.id && !isManagerOrAdmin(callerRole)) {
+    return void res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const parsed = ApprovedEstimateBody.safeParse(req.body);
+  if (!parsed.success) {
+    return void res.status(400).json({ error: 'Invalid payload', details: parsed.error.errors });
+  }
+
+  const pdfBuffer = Buffer.from(parsed.data.pdfBase64, 'base64');
+  const sha256 = createHash('sha256').update(pdfBuffer).digest('hex');
+
+  let objectPath: string;
+  try {
+    objectPath = await objectStorageService.uploadObjectBuffer(pdfBuffer, 'application/pdf');
+  } catch (err) {
+    req.log.error({ err }, 'Failed to upload approved estimate to object storage');
+    return void res.status(500).json({ error: 'Failed to store approved estimate' });
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.insert(objectOwnershipTable).values({
+      objectPath,
+      userId:    req.user.id,
+      companyId: req.user.companyId,
+    });
+    await tx
+      .update(pinsTable)
+      .set({
+        approvedEstimateObjectPath:   objectPath,
+        approvedEstimateObjectSha256: sha256,
+        updatedAt: new Date(),
+      })
+      .where(eq(pinsTable.id, leadId));
+  });
+
+  return void res.json({ objectPath, sha256 });
+});
+
+// ---------------------------------------------------------------------------
 // PATCH /leads/:leadId/advance-stage — move a pin to a new pipeline stage
 // ---------------------------------------------------------------------------
 
@@ -10244,7 +10309,12 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
   }
 
   const [pin] = await db
-    .select({ id: pinsTable.id, userId: pinsTable.userId, pipelineStage: pinsTable.pipelineStage })
+    .select({
+      id:                          pinsTable.id,
+      userId:                      pinsTable.userId,
+      pipelineStage:               pinsTable.pipelineStage,
+      approvedEstimateObjectPath:  pinsTable.approvedEstimateObjectPath,
+    })
     .from(pinsTable)
     .where(and(eq(pinsTable.id, leadId), eq(pinsTable.companyId, req.user.companyId)))
     .limit(1);
@@ -10272,6 +10342,15 @@ router.patch('/leads/:leadId/advance-stage', async (req: Request, res: Response)
   // Enforce lossReason on archived_lost
   if (toStage === 'archived_lost' && !lossReason) {
     return void res.status(422).json({ error: 'lossReason is required when archiving as lost' });
+  }
+
+  // Gate: claim_approved requires an approved carrier estimate on file.
+  // Upload one first via POST /leads/:id/approved-estimate.
+  if (toStage === 'claim_approved' && !pin.approvedEstimateObjectPath) {
+    return void res.status(422).json({
+      error: 'An approved carrier estimate is required before advancing to claim_approved. Upload one via POST /leads/:id/approved-estimate.',
+      missingDocument: 'approvedEstimate',
+    });
   }
 
   await advancePinStage({

@@ -288,6 +288,13 @@ export const pinsTable = pgTable('pins', {
   appointmentAssignedTo:   varchar('appointment_assigned_to').references(() => usersTable.id),
   appointmentStatus:       varchar('appointment_status'),
 
+  // ── Approved carrier estimate (migration 041) ────────────────────────
+  // Object-storage path and sha256 of the carrier-approved estimate document.
+  // Required before a pin may advance to claim_approved — acts as a gate so
+  // downstream COC extraction always has a source document to read from.
+  approvedEstimateObjectPath:  text('approved_estimate_object_path'),
+  approvedEstimateObjectSha256: text('approved_estimate_sha256'),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

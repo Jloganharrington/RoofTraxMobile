@@ -1482,6 +1482,73 @@ async function main(): Promise<void> {
     process.stdout.write(`    Pin ${pin.slice(-8)}: ins_contract_signed → ${after} (${txCount} row) ✓\n`);
   });
 
+  // D2e: claim_approved gate — upload approved estimate, then advance
+  // Gate: PATCH /leads/:id/advance-stage with toStage=claim_approved requires
+  // an approved estimate on file (uploaded via POST /leads/:id/approved-estimate).
+  // Emitter: none — claim_approved is outcome-only (no autoAdvance).
+  await step('D2e: claim_approved gate (upload estimate → advance)', async () => {
+    const pin = await seedPipelinePin(COMPANY_ID, userId, 'insurance', 'claim_review', allPipelinePinIds);
+    assert((await pinStageNow(pin)) === 'claim_review', 'Pin not at claim_review');
+
+    // (a) Advance WITHOUT estimate → must 422
+    const rGate = await request(app)
+      .patch(`/api/leads/${pin}/advance-stage`)
+      .set(auth(sid))
+      .send({ toStage: 'claim_approved', trigger: 'task' });
+    assert(
+      rGate.status === 422,
+      `Expected 422 for advance without estimate, got ${rGate.status}: ${JSON.stringify(rGate.body).slice(0, 200)}`,
+    );
+    assert(
+      rGate.body?.missingDocument === 'approvedEstimate',
+      `Expected missingDocument='approvedEstimate', got: ${JSON.stringify(rGate.body)}`,
+    );
+    process.stdout.write(`    Gate (no estimate): 422 with missingDocument=approvedEstimate ✓\n`);
+
+    // (b) Upload the fixture estimate
+    const estimateBytes = Buffer.from('%PDF-1.4 carrier-estimate-fixture ' + 'x'.repeat(200));
+    const pdfBase64 = estimateBytes.toString('base64');
+    const rUpload = await request(app)
+      .post(`/api/leads/${pin}/approved-estimate`)
+      .set(auth(sid))
+      .send({ pdfBase64 });
+    assert(
+      rUpload.status === 200,
+      `Upload estimate failed (${rUpload.status}): ${JSON.stringify(rUpload.body).slice(0, 200)}`,
+    );
+    assert(typeof rUpload.body?.objectPath === 'string', 'No objectPath in upload response');
+    assert(typeof rUpload.body?.sha256 === 'string',     'No sha256 in upload response');
+
+    // Verify sha256 matches the content
+    const { createHash } = await import('node:crypto');
+    const expectedSha = createHash('sha256').update(estimateBytes).digest('hex');
+    assert(
+      rUpload.body.sha256 === expectedSha,
+      `sha256 mismatch: expected ${expectedSha}, got ${rUpload.body.sha256}`,
+    );
+    process.stdout.write(`    Upload: objectPath=${rUpload.body.objectPath.slice(-16)} sha256=${rUpload.body.sha256.slice(0, 12)}… ✓\n`);
+
+    // (c) Advance WITH estimate → must 200
+    const rAdvance = await request(app)
+      .patch(`/api/leads/${pin}/advance-stage`)
+      .set(auth(sid))
+      .send({ toStage: 'claim_approved', trigger: 'task' });
+    assert(
+      rAdvance.status === 200,
+      `Advance to claim_approved failed (${rAdvance.status}): ${JSON.stringify(rAdvance.body).slice(0, 200)}`,
+    );
+    assert(
+      rAdvance.body?.lead?.pipelineStage === 'claim_approved',
+      `Expected pipelineStage=claim_approved, got: ${rAdvance.body?.lead?.pipelineStage}`,
+    );
+
+    const after   = await pinStageNow(pin);
+    const txCount = await stageTransitionCount(pin);
+    assert(after === 'claim_approved', `Expected claim_approved, got: ${after} (transitions: ${txCount})`);
+    assert(txCount === 1, `Expected 1 transition row, got: ${txCount}`);
+    process.stdout.write(`    Pin ${pin.slice(-8)}: claim_review → ${after} (${txCount} row) ✓\n`);
+  });
+
   // ── DELIVERABLE 3a: IDEMPOTENCY ────────────────────────────────────────────
   // Re-trigger the same real action on a pin that has already advanced.
   // emitPipelineEvent fires again but the pin is no longer at the matching
