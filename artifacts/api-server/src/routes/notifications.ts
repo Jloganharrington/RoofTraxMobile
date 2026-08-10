@@ -31,6 +31,7 @@ import type { Role } from '@workspace/authz';
 import Expo from 'expo-server-sdk';
 import { checkPushReceipts, drainPendingReceiptEntries } from '../lib/push';
 import { isManagerOrAdmin } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -73,14 +74,11 @@ async function getCallerRole(userId: string): Promise<Role> {
 
 // ── GET /notifications/preferences ───────────────────────────────────────────
 
-router.get('/notifications/preferences', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// notification.manage
+router.get('/notifications/preferences', requirePermission('notification.manage'), async (req: Request, res: Response) => {
 
-  const role = await getCallerRole(req.user!.id);
-  const preferences = await buildPreferenceList(req.user!.id, role);
+  const role = await getCallerRole(req.actorCtx!.actorId);
+  const preferences = await buildPreferenceList(req.actorCtx!.actorId, role);
 
   res.json({ preferences });
 });
@@ -90,7 +88,7 @@ router.get('/notifications/preferences', async (req: Request, res: Response) => 
 const PatchBody = z.object({
   // Any extra keys (e.g. a userId field from a client bug) are silently
   // stripped by Zod's default passthrough behaviour — they never reach the
-  // update logic. The handler always writes to req.user.id.
+  // update logic. The handler always writes to req.actorCtx!.actorId.
   updates: z
     .array(
       z.object({
@@ -103,14 +101,11 @@ const PatchBody = z.object({
     .min(1, 'updates must contain at least one item'),
 });
 
-router.patch('/notifications/preferences', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// notification.manage
+router.patch('/notifications/preferences', requirePermission('notification.manage'), async (req: Request, res: Response) => {
 
-  const userId    = req.user!.id;
-  const companyId = req.user!.companyId;
+  const userId    = req.actorCtx!.actorId;
+  const companyId = req.actorCtx!.companyId;
 
   const parsed = PatchBody.safeParse(req.body);
   if (!parsed.success) {
@@ -183,8 +178,8 @@ const RegisterPushTokenBody = z.object({
   platform:      z.enum(['ios', 'android']).nullable().optional(),
 });
 
-router.post('/notifications/push-tokens', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
+// notification.manage
+router.post('/notifications/push-tokens', requirePermission('notification.manage'), async (req: Request, res: Response) => {
 
   const parsed = RegisterPushTokenBody.safeParse(req.body);
   if (!parsed.success) {
@@ -203,8 +198,8 @@ router.post('/notifications/push-tokens', async (req: Request, res: Response) =>
   const [token] = await db
     .insert(userPushTokensTable)
     .values({
-      companyId:     req.user!.companyId,
-      userId:        req.user!.id,
+      companyId:     req.actorCtx!.companyId,
+      userId:        req.actorCtx!.actorId,
       expoPushToken,
       deviceLabel:   deviceLabel ?? null,
       platform:      platform ?? null,
@@ -213,8 +208,8 @@ router.post('/notifications/push-tokens', async (req: Request, res: Response) =>
     .onConflictDoUpdate({
       target: [userPushTokensTable.expoPushToken],
       set:    {
-        userId:      req.user!.id,
-        companyId:   req.user!.companyId,
+        userId:      req.actorCtx!.actorId,
+        companyId:   req.actorCtx!.companyId,
         deviceLabel: deviceLabel ?? null,
         platform:    platform ?? null,
         lastSeenAt:  new Date(),
@@ -227,11 +222,12 @@ router.post('/notifications/push-tokens', async (req: Request, res: Response) =>
 
 // ── DELETE /notifications/push-tokens/:expoPushToken ──────────────────────────
 
+// notification.manage
 router.delete(
   '/notifications/push-tokens/:expoPushToken',
+  requirePermission('notification.manage'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
+  
     const expoPushToken = req.params.expoPushToken as string;
 
     // Delete only if the token belongs to the caller (no IDOR).
@@ -240,7 +236,7 @@ router.delete(
       .where(
         and(
           eq(userPushTokensTable.expoPushToken, expoPushToken),
-          eq(userPushTokensTable.userId, req.user!.id),
+          eq(userPushTokensTable.userId, req.actorCtx!.actorId),
         ),
       );
 
@@ -257,14 +253,8 @@ const CheckPushReceiptsBody = z.object({
   ticketIds: z.array(z.string()).optional().default([]),
 });
 
-router.post('/notifications/push-receipts', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) { res.status(401).json({ error: 'Unauthorized' }); return; }
-
-  const role = await getCallerRole(req.user!.id);
-  if (!isManagerOrAdmin(role)) {
-    res.status(403).json({ error: 'Manager or above required' });
-    return;
-  }
+// notification.push_receipts
+router.post('/notifications/push-receipts', requirePermission('notification.push_receipts'), async (req: Request, res: Response) => {
 
   const parsed = CheckPushReceiptsBody.safeParse(req.body);
   if (!parsed.success) {

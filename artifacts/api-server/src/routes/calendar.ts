@@ -29,6 +29,7 @@ import {
   pinsTable,
   usersTable,
 } from '@workspace/db';
+import { requirePermission } from '../middlewares/requirePermission';
 import { isManagerOrAdmin } from '@workspace/authz';
 import { getRole } from './pins';
 
@@ -50,11 +51,8 @@ interface CalendarItem {
   status:           string | null;
 }
 
-router.get('/calendar', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// calendar.view
+router.get('/calendar', requirePermission('calendar.view'), async (req: Request, res: Response) => {
 
   // ── Parse & validate range ───────────────────────────────────────────────
   const fromRaw = req.query.from;
@@ -83,8 +81,8 @@ router.get('/calendar', async (req: Request, res: Response) => {
   }
 
   // ── Resolve actor scope ──────────────────────────────────────────────────
-  const userId    = req.user!.id;
-  const companyId = req.user!.companyId;
+  const userId    = req.actorCtx!.actorId;
+  const companyId = req.actorCtx!.companyId;
 
   // Mirror the role scoping used by GET /inspections/scheduled.
   const role      = await getRole(userId);

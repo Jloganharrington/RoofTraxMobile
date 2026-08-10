@@ -802,12 +802,147 @@ describe('route auth — negative gate suite', () => {
     });
   });
 
+  // ── [D20] DOMAIN: invoices ───────────────────────────────────────────────────
+
+  describe('[D20] GET /pins/:pinId/invoices [invoice.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/pins/STUB00/invoices')).status).toBe(401);
+    });
+  });
+
+  describe('[D20] POST /pins/:pinId/invoices [invoice.create — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/pins/STUB00/invoices')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/pins/STUB00/invoices').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D20] DELETE /invoices/:invoiceId [invoice.delete — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).delete('/api/invoices/STUB00')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).delete('/api/invoices/STUB00').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D20] POST /invoices/:invoiceId/void [invoice.void — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/invoices/STUB00/void')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/invoices/STUB00/void').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  // ── [D21] DOMAIN: profile (all self-scoped, field_rep+) ──────────────────────
+
+  describe('[D21] GET /profile/me [profile.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/profile/me')).status).toBe(401);
+    });
+  });
+
+  describe('[D21] PATCH /profile/me [profile.update — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).patch('/api/profile/me')).status).toBe(401);
+    });
+  });
+
+  // ── [D22] DOMAIN: notifications ──────────────────────────────────────────────
+
+  describe('[D22] GET /notifications/preferences [notification.manage — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/notifications/preferences')).status).toBe(401);
+    });
+  });
+
+  describe('[D22] POST /notifications/push-receipts [notification.push_receipts — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/notifications/push-receipts')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).post('/api/notifications/push-receipts').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  // ── [D23–D28] Small utility domains (all field_rep+) ──────────────────────────
+
+  describe('[D23-D28] small utility route auth gates (field_rep+)', () => {
+    const routes: [string, string][] = [
+      ['get',  '/api/canvassing/current'],
+      ['post', '/api/canvassing/clock-in'],
+      ['post', '/api/canvassing/clock-out'],
+      ['get',  '/api/activity-stats'],
+      ['get',  '/api/calendar'],
+      ['get',  '/api/geocode/reverse'],
+      ['get',  '/api/geocode/search'],
+      ['get',  '/api/crm/status'],
+      ['get',  '/api/weather/events'],
+    ];
+    for (const [method, path] of routes) {
+      it(`${method.toUpperCase()} ${path} → 401 without auth`, async () => {
+        expect((await (request(app) as any)[method](path)).status).toBe(401);
+      });
+    }
+  });
+
+  // ── [D29] DOMAIN: dashboard (layout routes — field_rep+) ─────────────────────
+
+  describe('[D29] dashboard layout routes [dashboard.view / manage_layout — field_rep+]', () => {
+    it('GET /dashboard/manifest → 401 without auth', async () => {
+      expect((await request(app).get('/api/dashboard/manifest')).status).toBe(401);
+    });
+    it('GET /dashboard/layout → 401 without auth', async () => {
+      expect((await request(app).get('/api/dashboard/layout')).status).toBe(401);
+    });
+    it('PATCH /dashboard/layout → 401 without auth', async () => {
+      expect((await request(app).patch('/api/dashboard/layout')).status).toBe(401);
+    });
+    it('DELETE /dashboard/layout → 401 without auth', async () => {
+      expect((await request(app).delete('/api/dashboard/layout')).status).toBe(401);
+    });
+  });
+
+  // ── [D30] DOMAIN: agreement ──────────────────────────────────────────────────
+
+  describe('[D30] POST /inspections/:id/agreement/sign [inspection.update — manager+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/agreement/sign')).status).toBe(401);
+    });
+    it('field_rep → 403 (below manager)', async () => {
+      expect((await request(app).post('/api/inspections/STUB00/agreement/sign').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D30] DELETE /inspections/:id/agreement [inspection.delete_agreement — super_admin+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00/agreement')).status).toBe(401);
+    });
+    it('field_rep → 403', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00/agreement').set(auth(fix.rep.sid))).status).toBe(403);
+    });
+    it('manager → 403 (below super_admin)', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00/agreement').set(auth(fix.manager.sid))).status).toBe(403);
+    });
+    it('admin → 403 (below super_admin)', async () => {
+      expect((await request(app).delete('/api/inspections/STUB00/agreement').set(auth(fix.admin.sid))).status).toBe(403);
+    });
+  });
+
+  describe('[D30] GET /documents [inspection.read — field_rep+]', () => {
+    it('no auth → 401', async () => {
+      expect((await request(app).get('/api/documents')).status).toBe(401);
+    });
+  });
+
   // ── Additional domains are appended below as migration proceeds ───────────
   // Template:
   //
-  // describe('[D20] VERB /path [permission.key — minRole+]', () => {
+  // describe('[D31] VERB /path [permission.key — minRole+]', () => {
   //   it('no auth → 401', async () => { ... });
   //   it('field_rep → 403', async () => { ... });
-  //   // If there is a verdict change: document it as a comment, not a failing test.
   // });
 });

@@ -3,6 +3,7 @@ import {
   ClockOutCanvassingResponse,
   GetCurrentCanvassingSessionResponse,
 } from '@workspace/api-zod';
+import { requirePermission } from '../middlewares/requirePermission';
 import { canvassingSessionsTable, db } from '@workspace/db';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -19,7 +20,7 @@ async function requireUser(req: Request, res: Response) {
     res.status(401).json({ error: 'Unauthorized' });
     return null;
   }
-  return { userId: req.user.id, companyId: req.user.companyId };
+  return { userId: req.actorCtx!.actorId, companyId: req.actorCtx!.companyId };
 }
 
 async function findOpenSession(userId: string, companyId: string) {
@@ -37,7 +38,8 @@ async function findOpenSession(userId: string, companyId: string) {
   return session;
 }
 
-router.get('/canvassing/current', async (req: Request, res: Response) => {
+// canvassing.use
+router.get('/canvassing/current', requirePermission('canvassing.use'), async (req: Request, res: Response) => {
   const actor = await requireUser(req, res);
   if (!actor) return;
 
@@ -45,7 +47,8 @@ router.get('/canvassing/current', async (req: Request, res: Response) => {
   res.json(GetCurrentCanvassingSessionResponse.parse({ session: session ?? null }));
 });
 
-router.post('/canvassing/clock-in', async (req: Request, res: Response) => {
+// canvassing.use
+router.post('/canvassing/clock-in', requirePermission('canvassing.use'), async (req: Request, res: Response) => {
   const actor = await requireUser(req, res);
   if (!actor) return;
 
@@ -63,7 +66,8 @@ router.post('/canvassing/clock-in', async (req: Request, res: Response) => {
   res.status(201).json(ClockInCanvassingResponse.parse({ session }));
 });
 
-router.post('/canvassing/clock-out', async (req: Request, res: Response) => {
+// canvassing.use
+router.post('/canvassing/clock-out', requirePermission('canvassing.use'), async (req: Request, res: Response) => {
   const actor = await requireUser(req, res);
   if (!actor) return;
 

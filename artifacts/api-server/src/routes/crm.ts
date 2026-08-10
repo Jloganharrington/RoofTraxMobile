@@ -1,4 +1,5 @@
 import { GetCrmStatusResponse } from '@workspace/api-zod';
+import { requirePermission } from '../middlewares/requirePermission';
 import { db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
@@ -13,16 +14,13 @@ const router: IRouter = Router();
 // and report ingest outbound). No data is fabricated: an unconfigured tenant
 // reads "pending" everywhere, which is why the scheduled feed is empty and the
 // appointment-completion metric is null. Gated to the inspection module (C0).
-router.get('/crm/status', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// crm.view
+router.get('/crm/status', requirePermission('crm.view'), async (req: Request, res: Response) => {
 
   const [profile] = await db
     .select()
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
   const role = profile?.role ?? 'field_rep';
   const department = profile?.department ?? 'canvasser';
@@ -31,7 +29,7 @@ router.get('/crm/status', async (req: Request, res: Response) => {
     return;
   }
 
-  const config = await getCompanyCrmConfig(req.user.companyId);
+  const config = await getCompanyCrmConfig(req.actorCtx!.companyId);
   res.json(GetCrmStatusResponse.parse({ crm: crmSeamStatus(config) }));
 });
 

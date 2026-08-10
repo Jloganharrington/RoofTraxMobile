@@ -5,6 +5,7 @@ import {
   UpdateProfileSignatureBody,
   UpdateProfileSmtpBody,
 } from '@workspace/api-zod';
+import { requirePermission } from '../middlewares/requirePermission';
 
 import { encryptSmtpPassword, decryptSmtpPassword } from '../lib/smtpCrypto';
 import { resolvePublicSmtpAddress } from '../lib/smtpGuard';
@@ -146,13 +147,10 @@ async function loadOrCreateProfile(userId: string) {
   return profile;
 }
 
-router.get('/profile/me', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// profile.read
+router.get('/profile/me', requirePermission('profile.read'), async (req: Request, res: Response) => {
 
-  const userId = req.user.id;
+  const userId = req.actorCtx!.actorId;
   const profile = await loadOrCreateProfile(userId);
   const company = await loadCompany(userId);
 
@@ -162,12 +160,9 @@ router.get('/profile/me', async (req: Request, res: Response) => {
 // Wave-2B — update the current user's personal profile fields.
 // Accepts ONLY firstName, lastName, phone, profileImageUrl.
 // The zod schema strips everything else so role/department/smtp fields
-// can never reach this handler. Self-only: operates on req.user.id.
-router.patch('/profile/me', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// can never reach this handler. Self-only: operates on req.actorCtx!.actorId.
+// profile.update
+router.patch('/profile/me', requirePermission('profile.update'), async (req: Request, res: Response) => {
 
   const parsed = UpdateProfileMeBody.safeParse(req.body);
   if (!parsed.success) {
@@ -175,7 +170,7 @@ router.patch('/profile/me', async (req: Request, res: Response) => {
     return;
   }
 
-  const userId = req.user.id;
+  const userId = req.actorCtx!.actorId;
   await loadOrCreateProfile(userId);
 
   const data = parsed.data;
@@ -221,11 +216,8 @@ router.patch('/profile/me', async (req: Request, res: Response) => {
 // server-side so it can't be back-dated by the client. This is a per-user
 // write; there is no C0 inspection gate here — any authenticated user may set
 // their own signature.
-router.patch('/profile/signature', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// profile.update
+router.patch('/profile/signature', requirePermission('profile.update'), async (req: Request, res: Response) => {
 
   const parsed = UpdateProfileSignatureBody.safeParse(req.body);
   if (!parsed.success) {
@@ -233,7 +225,7 @@ router.patch('/profile/signature', async (req: Request, res: Response) => {
     return;
   }
 
-  const userId = req.user.id;
+  const userId = req.actorCtx!.actorId;
   // Ensure the profile row exists (first-access users may not have one yet).
   await loadOrCreateProfile(userId);
 
@@ -254,11 +246,8 @@ router.patch('/profile/signature', async (req: Request, res: Response) => {
 // REPORT_DATA v2 — the individual credential layer (certifications + years
 // of experience). Feeds assessorCredentials on repairability assessments and
 // rides along with every submission payload. Per-user write; no module gate.
-router.patch('/profile/credentials', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// profile.update
+router.patch('/profile/credentials', requirePermission('profile.update'), async (req: Request, res: Response) => {
 
   const parsed = UpdateProfileCredentialsBody.safeParse(req.body);
   if (!parsed.success) {
@@ -266,7 +255,7 @@ router.patch('/profile/credentials', async (req: Request, res: Response) => {
     return;
   }
 
-  const userId = req.user.id;
+  const userId = req.actorCtx!.actorId;
   await loadOrCreateProfile(userId);
 
   const [updated] = await db
@@ -289,11 +278,8 @@ router.patch('/profile/credentials', async (req: Request, res: Response) => {
 // Sets or clears the current user's outbound SMTP configuration, used by the
 // server to email inspection reports on the rep's behalf. The password is
 // encrypted at rest and never echoed back. Per-user write; no module gate.
-router.patch('/profile/smtp', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// profile.update
+router.patch('/profile/smtp', requirePermission('profile.update'), async (req: Request, res: Response) => {
 
   const parsed = UpdateProfileSmtpBody.safeParse(req.body);
   if (!parsed.success) {
@@ -301,7 +287,7 @@ router.patch('/profile/smtp', async (req: Request, res: Response) => {
     return;
   }
 
-  const userId = req.user.id;
+  const userId = req.actorCtx!.actorId;
   await loadOrCreateProfile(userId);
 
   const data = parsed.data;
@@ -347,13 +333,10 @@ router.patch('/profile/smtp', async (req: Request, res: Response) => {
 // on it for real report delivery. Mirrors the delivery path used by
 // email-report (decrypt password, SSRF-guarded host resolution, TLS servername
 // pinned to the original hostname).
-router.post('/profile/smtp/test', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// profile.update
+router.post('/profile/smtp/test', requirePermission('profile.update'), async (req: Request, res: Response) => {
 
-  const userId = req.user.id;
+  const userId = req.actorCtx!.actorId;
   if (!checkSmtpTestRateLimit(userId)) {
     res.status(429).json({ error: 'Too many test emails — wait a few minutes and try again' });
     return;

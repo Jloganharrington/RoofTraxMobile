@@ -32,6 +32,7 @@ import nodemailer from 'nodemailer';
 import { z } from 'zod';
 
 import { canAccessInspectionModule, canWriteInspection, isManagerOrAdmin, roleRank, type Role } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage';
 import { AGREEMENT_DOCUMENT_VERSION } from '../lib/agreementPdf';
 import { decryptSmtpPassword } from '../lib/smtpCrypto';
@@ -54,7 +55,7 @@ async function requireAgreementActor(req: Request, res: Response) {
   const [profile] = await db
     .select()
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
   const role = profile?.role ?? 'field_rep';
   const department = profile?.department ?? 'canvasser';
@@ -66,8 +67,8 @@ async function requireAgreementActor(req: Request, res: Response) {
 
   return {
     role,
-    companyId: req.user.companyId,
-    userId: req.user.id,
+    companyId: req.actorCtx!.companyId,
+    userId: req.actorCtx!.actorId,
     profile,
   };
 }
@@ -80,8 +81,10 @@ const SignAgreementBody = z.object({
   pdfBase64: z.string().min(100),
 });
 
+// inspection.update
 router.post(
   '/inspections/:id/agreement/sign',
+  requirePermission('inspection.update'),
   async (req: Request, res: Response) => {
     const actor = await requireAgreementActor(req, res);
     if (!actor) return;
@@ -347,8 +350,10 @@ router.post(
 
 // ── GET /inspections/:id/agreement ────────────────────────────────────────────
 
+// inspection.read
 router.get(
   '/inspections/:id/agreement',
+  requirePermission('inspection.read'),
   async (req: Request, res: Response) => {
     const actor = await requireAgreementActor(req, res);
     if (!actor) return;
@@ -419,24 +424,11 @@ const VoidAgreementBody = z.object({
   voidReason: z.string().min(5).max(1000),
 });
 
+// inspection.delete_agreement
 router.delete(
   '/inspections/:id/agreement',
+  requirePermission('inspection.delete_agreement'),
   async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
-    // Super-admin gate — no other role may void an agreement.
-    const [profile] = await db
-      .select({ role: userProfilesTable.role })
-      .from(userProfilesTable)
-      .where(eq(userProfilesTable.userId, req.user.id));
-
-    if (roleRank((profile?.role ?? 'field_rep') as Role) < roleRank('super_admin')) {
-      res.status(403).json({ error: 'Only super_admin may void a signed agreement' });
-      return;
-    }
 
     const inspectionId = String(req.params.id);
 
@@ -460,7 +452,7 @@ router.delete(
       .where(
         and(
           eq(inspectionsTable.id, inspectionId),
-          eq(inspectionsTable.companyId, req.user.companyId),
+          eq(inspectionsTable.companyId, req.actorCtx!.companyId),
         ),
       );
 
@@ -477,7 +469,7 @@ router.delete(
       .where(
         and(
           eq(signedAgreementsTable.inspectionId, inspectionId),
-          eq(signedAgreementsTable.companyId, req.user.companyId),
+          eq(signedAgreementsTable.companyId, req.actorCtx!.companyId),
           isNull(signedAgreementsTable.voidedAt),
         ),
       );
@@ -495,18 +487,18 @@ router.delete(
       .update(signedAgreementsTable)
       .set({
         voidedAt,
-        voidedByUserId: req.user.id,
+        voidedByUserId: req.actorCtx!.actorId,
         voidReason,
       })
       .where(
         and(
           eq(signedAgreementsTable.id, activeAgreement.id),
-          eq(signedAgreementsTable.companyId, req.user.companyId),
+          eq(signedAgreementsTable.companyId, req.actorCtx!.companyId),
         ),
       );
 
     req.log.info(
-      { inspectionId, agreementId: activeAgreement.id, voidedByUserId: req.user.id },
+      { inspectionId, agreementId: activeAgreement.id, voidedByUserId: req.actorCtx!.actorId },
       'Agreement voided by super_admin',
     );
 
@@ -520,9 +512,9 @@ router.delete(
     // recipientRule is 'managers' so only companyId + actorUserId are needed.
     void notify({
       type:         'fipsa_voided',
-      companyId:    req.user!.companyId,
+      companyId:    req.actorCtx!.companyId,
       inspectionId: inspectionId,
-      actorUserId:  req.user!.id,
+      actorUserId:  req.actorCtx!.actorId,
       payload:      { voidReason },
     });
   },
@@ -538,8 +530,10 @@ const EmailAgreementBody = z.object({
   recipient: z.string().min(1).max(320),
 });
 
+// inspection.update
 router.post(
   '/inspections/:id/agreement/email',
+  requirePermission('inspection.update'),
   async (req: Request, res: Response) => {
     const actor = await requireAgreementActor(req, res);
     if (!actor) return;
@@ -774,7 +768,8 @@ interface DocumentListItem {
   signerName: string | null;
 }
 
-router.get('/documents', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/documents', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireAgreementActor(req, res);
   if (!actor) return;
 
@@ -900,7 +895,8 @@ router.get('/documents', async (req: Request, res: Response) => {
 // agreements; field reps see only their own. Optional ?q= search on address
 // and homeowner name. Returns up to 100 rows, newest-first.
 
-router.get('/agreements', async (req: Request, res: Response) => {
+// inspection.read
+router.get('/agreements', requirePermission('inspection.read'), async (req: Request, res: Response) => {
   const actor = await requireAgreementActor(req, res);
   if (!actor) return;
 

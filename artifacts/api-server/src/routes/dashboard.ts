@@ -2,6 +2,7 @@ import { GetDashboardManifestResponse, GetDashboardLayoutResponse, PatchDashboar
 import { db, userProfilesTable, pinsTable, inspectionsTable, usersTable, stageTransitionsTable, claimEventsTable, paymentsTable, contractsTable, changeOrdersTable, signedAgreementsTable, claimStatusHistoryTable } from '@workspace/db';
 import type { Department, Role, WorkflowAssignment } from '@workspace/authz';
 import { isManagerOrAdmin, selectWidgetsFor, WIDGET_CATALOG, type Capability } from '@workspace/authz';
+import { requirePermission } from '../middlewares/requirePermission';
 import { and, eq, gt, gte, inArray, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { requireWidgetCapability } from '../lib/dashboardGuard';
@@ -50,13 +51,10 @@ async function loadProfileAndLayout(userId: string): Promise<ProfileAndLayout> {
 // Role/department/workflow are always loaded from the authenticated user's
 // profile row — never from the request body, query string, or any other
 // client-supplied field. Client values cannot escalate privilege.
-router.get('/dashboard/manifest', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// dashboard.view
+router.get('/dashboard/manifest', requirePermission('dashboard.view'), async (req: Request, res: Response) => {
 
-  const { role, department, workflow, layout } = await loadProfileAndLayout(req.user.id);
+  const { role, department, workflow, layout } = await loadProfileAndLayout(req.actorCtx!.actorId);
 
   // Resolve the full capability set — this is the security boundary.
   // The layout can only hide or reorder; it can never GRANT an uncapable widget.
@@ -100,13 +98,10 @@ router.get('/dashboard/manifest', async (req: Request, res: Response) => {
 // Returns ALL capability-resolved widgets with their current hidden state,
 // so settings UIs can toggle individual widgets back on without a full reset.
 // Unlike /manifest, hidden widgets ARE included (with hidden: true).
-router.get('/dashboard/layout', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// dashboard.view
+router.get('/dashboard/layout', requirePermission('dashboard.view'), async (req: Request, res: Response) => {
 
-  const { role, department, workflow, layout } = await loadProfileAndLayout(req.user.id);
+  const { role, department, workflow, layout } = await loadProfileAndLayout(req.actorCtx!.actorId);
 
   const resolved = selectWidgetsFor({ role, department, workflow });
   const resolvedKeys = new Set(resolved.map((w) => w.key));
@@ -148,11 +143,8 @@ router.get('/dashboard/layout', async (req: Request, res: Response) => {
 // ── PATCH /dashboard/layout ──────────────────────────────────────────────────
 // Persist the user's widget visibility and order preferences. Self-only.
 // Security enforcement happens at manifest resolution time, not here.
-router.patch('/dashboard/layout', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// dashboard.manage_layout
+router.patch('/dashboard/layout', requirePermission('dashboard.manage_layout'), async (req: Request, res: Response) => {
 
   // Strict parse: rejects extra fields beyond hidden, order, gridLayout.
   const parsed = PatchDashboardLayoutBody.strict().safeParse(req.body);
@@ -162,7 +154,7 @@ router.patch('/dashboard/layout', async (req: Request, res: Response) => {
   }
 
   // Load existing layout so we can merge — omitted fields are preserved.
-  const { layout: existing } = await loadProfileAndLayout(req.user.id);
+  const { layout: existing } = await loadProfileAndLayout(req.actorCtx!.actorId);
   const base: StoredLayout = existing ?? { hidden: [], order: [] };
 
   const merged: StoredLayout = {
@@ -179,7 +171,7 @@ router.patch('/dashboard/layout', async (req: Request, res: Response) => {
   await db
     .insert(userProfilesTable)
     .values({
-      userId: req.user.id,
+      userId: req.actorCtx!.actorId,
       dashboardLayout: merged,
     })
     .onConflictDoUpdate({
@@ -192,16 +184,13 @@ router.patch('/dashboard/layout', async (req: Request, res: Response) => {
 
 // ── DELETE /dashboard/layout ─────────────────────────────────────────────────
 // Restore defaults by nulling the layout column.
-router.delete('/dashboard/layout', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// dashboard.manage_layout
+router.delete('/dashboard/layout', requirePermission('dashboard.manage_layout'), async (req: Request, res: Response) => {
 
   await db
     .update(userProfilesTable)
     .set({ dashboardLayout: null })
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
   res.status(204).end();
 });
@@ -747,7 +736,7 @@ router.get(
   requireWidgetCapability('pending_inspections'),
   async (req: Request, res: Response) => {
     const companyId = req.user!.companyId;
-    const actorId   = req.user!.id;
+    const actorId   = req.actorCtx!.actorId;
     const CAP = 25;
 
     const [profile] = await db
@@ -813,7 +802,7 @@ router.get(
   requireWidgetCapability('claim_blockers'),
   async (req: Request, res: Response) => {
     const companyId = req.user!.companyId;
-    const actorId   = req.user!.id;
+    const actorId   = req.actorCtx!.actorId;
     const CAP = 25;
 
     const [profile] = await db

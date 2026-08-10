@@ -3,6 +3,7 @@ import { resolveCapabilities } from '@workspace/authz';
 import { db, userProfilesTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
+import { loadActorCtx } from '../middlewares/requirePermission';
 
 /**
  * Express middleware factory for widget data routes.
@@ -25,10 +26,14 @@ export function requireWidgetCapability(key: Capability): RequestHandler {
       return;
     }
 
+    // Stamp actorCtx so widget route handlers can use req.actorCtx!.*
+    const ctx = await loadActorCtx(req);
+    if (!ctx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
     const [profile] = await db
       .select()
       .from(userProfilesTable)
-      .where(eq(userProfilesTable.userId, req.user.id));
+      .where(eq(userProfilesTable.userId, ctx.actorId));
 
     const role: Role = (profile?.role ?? 'field_rep') as Role;
     const department: Department = (profile?.department ?? 'canvasser') as Department;

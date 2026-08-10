@@ -2,17 +2,15 @@ import {
   ReverseGeocodeCoordinatesResponse,
   SearchAddressResponse,
 } from '@workspace/api-zod';
+import { requirePermission } from '../middlewares/requirePermission';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode, searchAddress } from '../lib/geocode';
 
 const router: IRouter = Router();
 
-router.get('/geocode/reverse', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// geocode.use
+router.get('/geocode/reverse', requirePermission('geocode.use'), async (req: Request, res: Response) => {
 
   const latitude = Number(req.query.latitude);
   const longitude = Number(req.query.longitude);
@@ -26,11 +24,8 @@ router.get('/geocode/reverse', async (req: Request, res: Response) => {
   res.json(ReverseGeocodeCoordinatesResponse.parse({ address }));
 });
 
-router.get('/geocode/search', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// geocode.use
+router.get('/geocode/search', requirePermission('geocode.use'), async (req: Request, res: Response) => {
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   if (!q) {

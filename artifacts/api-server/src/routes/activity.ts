@@ -6,6 +6,7 @@ import {
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
+import { requirePermission } from '../middlewares/requirePermission';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -72,11 +73,8 @@ async function hoursTracked(companyId: string, since: Date, userIds?: string[]):
   return Math.round((Number(row?.seconds ?? 0) / 3600) * 100) / 100;
 }
 
-router.get('/activity-stats', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+// activity.view
+router.get('/activity-stats', requirePermission('activity.view'), async (req: Request, res: Response) => {
 
   const parsedQuery = GetActivityStatsQueryParams.safeParse(req.query);
   if (!parsedQuery.success) {
@@ -84,8 +82,8 @@ router.get('/activity-stats', async (req: Request, res: Response) => {
     return;
   }
 
-  const companyId = req.user.companyId;
-  const actorUserId = req.user.id;
+  const companyId = req.actorCtx!.companyId;
+  const actorUserId = req.actorCtx!.actorId;
 
   const [profile] = await db
     .select()

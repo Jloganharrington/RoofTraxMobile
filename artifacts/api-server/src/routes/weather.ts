@@ -1,5 +1,6 @@
 import { GetWeatherEventsQueryParams, GetWeatherEventsResponse } from '@workspace/api-zod';
 import { db, userProfilesTable } from '@workspace/db';
+import { requirePermission } from '../middlewares/requirePermission';
 import { eq } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -59,7 +60,7 @@ async function requireInspectionModuleAccess(req: Request, res: Response) {
   const [profile] = await db
     .select()
     .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, req.user.id));
+    .where(eq(userProfilesTable.userId, req.actorCtx!.actorId));
 
   const role = profile?.role ?? 'field_rep';
   const department = profile?.department ?? 'canvasser';
@@ -68,10 +69,11 @@ async function requireInspectionModuleAccess(req: Request, res: Response) {
     return null;
   }
 
-  return { companyId: req.user.companyId };
+  return { companyId: req.actorCtx!.companyId };
 }
 
-router.get('/weather/events', async (req: Request, res: Response) => {
+// weather.view
+router.get('/weather/events', requirePermission('weather.view'), async (req: Request, res: Response) => {
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 

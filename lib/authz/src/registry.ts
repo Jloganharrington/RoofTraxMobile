@@ -14,10 +14,12 @@
  *  department   — actor's department must be in the listed set (any role)
  *  workflow     — actor's workflow must be in the listed set (any role)
  *
- * ─── Domains (15) ────────────────────────────────────────────────────────────
+ * ─── Domains (25) ────────────────────────────────────────────────────────────
  *  lead • inspection • report • claim • contract • change_order •
  *  payment • expense • commission • overhead • profitability •
- *  coc • catalog • team • company
+ *  coc • catalog • team • company •
+ *  invoice • profile • notification • canvassing • activity •
+ *  calendar • geocode • crm • weather • dashboard
  */
 
 import type { Department, Role, WorkflowAssignment } from './vocabulary';
@@ -40,12 +42,23 @@ export const DOMAINS = [
   'catalog',
   'team',
   'company',
+  // ── UI + utility domains ─────────────────────────────────────────────────
+  'invoice',
+  'profile',
+  'notification',
+  'canvassing',
+  'activity',
+  'calendar',
+  'geocode',
+  'crm',
+  'weather',
+  'dashboard',
 ] as const;
 
 export type Domain = (typeof DOMAINS)[number];
 
 // ── Permission keys ──────────────────────────────────────────────────────────
-// Exactly 94 keys. Keep sorted within each domain block.
+// Exactly 113 keys. Keep sorted within each domain block.
 
 export const PERMISSION_KEYS = [
   // lead (8)
@@ -64,6 +77,7 @@ export const PERMISSION_KEYS = [
   'inspection.delete',
   'inspection.read',
   'inspection.update',
+  'inspection.delete_agreement',
   'inspection.upload_photo',
 
   // report (10)
@@ -172,6 +186,43 @@ export const PERMISSION_KEYS = [
   'company.edit_report_colors',
   'company.edit_settings',
   'company.view_settings',
+  // invoice (6)
+  'invoice.create',
+  'invoice.delete',
+  'invoice.read',
+  'invoice.send',
+  'invoice.update',
+  'invoice.void',
+
+  // profile (2)
+  'profile.read',
+  'profile.update',
+
+  // notification (2)
+  'notification.manage',
+  'notification.push_receipts',
+
+  // canvassing (1)
+  'canvassing.use',
+
+  // activity (1)
+  'activity.view',
+
+  // calendar (1)
+  'calendar.view',
+
+  // geocode (1)
+  'geocode.use',
+
+  // crm (1)
+  'crm.view',
+
+  // weather (1)
+  'weather.view',
+
+  // dashboard (2)
+  'dashboard.manage_layout',
+  'dashboard.view',
 ] as const;
 
 export type Permission = (typeof PERMISSION_KEYS)[number];
@@ -299,6 +350,12 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     domain: 'inspection',
     label:  'Edit inspection data',
     default: { kind: 'ownerOrRole', minRole: 'manager' },
+  },
+  {
+    key:    'inspection.delete_agreement',
+    domain: 'inspection',
+    label:  'Delete an inspection agreement permanently (admin erase)',
+    default: { kind: 'minRole', minRole: 'super_admin' },
   },
   {
     key:    'inspection.upload_photo',
@@ -832,6 +889,134 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     label:  'View company profile and basic settings',
     default: { kind: 'minRole', minRole: 'field_rep' },
   },
+
+  // ── invoice (6) ──────────────────────────────────────────────────────────────
+  {
+    key:    'invoice.read',
+    domain: 'invoice',
+    label:  'View invoices for a lead',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+  {
+    key:    'invoice.create',
+    domain: 'invoice',
+    label:  'Create an invoice on a lead',
+    default: { kind: 'minRole', minRole: 'manager' },
+  },
+  {
+    key:    'invoice.update',
+    domain: 'invoice',
+    label:  'Edit an invoice',
+    default: { kind: 'minRole', minRole: 'manager' },
+  },
+  {
+    key:    'invoice.delete',
+    domain: 'invoice',
+    label:  'Delete an invoice',
+    default: { kind: 'minRole', minRole: 'manager' },
+  },
+  {
+    key:    'invoice.send',
+    domain: 'invoice',
+    label:  'Send an invoice email to the homeowner',
+    default: { kind: 'minRole', minRole: 'manager' },
+  },
+  {
+    key:    'invoice.void',
+    domain: 'invoice',
+    label:  'Void an invoice',
+    default: { kind: 'minRole', minRole: 'manager' },
+  },
+
+  // ── profile (2) ──────────────────────────────────────────────────────────────
+  {
+    key:    'profile.read',
+    domain: 'profile',
+    label:  'View own user profile',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+  {
+    key:    'profile.update',
+    domain: 'profile',
+    label:  'Edit own profile, signature, credentials, and SMTP settings',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── notification (2) ─────────────────────────────────────────────────────────
+  {
+    key:    'notification.manage',
+    domain: 'notification',
+    label:  'Manage own notification preferences and push tokens',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+  {
+    key:    'notification.push_receipts',
+    domain: 'notification',
+    label:  'Process push notification receipts (admin action)',
+    default: { kind: 'minRole', minRole: 'manager' },
+  },
+
+  // ── canvassing (1) ───────────────────────────────────────────────────────────
+  {
+    key:    'canvassing.use',
+    domain: 'canvassing',
+    label:  'Clock in/out and view canvassing status',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── activity (1) ─────────────────────────────────────────────────────────────
+  {
+    key:    'activity.view',
+    domain: 'activity',
+    label:  'View activity stats (own or team for managers)',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── calendar (1) ─────────────────────────────────────────────────────────────
+  {
+    key:    'calendar.view',
+    domain: 'calendar',
+    label:  'View calendar events (own or team for managers)',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── geocode (1) ──────────────────────────────────────────────────────────────
+  {
+    key:    'geocode.use',
+    domain: 'geocode',
+    label:  'Use geocoding (reverse and forward search)',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── crm (1) ──────────────────────────────────────────────────────────────────
+  {
+    key:    'crm.view',
+    domain: 'crm',
+    label:  'View CRM status (requires inspection module access inline)',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── weather (1) ──────────────────────────────────────────────────────────────
+  {
+    key:    'weather.view',
+    domain: 'weather',
+    label:  'View weather events (requires inspection module access inline)',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+
+  // ── dashboard (2) ────────────────────────────────────────────────────────────
+  {
+    key:    'dashboard.view',
+    domain: 'dashboard',
+    label:  'View dashboard manifest and layout',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
+  {
+    key:    'dashboard.manage_layout',
+    domain: 'dashboard',
+    label:  'Edit or reset own dashboard layout',
+    default: { kind: 'minRole', minRole: 'field_rep' },
+  },
 ] as const satisfies readonly PermissionEntry[];
 
 // ── Lookup helpers ────────────────────────────────────────────────────────────
@@ -848,8 +1033,8 @@ export function permissionsForDomain(domain: Domain): readonly PermissionEntry[]
 }
 
 // ── Compile-time count assertion ──────────────────────────────────────────────
-// This will produce a TS error if the registry diverges from 94.
+// This will produce a TS error if the registry diverges from 113.
 
-type AssertExactly95 = (typeof PERMISSION_KEYS)['length'] extends 95 ? true : never;
+type AssertExactly114 = (typeof PERMISSION_KEYS)['length'] extends 114 ? true : never;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _assert95: AssertExactly95 = true;
+const _assert114: AssertExactly114 = true;
