@@ -8126,9 +8126,16 @@ components:
 
     TeamUserPermissionsEnvelope:
       type: object
-      required: [userId, permissions]
+      required: [userId, permissions, actorCanOverride]
       properties:
         userId:  { type: string }
+        actorCanOverride:
+          type: boolean
+          description: >-
+            True when the requesting actor has authority to grant, revoke, or
+            reset overrides for this user. Mirrors the POST endpoint's authority
+            check (rank gate + manager-assignment gate) so the UI can render
+            controls correctly without speculative writes.
         permissions:
           type: array
           items:

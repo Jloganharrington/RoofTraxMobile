@@ -16,8 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useLocation } from "wouter";
 import {
-  Loader2, Users, ShieldAlert, FileText, CheckCircle2, Pencil, Search,
+  Loader2, Users, ShieldAlert, FileText, CheckCircle2, Pencil, Search, ShieldCheck,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,7 @@ function getInitials(firstName: string | null, lastName: string | null, email: s
 export default function TeamList() {
   const { data: teamEnv, isLoading: isTeamLoading } = useListTeamUsers();
   const { data: statsEnv } = useGetAdminStats();
+  const [, navigate] = useLocation();
 
   const users: TeamUser[] = teamEnv?.users ?? [];
   const stats = statsEnv?.stats;
@@ -239,17 +241,30 @@ export default function TeamList() {
                           {WORKFLOW_LABELS[user.workflowAssignment]}
                         </Badge>
                       </TableCell>
-                      {/* Edit button */}
+                      {/* Actions */}
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => openDrawer(user)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                          <span className="sr-only">Edit user</span>
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Manage permissions"
+                            onClick={() => navigate(`/team/${user.id}/permissions`)}
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                            <span className="sr-only">Manage permissions</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Edit user"
+                            onClick={() => openDrawer(user)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Edit user</span>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

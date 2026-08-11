@@ -423,9 +423,15 @@ router.get('/team/users/:userId/permissions', requirePermission('team.view'), as
     return;
   }
 
-  // Load target user's profile for role/department (needed for resolve()).
+  // Load target user's profile for role/department (needed for resolve()) and
+  // managerUserId (needed for the manager-assignment authority check below).
   const [profile] = await db
-    .select({ role: userProfilesTable.role, department: userProfilesTable.department, workflowAssignment: userProfilesTable.workflowAssignment })
+    .select({
+      role:               userProfilesTable.role,
+      department:         userProfilesTable.department,
+      workflowAssignment: userProfilesTable.workflowAssignment,
+      managerUserId:      userProfilesTable.managerUserId,
+    })
     .from(userProfilesTable)
     .where(eq(userProfilesTable.userId, userId));
 
@@ -435,6 +441,22 @@ router.get('/team/users/:userId/permissions', requirePermission('team.view'), as
     department:         profile?.department ?? null,
     workflowAssignment: profile?.workflowAssignment ?? null,
   };
+
+  // Compute whether the requesting actor has authority to apply overrides.
+  // Mirrors the POST /team/users/:userId/permissions authority checks so the
+  // UI can show / disable controls before any write attempt.
+  const { actorId, role: actorRole } = req.actorCtx!;
+  const targetRole = (profile?.role ?? 'field_rep') as Parameters<typeof canSetRoleDeptSpec>[3];
+  let actorCanOverride = false;
+  if (actorId !== userId && canSetRoleDeptSpec(actorRole, actorId, userId, targetRole)) {
+    if (actorRole === 'manager') {
+      // Managers may only override their own direct reports.
+      actorCanOverride = profile?.managerUserId === actorId;
+    } else {
+      // Admin+ — pure rank is sufficient.
+      actorCanOverride = true;
+    }
+  }
 
   // Load overrides for the target user (not the requesting actor).
   const overrideRows = await db
@@ -488,7 +510,7 @@ router.get('/team/users/:userId/permissions', requirePermission('team.view'), as
     };
   });
 
-  res.json({ userId, permissions });
+  res.json({ userId, permissions, actorCanOverride });
 });
 
 // ── GET /team/users/:userId/permissions/history — team.view (manager+) ──────

@@ -159,6 +159,12 @@ export type TeamUserPermissionsEnvelopePermissionsItem = {
 
 export interface TeamUserPermissionsEnvelope {
   userId: string;
+  /**
+   * True when the requesting actor has authority to grant, revoke, or reset
+   * overrides for this user. Computed server-side using the same rank gate +
+   * manager-assignment gate as the POST endpoint.
+   */
+  actorCanOverride: boolean;
   permissions: TeamUserPermissionsEnvelopePermissionsItem[];
 }
 

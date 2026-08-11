@@ -24,6 +24,7 @@ import RetailPipeline from '@/pages/pipeline/RetailPipeline';
 import Leads from '@/pages/leads/Leads';
 import LeadProfile from '@/pages/leads/LeadProfile';
 import TeamList from '@/pages/team/TeamList';
+import UserPermissionsPage from '@/pages/team/UserPermissionsPage';
 import { ComingSoon } from '@/pages/ComingSoon';
 import TeamCalendar from '@/pages/TeamCalendar';
 import { ReportsPage } from '@/pages/ReportsPage';
@@ -103,6 +104,9 @@ function Router() {
       </Route>
       <Route path="/inspections/:id/curation">
         <ProtectedRoute><PhotoCuration /></ProtectedRoute>
+      </Route>
+      <Route path="/team/:userId/permissions">
+        <ProtectedRoute minRole="manager"><UserPermissionsPage /></ProtectedRoute>
       </Route>
       <Route path="/team">
         <ProtectedRoute minRole="manager"><TeamList /></ProtectedRoute>

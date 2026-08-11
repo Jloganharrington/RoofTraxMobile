@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import {
   useUpdateTeamUser,
   useRemoveTeamUser,
@@ -30,7 +31,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 
 interface UserEditDrawerProps {
   user: TeamUser | null;
@@ -76,6 +77,7 @@ function getWorkflowLabel(wf: WorkflowAssignment): string {
 export function UserEditDrawer({ user, open, onOpenChange, onDone }: UserEditDrawerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const { data: authEnvelope } = useGetCurrentAuthUser();
   const currentUserId = authEnvelope?.user?.id;
 
@@ -231,6 +233,19 @@ export function UserEditDrawer({ user, open, onOpenChange, onDone }: UserEditDra
               {updateUser.isPending ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</>
               ) : "Save Changes"}
+            </Button>
+
+            {/* Permissions link */}
+            <Button
+              variant="outline"
+              className="w-full gap-2"
+              onClick={() => {
+                onOpenChange(false);
+                navigate(`/team/${user!.id}/permissions`);
+              }}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Manage Permissions
             </Button>
           </div>
 
