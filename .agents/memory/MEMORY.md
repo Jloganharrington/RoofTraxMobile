@@ -80,3 +80,4 @@
 - [requireWritableInspection middleware](require-writable-inspection.md) — single decision point for all inspection write routes; replaces 3-check pattern; actorCtx.userId alias kept for backward compat during migration.
 - [Steps 4 and 5 schema](steps4-5-schema.md) — manager_user_id on user_profiles (migration 045) + user_permission_overrides (migration 046); requirePermission now checks overrides before registry default; 4 new admin.ts routes.
 - [Terminate User feature](terminate-user-feature.md) — migrations 047/048; deactivated_at on users; pins.user_id RESTRICT; GET inventory + POST terminate (atomic tx + session purge) + DELETE hard-delete guard; team.delete → super_admin.
+- [Permission override hardening](perm-override-hardening.md) — migration 051 audit table; floor/selfOnly → 422; manager-assignment gate; must-hold extends to revoke; clearing-revoke = grant check.

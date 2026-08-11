@@ -1,0 +1,69 @@
+WORK ORDER — Permission Override Hardening
+Mode: Build. Scoped to the two override routes in admin.ts plus one migration.
+Blocks Step 6 — the settings UI must not ship on top of these gaps.
+Hard constraint: zero writes to artifacts/mobile/.
+Baseline: workspace suite plus the 130-test negative suite.
+
+Both routes are in scope throughout:
+
+POST   /team/users/:userId/permissions                    admin.ts:427
+DELETE /team/users/:userId/permissions/:permissionKey     admin.ts:510
+1 — Authority checks on both routes
+Today "cannot grant what you do not hold" lives inside if (granted), so a revoke bypasses it, and neither route makes any rank check at all. Someone holding team.override_permissions can strip permissions from an admin or a super_admin.
+
+Add to both routes:
+
+Rank. canSetRoleDeptSpec(actorRole, actorId, targetUserId, targetRole). It already blocks self-action and equal-or-higher rank — reuse it rather than writing a new comparison.
+Manager assignment. A manager may only override for users whose manager_user_id is the manager. Admin and above keep pure rank. Same rule as termination in Step 4.
+Must-hold, extended to revoke. You can't take away a permission you don't hold yourself.
+The DELETE route needs care. Clearing an override restores the registry default, so removing a revoke is effectively a grant. Resolve what the default would be after removal, and if that default is allow, apply the must-hold check against it. Otherwise revoking then clearing becomes a way to grant something you don't hold.
+
+2 — Reject floor and selfOnly permissions
+registry.ts:13 documents floor as never grantable or revocable by any actor, and nothing enforces it. Return 422 naming the permission and why.
+
+Do the same for selfOnly — those are everyone's own profile, signature, SMTP, and notification preferences, and there's no sensible reason to grant or revoke them per user. Flag it if you disagree rather than implementing silently.
+
+3 — note required
+Both write sites currently do note: typeof note === 'string' ? note : null. Make it required: 400 when absent, empty, or whitespace, on both routes. DELETE takes a body for this — clearing an override needs a reason as much as setting one.
+
+4 — Append-only audit table
+Migration 051, permission_override_changes:
+
+id, company_id, target_user_id, permission,
+previous_state  (null | 'granted' | 'revoked'),
+new_state       (null | 'granted' | 'revoked'),
+note, actor_user_id, created_at
+null on either side means "no override, registry default applies," so clearing is ('granted' → null) and setting is (null → 'revoked').
+
+Never updated, never deleted — corrections are new rows. Write it inside the same transaction as the override change so the two can't diverge. Index on (company_id, target_user_id, created_at).
+
+Add GET /team/users/:userId/permissions/history, gated on team.view, returning the rows newest-first. Step 6 renders it next to the permission list.
+
+Spec-first: openapi.yaml, then regenerate. No hand-edited generated files.
+
+Tests
+Every case asserts the HTTP status and queries the database to confirm no row changed — a 403 that still wrote is the failure mode that matters.
+
+Case	Expected
+Manager grants a permission they don't hold	403, no row
+Manager revokes a permission they don't hold	403, no row
+Manager overrides for an admin	403, no row
+Manager overrides for a peer manager	403, no row
+Manager overrides for an unassigned field rep	403, no row
+Manager overrides for their own assigned report	201, row written, audit row written
+Admin overrides for anyone below them	201
+Any actor overrides their own permissions	403, no row
+Grant or revoke a floor permission	422, no row
+Grant or revoke a selfOnly permission	422, no row
+Write with no note / empty / whitespace	400, no row
+DELETE clearing a revoke where default is allow, actor lacks the permission	403, override still present
+DELETE with no note	400, override still present
+Full lifecycle: grant → revoke → clear	three audit rows with correct from/to states
+Cross-tenant: override a user in another company	404, no row
+Integration checks
+The 130-test negative suite — no verdict changes. If any appear, explain each.
+resolvePermissions / can() still resolve overrides in the documented order: default → revoke → grant, floors winning over everything.
+requirePermission's override cache still returns correct results after a change in the same request lifecycle.
+Workspace suite, and confirm lib/protocol is unaffected.
+▶ CHECKPOINT — Paste: the migration, the diff for both routes, the full test table with status and side-effect columns, the negative-suite result, and the workspace suite total. Plus git status --porcelain artifacts/mobile/.
+

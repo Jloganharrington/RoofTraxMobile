@@ -75,3 +75,47 @@ export const userPermissionOverridesTable = pgTable(
 
 export type UserPermissionOverride = typeof userPermissionOverridesTable.$inferSelect;
 export type InsertUserPermissionOverride = typeof userPermissionOverridesTable.$inferInsert;
+
+// ── Permission override change log ────────────────────────────────────────────
+/**
+ * Append-only audit table for every grant, revoke, or clear of a per-user
+ * permission override.  One row is written inside the same transaction as the
+ * override change so the audit trail is always consistent with the live state.
+ *
+ * previousState / newState use the string enum 'granted' | 'revoked' | null:
+ *   null  = no override was present (registry default applies)
+ *   'granted' = an explicit allow override
+ *   'revoked' = an explicit deny override
+ */
+export const permissionOverrideChangesTable = pgTable(
+  'permission_override_changes',
+  {
+    id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id),
+    targetUserId: varchar('target_user_id')
+      .notNull()
+      .references(() => usersTable.id, { onDelete: 'cascade' }),
+    permission: varchar('permission', { length: 100 }).notNull(),
+    // null means no prior override existed; 'granted' or 'revoked' otherwise.
+    previousState: varchar('previous_state', { length: 10 }),
+    // null means the override was cleared (DELETE); 'granted' or 'revoked' for set.
+    newState: varchar('new_state', { length: 10 }),
+    note: text('note').notNull(),
+    actorUserId: varchar('actor_user_id')
+      .notNull()
+      .references(() => usersTable.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('perm_override_changes_company_user_created_idx').on(
+      table.companyId,
+      table.targetUserId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type PermissionOverrideChange = typeof permissionOverrideChangesTable.$inferSelect;
+export type InsertPermissionOverrideChange = typeof permissionOverrideChangesTable.$inferInsert;

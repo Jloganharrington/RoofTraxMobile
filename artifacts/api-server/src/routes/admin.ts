@@ -11,8 +11,9 @@
  *   team.terminate            — manager+  — POST /team/users/:userId/reassign  (+ actorOutranks)
  *   team.assign_manager       — admin+    — PATCH /team/users/:userId/manager    (Step 4)
  *   team.view                 — manager+  — GET /team/users/:userId/permissions  (Step 5)
- *   team.override_permissions — admin+    — POST /team/users/:userId/permissions (Step 5)
- *   team.override_permissions — admin+    — DELETE /team/users/:userId/permissions/:permissionKey (Step 5)
+ *   team.view                 — manager+  — GET /team/users/:userId/permissions/history (Step 5)
+ *   team.override_permissions — manager+  — POST /team/users/:userId/permissions (Step 5, hardened)
+ *   team.override_permissions — manager+  — DELETE /team/users/:userId/permissions/:permissionKey (Step 5, hardened)
  */
 import {
   GetAdminStatsResponse,
@@ -27,6 +28,7 @@ import {
   completionCertificatesTable,
   deactivationSweepLogTable,
   inspectionsTable,
+  permissionOverrideChangesTable,
   pinsTable,
   sessionsTable,
   userPermissionOverridesTable,
@@ -34,10 +36,10 @@ import {
   usersTable,
 } from '@workspace/db';
 import { notify } from '../lib/notify';
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { PERMISSION_KEYS, PERMISSION_REGISTRY, canSetRoleDeptSpec, canSetWorkflow, resolve } from '@workspace/authz';
+import { PERMISSION_KEYS, PERMISSION_MAP, PERMISSION_REGISTRY, canSetRoleDeptSpec, canSetWorkflow, resolve, resolveResolution, type Permission } from '@workspace/authz';
 import {
   loadPermissionOverrides,
   requirePermission,
@@ -489,16 +491,60 @@ router.get('/team/users/:userId/permissions', requirePermission('team.view'), as
   res.json({ userId, permissions });
 });
 
-// ── POST /team/users/:userId/permissions — team.override_permissions (admin+) ─
-// Step 5: add or replace a per-user permission override.
-// Body: { permission: string, granted: boolean, note?: string }
-// Invariant: cannot grant a permission the actor does not hold.
+// ── GET /team/users/:userId/permissions/history — team.view (manager+) ──────
+// Returns the append-only override audit log for a user, newest first.
+// Must be registered before /team/users/:userId/permissions/:permissionKey
+// (different HTTP method, but explicit ordering is clearer).
 
-router.post('/team/users/:userId/permissions', requirePermission('team.override_permissions'), async (req: Request, res: Response) => {
-  const { companyId, actorId: grantedByUserId } = req.actorCtx!;
+router.get('/team/users/:userId/permissions/history', requirePermission('team.view'), async (req: Request, res: Response) => {
+  const { companyId } = req.actorCtx!;
   const userId = req.params.userId as string;
 
-  // Validate body.
+  const [targetUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
+  if (!targetUser) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id:            permissionOverrideChangesTable.id,
+      permission:    permissionOverrideChangesTable.permission,
+      previousState: permissionOverrideChangesTable.previousState,
+      newState:      permissionOverrideChangesTable.newState,
+      note:          permissionOverrideChangesTable.note,
+      actorUserId:   permissionOverrideChangesTable.actorUserId,
+      createdAt:     permissionOverrideChangesTable.createdAt,
+    })
+    .from(permissionOverrideChangesTable)
+    .where(and(
+      eq(permissionOverrideChangesTable.companyId, companyId),
+      eq(permissionOverrideChangesTable.targetUserId, userId),
+    ))
+    .orderBy(desc(permissionOverrideChangesTable.createdAt));
+
+  res.json({ userId, history: rows });
+});
+
+// ── POST /team/users/:userId/permissions — team.override_permissions (manager+) ─
+// Step 5 (hardened): add or replace a per-user permission override.
+//
+// Authority rules:
+//   - Managers: can override for their own direct reports only (managerUserId = actorId).
+//   - Admins+:  can override for any user they outrank (pure rank via canSetRoleDeptSpec).
+//   - floor and selfOnly permissions are always rejected (422).
+//   - Must-hold applies to BOTH grant AND revoke.
+//   - note is mandatory (non-empty, non-whitespace).
+//   - Writes an audit row inside the same transaction as the upsert.
+
+router.post('/team/users/:userId/permissions', requirePermission('team.override_permissions'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole, actorId } = req.actorCtx!;
+  const userId = req.params.userId as string;
+
+  // ── 1. Body validation ────────────────────────────────────────────────────
   const { permission, granted, note } = req.body ?? {};
   if (typeof permission !== 'string' || !(PERMISSION_KEYS as readonly string[]).includes(permission)) {
     res.status(400).json({ error: `'permission' must be a valid permission key.` });
@@ -508,101 +554,299 @@ router.post('/team/users/:userId/permissions', requirePermission('team.override_
     res.status(400).json({ error: `'granted' must be a boolean.` });
     return;
   }
-
-  // Verify target user is in same company.
-  const [targetUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
-  if (!targetUser) {
-    res.status(404).json({ error: 'User not found' });
+  if (typeof note !== 'string' || note.trim() === '') {
+    res.status(400).json({ error: `'note' is required and must be a non-empty string.` });
     return;
   }
 
-  // "Cannot grant what you do not hold" — only applies when granting.
-  if (granted) {
-    // loadPermissionOverrides uses req.permissionOverrides cache (actor's own overrides).
-    const actorOverrides = await loadPermissionOverrides(req, grantedByUserId, companyId);
-    const actorOverride = actorOverrides.get(permission);
-    let actorHolds: boolean;
-    if (actorOverride !== undefined) {
-      actorHolds = actorOverride;
-    } else {
-      const [actorProfile] = await db
-        .select({ role: userProfilesTable.role, department: userProfilesTable.department, workflowAssignment: userProfilesTable.workflowAssignment })
-        .from(userProfilesTable)
-        .where(eq(userProfilesTable.userId, grantedByUserId));
-      actorHolds = resolve(permission as Parameters<typeof resolve>[0], {
-        actorId:            grantedByUserId,
-        role:               (actorProfile?.role ?? 'field_rep') as Parameters<typeof resolve>[1]['role'],
-        department:         actorProfile?.department ?? null,
-        workflowAssignment: actorProfile?.workflowAssignment ?? null,
-      }).allowed;
-    }
-    if (!actorHolds) {
-      res.status(403).json({ error: `Cannot grant '${permission}' — you do not hold this permission yourself.` });
-      return;
-    }
+  // ── 2. Reject floor and selfOnly permissions ──────────────────────────────
+  const entry = PERMISSION_MAP[permission as Permission];
+  if (entry.default.kind === 'floor') {
+    res.status(422).json({ error: `'${permission}' is a system-internal permission and cannot be overridden.` });
+    return;
+  }
+  if (entry.default.kind === 'selfOnly') {
+    res.status(422).json({ error: `'${permission}' is a self-only permission and cannot be overridden per user.` });
+    return;
   }
 
-  // Upsert the override.
-  const [row] = await db
-    .insert(userPermissionOverridesTable)
-    .values({
-      companyId,
-      userId,
-      permission,
-      granted,
-      grantedByUserId,
-      note: typeof note === 'string' ? note : null,
+  // ── 3. Self-action guard ──────────────────────────────────────────────────
+  if (userId === actorId) {
+    res.status(403).json({ error: 'Cannot override permissions on your own account.' });
+    return;
+  }
+
+  // ── 4. Verify target exists in same company + load profile for rank checks ─
+  const [targetProfile] = await db
+    .select({
+      id:            usersTable.id,
+      role:          userProfilesTable.role,
+      managerUserId: userProfilesTable.managerUserId,
     })
-    .onConflictDoUpdate({
-      target: [
-        userPermissionOverridesTable.companyId,
-        userPermissionOverridesTable.userId,
-        userPermissionOverridesTable.permission,
-      ],
-      set: {
+    .from(usersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
+  if (!targetProfile) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  const targetRole = (targetProfile.role ?? 'field_rep') as Parameters<typeof canSetRoleDeptSpec>[3];
+
+  // ── 5. Rank gate: actor must strictly outrank the target ──────────────────
+  if (!canSetRoleDeptSpec(actorRole, actorId, userId, targetRole)) {
+    res.status(403).json({ error: 'Not permitted to override permissions for this user.' });
+    return;
+  }
+
+  // ── 6. Manager-assignment gate ────────────────────────────────────────────
+  // Managers may only override for users who report directly to them.
+  // Admins and above are exempt (pure rank is sufficient).
+  if (actorRole === 'manager' && targetProfile.managerUserId !== actorId) {
+    res.status(403).json({ error: 'Managers may only override permissions for their own direct reports.' });
+    return;
+  }
+
+  // ── 7. Must-hold check (both grant and revoke) ────────────────────────────
+  // You cannot take away or bestow a permission you don't hold yourself.
+  const actorOverrides = await loadPermissionOverrides(req, actorId, companyId);
+  const actorOverrideValue = actorOverrides.get(permission);
+  let actorHolds: boolean;
+  if (actorOverrideValue !== undefined) {
+    actorHolds = actorOverrideValue;
+  } else {
+    const [actorProfile] = await db
+      .select({
+        role:               userProfilesTable.role,
+        department:         userProfilesTable.department,
+        workflowAssignment: userProfilesTable.workflowAssignment,
+      })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, actorId));
+    actorHolds = resolve(permission as Permission, {
+      actorId,
+      role:               (actorProfile?.role ?? 'field_rep') as Parameters<typeof resolve>[1]['role'],
+      department:         actorProfile?.department ?? null,
+      workflowAssignment: actorProfile?.workflowAssignment ?? null,
+    }).allowed;
+  }
+  if (!actorHolds) {
+    res.status(403).json({ error: `Cannot ${granted ? 'grant' : 'revoke'} '${permission}' — you do not hold this permission yourself.` });
+    return;
+  }
+
+  // ── 8. Read previous state for audit log ─────────────────────────────────
+  const [existing] = await db
+    .select({ granted: userPermissionOverridesTable.granted })
+    .from(userPermissionOverridesTable)
+    .where(and(
+      eq(userPermissionOverridesTable.companyId, companyId),
+      eq(userPermissionOverridesTable.userId, userId),
+      eq(userPermissionOverridesTable.permission, permission),
+    ));
+  const previousState = existing === undefined ? null : (existing.granted ? 'granted' : 'revoked');
+  const newState = granted ? 'granted' : 'revoked';
+
+  // ── 9. Upsert override + write audit row in one transaction ───────────────
+  const [row] = await db.transaction(async (tx) => {
+    const [override] = await tx
+      .insert(userPermissionOverridesTable)
+      .values({
+        companyId,
+        userId,
+        permission,
         granted,
-        grantedByUserId,
-        note:      typeof note === 'string' ? note : null,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
+        grantedByUserId: actorId,
+        note:            note.trim(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          userPermissionOverridesTable.companyId,
+          userPermissionOverridesTable.userId,
+          userPermissionOverridesTable.permission,
+        ],
+        set: {
+          granted,
+          grantedByUserId: actorId,
+          note:            note.trim(),
+          updatedAt:       new Date(),
+        },
+      })
+      .returning();
+
+    await tx
+      .insert(permissionOverrideChangesTable)
+      .values({
+        companyId,
+        targetUserId:  userId,
+        permission,
+        previousState,
+        newState,
+        note:          note.trim(),
+        actorUserId:   actorId,
+      });
+
+    return [override];
+  });
 
   res.status(201).json({ override: row });
 });
 
-// ── DELETE /team/users/:userId/permissions/:permissionKey — team.override_permissions ──
-// Step 5: remove a per-user permission override, restoring the registry default.
+// ── DELETE /team/users/:userId/permissions/:permissionKey ─────────────────────
+// team.override_permissions (manager+). Clear a per-user override, restoring
+// the registry default.  A JSON body with 'note' is REQUIRED.
+//
+// Authority rules mirror POST (rank gate + manager-assignment gate).
+// Must-hold applies when clearing a revoke that would restore a default-allow
+// permission: removing the revoke is effectively a grant.
+// Writes an audit row (previousState → null) inside the same transaction.
 
 router.delete('/team/users/:userId/permissions/:permissionKey', requirePermission('team.override_permissions'), async (req: Request, res: Response) => {
-  const { companyId } = req.actorCtx!;
-  const userId = req.params.userId as string;
+  const { companyId, role: actorRole, actorId } = req.actorCtx!;
+  const userId        = req.params.userId as string;
   const permissionKey = req.params.permissionKey as string;
+  const { note }      = req.body ?? {};
 
-  // Verify target user is in same company.
-  const [targetUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
-  if (!targetUser) {
-    res.status(404).json({ error: 'User not found' });
+  // ── 1. Note validation ────────────────────────────────────────────────────
+  if (typeof note !== 'string' || note.trim() === '') {
+    res.status(400).json({ error: `'note' is required and must be a non-empty string.` });
     return;
   }
 
-  await db
-    .delete(userPermissionOverridesTable)
-    .where(
-      and(
+  // ── 2. Permission key validation ──────────────────────────────────────────
+  if (!(PERMISSION_KEYS as readonly string[]).includes(permissionKey)) {
+    res.status(400).json({ error: `'${permissionKey}' is not a valid permission key.` });
+    return;
+  }
+
+  // ── 3. Reject floor and selfOnly permissions ──────────────────────────────
+  const entry = PERMISSION_MAP[permissionKey as Permission];
+  if (entry.default.kind === 'floor') {
+    res.status(422).json({ error: `'${permissionKey}' is a system-internal permission and cannot be overridden.` });
+    return;
+  }
+  if (entry.default.kind === 'selfOnly') {
+    res.status(422).json({ error: `'${permissionKey}' is a self-only permission and cannot be overridden per user.` });
+    return;
+  }
+
+  // ── 4. Self-action guard ──────────────────────────────────────────────────
+  if (userId === actorId) {
+    res.status(403).json({ error: 'Cannot override permissions on your own account.' });
+    return;
+  }
+
+  // ── 5. Verify target exists in same company + load profile ────────────────
+  const [targetProfile] = await db
+    .select({
+      id:                 usersTable.id,
+      role:               userProfilesTable.role,
+      department:         userProfilesTable.department,
+      workflowAssignment: userProfilesTable.workflowAssignment,
+      managerUserId:      userProfilesTable.managerUserId,
+    })
+    .from(usersTable)
+    .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
+  if (!targetProfile) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  const targetRole = (targetProfile.role ?? 'field_rep') as Parameters<typeof canSetRoleDeptSpec>[3];
+
+  // ── 6. Rank gate ──────────────────────────────────────────────────────────
+  if (!canSetRoleDeptSpec(actorRole, actorId, userId, targetRole)) {
+    res.status(403).json({ error: 'Not permitted to clear permission overrides for this user.' });
+    return;
+  }
+
+  // ── 7. Manager-assignment gate ────────────────────────────────────────────
+  if (actorRole === 'manager' && targetProfile.managerUserId !== actorId) {
+    res.status(403).json({ error: 'Managers may only clear permission overrides for their own direct reports.' });
+    return;
+  }
+
+  // ── 8. Load existing override ─────────────────────────────────────────────
+  const [existing] = await db
+    .select({ granted: userPermissionOverridesTable.granted })
+    .from(userPermissionOverridesTable)
+    .where(and(
+      eq(userPermissionOverridesTable.companyId, companyId),
+      eq(userPermissionOverridesTable.userId, userId),
+      eq(userPermissionOverridesTable.permission, permissionKey),
+    ));
+
+  if (!existing) {
+    // Nothing to clear — idempotent success, no audit row needed.
+    res.json({ success: true, removed: false });
+    return;
+  }
+
+  const previousState = existing.granted ? 'granted' : 'revoked';
+
+  // ── 9. Must-hold when clearing a revoke that restores default-allow ───────
+  // Removing a revoke for a permission whose registry default is allow is
+  // effectively a grant. Apply must-hold so clearing-revoke cannot be used
+  // to restore a permission the actor does not hold themselves.
+  if (!existing.granted) {
+    const defaultAfterClear = resolveResolution(entry.default, permissionKey as Permission, {
+      actorId:            userId,
+      role:               (targetProfile.role ?? 'field_rep') as Parameters<typeof resolve>[1]['role'],
+      department:         targetProfile.department ?? null,
+      workflowAssignment: targetProfile.workflowAssignment ?? null,
+    });
+    if (defaultAfterClear.allowed) {
+      const actorOverrides = await loadPermissionOverrides(req, actorId, companyId);
+      const actorOverrideValue = actorOverrides.get(permissionKey);
+      let actorHolds: boolean;
+      if (actorOverrideValue !== undefined) {
+        actorHolds = actorOverrideValue;
+      } else {
+        const [actorProf] = await db
+          .select({
+            role:               userProfilesTable.role,
+            department:         userProfilesTable.department,
+            workflowAssignment: userProfilesTable.workflowAssignment,
+          })
+          .from(userProfilesTable)
+          .where(eq(userProfilesTable.userId, actorId));
+        actorHolds = resolve(permissionKey as Permission, {
+          actorId,
+          role:               (actorProf?.role ?? 'field_rep') as Parameters<typeof resolve>[1]['role'],
+          department:         actorProf?.department ?? null,
+          workflowAssignment: actorProf?.workflowAssignment ?? null,
+        }).allowed;
+      }
+      if (!actorHolds) {
+        res.status(403).json({ error: `Clearing this revoke would restore '${permissionKey}' — you do not hold this permission yourself.` });
+        return;
+      }
+    }
+  }
+
+  // ── 10. Delete override + write audit row in one transaction ──────────────
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(userPermissionOverridesTable)
+      .where(and(
         eq(userPermissionOverridesTable.companyId, companyId),
         eq(userPermissionOverridesTable.userId, userId),
         eq(userPermissionOverridesTable.permission, permissionKey),
-      ),
-    );
+      ));
 
-  res.json({ success: true });
+    await tx
+      .insert(permissionOverrideChangesTable)
+      .values({
+        companyId,
+        targetUserId:  userId,
+        permission:    permissionKey,
+        previousState,
+        newState:      null,
+        note:          note.trim(),
+        actorUserId:   actorId,
+      });
+  });
+
+  res.json({ success: true, removed: true });
 });
 
 // ── GET /team/users/:userId/inventory — team.view (manager+) ─────────────────

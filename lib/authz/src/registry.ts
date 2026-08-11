@@ -862,8 +862,11 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     key:    'team.override_permissions',
     domain: 'team',
     label:  'Grant or revoke per-user permission overrides',
-    default: { kind: 'minRole', minRole: 'admin' },
-    note:   'Used in Step 5 override system — cannot grant what you do not hold.',
+    // manager+ may use these routes. Managers are additionally restricted to
+    // direct reports only (manager_user_id = actorId); admins+ use pure rank.
+    // floor/selfOnly permissions are always rejected at the route level.
+    default: { kind: 'minRole', minRole: 'manager' },
+    note:   'Managers restricted to own direct reports. Cannot grant what you do not hold. Floor/selfOnly permissions cannot be overridden.',
   },
   {
     key:    'team.view',
@@ -965,13 +968,21 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     key:    'profile.read',
     domain: 'profile',
     label:  'View own user profile',
-    default: { kind: 'minRole', minRole: 'field_rep' },
+    // floor: every authenticated user always has access to their own profile.
+    // Access is guaranteed by the auth layer, not by role.
+    // Cannot be granted or revoked through the per-user override system.
+    default: { kind: 'floor' },
+    note:   'System-internal. Cannot be overridden per user.',
   },
   {
     key:    'profile.update',
     domain: 'profile',
     label:  'Edit own profile, signature, credentials, and SMTP settings',
-    default: { kind: 'minRole', minRole: 'field_rep' },
+    // selfOnly: profile edits are inherently personal. Granting this to
+    // another user's account opens SMTP/signature injection vectors.
+    // Cannot be overridden per user.
+    default: { kind: 'selfOnly' },
+    note:   'Self-only. Cannot be overridden per user.',
   },
 
   // ── notification (2) ─────────────────────────────────────────────────────────
@@ -979,7 +990,10 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     key:    'notification.manage',
     domain: 'notification',
     label:  'Manage own notification preferences and push tokens',
-    default: { kind: 'minRole', minRole: 'field_rep' },
+    // selfOnly: notification preferences and push tokens are personal.
+    // Cannot be overridden to grant one user control of another's preferences.
+    default: { kind: 'selfOnly' },
+    note:   'Self-only. Cannot be overridden per user.',
   },
   {
     key:    'notification.push_receipts',

@@ -71,6 +71,97 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface SetPermissionOverrideInput {
+  /** A valid PERMISSION_KEYS entry (e.g. 'lead.read'). */
+  permission: string;
+  /** true = explicit grant; false = explicit revoke. */
+  granted: boolean;
+  /**
+     * Mandatory human note explaining the override.
+     * @minLength 1
+     */
+  note: string;
+}
+
+export interface PermissionOverrideRow {
+  id: string;
+  companyId: string;
+  userId: string;
+  permission: string;
+  granted: boolean;
+  grantedByUserId: string;
+  /** @nullable */
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PermissionOverrideEnvelope {
+  override: PermissionOverrideRow;
+}
+
+export interface ClearPermissionOverrideInput {
+  /**
+     * Mandatory human note explaining the clear action.
+     * @minLength 1
+     */
+  note: string;
+}
+
+export interface ClearPermissionOverrideSuccess {
+  success: boolean;
+  /** true if an override existed and was removed; false if there was nothing to clear. */
+  removed: boolean;
+}
+
+export interface PermissionOverrideChangeEntry {
+  id: string;
+  permission: string;
+  /**
+     * 'granted', 'revoked', or null (no prior override).
+     * @nullable
+     */
+  previousState: string | null;
+  /**
+     * 'granted', 'revoked', or null (override was cleared).
+     * @nullable
+     */
+  newState: string | null;
+  note: string;
+  actorUserId: string;
+  createdAt: string;
+}
+
+export interface PermissionHistoryEnvelope {
+  userId: string;
+  history: PermissionOverrideChangeEntry[];
+}
+
+export type TeamUserPermissionsEnvelopePermissionsItemDefault = { [key: string]: unknown };
+
+/**
+ * @nullable
+ */
+export type TeamUserPermissionsEnvelopePermissionsItemOverride = { [key: string]: unknown } | null;
+
+export type TeamUserPermissionsEnvelopePermissionsItem = {
+  key: string;
+  domain: string;
+  label: string;
+  default: TeamUserPermissionsEnvelopePermissionsItemDefault;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  override: TeamUserPermissionsEnvelopePermissionsItemOverride;
+  effective: boolean;
+  reason: string;
+};
+
+export interface TeamUserPermissionsEnvelope {
+  userId: string;
+  permissions: TeamUserPermissionsEnvelopePermissionsItem[];
+}
+
 export interface ErrorEnvelope {
   error: string;
 }

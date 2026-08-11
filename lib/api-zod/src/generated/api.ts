@@ -1493,6 +1493,119 @@ export const RemoveTeamUserResponse = zod.object({
 
 
 /**
+ * Manager+ (team.view). Returns each permission with its registry default, any per-user override, and the computed effective value.
+ * @summary View effective permission set for a team member
+ */
+export const GetTeamUserPermissionsParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const GetTeamUserPermissionsResponse = zod.object({
+  "userId": zod.string(),
+  "permissions": zod.array(zod.object({
+  "key": zod.string(),
+  "domain": zod.string(),
+  "label": zod.string(),
+  "default": zod.object({
+
+}).passthrough(),
+  "note": zod.string().nullable(),
+  "override": zod.object({
+
+}).passthrough().nullable(),
+  "effective": zod.boolean(),
+  "reason": zod.string()
+}))
+})
+
+
+/**
+ * Manager+ (team.override_permissions).
+ * Managers may only override for their own direct reports.
+ * Admins+ may override for any user they outrank.
+ * Floor and selfOnly permissions are rejected (422).
+ * Must-hold applies to both grant and revoke.
+ * note is mandatory (non-empty).
+ * Writes an audit row inside the same transaction.
+ * @summary Grant or revoke a per-user permission override
+ */
+export const SetTeamUserPermissionParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+
+
+
+export const SetTeamUserPermissionBody = zod.object({
+  "permission": zod.string().describe('A valid PERMISSION_KEYS entry (e.g. \'lead.read\').'),
+  "granted": zod.boolean().describe('true = explicit grant; false = explicit revoke.'),
+  "note": zod.string().min(1).describe('Mandatory human note explaining the override.')
+})
+
+export const SetTeamUserPermissionResponse = zod.object({
+  "override": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "userId": zod.string(),
+  "permission": zod.string(),
+  "granted": zod.boolean(),
+  "grantedByUserId": zod.string(),
+  "note": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Manager+ (team.override_permissions). Same authority rules as POST.
+ * A JSON body with 'note' is REQUIRED.
+ * When clearing a revoke whose default would allow the permission,
+ * must-hold applies (removing the revoke is effectively a grant).
+ * Writes an audit row inside the same transaction.
+ * @summary Clear a per-user permission override (restore registry default)
+ */
+export const ClearTeamUserPermissionParams = zod.object({
+  "userId": zod.coerce.string(),
+  "permissionKey": zod.coerce.string()
+})
+
+
+
+
+export const ClearTeamUserPermissionBody = zod.object({
+  "note": zod.string().min(1).describe('Mandatory human note explaining the clear action.')
+})
+
+export const ClearTeamUserPermissionResponse = zod.object({
+  "success": zod.boolean(),
+  "removed": zod.boolean().describe('true if an override existed and was removed; false if there was nothing to clear.')
+})
+
+
+/**
+ * Manager+ (team.view). Returns all override change entries newest-first.
+ * @summary View the append-only override audit log for a team member
+ */
+export const GetTeamUserPermissionHistoryParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const GetTeamUserPermissionHistoryResponse = zod.object({
+  "userId": zod.string(),
+  "history": zod.array(zod.object({
+  "id": zod.string(),
+  "permission": zod.string(),
+  "previousState": zod.string().nullable().describe('\'granted\', \'revoked\', or null (no prior override).'),
+  "newState": zod.string().nullable().describe('\'granted\', \'revoked\', or null (override was cleared).'),
+  "note": zod.string(),
+  "actorUserId": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * Admin+ only (team.view_stats). Returns users with a blocked sweep log entry where the purge has not yet succeeded.
  * @summary List users whose 30-day PII purge is blocked
  */

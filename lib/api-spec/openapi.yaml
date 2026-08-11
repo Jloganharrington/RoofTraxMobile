@@ -1527,6 +1527,206 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /team/users/{userId}/permissions:
+    get:
+      tags: [Admin]
+      operationId: getTeamUserPermissions
+      summary: View effective permission set for a team member
+      description: Manager+ (team.view). Returns each permission with its registry default, any per-user override, and the computed effective value.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Permission list for the user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamUserPermissionsEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [Admin]
+      operationId: setTeamUserPermission
+      summary: Grant or revoke a per-user permission override
+      description: |
+        Manager+ (team.override_permissions).
+        Managers may only override for their own direct reports.
+        Admins+ may override for any user they outrank.
+        Floor and selfOnly permissions are rejected (422).
+        Must-hold applies to both grant and revoke.
+        note is mandatory (non-empty).
+        Writes an audit row inside the same transaction.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPermissionOverrideInput"
+      responses:
+        "201":
+          description: Override set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionOverrideEnvelope"
+        "400":
+          description: Validation error (bad key, missing granted, empty note).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted (rank, manager-assignment, or must-hold).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Permission is floor or selfOnly and cannot be overridden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /team/users/{userId}/permissions/{permissionKey}:
+    delete:
+      tags: [Admin]
+      operationId: clearTeamUserPermission
+      summary: Clear a per-user permission override (restore registry default)
+      description: |
+        Manager+ (team.override_permissions). Same authority rules as POST.
+        A JSON body with 'note' is REQUIRED.
+        When clearing a revoke whose default would allow the permission,
+        must-hold applies (removing the revoke is effectively a grant).
+        Writes an audit row inside the same transaction.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: permissionKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClearPermissionOverrideInput"
+      responses:
+        "200":
+          description: Override cleared (or no override existed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearPermissionOverrideSuccess"
+        "400":
+          description: Missing or empty note.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted (rank, manager-assignment, or must-hold on clearing revoke).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Permission is floor or selfOnly and cannot be overridden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /team/users/{userId}/permissions/history:
+    get:
+      tags: [Admin]
+      operationId: getTeamUserPermissionHistory
+      summary: View the append-only override audit log for a team member
+      description: Manager+ (team.view). Returns all override change entries newest-first.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Override history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionHistoryEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Manager role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /team/users/blocked-purge-report:
     get:
       tags: [Admin]
@@ -7843,6 +8043,106 @@ components:
           type: string
       required:
         - status
+
+    SetPermissionOverrideInput:
+      type: object
+      required: [permission, granted, note]
+      properties:
+        permission:
+          type: string
+          description: A valid PERMISSION_KEYS entry (e.g. 'lead.read').
+        granted:
+          type: boolean
+          description: true = explicit grant; false = explicit revoke.
+        note:
+          type: string
+          minLength: 1
+          description: Mandatory human note explaining the override.
+
+    PermissionOverrideRow:
+      type: object
+      required: [id, companyId, userId, permission, granted, grantedByUserId, note, createdAt, updatedAt]
+      properties:
+        id:             { type: string }
+        companyId:      { type: string }
+        userId:         { type: string }
+        permission:     { type: string }
+        granted:        { type: boolean }
+        grantedByUserId: { type: string }
+        note:           { type: [string, "null"] }
+        createdAt:      { type: string, format: date-time }
+        updatedAt:      { type: string, format: date-time }
+
+    PermissionOverrideEnvelope:
+      type: object
+      required: [override]
+      properties:
+        override:
+          $ref: "#/components/schemas/PermissionOverrideRow"
+
+    ClearPermissionOverrideInput:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+          minLength: 1
+          description: Mandatory human note explaining the clear action.
+
+    ClearPermissionOverrideSuccess:
+      type: object
+      required: [success, removed]
+      properties:
+        success:  { type: boolean }
+        removed:
+          type: boolean
+          description: true if an override existed and was removed; false if there was nothing to clear.
+
+    PermissionOverrideChangeEntry:
+      type: object
+      required: [id, permission, previousState, newState, note, actorUserId, createdAt]
+      properties:
+        id:            { type: string }
+        permission:    { type: string }
+        previousState:
+          type: [string, "null"]
+          description: "'granted', 'revoked', or null (no prior override)."
+        newState:
+          type: [string, "null"]
+          description: "'granted', 'revoked', or null (override was cleared)."
+        note:          { type: string }
+        actorUserId:   { type: string }
+        createdAt:     { type: string, format: date-time }
+
+    PermissionHistoryEnvelope:
+      type: object
+      required: [userId, history]
+      properties:
+        userId:  { type: string }
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionOverrideChangeEntry"
+
+    TeamUserPermissionsEnvelope:
+      type: object
+      required: [userId, permissions]
+      properties:
+        userId:  { type: string }
+        permissions:
+          type: array
+          items:
+            type: object
+            required: [key, domain, label, default, note, override, effective, reason]
+            properties:
+              key:       { type: string }
+              domain:    { type: string }
+              label:     { type: string }
+              default:   { type: object }
+              note:      { type: [string, "null"] }
+              override:  { type: [object, "null"] }
+              effective: { type: boolean }
+              reason:    { type: string }
 
     ErrorEnvelope:
       type: object

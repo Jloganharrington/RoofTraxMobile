@@ -45,6 +45,8 @@ import type {
   CheckPushReceipts200,
   CheckPushReceiptsInput,
   ClaimBlockerEnvelope,
+  ClearPermissionOverrideInput,
+  ClearPermissionOverrideSuccess,
   CodeResearchInput,
   CommissionsEnvelope,
   CompanyEnvelope,
@@ -155,6 +157,8 @@ import type {
   PaymentEnvelope,
   PaymentListEnvelope,
   PendingInspectionsEnvelope,
+  PermissionHistoryEnvelope,
+  PermissionOverrideEnvelope,
   PinAppointmentInput,
   PinAppointmentResponse,
   PinEnvelope,
@@ -195,11 +199,13 @@ import type {
   SelectionProductListEnvelope,
   SelectionProductOptionEnvelope,
   SelectionProductOptionListEnvelope,
+  SetPermissionOverrideInput,
   SignChangeOrderInput,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
   TeamUserEnvelope,
   TeamUserListEnvelope,
+  TeamUserPermissionsEnvelope,
   TemplateConflictEnvelope,
   TemplateDeleteResult,
   TemplateEnvelope,
@@ -3441,6 +3447,320 @@ export const useRemoveTeamUser = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getRemoveTeamUserMutationOptions(options));
     }
+
+export const getGetTeamUserPermissionsUrl = (userId: string,) => {
+
+
+
+
+  return `/api/team/users/${userId}/permissions`
+}
+
+/**
+ * Manager+ (team.view). Returns each permission with its registry default, any per-user override, and the computed effective value.
+ * @summary View effective permission set for a team member
+ */
+export const getTeamUserPermissions = async (userId: string, options?: RequestInit): Promise<TeamUserPermissionsEnvelope> => {
+
+  return customFetch<TeamUserPermissionsEnvelope>(getGetTeamUserPermissionsUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeamUserPermissionsQueryKey = (userId: string,) => {
+    return [
+    `/api/team/users/${userId}/permissions`
+    ] as const;
+    }
+
+
+export const getGetTeamUserPermissionsQueryOptions = <TData = Awaited<ReturnType<typeof getTeamUserPermissions>>, TError = ErrorType<ErrorEnvelope>>(userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamUserPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeamUserPermissionsQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeamUserPermissions>>> = ({ signal }) => getTeamUserPermissions(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeamUserPermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeamUserPermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof getTeamUserPermissions>>>
+export type GetTeamUserPermissionsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary View effective permission set for a team member
+ */
+
+export function useGetTeamUserPermissions<TData = Awaited<ReturnType<typeof getTeamUserPermissions>>, TError = ErrorType<ErrorEnvelope>>(
+ userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamUserPermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeamUserPermissionsQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetTeamUserPermissionUrl = (userId: string,) => {
+
+
+
+
+  return `/api/team/users/${userId}/permissions`
+}
+
+/**
+ * Manager+ (team.override_permissions).
+ * Managers may only override for their own direct reports.
+ * Admins+ may override for any user they outrank.
+ * Floor and selfOnly permissions are rejected (422).
+ * Must-hold applies to both grant and revoke.
+ * note is mandatory (non-empty).
+ * Writes an audit row inside the same transaction.
+ * @summary Grant or revoke a per-user permission override
+ */
+export const setTeamUserPermission = async (userId: string,
+    setPermissionOverrideInput: SetPermissionOverrideInput, options?: RequestInit): Promise<PermissionOverrideEnvelope> => {
+
+  return customFetch<PermissionOverrideEnvelope>(getSetTeamUserPermissionUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setPermissionOverrideInput)
+  }
+);}
+
+
+
+
+
+export const getSetTeamUserPermissionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTeamUserPermission>>, TError,{userId: string;data: BodyType<SetPermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setTeamUserPermission>>, TError,{userId: string;data: BodyType<SetPermissionOverrideInput>}, TContext> => {
+
+const mutationKey = ['setTeamUserPermission'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setTeamUserPermission>>, {userId: string;data: BodyType<SetPermissionOverrideInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  setTeamUserPermission(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetTeamUserPermissionMutationResult = NonNullable<Awaited<ReturnType<typeof setTeamUserPermission>>>
+    export type SetTeamUserPermissionMutationBody = BodyType<SetPermissionOverrideInput>
+    export type SetTeamUserPermissionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Grant or revoke a per-user permission override
+ */
+export const useSetTeamUserPermission = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTeamUserPermission>>, TError,{userId: string;data: BodyType<SetPermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setTeamUserPermission>>,
+        TError,
+        {userId: string;data: BodyType<SetPermissionOverrideInput>},
+        TContext
+      > => {
+      return useMutation(getSetTeamUserPermissionMutationOptions(options));
+    }
+
+export const getClearTeamUserPermissionUrl = (userId: string,
+    permissionKey: string,) => {
+
+
+
+
+  return `/api/team/users/${userId}/permissions/${permissionKey}`
+}
+
+/**
+ * Manager+ (team.override_permissions). Same authority rules as POST.
+ * A JSON body with 'note' is REQUIRED.
+ * When clearing a revoke whose default would allow the permission,
+ * must-hold applies (removing the revoke is effectively a grant).
+ * Writes an audit row inside the same transaction.
+ * @summary Clear a per-user permission override (restore registry default)
+ */
+export const clearTeamUserPermission = async (userId: string,
+    permissionKey: string,
+    clearPermissionOverrideInput: ClearPermissionOverrideInput, options?: RequestInit): Promise<ClearPermissionOverrideSuccess> => {
+
+  return customFetch<ClearPermissionOverrideSuccess>(getClearTeamUserPermissionUrl(userId,permissionKey),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(clearPermissionOverrideInput)
+  }
+);}
+
+
+
+
+
+export const getClearTeamUserPermissionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearTeamUserPermission>>, TError,{userId: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearTeamUserPermission>>, TError,{userId: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}, TContext> => {
+
+const mutationKey = ['clearTeamUserPermission'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearTeamUserPermission>>, {userId: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}> = (props) => {
+          const {userId,permissionKey,data} = props ?? {};
+
+          return  clearTeamUserPermission(userId,permissionKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearTeamUserPermissionMutationResult = NonNullable<Awaited<ReturnType<typeof clearTeamUserPermission>>>
+    export type ClearTeamUserPermissionMutationBody = BodyType<ClearPermissionOverrideInput>
+    export type ClearTeamUserPermissionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Clear a per-user permission override (restore registry default)
+ */
+export const useClearTeamUserPermission = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearTeamUserPermission>>, TError,{userId: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearTeamUserPermission>>,
+        TError,
+        {userId: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>},
+        TContext
+      > => {
+      return useMutation(getClearTeamUserPermissionMutationOptions(options));
+    }
+
+export const getGetTeamUserPermissionHistoryUrl = (userId: string,) => {
+
+
+
+
+  return `/api/team/users/${userId}/permissions/history`
+}
+
+/**
+ * Manager+ (team.view). Returns all override change entries newest-first.
+ * @summary View the append-only override audit log for a team member
+ */
+export const getTeamUserPermissionHistory = async (userId: string, options?: RequestInit): Promise<PermissionHistoryEnvelope> => {
+
+  return customFetch<PermissionHistoryEnvelope>(getGetTeamUserPermissionHistoryUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeamUserPermissionHistoryQueryKey = (userId: string,) => {
+    return [
+    `/api/team/users/${userId}/permissions/history`
+    ] as const;
+    }
+
+
+export const getGetTeamUserPermissionHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getTeamUserPermissionHistory>>, TError = ErrorType<ErrorEnvelope>>(userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamUserPermissionHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeamUserPermissionHistoryQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeamUserPermissionHistory>>> = ({ signal }) => getTeamUserPermissionHistory(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeamUserPermissionHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeamUserPermissionHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getTeamUserPermissionHistory>>>
+export type GetTeamUserPermissionHistoryQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary View the append-only override audit log for a team member
+ */
+
+export function useGetTeamUserPermissionHistory<TData = Awaited<ReturnType<typeof getTeamUserPermissionHistory>>, TError = ErrorType<ErrorEnvelope>>(
+ userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamUserPermissionHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeamUserPermissionHistoryQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetBlockedPurgeReportUrl = () => {
 
