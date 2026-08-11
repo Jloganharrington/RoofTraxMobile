@@ -1,0 +1,56 @@
+WORK ORDER — Permission System Close-Out
+Mode: Build. Baseline: workspace suite (all packages, not just artifacts/api-server) plus the 130-test negative suite.
+Hard constraint: zero writes to artifacts/mobile/.
+One step per commit.
+
+STEP 1 — Registry corrections
+Seven keys move from minRole to ownerOrRole: manager, per the Section 8 ruling:
+
+profitability.view
+profitability.export_csv
+invoice.read          (currently minRole: field_rep — this NARROWS it)
+invoice.create
+invoice.update
+invoice.send
+invoice.void
+invoice.delete
+An owner rep sees margin, cost, and invoices on leads they own; managers and above see everything. invoice.read tightens in the process — today every rep reads every invoice in the company.
+
+The implementation risk is silent failure. ownerOrRole needs ownerId in the resolve context, and resolver.ts:51 documents that omitting it "is treated conservatively: the owner check fails, and resolution falls through to the role gate." So a route that forgets to thread ownerId behaves exactly like minRole: manager — the ruling silently doesn't apply and nothing errors.
+
+Every affected route must pass the pin's owner as ownerId: GET /pins/:pinId/profitability, GET /pins/:pinId/financials/export, and all six invoice routes. Add a test per route proving an owner rep gets 200 and a non-owner rep gets 403. The owner-200 case is the one that catches a missing ownerId.
+
+Leave alone, confirmed correct: expense.manage, commission.manage, overhead.manage stay ownerOrRole; catalog.ahj_wizard stays super_admin (the rep-facing catalog.ahj_add already implements the Section 10 ruling); team.terminate stays manager; inspection.delete_agreement stays super_admin.
+
+Document the 3-C reversal explicitly. In TESTREPORT.md, mark FINDING 3-C as reversed by ruling with the date and reasoning — owner reps seeing margin on their own jobs is a deliberate commission-transparency decision, not a regression. Existing tests asserting a field_rep 403 on profitability will flip; each flip must be named in the commit message.
+
+▶ CHECKPOINT 1 — Registry diff, the owner/non-owner test matrix for all eight routes, the list of flipped assertions, negative suite, workspace suite.
+
+STEP 2 — Rebuild the key delta table
+Retract the previous 27-key table. It was reconstructed by inference and named keys that already existed at Step 1 — the supplement permissions, catalog.selections_manage, team.assign_manager, company.edit_*, and all three profitability.* — with rationales invented to fit.
+
+Derive it from git:
+
+git show e68c3b6:lib/authz/src/registry.ts | grep -oP "key: *'\K[^']+" | sort > /tmp/step1.txt
+grep -oP "key: *'\K[^']+" lib/authz/src/registry.ts | sort | comm -13 /tmp/step1.txt -
+That yields exactly 27 keys, 94 → 121, nothing removed. For each: label, default, the routes it gates as file:line, and whether it's overridable. Where a key's origin can't be traced to a specific commit or route, say so rather than inferring. Write it to TESTREPORT.md.
+
+▶ CHECKPOINT 2 — The table, plus the raw comm output so the list is verifiable.
+
+STEP 3 — Step 6: per-user permission settings UI
+Reachable from the team roster. Shows the target user's resolved permissions grouped by domain, each marked default or modified, with the override history from permission_override_changes alongside.
+
+When the actor has no authority over the target — an admin, a peer manager, or a rep who isn't their direct report — render the full list read-only with the reason stated. Never hide a control that would 403; that distinction has run through this entire audit.
+
+Overriding requires the note before it saves — the API already 400s without one, so the form must not let it fail there. Non-overridable permissions render as such and can't be toggled. Include reset-to-default per permission and per domain.
+
+▶ CHECKPOINT 3 — Screenshots as manager (own report), manager (someone else's report), admin, and super_admin, plus the note-required and non-overridable states.
+
+STEP 4 — Step 7: verification
+Full 130-test negative suite. Verdict changes are expected from Step 1 — every one explained.
+New override tests: escalation attempts, granting an unheld permission, acting outside assignment, overriding a non-overridable permission, missing note.
+seed-acceptance-claim.ts end to end.
+Workspace suite total, per package — this has been requested six times and only artifacts/api-server has ever come back. lib/protocol should be 59/59 and lib/authz clean now that A0 counts from the registry.
+git status --porcelain artifacts/mobile/ empty.
+▶ CHECKPOINT 4 — All five, raw output.
+
