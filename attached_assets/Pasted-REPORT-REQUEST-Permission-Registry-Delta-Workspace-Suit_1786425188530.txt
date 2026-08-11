@@ -1,0 +1,28 @@
+REPORT REQUEST — Permission Registry Delta & Workspace Suite
+1 — Permissions never ruled on
+PERMISSION_REGISTRY has grown to roughly 121 entries. The catalogue Logan ruled against had 94, and the registry was 95 after Step 1 — so about 27 permissions have been added since, with defaults chosen during the Step 3 route migration rather than by him. They're now grantable through the override system, so they need a ruling before the settings UI ships.
+
+Produce a table of every registry key that was not in the original 94-permission catalogue, grouped by domain, with:
+
+Column	Content
+Key	The permission key
+Label	The human-readable label from the registry
+Default	The full default — minRole, ownerOrRole, department, floor, selfOnly
+Routes	The route(s) it gates, file:line
+Why	One sentence on why that default was chosen during migration
+Overridable	Yes, or No when floor / selfOnly
+Sort so the overridable ones come first — those are the ones needing a decision. Floor and selfOnly entries can't be granted or revoked, so they're informational.
+
+Also call out explicitly any key whose default differs from the domain's ruled pattern. For example, if Section 6 put all contract permissions except contract.void at rep+, and a new contract key landed at manager+, that's a deviation worth surfacing rather than burying in a table. Same for Sections 5, 7, 8, and 9.
+
+Give the exact current count of PERMISSION_KEYS as a number, and the count that existed at the end of Step 1, so the delta is unambiguous.
+
+2 — Workspace suite total
+Every suite total reported since remediation Step 2 has been artifacts/api-server only. Run the full workspace suite and report per package:
+
+Then confirm one thing specifically: lib/protocol/src/__tests__/rules.test.ts — is "applicableSteps drops exactly the unselected surfaces" now passing, following the Step 3 correction that reordered the expectation to match PROTOCOL_STEPS? That test was the standing 800/801 baseline marker for the whole engagement and its status hasn't been confirmed since the fix.
+
+If any suite has a failure, paste the failure output in full rather than summarising it, and say whether it pre-dates this work.
+
+Report only. Change nothing.
+
