@@ -235,6 +235,9 @@ importers:
       memoizee:
         specifier: ^0.4.17
         version: 0.4.17
+      node-cron:
+        specifier: ^4.6.0
+        version: 4.6.0
       nodemailer:
         specifier: ^9.0.3
         version: 9.0.3
@@ -272,6 +275,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.4
+      '@types/node-cron':
+        specifier: ^3.0.11
+        version: 3.0.11
       '@types/supertest':
         specifier: ^6.0.3
         version: 6.0.3
@@ -3319,6 +3325,9 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
+  '@types/node-cron@3.0.11':
+    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
+
   '@types/node@25.9.4':
     resolution: {integrity: sha512-dszCsrKb5U7ZsVZBWiHFklTloVl0mSEnWH/iZXfZUlI4rzCUnsvGmgqfuVRHL54ugE7/wRuxEIXRa2iMZ+BG6g==}
 
@@ -5918,6 +5927,10 @@ packages:
 
   next-tick@1.1.0:
     resolution: {integrity: sha512-CXdUiJembsNjuToQvxayPZF9Vqht7hewsvy2sOWafLvi2awflj9mOC6bHIg50orX8IJvWKY9wYQ/zB2kogPslQ==}
+
+  node-cron@4.6.0:
+    resolution: {integrity: sha512-Si/bzYiKRHOB8/a99T2+SDGN582ONDMSTlJr5oCkT6GtnqPjZ2s10eoQRYkW9ZHwjVxONL+W8Fb+qR0AHMQsdg==}
+    engines: {node: '>=20'}
 
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
@@ -10326,6 +10339,8 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
+  '@types/node-cron@3.0.11': {}
+
   '@types/node@25.9.4':
     dependencies:
       undici-types: 7.24.6
@@ -13422,6 +13437,8 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
 
   next-tick@1.1.0: {}
+
+  node-cron@4.6.0: {}
 
   node-domexception@1.0.0: {}
 

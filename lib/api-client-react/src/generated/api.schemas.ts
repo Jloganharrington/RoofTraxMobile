@@ -5094,6 +5094,47 @@ export interface PortalSignResponse {
   customerSignedAt: string;
 }
 
+export interface BlockedPurgeItem {
+  userId: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  deactivatedAt?: string | null;
+  daysSince: number;
+  blockedReason?: string | null;
+  lastAttemptAt: string;
+}
+
+export interface BlockedPurgeReportEnvelope {
+  report: BlockedPurgeItem[];
+}
+
+export interface InventoryCounts {
+  leads: number;
+  directReports: number;
+  inspections: number;
+  appointments: number;
+}
+
+export interface TerminateTeamUserSuccess {
+  success: boolean;
+  deactivatedAt: string;
+  inventoryRemaining: boolean;
+  counts: InventoryCounts;
+}
+
+export interface ReassignInventoryInput {
+  leadOwnerId?: string | null;
+  reportManagerUserId?: string | null;
+  inspectionAssigneeId?: string | null;
+  appointmentAssigneeId?: string | null;
+}
+
+export interface ReassignInventorySuccess {
+  success: boolean;
+  counts: InventoryCounts;
+}
+
 /**
  * Opaque session token — `Bearer <sid>`.
  */

@@ -29,6 +29,7 @@ import type {
   AttestationEnvelope,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
+  BlockedPurgeReportEnvelope,
   BugReportEnvelope,
   BugReportListEnvelope,
   BulkApplySelectionOptions200,
@@ -174,6 +175,8 @@ import type {
   ProfileEnvelope,
   ProfitabilitySummaryEnvelope,
   PutEstimateInput,
+  ReassignInventoryInput,
+  ReassignInventorySuccess,
   RecentActivityEnvelope,
   RegisterPushTokenInput,
   ReportBrandingEnvelope,
@@ -201,6 +204,7 @@ import type {
   TemplateDeleteResult,
   TemplateEnvelope,
   TemplateListEnvelope,
+  TerminateTeamUserSuccess,
   TestSquareEnvelope,
   TestSquareHitEnvelope,
   UpdateBugReportInput,
@@ -3436,6 +3440,234 @@ export const useRemoveTeamUser = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getRemoveTeamUserMutationOptions(options));
+    }
+
+export const getGetBlockedPurgeReportUrl = () => {
+
+
+
+
+  return `/api/team/users/blocked-purge-report`
+}
+
+/**
+ * Admin+ only (team.view_stats). Returns users with a blocked sweep log entry where the purge has not yet succeeded.
+ * @summary List users whose 30-day PII purge is blocked
+ */
+export const getBlockedPurgeReport = async ( options?: RequestInit): Promise<BlockedPurgeReportEnvelope> => {
+
+  return customFetch<BlockedPurgeReportEnvelope>(getGetBlockedPurgeReportUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBlockedPurgeReportQueryKey = () => {
+    return [
+    `/api/team/users/blocked-purge-report`
+    ] as const;
+    }
+
+
+export const getGetBlockedPurgeReportQueryOptions = <TData = Awaited<ReturnType<typeof getBlockedPurgeReport>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBlockedPurgeReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBlockedPurgeReportQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBlockedPurgeReport>>> = ({ signal }) => getBlockedPurgeReport({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBlockedPurgeReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBlockedPurgeReportQueryResult = NonNullable<Awaited<ReturnType<typeof getBlockedPurgeReport>>>
+export type GetBlockedPurgeReportQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary List users whose 30-day PII purge is blocked
+ */
+
+export function useGetBlockedPurgeReport<TData = Awaited<ReturnType<typeof getBlockedPurgeReport>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBlockedPurgeReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBlockedPurgeReportQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getTerminateTeamUserUrl = (userId: string,) => {
+
+
+
+
+  return `/api/team/users/${userId}/terminate`
+}
+
+/**
+ * Manager+ (team.terminate gate, actorOutranks). Deactivates the user
+ * immediately with no required body. Optional reassignment targets applied
+ * atomically before deactivation. If inventory remains after deactivation,
+ * the user's direct manager (or all admins as fallback) receives a
+ * staff_deactivated email.
+ * @summary Deactivate a team member immediately
+ */
+export const terminateTeamUser = async (userId: string,
+    reassignInventoryInput?: ReassignInventoryInput, options?: RequestInit): Promise<TerminateTeamUserSuccess> => {
+
+  return customFetch<TerminateTeamUserSuccess>(getTerminateTeamUserUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reassignInventoryInput)
+  }
+);}
+
+
+
+
+
+export const getTerminateTeamUserMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof terminateTeamUser>>, TError,{userId: string;data?: BodyType<ReassignInventoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof terminateTeamUser>>, TError,{userId: string;data?: BodyType<ReassignInventoryInput>}, TContext> => {
+
+const mutationKey = ['terminateTeamUser'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof terminateTeamUser>>, {userId: string;data?: BodyType<ReassignInventoryInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  terminateTeamUser(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TerminateTeamUserMutationResult = NonNullable<Awaited<ReturnType<typeof terminateTeamUser>>>
+    export type TerminateTeamUserMutationBody = BodyType<ReassignInventoryInput> | undefined
+    export type TerminateTeamUserMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Deactivate a team member immediately
+ */
+export const useTerminateTeamUser = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof terminateTeamUser>>, TError,{userId: string;data?: BodyType<ReassignInventoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof terminateTeamUser>>,
+        TError,
+        {userId: string;data?: BodyType<ReassignInventoryInput>},
+        TContext
+      > => {
+      return useMutation(getTerminateTeamUserMutationOptions(options));
+    }
+
+export const getReassignTeamUserUrl = (userId: string,) => {
+
+
+
+
+  return `/api/team/users/${userId}/reassign`
+}
+
+/**
+ * Manager+ (team.terminate gate). Works on already-deactivated users. All reassignment targets are optional.
+ * @summary Reassign inventory from a deactivated team member
+ */
+export const reassignTeamUser = async (userId: string,
+    reassignInventoryInput?: ReassignInventoryInput, options?: RequestInit): Promise<ReassignInventorySuccess> => {
+
+  return customFetch<ReassignInventorySuccess>(getReassignTeamUserUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reassignInventoryInput)
+  }
+);}
+
+
+
+
+
+export const getReassignTeamUserMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignTeamUser>>, TError,{userId: string;data?: BodyType<ReassignInventoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reassignTeamUser>>, TError,{userId: string;data?: BodyType<ReassignInventoryInput>}, TContext> => {
+
+const mutationKey = ['reassignTeamUser'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reassignTeamUser>>, {userId: string;data?: BodyType<ReassignInventoryInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  reassignTeamUser(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReassignTeamUserMutationResult = NonNullable<Awaited<ReturnType<typeof reassignTeamUser>>>
+    export type ReassignTeamUserMutationBody = BodyType<ReassignInventoryInput> | undefined
+    export type ReassignTeamUserMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Reassign inventory from a deactivated team member
+ */
+export const useReassignTeamUser = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignTeamUser>>, TError,{userId: string;data?: BodyType<ReassignInventoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reassignTeamUser>>,
+        TError,
+        {userId: string;data?: BodyType<ReassignInventoryInput>},
+        TContext
+      > => {
+      return useMutation(getReassignTeamUserMutationOptions(options));
     }
 
 export const getPingLocationUrl = () => {

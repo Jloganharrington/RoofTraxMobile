@@ -1493,6 +1493,82 @@ export const RemoveTeamUserResponse = zod.object({
 
 
 /**
+ * Admin+ only (team.view_stats). Returns users with a blocked sweep log entry where the purge has not yet succeeded.
+ * @summary List users whose 30-day PII purge is blocked
+ */
+export const GetBlockedPurgeReportResponse = zod.object({
+  "report": zod.array(zod.object({
+  "userId": zod.string(),
+  "email": zod.string().nullish(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "deactivatedAt": zod.coerce.date().nullish(),
+  "daysSince": zod.number(),
+  "blockedReason": zod.string().nullish(),
+  "lastAttemptAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Manager+ (team.terminate gate, actorOutranks). Deactivates the user
+ * immediately with no required body. Optional reassignment targets applied
+ * atomically before deactivation. If inventory remains after deactivation,
+ * the user's direct manager (or all admins as fallback) receives a
+ * staff_deactivated email.
+ * @summary Deactivate a team member immediately
+ */
+export const TerminateTeamUserParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const TerminateTeamUserBody = zod.object({
+  "leadOwnerId": zod.string().nullish(),
+  "reportManagerUserId": zod.string().nullish(),
+  "inspectionAssigneeId": zod.string().nullish(),
+  "appointmentAssigneeId": zod.string().nullish()
+})
+
+export const TerminateTeamUserResponse = zod.object({
+  "success": zod.boolean(),
+  "deactivatedAt": zod.coerce.date(),
+  "inventoryRemaining": zod.boolean(),
+  "counts": zod.object({
+  "leads": zod.number(),
+  "directReports": zod.number(),
+  "inspections": zod.number(),
+  "appointments": zod.number()
+})
+})
+
+
+/**
+ * Manager+ (team.terminate gate). Works on already-deactivated users. All reassignment targets are optional.
+ * @summary Reassign inventory from a deactivated team member
+ */
+export const ReassignTeamUserParams = zod.object({
+  "userId": zod.coerce.string()
+})
+
+export const ReassignTeamUserBody = zod.object({
+  "leadOwnerId": zod.string().nullish(),
+  "reportManagerUserId": zod.string().nullish(),
+  "inspectionAssigneeId": zod.string().nullish(),
+  "appointmentAssigneeId": zod.string().nullish()
+})
+
+export const ReassignTeamUserResponse = zod.object({
+  "success": zod.boolean(),
+  "counts": zod.object({
+  "leads": zod.number(),
+  "directReports": zod.number(),
+  "inspections": zod.number(),
+  "appointments": zod.number()
+})
+})
+
+
+/**
  * @summary Report the current user's latest GPS position
  */
 export const PingLocationBody = zod.object({

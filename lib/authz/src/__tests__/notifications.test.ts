@@ -2,9 +2,9 @@
  * Notification catalog — unit tests.
  *
  * Verifies:
- *   - all 15 types are present in catalog order
- *   - catalogForRole('field_rep') returns the 9 eligible types
- *   - catalogForRole('manager')   returns all 15
+ *   - all 20 types are present in catalog order
+ *   - catalogForRole('field_rep') returns the 10 eligible types
+ *   - catalogForRole('manager')   returns all 20
  *   - manager-only types are absent from the field_rep list
  *   - findNotificationEntry works for known and unknown keys
  *   - supportsDigest=false for MY_WORK and ATTENTION groups
@@ -26,6 +26,10 @@ const MANAGER_ONLY_TYPES = [
   'item_overdue',
   'claim_blocked',
   'lead_needs_stage_review',
+  // Staff lifecycle — deactivation sweep notifications (manager+ only)
+  'staff_deactivated',
+  'staff_inventory_reminder',
+  'staff_escalation_reminder',
 ];
 
 const FIELD_REP_ELIGIBLE_TYPES = [
@@ -42,8 +46,8 @@ const FIELD_REP_ELIGIBLE_TYPES = [
 ];
 
 describe('NOTIFICATION_CATALOG', () => {
-  it('contains exactly 17 entries', () => {
-    expect(NOTIFICATION_CATALOG).toHaveLength(17);
+  it('contains exactly 20 entries', () => {
+    expect(NOTIFICATION_CATALOG).toHaveLength(20);
   });
 
   it('covers the four expected groups', () => {
@@ -97,16 +101,16 @@ describe('catalogForRole', () => {
     }
   });
 
-  it('manager — returns all 17 types', () => {
-    expect(catalogForRole('manager')).toHaveLength(17);
+  it('manager — returns all 20 types', () => {
+    expect(catalogForRole('manager')).toHaveLength(20);
   });
 
-  it('admin — returns all 17 types', () => {
-    expect(catalogForRole('admin')).toHaveLength(17);
+  it('admin — returns all 20 types', () => {
+    expect(catalogForRole('admin')).toHaveLength(20);
   });
 
-  it('super_admin — returns all 17 types', () => {
-    expect(catalogForRole('super_admin')).toHaveLength(17);
+  it('super_admin — returns all 20 types', () => {
+    expect(catalogForRole('super_admin')).toHaveLength(20);
   });
 
   it('manager result includes all field_rep-eligible types', () => {

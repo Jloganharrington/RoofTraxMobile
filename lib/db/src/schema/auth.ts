@@ -127,6 +127,10 @@ export const usersTable = pgTable('users', {
   // when the inventory is empty — this column guards nothing by itself against
   // re-login; the auth middleware check is the enforcement point.
   deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
+  // PII purge timestamp (migration 049). Set by the nightly termination sweep
+  // at 30 days post-deactivation. Non-null means firstName/lastName/email have
+  // been scrubbed; the row is retained for FK integrity and audit purposes.
+  piiPurgedAt: timestamp('pii_purged_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

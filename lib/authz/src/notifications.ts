@@ -27,7 +27,7 @@
 import type { Role } from './vocabulary';
 
 export type NotificationGroup  = 'money' | 'claims' | 'my_work' | 'attention';
-export type RecipientRule      = 'assignee' | 'lead_owner' | 'managers' | 'lead_owner_and_managers';
+export type RecipientRule      = 'assignee' | 'lead_owner' | 'managers' | 'lead_owner_and_managers' | 'direct_manager_or_admins';
 export type NotificationFrequency = 'immediate' | 'daily' | 'weekly' | 'off';
 
 export const NOTIFICATION_FREQUENCIES: readonly NotificationFrequency[] = [
@@ -227,6 +227,38 @@ export const NOTIFICATION_CATALOG: readonly NotificationEntry[] = [
     defaultEmail:   true,
     defaultPush:    true,
     supportsDigest: true,
+  },
+
+  // ── STAFF LIFECYCLE (deactivation sweep) ───────────────────────────────────
+  {
+    type:           'staff_deactivated',
+    label:          'Team Member Deactivated with Outstanding Inventory',
+    group:          'attention',
+    minRole:        'manager',
+    recipientRule:  'direct_manager_or_admins',
+    defaultEmail:   true,
+    defaultPush:    false,
+    supportsDigest: false,
+  },
+  {
+    type:           'staff_inventory_reminder',
+    label:          'Deactivated Team Member Still Has Unassigned Items',
+    group:          'attention',
+    minRole:        'manager',
+    recipientRule:  'direct_manager_or_admins',
+    defaultEmail:   true,
+    defaultPush:    false,
+    supportsDigest: false,
+  },
+  {
+    type:           'staff_escalation_reminder',
+    label:          'Deactivated Team Member Escalation (21-Day)',
+    group:          'attention',
+    minRole:        'manager',
+    recipientRule:  'managers',
+    defaultEmail:   true,
+    defaultPush:    false,
+    supportsDigest: false,
   },
 ];
 

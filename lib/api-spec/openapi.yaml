@@ -1527,6 +1527,140 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /team/users/blocked-purge-report:
+    get:
+      tags: [Admin]
+      operationId: getBlockedPurgeReport
+      summary: List users whose 30-day PII purge is blocked
+      description: Admin+ only (team.view_stats). Returns users with a blocked sweep log entry where the purge has not yet succeeded.
+      responses:
+        "200":
+          description: Blocked purge report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockedPurgeReportEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Admin role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /team/users/{userId}/terminate:
+    post:
+      tags: [Admin]
+      operationId: terminateTeamUser
+      summary: Deactivate a team member immediately
+      description: |
+        Manager+ (team.terminate gate, actorOutranks). Deactivates the user
+        immediately with no required body. Optional reassignment targets applied
+        atomically before deactivation. If inventory remains after deactivation,
+        the user's direct manager (or all admins as fallback) receives a
+        staff_deactivated email.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReassignInventoryInput"
+      responses:
+        "200":
+          description: User deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminateTeamUserSuccess"
+        "400":
+          description: Invalid request or assignee.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: User is already deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /team/users/{userId}/reassign:
+    post:
+      tags: [Admin]
+      operationId: reassignTeamUser
+      summary: Reassign inventory from a deactivated team member
+      description: Manager+ (team.terminate gate). Works on already-deactivated users. All reassignment targets are optional.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReassignInventoryInput"
+      responses:
+        "200":
+          description: Reassignment applied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReassignInventorySuccess"
+        "400":
+          description: Invalid assignee.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not permitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /location/ping:
     post:
       tags: [Location]
@@ -14174,3 +14308,60 @@ components:
       properties:
         status:           { type: string }
         customerSignedAt: { type: string, format: date-time }
+
+    BlockedPurgeItem:
+      type: object
+      required: [userId, daysSince, lastAttemptAt]
+      properties:
+        userId:        { type: string }
+        email:         { type: string, nullable: true }
+        firstName:     { type: string, nullable: true }
+        lastName:      { type: string, nullable: true }
+        deactivatedAt: { type: string, format: date-time, nullable: true }
+        daysSince:     { type: integer }
+        blockedReason: { type: string, nullable: true }
+        lastAttemptAt: { type: string, format: date-time }
+
+    BlockedPurgeReportEnvelope:
+      type: object
+      required: [report]
+      properties:
+        report:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockedPurgeItem"
+
+    TerminateTeamUserSuccess:
+      type: object
+      required: [success, deactivatedAt, counts, inventoryRemaining]
+      properties:
+        success:            { type: boolean }
+        deactivatedAt:      { type: string, format: date-time }
+        inventoryRemaining: { type: boolean }
+        counts:
+          $ref: "#/components/schemas/InventoryCounts"
+
+    ReassignInventoryInput:
+      type: object
+      properties:
+        leadOwnerId:           { type: string, nullable: true }
+        reportManagerUserId:   { type: string, nullable: true }
+        inspectionAssigneeId:  { type: string, nullable: true }
+        appointmentAssigneeId: { type: string, nullable: true }
+
+    InventoryCounts:
+      type: object
+      required: [leads, directReports, inspections, appointments]
+      properties:
+        leads:         { type: integer }
+        directReports: { type: integer }
+        inspections:   { type: integer }
+        appointments:  { type: integer }
+
+    ReassignInventorySuccess:
+      type: object
+      required: [success, counts]
+      properties:
+        success: { type: boolean }
+        counts:
+          $ref: "#/components/schemas/InventoryCounts"

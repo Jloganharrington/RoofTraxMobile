@@ -1211,3 +1211,46 @@ export const pinFinancialChangesTable = pgTable('pin_financial_changes', {
 
 export type PinFinancialChange = typeof pinFinancialChangesTable.$inferSelect;
 export type InsertPinFinancialChange = typeof pinFinancialChangesTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Deactivation Sweep Log (migration 050)
+// Written by the nightly termination sweep for every deactivated user it
+// touches. One row per action attempted per run. action_taken values:
+//   alert_7d     — manager/admin alerted at 7 days
+//   alert_14d    — manager/admin alerted at 14 days
+//   escalate_21d — all admins escalated at 21 days
+//   purge_30d    — PII scrubbed successfully at 30 days
+//   blocked      — purge attempted but failed; blockedReason carries the error
+// ---------------------------------------------------------------------------
+
+export const SWEEP_ACTIONS = [
+  'alert_7d',
+  'alert_14d',
+  'escalate_21d',
+  'purge_30d',
+  'blocked',
+] as const;
+export type SweepAction = (typeof SWEEP_ACTIONS)[number];
+
+export const deactivationSweepLogTable = pgTable('deactivation_sweep_log', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar('user_id')
+    .notNull()
+    .references(() => usersTable.id),
+  companyId: varchar('company_id')
+    .notNull()
+    .references(() => companiesTable.id),
+  deactivatedAt: timestamp('deactivated_at', { withTimezone: true }).notNull(),
+  daysSince: integer('days_since').notNull(),
+  actionTaken: varchar('action_taken', { enum: SWEEP_ACTIONS }).notNull(),
+  blockedReason: text('blocked_reason'),
+  detail: jsonb('detail'),
+  processedAt: timestamp('processed_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type DeactivationSweepLog = typeof deactivationSweepLogTable.$inferSelect;
+export type InsertDeactivationSweepLog = typeof deactivationSweepLogTable.$inferInsert;

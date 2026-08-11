@@ -2,14 +2,17 @@
  * Team roster, org-stats, manager assignment, and per-user permission override routes.
  *
  * Permission keys (from lib/authz registry):
- *   team.view_stats         — admin+    — GET /admin/stats           (PD-1)
- *   team.view               — manager+  — GET /team/users
- *   team.edit               — manager+  — PATCH /team/users/:userId  (+ actorOutranks via canSetRoleDeptSpec)
- *   team.delete             — manager+  — DELETE /team/users/:userId (+ actorOutranks via canSetRoleDeptSpec)
- *   team.assign_manager     — admin+    — PATCH /team/users/:userId/manager    (Step 4)
- *   team.view               — manager+  — GET /team/users/:userId/permissions  (Step 5)
- *   team.override_permissions — admin+  — POST /team/users/:userId/permissions (Step 5)
- *   team.override_permissions — admin+  — DELETE /team/users/:userId/permissions/:permissionKey (Step 5)
+ *   team.view_stats           — admin+    — GET /admin/stats                                   (PD-1)
+ *   team.view_stats           — admin+    — GET /team/users/blocked-purge-report
+ *   team.view                 — manager+  — GET /team/users
+ *   team.edit                 — manager+  — PATCH /team/users/:userId  (+ actorOutranks via canSetRoleDeptSpec)
+ *   team.delete               — super_admin — DELETE /team/users/:userId (+ actorOutranks via canSetRoleDeptSpec)
+ *   team.terminate            — manager+  — POST /team/users/:userId/terminate (+ actorOutranks)
+ *   team.terminate            — manager+  — POST /team/users/:userId/reassign  (+ actorOutranks)
+ *   team.assign_manager       — admin+    — PATCH /team/users/:userId/manager    (Step 4)
+ *   team.view                 — manager+  — GET /team/users/:userId/permissions  (Step 5)
+ *   team.override_permissions — admin+    — POST /team/users/:userId/permissions (Step 5)
+ *   team.override_permissions — admin+    — DELETE /team/users/:userId/permissions/:permissionKey (Step 5)
  */
 import {
   GetAdminStatsResponse,
@@ -22,6 +25,7 @@ import {
   db,
   changeOrdersTable,
   completionCertificatesTable,
+  deactivationSweepLogTable,
   inspectionsTable,
   pinsTable,
   sessionsTable,
@@ -29,6 +33,7 @@ import {
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
+import { notify } from '../lib/notify';
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
@@ -129,6 +134,71 @@ router.get('/team/users', requirePermission('team.view'), async (req: Request, r
       deactivatedAt:      row.deactivatedAt ?? null,
     })),
   });
+});
+
+// ── GET /team/users/blocked-purge-report — team.view_stats (admin+) ─────────
+// Returns users whose 30-day PII purge is blocked (latest sweep log entry is
+// 'blocked' and no subsequent 'purge_30d' entry exists).
+// IMPORTANT: registered before the /:userId wildcard routes so Express does not
+// treat "blocked-purge-report" as a userId parameter.
+
+router.get('/team/users/blocked-purge-report', requirePermission('team.view_stats'), async (req: Request, res: Response) => {
+  const { companyId } = req.actorCtx!;
+
+  // Get all user IDs for this company that have been successfully purged.
+  const purgedRows = await db
+    .select({ userId: deactivationSweepLogTable.userId })
+    .from(deactivationSweepLogTable)
+    .where(
+      and(
+        eq(deactivationSweepLogTable.companyId, companyId),
+        eq(deactivationSweepLogTable.actionTaken, 'purge_30d'),
+      ),
+    );
+  const purgedSet = new Set(purgedRows.map((r) => r.userId));
+
+  // All blocked entries for this company, most-recent first.
+  const blockedRows = await db
+    .select({
+      userId:        deactivationSweepLogTable.userId,
+      daysSince:     deactivationSweepLogTable.daysSince,
+      blockedReason: deactivationSweepLogTable.blockedReason,
+      lastAttemptAt: deactivationSweepLogTable.processedAt,
+      email:         usersTable.email,
+      firstName:     usersTable.firstName,
+      lastName:      usersTable.lastName,
+      deactivatedAt: usersTable.deactivatedAt,
+    })
+    .from(deactivationSweepLogTable)
+    .innerJoin(usersTable, eq(usersTable.id, deactivationSweepLogTable.userId))
+    .where(
+      and(
+        eq(deactivationSweepLogTable.companyId, companyId),
+        eq(deactivationSweepLogTable.actionTaken, 'blocked'),
+      ),
+    )
+    .orderBy(sql`${deactivationSweepLogTable.processedAt} DESC`);
+
+  // Deduplicate to latest entry per user; exclude already-purged users.
+  const seen = new Set<string>();
+  const report = [];
+  for (const row of blockedRows) {
+    if (purgedSet.has(row.userId)) continue;
+    if (seen.has(row.userId)) continue;
+    seen.add(row.userId);
+    report.push({
+      userId:        row.userId,
+      email:         row.email          ?? null,
+      firstName:     row.firstName      ?? null,
+      lastName:      row.lastName       ?? null,
+      deactivatedAt: row.deactivatedAt  ?? null,
+      daysSince:     row.daysSince,
+      blockedReason: row.blockedReason  ?? null,
+      lastAttemptAt: row.lastAttemptAt,
+    });
+  }
+
+  res.json({ report });
 });
 
 // ── PATCH /team/users/:userId — team.edit (manager+, + actorOutranks) ─────────
@@ -622,19 +692,20 @@ router.get('/team/users/:userId/inventory', requirePermission('team.view'), asyn
   });
 });
 
-// ── POST /team/users/:userId/terminate — team.edit (manager+, actorOutranks) ──
-// Atomic: reassign all held records then deactivate. Fails as a unit if any
-// required reassignment target is missing or invalid. Sessions are purged after
-// commit; deactivated_at is the authoritative auth gate.
+// ── POST /team/users/:userId/terminate — team.terminate (manager+, actorOutranks) ──
+// Deactivates immediately. Reassignment targets in the body are applied
+// optimistically (if count > 0 for that category and a target is given,
+// reassign; otherwise leave unassigned). Sessions are purged after commit.
+// If inventory remains after deactivation, the terminated user's direct
+// manager (or all admins as fallback) receives a staff_deactivated email.
 //
-// Body: {
-//   leadOwnerId?:          string | null   // required if leads > 0
-//   reportManagerUserId?:  string | null   // required if directReports > 0
-//   inspectionAssigneeId?: string | null   // required if active inspections > 0
-//   appointmentAssigneeId?:string | null   // required if scheduled appointments > 0
-// }
+// Body (all optional):
+//   leadOwnerId?:           string — new owner for leads
+//   reportManagerUserId?:   string — new manager for direct reports
+//   inspectionAssigneeId?:  string — new assignee for active inspections
+//   appointmentAssigneeId?: string — new assignee for scheduled appointments
 
-router.post('/team/users/:userId/terminate', requirePermission('team.edit'), async (req: Request, res: Response) => {
+router.post('/team/users/:userId/terminate', requirePermission('team.terminate'), async (req: Request, res: Response) => {
   const { companyId, role: actorRole, actorId } = req.actorCtx!;
   const userId = req.params.userId as string;
 
@@ -663,16 +734,16 @@ router.post('/team/users/:userId/terminate', requirePermission('team.edit'), asy
     return;
   }
 
-  // Parse reassignment targets from body.
-  const body = (req.body ?? {}) as Record<string, string | null>;
-  const leadOwnerId          = body.leadOwnerId          ?? null;
-  const reportManagerUserId  = body.reportManagerUserId  ?? null;
-  const inspectionAssigneeId = body.inspectionAssigneeId ?? null;
-  const appointmentAssigneeId= body.appointmentAssigneeId?? null;
+  // Parse reassignment targets from body (all optional).
+  const body                  = (req.body ?? {}) as Record<string, string | null>;
+  const leadOwnerId           = body.leadOwnerId           ?? null;
+  const reportManagerUserId   = body.reportManagerUserId   ?? null;
+  const inspectionAssigneeId  = body.inspectionAssigneeId  ?? null;
+  const appointmentAssigneeId = body.appointmentAssigneeId ?? null;
 
   const ACTIVE_STATUSES = ['scheduled', 'capturing', 'validating'] as const;
 
-  // Load counts to validate completeness of the reassignment body.
+  // Load current inventory counts.
   const [lc, drc, ic, ac] = await Promise.all([
     db.select({ n: sql<number>`count(*)` }).from(pinsTable)
       .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId))),
@@ -684,32 +755,23 @@ router.post('/team/users/:userId/terminate', requirePermission('team.edit'), asy
       .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId), eq(pinsTable.appointmentStatus, 'scheduled'))),
   ]);
   const counts = {
-    leads:        Number(lc[0]?.n  ?? 0),
-    directReports:Number(drc[0]?.n ?? 0),
-    inspections:  Number(ic[0]?.n  ?? 0),
-    appointments: Number(ac[0]?.n  ?? 0),
+    leads:         Number(lc[0]?.n  ?? 0),
+    directReports: Number(drc[0]?.n ?? 0),
+    inspections:   Number(ic[0]?.n  ?? 0),
+    appointments:  Number(ac[0]?.n  ?? 0),
   };
 
-  const missing: string[] = [];
-  if (counts.leads > 0        && !leadOwnerId)           missing.push(`leadOwnerId (${counts.leads} leads)`);
-  if (counts.directReports > 0&& !reportManagerUserId)   missing.push(`reportManagerUserId (${counts.directReports} direct reports)`);
-  if (counts.inspections > 0  && !inspectionAssigneeId)  missing.push(`inspectionAssigneeId (${counts.inspections} active inspections)`);
-  if (counts.appointments > 0 && !appointmentAssigneeId) missing.push(`appointmentAssigneeId (${counts.appointments} scheduled appointments)`);
-  if (missing.length > 0) {
-    res.status(422).json({ error: 'Reassignment required before termination.', missing, counts });
-    return;
-  }
-
-  // Validate all new assignees: same company, not deactivated, not the terminated user.
+  // Validate provided assignees: same company, not deactivated, not the terminated user.
   const uniqueAssigneeIds = [...new Set(
-    [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId].filter((id): id is string => !!id && id !== userId)
+    [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId]
+      .filter((id): id is string => !!id && id !== userId),
   )];
   if (uniqueAssigneeIds.length > 0) {
     const valid = await db
       .select({ id: usersTable.id })
       .from(usersTable)
       .where(and(inArray(usersTable.id, uniqueAssigneeIds), eq(usersTable.companyId, companyId), isNull(usersTable.deactivatedAt)));
-    const validSet = new Set(valid.map(r => r.id));
+    const validSet = new Set(valid.map((r) => r.id));
     const allProvided = [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId].filter(Boolean) as string[];
     for (const id of allProvided) {
       if (id === userId) { res.status(400).json({ error: 'Cannot reassign to the user being terminated.' }); return; }
@@ -717,7 +779,7 @@ router.post('/team/users/:userId/terminate', requirePermission('team.edit'), asy
     }
   }
 
-  // Atomic: reassign + deactivate.
+  // Atomic: apply optional partial reassignment + deactivate.
   await db.transaction(async (tx) => {
     if (leadOwnerId && counts.leads > 0) {
       await tx.update(pinsTable)
@@ -752,7 +814,160 @@ router.post('/team/users/:userId/terminate', requirePermission('team.edit'), asy
     // Non-fatal.
   }
 
-  res.json({ success: true, deactivatedAt: new Date().toISOString(), counts });
+  // Compute remaining inventory after optional partial reassignment.
+  const remainingLeads         = leadOwnerId          ? 0 : counts.leads;
+  const remainingDirectReports = reportManagerUserId  ? 0 : counts.directReports;
+  const remainingInspections   = inspectionAssigneeId ? 0 : counts.inspections;
+  const remainingAppointments  = appointmentAssigneeId ? 0 : counts.appointments;
+  const inventoryRemaining =
+    remainingLeads + remainingDirectReports + remainingInspections + remainingAppointments > 0;
+
+  if (inventoryRemaining) {
+    void notify({
+      type:         'staff_deactivated',
+      companyId,
+      targetUserId: userId,
+      actorUserId:  actorId,
+      payload: {
+        remainingLeads,
+        remainingDirectReports,
+        remainingInspections,
+        remainingAppointments,
+      },
+    });
+  }
+
+  res.json({ success: true, deactivatedAt: new Date().toISOString(), counts, inventoryRemaining });
+});
+
+// ── POST /team/users/:userId/reassign — team.terminate (manager+, actorOutranks) ──
+// Reassigns inventory from an already-deactivated user. Works regardless of
+// whether the user was just deactivated or has been deactivated for weeks.
+// All reassignment targets are optional — only provided categories are moved.
+//
+// Body (all optional):
+//   leadOwnerId?:           string — new owner for leads
+//   reportManagerUserId?:   string — new manager for direct reports
+//   inspectionAssigneeId?:  string — new assignee for active inspections
+//   appointmentAssigneeId?: string — new assignee for scheduled appointments
+
+router.post('/team/users/:userId/reassign', requirePermission('team.terminate'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole, actorId } = req.actorCtx!;
+  const userId = req.params.userId as string;
+
+  if (userId === actorId) {
+    res.status(400).json({ error: 'Cannot reassign yourself.' });
+    return;
+  }
+
+  const [targetUser] = await db
+    .select({ id: usersTable.id, deactivatedAt: usersTable.deactivatedAt })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
+  if (!targetUser) { res.status(404).json({ error: 'User not found' }); return; }
+  if (targetUser.deactivatedAt === null) {
+    res.status(409).json({ error: 'User is not deactivated. Use POST /team/users/:userId/terminate to deactivate first.' });
+    return;
+  }
+
+  const [targetProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, userId));
+  const targetRole = (targetProfile?.role ?? 'field_rep') as Parameters<typeof canSetRoleDeptSpec>[0];
+  if (!canSetRoleDeptSpec(actorRole, actorId, userId, targetRole)) {
+    res.status(403).json({ error: 'Not permitted to reassign this user\'s inventory.' });
+    return;
+  }
+
+  // Parse reassignment targets from body (all optional).
+  const body                  = (req.body ?? {}) as Record<string, string | null>;
+  const leadOwnerId           = body.leadOwnerId           ?? null;
+  const reportManagerUserId   = body.reportManagerUserId   ?? null;
+  const inspectionAssigneeId  = body.inspectionAssigneeId  ?? null;
+  const appointmentAssigneeId = body.appointmentAssigneeId ?? null;
+
+  const ACTIVE_STATUSES = ['scheduled', 'capturing', 'validating'] as const;
+
+  // Validate provided assignees: same company, not deactivated, not the target user.
+  const uniqueAssigneeIds = [...new Set(
+    [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId]
+      .filter((id): id is string => !!id && id !== userId),
+  )];
+  if (uniqueAssigneeIds.length > 0) {
+    const valid = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(inArray(usersTable.id, uniqueAssigneeIds), eq(usersTable.companyId, companyId), isNull(usersTable.deactivatedAt)));
+    const validSet = new Set(valid.map((r) => r.id));
+    const allProvided = [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId].filter(Boolean) as string[];
+    for (const id of allProvided) {
+      if (id === userId) { res.status(400).json({ error: 'Cannot reassign to the user being reassigned.' }); return; }
+      if (!validSet.has(id)) { res.status(400).json({ error: `Assignee ${id} not found or is deactivated.` }); return; }
+    }
+  }
+
+  // Load current inventory counts.
+  const [lc, drc, ic, ac] = await Promise.all([
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId))),
+    db.select({ n: sql<number>`count(*)` }).from(userProfilesTable)
+      .where(eq(userProfilesTable.managerUserId, userId)),
+    db.select({ n: sql<number>`count(*)` }).from(inspectionsTable)
+      .where(and(eq(inspectionsTable.inspectorUserId, userId), eq(inspectionsTable.companyId, companyId), inArray(inspectionsTable.status, [...ACTIVE_STATUSES]))),
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId), eq(pinsTable.appointmentStatus, 'scheduled'))),
+  ]);
+  const countsBefore = {
+    leads:         Number(lc[0]?.n  ?? 0),
+    directReports: Number(drc[0]?.n ?? 0),
+    inspections:   Number(ic[0]?.n  ?? 0),
+    appointments:  Number(ac[0]?.n  ?? 0),
+  };
+
+  // Apply partial reassignments atomically.
+  await db.transaction(async (tx) => {
+    if (leadOwnerId && countsBefore.leads > 0) {
+      await tx.update(pinsTable)
+        .set({ userId: leadOwnerId, updatedAt: new Date() })
+        .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId)));
+    }
+    if (reportManagerUserId && countsBefore.directReports > 0) {
+      await tx.update(userProfilesTable)
+        .set({ managerUserId: reportManagerUserId, updatedAt: new Date() })
+        .where(eq(userProfilesTable.managerUserId, userId));
+    }
+    if (inspectionAssigneeId && countsBefore.inspections > 0) {
+      await tx.update(inspectionsTable)
+        .set({ inspectorUserId: inspectionAssigneeId })
+        .where(and(eq(inspectionsTable.inspectorUserId, userId), eq(inspectionsTable.companyId, companyId), inArray(inspectionsTable.status, [...ACTIVE_STATUSES])));
+    }
+    if (appointmentAssigneeId && countsBefore.appointments > 0) {
+      await tx.update(pinsTable)
+        .set({ appointmentAssignedTo: appointmentAssigneeId, updatedAt: new Date() })
+        .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId), eq(pinsTable.appointmentStatus, 'scheduled')));
+    }
+  });
+
+  // Return updated inventory counts.
+  const [lc2, drc2, ic2, ac2] = await Promise.all([
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId))),
+    db.select({ n: sql<number>`count(*)` }).from(userProfilesTable)
+      .where(eq(userProfilesTable.managerUserId, userId)),
+    db.select({ n: sql<number>`count(*)` }).from(inspectionsTable)
+      .where(and(eq(inspectionsTable.inspectorUserId, userId), eq(inspectionsTable.companyId, companyId), inArray(inspectionsTable.status, [...ACTIVE_STATUSES]))),
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId), eq(pinsTable.appointmentStatus, 'scheduled'))),
+  ]);
+  const countsAfter = {
+    leads:         Number(lc2[0]?.n  ?? 0),
+    directReports: Number(drc2[0]?.n ?? 0),
+    inspections:   Number(ic2[0]?.n  ?? 0),
+    appointments:  Number(ac2[0]?.n  ?? 0),
+  };
+
+  res.json({ success: true, counts: countsAfter });
 });
 
 export default router;

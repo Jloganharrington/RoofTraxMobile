@@ -14,7 +14,7 @@
  */
 
 import nodemailer from 'nodemailer';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import {
   db,
   inspectionsTable,
@@ -43,6 +43,11 @@ export interface NotifyParams {
   inspectionId?: string;
   /** This user is removed from the recipient list (no self-notifications). */
   actorUserId?:  string;
+  /**
+   * Subject user for rules that need to look up a user's manager
+   * (e.g. direct_manager_or_admins). Required for staff lifecycle notifications.
+   */
+  targetUserId?: string;
   /** Extra context surfaced in the email body. */
   payload?:      Record<string, unknown>;
 }
@@ -55,7 +60,7 @@ export interface NotifyParams {
  */
 export async function notify(params: NotifyParams): Promise<void> {
   try {
-    const { type, companyId, pinId, inspectionId, actorUserId, payload } = params;
+    const { type, companyId, pinId, inspectionId, actorUserId, targetUserId, payload } = params;
 
     // 1. Look up catalog entry — unknown types are silently ignored.
     const entry = findNotificationEntry(type);
@@ -70,6 +75,7 @@ export async function notify(params: NotifyParams): Promise<void> {
       companyId,
       pinId,
       inspectionId,
+      targetUserId,
     });
 
     // 3. Remove the actor — no self-notifications.
@@ -104,11 +110,13 @@ async function resolveRecipients({
   companyId,
   pinId,
   inspectionId,
+  targetUserId,
 }: {
   recipientRule: string;
   companyId:     string;
   pinId?:        string;
   inspectionId?: string;
+  targetUserId?: string;
 }): Promise<string[]> {
   const ids = new Set<string>();
 
@@ -152,6 +160,51 @@ async function resolveRecipients({
         ),
       );
     for (const m of mgrs) ids.add(m.userId);
+  }
+
+  if (recipientRule === 'direct_manager_or_admins') {
+    // Look up the terminated/target user's direct manager. If set and active,
+    // notify only them. Otherwise fall back to all admins in the company.
+    let resolvedToManager = false;
+    if (targetUserId) {
+      const [profile] = await db
+        .select({ managerUserId: userProfilesTable.managerUserId })
+        .from(userProfilesTable)
+        .where(eq(userProfilesTable.userId, targetUserId));
+
+      if (profile?.managerUserId) {
+        const [mgr] = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.id, profile.managerUserId),
+              eq(usersTable.companyId, companyId),
+              isNull(usersTable.deactivatedAt),
+            ),
+          );
+        if (mgr) {
+          ids.add(mgr.id);
+          resolvedToManager = true;
+        }
+      }
+    }
+
+    if (!resolvedToManager) {
+      // Fall back to all admins in the company.
+      const admins = await db
+        .select({ userId: userProfilesTable.userId })
+        .from(userProfilesTable)
+        .innerJoin(usersTable, eq(usersTable.id, userProfilesTable.userId))
+        .where(
+          and(
+            eq(usersTable.companyId, companyId),
+            inArray(userProfilesTable.role, ['admin', 'super_admin']),
+            isNull(usersTable.deactivatedAt),
+          ),
+        );
+      for (const a of admins) ids.add(a.userId);
+    }
   }
 
   return [...ids];

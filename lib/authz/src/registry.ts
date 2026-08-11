@@ -176,12 +176,13 @@ export const PERMISSION_KEYS = [
   // storage (2)
   'storage.read_private',
   'storage.upload',
-  // team (7)
+  // team (8)
   'team.assign_manager',
   'team.delete',
   'team.edit',
   'team.invite',
   'team.override_permissions',
+  'team.terminate',
   'team.view',
   'team.view_stats',
 
@@ -817,7 +818,7 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     default: { kind: 'minRole', minRole: 'admin' },
   },
 
-  // ── team (7) ──────────────────────────────────────────────────────────────
+  // ── team (8) ──────────────────────────────────────────────────────────────
   {
     key:    'team.assign_manager',
     domain: 'team',
@@ -832,7 +833,7 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     default: { kind: 'minRole', minRole: 'super_admin' },
     note:   'Elevated from manager → super_admin: hard-delete is irreversible and must ' +
             'only be reachable after a full ownership inventory is confirmed empty. ' +
-            'Normal termination uses POST /team/users/:id/terminate (team.edit gate).',
+            'Normal termination uses POST /team/users/:id/terminate (team.terminate gate).',
   },
   {
     key:    'team.edit',
@@ -840,6 +841,15 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
     label:  "Edit a team member's role, department, or workflow assignment",
     default: { kind: 'minRole', minRole: 'manager' },
     note:   'Rank enforcement (actorOutranks) applied in addition to role gate.',
+  },
+  {
+    key:    'team.terminate',
+    domain: 'team',
+    label:  'Deactivate a team member and optionally reassign their inventory',
+    default: { kind: 'minRole', minRole: 'manager' },
+    note:   'Rank enforcement (actorOutranks) applied in addition to role gate. ' +
+            'Deactivation is immediate; reassignment is optional at call time and ' +
+            'available separately via POST /team/users/:id/reassign.',
   },
   {
     key:    'team.invite',
@@ -1093,6 +1103,6 @@ export function permissionsForDomain(domain: Domain): readonly PermissionEntry[]
 // ── Compile-time count assertion ──────────────────────────────────────────────
 // This will produce a TS error if the registry diverges from 120.
 
-type AssertExactly120 = (typeof PERMISSION_KEYS)['length'] extends 120 ? true : never;
+type AssertExactly121 = (typeof PERMISSION_KEYS)['length'] extends 121 ? true : never;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _assert120: AssertExactly120 = true;
+const _assert121: AssertExactly121 = true;
