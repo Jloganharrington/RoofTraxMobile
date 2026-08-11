@@ -3727,7 +3727,10 @@ cd artifacts/api-server && npx vitest run
 | `lib/protocol` | 2 | 59 | ✅ all pass |
 | `lib/authz` | 4 | 847 | ✅ all pass |
 | `artifacts/api-server` | 54 | 1088 | ✅ all pass |
-| **Grand total** | **60** | **1994** | ✅ |
+| `artifacts/rooftrax-web` | 1 | 5 | ✅ all pass |
+| **Grand total** | **61** | **1999** | ✅ |
+
+_`artifacts/rooftrax-web` was omitted from the original Checkpoint 4 report; 5 tests in `src/__tests__/RootRoute.test.tsx` (RootRoute auth-split suite, vitest run). Added in post-merge correction._
 
 ---
 
@@ -3753,6 +3756,9 @@ Zero mobile files modified during this permission close-out. The mobile artifact
 | lib/protocol vitest run | ✅ 59 / 59 pass |
 | lib/authz vitest run | ✅ 847 / 847 pass |
 | artifacts/api-server vitest run | ✅ 1088 / 1088 pass |
+| artifacts/rooftrax-web vitest run | ✅ 5 / 5 pass _(added post-merge)_ |
 | Mobile files modified | ✅ 0 (empty git status) |
 
 Permission system close-out complete. All five evidence items confirmed.
+
+_Post-merge correction (2026-08-11): `artifacts/rooftrax-web` suite (5 tests) was omitted from the original Checkpoint 4 report. Grand total corrected from 1994 → 1999 tests / 60 → 61 files._

@@ -1,5 +1,7 @@
 # Memory Index
 
+- [Schema baseline and migration pattern](baseline-migration-pattern.md) — new tables need a numbered SQL migration; `drizzle-kit push` can't run on merge; 000_baseline.sql verified zero-diff against live.
+
 - [Claim status history guard](claim-status-history-not-null.md) — to_status IS nullable (null = cleared); do NOT add !== null guard or it swallows approved→null audits.
 
 - [createSession call signature](createSession-call-signature.md) — takes one SessionData object; positional args silently store a string → all requests 401.

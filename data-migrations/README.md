@@ -1,6 +1,36 @@
 # One-time data migrations
 
-## Applying schema changes
+## Adding a new table or structural DDL change
+
+> **Rule: every new table, view, enum, or structural column addition requires a
+> numbered migration file in this directory.**
+
+`drizzle-kit push` is no longer run automatically on merge (see below). That
+means schema objects added in `lib/db/src/schema/` will **not** reach the live
+database unless a corresponding numbered SQL migration is also created and
+applied manually.
+
+**How to add a new table:**
+
+1. Define the table in `lib/db/src/schema/` as usual.
+2. Create `data-migrations/NNN_<feature>.sql` with idempotent DDL:
+   ```sql
+   CREATE TABLE IF NOT EXISTS "my_new_table" ( ... );
+   CREATE INDEX IF NOT EXISTS my_idx ON my_new_table ( ... );
+   ```
+3. Add the script to the `## Scripts` list in this README.
+4. Apply it to dev: `psql "$DATABASE_URL" -f data-migrations/NNN_<feature>.sql`
+5. Apply it to production via the Replit Database tool
+   (`environment: "production"`) before or alongside your merge.
+
+The reference example is `052_stage_transitions.sql`: the `stage_transitions`
+table and four `pins` columns existed in the Drizzle schema but were never
+pushed. Every pipeline-advance route and test failed until the numbered migration
+was written and applied manually.
+
+---
+
+## Applying schema changes (drizzle-kit push)
 
 Schema changes live in `lib/db/src/schema/` and are applied manually via
 `drizzle-kit push`. **This step is not run automatically on merge** — it was
