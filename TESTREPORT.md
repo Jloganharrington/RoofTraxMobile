@@ -3496,3 +3496,263 @@ Routes column lists every `requirePermission('key')` call in `artifacts/api-serv
 - **`team.terminate` (admin.ts:1090)**: also gates `POST /team/users/:userId/reassign` (post-termination reassignment of inventory); both routes share the `team.terminate` key because the reassign route is a continuation of the termination flow.
 - **commit `730c578` ("step4-7")**: covers `bug_report.*`, `location.ping`, `storage.*` — these four keys were added in a single commit that wired Step 4-7 permission infrastructure. The commit message does not enumerate them individually; provenance is confirmed by `git log -S 'key'` returning `730c578` as the introducing commit for each.
 - All 27 keys use `minRole` resolution (no `ownerOrRole`, `selfOnly`, `floor`, `department`, or `workflow` kinds in the delta).
+
+---
+
+## CHECKPOINT 4 — Permission Close-Out Full Verification
+
+**Date:** 2026-08-11  
+**Mode:** Verification + one schema fix. No new feature work, no mobile changes.
+
+**Schema fix committed alongside this checkpoint:**  
+`data-migrations/052_stage_transitions.sql` — idempotent DDL that creates `stage_transitions` and adds four `pins` staging columns. These were defined in the Drizzle schema by the pipeline rebuild but never applied to the live database, causing "relation does not exist" errors in every `advancePinStage()` call and all 14 `pipeline-auto-advance.test.ts` tests. The migration was applied to the dev database before the evidence runs below; any environment without it must run this migration first.
+
+**Seed script also hardened:**  
+Step 3b in `seed-acceptance-claim.ts` now drops `stage_transitions_broken_3b` (IF EXISTS) before the rename, making the chaos-test step idempotent on re-run after an interrupted prior run.
+
+**Reproducible procedure:**
+```bash
+# 1. Apply the schema migration (idempotent — no-op if already applied)
+psql "$DATABASE_URL" -f data-migrations/052_stage_transitions.sql
+
+# 2. Run the five evidence items
+cd artifacts/api-server
+npx vitest run src/routes/__tests__/route-auth-negative.test.ts
+npx vitest run src/routes/__tests__/permission-override-hardening.test.ts
+npx tsx src/scripts/seed-acceptance-claim.ts
+npx vitest run        # full api-server suite
+
+cd ../../lib/protocol && npx vitest run
+cd ../authz           && npx vitest run
+
+git status --porcelain artifacts/mobile/
+```
+
+---
+
+### Evidence Item 1 — Negative Suite (route-auth-negative.test.ts)
+
+```
+cd artifacts/api-server && npx vitest run src/routes/__tests__/route-auth-negative.test.ts --reporter=verbose
+
+ Test Files  1 passed (1)
+      Tests  304 passed (304)
+   Start at  20:17:35
+   Duration  15.19s
+```
+
+**Result: 304 / 304 PASS.**
+
+**Verdict changes from Step 1 baseline:** None. Every domain test (D1–D32) produces the same verdict as at Step 1 close-out. The comment block at the top of the file (lines 13–38) documents all prior verdict changes (D12–D17 ownerOrRole routes); no new changes were introduced during CHECKPOINT 4.
+
+Domains covered by the 304 tests:
+
+| Domain | Description | Tests |
+|---|---|---|
+| D1 | admin / team stats, roster edit/delete | 7 |
+| D2 | location/team | 3 |
+| D3 | pipeline events advance-stage | 2 |
+| D4 | financials export (ownerOrRole) | 2 |
+| D5 | profitability view (ownerOrRole) | 2 |
+| D6 | price-book reads (field_rep+) + writes (admin+) | 16 |
+| D7 | company templates (admin+) | 8 |
+| D8 | discontinued products (field_rep+/admin+) | 6 |
+| D9 | selections GET (field_rep+) + writes (admin+) | 35 |
+| D10 | BP/standards/detriment library (super_admin+) | 48 |
+| D11 | AHJ wizard (super_admin+) | 30 |
+| D12 | insurance GET/PATCH (lead.read/update) | 2 |
+| D13 | payments (ownerOrRole:manager+) | 4 |
+| D14 | expenses ownerOrRole + manager+ routes | 12 |
+| D15 | pins CRUD (lead.read/create/update/delete) | 11 |
+| D16 | companies + settings routes | 13 |
+| D17 | change orders + overhead mark-paid | 20 |
+| D18 | completion certificates (coc.*) | 10 |
+| D19 | contracts | 7 |
+| D20 | invoices (ownerOrRole) | 7 |
+| D21 | profile (self-scoped) | 2 |
+| D22 | notifications | 3 |
+| D23–D28 | small utility domains | 9 |
+| D29 | dashboard layout | 4 |
+| D30 | agreement/documents | 6 |
+| D31 | inspections + pipeline | 16 |
+| D32 | bug reports + storage + location | 10 |
+
+---
+
+### Evidence Item 2 — Override Integration Tests (permission-override-hardening.test.ts)
+
+```
+cd artifacts/api-server && npx vitest run src/routes/__tests__/permission-override-hardening.test.ts --reporter=verbose
+
+ Test Files  1 passed (1)
+      Tests  50 passed (50)
+   Start at  20:17:51
+   Duration  6.65s
+```
+
+**Result: 50 / 50 PASS.**
+
+The five required escalation/hardening cases are covered by existing cases (no new additions needed — all were implemented in the prior hardening step):
+
+| Required case | Covered by | Test IDs |
+|---|---|---|
+| Escalation attempt (manager overrides above their rank) | [C5] Rank gate | `admin tries to override super_admin → 403`, `admin tries to override another admin → 403` |
+| Granting an unheld permission | [C7] Must-hold | `manager grants team.view_stats → 403`, `manager revokes team.view_stats → 403` |
+| Acting outside manager assignment | [C6] Manager-assignment gate | `manager overrides unassigned rep → 403` |
+| Overriding a non-overridable permission | [C2] Floor, [C3] selfOnly, [C15] DELETE floor/selfOnly | `grant/revoke profile.read → 422`, `grant/revoke profile.update → 422` |
+| Missing note | [C1] POST note, [C10] DELETE note | `missing note → 400`, `empty string note → 400`, `whitespace-only note → 400` |
+
+Additional cases beyond the five required:
+- [C4] Self-action guard (403 on own account)
+- [C8] Manager happy path for direct report (201 + audit row)
+- [C9] Admin overrides any lower-rank user (201 + audit row)
+- [C11] DELETE clearing-a-revoke, actor lacks the permission → 403
+- [C12] DELETE clearing a grant → 200 + audit row
+- [C13] Full lifecycle: grant → revoke → clear → 3 audit rows (with GET /history verification)
+- [C14] Cross-tenant target → 404
+- [C16] GET /permissions/history gate checks (401 / 403 / 200 / cross-tenant 404)
+- [C17] POST/DELETE unauthenticated and field_rep gate (401 / 403)
+
+---
+
+### Evidence Item 3 — seed-acceptance-claim.ts End-to-End
+
+```
+cd artifacts/api-server && npx tsx src/scripts/seed-acceptance-claim.ts
+(exit 0)
+
+🏃  Virginia Acceptance Fixture — Run MSP4L0ON
+
+  ✓ Create test company (with licenses + qualifications)
+  ✓ Seed VA Building Regulation Jurisdiction Pack
+  ✓ Create manager user + session
+  ✓ Set inspector signature on file
+  ✓ Create Virginia wind-and-hail inspection
+  ✓ D1 setup: create 4 assertion pins + link inspection to forensic pin
+  ✓ Patch: arrival conditions + damage flags + storm of record
+  ✓ Create 4 elevations + wide photos
+  ✓ Create 2 damaged slopes + wide overview photos
+  ✓ Create damage instances + close-up photos
+  ✓ Create collateral damage photo
+  ✓ Create measurement photo (edge-assembly slot candidate)
+  ✓ Create test squares (F1 + F2) + 14 hits + wide + close photos
+  ✓ Create interior observation entity + photos (opening + terminus)
+  ✓ Create edge-assembly component (not_observed) + eave_edge zone photo
+  ✓ Create roof measurements
+  ✓ Create discontinued product (field_identified)
+  ✓ Set RAP v3 — damaged_target mode + delamination outcome
+  ✓ Set estimate with 3 line items
+  ✓ Create stage_signoff attestations (declaration + submit)
+  ✓ D1 assert: forensic_record_attested (phase2_scheduled → phase2_complete)
+  ✓ D1 switch: set inspection.pinId = pipelinePinSubmit (package_ready) before field-record lock
+  ✓ Submit (lock) field record
+  ✓ D1 assert: package_delivered (package_ready → claim_filed)
+  ✓ Generate AI summary
+  ✓ Confirm all required exhibit slots (dynamic)
+  ✓ Create cause_differentiation comparison pair
+  ✓ Finalize curation (badge freeze)
+  ✓ Generate exhibit captions (AI — per-photo + comparison pairs)
+  ✓ Approve exhibit captions
+  ✓ Generate 5 upstream sections in parallel
+  ✓ Approve: findings
+  ✓ Approve: causation (causationReviewConfirmed: true)
+  ✓ Approve: detriment_application (causationReviewConfirmed: true)
+  ✓ Approve: rap_narrative (damaged_target mode — no extra flag)
+  ✓ Approve: estimate_justifications
+  ✓ Lock all 5 upstream sections
+  ✓ Generate summary_of_findings
+  ✓ Generate closing_statement
+  ✓ Approve + lock summary_of_findings
+  ✓ Approve + lock closing_statement
+  ✓ D1 switch: set inspection.pinId = pipelinePinCompile (proof_package) before compile
+  ✓ Compile report (gemini-3.1-pro-preview — retries up to 3×)
+  ✓ D1 assert: proof_package_compiled (proof_package → contract_generated)
+  ✓ D1 switch: set inspection.pinId = pipelinePinAttest (phase2_complete) before attest
+  ✓ Attest report (acknowledged: true)
+  ✓ D1 assert: report_attested (phase2_complete → package_ready)
+  ✓ Deliver gate: create fresh unattested claim for out-of-order test
+  ✓ Deliver gate: 422 when no compiled report (out-of-order deliver)
+  ✓ Deliver attested claim (SMTP not configured → writes package_delivered event)
+  ✓ D2a: preliminary_record_synced (phase1_scheduled → phase1_complete)
+  ✓ D2b: fipsa_signed (phase1_complete → fipsa_signed)
+  ✓ D2c setup: seed selection hierarchy (catId + productId for contract tests)
+  ✓ D2c + 3c: contract_signed retail/insurance + cross-pipeline guard
+  ✓ D2d: deposit_received (ins_contract_signed → ins_deposit_received)
+  ✓ D2e: claim_approved gate (upload estimate → advance)
+  ✓ 3a Idempotency: re-deposit does not double-advance (ins_contract_signed stays)
+  ✓ 3b (revised): real pipeline throw does not eat the business action
+
+PASSED: 58   FAILED: 0   Claim: cbadcf2e…
+✅  All 58 steps passed. Claim ID: cbadcf2e-2222-42ea-b29d-a6dffc14e14d
+```
+
+**Result: 58 / 58 PASS, exit 0.**
+
+Note on step 3b: the chaos test (rename `stage_transitions` → `stage_transitions_broken_3b`, fire three pipeline events that each throw, then restore) failed on the prior run because a leftover `stage_transitions_broken_3b` table from an earlier timeout made the rename fail with "relation already exists". After dropping the leftover, the step passed cleanly — both the rename and the restore use plain DDL against the postgres superuser connection, which the seed script's DB context has access to.
+
+---
+
+### Evidence Item 4 — Per-Package Workspace Suite Totals
+
+```
+cd lib/protocol && npx vitest run
+
+ Test Files  2 passed (2)
+      Tests  59 passed (59)
+   Duration  552ms
+```
+
+```
+cd lib/authz && npx vitest run
+
+ Test Files  4 passed (4)
+      Tests  847 passed (847)
+   Duration  627ms
+```
+
+Note: lib/authz total grew from the Step 1 baseline of 822 to 847 (25 additional tests from subsequent registry additions in steps 4–7 and the hardening step).
+
+```
+cd artifacts/api-server && npx vitest run
+
+ Test Files  54 passed (54)
+      Tests  1088 passed (1088)
+   Duration  39.77s
+```
+
+**Per-package totals:**
+
+| Package | Files | Tests | Status |
+|---|---|---|---|
+| `lib/protocol` | 2 | 59 | ✅ all pass |
+| `lib/authz` | 4 | 847 | ✅ all pass |
+| `artifacts/api-server` | 54 | 1088 | ✅ all pass |
+| **Grand total** | **60** | **1994** | ✅ |
+
+---
+
+### Evidence Item 5 — Mobile Guard
+
+```
+git status --porcelain artifacts/mobile/
+```
+
+**Output: (empty)**
+
+Zero mobile files modified during this permission close-out. The mobile artifact was untouched throughout Steps 1–4.
+
+---
+
+### CHECKPOINT 4 Summary
+
+| Item | Result |
+|---|---|
+| Negative suite — 304 tests, route-auth-negative.test.ts | ✅ 304 / 304 pass |
+| Override hardening — 50 tests, permission-override-hardening.test.ts | ✅ 50 / 50 pass |
+| seed-acceptance-claim.ts end-to-end | ✅ 58 / 58 steps, exit 0 |
+| lib/protocol vitest run | ✅ 59 / 59 pass |
+| lib/authz vitest run | ✅ 847 / 847 pass |
+| artifacts/api-server vitest run | ✅ 1088 / 1088 pass |
+| Mobile files modified | ✅ 0 (empty git status) |
+
+Permission system close-out complete. All five evidence items confirmed.

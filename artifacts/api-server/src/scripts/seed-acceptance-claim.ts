@@ -1649,6 +1649,8 @@ async function main(): Promise<void> {
     const b3AccessCode = b3Row!.accessCode!;
 
     // ── Inject real failure: rename stage_transitions ───────────────────────
+    // Clean up any leftover from a prior interrupted run (idempotent guard).
+    await db.execute(sql`DROP TABLE IF EXISTS stage_transitions_broken_3b`);
     await db.execute(sql`ALTER TABLE stage_transitions RENAME TO stage_transitions_broken_3b`);
 
     try {

@@ -74,3 +74,10 @@ psql "$DATABASE_URL" -f data-migrations/001_backfill_object_ownership.sql
   estimate_provided, followup_required, contract_sent) to their equivalent new
   keys (appt_needed, appt_complete, proposal_provided, follow_up,
   contract_pending) so they reappear on the Retail Pipeline board.
+- **052_stage_transitions.sql** — creates the `stage_transitions` table and
+  adds four staging columns to `pins` (`stage_entered_at`, `loop_next_action_at`,
+  `loss_reason`, `source_pipeline`). These were defined in the Drizzle schema
+  by the pipeline rebuild but never applied to the live database. Without this,
+  `advancePinStage()` and `emitPipelineEvent()` fail with "relation does not
+  exist", breaking every pipeline-advance route and all
+  `pipeline-auto-advance.test.ts` tests. All statements are idempotent.
