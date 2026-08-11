@@ -7,3 +7,10 @@ uri = "file://docs/system-audit-2026-08-05.md"
 type = "text"
 title = "RoofTrax System Audit — 2026-08-05"
 description = "Full 9-area platform audit: Data Foundation, Libraries, Generation Pipeline, Photo Curation, Compile/Attest/Deliver, Pipelines, Claim Hub/Stepper, Field App, Navigation. Classifications: BUILT-VERIFIED · BUILT-UNWIRED · PARTIAL · MISSING · DRIFT · STALE · UNVERIFIED."
+
+[[outputs]]
+id = "Izio7R6nh00dzfnXDRtp8"
+uri = "file://content-library.md"
+type = "text"
+title = "RoofTrax Content Library"
+description = "All price book items, boilerplate documents, standards, detriment library entries, and AHJ packs — latest version of each record."
