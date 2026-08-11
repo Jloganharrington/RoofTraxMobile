@@ -20,12 +20,16 @@ import {
 } from '@workspace/api-zod';
 import {
   db,
+  changeOrdersTable,
+  completionCertificatesTable,
+  inspectionsTable,
   pinsTable,
+  sessionsTable,
   userPermissionOverridesTable,
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { PERMISSION_KEYS, PERMISSION_REGISTRY, canSetRoleDeptSpec, canSetWorkflow, resolve } from '@workspace/authz';
@@ -77,8 +81,13 @@ router.get('/admin/stats', requirePermission('team.view_stats'), async (req: Req
 
 // ── GET /team/users — team.view (manager+) ────────────────────────────────────
 
+// ── GET /team/users — team.view (manager+) ────────────────────────────────────
+// ?showDeactivated=true includes soft-deleted users (greyed in UI).
+// Default excludes them: deactivated users don't appear in assignment pickers.
+
 router.get('/team/users', requirePermission('team.view'), async (req: Request, res: Response) => {
   const { companyId } = req.actorCtx!;
+  const showDeactivated = req.query.showDeactivated === 'true';
 
   const rows = await db
     .select({
@@ -88,6 +97,7 @@ router.get('/team/users', requirePermission('team.view'), async (req: Request, r
       lastName:           usersTable.lastName,
       profileImageUrl:    usersTable.profileImageUrl,
       createdAt:          usersTable.createdAt,
+      deactivatedAt:      usersTable.deactivatedAt,
       role:               userProfilesTable.role,
       workflowAssignment: userProfilesTable.workflowAssignment,
       department:         userProfilesTable.department,
@@ -95,24 +105,30 @@ router.get('/team/users', requirePermission('team.view'), async (req: Request, r
     })
     .from(usersTable)
     .leftJoin(userProfilesTable, eq(userProfilesTable.userId, usersTable.id))
-    .where(eq(usersTable.companyId, companyId));
+    .where(
+      and(
+        eq(usersTable.companyId, companyId),
+        showDeactivated ? undefined : isNull(usersTable.deactivatedAt),
+      ),
+    );
 
-  res.json(
-    ListTeamUsersResponse.parse({
-      users: rows.map((row) => ({
-        id:                 row.id,
-        email:              row.email,
-        firstName:          row.firstName,
-        lastName:           row.lastName,
-        profileImageUrl:    row.profileImageUrl,
-        role:               row.role ?? 'field_rep',
-        workflowAssignment: row.workflowAssignment ?? 'insurance_retail',
-        department:         row.department ?? 'canvasser',
-        pinCount:           Number(row.pinCount ?? 0),
-        joinedAt:           row.createdAt,
-      })),
-    }),
-  );
+  // ListTeamUsersResponse.parse() strips unknown fields, so deactivatedAt
+  // must be included after the schema-validated core — return raw JSON.
+  res.json({
+    users: rows.map((row) => ({
+      id:                 row.id,
+      email:              row.email ?? null,
+      firstName:          row.firstName ?? null,
+      lastName:           row.lastName ?? null,
+      profileImageUrl:    row.profileImageUrl ?? null,
+      role:               row.role ?? 'field_rep',
+      workflowAssignment: row.workflowAssignment ?? 'insurance_retail',
+      department:         row.department ?? 'canvasser',
+      pinCount:           Number(row.pinCount ?? 0),
+      joinedAt:           row.createdAt,
+      deactivatedAt:      row.deactivatedAt ?? null,
+    })),
+  });
 });
 
 // ── PATCH /team/users/:userId — team.edit (manager+, + actorOutranks) ─────────
@@ -204,14 +220,22 @@ router.patch('/team/users/:userId', requirePermission('team.edit'), async (req: 
   );
 });
 
-// ── DELETE /team/users/:userId — team.delete (manager+, + actorOutranks) ──────
+// ── DELETE /team/users/:userId — team.delete (super_admin only) ────────────────
+// Hard delete. Only reachable when the ownership inventory is fully empty —
+// all leads reassigned, no inspections, no appointments, no signed documents.
+// Normal termination path is POST /team/users/:userId/terminate (team.edit).
 
 router.delete('/team/users/:userId', requirePermission('team.delete'), async (req: Request, res: Response) => {
-  const { companyId, role: actorRole } = req.actorCtx!;
+  const { companyId, actorId } = req.actorCtx!;
   const userId = req.params.userId as string;
 
+  if (userId === actorId) {
+    res.status(400).json({ error: 'Cannot delete your own account.' });
+    return;
+  }
+
   const [targetUser] = await db
-    .select()
+    .select({ id: usersTable.id })
     .from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
   if (!targetUser) {
@@ -219,14 +243,33 @@ router.delete('/team/users/:userId', requirePermission('team.delete'), async (re
     return;
   }
 
-  const [targetProfile] = await db
-    .select()
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, userId));
-  const targetRole = targetProfile?.role ?? 'field_rep';
+  // All inventory categories must be zero before hard delete is allowed.
+  const [leadCount, drCount, inspCount, apptCount, cocCount] = await Promise.all([
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId))),
+    db.select({ n: sql<number>`count(*)` }).from(userProfilesTable)
+      .where(eq(userProfilesTable.managerUserId, userId)),
+    db.select({ n: sql<number>`count(*)` }).from(inspectionsTable)
+      .where(and(eq(inspectionsTable.inspectorUserId, userId), eq(inspectionsTable.companyId, companyId))),
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId))),
+    db.select({ n: sql<number>`count(*)` }).from(completionCertificatesTable)
+      .where(eq(completionCertificatesTable.signedByUserId, userId)),
+  ]);
 
-  if (!canSetRoleDeptSpec(actorRole, req.actorCtx!.actorId, userId, targetRole)) {
-    res.status(403).json({ error: 'Not permitted to remove this user' });
+  const inventory = {
+    leads:           Number(leadCount[0]?.n   ?? 0),
+    directReports:   Number(drCount[0]?.n     ?? 0),
+    inspections:     Number(inspCount[0]?.n   ?? 0),
+    appointments:    Number(apptCount[0]?.n   ?? 0),
+    signedDocuments: Number(cocCount[0]?.n    ?? 0),
+  };
+  const totalHeld = Object.values(inventory).reduce((a, b) => a + b, 0);
+  if (totalHeld > 0) {
+    res.status(409).json({
+      error: 'User still holds records. Use POST /team/users/:id/terminate to reassign first.',
+      inventory,
+    });
     return;
   }
 
@@ -490,6 +533,226 @@ router.delete('/team/users/:userId/permissions/:permissionKey', requirePermissio
     );
 
   res.json({ success: true });
+});
+
+// ── GET /team/users/:userId/inventory — team.view (manager+) ─────────────────
+// Returns what a user holds: leads, direct reports, active inspections,
+// scheduled appointments, open change orders, and signed documents.
+// The manager reviews this before calling POST …/terminate.
+
+router.get('/team/users/:userId/inventory', requirePermission('team.view'), async (req: Request, res: Response) => {
+  const { companyId } = req.actorCtx!;
+  const userId = req.params.userId as string;
+
+  const [targetUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
+  if (!targetUser) { res.status(404).json({ error: 'User not found' }); return; }
+
+  const ACTIVE_STATUSES = ['scheduled', 'capturing', 'validating'] as const;
+
+  const [leads, directReports, inspections, appointments, openCOs, cocsRows, cosRows] =
+    await Promise.all([
+      db.select({ id: pinsTable.id, address: pinsTable.address, pipelineStage: pinsTable.pipelineStage, createdAt: pinsTable.createdAt })
+        .from(pinsTable)
+        .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId))),
+
+      db.select({ id: usersTable.id, firstName: usersTable.firstName, lastName: usersTable.lastName, email: usersTable.email, role: userProfilesTable.role })
+        .from(userProfilesTable)
+        .innerJoin(usersTable, eq(usersTable.id, userProfilesTable.userId))
+        .where(eq(userProfilesTable.managerUserId, userId)),
+
+      db.select({ id: inspectionsTable.id, address: inspectionsTable.address, status: inspectionsTable.status, createdAt: inspectionsTable.createdAt })
+        .from(inspectionsTable)
+        .where(and(
+          eq(inspectionsTable.inspectorUserId, userId),
+          eq(inspectionsTable.companyId, companyId),
+          inArray(inspectionsTable.status, [...ACTIVE_STATUSES]),
+        )),
+
+      db.select({ id: pinsTable.id, address: pinsTable.address, appointmentAt: pinsTable.appointmentAt, appointmentStatus: pinsTable.appointmentStatus })
+        .from(pinsTable)
+        .where(and(
+          eq(pinsTable.appointmentAssignedTo, userId),
+          eq(pinsTable.companyId, companyId),
+          eq(pinsTable.appointmentStatus, 'scheduled'),
+        )),
+
+      db.select({ id: changeOrdersTable.id, pinId: changeOrdersTable.pinId, amountCents: changeOrdersTable.amountCents, status: changeOrdersTable.status, createdAt: changeOrdersTable.createdAt })
+        .from(changeOrdersTable)
+        .where(and(
+          eq(changeOrdersTable.createdByUserId, userId),
+          eq(changeOrdersTable.status, 'pending'),
+          isNull(changeOrdersTable.voidedAt),
+          eq(changeOrdersTable.companyId, companyId),
+        )),
+
+      db.select({ id: completionCertificatesTable.id, pinId: completionCertificatesTable.pinId, signedAt: completionCertificatesTable.signedAt })
+        .from(completionCertificatesTable)
+        .where(and(
+          eq(completionCertificatesTable.signedByUserId, userId),
+          eq(completionCertificatesTable.companyId, companyId),
+          isNotNull(completionCertificatesTable.signedAt),
+        )),
+
+      db.select({ id: changeOrdersTable.id, pinId: changeOrdersTable.pinId, signedAt: changeOrdersTable.repSignedAt })
+        .from(changeOrdersTable)
+        .where(and(
+          eq(changeOrdersTable.createdByUserId, userId),
+          isNotNull(changeOrdersTable.repSignedAt),
+          isNull(changeOrdersTable.voidedAt),
+          eq(changeOrdersTable.companyId, companyId),
+        )),
+    ]);
+
+  const signedDocuments = [
+    ...cocsRows.map(r => ({ type: 'coc'          as const, id: r.id, pinId: r.pinId,    signedAt: r.signedAt })),
+    ...cosRows .map(r => ({ type: 'change_order'  as const, id: r.id, pinId: r.pinId,    signedAt: r.signedAt })),
+  ];
+
+  res.json({
+    userId,
+    leads:            { count: leads.length,           items: leads },
+    directReports:    { count: directReports.length,   items: directReports },
+    inspections:      { count: inspections.length,     items: inspections },
+    appointments:     { count: appointments.length,    items: appointments },
+    openChangeOrders: { count: openCOs.length,         items: openCOs },
+    signedDocuments:  { count: signedDocuments.length, items: signedDocuments },
+  });
+});
+
+// ── POST /team/users/:userId/terminate — team.edit (manager+, actorOutranks) ──
+// Atomic: reassign all held records then deactivate. Fails as a unit if any
+// required reassignment target is missing or invalid. Sessions are purged after
+// commit; deactivated_at is the authoritative auth gate.
+//
+// Body: {
+//   leadOwnerId?:          string | null   // required if leads > 0
+//   reportManagerUserId?:  string | null   // required if directReports > 0
+//   inspectionAssigneeId?: string | null   // required if active inspections > 0
+//   appointmentAssigneeId?:string | null   // required if scheduled appointments > 0
+// }
+
+router.post('/team/users/:userId/terminate', requirePermission('team.edit'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole, actorId } = req.actorCtx!;
+  const userId = req.params.userId as string;
+
+  if (userId === actorId) {
+    res.status(400).json({ error: 'Cannot terminate your own account.' });
+    return;
+  }
+
+  const [targetUser] = await db
+    .select({ id: usersTable.id, deactivatedAt: usersTable.deactivatedAt })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.companyId, companyId)));
+  if (!targetUser) { res.status(404).json({ error: 'User not found' }); return; }
+  if (targetUser.deactivatedAt !== null) {
+    res.status(409).json({ error: 'User is already deactivated.' });
+    return;
+  }
+
+  const [targetProfile] = await db
+    .select({ role: userProfilesTable.role })
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, userId));
+  const targetRole = (targetProfile?.role ?? 'field_rep') as Parameters<typeof canSetRoleDeptSpec>[0];
+  if (!canSetRoleDeptSpec(actorRole, actorId, userId, targetRole)) {
+    res.status(403).json({ error: 'Not permitted to terminate this user.' });
+    return;
+  }
+
+  // Parse reassignment targets from body.
+  const body = (req.body ?? {}) as Record<string, string | null>;
+  const leadOwnerId          = body.leadOwnerId          ?? null;
+  const reportManagerUserId  = body.reportManagerUserId  ?? null;
+  const inspectionAssigneeId = body.inspectionAssigneeId ?? null;
+  const appointmentAssigneeId= body.appointmentAssigneeId?? null;
+
+  const ACTIVE_STATUSES = ['scheduled', 'capturing', 'validating'] as const;
+
+  // Load counts to validate completeness of the reassignment body.
+  const [lc, drc, ic, ac] = await Promise.all([
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId))),
+    db.select({ n: sql<number>`count(*)` }).from(userProfilesTable)
+      .where(eq(userProfilesTable.managerUserId, userId)),
+    db.select({ n: sql<number>`count(*)` }).from(inspectionsTable)
+      .where(and(eq(inspectionsTable.inspectorUserId, userId), eq(inspectionsTable.companyId, companyId), inArray(inspectionsTable.status, [...ACTIVE_STATUSES]))),
+    db.select({ n: sql<number>`count(*)` }).from(pinsTable)
+      .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId), eq(pinsTable.appointmentStatus, 'scheduled'))),
+  ]);
+  const counts = {
+    leads:        Number(lc[0]?.n  ?? 0),
+    directReports:Number(drc[0]?.n ?? 0),
+    inspections:  Number(ic[0]?.n  ?? 0),
+    appointments: Number(ac[0]?.n  ?? 0),
+  };
+
+  const missing: string[] = [];
+  if (counts.leads > 0        && !leadOwnerId)           missing.push(`leadOwnerId (${counts.leads} leads)`);
+  if (counts.directReports > 0&& !reportManagerUserId)   missing.push(`reportManagerUserId (${counts.directReports} direct reports)`);
+  if (counts.inspections > 0  && !inspectionAssigneeId)  missing.push(`inspectionAssigneeId (${counts.inspections} active inspections)`);
+  if (counts.appointments > 0 && !appointmentAssigneeId) missing.push(`appointmentAssigneeId (${counts.appointments} scheduled appointments)`);
+  if (missing.length > 0) {
+    res.status(422).json({ error: 'Reassignment required before termination.', missing, counts });
+    return;
+  }
+
+  // Validate all new assignees: same company, not deactivated, not the terminated user.
+  const uniqueAssigneeIds = [...new Set(
+    [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId].filter((id): id is string => !!id && id !== userId)
+  )];
+  if (uniqueAssigneeIds.length > 0) {
+    const valid = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(inArray(usersTable.id, uniqueAssigneeIds), eq(usersTable.companyId, companyId), isNull(usersTable.deactivatedAt)));
+    const validSet = new Set(valid.map(r => r.id));
+    const allProvided = [leadOwnerId, reportManagerUserId, inspectionAssigneeId, appointmentAssigneeId].filter(Boolean) as string[];
+    for (const id of allProvided) {
+      if (id === userId) { res.status(400).json({ error: 'Cannot reassign to the user being terminated.' }); return; }
+      if (!validSet.has(id)) { res.status(400).json({ error: `Assignee ${id} not found or is deactivated.` }); return; }
+    }
+  }
+
+  // Atomic: reassign + deactivate.
+  await db.transaction(async (tx) => {
+    if (leadOwnerId && counts.leads > 0) {
+      await tx.update(pinsTable)
+        .set({ userId: leadOwnerId, updatedAt: new Date() })
+        .where(and(eq(pinsTable.userId, userId), eq(pinsTable.companyId, companyId)));
+    }
+    if (reportManagerUserId && counts.directReports > 0) {
+      await tx.update(userProfilesTable)
+        .set({ managerUserId: reportManagerUserId, updatedAt: new Date() })
+        .where(eq(userProfilesTable.managerUserId, userId));
+    }
+    if (inspectionAssigneeId && counts.inspections > 0) {
+      await tx.update(inspectionsTable)
+        .set({ inspectorUserId: inspectionAssigneeId })
+        .where(and(eq(inspectionsTable.inspectorUserId, userId), eq(inspectionsTable.companyId, companyId), inArray(inspectionsTable.status, [...ACTIVE_STATUSES])));
+    }
+    if (appointmentAssigneeId && counts.appointments > 0) {
+      await tx.update(pinsTable)
+        .set({ appointmentAssignedTo: appointmentAssigneeId, updatedAt: new Date() })
+        .where(and(eq(pinsTable.appointmentAssignedTo, userId), eq(pinsTable.companyId, companyId), eq(pinsTable.appointmentStatus, 'scheduled')));
+    }
+    await tx.update(usersTable)
+      .set({ deactivatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+  });
+
+  // Revoke sessions. Best-effort: deactivated_at is the authoritative gate so
+  // any surviving session token gets 401 on the next request.
+  try {
+    await db.execute(sql`DELETE FROM sessions WHERE sess->'user'->>'id' = ${userId}`);
+  } catch {
+    // Non-fatal.
+  }
+
+  res.json({ success: true, deactivatedAt: new Date().toISOString(), counts });
 });
 
 export default router;

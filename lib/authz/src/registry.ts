@@ -828,9 +828,11 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
   {
     key:    'team.delete',
     domain: 'team',
-    label:  'Remove a team member from the company',
-    default: { kind: 'minRole', minRole: 'manager' },
-    note:   'Rank enforcement (actorOutranks) applied in addition to role gate.',
+    label:  'Hard-delete a team member (super_admin only, requires empty inventory)',
+    default: { kind: 'minRole', minRole: 'super_admin' },
+    note:   'Elevated from manager → super_admin: hard-delete is irreversible and must ' +
+            'only be reachable after a full ownership inventory is confirmed empty. ' +
+            'Normal termination uses POST /team/users/:id/terminate (team.edit gate).',
   },
   {
     key:    'team.edit',

@@ -145,9 +145,14 @@ export const pinsTable = pgTable('pins', {
   id: varchar('id')
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  // RESTRICT (not CASCADE) — deleting a user who owns leads must be blocked.
+  // Use POST /team/users/:id/terminate to reassign leads first, then the
+  // super_admin hard-delete route will find no referencing rows and succeed.
+  // This prevents any code path (API bug, script, psql) from silently
+  // destroying job history by deleting a user row.
   userId: varchar('user_id')
     .notNull()
-    .references(() => usersTable.id, { onDelete: 'cascade' }),
+    .references(() => usersTable.id, { onDelete: 'restrict' }),
   // Denormalized from the creating user's company so every pin query can
   // be scoped by companyId without joining through users.
   companyId: varchar('company_id')

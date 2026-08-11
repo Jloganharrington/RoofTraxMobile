@@ -104,7 +104,9 @@ describe('multi-tenant data isolation', () => {
 
   afterAll(async () => {
     const userIds = [companyA.adminId, companyA.repId, companyB.adminId, companyB.repId];
-    // Deleting users cascades to profiles/pins/locations (onDelete: cascade).
+    // pins.user_id is ON DELETE RESTRICT (changed from CASCADE in migration 048).
+    // Delete pins first so the user rows can be removed.
+    await db.delete(pinsTable).where(inArray(pinsTable.userId, userIds));
     await db.delete(usersTable).where(inArray(usersTable.id, userIds));
     await db
       .delete(companiesTable)
@@ -169,11 +171,15 @@ describe('multi-tenant data isolation', () => {
     expect(stillRep.role).toBe('field_rep');
   });
 
-  it('DELETE /team/users/:userId against a cross-company user returns 404, not 403 or success', async () => {
+  it('DELETE /team/users/:userId against a cross-company user is rejected → 403 (permission gate fires before company scope check)', async () => {
+    // team.delete is now super_admin only. companyA.adminSid is an admin role,
+    // so requirePermission('team.delete') fires 403 before the route body runs
+    // — the company-scope 404 is never reached. Both gates protect the endpoint;
+    // the permission gate just fires first.
     const res = await request(app)
       .delete(`/api/team/users/${companyB.repId}`)
       .set(auth(companyA.adminSid));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
 
     const [stillThere] = await db
       .select()

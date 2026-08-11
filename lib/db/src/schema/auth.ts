@@ -119,6 +119,14 @@ export const usersTable = pgTable('users', {
   companyId: varchar('company_id')
     .notNull()
     .references(() => companiesTable.id),
+  // Soft deactivation (migration 047). Set by POST /team/users/:userId/terminate.
+  // Non-null = the user is deactivated: auth middleware returns 401, sessions
+  // are purged, and the user is hidden from assignment pickers. The row and all
+  // signed documents stay intact — signatures must remain renderable.
+  // Hard delete (DELETE /team/users/:userId, super_admin only) is only allowed
+  // when the inventory is empty — this column guards nothing by itself against
+  // re-login; the auth middleware check is the enforcement point.
+  deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

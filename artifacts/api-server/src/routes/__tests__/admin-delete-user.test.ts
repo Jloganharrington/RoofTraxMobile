@@ -2,12 +2,13 @@
  * Tests for the team-roster and admin-stats role gates (Phase 3 — FINDING 4-B).
  *
  * Routing after refactor:
- *   GET    /team/users          — requireManagerOrAdmin  (roster is manager-accessible)
- *   PATCH  /team/users/:userId  — requireManagerOrAdmin  (manager+ may update outranked users)
- *   DELETE /team/users/:userId  — requireManagerOrAdmin + canSetRoleDeptSpec / actorOutranks
- *                                  ⟹ managers CAN delete strictly-lower-ranked users (field_rep, canvasser)
- *                                  ⟹ managers CANNOT delete peers (other managers) or superiors
- *   GET    /admin/stats         — requireAdmin           (admin-tier only, per PD-1)
+ *   GET    /team/users                    — requireManagerOrAdmin  (roster is manager-accessible)
+ *   PATCH  /team/users/:userId            — requireManagerOrAdmin  (manager+ may update outranked users)
+ *   DELETE /team/users/:userId            — team.delete (super_admin ONLY)
+ *                                           Hard delete requires empty inventory; normal termination
+ *                                           path is POST /team/users/:id/terminate (team.edit gate).
+ *   POST   /team/users/:userId/terminate  — team.edit (manager+) + actorOutranks
+ *   GET    /admin/stats                   — requireAdmin           (admin-tier only, per PD-1)
  */
 import {
   companiesTable,
@@ -95,13 +96,18 @@ describe('DELETE /team/users/:userId — role gate', () => {
 
   // ── Delete gate ─────────────────────────────────────────────────────────────
 
-  it('manager DELETES a field_rep → 200 (actorOutranks permits it)', async () => {
+  it('manager CANNOT hard-delete any user → 403 (team.delete is super_admin only)', async () => {
     const targetId = await seedTarget('field_rep');
     const res = await request(app)
       .delete(`/api/team/users/${targetId}`)
       .set('Authorization', `Bearer ${fix.manager.sid}`);
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+    expect(res.status).toBe(403);
+    // Target must still exist — permission gate fires before any deletion.
+    const [still] = await db
+      .select()
+      .from(usersTable)
+      .where(inArray(usersTable.id, [targetId]));
+    expect(still).toBeDefined();
   });
 
   it('manager CANNOT delete another manager (same rank) → 403', async () => {
@@ -117,13 +123,18 @@ describe('DELETE /team/users/:userId — role gate', () => {
     expect(still).toBeDefined();
   });
 
-  it('admin DELETES a manager → 200', async () => {
+  it('admin CANNOT hard-delete any user → 403 (team.delete is super_admin only)', async () => {
     const targetId = await seedTarget('manager');
     const res = await request(app)
       .delete(`/api/team/users/${targetId}`)
       .set('Authorization', `Bearer ${fix.admin.sid}`);
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+    expect(res.status).toBe(403);
+    // Target must still exist — permission gate fires before any deletion.
+    const [still] = await db
+      .select()
+      .from(usersTable)
+      .where(inArray(usersTable.id, [targetId]));
+    expect(still).toBeDefined();
   });
 
   it('super_admin DELETES an admin → 200', async () => {

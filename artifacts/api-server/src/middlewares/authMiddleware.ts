@@ -114,14 +114,14 @@ export async function authMiddleware(
   }
 
   // Sessions can outlive their user (e.g. test seeding/cleanup, account
-  // deletion). A stale session must not keep authorizing requests — and any
-  // insert referencing users.id would abort on the FK. Verify the user row
-  // still exists before treating the request as authenticated.
+  // deletion, or termination). A stale or deactivated session must not keep
+  // authorizing requests. Verify the user row still exists AND is not
+  // deactivated before treating the request as authenticated.
   const [userRow] = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, deactivatedAt: usersTable.deactivatedAt })
     .from(usersTable)
     .where(eq(usersTable.id, refreshed.user.id));
-  if (!userRow) {
+  if (!userRow || userRow.deactivatedAt !== null) {
     await clearSession(res, sid);
     next();
     return;

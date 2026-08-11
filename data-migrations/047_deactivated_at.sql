@@ -1,0 +1,15 @@
+-- 047_deactivated_at.sql
+--
+-- Add soft-deactivation timestamp to users.
+--
+-- Non-null = user is deactivated:
+--   • authMiddleware returns 401 and clears the session cookie
+--   • POST /team/users/:userId/terminate sets this atomically with reassignment
+--   • Hard-delete (DELETE /team/users/:userId, super_admin + empty inventory)
+--     remains available for genuine clean-slate removal
+--   • Deactivated users are excluded from assignment pickers by default
+--   • Rows and signed documents are never removed (signatures must render)
+--
+-- Safe to re-run: ADD COLUMN IF NOT EXISTS is idempotent.
+--
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deactivated_at timestamptz;
