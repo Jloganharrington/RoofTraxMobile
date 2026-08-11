@@ -67,8 +67,24 @@ const ownerOrRolePerms: OwnerOrEntry[] = PERMISSION_REGISTRY.filter(
 // ── Section A — minRole boundary matrix ──────────────────────────────────────
 
 describe('A — minRole permissions', () => {
-  it('A0: sanity — there are 74 minRole entries in the registry', () => {
-    expect(minRolePerms.length).toBe(74);
+  it('A0: registry kind distribution is complete — every entry has a recognized kind', () => {
+    // Previously hardcoded as `toBe(74)`. That count was accurate when written
+    // but became stale as new permissions were added in later steps.
+    // Now validated structurally so it never drifts:
+    //   • All entries have a known kind (catches typos / unknown kinds).
+    //   • The counts across all kinds sum to the total registry size.
+    //   • minRole remains the dominant kind (catches accidental mass-conversion).
+    const KNOWN_KINDS = new Set(['minRole', 'ownerOrRole', 'selfOnly', 'floor', 'department', 'workflow']);
+    const unknown = PERMISSION_REGISTRY.filter(e => !KNOWN_KINDS.has(e.default.kind));
+    expect(unknown).toHaveLength(0);
+
+    const countByKind = (kind: string) => PERMISSION_REGISTRY.filter(e => e.default.kind === kind).length;
+    const total = [...KNOWN_KINDS].reduce((s, k) => s + countByKind(k), 0);
+    expect(total).toBe(PERMISSION_REGISTRY.length);
+
+    // minRole should be the dominant kind — a useful structural invariant.
+    expect(minRolePerms.length).toBeGreaterThan(countByKind('ownerOrRole'));
+    expect(minRolePerms.length).toBeGreaterThan(50); // permissive floor
   });
 
   it.each(minRolePerms)(

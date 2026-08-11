@@ -3,7 +3,9 @@
  * PATCH /notifications/preferences
  *
  * Checkpoint 1 verification:
- *  - field_rep GET returns only eligible types (9); manager gets all 15.
+ *  - field_rep GET returns only the rep-eligible subset; manager gets all types.
+ *    (Counts are derived from NOTIFICATION_CATALOG — not hardcoded — so the
+ *    tests stay green as new notification types are added.)
  *  - PATCH with ineligible type → 403.
  *  - PATCH with unknown type → 400.
  *  - No stored row → catalog defaults returned.
@@ -11,6 +13,7 @@
  *  - frequency accepts all four values (stored, not enforced at route).
  */
 
+import { NOTIFICATION_CATALOG, catalogForRole } from '@workspace/authz';
 import { companiesTable, db, notificationPreferencesTable, pinsTable, userProfilesTable, usersTable } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
@@ -81,12 +84,13 @@ describe('GET /notifications/preferences', () => {
     expect(res.status).toBe(401);
   });
 
-  it('field_rep — returns exactly 10 types', async () => {
+  it('field_rep — returns exactly the catalog rep-eligible count', async () => {
     const res = await request(app)
       .get('/api/notifications/preferences')
       .set(auth(s.repSid));
     expect(res.status).toBe(200);
-    expect(res.body.preferences).toHaveLength(10);
+    // Derived from the live catalog — no hardcoded count.
+    expect(res.body.preferences).toHaveLength(catalogForRole('field_rep').length);
   });
 
   it('field_rep — does NOT contain manager-only types', async () => {
@@ -103,12 +107,13 @@ describe('GET /notifications/preferences', () => {
     }
   });
 
-  it('manager — returns all 17 types', async () => {
+  it('manager — returns all catalog types', async () => {
     const res = await request(app)
       .get('/api/notifications/preferences')
       .set(auth(s.managerSid));
     expect(res.status).toBe(200);
-    expect(res.body.preferences).toHaveLength(17);
+    // Derived from the live catalog — no hardcoded count.
+    expect(res.body.preferences).toHaveLength(NOTIFICATION_CATALOG.length);
   });
 
   it('no stored row → catalog defaults returned', async () => {

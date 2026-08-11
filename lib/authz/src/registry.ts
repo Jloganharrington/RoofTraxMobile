@@ -61,7 +61,7 @@ export const DOMAINS = [
 export type Domain = (typeof DOMAINS)[number];
 
 // ── Permission keys ──────────────────────────────────────────────────────────
-// Exactly 120 keys. Keep sorted within each domain block.
+// Exactly 121 keys. Keep sorted within each domain block.
 
 export const PERMISSION_KEYS = [
   // lead (8)
@@ -270,6 +270,17 @@ export interface PermissionEntry {
   readonly label: string;
   readonly default: DefaultResolution;
   /**
+   * When false, the per-user override system (POST/DELETE
+   * /team/users/:id/permissions) will reject any attempt to grant or revoke
+   * this permission for an individual user with 422.
+   *
+   * Omit (or set to undefined) for normal overridable permissions.
+   * Use this instead of a `floor` or `selfOnly` kind when the permission
+   * still resolves via a normal role gate — only the per-user override path
+   * should be blocked.
+   */
+  readonly overridable?: false;
+  /**
    * Optional human note surfaced in the settings UI (e.g. to explain
    * a composite rule that the resolution kind alone doesn't capture).
    */
@@ -277,7 +288,7 @@ export interface PermissionEntry {
 }
 
 // ── Registry ─────────────────────────────────────────────────────────────────
-// 94 entries. Grouped by domain; sorted alphabetically within each group.
+// 121 entries. Grouped by domain; sorted alphabetically within each group.
 
 export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
 
@@ -965,35 +976,36 @@ export const PERMISSION_REGISTRY: readonly PermissionEntry[] = [
 
   // ── profile (2) ──────────────────────────────────────────────────────────────
   {
-    key:    'profile.read',
-    domain: 'profile',
-    label:  'View own user profile',
-    // floor: every authenticated user always has access to their own profile.
-    // Access is guaranteed by the auth layer, not by role.
-    // Cannot be granted or revoked through the per-user override system.
-    default: { kind: 'floor' },
-    note:   'System-internal. Cannot be overridden per user.',
+    key:         'profile.read',
+    domain:      'profile',
+    label:       'View own user profile',
+    default:     { kind: 'minRole', minRole: 'field_rep' },
+    // Per-user overrides are blocked: every authenticated user must be able to
+    // read their own profile; revoking it would break the session flow.
+    overridable: false,
+    note:        'Non-overridable. Every authenticated user retains this regardless of any override.',
   },
   {
-    key:    'profile.update',
-    domain: 'profile',
-    label:  'Edit own profile, signature, credentials, and SMTP settings',
-    // selfOnly: profile edits are inherently personal. Granting this to
-    // another user's account opens SMTP/signature injection vectors.
-    // Cannot be overridden per user.
-    default: { kind: 'selfOnly' },
-    note:   'Self-only. Cannot be overridden per user.',
+    key:         'profile.update',
+    domain:      'profile',
+    label:       'Edit own profile, signature, credentials, and SMTP settings',
+    default:     { kind: 'minRole', minRole: 'field_rep' },
+    // Per-user overrides are blocked: granting profile.update to a different
+    // user's account would allow SMTP-credential and signature injection.
+    overridable: false,
+    note:        'Non-overridable. Per-user grant/revoke opens SMTP-injection and signature-hijack vectors.',
   },
 
   // ── notification (2) ─────────────────────────────────────────────────────────
   {
-    key:    'notification.manage',
-    domain: 'notification',
-    label:  'Manage own notification preferences and push tokens',
-    // selfOnly: notification preferences and push tokens are personal.
-    // Cannot be overridden to grant one user control of another's preferences.
-    default: { kind: 'selfOnly' },
-    note:   'Self-only. Cannot be overridden per user.',
+    key:         'notification.manage',
+    domain:      'notification',
+    label:       'Manage own notification preferences and push tokens',
+    default:     { kind: 'minRole', minRole: 'field_rep' },
+    // Per-user overrides are blocked: granting this permission to a different
+    // user's account would allow hijacking their push tokens and preferences.
+    overridable: false,
+    note:        'Non-overridable. Per-user grant allows push-token hijack and preference takeover.',
   },
   {
     key:    'notification.push_receipts',

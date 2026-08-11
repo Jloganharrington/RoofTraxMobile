@@ -535,7 +535,7 @@ router.get('/team/users/:userId/permissions/history', requirePermission('team.vi
 // Authority rules:
 //   - Managers: can override for their own direct reports only (managerUserId = actorId).
 //   - Admins+:  can override for any user they outrank (pure rank via canSetRoleDeptSpec).
-//   - floor and selfOnly permissions are always rejected (422).
+//   - non-overridable permissions (overridable: false in registry) are rejected (422).
 //   - Must-hold applies to BOTH grant AND revoke.
 //   - note is mandatory (non-empty, non-whitespace).
 //   - Writes an audit row inside the same transaction as the upsert.
@@ -559,14 +559,10 @@ router.post('/team/users/:userId/permissions', requirePermission('team.override_
     return;
   }
 
-  // ── 2. Reject floor and selfOnly permissions ──────────────────────────────
+  // ── 2. Reject non-overridable permissions ────────────────────────────────
   const entry = PERMISSION_MAP[permission as Permission];
-  if (entry.default.kind === 'floor') {
-    res.status(422).json({ error: `'${permission}' is a system-internal permission and cannot be overridden.` });
-    return;
-  }
-  if (entry.default.kind === 'selfOnly') {
-    res.status(422).json({ error: `'${permission}' is a self-only permission and cannot be overridden per user.` });
+  if (entry.overridable === false) {
+    res.status(422).json({ error: `'${permission}' is non-overridable and cannot be granted or revoked per user.` });
     return;
   }
 
@@ -718,14 +714,10 @@ router.delete('/team/users/:userId/permissions/:permissionKey', requirePermissio
     return;
   }
 
-  // ── 3. Reject floor and selfOnly permissions ──────────────────────────────
+  // ── 3. Reject non-overridable permissions ────────────────────────────────
   const entry = PERMISSION_MAP[permissionKey as Permission];
-  if (entry.default.kind === 'floor') {
-    res.status(422).json({ error: `'${permissionKey}' is a system-internal permission and cannot be overridden.` });
-    return;
-  }
-  if (entry.default.kind === 'selfOnly') {
-    res.status(422).json({ error: `'${permissionKey}' is a self-only permission and cannot be overridden per user.` });
+  if (entry.overridable === false) {
+    res.status(422).json({ error: `'${permissionKey}' is non-overridable and cannot be granted or revoked per user.` });
     return;
   }
 
