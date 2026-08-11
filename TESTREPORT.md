@@ -3385,3 +3385,103 @@ Tests updated: `admin-delete-user.test.ts` (9 tests), `tenant-isolation.test.ts`
 
 Note: 3 pre-existing flaky failures (AI-timeout in `supplements.test.ts`, `ObjectNotFoundError` in `storage-acl.test.ts`) are isolated by running the tests that failed and confirming they depend on external services (Gemini latency, object-storage availability), not on any changed code. All 691 tests pass in a clean, stable run.
 
+
+---
+
+## Permission Registry Delta — Step 1 → Current
+
+### Reproducible Recipe
+
+```bash
+# Step 1 baseline key list (commit e68c3b6 — CORS allowlist + permission Step-1 registry)
+git show e68c3b6:lib/authz/src/registry.ts | grep -oP "key: *'\K[^']+" | sort > /tmp/step1.txt
+
+# Keys added since Step 1 (additions only — left column of comm is step1-only, middle is shared, right is HEAD-only)
+grep -oP "key: *'\K[^']+" lib/authz/src/registry.ts | sort | comm -13 /tmp/step1.txt -
+
+# Verify no removals
+grep -oP "key: *'\K[^']+" lib/authz/src/registry.ts | sort | comm -23 /tmp/step1.txt -
+```
+
+### Raw `comm -13` Output (27 additions, 0 removals)
+
+```
+activity.view
+bug_report.manage
+bug_report.submit
+calendar.view
+canvassing.use
+catalog.ahj_wizard
+crm.view
+dashboard.manage_layout
+dashboard.view
+geocode.use
+inspection.delete_agreement
+inspection.manage
+invoice.create
+invoice.delete
+invoice.read
+invoice.send
+invoice.update
+invoice.void
+location.ping
+notification.manage
+notification.push_receipts
+profile.read
+profile.update
+storage.read_private
+storage.upload
+team.terminate
+weather.view
+```
+
+`comm -23` (step-1 keys absent from HEAD): **(empty — 0 removals)**
+
+Total: **27 additions, 0 removals** since commit `e68c3b6`.  
+Step-1 registry: **94 keys**. Current registry: **121 keys** (compile-time assertion at registry.ts:1132 enforces exactly 121).
+
+---
+
+### Delta Table
+
+Routes column lists every `requirePermission('key')` call in `artifacts/api-server/src/routes/` (path relative to that directory). Where a key also appears in an inline `resolve()` call the row notes it; none of the 27 new keys use inline `resolve()` in routes.
+
+| permission | label | default resolution | routes (file:line) | overridable | notes / traceable commit |
+|---|---|---|---|---|---|
+| `activity.view` | View activity stats (own or team for managers) | `minRole ≥ field_rep` | activity.ts:77 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `bug_report.manage` | View, export, and update bug reports | `minRole ≥ admin` | bugReports.ts:134, bugReports.ts:153, bugReports.ts:208 | yes | commit `730c578` — step4-7 |
+| `bug_report.submit` | Submit a bug report (any authenticated user) | `minRole ≥ field_rep` | bugReports.ts:79 | yes | commit `730c578` — step4-7 |
+| `calendar.view` | View calendar events (own or team for managers) | `minRole ≥ field_rep` | calendar.ts:55 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `canvassing.use` | Clock in/out and view canvassing status | `minRole ≥ field_rep` | canvassing.ts:42, canvassing.ts:51, canvassing.ts:70 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `catalog.ahj_wizard` | Manage AHJ wizard sources, runs, items, and pack assembly | `minRole ≥ super_admin` | ahjWizard.ts:332, ahjWizard.ts:386, ahjWizard.ts:409, ahjWizard.ts:464, ahjWizard.ts:497, ahjWizard.ts:521, ahjWizard.ts:594, ahjWizard.ts:726, ahjWizard.ts:763, ahjWizard.ts:901, inspections.ts:10721 | yes | commit `6a1eab5` — perm step3 D10-D11 (ahjWizard) |
+| `crm.view` | View CRM status (requires inspection module access inline) | `minRole ≥ field_rep` | crm.ts:18 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `dashboard.manage_layout` | Edit or reset own dashboard layout | `minRole ≥ field_rep` | dashboard.ts:147, dashboard.ts:188 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `dashboard.view` | View dashboard manifest and layout | `minRole ≥ field_rep` | dashboard.ts:55, dashboard.ts:102 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `geocode.use` | Use geocoding (reverse and forward search) | `minRole ≥ field_rep` | geocode.ts:13, geocode.ts:28 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `inspection.delete_agreement` | Delete an inspection agreement permanently (admin erase) | `minRole ≥ super_admin` | agreement.ts:430 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `inspection.manage` | Perform manager-only inspection actions (unlock, finalize, caption manage, section lock) | `minRole ≥ manager` | inspections.ts:2782, inspections.ts:7707, inspections.ts:7893, inspections.ts:8285, inspections.ts:8328, inspections.ts:9269, inspections.ts:9348, inspections.ts:11371 | yes | commit `a199eed` — perm step3 D31 (inspections, 99 routes) |
+| `invoice.create` | Create an invoice on a lead | `minRole ≥ manager` | invoices.ts:176 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `invoice.delete` | Delete an invoice | `minRole ≥ manager` | invoices.ts:283 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `invoice.read` | View invoices for a lead | `minRole ≥ field_rep` | invoices.ts:152, invoices.ts:238 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `invoice.send` | Send an invoice email to the homeowner | `minRole ≥ manager` | invoices.ts:302, invoices.ts:325 | yes | commit `c2a6fff` — perm step3 D20-D30 (also gates `mark-paid`) |
+| `invoice.update` | Edit an invoice | `minRole ≥ manager` | invoices.ts:252 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `invoice.void` | Void an invoice | `minRole ≥ manager` | invoices.ts:424 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `location.ping` | Ping own GPS location for live tracking | `minRole ≥ field_rep` | location.ts:24 | yes | commit `730c578` — step4-7 |
+| `notification.manage` | Manage own notification preferences and push tokens | `minRole ≥ field_rep` | notifications.ts:78, notifications.ts:105, notifications.ts:182, notifications.ts:228 | **false** | commit `c2a6fff` — perm step3 D20-D30; non-overridable: per-user grant would allow push-token hijack |
+| `notification.push_receipts` | Process push notification receipts (admin action) | `minRole ≥ manager` | notifications.ts:257 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+| `profile.read` | View own user profile | `minRole ≥ field_rep` | profile.ts:151 | **false** | commit `c2a6fff` — perm step3 D20-D30; non-overridable: revoking breaks session flow |
+| `profile.update` | Edit own profile, signature, credentials, and SMTP settings | `minRole ≥ field_rep` | profile.ts:165, profile.ts:220, profile.ts:250, profile.ts:282, profile.ts:337 | **false** | commit `c2a6fff` — perm step3 D20-D30; non-overridable: per-user grant opens SMTP-injection and signature-hijack vectors |
+| `storage.read_private` | Read own company private object files | `minRole ≥ field_rep` | storage.ts:116 | yes | commit `730c578` — step4-7 |
+| `storage.upload` | Request a presigned upload URL for file storage | `minRole ≥ field_rep` | storage.ts:30 | yes | commit `730c578` — step4-7 |
+| `team.terminate` | Deactivate a team member and optionally reassign their inventory | `minRole ≥ manager` | admin.ts:944, admin.ts:1090 | yes | commit `6a2e5d0` — Terminate User V2; rank enforcement (actorOutranks) applied in addition to role gate |
+| `weather.view` | View weather events (requires inspection module access inline) | `minRole ≥ field_rep` | weather.ts:76 | yes | commit `c2a6fff` — perm step3 D20-D30 |
+
+### Notes
+
+- **Overridable `false`** (3 keys): `notification.manage`, `profile.read`, `profile.update`. The per-user override system (`POST/DELETE /team/users/:id/permissions`) rejects any attempt to grant or revoke these with HTTP 422.
+- **`invoice.send` (invoices.ts:325)**: also gates `POST /invoices/:invoiceId/mark-paid`; the send key was chosen deliberately over a separate `mark-paid` key.
+- **`catalog.ahj_wizard` (inspections.ts:10721)**: the `POST /inspections/:id/ahj-check` route uses the wizard key (super_admin+) rather than the field-level `catalog.ahj_add/edit` keys because it triggers an AI-assisted check run, not a direct catalog submission.
+- **`team.terminate` (admin.ts:1090)**: also gates `POST /team/users/:userId/reassign` (post-termination reassignment of inventory); both routes share the `team.terminate` key because the reassign route is a continuation of the termination flow.
+- **commit `730c578` ("step4-7")**: covers `bug_report.*`, `location.ping`, `storage.*` — these four keys were added in a single commit that wired Step 4-7 permission infrastructure. The commit message does not enumerate them individually; provenance is confirmed by `git log -S 'key'` returning `730c578` as the introducing commit for each.
+- All 27 keys use `minRole` resolution (no `ownerOrRole`, `selfOnly`, `floor`, `department`, or `workflow` kinds in the delta).
+
