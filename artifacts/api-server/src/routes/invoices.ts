@@ -1,15 +1,18 @@
 /**
  * Customer Invoice endpoints (Step 2 — migration 024).
  *
- * Authorization:
- *   GET  /pins/:pinId/invoices             — any authenticated company member
- *   POST /pins/:pinId/invoices             — manager+
- *   GET  /invoices/:invoiceId              — any authenticated company member
- *   PATCH  /invoices/:invoiceId            — manager+
- *   DELETE /invoices/:invoiceId            — manager+ (open/void only)
- *   POST /invoices/:invoiceId/send         — manager+
- *   POST /invoices/:invoiceId/mark-paid    — manager+ (idempotent — see §Mark-paid)
- *   POST /invoices/:invoiceId/void         — manager+
+ * Authorization (Section 8 ruling — ownerOrRole: manager):
+ *   GET  /pins/:pinId/invoices             — pin owner (field_rep) or manager+
+ *   POST /pins/:pinId/invoices             — pin owner (field_rep) or manager+
+ *   GET  /invoices/:invoiceId              — pin owner (field_rep) or manager+
+ *   PATCH  /invoices/:invoiceId            — pin owner (field_rep) or manager+
+ *   DELETE /invoices/:invoiceId            — pin owner (field_rep) or manager+
+ *   POST /invoices/:invoiceId/send         — pin owner (field_rep) or manager+
+ *   POST /invoices/:invoiceId/mark-paid    — pin owner (field_rep) or manager+
+ *   POST /invoices/:invoiceId/void         — pin owner (field_rep) or manager+
+ *
+ * Inline resolve() is used (not requirePermission middleware) because ownerId
+ * is only available after fetching the pin or invoice's pinId from the DB.
  *
  * Invoice number generation (§Concurrency):
  *   We acquire a per-company advisory lock for the duration of the insert
@@ -48,8 +51,7 @@ import {
   pool,
   userProfilesTable,
 } from '@workspace/db';
-import { isManagerOrAdmin, type Role } from '@workspace/authz';
-import { requirePermission } from '../middlewares/requirePermission';
+import { loadActorCtx, resolveWithOverrides } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -57,13 +59,13 @@ const router = Router();
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Resolve pin, verifying it belongs to caller's company. */
+/** Resolve pin, verifying it belongs to caller's company. Returns userId for ownerOrRole checks. */
 async function resolvePin(
   pinId: string,
   companyId: string,
-): Promise<{ id: string; companyId: string } | null> {
+): Promise<{ id: string; companyId: string; userId: string } | null> {
   const [pin] = await db
-    .select({ id: pinsTable.id, companyId: pinsTable.companyId })
+    .select({ id: pinsTable.id, companyId: pinsTable.companyId, userId: pinsTable.userId })
     .from(pinsTable)
     .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, companyId)));
   return pin ?? null;
@@ -84,6 +86,19 @@ async function resolveInvoice(
       ),
     );
   return inv ?? null;
+}
+
+/**
+ * Look up the pin owner's userId via a stored pinId on an invoice.
+ * Used by invoice-scoped routes (/invoices/:invoiceId) where the pin's userId
+ * must be fetched separately for the ownerOrRole resolve() call.
+ */
+async function getPinOwnerIdForInvoice(pinId: string): Promise<string | undefined> {
+  const [pin] = await db
+    .select({ userId: pinsTable.userId })
+    .from(pinsTable)
+    .where(eq(pinsTable.id, pinId));
+  return pin?.userId;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,20 +163,24 @@ async function nextInvoiceNumber(
 // GET /pins/:pinId/invoices
 // ---------------------------------------------------------------------------
 
-// invoice.read
-router.get('/pins/:pinId/invoices', requirePermission('invoice.read'), async (req: Request, res: Response) => {
-  const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
-  if (!pin) {
-    res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
+// invoice.read — ownerOrRole: manager (Section 8 ruling)
+router.get('/pins/:pinId/invoices', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
+  if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
+
+  const { allowed } = await resolveWithOverrides(req, 'invoice.read', actorCtx, pin.userId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   const invoices = await db
     .select()
     .from(customerInvoicesTable)
     .where(
       and(
         eq(customerInvoicesTable.pinId, pin.id),
-        eq(customerInvoicesTable.companyId, req.actorCtx!.companyId),
+        eq(customerInvoicesTable.companyId, actorCtx.companyId),
       ),
     )
     .orderBy(customerInvoicesTable.createdAt);
@@ -172,13 +191,17 @@ router.get('/pins/:pinId/invoices', requirePermission('invoice.read'), async (re
 // POST /pins/:pinId/invoices
 // ---------------------------------------------------------------------------
 
-// invoice.create
-router.post('/pins/:pinId/invoices', requirePermission('invoice.create'), async (req: Request, res: Response) => {
-  const pin = await resolvePin(req.params.pinId as string, req.actorCtx!.companyId);
-  if (!pin) {
-    res.status(404).json({ error: 'Pin not found' });
-    return;
-  }
+// invoice.create — ownerOrRole: manager (Section 8 ruling)
+router.post('/pins/:pinId/invoices', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
+  if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
+
+  const { allowed } = await resolveWithOverrides(req, 'invoice.create', actorCtx, pin.userId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   const parsed = CreateCustomerInvoiceBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', detail: parsed.error.issues });
@@ -189,7 +212,7 @@ router.post('/pins/:pinId/invoices', requirePermission('invoice.create'), async 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const invoiceNumber = await nextInvoiceNumber(client, req.actorCtx!.companyId);
+    const invoiceNumber = await nextInvoiceNumber(client, actorCtx.companyId);
     const { rows } = await client.query(
       `INSERT INTO customer_invoices
          (company_id, pin_id, invoice_number, customer_name, customer_address,
@@ -197,7 +220,7 @@ router.post('/pins/:pinId/invoices', requirePermission('invoice.create'), async 
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
       [
-        req.actorCtx!.companyId,
+        actorCtx.companyId,
         pin.id,
         invoiceNumber,
         parsed.data.customerName,
@@ -234,13 +257,18 @@ router.post('/pins/:pinId/invoices', requirePermission('invoice.create'), async 
 // GET /invoices/:invoiceId
 // ---------------------------------------------------------------------------
 
-// invoice.read
-router.get('/invoices/:invoiceId', requirePermission('invoice.read'), async (req: Request, res: Response) => {
-  const invoice = await resolveInvoice(req.params.invoiceId as string, req.actorCtx!.companyId);
-  if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' });
-    return;
-  }
+// invoice.read — ownerOrRole: manager (Section 8 ruling)
+router.get('/invoices/:invoiceId', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const invoice = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
+  if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+  const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
+  const { allowed } = await resolveWithOverrides(req, 'invoice.read', actorCtx, ownerId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   res.json({ invoice });
 });
 
@@ -248,13 +276,18 @@ router.get('/invoices/:invoiceId', requirePermission('invoice.read'), async (req
 // PATCH /invoices/:invoiceId
 // ---------------------------------------------------------------------------
 
-// invoice.update
-router.patch('/invoices/:invoiceId', requirePermission('invoice.update'), async (req: Request, res: Response) => {
-  const invoice = await resolveInvoice(req.params.invoiceId as string, req.actorCtx!.companyId);
-  if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' });
-    return;
-  }
+// invoice.update — ownerOrRole: manager (Section 8 ruling)
+router.patch('/invoices/:invoiceId', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const invoice = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
+  if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+  const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
+  const { allowed } = await resolveWithOverrides(req, 'invoice.update', actorCtx, ownerId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   const parsed = UpdateCustomerInvoiceBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', detail: parsed.error.issues });
@@ -279,13 +312,18 @@ router.patch('/invoices/:invoiceId', requirePermission('invoice.update'), async 
 // DELETE /invoices/:invoiceId
 // ---------------------------------------------------------------------------
 
-// invoice.delete
-router.delete('/invoices/:invoiceId', requirePermission('invoice.delete'), async (req: Request, res: Response) => {
-  const invoice = await resolveInvoice(req.params.invoiceId as string, req.actorCtx!.companyId);
-  if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' });
-    return;
-  }
+// invoice.delete — ownerOrRole: manager (Section 8 ruling)
+router.delete('/invoices/:invoiceId', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const invoice = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
+  if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+  const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
+  const { allowed } = await resolveWithOverrides(req, 'invoice.delete', actorCtx, ownerId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   if (invoice.status === 'sent' || invoice.status === 'paid') {
     res.status(400).json({ error: `Cannot delete a ${invoice.status} invoice` });
     return;
@@ -298,13 +336,18 @@ router.delete('/invoices/:invoiceId', requirePermission('invoice.delete'), async
 // POST /invoices/:invoiceId/send
 // ---------------------------------------------------------------------------
 
-// invoice.send
-router.post('/invoices/:invoiceId/send', requirePermission('invoice.send'), async (req: Request, res: Response) => {
-  const invoice = await resolveInvoice(req.params.invoiceId as string, req.actorCtx!.companyId);
-  if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' });
-    return;
-  }
+// invoice.send — ownerOrRole: manager (Section 8 ruling)
+router.post('/invoices/:invoiceId/send', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const invoice = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
+  if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+  const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
+  const { allowed } = await resolveWithOverrides(req, 'invoice.send', actorCtx, ownerId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   if (invoice.status === 'paid' || invoice.status === 'void') {
     res.status(400).json({ error: `Cannot send a ${invoice.status} invoice` });
     return;
@@ -321,8 +364,20 @@ router.post('/invoices/:invoiceId/send', requirePermission('invoice.send'), asyn
 // POST /invoices/:invoiceId/mark-paid  (idempotent)
 // ---------------------------------------------------------------------------
 
-// invoice.send
-router.post('/invoices/:invoiceId/mark-paid', requirePermission('invoice.send'), async (req: Request, res: Response) => {
+// invoice.send (mark-paid uses the same permission as send)
+// ownerOrRole: manager (Section 8 ruling)
+router.post('/invoices/:invoiceId/mark-paid', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  // Pre-check: fetch invoice to get pinId for the ownerOrRole resolve.
+  // The actual mutation uses a FOR UPDATE lock in the transaction below.
+  const precheck = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
+  if (!precheck) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+  const ownerId = await getPinOwnerIdForInvoice(precheck.pinId);
+  const { allowed } = await resolveWithOverrides(req, 'invoice.send', actorCtx, ownerId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const parsedBody = MarkInvoicePaidBody.safeParse(req.body ?? {});
   const extra = parsedBody.success ? parsedBody.data : {};
@@ -338,7 +393,7 @@ router.post('/invoices/:invoiceId/mark-paid', requirePermission('invoice.send'),
          FROM customer_invoices
         WHERE id = $1 AND company_id = $2
         FOR UPDATE`,
-      [req.params.invoiceId as string, req.actorCtx!.companyId],
+      [req.params.invoiceId as string, actorCtx.companyId],
     ) as { rows: Array<{ id: string; company_id: string; pin_id: string; invoice_type: string; amount_cents: number; status: string }> };
 
     if (lockRows.length === 0) {
@@ -358,7 +413,7 @@ router.post('/invoices/:invoiceId/mark-paid', requirePermission('invoice.send'),
     if (inv.status === 'paid') {
       // Already paid — idempotent, return current state without a second ledger row.
       await client.query('ROLLBACK');
-      const existing = await resolveInvoice(req.params.invoiceId as string, req.actorCtx!.companyId);
+      const existing = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
       res.json({ invoice: existing });
       return;
     }
@@ -371,7 +426,7 @@ router.post('/invoices/:invoiceId/mark-paid', requirePermission('invoice.send'),
     const paidDate = new Date();
 
     // Update invoice status.
-    const { rows: updatedRows } = await client.query(
+    await client.query(
       `UPDATE customer_invoices
           SET status = 'paid',
               paid_date = $1,
@@ -397,7 +452,7 @@ router.post('/invoices/:invoiceId/mark-paid', requirePermission('invoice.send'),
         paidDate,
         extra.notes ?? `Auto-created from invoice ${inv.id}`,
         inv.id,
-        req.actorCtx!.actorId,
+        actorCtx.actorId,
       ],
     );
 
@@ -420,13 +475,18 @@ router.post('/invoices/:invoiceId/mark-paid', requirePermission('invoice.send'),
 // POST /invoices/:invoiceId/void
 // ---------------------------------------------------------------------------
 
-// invoice.void
-router.post('/invoices/:invoiceId/void', requirePermission('invoice.void'), async (req: Request, res: Response) => {
-  const invoice = await resolveInvoice(req.params.invoiceId as string, req.actorCtx!.companyId);
-  if (!invoice) {
-    res.status(404).json({ error: 'Invoice not found' });
-    return;
-  }
+// invoice.void — ownerOrRole: manager (Section 8 ruling)
+router.post('/invoices/:invoiceId/void', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const invoice = await resolveInvoice(req.params.invoiceId as string, actorCtx.companyId);
+  if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
+
+  const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
+  const { allowed } = await resolveWithOverrides(req, 'invoice.void', actorCtx, ownerId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   if (invoice.status === 'void') {
     // Already void — idempotent.
     res.json({ invoice });

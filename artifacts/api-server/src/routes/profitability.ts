@@ -2,7 +2,7 @@
  * Profitability Summary endpoint (Step 4 — migrations 026 + 027 + 030).
  *
  *   GET /pins/:pinId/profitability
- *     — Any authenticated company member.
+ *     — Pin owner (field_rep) or manager+ (Section 8 ruling — FINDING 3-C reversed).
  *     — Returns a computed summary of every financial dimension for the lead.
  *     — All money values are integer cents; margin pcts are numeric (view-computed).
  *     — Reads from the `pin_profitability` view (migration 030 is latest rewrite).
@@ -17,8 +17,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
 import { db, pinsTable } from '@workspace/db';
-// Permission key: profitability.view (manager+). Wired via requirePermission middleware.
-import { requirePermission } from '../middlewares/requirePermission';
+import { loadActorCtx, resolveWithOverrides } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -26,20 +25,31 @@ const router = Router();
 // GET /pins/:pinId/profitability
 // ---------------------------------------------------------------------------
 
-// profitability.view — minRole: manager (FINDING 3-C). Verdict unchanged.
-router.get('/pins/:pinId/profitability', requirePermission('profitability.view'), async (req: Request, res: Response) => {
+// profitability.view — ownerOrRole: manager (Section 8 ruling — FINDING 3-C reversed).
+// Field-rep pin owners may view their own lead's financial summary.
+// Inline resolve() is required (not requirePermission middleware) because
+// ownerId is only available after the pin fetch.
+router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
   const pinId = req.params.pinId as string;
 
   // Confirm the pin belongs to this company before querying the view.
+  // Also fetch userId so we can pass ownerId to resolve().
   const [pin] = await db
-    .select({ id: pinsTable.id })
+    .select({ id: pinsTable.id, userId: pinsTable.userId })
     .from(pinsTable)
-    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId)));
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId)));
 
   if (!pin) {
     res.status(404).json({ error: 'Pin not found' });
     return;
   }
+
+  // ownerOrRole gate: field_rep pin owners are permitted; manager+ always permitted.
+  const { allowed } = await resolveWithOverrides(req, 'profitability.view', actorCtx, pin.userId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   // Query the view directly with a raw SQL query (the view is not in the
   // Drizzle schema — it is a read-only aggregation layer, not a table).
@@ -79,7 +89,7 @@ router.get('/pins/:pinId/profitability', requirePermission('profitability.view')
           base_scope_cents
         FROM pin_profitability
         WHERE pin_id   = ${pinId}
-          AND company_id = ${req.actorCtx!.companyId}`,
+          AND company_id = ${actorCtx.companyId}`,
   );
 
   const row = result.rows[0];

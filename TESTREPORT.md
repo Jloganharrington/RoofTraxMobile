@@ -2294,6 +2294,16 @@ All confirmed empirically from Phase 3 test sessions (users A-CANV-1, A-MGR-O, A
 - **Repro:** Session `A-CANV-1` (field_rep, canvasser) → `GET /api/leads/<pin>/profitability` → **HTTP 200**, full margin data
 - **Impact:** Any authenticated user who knows a pin ID reads contract value, COGS, overhead breakdown, and net margin
 
+> **REVERSED — 2026-08-11 (Section 8 ruling — deliberate commission-transparency).**
+> FINDING 3-C was originally remediated by adding a `minRole: manager` gate to `profitability.view`.
+> That gate is now deliberately changed to `ownerOrRole: manager` to allow field-rep pin owners to
+> view their own lead's margin and invoice data as part of the commission-transparency policy.
+> Non-owner field_reps remain blocked (403); manager+ access is unchanged (unconditionally 200).
+> Routes updated: `GET /pins/:pinId/profitability`, `GET /pins/:pinId/financials/export`, and all
+> `/invoices/...` endpoints (`invoice.read`, `invoice.create`, `invoice.update`, `invoice.delete`,
+> `invoice.send`, `invoice.void`). Owner/non-owner test coverage added to `profitability.test.ts`,
+> `profitability-step2.test.ts`, and `customer-invoices.test.ts`.
+
 ### 3-D: Manager reaches /admin/stats
 
 - **Route:** `GET /admin/stats`
@@ -2683,11 +2693,12 @@ fdbdceba…  | claim_review | claim_approved | task    | 0625a922-…  (A-MGR-O)
 
 | Suite | Result |
 |---|---|
-| `pipeline-auto-advance.test.ts` | **16/16** ✓ (3a idempotency ✓, 3b failure isolation ✓, 3c cross-pipeline guard ✓) |
-| `seed-acceptance-claim.ts` | **57/57** ✓ |
-| Full vitest suite (`artifacts/api-server`) | **671/671** ✓ |
+| `pipeline-auto-advance.test.ts` | **16/16** ✓ |
+| `seed-acceptance-claim.ts` (incl. new D2e step) | **58/58** ✓ (was 57 — +D2e: gate 422 + upload + advance) |
+| Full `artifacts/api-server` vitest | **671/671** ✓ |
 
-Test fix: `pipeline-auto-advance.test.ts` line 215 updated to check `unknownEventType === true` and `reason.contains('not an autoAdvance event type')` instead of exact old string `'No stages match this event'`.
+D2e covers: (a) advance without estimate → 422 + `missingDocument=approvedEstimate`; (b) POST fixture estimate → 200, objectPath + sha256 returned, sha256 verified against buffer; (c) advance with estimate → 200, `pipelineStage=claim_approved`, 1 stage_transitions row.
+
 
 ---
 
@@ -3119,6 +3130,7 @@ Same gate applied to both `pins.ts` and `inspections.ts` PATCH handlers for pari
 |---|---|
 | `artifacts/api-server` vitest | **671/671** ✓ |
 
+
 ---
 
 ## CHECKPOINT 4 — Step 4 Remediation
@@ -3484,4 +3496,3 @@ Routes column lists every `requirePermission('key')` call in `artifacts/api-serv
 - **`team.terminate` (admin.ts:1090)**: also gates `POST /team/users/:userId/reassign` (post-termination reassignment of inventory); both routes share the `team.terminate` key because the reassign route is a continuation of the termination flow.
 - **commit `730c578` ("step4-7")**: covers `bug_report.*`, `location.ping`, `storage.*` — these four keys were added in a single commit that wired Step 4-7 permission infrastructure. The commit message does not enumerate them individually; provenance is confirmed by `git log -S 'key'` returning `730c578` as the introducing commit for each.
 - All 27 keys use `minRole` resolution (no `ownerOrRole`, `selfOnly`, `floor`, `department`, or `workflow` kinds in the delta).
-

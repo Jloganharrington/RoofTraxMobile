@@ -136,6 +136,47 @@ export async function loadPermissionOverrides(
   return map;
 }
 
+// ── Owner-aware resolver (includes Step 5 override layer) ─────────────────────
+
+/**
+ * Resolve a permission for an already-loaded actor, applying the per-user
+ * override layer (Step 5) before falling through to the registry default.
+ *
+ * Use this in ownerOrRole route handlers instead of calling `resolve()` directly.
+ * It guarantees that an explicit grant or revoke is honoured regardless of the
+ * actor's role or ownership status.
+ *
+ *   const { allowed } = await resolveWithOverrides(req, 'invoice.read', actorCtx, pin.userId);
+ *   if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+ *
+ * @param req        - Live Express request (used to read / populate the override cache).
+ * @param permission - The permission key to check.
+ * @param ctx        - Actor context produced by loadActorCtx().
+ * @param ownerId    - userId of the resource owner; undefined for collection routes
+ *                     where ownership is not applicable.
+ */
+export async function resolveWithOverrides(
+  req: Request,
+  permission: Permission,
+  ctx: ActorCtx,
+  ownerId: string | undefined,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const overrides = await loadPermissionOverrides(req, ctx.actorId, ctx.companyId);
+  const override = overrides.get(permission);
+  if (override !== undefined) {
+    if (!override) {
+      return {
+        allowed: false,
+        reason: `Permission '${permission}' has been explicitly revoked for your account.`,
+      };
+    }
+    // Explicit grant — bypass registry default (owner check irrelevant).
+    return { allowed: true };
+  }
+  // Registry default — pass ownerId so ownerOrRole entries can short-circuit.
+  return resolve(permission, { ...ctx, ownerId });
+}
+
 // ── Middleware factory ─────────────────────────────────────────────────────────
 
 /**

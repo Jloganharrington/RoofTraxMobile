@@ -16,6 +16,7 @@ import {
   changeOrdersTable,
   companiesTable,
   db,
+  paymentsTable,
   pinsTable,
   userProfilesTable,
   usersTable,
@@ -339,5 +340,104 @@ describe('insurance expectedTotalCents after CO', () => {
     expect(p.expectedTotalCents).toBe(1800000);   // approvedRcv wins
 
     await db.delete(pinsTable).where(eq(pinsTable.id, insPin!.id));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Access control — ownerOrRole gate (Section 8 ruling — FINDING 3-C reversed)
+// ---------------------------------------------------------------------------
+// Self-contained: creates a fresh company + two field_rep users so that the
+// owner vs non-owner distinction can be tested independently of the manager
+// fixtures above.
+// ---------------------------------------------------------------------------
+
+describe('access control (ownerOrRole gate)', () => {
+  const AC_CO = `PROF-029-AC-${Date.now().toString(36).toUpperCase()}`;
+  let acOwnerId: string;
+  let acNonOwnerId: string;
+  let ownerRepSid: string;
+  let nonOwnerRepSid: string;
+  let ownerRepPinId: string;
+
+  beforeAll(async () => {
+    await db.insert(companiesTable).values({ id: AC_CO, name: 'Step2 AC Test Co' });
+
+    const [owner, nonOwner] = await db
+      .insert(usersTable)
+      .values([
+        { companyId: AC_CO, email: `ac-owner-${AC_CO}@t.invalid` },
+        { companyId: AC_CO, email: `ac-nonown-${AC_CO}@t.invalid` },
+      ])
+      .returning();
+    acOwnerId    = owner!.id;
+    acNonOwnerId = nonOwner!.id;
+
+    await db.insert(userProfilesTable).values([
+      { userId: acOwnerId,    role: 'field_rep' },
+      { userId: acNonOwnerId, role: 'field_rep' },
+    ]);
+
+    ownerRepSid = await createSession({
+      user: { id: acOwnerId, email: owner!.email, firstName: null, lastName: null, profileImageUrl: null, companyId: AC_CO },
+      access_token: 'tok',
+    });
+    nonOwnerRepSid = await createSession({
+      user: { id: acNonOwnerId, email: nonOwner!.email, firstName: null, lastName: null, profileImageUrl: null, companyId: AC_CO },
+      access_token: 'tok',
+    });
+
+    // Pin owned by the owner rep — no financial data needed, just ownership
+    const [p] = await db
+      .insert(pinsTable)
+      .values({ companyId: AC_CO, userId: acOwnerId, latitude: 38.9, longitude: -77.0, workflow: 'retail' })
+      .returning();
+    ownerRepPinId = p!.id;
+  });
+
+  afterAll(async () => {
+    await db.delete(pinsTable).where(eq(pinsTable.companyId, AC_CO)).catch(() => {});
+    await db.delete(userProfilesTable).where(eq(userProfilesTable.userId, acOwnerId)).catch(() => {});
+    await db.delete(userProfilesTable).where(eq(userProfilesTable.userId, acNonOwnerId)).catch(() => {});
+    await db.delete(usersTable).where(eq(usersTable.companyId, AC_CO)).catch(() => {});
+    await db.delete(companiesTable).where(eq(companiesTable.id, AC_CO)).catch(() => {});
+  });
+
+  it('owner field_rep → 200 on their own pin (profitability)', async () => {
+    const res = await request(app)
+      .get(`/api/pins/${ownerRepPinId}/profitability`)
+      .set({ Authorization: `Bearer ${ownerRepSid}` });
+    expect(res.status).toBe(200);
+    expect(res.body.profitability.pinId).toBe(ownerRepPinId);
+  });
+
+  it('non-owner field_rep → 403 on a pin they do not own (profitability)', async () => {
+    const res = await request(app)
+      .get(`/api/pins/${ownerRepPinId}/profitability`)
+      .set({ Authorization: `Bearer ${nonOwnerRepSid}` });
+    expect(res.status).toBe(403);
+  });
+
+  it('owner field_rep → 200 on their own pin (financials/export)', async () => {
+    // profitability.export_csv uses the same ownerOrRole gate — test the export endpoint too.
+    const res = await request(app)
+      .get(`/api/pins/${ownerRepPinId}/financials/export`)
+      .set({ Authorization: `Bearer ${ownerRepSid}` });
+    // Route returns either a CSV or PDF — success if 200 or 204 (empty data)
+    expect([200, 204]).toContain(res.status);
+  });
+
+  it('non-owner field_rep → 403 on a pin they do not own (financials/export)', async () => {
+    const res = await request(app)
+      .get(`/api/pins/${ownerRepPinId}/financials/export`)
+      .set({ Authorization: `Bearer ${nonOwnerRepSid}` });
+    expect(res.status).toBe(403);
+  });
+
+  it('manager → 200 unconditionally (existing fixture pin)', async () => {
+    // m029Sid is the manager for the step-2 fixture company; confirms role gate still works.
+    const res = await request(app)
+      .get(`/api/pins/${m029PinId}/profitability`)
+      .set(auth());
+    expect(res.status).toBe(200);
   });
 });

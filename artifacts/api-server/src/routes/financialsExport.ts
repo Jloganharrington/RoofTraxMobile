@@ -20,8 +20,8 @@ import {
   pinsTable,
   vendorExpensesTable,
 } from '@workspace/db';
-// profitability.export_csv — minRole: manager. Wired via requirePermission middleware.
-import { requirePermission } from '../middlewares/requirePermission';
+// profitability.export_csv — ownerOrRole: manager (Section 8 ruling — FINDING 3-C reversed).
+import { loadActorCtx, resolveWithOverrides } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -59,7 +59,14 @@ function pgInt(v: unknown): number {
 // GET /pins/:pinId/financials/export
 // ---------------------------------------------------------------------------
 
-router.get('/pins/:pinId/financials/export', requirePermission('profitability.export_csv'), async (req: Request, res: Response) => {
+// profitability.export_csv — ownerOrRole: manager (Section 8 ruling — FINDING 3-C reversed).
+// Field-rep pin owners may export their own lead's financial summary.
+// Inline resolve() is used (not requirePermission middleware) because ownerId
+// is only available after the pin fetch.
+router.get('/pins/:pinId/financials/export', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
   const pinId = req.params.pinId as string;
 
   // ── Fetch pin + company in parallel ──────────────────────────────────────
@@ -67,6 +74,7 @@ router.get('/pins/:pinId/financials/export', requirePermission('profitability.ex
     db
       .select({
         id: pinsTable.id,
+        userId: pinsTable.userId,
         address: pinsTable.address,
         ownerFirstName: pinsTable.ownerFirstName,
         ownerLastName: pinsTable.ownerLastName,
@@ -81,7 +89,7 @@ router.get('/pins/:pinId/financials/export', requirePermission('profitability.ex
         pmCommissionPaidDate: pinsTable.pmCommissionPaidDate,
       })
       .from(pinsTable)
-      .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, req.actorCtx!.companyId))),
+      .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId))),
 
     db
       .select({
@@ -89,7 +97,7 @@ router.get('/pins/:pinId/financials/export', requirePermission('profitability.ex
         reportBranding: companiesTable.reportBranding,
       })
       .from(companiesTable)
-      .where(eq(companiesTable.id, req.actorCtx!.companyId)),
+      .where(eq(companiesTable.id, actorCtx.companyId)),
   ]);
 
   if (!pin) {
@@ -97,24 +105,28 @@ router.get('/pins/:pinId/financials/export', requirePermission('profitability.ex
     return;
   }
 
+  // ownerOrRole gate: field_rep pin owners are permitted; manager+ always permitted.
+  const { allowed } = await resolveWithOverrides(req, 'profitability.export_csv', actorCtx, pin.userId);
+  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+
   // ── Fetch all financial data in parallel ──────────────────────────────────
   const [payments, invoices, expenses, profResult] = await Promise.all([
     db
       .select()
       .from(paymentsTable)
-      .where(and(eq(paymentsTable.pinId, pinId), eq(paymentsTable.companyId, req.actorCtx!.companyId)))
+      .where(and(eq(paymentsTable.pinId, pinId), eq(paymentsTable.companyId, actorCtx.companyId)))
       .orderBy(paymentsTable.paymentDate),
 
     db
       .select()
       .from(customerInvoicesTable)
-      .where(and(eq(customerInvoicesTable.pinId, pinId), eq(customerInvoicesTable.companyId, req.actorCtx!.companyId)))
+      .where(and(eq(customerInvoicesTable.pinId, pinId), eq(customerInvoicesTable.companyId, actorCtx.companyId)))
       .orderBy(customerInvoicesTable.createdAt),
 
     db
       .select()
       .from(vendorExpensesTable)
-      .where(and(eq(vendorExpensesTable.pinId, pinId), eq(vendorExpensesTable.companyId, req.actorCtx!.companyId)))
+      .where(and(eq(vendorExpensesTable.pinId, pinId), eq(vendorExpensesTable.companyId, actorCtx.companyId)))
       .orderBy(vendorExpensesTable.createdAt),
 
     db.execute(
@@ -134,7 +146,7 @@ router.get('/pins/:pinId/financials/export', requirePermission('profitability.ex
             net_profit_cents
           FROM pin_profitability
           WHERE pin_id     = ${pinId}
-            AND company_id = ${req.actorCtx!.companyId}`,
+            AND company_id = ${actorCtx.companyId}`,
     ),
   ]);
 

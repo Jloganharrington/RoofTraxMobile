@@ -38,13 +38,14 @@ import {
   db,
   paymentsTable,
   pinsTable,
+  userPermissionOverridesTable,
   userProfilesTable,
   usersTable,
   vendorExpensesTable,
 } from '@workspace/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import app from '../../app';
 import { createSession } from '../../lib/auth';
 
@@ -65,6 +66,7 @@ let companyBUId: string;
 let pinId:       string;
 let emptyPinId:  string;
 let companyBPinId: string;
+let repOwnedPinId: string;  // pin whose userId = repId — for ownerOrRole tests
 
 beforeAll(async () => {
   await db.insert(companiesTable).values([
@@ -114,6 +116,13 @@ beforeAll(async () => {
     .values({ companyId: CO_B, userId: companyBUId, latitude: 38.9, longitude: -77.0, workflow: 'insurance' })
     .returning();
   companyBPinId = bPin!.id;
+
+  // Field-rep owned pin — for ownerOrRole access tests (Section 8 ruling)
+  const [rp] = await db
+    .insert(pinsTable)
+    .values({ companyId: CO_A, userId: repId, latitude: 38.9, longitude: -77.0, workflow: 'retail' })
+    .returning();
+  repOwnedPinId = rp!.id;
 
   // ── Financial data on the main pin ────────────────────────────────────────
 
@@ -289,11 +298,25 @@ describe('invoice totals exclude void invoices', () => {
 // ---------------------------------------------------------------------------
 
 describe('access control', () => {
-  it('field_rep is blocked from profitability endpoint (FINDING 3-C gate)', async () => {
-    // FINDING 3-C remediation: profitability data (margin, costs, payments) is
-    // manager-and-above only. field_rep receives 403, not 200.
+  // Section 8 ruling — FINDING 3-C reversed: profitability.view is now ownerOrRole:manager.
+  // Owner field_rep → 200; non-owner field_rep → 403; manager unconditionally → 200.
+
+  it('non-owner field_rep is blocked (ownerOrRole gate: rep does not own this pin)', async () => {
+    // pinId is owned by managerId; repId is not the owner — must get 403.
     const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(rep());
     expect(res.status).toBe(403);
+  });
+
+  it('owner field_rep gets 200 on their own pin (Section 8 ruling)', async () => {
+    // repOwnedPinId is owned by repId — owner access must be allowed.
+    const res = await request(app).get(`/api/pins/${repOwnedPinId}/profitability`).set(rep());
+    expect(res.status).toBe(200);
+    expect(res.body.profitability.pinId).toBe(repOwnedPinId);
+  });
+
+  it('manager gets 200 unconditionally (manager+ role gate)', async () => {
+    const res = await request(app).get(`/api/pins/${pinId}/profitability`).set(mgr());
+    expect(res.status).toBe(200);
   });
 
   it('unauthenticated → 401', async () => {
@@ -314,6 +337,59 @@ describe('access control', () => {
       .set(coB());
     expect(res.status).toBe(200);
     expect(res.body.profitability.pinId).toBe(companyBPinId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. Permission overrides (Step 5 layer) for ownerOrRole routes
+// ---------------------------------------------------------------------------
+// Verifies that resolveWithOverrides() correctly applies the per-user
+// user_permission_overrides row BEFORE the registry default, so an explicit
+// grant elevates a non-owner field_rep and an explicit revoke blocks a manager.
+// ---------------------------------------------------------------------------
+
+describe('permission overrides (Step 5 — explicit grant / revoke)', () => {
+  afterEach(async () => {
+    // Always clean up override rows so they don't bleed into other tests.
+    await db
+      .delete(userPermissionOverridesTable)
+      .where(
+        and(
+          eq(userPermissionOverridesTable.companyId, CO_A),
+        ),
+      )
+      .catch(() => {});
+  });
+
+  it('explicit grant elevates a non-owner field_rep to 200 (bypasses ownerOrRole registry gate)', async () => {
+    // repId is NOT the owner of pinId (managerId is) — default resolve() → 403.
+    // An explicit grant row should bypass the registry and return 200.
+    await db.insert(userPermissionOverridesTable).values({
+      companyId: CO_A,
+      userId: repId,
+      permission: 'profitability.view',
+      granted: true,
+      grantedByUserId: managerId,
+    });
+    const res = await request(app)
+      .get(`/api/pins/${pinId}/profitability`)
+      .set(rep());
+    expect(res.status).toBe(200);
+  });
+
+  it('explicit revoke blocks a manager (overrides the role gate)', async () => {
+    // managerId normally gets 200 via the role gate. An explicit revoke → 403.
+    await db.insert(userPermissionOverridesTable).values({
+      companyId: CO_A,
+      userId: managerId,
+      permission: 'profitability.view',
+      granted: false,
+      grantedByUserId: managerId,
+    });
+    const res = await request(app)
+      .get(`/api/pins/${pinId}/profitability`)
+      .set(mgr());
+    expect(res.status).toBe(403);
   });
 });
 

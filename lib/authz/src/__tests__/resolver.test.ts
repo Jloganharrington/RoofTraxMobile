@@ -129,8 +129,10 @@ describe('A — minRole permissions', () => {
 // ── Section B — ownerOrRole boundary matrix ───────────────────────────────────
 
 describe('B — ownerOrRole permissions', () => {
-  it('B0: sanity — there are 20 ownerOrRole entries in the registry', () => {
-    expect(ownerOrRolePerms.length).toBe(20);
+  it('B0: sanity — there are 28 ownerOrRole entries in the registry', () => {
+    // 20 original + 8 added by Section 8 ruling (profitability.view, profitability.export_csv,
+    // invoice.read, invoice.create, invoice.update, invoice.delete, invoice.send, invoice.void)
+    expect(ownerOrRolePerms.length).toBe(28);
   });
 
   it.each(ownerOrRolePerms)(

@@ -198,26 +198,32 @@ describe('route auth — negative gate suite', () => {
   });
 
   // ── [D4] DOMAIN: financials export ───────────────────────────────────────
-  // Verdict changes: none (was isManagerOrAdmin — same as profitability.export_csv manager+)
+  // Section 8 ruling: profitability.export_csv changed to ownerOrRole:manager.
+  // Route fetches pin.userId before calling resolve() — a non-existent STUB pin
+  // returns 404 before the auth check. Non-owner denial (403) is tested in
+  // profitability-step2.test.ts with a real pin owned by another user.
 
-  describe('[D4] GET /pins/:pinId/financials/export [profitability.export_csv — manager+]', () => {
+  describe('[D4] GET /pins/:pinId/financials/export [profitability.export_csv — ownerOrRole:manager]', () => {
     it('no auth → 401', async () => {
       expect((await request(app).get(`/api/pins/${fix.stubId}/financials/export`)).status).toBe(401);
     });
-    it('field_rep → 403', async () => {
-      expect((await request(app).get(`/api/pins/${fix.stubId}/financials/export`).set(auth(fix.rep.sid))).status).toBe(403);
+    it('field_rep on non-existent pin → 404 (ownerOrRole: resource fetch required for ownerId)', async () => {
+      expect((await request(app).get(`/api/pins/${fix.stubId}/financials/export`).set(auth(fix.rep.sid))).status).toBe(404);
     });
   });
 
   // ── [D5] DOMAIN: profitability ────────────────────────────────────────────
-  // Verdict changes: none (was canViewProfitability — same as profitability.view manager+)
+  // Section 8 ruling: profitability.view changed to ownerOrRole:manager.
+  // Route fetches pin.userId before calling resolve() — a non-existent STUB pin
+  // returns 404 before the auth check. Non-owner denial (403) is tested in
+  // profitability.test.ts with a real pin owned by another user.
 
-  describe('[D5] GET /pins/:pinId/profitability [profitability.view — manager+]', () => {
+  describe('[D5] GET /pins/:pinId/profitability [profitability.view — ownerOrRole:manager]', () => {
     it('no auth → 401', async () => {
       expect((await request(app).get(`/api/pins/${fix.stubId}/profitability`)).status).toBe(401);
     });
-    it('field_rep → 403', async () => {
-      expect((await request(app).get(`/api/pins/${fix.stubId}/profitability`).set(auth(fix.rep.sid))).status).toBe(403);
+    it('field_rep on non-existent pin → 404 (ownerOrRole: resource fetch required for ownerId)', async () => {
+      expect((await request(app).get(`/api/pins/${fix.stubId}/profitability`).set(auth(fix.rep.sid))).status).toBe(404);
     });
   });
 
@@ -804,36 +810,41 @@ describe('route auth — negative gate suite', () => {
 
   // ── [D20] DOMAIN: invoices ───────────────────────────────────────────────────
 
-  describe('[D20] GET /pins/:pinId/invoices [invoice.read — field_rep+]', () => {
+  // Section 8 ruling: all invoice.* permissions changed to ownerOrRole:manager.
+  // Routes fetch the pin/invoice record before calling resolve() to obtain ownerId.
+  // A non-existent STUB resource → 404 before the auth check reaches resolve().
+  // Full owner/non-owner matrix is tested in customer-invoices.test.ts.
+
+  describe('[D20] GET /pins/:pinId/invoices [invoice.read — ownerOrRole:manager]', () => {
     it('no auth → 401', async () => {
       expect((await request(app).get('/api/pins/STUB00/invoices')).status).toBe(401);
     });
   });
 
-  describe('[D20] POST /pins/:pinId/invoices [invoice.create — manager+]', () => {
+  describe('[D20] POST /pins/:pinId/invoices [invoice.create — ownerOrRole:manager]', () => {
     it('no auth → 401', async () => {
       expect((await request(app).post('/api/pins/STUB00/invoices')).status).toBe(401);
     });
-    it('field_rep → 403', async () => {
-      expect((await request(app).post('/api/pins/STUB00/invoices').set(auth(fix.rep.sid))).status).toBe(403);
+    it('field_rep on non-existent pin → 404 (ownerOrRole: resource fetch required for ownerId)', async () => {
+      expect((await request(app).post('/api/pins/STUB00/invoices').set(auth(fix.rep.sid))).status).toBe(404);
     });
   });
 
-  describe('[D20] DELETE /invoices/:invoiceId [invoice.delete — manager+]', () => {
+  describe('[D20] DELETE /invoices/:invoiceId [invoice.delete — ownerOrRole:manager]', () => {
     it('no auth → 401', async () => {
       expect((await request(app).delete('/api/invoices/STUB00')).status).toBe(401);
     });
-    it('field_rep → 403', async () => {
-      expect((await request(app).delete('/api/invoices/STUB00').set(auth(fix.rep.sid))).status).toBe(403);
+    it('field_rep on non-existent invoice → 404 (ownerOrRole: resource fetch required for ownerId)', async () => {
+      expect((await request(app).delete('/api/invoices/STUB00').set(auth(fix.rep.sid))).status).toBe(404);
     });
   });
 
-  describe('[D20] POST /invoices/:invoiceId/void [invoice.void — manager+]', () => {
+  describe('[D20] POST /invoices/:invoiceId/void [invoice.void — ownerOrRole:manager]', () => {
     it('no auth → 401', async () => {
       expect((await request(app).post('/api/invoices/STUB00/void')).status).toBe(401);
     });
-    it('field_rep → 403', async () => {
-      expect((await request(app).post('/api/invoices/STUB00/void').set(auth(fix.rep.sid))).status).toBe(403);
+    it('field_rep on non-existent invoice → 404 (ownerOrRole: resource fetch required for ownerId)', async () => {
+      expect((await request(app).post('/api/invoices/STUB00/void').set(auth(fix.rep.sid))).status).toBe(404);
     });
   });
 

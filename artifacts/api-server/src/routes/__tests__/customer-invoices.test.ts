@@ -9,10 +9,10 @@
  *   5. field_rep create/modify/send/mark-paid/void → 403
  *   6. Cross-company invoice access → 404
  */
-import { companiesTable, customerInvoicesTable, db, paymentsTable, pinsTable, pool, userProfilesTable, usersTable } from '@workspace/db';
+import { companiesTable, customerInvoicesTable, db, paymentsTable, pinsTable, pool, userPermissionOverridesTable, userProfilesTable, usersTable } from '@workspace/db';
 import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import app from '../../app';
 import { createSession } from '../../lib/auth';
 
@@ -32,6 +32,7 @@ let repId: string;
 let companyBUserId: string;
 let pinId: string;
 let companyBPinId: string;
+let repOwnedPinId: string;  // pin whose userId = repId — for ownerOrRole tests
 
 beforeAll(async () => {
   // Company A — manager + field_rep
@@ -72,6 +73,13 @@ beforeAll(async () => {
     .values({ companyId: CO_B, userId: companyBUserId, latitude: 38.9, longitude: -77.0, workflow: 'insurance' })
     .returning();
   companyBPinId = bPin.id;
+
+  // Pin owned by the field_rep — for ownerOrRole access tests (Section 8 ruling)
+  const [rp] = await db
+    .insert(pinsTable)
+    .values({ companyId: CO_A, userId: repId, latitude: 38.9, longitude: -77.0, workflow: 'retail' })
+    .returning();
+  repOwnedPinId = rp.id;
 });
 
 afterAll(async () => {
@@ -223,10 +231,12 @@ describe('void a paid invoice', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. field_rep authorization — 403 on all write endpoints
+// 5. field_rep authorization — non-owner gets 403; owner gets 200
+// (Section 8 ruling: invoice.* permissions changed to ownerOrRole:manager)
 // ---------------------------------------------------------------------------
 
-describe('field_rep cannot write invoices', () => {
+describe('non-owner field_rep cannot access another rep\'s invoices', () => {
+  // pinId is owned by managerId; repId is NOT the owner → all ops must be 403.
   let invoiceId: string;
 
   beforeAll(async () => {
@@ -234,7 +244,7 @@ describe('field_rep cannot write invoices', () => {
     invoiceId = res.body.invoice.id;
   });
 
-  it('POST /pins/:pinId/invoices → 403', async () => {
+  it('POST /pins/:pinId/invoices → 403 (non-owner)', async () => {
     const res = await request(app)
       .post(`/api/pins/${pinId}/invoices`)
       .set({ Authorization: `Bearer ${repSid}` })
@@ -242,7 +252,22 @@ describe('field_rep cannot write invoices', () => {
     expect(res.status).toBe(403);
   });
 
-  it('PATCH /invoices/:invoiceId → 403', async () => {
+  it('GET /pins/:pinId/invoices → 403 (non-owner, ownerOrRole gate)', async () => {
+    // invoice.read is now ownerOrRole:manager — non-owner field_rep is blocked.
+    const res = await request(app)
+      .get(`/api/pins/${pinId}/invoices`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /invoices/:invoiceId → 403 (non-owner)', async () => {
+    const res = await request(app)
+      .get(`/api/invoices/${invoiceId}`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH /invoices/:invoiceId → 403 (non-owner)', async () => {
     const res = await request(app)
       .patch(`/api/invoices/${invoiceId}`)
       .set({ Authorization: `Bearer ${repSid}` })
@@ -250,39 +275,173 @@ describe('field_rep cannot write invoices', () => {
     expect(res.status).toBe(403);
   });
 
-  it('POST /invoices/:invoiceId/send → 403', async () => {
+  it('POST /invoices/:invoiceId/send → 403 (non-owner)', async () => {
     const res = await request(app)
       .post(`/api/invoices/${invoiceId}/send`)
       .set({ Authorization: `Bearer ${repSid}` });
     expect(res.status).toBe(403);
   });
 
-  it('POST /invoices/:invoiceId/mark-paid → 403', async () => {
+  it('POST /invoices/:invoiceId/mark-paid → 403 (non-owner)', async () => {
     const res = await request(app)
       .post(`/api/invoices/${invoiceId}/mark-paid`)
       .set({ Authorization: `Bearer ${repSid}` });
     expect(res.status).toBe(403);
   });
 
-  it('POST /invoices/:invoiceId/void → 403', async () => {
+  it('POST /invoices/:invoiceId/void → 403 (non-owner)', async () => {
     const res = await request(app)
       .post(`/api/invoices/${invoiceId}/void`)
       .set({ Authorization: `Bearer ${repSid}` });
     expect(res.status).toBe(403);
   });
 
-  it('DELETE /invoices/:invoiceId → 403', async () => {
+  it('DELETE /invoices/:invoiceId → 403 (non-owner)', async () => {
     const res = await request(app)
       .delete(`/api/invoices/${invoiceId}`)
       .set({ Authorization: `Bearer ${repSid}` });
     expect(res.status).toBe(403);
   });
+});
 
-  it('GET /pins/:pinId/invoices → 200 (reads are not manager-gated)', async () => {
+describe('owner field_rep has full access to their own lead\'s invoices', () => {
+  // repOwnedPinId is owned by repId → all ops must succeed (200/201/204).
+  // Uses separate invoices for each lifecycle branch so state doesn't bleed.
+  let ownerInvoiceId: string;
+  let ownerDeleteId:  string;
+  let ownerPaidId:    string;
+
+  it('POST /pins/:repOwnedPinId/invoices → 201 (owner)', async () => {
+    const res = await request(app)
+      .post(`/api/pins/${repOwnedPinId}/invoices`)
+      .set({ Authorization: `Bearer ${repSid}` })
+      .send({ ...validInvoiceBody, invoiceType: 'acv_payment', amountCents: 250000 });
+    expect(res.status).toBe(201);
+    ownerInvoiceId = res.body.invoice.id;
+
+    // Create a second invoice for the delete test (must be draft)
+    const r2 = await request(app)
+      .post(`/api/pins/${repOwnedPinId}/invoices`)
+      .set({ Authorization: `Bearer ${repSid}` })
+      .send({ ...validInvoiceBody, invoiceType: 'final_payment', amountCents: 100000 });
+    expect(r2.status).toBe(201);
+    ownerDeleteId = r2.body.invoice.id;
+
+    // Create a third invoice for the mark-paid test
+    const r3 = await request(app)
+      .post(`/api/pins/${repOwnedPinId}/invoices`)
+      .set({ Authorization: `Bearer ${repSid}` })
+      .send({ ...validInvoiceBody, invoiceType: 'initial_deposit', amountCents: 50000 });
+    expect(r3.status).toBe(201);
+    ownerPaidId = r3.body.invoice.id;
+  });
+
+  it('GET /pins/:repOwnedPinId/invoices → 200 (owner)', async () => {
+    const res = await request(app)
+      .get(`/api/pins/${repOwnedPinId}/invoices`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.invoices)).toBe(true);
+  });
+
+  it('GET /invoices/:ownerInvoiceId → 200 (owner)', async () => {
+    const res = await request(app)
+      .get(`/api/invoices/${ownerInvoiceId}`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(200);
+    expect(res.body.invoice.id).toBe(ownerInvoiceId);
+  });
+
+  it('PATCH /invoices/:ownerInvoiceId → 200 (owner)', async () => {
+    const res = await request(app)
+      .patch(`/api/invoices/${ownerInvoiceId}`)
+      .set({ Authorization: `Bearer ${repSid}` })
+      .send({ customerName: 'Owner Updated Name' });
+    expect(res.status).toBe(200);
+    expect(res.body.invoice.customerName).toBe('Owner Updated Name');
+  });
+
+  it('POST /invoices/:ownerInvoiceId/send → 200 (owner)', async () => {
+    const res = await request(app)
+      .post(`/api/invoices/${ownerInvoiceId}/send`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(200);
+    expect(res.body.invoice.status).toBe('sent');
+  });
+
+  it('POST /invoices/:ownerInvoiceId/void → 200 (owner)', async () => {
+    const res = await request(app)
+      .post(`/api/invoices/${ownerInvoiceId}/void`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(200);
+    expect(res.body.invoice.status).toBe('void');
+  });
+
+  it('DELETE /invoices/:ownerDeleteId → 204 (owner can delete draft)', async () => {
+    const res = await request(app)
+      .delete(`/api/invoices/${ownerDeleteId}`)
+      .set({ Authorization: `Bearer ${repSid}` });
+    expect(res.status).toBe(204);
+  });
+
+  it('POST /invoices/:ownerPaidId/mark-paid → 200 (owner)', async () => {
+    const res = await request(app)
+      .post(`/api/invoices/${ownerPaidId}/mark-paid`)
+      .set({ Authorization: `Bearer ${repSid}` })
+      .send({ paymentMethod: 'Check' });
+    expect(res.status).toBe(200);
+    expect(res.body.invoice.status).toBe('paid');
+  });
+
+  it('manager still gets 200 unconditionally on any pin (role gate)', async () => {
+    const res = await request(app)
+      .get(`/api/pins/${repOwnedPinId}/invoices`)
+      .set({ Authorization: `Bearer ${managerSid}` });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Permission overrides (Step 5 layer) for invoice ownerOrRole routes
+// ---------------------------------------------------------------------------
+
+describe('invoice permission overrides (Step 5 — explicit grant / revoke)', () => {
+  afterEach(async () => {
+    await db
+      .delete(userPermissionOverridesTable)
+      .where(eq(userPermissionOverridesTable.companyId, CO_A))
+      .catch(() => {});
+  });
+
+  it('explicit grant on invoice.read elevates non-owner field_rep to 200', async () => {
+    // repId is NOT the owner of pinId (managerId owns it) — registry default → 403.
+    // An explicit grant must bypass the registry and return 200.
+    await db.insert(userPermissionOverridesTable).values({
+      companyId: CO_A,
+      userId: repId,
+      permission: 'invoice.read',
+      granted: true,
+      grantedByUserId: managerId,
+    });
     const res = await request(app)
       .get(`/api/pins/${pinId}/invoices`)
       .set({ Authorization: `Bearer ${repSid}` });
     expect(res.status).toBe(200);
+  });
+
+  it('explicit revoke on invoice.read blocks a manager (overrides the role gate)', async () => {
+    // managerId normally gets 200 via the role gate. An explicit revoke → 403.
+    await db.insert(userPermissionOverridesTable).values({
+      companyId: CO_A,
+      userId: managerId,
+      permission: 'invoice.read',
+      granted: false,
+      grantedByUserId: managerId,
+    });
+    const res = await request(app)
+      .get(`/api/pins/${pinId}/invoices`)
+      .set({ Authorization: `Bearer ${managerSid}` });
+    expect(res.status).toBe(403);
   });
 });
 
