@@ -18,15 +18,21 @@
  * Companies provisioned here get pp_tier = 'pp_only' and no CRM permission set.
  */
 import { randomBytes } from 'node:crypto';
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, desc, eq, gt, lt, sql } from 'drizzle-orm';
 import {
   companiesTable,
   db,
+  inspectionPhotosTable,
+  inspectionsTable,
+  objectOwnershipTable,
   ppPendingRegistrationsTable,
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
 import { Router, type IRouter, type Request, type Response } from 'express';
+import { ObjectStorageService } from '../lib/objectStorage';
+import { getPPLogoSignedUrl } from '../lib/ppLogoAccess';
+import { renderCompiledReportHtml } from './inspections';
 import { z } from 'zod';
 import { logger } from '../lib/logger';
 import { clearSession, getSession, getSessionId } from '../lib/auth';
@@ -36,6 +42,7 @@ import { createPPSession } from '../lib/pp/session';
 import { getUncachableStripeClient } from '../lib/stripe/stripeClient';
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -82,7 +89,10 @@ async function provisionPPAccount(opts: {
   companyName: string;
   email: string;
   passwordHash: string;
-  logoObjectPath?: string | null;
+  // logoObjectPath intentionally omitted: object paths supplied during
+  // unauthenticated checkout cannot be ownership-verified (the user doesn't
+  // exist yet), so we always provision with no logo and let the subscriber
+  // upload one post-auth via GET /pp/upload-url + PUT /pp/company/logo.
 }) {
   const companyId = await generateUniqueCompanyId();
 
@@ -93,7 +103,7 @@ async function provisionPPAccount(opts: {
         id: companyId,
         name: opts.companyName,
         ppTier: 'pp_only',
-        logoUrl: opts.logoObjectPath ?? null,
+        logoUrl: null, // set post-auth via authenticated upload
       })
       .returning();
 
@@ -333,7 +343,8 @@ router.get('/pp/register/confirm', async (req: Request, res: Response) => {
         companyName: pending.companyName,
         email: pending.email,
         passwordHash: pending.passwordHash,
-        logoObjectPath: pending.logoObjectPath,
+        // logoObjectPath intentionally not passed — unauthenticated paths cannot
+        // be ownership-verified; subscribers upload logo post-auth.
       });
       user = result.user;
       company = result.company;
@@ -476,6 +487,17 @@ router.get('/pp/me', async (req: Request, res: Response) => {
     .from(companiesTable)
     .where(eq(companiesTable.id, user.companyId));
 
+  // Generate a fresh signed read URL — only when objectOwnershipTable confirms
+  // the path belongs to this company (cross-tenant guard via getPPLogoSignedUrl).
+  const logoSignedUrl = company?.logoUrl
+    ? await getPPLogoSignedUrl(
+        company.id,
+        company.logoUrl,
+        db,
+        (path, ttl) => objectStorage.tryGetSignedObjectUrl(path, ttl),
+      )
+    : null;
+
   res.json({
     user: {
       id: user.id,
@@ -486,7 +508,7 @@ router.get('/pp/me', async (req: Request, res: Response) => {
       companyId: user.companyId,
       emailVerified: user.emailVerifiedAt !== null,
     },
-    company,
+    company: company ? { ...company, logoSignedUrl } : company,
   });
 });
 
@@ -594,6 +616,379 @@ router.post('/pp/password-reset/confirm', async (req: Request, res: Response) =>
     .update(usersTable)
     .set({ passwordHash: newHash, resetToken: null, resetTokenExpiresAt: null })
     .where(eq(usersTable.id, user.id));
+
+  res.json({ ok: true });
+});
+
+// ── PP session helper ────────────────────────────────────────────────────────
+
+async function requirePPSession(req: Request, res: Response) {
+  const sid = getSessionId(req);
+  if (!sid) {
+    res.status(401).json({ error: 'Not authenticated.' });
+    return null;
+  }
+  const session = await getSession(sid);
+  if (!session?.user?.id || session.session_type !== 'pp') {
+    res.status(401).json({ error: 'Not authenticated.' });
+    return null;
+  }
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, session.user.id));
+  if (!user || user.deactivatedAt !== null) {
+    await clearSession(res, sid);
+    res.status(401).json({ error: 'Session invalid.' });
+    return null;
+  }
+  const [company] = await db
+    .select()
+    .from(companiesTable)
+    .where(eq(companiesTable.id, user.companyId));
+  if (!company) {
+    res.status(401).json({ error: 'Company not found.' });
+    return null;
+  }
+  return { user, company };
+}
+
+// ── PP inspections list ──────────────────────────────────────────────────────
+
+/**
+ * GET /pp/inspections
+ * Lists all inspections for the authenticated PP company.
+ * Returns readiness (inspection locked + AI summary generated), photo count,
+ * inspector name, and compiled package count per inspection.
+ */
+router.get('/pp/inspections', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { company } = ppCtx;
+
+  // Inspector alias table for the join
+  const inspectorAlias = {
+    id: usersTable.id,
+    firstName: usersTable.firstName,
+    lastName: usersTable.lastName,
+    email: usersTable.email,
+  };
+
+  // Fetch inspections with inspector name (left join — inspector may be deleted)
+  const inspections = await db
+    .select({
+      id: inspectionsTable.id,
+      address: inspectionsTable.address,
+      insuredName: inspectionsTable.insuredName,
+      status: inspectionsTable.status,
+      createdAt: inspectionsTable.createdAt,
+      lockedAt: inspectionsTable.lockedAt,
+      aiSummary: inspectionsTable.aiSummary,
+      compiledReportVersions: inspectionsTable.compiledReportVersions,
+      inspectorUserId: inspectionsTable.inspectorUserId,
+      inspectorFirstName: usersTable.firstName,
+      inspectorLastName: usersTable.lastName,
+      inspectorEmail: usersTable.email,
+    })
+    .from(inspectionsTable)
+    .leftJoin(usersTable, eq(inspectionsTable.inspectorUserId, usersTable.id))
+    .where(eq(inspectionsTable.companyId, company.id))
+    .orderBy(desc(inspectionsTable.createdAt));
+
+  // Photo counts via a grouped subquery
+  const photoCounts = await db
+    .select({
+      inspectionId: inspectionPhotosTable.inspectionId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(inspectionPhotosTable)
+    .where(eq(inspectionPhotosTable.companyId, company.id))
+    .groupBy(inspectionPhotosTable.inspectionId);
+
+  const photoCountMap = new Map(photoCounts.map((p) => [p.inspectionId, p.count]));
+
+  const result = inspections.map((insp) => {
+    const versions = Array.isArray(insp.compiledReportVersions) ? insp.compiledReportVersions : [];
+    const inspectorName =
+      [insp.inspectorFirstName, insp.inspectorLastName].filter(Boolean).join(' ') ||
+      insp.inspectorEmail ||
+      'Unknown';
+    return {
+      id: insp.id,
+      address: insp.address,
+      insuredName: insp.insuredName,
+      status: insp.status,
+      inspectedAt: (insp.lockedAt ?? insp.createdAt).toISOString(),
+      inspectorName,
+      photoCount: photoCountMap.get(insp.id) ?? 0,
+      // Ready = inspection is locked (submitted) AND an AI summary has been generated
+      ready: insp.lockedAt !== null && insp.aiSummary !== null,
+      packageCount: versions.length,
+    };
+  });
+
+  res.json({ inspections: result });
+});
+
+// ── PP packages list ─────────────────────────────────────────────────────────
+
+/**
+ * GET /pp/packages
+ * Lists all compiled proof packages for the authenticated PP company.
+ * Returns version metadata; each version links to the render endpoint
+ * (GET /pp/inspections/:id/report/:versionIndex) which resolves the blob,
+ * enforces the blocked-content policy, and returns rendered text/html.
+ */
+router.get('/pp/packages', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { company } = ppCtx;
+
+  const inspections = await db
+    .select({
+      id: inspectionsTable.id,
+      address: inspectionsTable.address,
+      insuredName: inspectionsTable.insuredName,
+      compiledReportVersions: inspectionsTable.compiledReportVersions,
+    })
+    .from(inspectionsTable)
+    .where(eq(inspectionsTable.companyId, company.id))
+    .orderBy(desc(inspectionsTable.createdAt));
+
+  type VersionEntry = { path: string; generatedAt: string; evidenceManifestSha256?: string | null };
+
+  const pkgEntries = inspections
+    .filter((insp) => {
+      const versions = Array.isArray(insp.compiledReportVersions)
+        ? insp.compiledReportVersions
+        : [];
+      return versions.length > 0;
+    })
+    .map((insp) => {
+      const rawVersions = (
+        Array.isArray(insp.compiledReportVersions) ? insp.compiledReportVersions : []
+      ) as VersionEntry[];
+
+      // Only include versions that have a stored blob path (no path = compile failed).
+      // The render endpoint enforces the blocked-content policy on open.
+      const versions = rawVersions
+        .map((ver, idx) => ({ index: idx, generatedAt: ver.generatedAt, hasBlob: !!ver.path }))
+        .filter((v) => v.hasBlob);
+
+      if (versions.length === 0) return null;
+      const latestVer = rawVersions[rawVersions.length - 1];
+      return {
+        inspectionId: insp.id,
+        address: insp.address,
+        insuredName: insp.insuredName,
+        latestCompiledAt: latestVer.generatedAt,
+        versionCount: versions.length,
+        versions,
+        status: 'compiled' as const,
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
+
+  res.json({ packages: pkgEntries });
+});
+
+// ── PP report render ─────────────────────────────────────────────────────────
+
+/**
+ * GET /pp/inspections/:inspectionId/report/:versionIndex
+ * Renders a compiled Proof Package version as text/html for a PP subscriber.
+ * Applies the same blocked-content policy as the public Evidence Portal
+ * (allowBlocked: false — blocked versions return 409).
+ */
+router.get('/pp/inspections/:inspectionId/report/:versionIndex', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const versionIndex = parseInt(req.params.versionIndex as string, 10);
+
+  if (!inspectionId || isNaN(versionIndex) || versionIndex < 0) {
+    res.status(400).json({ error: 'Invalid inspection ID or version index.' });
+    return;
+  }
+
+  // Load inspection — scoped to the PP company (tenant isolation)
+  const [inspection] = await db
+    .select()
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, ppCtx.company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  type VersionEntry = { path: string; generatedAt: string };
+  const versions = (
+    Array.isArray(inspection.compiledReportVersions) ? inspection.compiledReportVersions : []
+  ) as VersionEntry[];
+
+  const version = versions[versionIndex];
+  if (!version?.path) {
+    res.status(404).json({ error: 'Report version not found.' });
+    return;
+  }
+
+  // Render via the shared renderer — allowBlocked:false matches public portal policy
+  const rendered = await renderCompiledReportHtml({
+    inspection,
+    reportPath: version.path,
+    companyId: ppCtx.company.id,
+    allowBlocked: false,
+  });
+
+  if (!rendered.ok) {
+    // 409 = blocked content, same as Evidence Portal behaviour
+    res.status(409).json({ error: rendered.error });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(rendered.html);
+});
+
+// ── PP company settings ──────────────────────────────────────────────────────
+
+const PatchCompanyBody = z.object({
+  companyName: z.string().min(1).max(255).optional(),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+  billingEmail: z.string().email().max(255).optional(),
+});
+
+/**
+ * PATCH /pp/company
+ * Update company name and/or founder user contact details.
+ */
+router.patch('/pp/company', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const parsed = PatchCompanyBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid fields', detail: parsed.error.flatten().fieldErrors });
+    return;
+  }
+
+  const { companyName, firstName, lastName, billingEmail } = parsed.data;
+
+  // Update company name if provided
+  if (companyName !== undefined) {
+    await db
+      .update(companiesTable)
+      .set({ name: companyName })
+      .where(eq(companiesTable.id, ppCtx.company.id));
+  }
+
+  // Update user contact fields if provided
+  const userUpdates: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+  } = {};
+  if (firstName !== undefined) userUpdates.firstName = firstName;
+  if (lastName !== undefined) userUpdates.lastName = lastName;
+  if (billingEmail !== undefined) {
+    const normalizedEmail = billingEmail.toLowerCase().trim();
+    // Check uniqueness — prevent stealing another user's email
+    if (normalizedEmail !== (ppCtx.user.email ?? '').toLowerCase().trim()) {
+      const [existing] = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.email, normalizedEmail));
+      if (existing) {
+        res.status(409).json({ error: 'That email address is already in use.' });
+        return;
+      }
+    }
+    userUpdates.email = normalizedEmail;
+  }
+
+  if (Object.keys(userUpdates).length > 0) {
+    await db
+      .update(usersTable)
+      .set(userUpdates)
+      .where(eq(usersTable.id, ppCtx.user.id));
+  }
+
+  res.json({ ok: true });
+});
+
+// ── PP logo upload URL ───────────────────────────────────────────────────────
+
+/**
+ * GET /pp/upload-url
+ * Returns a presigned PUT URL and the resulting objectPath for logo upload.
+ * PP users cannot access the CRM storage.upload permission, so this provides
+ * a PP-session-gated equivalent.
+ */
+router.get('/pp/upload-url', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  try {
+    const uploadURL = await objectStorage.getObjectEntityUploadURL();
+    const objectPath = objectStorage.normalizeObjectEntityPath(uploadURL);
+
+    // Record ownership so the logo path is verifiable as belonging to this
+    // company at update time and so object-storage ACL checks can run.
+    await db
+      .insert(objectOwnershipTable)
+      .values({ objectPath, userId: ppCtx.user.id, companyId: ppCtx.company.id })
+      .onConflictDoNothing();
+
+    res.json({ uploadURL, objectPath });
+  } catch (err) {
+    logger.error({ err }, 'pp upload-url: failed to generate signed URL');
+    res.status(503).json({ error: 'Could not generate upload URL. Please try again.' });
+  }
+});
+
+// ── PP company logo ──────────────────────────────────────────────────────────
+
+const LogoBody = z.object({ objectPath: z.string().min(1).max(500) });
+
+/**
+ * PUT /pp/company/logo
+ * Update the company logo stored in object storage.
+ */
+router.put('/pp/company/logo', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const parsed = LogoBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'objectPath is required.' });
+    return;
+  }
+
+  const { objectPath } = parsed.data;
+
+  // Tenant boundary: verify the objectPath was issued to this company via
+  // GET /pp/upload-url (ownership row inserted at that time). This prevents
+  // a subscriber from pointing their logo at another tenant's object.
+  const [ownership] = await db
+    .select({ companyId: objectOwnershipTable.companyId })
+    .from(objectOwnershipTable)
+    .where(eq(objectOwnershipTable.objectPath, objectPath));
+
+  if (!ownership || ownership.companyId !== ppCtx.company.id) {
+    res.status(403).json({ error: 'Object does not belong to your company.' });
+    return;
+  }
+
+  await db
+    .update(companiesTable)
+    .set({ logoUrl: objectPath })
+    .where(eq(companiesTable.id, ppCtx.company.id));
 
   res.json({ ok: true });
 });

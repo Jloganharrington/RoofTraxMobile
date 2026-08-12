@@ -57,6 +57,12 @@ import JobNimbusPage from '@/pages/marketing/switch/JobNimbusPage';
 import PPRegisterPage, { PPRegisterConfirmPage } from '@/pages/pp/PPRegisterPage';
 import PPLoginPage, { PPResetPasswordPage } from '@/pages/pp/PPLoginPage';
 import PPPortalPlaceholder from '@/pages/pp/PPPortalPlaceholder';
+import { PPProtectedRoute } from '@/components/layout/PPProtectedRoute';
+import { PPShell } from '@/components/layout/PPShell';
+import MyInspectionsPage from '@/pages/pp/MyInspectionsPage';
+import MyPackagesPage from '@/pages/pp/MyPackagesPage';
+import PPSettingsPage from '@/pages/pp/PPSettingsPage';
+import PPWizardComingSoon from '@/pages/pp/PPWizardComingSoon';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -111,8 +117,31 @@ function Router() {
       <Route path="/pp/register/confirm" component={PPRegisterConfirmPage} />
       <Route path="/pp/login" component={PPLoginPage} />
       <Route path="/pp/reset-password" component={PPResetPasswordPage} />
-      {/* PP portal — authenticated landing page (full shell is a downstream task) */}
+      {/* PP portal — /pp/portal is the email-verify redirect target; send to inspections */}
       <Route path="/pp/portal" component={PPPortalPlaceholder} />
+
+      {/* PP Portal — authenticated subscriber pages */}
+      <Route path="/pp/inspections">
+        <PPProtectedRoute>
+          <PPShell><MyInspectionsPage /></PPShell>
+        </PPProtectedRoute>
+      </Route>
+      <Route path="/pp/packages">
+        <PPProtectedRoute>
+          <PPShell><MyPackagesPage /></PPShell>
+        </PPProtectedRoute>
+      </Route>
+      <Route path="/pp/settings">
+        <PPProtectedRoute>
+          <PPShell><PPSettingsPage /></PPShell>
+        </PPProtectedRoute>
+      </Route>
+      {/* PP Package Generation Wizard — full wizard is a downstream task */}
+      <Route path="/pp/wizard/:id">
+        <PPProtectedRoute>
+          <PPShell><PPWizardComingSoon /></PPShell>
+        </PPProtectedRoute>
+      </Route>
 
       {/* Trial Proof Package — public marketing + trial-session flow */}
       <Route path="/proof-package" component={ProofPackage} />

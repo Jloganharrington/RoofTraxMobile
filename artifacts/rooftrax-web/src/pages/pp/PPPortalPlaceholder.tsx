@@ -7,7 +7,7 @@
  * redirect target.
  */
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const BASE = '';
 
@@ -57,29 +57,11 @@ export default function PPPortalPlaceholder() {
     return null;
   }
 
-  return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 gap-4">
-      {verified && (
-        <div className="flex items-center gap-2 bg-green-900/20 border border-green-700 text-green-400 rounded-lg px-4 py-2 text-sm">
-          <CheckCircle2 className="h-4 w-4" /> Email verified successfully.
-        </div>
-      )}
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold text-white">Welcome, {company?.name ?? 'your company'}</h1>
-        <p className="text-zinc-400 text-sm">Company ID: <span className="font-mono text-zinc-300">{user.companyId}</span></p>
-        {!user.emailVerified && (
-          <p className="text-amber-400 text-sm">Check your inbox to verify your email address.</p>
-        )}
-        <p className="text-zinc-500 text-xs mt-4">
-          The Proof Package portal is coming soon. Your account is ready.
-        </p>
-      </div>
-      <button
-        onClick={() => { fetch('/api/pp/logout', { method: 'POST', credentials: 'include' }).then(() => { window.location.href = '/rooftrax-web/pp/login'; }); }}
-        className="text-zinc-500 hover:text-zinc-300 text-xs underline mt-4"
-      >
-        Sign out
-      </button>
-    </div>
-  );
+  // Authenticated — redirect to the inspections page (entry point of the PP portal).
+  // Preserve the ?verified=1 param so the inspections page can show the email-verified banner.
+  const target = verified
+    ? '/rooftrax-web/pp/inspections?verified=1'
+    : '/rooftrax-web/pp/inspections';
+  window.location.href = target;
+  return null;
 }
