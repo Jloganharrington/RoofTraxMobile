@@ -17,9 +17,17 @@ import { router } from 'expo-router';
 import { useListPins, getListPinsQueryKey } from '@workspace/api-client-react';
 import { Icon } from '@/components/Icon';
 import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
+import { UpgradeRequiredScreen } from '@/components/UpgradeRequiredScreen';
 
 export default function ChangeOrdersScreen() {
   const colors = useColors();
+  const { companyPpTier } = useProfile();
+
+  // PP-only subscribers don't have access to CRM change-order management.
+  if (companyPpTier === 'pp_only') {
+    return <UpgradeRequiredScreen featureName="Change order management" />;
+  }
   const pinsQuery = useListPins(undefined, {
     query: { queryKey: getListPinsQueryKey() },
   });

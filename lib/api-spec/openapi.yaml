@@ -8190,6 +8190,9 @@ components:
           type: string
         name:
           type: string
+        ppTier:
+          type: string
+          description: "Product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM."
     CreateCompanyRequest:
       type: object
       required: [name]

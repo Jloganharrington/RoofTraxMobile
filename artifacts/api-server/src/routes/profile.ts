@@ -51,6 +51,7 @@ function toProfileEnvelope(
     companyName: string;
     companyLogoUrl?: string | null;
     betaBugReporting: boolean;
+    companyPpTier?: string | null;
     contractorLegalName?: string | null;
     contractorAddress?: string | null;
     fipsaFeeCents?: number | null;
@@ -65,6 +66,7 @@ function toProfileEnvelope(
       companyId: company.companyId,
       companyName: company.companyName,
       companyLogoUrl: company.companyLogoUrl ?? null,
+      companyPpTier: company.companyPpTier ?? null,
       signatureUrl: profile.signatureUrl ?? null,
       signatureSha256: profile.signatureSha256 ?? null,
       signatureSignedAt: profile.signatureSignedAt
@@ -113,6 +115,7 @@ async function loadCompany(userId: string) {
       companyName: companiesTable.name,
       companyLogoUrl: companiesTable.logoUrl,
       betaBugReporting: companiesTable.betaBugReporting,
+      companyPpTier: companiesTable.ppTier,
       contractorLegalName: companiesTable.contractorLegalName,
       contractorAddress: companiesTable.contractorAddress,
       fipsaFeeCents: companiesTable.fipsaFeeCents,

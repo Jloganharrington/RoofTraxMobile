@@ -12,7 +12,7 @@ import { createCompany, getCompany } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth, type LoginError } from '@/lib/auth';
 
-type Mode = 'choose' | 'join' | 'confirm' | 'create';
+type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'create';
 
 function errorMessage(error: LoginError | null): string | null {
   switch (error) {
@@ -32,16 +32,22 @@ function errorMessage(error: LoginError | null): string | null {
 // never see this: their companyId is fixed at signup and untouched here.
 export function CompanyGateScreen() {
   const colors = useColors();
-  const { login, isLoading, loginError } = useAuth();
+  const { login, loginPP, ppLoginError, isLoading, loginError } = useAuth();
   const [mode, setMode] = useState<Mode>('choose');
   const [companyCode, setCompanyCode] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
-  const [resolvedCompany, setResolvedCompany] = useState<{ id: string; name: string } | null>(
-    null,
-  );
+  const [resolvedCompany, setResolvedCompany] = useState<{
+    id: string;
+    name: string;
+    ppTier?: string;
+  } | null>(null);
+
+  // PP login form state
+  const [ppEmail, setPpEmail] = useState('');
+  const [ppPassword, setPpPassword] = useState('');
 
   const handleLookup = async () => {
     const id = companyCode.trim().toUpperCase();
@@ -53,8 +59,13 @@ export function CompanyGateScreen() {
     setFormError(null);
     try {
       const { company } = await getCompany(id);
-      setResolvedCompany({ id: company.id, name: company.name });
-      setMode('confirm');
+      setResolvedCompany({ id: company.id, name: company.name, ppTier: company.ppTier });
+      // PP-only companies use email+password instead of OIDC
+      if (company.ppTier === 'pp_only') {
+        setMode('pp-login');
+      } else {
+        setMode('confirm');
+      }
     } catch {
       setFormError("That company ID doesn't exist. Double-check it and try again.");
     } finally {
@@ -65,6 +76,20 @@ export function CompanyGateScreen() {
   const handleConfirmJoin = async () => {
     if (!resolvedCompany) return;
     await login(resolvedCompany.id);
+  };
+
+  const handlePPLogin = async () => {
+    const email = ppEmail.trim();
+    const password = ppPassword;
+    if (!email || !password) {
+      setFormError('Enter your email and password.');
+      return;
+    }
+    setFormError(null);
+    const result = await loginPP(email, password);
+    if (!result.ok) {
+      setFormError(result.error ?? 'Incorrect email or password.');
+    }
   };
 
   const handleCreate = async () => {
@@ -85,7 +110,7 @@ export function CompanyGateScreen() {
     }
   };
 
-  const message = formError ?? errorMessage(loginError);
+  const message = formError ?? ppLoginError ?? errorMessage(loginError);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -220,6 +245,74 @@ export function CompanyGateScreen() {
           >
             <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
               Not right — re-enter code
+            </Text>
+          </Pressable>
+        </>
+      )}
+
+      {/* PP-only login: email + password instead of OIDC */}
+      {mode === 'pp-login' && resolvedCompany && (
+        <>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Sign in to{' '}
+            <Text style={{ fontWeight: '700', color: colors.foreground }}>
+              {resolvedCompany.name}
+            </Text>
+          </Text>
+          {message && (
+            <Text style={[styles.error, { color: colors.destructive }]}>{message}</Text>
+          )}
+          <TextInput
+            value={ppEmail}
+            onChangeText={setPpEmail}
+            placeholder="Email address"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            style={[
+              styles.input,
+              { borderColor: colors.border, color: colors.foreground },
+            ]}
+          />
+          <TextInput
+            value={ppPassword}
+            onChangeText={setPpPassword}
+            placeholder="Password"
+            placeholderTextColor={colors.mutedForeground}
+            secureTextEntry
+            textContentType="password"
+            style={[
+              styles.input,
+              { borderColor: colors.border, color: colors.foreground },
+            ]}
+          />
+          <Pressable
+            onPress={handlePPLogin}
+            disabled={isLoading}
+            style={[styles.button, { backgroundColor: colors.primary }]}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+                Sign in
+              </Text>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setResolvedCompany(null);
+              setFormError(null);
+              setPpEmail('');
+              setPpPassword('');
+              setMode('join');
+            }}
+            style={styles.linkButton}
+          >
+            <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
+              Back — re-enter company ID
             </Text>
           </Pressable>
         </>

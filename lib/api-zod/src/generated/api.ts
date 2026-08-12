@@ -106,7 +106,8 @@ export const GetCompanyParams = zod.object({
 export const GetCompanyResponse = zod.object({
   "company": zod.object({
   "id": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "ppTier": zod.string().optional()
 })
 })
 
@@ -869,7 +870,8 @@ export const GetMyProfileResponse = zod.object({
   "email": zod.string().nullish(),
   "profileImageUrl": zod.string().nullish(),
   "phone": zod.string().nullish(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
+  "theme": zod.enum(['light', 'dark', 'system']).optional(),
+  "companyPpTier": zod.string().optional()
 })
 })
 

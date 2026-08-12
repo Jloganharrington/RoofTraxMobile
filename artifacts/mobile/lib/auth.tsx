@@ -39,6 +39,9 @@ interface AuthContextValue {
   // (it founds/joins the company); returning users' companyId is fixed
   // server-side and this value is ignored for them.
   login: (companyId?: string) => Promise<void>;
+  // PP email+password login — for companies with pp_tier === 'pp_only'.
+  loginPP: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  ppLoginError: string | null;
   logout: () => Promise<void>;
 }
 
@@ -48,6 +51,8 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthenticated: false,
   loginError: null,
   login: async () => {},
+  loginPP: async () => ({ ok: false }),
+  ppLoginError: null,
   logout: async () => {},
 });
 
@@ -66,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loginError, setLoginError] = useState<LoginError | null>(null);
+  const [ppLoginError, setPpLoginError] = useState<string | null>(null);
   const pendingCompanyId = useRef<string | undefined>(undefined);
 
   const discovery = AuthSession.useAutoDiscovery(ISSUER_URL);
@@ -260,6 +266,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [promptAsync, loginOnWeb],
   );
 
+  /**
+   * PP email + password login for pp_only companies.
+   * Calls POST /api/pp/login and stores the returned session token so it is
+   * sent as Authorization: Bearer <token> on all subsequent API calls —
+   * exactly the same mechanism used by the OIDC mobile flow.
+   */
+  const loginPP = useCallback(async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
+    setPpLoginError(null);
+    setIsLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      if (!apiBase) {
+        const msg = 'API base URL is not configured.';
+        setPpLoginError(msg);
+        setIsLoading(false);
+        return { ok: false, error: msg };
+      }
+
+      const res = await fetch(`${apiBase}/api/pp/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const msg = data?.error ?? 'Incorrect email or password.';
+        setPpLoginError(msg);
+        setIsLoading(false);
+        return { ok: false, error: msg };
+      }
+
+      if (data?.token) {
+        await setToken(AUTH_TOKEN_KEY, data.token);
+        await fetchUser();
+        return { ok: true };
+      }
+
+      const msg = 'Login failed. Please try again.';
+      setPpLoginError(msg);
+      setIsLoading(false);
+      return { ok: false, error: msg };
+    } catch (err) {
+      console.error('PP login error:', err);
+      const msg = 'Something went wrong. Please try again.';
+      setPpLoginError(msg);
+      setIsLoading(false);
+      return { ok: false, error: msg };
+    }
+  }, [fetchUser]);
+
   const logout = useCallback(async () => {
     try {
       const token = await getToken(AUTH_TOKEN_KEY);
@@ -280,6 +338,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       await deleteToken(AUTH_TOKEN_KEY);
       setUser(null);
+      setPpLoginError(null);
     }
   }, []);
 
@@ -291,6 +350,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         loginError,
         login,
+        loginPP,
+        ppLoginError,
         logout,
       }}
     >

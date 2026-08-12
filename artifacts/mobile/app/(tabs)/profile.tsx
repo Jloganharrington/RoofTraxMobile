@@ -46,6 +46,7 @@ import { uploadFile } from '@/lib/upload';
 import { getApiBaseUrl } from '@/lib/api';
 import { getToken } from '@/lib/tokenStorage';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 
 const ROLE_LABELS: Record<string, string> = {
   field_rep: 'Field Rep',
@@ -712,6 +713,24 @@ export default function ProfileScreen() {
         onToggle={() => toggleSection('account')}
         colors={colors}
       >
+        {profile?.companyPpTier === 'pp_only' && (
+          <Pressable
+            onPress={() => {
+              const upgradeUrl = process.env.EXPO_PUBLIC_DOMAIN
+                ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/rooftrax-web/pp/upgrade`
+                : 'https://rooftrax.com/pp/upgrade';
+              void WebBrowser.openBrowserAsync(upgradeUrl, {
+                presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+              });
+            }}
+            style={[styles.upgradeButton, { backgroundColor: colors.primary }]}
+          >
+            <Icon name="arrow-right" size={18} color={colors.primaryForeground} />
+            <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>
+              Upgrade to Full CRM
+            </Text>
+          </Pressable>
+        )}
         <Pressable
           onPress={handleLogout}
           style={[styles.logoutButton, { borderColor: colors.destructive }]}
@@ -1612,6 +1631,15 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   chipText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  upgradeButton: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
   logoutButton: {
     flexDirection: 'row',
     gap: 8,

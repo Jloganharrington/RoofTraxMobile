@@ -192,6 +192,8 @@ export interface AuthUserEnvelope {
 export interface Company {
   id: string;
   name: string;
+  /** Product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM. */
+  ppTier?: string;
 }
 
 export interface CreateCompanyRequest {
@@ -617,6 +619,8 @@ export interface Profile {
   /** @nullable */
   phone?: string | null;
   theme?: ProfileThemeProperty;
+  /** Company product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM. */
+  companyPpTier?: string;
 }
 
 /**

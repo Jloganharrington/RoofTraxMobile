@@ -96,7 +96,7 @@ router.get('/companies/:companyId', async (req: Request, res: Response) => {
     return;
   }
 
-  res.json(GetCompanyResponse.parse({ company: { id: company.id, name: company.name } }));
+  res.json(GetCompanyResponse.parse({ company: { id: company.id, name: company.name, ppTier: company.ppTier } }));
 });
 
 // PATCH /companies/:companyId/logo — store a company logo URL. Admin+ only.

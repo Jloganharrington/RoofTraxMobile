@@ -12,11 +12,12 @@ export default function TabLayout() {
   const isDark = colorScheme === 'dark';
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
-  const { role, department } = useProfile();
+  const { role, department, companyPpTier } = useProfile();
   // inspector_canvasser is the department built for the forensic inspection
-  // module; super_admin can always reach it too. Content ships in a later
-  // phase — this tab currently just gates the placeholder screen.
-  const canSeeInspections = department === 'inspector_canvasser' || role === 'super_admin';
+  // module; super_admin can always reach it too. PP-only reps always get access
+  // since inspections are their primary capture workflow.
+  const isPpOnly = companyPpTier === 'pp_only';
+  const canSeeInspections = department === 'inspector_canvasser' || role === 'super_admin' || isPpOnly;
 
   return (
     <Tabs

@@ -30,6 +30,9 @@ export function useProfile() {
     signatureSignedAt: query.data?.profile.signatureSignedAt ?? null,
     // Beta instrument gate (company flag): shows/hides the bug-report button.
     betaBugReporting: query.data?.profile.betaBugReporting ?? false,
+    // Company product tier — 'pp_only' for PP-only subscribers, 'crm' otherwise.
+    // Used to gate CRM-only screens (pipeline board, leads list, etc.) in mobile.
+    companyPpTier: query.data?.profile.companyPpTier ?? 'crm',
     refetch: query.refetch,
   };
 }

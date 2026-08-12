@@ -372,7 +372,7 @@ router.get('/pp/register/confirm', async (req: Request, res: Response) => {
     company = co;
   }
 
-  await createPPSession(
+  const regToken = await createPPSession(
     {
       id: user.id,
       email: user.email ?? null,
@@ -384,7 +384,7 @@ router.get('/pp/register/confirm', async (req: Request, res: Response) => {
     res,
   );
 
-  res.json({ ok: true, companyId: user.companyId });
+  res.json({ ok: true, companyId: user.companyId, token: regToken });
 });
 
 // ── PP login ─────────────────────────────────────────────────────────────────
@@ -433,7 +433,7 @@ router.post('/pp/login', async (req: Request, res: Response) => {
     return;
   }
 
-  await createPPSession(
+  const token = await createPPSession(
     {
       id: user.id,
       email: user.email ?? null,
@@ -445,7 +445,10 @@ router.post('/pp/login', async (req: Request, res: Response) => {
     res,
   );
 
-  res.json({ ok: true, companyId: user.companyId });
+  // Return the session ID as `token` so mobile clients can store it and send
+  // it as `Authorization: Bearer <token>` (matching how OIDC mobile sessions
+  // work). Cookie-based clients (web) use the Set-Cookie header instead.
+  res.json({ ok: true, companyId: user.companyId, token });
 });
 
 // ── PP logout ────────────────────────────────────────────────────────────────
