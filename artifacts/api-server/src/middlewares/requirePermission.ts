@@ -25,7 +25,7 @@
 
 import { resolve, type Permission, type ResolveContext } from '@workspace/authz';
 import type { Role } from '@workspace/authz';
-import { db, userPermissionOverridesTable, userProfilesTable } from '@workspace/db';
+import { companiesTable, db, userPermissionOverridesTable, userProfilesTable } from '@workspace/db';
 import { and, eq } from 'drizzle-orm';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 
@@ -39,6 +39,11 @@ export interface ActorCtx extends Omit<ResolveContext, 'role'> {
   role: Role;
   /** Drizzle-safe company scope for tenant isolation. */
   companyId: string;
+  /**
+   * 'pp_only' for PP self-serve companies; 'crm' for all others.
+   * Used to block crm.* permissions for companies that are Proof-Package-only.
+   */
+  ppTier: string;
   /**
    * @deprecated Backward-compat alias for `actorId`. Kept so inspection handler
    * bodies using `actor.userId` continue to work during the write-route migration
@@ -73,20 +78,25 @@ declare global {
 export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
   if (!req.isAuthenticated()) return null;
   const { id: actorId, companyId } = req.user;
-  const rows = await db
-    .select({
-      role:       userProfilesTable.role,
-      department: userProfilesTable.department,
-    })
-    .from(userProfilesTable)
-    .where(eq(userProfilesTable.userId, actorId));
-  const profile = rows[0];
+  const [profileRow, companyRow] = await Promise.all([
+    db
+      .select({ role: userProfilesTable.role, department: userProfilesTable.department })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, actorId))
+      .then(rows => rows[0]),
+    db
+      .select({ ppTier: companiesTable.ppTier })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, companyId))
+      .then(rows => rows[0]),
+  ]);
   const ctx: ActorCtx = {
     actorId,
     companyId,
-    role:               (profile?.role ?? 'field_rep') as Role,
-    department:         (profile?.department ?? null) as ActorCtx['department'],
+    role:               (profileRow?.role ?? 'field_rep') as Role,
+    department:         (profileRow?.department ?? null) as ActorCtx['department'],
     workflowAssignment: null,
+    ppTier:             companyRow?.ppTier ?? 'crm',
     // ownerId is intentionally absent here — handlers supply it when checking
     // ownerOrRole permissions against a fetched resource.
     userId: actorId, // @deprecated alias — remove after write-route migration is complete
@@ -161,6 +171,14 @@ export async function resolveWithOverrides(
   ctx: ActorCtx,
   ownerId: string | undefined,
 ): Promise<{ allowed: boolean; reason?: string }> {
+  // PP-only companies cannot access field-sales CRM domains regardless of grants.
+  if (ctx.ppTier === 'pp_only') {
+    const domain = (permission as string).split('.')[0];
+    if (['crm', 'lead', 'canvassing', 'pipeline'].includes(domain)) {
+      return { allowed: false, reason: `The '${domain}' feature is not available on the Proof Package plan.` };
+    }
+  }
+
   const overrides = await loadPermissionOverrides(req, ctx.actorId, ctx.companyId);
   const override = overrides.get(permission);
   if (override !== undefined) {
@@ -202,6 +220,22 @@ export function requirePermission(permission: Permission): RequestHandler {
     if (!ctx) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
+    }
+
+    // ── PP-only entitlement gate ─────────────────────────────────────────────
+    // PP self-serve companies (ppTier = 'pp_only') are Proof-Package-only tenants.
+    // The following permission domains belong exclusively to the field-sales CRM
+    // feature set and must not be accessible to PP accounts regardless of role:
+    //   crm       — CRM integration (Salesforce-style external connector)
+    //   lead      — lead/contact management (field sales pipeline)
+    //   canvassing — door-to-door canvassing campaigns
+    //   pipeline  — sales pipeline board
+    if (ctx.ppTier === 'pp_only') {
+      const domain = (permission as string).split('.')[0];
+      if (['crm', 'lead', 'canvassing', 'pipeline'].includes(domain)) {
+        res.status(403).json({ error: `The '${domain}' feature is not available on the Proof Package plan.` });
+        return;
+      }
     }
 
     // ── Step 5: per-user override check ─────────────────────────────────────

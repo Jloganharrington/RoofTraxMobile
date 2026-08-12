@@ -52,6 +52,10 @@ export type CodeCitation = {
 export const companiesTable = pgTable('companies', {
   id: varchar('id').primaryKey(),
   name: varchar('name').notNull(),
+  // PP tier discriminator: 'crm' for full-CRM tenants (all existing companies),
+  // 'pp_only' for companies provisioned through the PP self-serve registration
+  // track. PP-only companies have no CRM enabled.
+  ppTier: varchar('pp_tier').notNull().default('crm'),
   founderUserId: varchar('founder_user_id'),
   // Beta instrument gate: shows/hides the in-app bug-report button. Defaults
   // ON for the beta cohort; end of beta = flip the flag (no code change, no
@@ -119,6 +123,17 @@ export const usersTable = pgTable('users', {
   companyId: varchar('company_id')
     .notNull()
     .references(() => companiesTable.id),
+  // PP auth: email + password for self-registered PP users. OIDC users never
+  // have password_hash set (column stays null throughout their lifecycle).
+  passwordHash: varchar('password_hash'),
+  // Email verification for PP registrations (null = not yet verified or OIDC user).
+  emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+  // Single-use token sent in the verification email (null once consumed).
+  verifyToken: varchar('verify_token'),
+  verifyTokenExpiresAt: timestamp('verify_token_expires_at', { withTimezone: true }),
+  // Single-use password-reset token and its expiry.
+  resetToken: varchar('reset_token'),
+  resetTokenExpiresAt: timestamp('reset_token_expires_at', { withTimezone: true }),
   // Soft deactivation (migration 047). Set by POST /team/users/:userId/terminate.
   // Non-null = the user is deactivated: auth middleware returns 401, sessions
   // are purged, and the user is hidden from assignment pickers. The row and all
@@ -184,7 +199,23 @@ export const companyJurisdictionPacksTable = pgTable(
   ],
 );
 
+export const ppPendingRegistrationsTable = pgTable('pp_pending_registrations', {
+  id: varchar('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()::text`),
+  companyName: varchar('company_name').notNull(),
+  email: varchar('email').notNull().unique(),
+  passwordHash: varchar('password_hash').notNull(),
+  logoObjectPath: varchar('logo_object_path'),
+  stripeSessionId: varchar('stripe_session_id').unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true })
+    .notNull()
+    .default(sql`now() + INTERVAL '24 hours'`),
+});
 export type CompanyJurisdictionPack = typeof companyJurisdictionPacksTable.$inferSelect;
 export type Company = typeof companiesTable.$inferSelect;
 export type UpsertUser = typeof usersTable.$inferInsert;
 export type User = typeof usersTable.$inferSelect;
+
+export type PpPendingRegistration = typeof ppPendingRegistrationsTable.$inferSelect;

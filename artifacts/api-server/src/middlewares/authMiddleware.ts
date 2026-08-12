@@ -14,6 +14,9 @@ import {
   type SessionData,
 } from '../lib/auth';
 
+/** Matches the 30-day PP session TTL used at creation time in lib/pp/session.ts. */
+const PP_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 declare global {
   namespace Express {
     interface User extends AuthUser {}
@@ -43,6 +46,13 @@ async function refreshIfExpired(
   sid: string,
   session: SessionData,
 ): Promise<SessionData | null> {
+  // PP sessions have no OIDC access token to refresh. Their lifetime is
+  // controlled exclusively by the DB row expiry (enforced in getSession).
+  // Bypassing the expires_at check avoids a false "token expired → no
+  // refresh_token → return null → 401" path 30 days after initial login
+  // even when the DB row is still valid.
+  if (session.session_type === 'pp') return session;
+
   const now = Math.floor(Date.now() / 1000);
   if (!session.expires_at || now <= session.expires_at) return session;
 
@@ -141,7 +151,10 @@ export async function authMiddleware(
       }
     }
     sessionTouchTimes.set(sid, now);
-    void touchSession(sid).catch(() => {});
+    // PP sessions are created with a 30-day expiry; use the same TTL when
+    // sliding so the touch does not silently cap them to 7 days.
+    const touchTTL = refreshed.session_type === 'pp' ? PP_SESSION_TTL_MS : undefined;
+    void touchSession(sid, touchTTL).catch(() => {});
   }
 
   req.user = refreshed.user;

@@ -54,6 +54,9 @@ import DemoPage from '@/pages/marketing/DemoPage';
 import ResourcesPage from '@/pages/marketing/ResourcesPage';
 import AccuLynxPage from '@/pages/marketing/switch/AccuLynxPage';
 import JobNimbusPage from '@/pages/marketing/switch/JobNimbusPage';
+import PPRegisterPage, { PPRegisterConfirmPage } from '@/pages/pp/PPRegisterPage';
+import PPLoginPage, { PPResetPasswordPage } from '@/pages/pp/PPLoginPage';
+import PPPortalPlaceholder from '@/pages/pp/PPPortalPlaceholder';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -102,6 +105,14 @@ function Router() {
       {/* Pricing Pages */}
       <Route path="/pricing" component={PricingPage} />
       <Route path="/pricing/success" component={PricingSuccessPage} />
+
+      {/* PP Subscriber self-serve registration and auth — public routes */}
+      <Route path="/pp/register" component={PPRegisterPage} />
+      <Route path="/pp/register/confirm" component={PPRegisterConfirmPage} />
+      <Route path="/pp/login" component={PPLoginPage} />
+      <Route path="/pp/reset-password" component={PPResetPasswordPage} />
+      {/* PP portal — authenticated landing page (full shell is a downstream task) */}
+      <Route path="/pp/portal" component={PPPortalPlaceholder} />
 
       {/* Trial Proof Package — public marketing + trial-session flow */}
       <Route path="/proof-package" component={ProofPackage} />

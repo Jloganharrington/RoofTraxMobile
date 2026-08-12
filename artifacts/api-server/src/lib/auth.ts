@@ -14,6 +14,9 @@ export interface SessionData {
   access_token: string;
   refresh_token?: string;
   expires_at?: number;
+  // 'pp' = PP self-serve session (email+password, no OIDC refresh).
+  // 'oidc' or undefined = standard OIDC session.
+  session_type?: 'pp' | 'oidc';
 }
 
 let oidcConfig: client.Configuration | null = null;
@@ -70,10 +73,10 @@ export async function updateSession(
  * SESSION_TTL from now. Called on authenticated requests (throttled by the
  * auth middleware) so active users are not logged out 7 days after login.
  */
-export async function touchSession(sid: string): Promise<void> {
+export async function touchSession(sid: string, ttl: number = SESSION_TTL): Promise<void> {
   await db
     .update(sessionsTable)
-    .set({ expire: new Date(Date.now() + SESSION_TTL) })
+    .set({ expire: new Date(Date.now() + ttl) })
     .where(eq(sessionsTable.sid, sid));
 }
 

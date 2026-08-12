@@ -40,6 +40,7 @@ import betaApplyRouter from "./betaApply";
 import trialRouter from "./trial";
 import pricingRouter from "./pricing";
 import trialAdminRouter from "./trialAdmin";
+import ppRouter from "./pp";
 
 const router: IRouter = Router();
 
@@ -84,5 +85,6 @@ router.use(betaApplyRouter);
 router.use(trialRouter);
 router.use(pricingRouter);
 router.use(trialAdminRouter);
+router.use(ppRouter);
 
 export default router;
