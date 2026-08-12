@@ -63,6 +63,8 @@ import MyInspectionsPage from '@/pages/pp/MyInspectionsPage';
 import MyPackagesPage from '@/pages/pp/MyPackagesPage';
 import PPSettingsPage from '@/pages/pp/PPSettingsPage';
 import PPWizardComingSoon from '@/pages/pp/PPWizardComingSoon';
+import PPUpgradePage from '@/pages/pp/PPUpgradePage';
+import PPUpgradeSuccessPage from '@/pages/pp/PPUpgradeSuccessPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,6 +144,9 @@ function Router() {
           <PPShell><PPWizardComingSoon /></PPShell>
         </PPProtectedRoute>
       </Route>
+      {/* PP upgrade — accessible to unauthenticated visitors too */}
+      <Route path="/pp/upgrade/success" component={PPUpgradeSuccessPage} />
+      <Route path="/pp/upgrade" component={PPUpgradePage} />
 
       {/* Trial Proof Package — public marketing + trial-session flow */}
       <Route path="/proof-package" component={ProofPackage} />

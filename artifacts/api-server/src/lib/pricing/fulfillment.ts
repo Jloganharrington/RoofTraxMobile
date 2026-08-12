@@ -120,6 +120,21 @@ export async function handleStripeBusinessEvent(event: {
             : session.payment_intent?.id ?? session.id;
         await recordSuccessfulPayment(submissionId, paymentId);
       }
+    } else if (kind === 'pp_crm_upgrade') {
+      const companyId = session.metadata?.companyId;
+      if (companyId && session.payment_status === 'paid') {
+        const { fulfillCRMUpgrade } = await import('../../lib/pp/upgrade');
+        const customerId =
+          typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null;
+        const stripeSubId =
+          typeof session.subscription === 'string'
+            ? session.subscription
+            : (session.subscription as { id?: string } | null)?.id ?? null;
+        await fulfillCRMUpgrade(companyId, {
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: stripeSubId,
+        });
+      }
     }
   } else if (type === 'checkout.session.expired') {
     if (kind === 'plan_subscription' && session.metadata?.subscriptionId) {

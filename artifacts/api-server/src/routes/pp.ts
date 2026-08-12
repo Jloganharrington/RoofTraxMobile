@@ -18,13 +18,15 @@
  * Companies provisioned here get pp_tier = 'pp_only' and no CRM permission set.
  */
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, gt, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lt, sql } from 'drizzle-orm';
 import {
+  billingTerms,
   companiesTable,
   db,
   inspectionPhotosTable,
   inspectionsTable,
   objectOwnershipTable,
+  plans,
   ppPendingRegistrationsTable,
   userProfilesTable,
   usersTable,
@@ -994,6 +996,152 @@ router.put('/pp/company/logo', async (req: Request, res: Response) => {
     .where(eq(companiesTable.id, ppCtx.company.id));
 
   res.json({ ok: true });
+});
+
+// ── PP upgrade — credit inquiry ──────────────────────────────────────────────
+
+/**
+ * GET /pp/upgrade/credit
+ * Returns the credit amount (cents) available toward a CRM upgrade.
+ * Credit = PP registration fee if company is within the 90-day window.
+ *
+ * Response: { creditCents: number, eligibleDaysRemaining: number }
+ */
+router.get('/pp/upgrade/credit', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { company } = ppCtx;
+
+  if (company.ppTier !== 'pp_only') {
+    res.json({ creditCents: 0, eligibleDaysRemaining: 0 });
+    return;
+  }
+
+  const ppPriceCents = parseInt(process.env.PP_PACKAGE_PRICE_CENTS ?? '29900', 10);
+  const CREDIT_WINDOW_DAYS = 90;
+  const elapsedDays = (Date.now() - new Date(company.createdAt).getTime()) / 86_400_000;
+  const eligibleDaysRemaining = Math.max(0, Math.floor(CREDIT_WINDOW_DAYS - elapsedDays));
+
+  res.json({
+    creditCents: eligibleDaysRemaining > 0 ? ppPriceCents : 0,
+    eligibleDaysRemaining,
+  });
+});
+
+// ── PP upgrade — Stripe subscription checkout ────────────────────────────────
+
+const UpgradeCheckoutBody = z.object({
+  planKey: z.string(),
+  billingTerm: z.string().default('annual'),
+});
+
+/**
+ * POST /pp/upgrade/checkout
+ * Creates a Stripe subscription checkout session for a PP-only company
+ * upgrading to the full CRM tier. Returns the Stripe-hosted checkout URL.
+ *
+ * Webhook fulfillment: checkout.session.completed with kind='pp_crm_upgrade'
+ * calls fulfillCRMUpgrade(companyId) → sets companies.pp_tier = 'crm'.
+ */
+router.post('/pp/upgrade/checkout', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { user, company } = ppCtx;
+
+  if (company.ppTier !== 'pp_only') {
+    res.status(409).json({ error: 'Your account is already on the full CRM plan.' });
+    return;
+  }
+
+  const parsed = UpgradeCheckoutBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: 'Invalid request', issues: parsed.error.issues });
+    return;
+  }
+  const { planKey, billingTerm: termKey } = parsed.data;
+
+  const [planRows, termRows] = await Promise.all([
+    db.select().from(plans).where(eq(plans.active, true)).orderBy(asc(plans.sortOrder)),
+    db.select().from(billingTerms).orderBy(asc(billingTerms.installments)),
+  ]);
+
+  const plan = planRows.find((p) => p.planKey === planKey);
+  if (!plan) {
+    res.status(422).json({ error: `Unknown plan: ${planKey}` });
+    return;
+  }
+  const term = termRows.find((t) => t.termKey === termKey);
+  if (!term) {
+    res.status(422).json({ error: `Unknown billing term: ${termKey}` });
+    return;
+  }
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const planLookupKey = `plan_${plan.planKey}_${term.termKey}`;
+
+    type LineItem =
+      | { price: string; quantity: number }
+      | { price_data: { currency: string; unit_amount: number; recurring: { interval: 'month' | 'year' }; product_data: { name: string } }; quantity: number };
+
+    let lineItem: LineItem;
+    try {
+      const prices = await stripe.prices.list({ lookup_keys: [planLookupKey], active: true, limit: 1 });
+      const namedPrice = prices.data[0];
+      if (namedPrice) {
+        lineItem = { price: namedPrice.id, quantity: 1 };
+      } else {
+        throw new Error('no named price');
+      }
+    } catch {
+      // Dev fallback — use price_data so checkout works without pre-seeded prices.
+      const multiplier = Number(term.multiplier);
+      const annualSub = Math.round(plan.annualCents * multiplier);
+      const interval: 'month' | 'year' = term.termKey === 'annual' ? 'year' : 'month';
+      const unitAmount = interval === 'year' ? annualSub : Math.round(annualSub / (term.installments || 12));
+      lineItem = {
+        price_data: {
+          currency: 'usd',
+          unit_amount: unitAmount,
+          recurring: { interval },
+          product_data: { name: `RoofTrax CRM — ${plan.displayName} (${term.termKey})` },
+        },
+        quantity: 1,
+      };
+    }
+
+    const base = trustedOrigin();
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer_email: user.email ?? undefined,
+      line_items: [lineItem],
+      metadata: {
+        kind: 'pp_crm_upgrade',
+        companyId: company.id,
+        planKey: plan.planKey,
+        billingTerm: term.termKey,
+      },
+      success_url: `${base}/rooftrax-web/pp/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${base}/rooftrax-web/pp/upgrade`,
+    });
+
+    if (!session.url) throw new Error('Stripe returned no URL');
+
+    res.json({ checkoutUrl: session.url });
+  } catch (err) {
+    // Dev bypass — immediately fulfill without Stripe.
+    if (process.env.PP_DEV_SKIP_PAYMENT === '1') {
+      const { fulfillCRMUpgrade } = await import('../lib/pp/upgrade');
+      await fulfillCRMUpgrade(company.id);
+      const base = trustedOrigin();
+      res.json({ checkoutUrl: `${base}/rooftrax-web/pp/upgrade/success?dev=1` });
+      return;
+    }
+    logger.error({ err }, 'pp upgrade checkout: Stripe session creation failed');
+    res.status(503).json({ error: 'Payment service unavailable. Please try again.' });
+  }
 });
 
 export default router;

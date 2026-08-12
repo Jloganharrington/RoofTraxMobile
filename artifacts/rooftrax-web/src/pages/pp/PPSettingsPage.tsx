@@ -310,10 +310,10 @@ export default function PPSettingsPage() {
           </div>
         </div>
         <a
-          href="/rooftrax-web/pricing"
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-zinc-600 hover:border-zinc-400 text-zinc-300 hover:text-zinc-100 rounded-lg transition-colors"
+          href="/rooftrax-web/pp/upgrade"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
         >
-          View upgrade options →
+          Upgrade to Full CRM →
         </a>
       </div>
     </div>
