@@ -907,7 +907,7 @@ function FipsaSettingsCard({
       <TextInput
         value={legalName}
         onChangeText={setLegalName}
-        placeholder="e.g. NuHome Exteriors, Inc."
+        placeholder="e.g. Apex Restoration, Inc."
         placeholderTextColor={colors.mutedForeground}
         style={inputStyle}
       />

@@ -24,7 +24,7 @@ export interface FipsaData {
   propertyAddress: string;
   // Multi-tenant contractor identity + fee (from the company profile).
   // Empty strings leave the template's printed fallbacks untouched
-  // (blank header lines / NuHome notice text / $750.00 fee).
+  // (blank header lines / contractor name / $750.00 fee).
   contractorLegalName?: string;
   contractorAddress?: string;
   /** Formatted fee, e.g. "$750.00". Empty = template default. */
@@ -278,7 +278,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
   </div>
 
   <ol class="clauses">
-    <li><span class="lead">Engagement &amp; Authorization.</span> Owner retains <span data-field="contractorLegalName">NuHome Exteriors, Inc.</span> (&ldquo;Contractor&rdquo;) to perform a comprehensive Forensic Inspection and Repairability Assessment of the Storm Related damage to the above property. Owner authorizes contractor and its personnel to access the property, both exterior and interior areas as reasonably required, and to take physical measurements; capture photographs and video; install test squares and perform surface level examination where appropriate; perform a repairability assessment if conditions warrant; research weather and storm event data for the property; identify installed materials, including verification of discontinued or unavailable products; obtain supplier and manufacturer quotes; and develop a repair scope with a fixed price estimate.</li>
+    <li><span class="lead">Engagement &amp; Authorization.</span> Owner retains <span data-field="contractorLegalName">[Contractor]</span> (&ldquo;Contractor&rdquo;) to perform a comprehensive Forensic Inspection and Repairability Assessment of the Storm Related damage to the above property. Owner authorizes contractor and its personnel to access the property, both exterior and interior areas as reasonably required, and to take physical measurements; capture photographs and video; install test squares and perform surface level examination where appropriate; perform a repairability assessment if conditions warrant; research weather and storm event data for the property; identify installed materials, including verification of discontinued or unavailable products; obtain supplier and manufacturer quotes; and develop a repair scope with a fixed price estimate.</li>
 
     <li><span class="lead">Deliverable &mdash; Forensic Proof Package.</span> Contractor shall prepare and deliver to Owner a Forensic Proof Package consisting of: (a) a written forensic inspection report; (b) organized photographic documentation; (c) measurements and diagrams; (d) weather event research findings; (e) material identification and availability findings, with supplier quotes where applicable; and (f) a documented repair scope and fixed-price estimate for the restoration work.</li>
 

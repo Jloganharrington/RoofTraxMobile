@@ -1,0 +1,368 @@
+# RoofTrax — Go-To-Market Plan
+## Ideal Customer Profile · Value Proposition · Pricing Model · Beta Program
+
+**Prepared for:** Logan Harrington, NuHome Exteriors, Inc.
+**Version:** 1.0
+**Date:** August 11, 2026
+**Status:** Internal strategy document — not for external distribution
+
+---
+
+## 1. Executive Summary
+
+RoofTrax is a multi-tenant CRM and mobile field inspection platform for storm restoration contractors, built around an AI-assisted proof package generation pipeline. The product's differentiating claim is not workflow management — that market is served — but **documentation output quality at rep level**.
+
+This document establishes four things:
+
+1. **Who we sell to** (ICP and anti-ICP)
+2. **What we claim** (value proposition and positioning)
+3. **What we charge** (five-tier hybrid model with annual prepay bias)
+4. **How we validate** (90-day paid beta with defined exit criteria)
+
+**Headline economics:** at 350 customers with the recommended tier structure and a 70% annual prepay rate, the model produces approximately **$2.8–3.0M effective ARR**, against ~$118K/year in delivery COGS. Gross margin is approximately 96%.
+
+---
+
+## 2. Ideal Customer Profile
+
+### 2.1 Primary ICP — "The Scaling Restoration Shop"
+
+| Attribute | Profile |
+|---|---|
+| **Company size** | 5–25 employees; 3–15 field sales reps |
+| **Annual revenue** | $2M–$15M |
+| **Claim volume** | 15–60 insurance claims per month |
+| **Business mix** | 60%+ insurance restoration; may carry retail |
+| **Geography** | Storm-exposed markets outside the DC/MD/VA metro |
+| **Current stack** | AccuLynx, JobNimbus, or spreadsheets + Dropbox |
+| **Measurement** | Already buying EagleView, Hover, or GAF QuickMeasure |
+
+**The defining pain:** the owner or a single supplement manager is the documentation bottleneck. Every proof package, every supplement narrative, and every carrier rebuttal routes through one person's head. Growth is capped by that person's hours, and every new rep hire increases the bottleneck rather than relieving it.
+
+**Buying trigger events, in order of strength:**
+
+1. Lost or underpaid a claim they believed was documented adequately
+2. Hired reps and discovered output quality collapsed
+3. Supplement manager quit, or is threatening to
+4. Entering a new state and facing unfamiliar code requirements
+5. Renewal quote arrived from AccuLynx or JobNimbus
+
+**Economic buyer:** owner or GM. Deals close in one to three calls; this is not an enterprise procurement cycle.
+
+### 2.2 Secondary ICP — "The Regional Operator"
+
+25–100 employees, $15M–$60M revenue, multi-state, with an established supplement department of 2–5 people. Longer sales cycle (4–8 weeks), higher scrutiny on data security and multi-tenancy, and a real requirement for role-based permissions. Higher ACV, materially lower churn, and the source of case studies that unlock the primary ICP.
+
+**Their pain is different:** not the absence of a documentation process, but the **inconsistency** of it across offices and reps. Sell standardization and auditability to this segment, not capability.
+
+### 2.3 Anti-ICP — Do Not Sell
+
+Explicit disqualifiers. Each one predicts high support cost, high churn, or unacceptable risk:
+
+- **Public adjusters and PA firms.** RoofTrax is architected around contractor-lane discipline. Selling to PAs contaminates the positioning that makes the product defensible.
+- **Contractors in NuHome's service area.** Northern Virginia, DC, and suburban Maryland are excluded. Do not arm direct competitors.
+- **Pure retail exterior contractors.** No insurance volume means the core value proposition does not apply; they will churn within two quarters.
+- **Sub-$500K revenue / solo operators without reps.** The value proposition is rep-level output. With no reps, there is no leverage to sell.
+- **Anyone seeking claim outcome guarantees.** A prospect who asks us to guarantee carrier payment is a prospect who will misuse the product and misrepresent it to homeowners.
+- **Storm chasers with no fixed office.** Documentation discipline requires operational permanence.
+
+---
+
+## 3. Value Proposition
+
+### 3.1 Core positioning statement
+
+> **RoofTrax turns your newest rep into your best documenter.**
+>
+> Your 22-year-old field rep produces a forensic proof package indistinguishable from one written by a 20-year supplement manager — from their phone, at the property, before they leave the driveway.
+
+Everything else in the product is evidence for that sentence.
+
+### 3.2 The category argument
+
+AccuLynx, JobNimbus, and Roofr are **job management** systems. They track where a job is. They do not make the job win.
+
+RoofTrax is a **documentation and evidence** system with job management attached. The proof package is the product; the CRM is the container that makes it repeatable.
+
+This distinction matters commercially: we are not asking a contractor to rip out their CRM on a feature comparison, which is a losing argument against incumbents with a decade of engineering. We are asking them to adopt a documentation capability that no incumbent has, and which happens to include the CRM they were already paying for.
+
+### 3.3 Value equation
+
+**Dream outcome** — documentation quality stops depending on which rep showed up.
+
+**Perceived likelihood of achievement** — this is the strongest asset and it is underused. RoofTrax was not built by a software founder theorizing about restoration. It was built by a working Insurance Restoration Manager to run his own department, and it runs that department today. The founder story is the single most persuasive marketing asset available and should carry the majority of top-of-funnel weight.
+
+**Time delay** — first proof package generated on the customer's *live claim* within 48 hours of signup. Not a sandbox, not a demo file. Their claim, their property, their carrier.
+
+**Effort and sacrifice** — migration is performed by RoofTrax, not the customer. Their existing CRM export, price book, document templates, and photo library are loaded for them.
+
+### 3.4 Proof assets
+
+| Asset | Function |
+|---|---|
+| NuHome as operating case study | Credibility — a live business runs on this |
+| Free forensic teardown of a prospect's denied claim | Demonstration at $0.75 marginal cost |
+| Live package generation during demo | Collapses time-to-value to zero |
+| AHJ code library | Technically hard to replicate; visible depth |
+| Four-document operating system | Value beyond software |
+
+### 3.5 Competitive framing
+
+| Against | Frame |
+|---|---|
+| **AccuLynx / JobNimbus** | "They track the job. We win it. And unlimited proof packages at Scale costs less than your current per-seat bill." |
+| **Spreadsheets + Dropbox** | "Your process is in one person's head. What happens when they leave?" |
+| **EagleView / Hover** | Not a competitor — an input. Integrate and resell. |
+| **Hiring a supplement manager** | "$85K–120K salary, or $699/month and every rep gets the capability." |
+
+### 3.6 Claims discipline — hard constraint
+
+RoofTrax marketing **must not** claim, guarantee, or imply influence over coverage determinations, carrier payment amounts, or claim approval rates.
+
+This is not conservatism. The entire product architecture — contractor-lane discipline, building-as-sentence-subject, no coverage interpretation — exists because that lane is what keeps the output defensible and keeps the company outside public adjusting statutes in every state. Marketing that implies claim influence destroys the asset the product is built on and creates regulatory exposure in states with stricter UPPA regimes than Virginia's.
+
+**Permitted claims:** documentation quality, completeness, speed, consistency, code citation accuracy, rep-level capability.
+**Prohibited claims:** approval rates, recovery amounts, "we get claims paid," settlement outcomes, any customer testimonial phrased as a payment result.
+
+Enforce this in the beta agreement as a condition of case-study participation.
+
+---
+
+## 4. Pricing Model
+
+### 4.1 Structural principles
+
+1. **Committed floor plus metered expansion.** Every customer has a monthly minimum. No customer can reach $0 in a slow quarter.
+2. **Meter the bottom, uncap the top.** At $0.75 COGS per package, unlimited generation at Scale and Enterprise is nearly costless and is a decisive competitive weapon.
+3. **Overage priced as an upgrade trigger, not cost recovery.** Set so the rational move is to upgrade at roughly 130% of included volume.
+4. **Annual prepay is the default path.** It funds acquisition, neutralizes storm seasonality, and materially reduces year-one churn.
+
+### 4.2 Tier structure
+
+| Tier | Annual (per mo) | Monthly | Seats | Packages incl. | Overage |
+|---|---|---|---|---|---|
+| **Field** | $83 | $99 | 3 | 3 / mo | $40 |
+| **Starter** | $208 | $249 | 8 | 10 / mo | $40 |
+| **Pro** | $583 | $699 | 20 | 35 / mo | $25 |
+| **Scale** | $1,416 | $1,699 | 50 | **Unlimited** | — |
+| **Enterprise** | $2,900+ | $3,500+ | Custom | **Unlimited** | — |
+
+**Annual terms:** paid upfront, equivalent to two months free.
+
+**Setup and migration fee: $2,500 — waived on annual prepay.** Charge it, then give it away. It costs nothing to waive and makes the annual decision self-evident.
+
+**Credit banking:** included packages bank across the annual term rather than expiring monthly. Storm restoration is violently seasonal; use-it-or-lose-it metering is punitive in this industry and banking is a marketable differentiator against every incumbent.
+
+### 4.3 Guarantee
+
+> **The 30-Day Live Claim Guarantee**
+> Ten complete, submission-ready proof packages on your real claims within 30 days — or we refund the full year and you keep every package.
+
+This is a **deliverable** guarantee. It is entirely within RoofTrax's control, sits entirely inside the contractor lane, and reverses the perceived risk of annual prepayment. It is deliberately *not* an outcome guarantee (see §3.6).
+
+**Secondary guarantee:** if the customer's reps are not generating packages unassisted by day 30, onboarding support continues free until they are.
+
+### 4.4 Bonus stack
+
+Included at Pro and above. Each is high perceived value and near-zero marginal cost:
+
+- **AHJ code library pre-loaded for the customer's jurisdiction**
+- **The four-document operating system** — PRSIA, CFR Addendum, Kitchen-Table Process Card, Internal SOP
+- **Adjuster negotiation training** — recorded Voss/Black Swan methodology module
+- **Live package review** — first five packages reviewed by Logan personally
+
+The bonus stack is where the offer is won. Competitors sell software. RoofTrax sells an operating system with software attached.
+
+### 4.5 Revenue model at 350 customers
+
+Assumed mix and per-tier economics:
+
+| Tier | Mix | Customers | List MRR | Effective MRR* |
+|---|---|---|---|---|
+| Field | 15% | 52 | $5,148 | $4,566 |
+| Starter | 35% | 122 | $30,378 | $26,877 |
+| Pro | 30% | 105 | $73,395 | $64,869 |
+| Scale | 17% | 60 | $101,940 | $90,054 |
+| Enterprise | 3% | 10 | $40,000 | $35,331 |
+| **Subtotal** | | **350** | **$250,861** | **$221,697** |
+
+\* Effective = 70% of customers on annual prepay at two-months-free rate.
+
+**Overage revenue:** $15,000–29,000/mo depending on how aggressively upgrade triggers convert. Modeled conservatively at $15,000.
+
+| Scenario | ARR |
+|---|---|
+| Effective (70% annual, conservative overage) | **$2.84M** |
+| Effective (70% annual, full overage) | **$3.01M** |
+| List (hypothetical all-monthly) | $3.36M |
+
+**Comparison to the original per-package model** ($35/$25/$15 with $0/$100/$250 platform fees): **$2.36M ARR**.
+
+The recommended structure delivers roughly **20–28% more revenue at identical customer count** — a meaningful but not transformative gain. The stronger argument for it is structural, not headline:
+
+- Approximately 70% of revenue is contracted and collected upfront rather than variable
+- No customer segment can fall to $0 during a slow quarter
+- Package generation is encouraged rather than rationed, which drives retention and data volume
+- Seat-based banding captures large-firm value that flat per-package pricing gives away
+
+> **Correction note:** earlier verbal estimates in this planning cycle placed the recommended model at $3.6–4.4M ARR. Those figures did not survive arithmetic verification and are withdrawn. The numbers in this table are the ones to plan against.
+
+### 4.6 Cost structure
+
+| Line | Estimate |
+|---|---|
+| Proof package generation (AI inference + render) | **$0.75 / package** |
+| Total package COGS at ~13,000 packages/mo | ~$9,800/mo |
+| Media storage and egress | Model per-tenant cumulative GB — grows and never shrinks |
+| Payment processing | ~2.9% of collected revenue |
+| Support headcount | The real cost driver at 350 customers |
+| Per-tenant hosting and database | Scales with tenant count |
+
+Package generation is not the cost center. **Media storage and support are.** Storage in particular compounds — model it as cumulative GB per tenant per year, not as a per-report figure. This is the entire cost structure of CompanyCam and it should be tracked from day one of beta.
+
+---
+
+## 5. Beta Program Implementation Plan
+
+### 5.1 Objectives
+
+The beta is not a marketing exercise. It exists to answer five questions:
+
+1. Do **non-owner users** generate proof packages unassisted?
+2. Is the **tier structure** priced and sized correctly against real usage?
+3. What is the **package defect rate** when Logan is not the operator?
+4. Does the platform hold up **outside Virginia** — AHJ coverage, UPPA posture, code libraries?
+5. Will contractors **pay list price** after experiencing the product?
+
+Question 5 is the only one that cannot be gamed by enthusiasm. It is the primary exit criterion.
+
+### 5.2 Cohort design
+
+**Size: 8–12 companies.** Not more. Beyond twelve, personal review of every package before carrier submission becomes impossible, and that review gate is the primary risk control.
+
+**Composition:**
+
+| Segment | Count | Profile |
+|---|---|---|
+| Small | 3–4 | 1–3 reps, $500K–2M revenue |
+| Mid | 4–5 | 5–15 reps, $2M–15M revenue |
+| Large | 2–3 | 20+ reps, $15M+ revenue |
+
+**Selection criteria:**
+
+- Located **outside** the DC/MD/VA metro — no direct competitors
+- Has an existing supplement process (a shop with no documentation discipline cannot evaluate whether ours is better)
+- Written commitment to run **10+ claims** through the platform in 90 days
+- Willing to take weekly 30-minute calls
+- Operating in a state where AHJ sweep and UPPA review are complete, or accepting of a disabled code module
+
+**Pricing: $99/month or $500 flat for the 90-day window.** Beta users must pay. Free beta users produce polite feedback and near-zero usage. Paid beta users complain, which is the entire point of the exercise.
+
+### 5.3 Scope constraints — hard gates
+
+Three constraints must be enforced before a single external package reaches a carrier:
+
+**1. No interior water sections until issue #249 merges.** IICRC content currently flows into prompts unchecked. That is a compliance exposure that would carry another company's name and license number on the document. Disable the module at the tenant level, not by instruction.
+
+**2. AHJ coverage gates geography.** The golden set is Virginia. Either restrict the cohort to swept states, or ship out-of-state tenants with the code module explicitly disabled and disclose why. Do not allow unswept jurisdictions to generate code-citation content.
+
+**3. Multi-state UPPA review before external use.** Lane discipline is architected to Virginia's statute (§ 38.2-1845.1 et seq.). Florida, Texas, Colorado, and other storm states operate under materially different public adjusting regimes. Obtain counsel review of the multi-state posture — and of liability allocation for AI-generated forensic documents used by third-party contractors — before the first out-of-state package is submitted. This was already logged as an open Phase 4 item; the beta is where it becomes concrete.
+
+### 5.4 The review gate
+
+**Days 1–30:** every proof package is reviewed by Logan before submission. Not optional, not sampled. Implement as a `beta_hold` state in the pipeline so the control is structural rather than procedural.
+
+**Days 31–90:** sample review at 1-in-5. Track defect rate as the graduation metric.
+
+The rationale is not product polish. A defective package does not cost a bug report — it costs a real contractor a real claim and a real homeowner a roof. That exposure must be actively managed, not accepted.
+
+### 5.5 Instrumentation
+
+Instrument these; do not rely on interviews alone.
+
+| Metric | What it validates |
+|---|---|
+| Packages per user per month | Tier volume assumptions |
+| Time to first package | The 48-hour onboarding promise |
+| % of packages generated by reps vs. owner | The core value proposition |
+| Wizard abandonment by step | Field UX failure points |
+| Edit rate on Fable drafts | Draft quality, measured not asked |
+| Manifest swap / skip rate | AI slot-ranking accuracy |
+| Seats activated vs. licensed | Seat banding validity |
+| Storage consumed per tenant per month | COGS trajectory |
+| Support tickets per customer per month | Support cost model |
+| Supplement outcomes | Track internally — never market (see §3.6) |
+
+**Qualitative cadence:** weekly 30-minute call per account, plus one shared Slack or Discord channel for the full cohort. Cross-pollination between beta users generates better product insight than individual calls and seeds the first referral network.
+
+### 5.6 Exit criteria
+
+Define before emotional investment in shipping. All six must clear:
+
+- [ ] `scripts/seed-acceptance-claim.ts` runs green across all beta tenants
+- [ ] Package defect rate **under 5%** on sampled review
+- [ ] **≥60%** of packages generated by non-owner users
+- [ ] Median time-to-first-package **under 72 hours**
+- [ ] **≥6 of 12** beta accounts convert to paid at list pricing
+- [ ] Multi-state UPPA counsel review complete and documented
+
+### 5.7 Beta participant benefits
+
+Weighted toward items with near-zero marginal cost and high perceived value:
+
+| Benefit | Cost to RoofTrax |
+|---|---|
+| **Founding pricing locked 36 months** at 50% of list, on their tier | Deferred revenue |
+| **Unlimited proof packages during beta** | $0.75 each — drives the volume needed to surface edge cases |
+| **AHJ library built for their jurisdiction** by Logan | Doubles as the multi-state code sweep |
+| **The four-document operating system** | Already built |
+| **Direct line to Logan** for live-claim package strategy | Time — and the best product research available |
+| **Founding Partner designation** — logo and case-study rights | None |
+| **Permanent 3-month referral bonus** (both sides) | Growth cost, not overhead |
+
+**Deliberately excluded:**
+
+- **Equity** — cap table complexity for marginal acquisition benefit
+- **Lifetime free** — becomes a resented liability by year three; 36 months is generous and finite
+- **Any promise regarding claim outcomes** — see §3.6
+
+### 5.8 Timeline
+
+| Phase | Weeks | Activity |
+|---|---|---|
+| **Recruit & paper** | 1–2 | Source cohort; execute beta agreement, NDA, data rights, liability terms |
+| **Wave 1 onboard** | 3–4 | 4 accounts; RoofTrax performs all migration; review gate active |
+| **Wave 2 onboard** | 5–8 | Remaining 6–8 accounts; full instrumentation live |
+| **Validate & convert** | 9–12 | Move to sampled review; pricing conversations; conversion push |
+
+**Timing constraint:** sequence the start so that weeks 5–12 fall inside storm season. A beta run during a quiet stretch produces no meaningful volume data and answers none of the five objectives.
+
+### 5.9 Required documents before recruiting
+
+- Beta participation agreement (term, pricing, conversion terms, founding-rate lock)
+- Mutual NDA
+- Data processing and ownership terms — critical, since tenants' customers' homeowner data flows through the platform
+- Liability allocation for AI-generated forensic documents used under a third party's license
+- Marketing and case-study consent, with §3.6 claims restrictions embedded
+- Acceptable use policy prohibiting outcome-based representations to homeowners
+
+---
+
+## 6. Open Items and Risks
+
+| # | Item | Severity | Owner |
+|---|---|---|---|
+| 1 | Issue #249 — IICRC content flowing into prompts unchecked | **High** | Engineering |
+| 2 | Multi-state UPPA posture; counsel review not complete | **High** | Logan / counsel |
+| 3 | Liability framework for third-party use of AI forensic documents | **High** | Counsel |
+| 4 | AHJ coverage limited to Virginia golden set | Medium | Logan |
+| 5 | Media storage cost model unbuilt | Medium | Engineering |
+| 6 | Support cost per customer unknown — the real constraint at 350 | Medium | Logan |
+| 7 | Competitive pricing comps drawn from memory; require verification | Low | Research |
+| 8 | Churn assumptions unmodeled — 350 net requires substantially more gross adds | Medium | Logan |
+
+**The largest single lever in the entire model is the annual prepay rate.** Every point it moves funds acquisition without external financing. In a business with ~96% gross margins, growth is constrained not by capital but by onboarding throughput — which makes the migration-performed-for-you promise both a sales asset and the primary operational bottleneck to solve before scale.
+
+---
+
+*End of document.*

@@ -36,6 +36,10 @@ import contractPortalRouter from "./contractPortal";
 import calendarRouter from "./calendar";
 import notificationsRouter from "./notifications";
 import completionCertificatesRouter from "./completionCertificates";
+import betaApplyRouter from "./betaApply";
+import trialRouter from "./trial";
+import pricingRouter from "./pricing";
+import trialAdminRouter from "./trialAdmin";
 
 const router: IRouter = Router();
 
@@ -76,5 +80,9 @@ router.use(contractPortalRouter);
 router.use(calendarRouter);
 router.use(notificationsRouter);
 router.use(completionCertificatesRouter);
+router.use(betaApplyRouter);
+router.use(trialRouter);
+router.use(pricingRouter);
+router.use(trialAdminRouter);
 
 export default router;

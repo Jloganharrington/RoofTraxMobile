@@ -1,0 +1,283 @@
+Build Spec — Trial Proof Package Page
+
+Feature: Paid trial proof package intake, marketing site Owner: Logan Harrington Version: 1.0 Date: August 11, 2026
+
+0. Scope
+
+Build a public landing page plus authenticated intake flow allowing non-customer contractors to purchase up to three proof packages, submit real claim data, and receive a branded deliverable in 2 business days.
+
+In scope: landing page, account creation, submission wizard, Stripe checkout, file upload, admin review queue, delivery, credit ledger, data purge job.
+
+Out of scope: package generation itself (existing pipeline), AHJ packet build (manual, admin-side), CRM tenant provisioning (existing onboarding flow).
+
+Non-negotiable constraints:
+
+Claim data is purged 30 days after delivery. AHJ jurisdiction work product is retained separately and contains no claim or homeowner data.
+Hard cap: 3 packages per company, lifetime.
+Submissions gated to jurisdictions with completed AHJ coverage; all others go to waitlist.
+No package generates without manual admin approval.
+1. Routes
+Route	Auth	Purpose
+/proof-package	Public	Landing page + CTA
+/proof-package/start	Public	Account creation
+/proof-package/submit	Auth	4-step intake wizard
+/proof-package/checkout	Auth	Stripe checkout redirect
+/proof-package/status/:id	Auth	Submission status
+/proof-package/waitlist	Public	Out-of-coverage capture
+/admin/trial-queue	Admin	Review + approve + deliver
+/admin/trial-queue/:id	Admin	Submission detail
+2. Data model
+trial_accounts
+  id                  uuid pk
+  company_name        text not null
+  contact_name        text not null
+  email               text not null unique      -- business domain required
+  phone               text not null
+  license_number      text not null
+  license_state       char(2) not null
+  company_size_band   enum('1-3','4-10','11-25','26-50','50+')
+  monthly_claim_band  enum('1-5','6-15','16-40','40+')
+  current_crm         text
+  packages_purchased  int default 0             -- hard cap 3
+  credit_balance_cents int default 0
+  credit_expires_at   timestamptz               -- first_purchase + 90d
+  converted_tenant_id uuid null                 -- set on subscription
+  created_at          timestamptz
+trial_submissions
+  id                  uuid pk
+  account_id          uuid fk -> trial_accounts
+  sequence_num        int                       -- 1, 2, or 3
+  status              enum(...)                 -- see §5
+  amount_paid_cents   int                       -- 10000 or 6500
+  stripe_payment_id   text
+
+  -- claim intake (PURGED per §8)
+  property_address    text
+  property_city       text
+  property_state      char(2)
+  property_zip        text
+  county              text
+  ahj_jurisdiction    text
+  date_of_loss        date
+  peril_type          enum('hail','wind','wind_hail','tree_impact','other')
+  carrier_name        text
+  claim_number_ref    text                      -- contractor's internal ref
+  roof_system         text
+  stories             int
+  scope_notes         text
+
+  -- branding
+  logo_file_key       text
+  brand_color_hex     text
+  license_display     text
+
+  submitted_at        timestamptz
+  approved_at         timestamptz
+  delivered_at        timestamptz
+  purge_after         timestamptz               -- delivered_at + 30d
+  purged_at           timestamptz null
+  admin_notes         text
+trial_uploads
+  id            uuid pk
+  submission_id uuid fk
+  file_key      text
+  file_type     enum('photo','measurement_report','carrier_estimate','other')
+  size_bytes    bigint
+  uploaded_at   timestamptz
+
+ahj_coverage
+  id            uuid pk
+  state         char(2)
+  county        text
+  status        enum('covered','in_progress','none')
+  code_cycle    text
+  updated_at    timestamptz
+
+waitlist_entries
+  id, company_name, email, phone, license_number,
+  state, county, created_at
+
+credit_ledger
+  id, account_id, delta_cents, reason, created_at
+3. Landing page — /proof-package
+Structure
+Hero
+H1: See what your claim documentation should look like.
+Sub: Send us one real claim. In two business days you'll get a complete forensic proof package — branded to your company, ready to submit.
+Primary CTA: Start with one claim — $100
+Secondary: See what's inside a proof package (anchor to §4)
+How it works — 4 steps
+Submit your claim — address, date of loss, carrier, photos, measurements
+We build your jurisdiction's code packet — every applicable code and amendment for that county
+You get your proof package in 2 business days — your logo, your license number, your company
+We walk you through it on a 30-minute call
+What's inside — component list from the actual pipeline (exhibit manifest, code citations, forensic summary, attestation block, slope-by-slope assessment, component inventory). Show a redacted sample spread.
+Pricing
+   First package      $100
+   Second & third     $65 each
+   Maximum            3 packages per company
+
+Credit line, verbatim: Every dollar you spend applies as credit toward an annual plan, Starter or above, for 90 days after your first submission.
+
+Why it's not free — short block. We build a complete code packet for your jurisdiction before we build your package. That work is real and it's yours whether or not you become a customer.
+FAQ — see §9
+Footer CTA
+Copy rules — enforce in review
+
+Permitted: documentation quality, completeness, speed, consistency, code citation accuracy.
+
+Prohibited anywhere on this page or in any email: claim approval rates, recovery or settlement amounts, "get your claim paid," "we get approvals," any testimonial phrased as a payment outcome, any implication of influence over a carrier's coverage determination.
+
+Every deliverable is produced for the contractor's review and adoption. The contractor submits it under their own license. State this in the FAQ and the terms.
+
+4. Account creation — /proof-package/start
+
+Fields: company name, contact name, business email, phone, license number, license state, company size band, monthly claim band, current CRM (optional).
+
+Validation:
+
+Reject free email domains (gmail, yahoo, outlook, hotmail, aol, icloud, proton). Message: Please use your company email address.
+License number required, format-validated per state where a pattern is known; otherwise non-empty.
+Email verification link before submission is permitted.
+
+Coverage check on submit: look up license_state + county entered at step 1 of the wizard against ahj_coverage.
+
+covered → proceed
+in_progress / none → redirect to /proof-package/waitlist, capture entry, show: We haven't completed the code library for [County], [ST] yet. Add your name and we'll reach out as soon as it's ready — usually a few weeks.
+
+Cap check: if packages_purchased >= 3, block with: You've used all three trial packages. The next step is a plan — here's what that looks like. → link to pricing.
+
+5. Submission wizard — /proof-package/submit
+
+Four steps, progress indicator, autosave draft.
+
+Step 1 — Property & loss: address, city, state, zip, county (autocomplete), date of loss, peril type, roof system, stories.
+
+Step 2 — Claim context: carrier name, internal claim reference, scope notes (free text, 2000 char), uploads.
+
+Uploads: photos (jpg/png/heic, max 40, 15MB each), measurement report (pdf), carrier estimate (pdf/xlsx). Direct-to-object-storage with signed URLs. Show total size.
+
+Step 3 — Branding: logo upload (png/svg, transparent preferred), brand hex color with picker, license number as displayed on documents.
+
+Step 4 — Review & terms: summary of all entries, price shown ($100 if sequence_num = 1, else $65), required checkboxes:
+
+ I am authorized to share this claim and property information.
+ I understand this package is prepared for my review and adoption, and that I am responsible for reviewing it before submitting it to any carrier.
+ I have read and accept the Trial Package Terms and Privacy Policy.
+
+→ Stripe Checkout. On payment_intent.succeeded: set status paid, increment packages_purchased, credit ledger +amount, set credit_expires_at if first purchase.
+
+Status enum
+draft → paid → in_review → approved → building → ready → delivered
+                    ↓
+                 rejected (refund issued)
+6. Admin queue — /admin/trial-queue
+
+Table: company, state/county, sequence #, submitted, status, age. Sort by age. Filter by status.
+
+Detail view shows all intake fields, photo gallery, uploaded documents, account history, AHJ coverage status for the jurisdiction.
+
+Actions: Approve · Reject (with reason + auto-refund) · Mark building · Upload deliverable · Mark delivered · Add notes.
+
+Screening checklist rendered on the detail page (admin confirms before approve):
+
+ Legitimate contractor — license verifiable
+ Not a public adjuster or PA firm
+ Not in an excluded service area (see §10)
+ Real claim data, not fabricated or test content
+ AHJ coverage confirmed for jurisdiction
+ Photo set sufficient for assessment
+
+Throughput cap: configurable weekly intake limit (default 15). When reached, landing page CTA switches to waitlist mode with: We're at capacity this week. Join the list and we'll open your spot next week.
+
+7. Delivery & notifications
+Trigger	Email
+Payment succeeded	Receipt + what happens next + expected date (2 business days from approval)
+Approved	We're building your package
+Rejected	Reason + refund confirmation
+Ready	Booking link for a 30-minute walkthrough call — package is NOT attached
+Post-call	Deliverable link (signed URL, 30-day expiry)
+Day 30 / Day 60	Check-in on the claim + credit balance reminder
+Day 83	Your $X credit expires in 7 days
+
+Deliver on the call, not by email. The ready email contains a Calendly-style booking link only. The package link is sent after the walkthrough. This is a deliberate conversion mechanic — do not "simplify" it by attaching the PDF.
+
+Business-day calculation must exclude weekends and US federal holidays.
+
+8. Data retention
+
+Purge job — nightly cron:
+
+For every submission where delivered_at + 30 days <= now() and purged_at is null:
+
+Delete all trial_uploads objects from storage
+Null out: property_address, property_city, property_zip, carrier_name, claim_number_ref, scope_notes, date_of_loss
+Retain: property_state, county, ahj_jurisdiction, peril_type, roof_system, stories, all timestamps, payment records
+Set purged_at = now()
+Log to audit table
+
+Retained separately and permanently: the AHJ jurisdiction packet. This is jurisdiction-level work product — code cycle, amendments, permit requirements for a county. It contains no claim data, no homeowner data, no property address. Store it in the AHJ library, keyed to state + county, not to the submission.
+
+State this distinction plainly in the privacy policy. It is the difference between "we keep your claim data" (we don't) and "we keep the code research we did for your county" (we do).
+
+Rejected submissions purge at 7 days.
+
+9. FAQ content
+
+Why does this cost money? Before we build your package we build a complete code packet for your jurisdiction — every applicable code, amendment, and permit requirement for your county. That research is real work, and it's yours.
+
+What happens to my claim data? Photos, addresses, and claim details are deleted 30 days after delivery. We keep the jurisdiction code research, which contains nothing about your claim or your customer.
+
+Can I submit this to the carrier? It's your document, branded to your company, under your license. Review it, adopt it, and submit it exactly as you would anything your own team produced.
+
+How many can I get? Three. After that, the next step is a plan.
+
+What if I subscribe? Everything you spend applies as credit toward an annual plan, Starter or above, for 90 days from your first submission.
+
+Do you work with public adjusters? No. RoofTrax is built for contractors.
+
+Is RoofTrax owned by a roofing company? No. RoofTrax is an independent software company. Its founder has twenty years in insurance restoration, and the platform was built and validated with a restoration contractor as design partner. Every customer is an isolated tenant; no customer can see another customer's data, and we don't use it.
+
+10. Configuration
+
+Environment-configurable, no redeploy:
+
+TRIAL_PRICE_FIRST_CENTS=10000
+TRIAL_PRICE_SUBSEQUENT_CENTS=6500
+TRIAL_MAX_PACKAGES=3
+TRIAL_CREDIT_WINDOW_DAYS=90
+TRIAL_CREDIT_MIN_TIER=starter          -- credit valid on annual, starter+
+TRIAL_WEEKLY_INTAKE_CAP=15
+TRIAL_TURNAROUND_BUSINESS_DAYS=2
+TRIAL_PURGE_AFTER_DAYS=30
+TRIAL_EXCLUDED_ZIPS=[]                 -- service-area exclusion, see note
+
+Note on TRIAL_EXCLUDED_ZIPS: the service-area exclusion decision (GTM Plan §2.4) is unresolved. Build the mechanism, leave the list empty and configurable.
+
+11. Acceptance criteria
+ Free-domain email rejected at signup
+ Out-of-coverage county routes to waitlist, never to checkout
+ 4th package attempt blocked with upgrade CTA
+ Nothing generates without admin approval
+ Rejection triggers automatic Stripe refund
+ ready email contains booking link and no package attachment
+ Credit ledger reflects every purchase; expiry set from first purchase
+ Credit redeemable only against annual plans, Starter and above
+ Purge job nulls claim fields and deletes uploads at day 30, retains AHJ record
+ Weekly cap flips landing CTA to waitlist mode
+ Business-day math excludes weekends and federal holidays
+ No prohibited outcome language anywhere in page copy or email templates
+ Mobile-responsive; upload flow works from phone (contractors submit from the truck)
+12. Build order
+Data model + migrations
+Landing page (static, CTA to waitlist initially)
+Account creation + email verification + coverage gate
+Submission wizard + uploads
+Stripe checkout + credit ledger
+Admin queue + screening + delivery
+Email sequences
+Purge job + audit log
+Weekly cap + waitlist mode
+Copy review against §3 prohibited-language rules — do this last, and do it manually
+
+End of spec.

@@ -6,6 +6,8 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
+import { WebhookHandlers } from "./lib/stripe/webhookHandlers";
+import { handleStripeBusinessEvent } from "./lib/pricing/fulfillment";
 
 const app: Express = express();
 
@@ -70,12 +72,48 @@ app.use(
       if (!origin || CORS_ALLOWED_ORIGINS.has(origin)) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS: origin '${origin}' is not in the allowlist`));
+        // Deny gracefully: omit CORS headers (browser blocks the response)
+        // instead of erroring the whole request with a 500.
+        callback(null, false);
       }
     },
   }),
 );
 app.use(cookieParser());
+
+// ── Stripe webhook ───────────────────────────────────────────────────────────
+// Must be registered BEFORE express.json(): stripe-replit-sync verifies the
+// signature against the raw Buffer body.
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature) {
+      res.status(400).json({ error: 'Missing stripe-signature' });
+      return;
+    }
+    try {
+      const sig = Array.isArray(signature) ? signature[0]! : signature;
+      // processWebhook verifies the signature — only after it succeeds do we
+      // trust the payload for business fulfillment.
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      try {
+        await handleStripeBusinessEvent(JSON.parse((req.body as Buffer).toString('utf8')));
+      } catch (err) {
+        // Fulfillment errors must not make Stripe re-deliver forever if the
+        // sync layer succeeded — they are logged and the confirm endpoints
+        // remain as the reconciliation path.
+        logger.error({ err }, 'Stripe business fulfillment error');
+      }
+      res.status(200).json({ received: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Stripe webhook processing error');
+      res.status(400).json({ error: 'Webhook processing error' });
+    }
+  },
+);
+
 // Routes that receive large base64 payloads get specific size limits.
 // All others keep the Express default (100kb) to limit the DoS surface.
 // Registered first: express.json marks the body as parsed, so the general

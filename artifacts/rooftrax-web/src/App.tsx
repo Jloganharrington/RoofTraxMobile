@@ -33,6 +33,27 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
 import MapPage from '@/pages/MapPage';
 import { RootRoute } from '@/routes/RootRoute';
+import Signup from '@/pages/Signup';
+import ProofPackage from '@/pages/trial/ProofPackage';
+import TrialStart from '@/pages/trial/TrialStart';
+import TrialSubmit from '@/pages/trial/TrialSubmit';
+import TrialStatus from '@/pages/trial/TrialStatus';
+import TrialWaitlist from '@/pages/trial/TrialWaitlist';
+import TrialQueue from '@/pages/admin/TrialQueue';
+import TrialQueueDetail from '@/pages/admin/TrialQueueDetail';
+import PricingPage from '@/pages/pricing/PricingPage';
+import PricingSuccessPage from '@/pages/pricing/PricingSuccessPage';
+import ProductOverview from '@/pages/marketing/product/ProductOverview';
+import ProofPackagesPage from '@/pages/marketing/product/ProofPackagesPage';
+import CrmPage from '@/pages/marketing/product/CrmPage';
+import MobilePage from '@/pages/marketing/product/MobilePage';
+import CanvassingPage from '@/pages/marketing/product/CanvassingPage';
+import AhjLibraryPage from '@/pages/marketing/product/AhjLibraryPage';
+import CompanyPage from '@/pages/marketing/CompanyPage';
+import DemoPage from '@/pages/marketing/DemoPage';
+import ResourcesPage from '@/pages/marketing/ResourcesPage';
+import AccuLynxPage from '@/pages/marketing/switch/AccuLynxPage';
+import JobNimbusPage from '@/pages/marketing/switch/JobNimbusPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,6 +82,41 @@ function Router() {
     <Switch>
       {/* "/" serves Dashboard for authenticated users, marketing Home for unauthenticated */}
       <Route path="/" component={RootRoute} />
+
+      {/* Marketing: beta application form — always public */}
+      <Route path="/signup" component={Signup} />
+
+      {/* Marketing site — public, no auth required */}
+      <Route path="/product" component={ProductOverview} />
+      <Route path="/product/proof-packages" component={ProofPackagesPage} />
+      <Route path="/product/crm" component={CrmPage} />
+      <Route path="/product/mobile" component={MobilePage} />
+      <Route path="/product/canvassing" component={CanvassingPage} />
+      <Route path="/product/ahj-library" component={AhjLibraryPage} />
+      <Route path="/company" component={CompanyPage} />
+      <Route path="/demo" component={DemoPage} />
+      <Route path="/resources" component={ResourcesPage} />
+      <Route path="/switch/acculynx" component={AccuLynxPage} />
+      <Route path="/switch/jobnimbus" component={JobNimbusPage} />
+      
+      {/* Pricing Pages */}
+      <Route path="/pricing" component={PricingPage} />
+      <Route path="/pricing/success" component={PricingSuccessPage} />
+
+      {/* Trial Proof Package — public marketing + trial-session flow */}
+      <Route path="/proof-package" component={ProofPackage} />
+      <Route path="/proof-package/start" component={TrialStart} />
+      <Route path="/proof-package/submit" component={TrialSubmit} />
+      <Route path="/proof-package/status/:id" component={TrialStatus} />
+      <Route path="/proof-package/waitlist" component={TrialWaitlist} />
+
+      {/* Trial admin queue — server enforces admin (team.view_stats) */}
+      <Route path="/admin/trial-queue">
+        <ProtectedRoute minRole="admin"><TrialQueue /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/trial-queue/:id">
+        <ProtectedRoute minRole="admin"><TrialQueueDetail /></ProtectedRoute>
+      </Route>
 
       {/* /dashboard redirects to "/" — sidebar nav already targets "/" */}
       <Route path="/dashboard">

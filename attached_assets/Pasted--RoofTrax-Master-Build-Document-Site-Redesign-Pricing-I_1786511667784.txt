@@ -1,0 +1,648 @@
+# RoofTrax — Master Build Document
+## Site Redesign, Pricing Implementation & Trial Program
+
+**Owner:** Logan Harrington
+**Version:** 1.0 (consolidated)
+**Date:** August 11, 2026
+
+**Supersedes all prior pricing documents.** Where this conflicts with `PRICING-AND-SETUP-FEE-SPEC.md`, `RoofTrax-GTM-Beta-and-Pricing-Plan.md` §4, or `RoofTrax-Scaling-Playbook.md` §2, **this document governs.**
+
+---
+
+## PART I — CONTEXT
+
+*This section informs tone, copy, and design decisions. It is not site content.*
+
+### 1.1 What RoofTrax is
+
+An independent B2B software company serving storm restoration contractors. The product is a multi-tenant CRM, mobile field inspection app, and canvassing app, built around an AI-assisted **proof package** generation pipeline.
+
+The proof package is not a feature. It is the spine of the system — intake, workflow, documentation, and supplement process all route through it. One claim produces one package.
+
+### 1.2 Entity separation — enforce in all copy
+
+**RoofTrax and NuHome Exteriors, Inc. are separate companies.** NuHome is a design partner and reference customer, not a parent, division, or affiliate.
+
+| Rule | |
+|---|---|
+| No NuHome branding, letterhead, or license numbers anywhere on the RoofTrax site | |
+| Founder credential is framed as **20 years in insurance restoration**, not "a contractor who built software" | |
+| NuHome may be named as design partner / first customer, with permission | |
+| Data neutrality must be addressed proactively — see FAQ copy in §6.4 | |
+
+**Why this matters:** the ICP is roofing contractors. If prospects perceive RoofTrax as an arm of a competing contractor, they assume their claim data is visible to a rival and refuse to evaluate.
+
+### 1.3 Ideal customer profile
+
+**Primary — the scaling restoration shop.** 5–50 seats, $5M–55M revenue, 15–200+ claims/month, 60%+ insurance restoration. Currently on AccuLynx, JobNimbus, or spreadsheets. Already buying EagleView / Hover / QuickMeasure.
+
+**The pod model** (important for the quote calculator): the operating unit is 1 sales rep + 2 canvassers. A pod produces ~4 claims/week, ~208/year. A rep self-generates ~1/week; each canvasser generates 1–2 signed leads/week.
+
+| Pods | Field seats | Claims/yr | Approx. revenue |
+|---|---|---|---|
+| 1 | 3 | 208 | $4.6M |
+| 3 | 9 | 624 | $13.7M |
+| 5 | 15 | 1,040 | $22.9M |
+| 12 | 36 | 2,496 | $54.9M |
+
+**The defining pain:** the owner or a single supplement manager is the documentation bottleneck. Every package, narrative, and rebuttal routes through one person. Growth is capped by that person's hours, and each new rep makes it worse.
+
+**Anti-ICP — do not sell:** public adjusters and PA firms; pure retail exterior contractors; solo operators with no reps; anyone seeking claim-outcome guarantees; storm chasers with no fixed office.
+
+### 1.4 Positioning
+
+> **RoofTrax turns your newest rep into your best documenter.**
+>
+> Your 22-year-old field rep produces a forensic proof package indistinguishable from one written by a 20-year supplement manager — from their phone, at the property, before they leave the driveway.
+
+**Category argument:** AccuLynx and JobNimbus are job-management systems. They track where a job is; they don't make it win. RoofTrax is a documentation and evidence system with job management attached.
+
+**Competitive framing:**
+
+| Against | Line |
+|---|---|
+| AccuLynx / JobNimbus | "They track the job. We build the file. And we don't charge you for hiring." |
+| Spreadsheets + Dropbox | "Your process lives in one person's head. What happens when they leave?" |
+| EagleView / Hover | Not a competitor — an input. Same price per claim, vastly more output. |
+| Hiring a supplement manager | "$85–120K salary, or $50 a claim and every rep has the capability." |
+
+---
+
+## PART II — PRICING MODEL (AUTHORITATIVE)
+
+### 2.1 The model
+
+**Seats are unlimited and free. Customers pay per claim.**
+
+Annual commitment on claim volume, banked across the term, graduated band pricing.
+
+| Band (claims/year) | Rate |
+|---|---|
+| 1 – 500 | $50 |
+| 501 – 1,500 | $45 |
+| 1,501 – 3,000 | $40 |
+| 3,001+ | $35 |
+
+**Graduated, not cliff.** A customer at 600 claims pays $50 on the first 500 and $45 on the next 100. There is no volume at which buying more increases total price.
+
+### 2.2 Why $50 per claim
+
+Contractors already pay **$30–70 per claim for a roof measurement report** — geometry alone. This is the anchor and it belongs on the pricing page.
+
+> *One gets you geometry. The other gets you the file.*
+
+At $50/claim a customer pays ~0.23% of their revenue — below the 0.5–2% vertical-SaaS norm. Deliberate land-grab pricing, not a ceiling.
+
+### 2.3 Plan ladder
+
+| Plan | Claims/yr | Annual | Monthly equiv. | Eff. $/claim | Typical firm |
+|---|---|---|---|---|---|
+| **Solo** | 150 | $7,500 | $625 | $50.00 | 1 pod, ~$3.3M |
+| **Crew** | 400 | $20,000 | $1,667 | $50.00 | 2 pods, ~$8.8M |
+| **Team** | 900 | $43,000 | $3,583 | $47.78 | 4–5 pods, ~$20M |
+| **Fleet** | 2,000 | $90,000 | $7,500 | $45.00 | 9–10 pods, ~$44M |
+| **Regional** | 4,000 | $165,000 | $13,750 | $41.25 | 19+ pods, ~$88M |
+
+Custom commitments permitted at any volume; the band function governs.
+
+### 2.4 Billing terms
+
+| Term | Multiplier | Notes |
+|---|---|---|
+| **Annual prepaid** | 1.00 | Paid upfront, full allotment immediately available |
+| **Quarterly** | 1.10 | Annual commitment, four installments |
+| **Monthly** | 1.25 | Annual commitment, twelve installments |
+
+**Banking:** committed claims bank across the full annual term — not monthly buckets. Storm restoration is seasonal; every incumbent uses monthly expiry. This is a marketed differentiator.
+
+**Expiry:** banked claims expire 24 months from purchase, and require an active subscription to redeem.
+
+**Overage:** current band rate + $10. Notifications at 80% and 100%. Priced to trigger an upgrade conversation, not to punish.
+
+**True-up:** annual, upward only. No mid-term reduction — banking absorbs seasonal downturns.
+
+### 2.5 Setup fees
+
+**Never waived.** Annual billing earns a reduced rate.
+
+| Plan | Annual | Quarterly / Monthly |
+|---|---|---|
+| Solo | $495 | $795 |
+| Crew | $1,495 | $2,295 |
+| Team | $2,995 | $4,495 |
+| Fleet | $5,995 | $8,995 |
+| Regional | $9,995 | $14,995 |
+
+Covers: CRM data migration, price book load, AHJ library build for every jurisdiction worked, role and template configuration, team training. 6–7% of first-year contract value.
+
+**Objection-handler copy:**
+> Setup isn't a fee we invented. We migrate your existing CRM, load your price book, build the code library for every jurisdiction you work in, and configure your roles and templates. Annual customers pay less because we can schedule that work more efficiently.
+
+### 2.6 Feature tiers
+
+Independent of volume — a small firm may need enterprise features; a large one may not.
+
+| | Includes | Price |
+|---|---|---|
+| **Standard** | CRM, mobile inspection, canvassing app, proof packages, AHJ library, supplement documents | Included |
+| **Professional** | + API access, custom roles, priority AHJ requests, advanced reporting | +$249/mo |
+| **Enterprise** | + SSO/SAML, multi-office hierarchy, dedicated CSM, uptime SLA, quarterly business review | +$999/mo |
+
+### 2.7 Metering rules — critical
+
+**A claim is consumed when a proof package reaches `delivered` status.** Not at claim creation, not at draft.
+
+- **Regeneration, revisions, and corrections on an existing package: FREE.** Never re-consume.
+- **Supplement documents on an existing claim: FREE.**
+- Voided or duplicate claims: admin-reversible with audit log.
+- Consumption order: commitment → bank → overage.
+
+Charging for revisions would recreate the rationing behavior this entire model exists to prevent. This is the single most important implementation rule in the document.
+
+---
+
+## PART III — SITE ARCHITECTURE
+
+### 3.1 Routes
+
+| Route | Purpose |
+|---|---|
+| `/` | Home — positioning, proof package, social proof |
+| `/product` | Product overview |
+| `/product/proof-packages` | The core artifact — deepest page on the site |
+| `/product/crm` | Pipeline, automation, file management |
+| `/product/mobile` | Field inspection app |
+| `/product/canvassing` | Canvasser pin-drop app |
+| `/product/ahj-library` | Code library — the moat, make it visible |
+| `/pricing` | Plans + quote calculator |
+| `/proof-package` | Trial package landing (Part IV) |
+| `/proof-package/start` | Trial signup |
+| `/proof-package/submit` | Trial intake wizard |
+| `/proof-package/waitlist` | Out-of-coverage capture |
+| `/switch/acculynx`, `/switch/jobnimbus` | Competitive comparison |
+| `/company` | About, founder story, entity statement |
+| `/resources` | Teardown videos, guides |
+| `/demo` | Book a working session |
+| `/admin/*` | Internal — trial queue, coverage management |
+
+### 3.2 Home page
+
+1. **Hero**
+   - H1: `Turn your newest rep into your best documenter.`
+   - Sub: `RoofTrax builds a complete forensic proof package from a phone inspection — code citations, damage assessment, exhibit manifest, all branded to your company.`
+   - Primary CTA: `Send us one claim — $100`
+   - Secondary: `See a proof package`
+
+2. **The problem** — one person is your documentation bottleneck; every rep you hire makes it worse.
+
+3. **The proof package** — visual centerpiece. Show a real (redacted) package. Scroll-through or page-flip component.
+
+4. **Throughput** — the operational argument. Standardized intake, built-in automation, nothing falls through cracks. *Manage more claims without adding admin headcount.*
+   > **Copy constraint:** state capability, not guaranteed results. "Built to increase file throughput" — not "increases throughput 30%" — until beta data supports a specific figure. See §6.1.
+
+5. **Pricing teaser** — `$50 a claim. About what you pay for a measurement report.` → `/pricing`
+
+6. **Who it's for** — pod-based sizing, 1 pod to 20+.
+
+7. **Founder credibility** — 20 years in insurance restoration; built and proven in a live restoration department.
+
+8. **Footer CTA**
+
+### 3.3 Pricing page — the most important page
+
+**Structure:**
+
+1. **Headline:** `You pay per claim. Seats are free.`
+   Sub: `Hire all the reps and canvassers you want. We charge for the work, not the people.`
+
+2. **The anchor**, prominent and early:
+   > You already pay $30–70 for a measurement report. That gets you geometry. For about the same, RoofTrax builds the whole file.
+
+3. **Plan cards** — five plans per §2.3. Each shows claims/year, annual price, effective $/claim. **Team is the highlighted default.**
+
+4. **Quote calculator** — see §3.4.
+
+5. **Billing term comparison** — annual vs quarterly vs monthly, with the delta shown explicitly. Annual is visibly best; do not hide the comparison.
+
+6. **Setup fee table** with objection-handler copy from §2.5.
+
+7. **Feature tier table** per §2.6.
+
+8. **Banking explainer** — `Storm season isn't twelve months long. Your claims bank across the whole year.`
+
+9. **FAQ** — §6.4.
+
+### 3.4 Quote calculator
+
+**Inputs, in this order:**
+
+1. **Pod estimator (default view)** — "How many sales reps?" / "How many canvassers?"
+   Estimate: `(reps × 52) + (canvassers × 78)` claims/year
+   Show as an editable starting point. Contractors know headcount cold; annual claim volume is fuzzy.
+2. **Direct entry toggle** — claims per year, or per month × 12
+3. **Billing term** — annual / quarterly / monthly
+4. **Feature tier** — standard / professional / enterprise
+
+**Output — always three separate lines, never blended:**
+
+```
+Subscription        $XX,XXX / year
+Feature tier        $X,XXX / year        (omit if Standard)
+Setup (one-time)    $X,XXX
+────────────────────────────────────
+First-year total    $XX,XXX
+```
+
+**Required line, rendered with every quote:**
+> `$XX per claim — about what you already pay for a measurement report.`
+
+**Band function (authoritative):**
+
+```
+def annual_price(claims):
+    bands = [(500, 5000), (1000, 4500), (1500, 4000), (INF, 3500)]  # cents
+    remaining, total = claims, 0
+    for width, rate in bands:
+        take = min(remaining, width)
+        total += take * rate
+        remaining -= take
+        if remaining <= 0: break
+    return total
+```
+
+**Unit test fixtures:**
+
+| Claims | Annual | $/claim |
+|---|---|---|
+| 150 | $7,500 | $50.00 |
+| 400 | $20,000 | $50.00 |
+| 500 | $25,000 | $50.00 |
+| 900 | $43,000 | $47.78 |
+| 1,500 | $70,000 | $46.67 |
+| 2,000 | $90,000 | $45.00 |
+| 3,000 | $130,000 | $43.33 |
+| 4,000 | $165,000 | $41.25 |
+| 6,000 | $235,000 | $39.17 |
+
+### 3.5 In-app metering UI
+
+Contractors must never be surprised by a bill.
+
+- Persistent header widget: `847 of 900 claims used · 53 remaining`
+- Dashboard card: consumption vs. term pace, projected year-end position
+- Banked balance always visible
+- Notification at 80% and 100% of commitment
+- Upgrade CTA at 80%, showing overage cost vs. next band
+
+---
+
+## PART IV — TRIAL PROGRAM
+
+### 4.1 Model
+
+Paid trial. Contractor submits a real claim; RoofTrax builds the AHJ packet for their jurisdiction and produces a proof package branded to their company, delivered in 2 business days on a live walkthrough call.
+
+| | |
+|---|---|
+| First package | $100 |
+| Second and third | $65 each |
+| Maximum | 3 per company, lifetime |
+| Credit | 100% toward annual prepaid plans, **Crew and above**, within 90 days of first submission |
+| Turnaround | 2 business days from approval |
+| Delivery | 30-minute walkthrough call — **package is not emailed in advance** |
+
+**Why paid:** free trials produce polite feedback and near-zero usage. Paid submissions come from contractors with a real claim and real intent.
+
+**Why the AHJ packet matters:** it is retained as jurisdiction-level work product, keyed to state + county. It contains no claim or homeowner data. This turns the trial pipeline into a demand-ranked map for AHJ library expansion — you build coverage where contractors are actively raising their hands, and onboarding for that county becomes instant afterward.
+
+### 4.2 Routes and flow
+
+```
+/proof-package          landing
+  → /proof-package/start        account creation + coverage gate
+    → /proof-package/submit     4-step wizard
+      → Stripe checkout
+        → admin review queue (manual approval required)
+          → build → ready → booking link → call → delivery
+```
+
+### 4.3 Account creation
+
+Fields: company name, contact name, business email, phone, license number, license state, company size band, monthly claim band, current CRM (optional).
+
+**Validation:**
+- Reject free email domains (gmail, yahoo, outlook, hotmail, aol, icloud, proton): `Please use your company email address.`
+- License number required.
+- Email verification before submission is permitted.
+
+**Coverage gate:** check state + county against `ahj_coverage`.
+- `covered` → proceed
+- otherwise → `/proof-package/waitlist`: `We haven't finished the code library for [County], [ST] yet. Add your name and we'll reach out as soon as it's ready.`
+
+**Cap:** if `packages_purchased >= 3`, block: `You've used all three trial packages. The next step is a plan.` → `/pricing`
+
+### 4.4 Submission wizard
+
+**Step 1 — Property & loss:** address, city, state, zip, county (autocomplete), date of loss, peril type, roof system, stories.
+
+**Step 2 — Claim context:** carrier name, internal claim reference, scope notes (2000 char), uploads — photos (jpg/png/heic, max 40, 15MB each), measurement report (pdf), carrier estimate (pdf/xlsx). Direct-to-storage via signed URLs.
+
+**Step 3 — Branding:** logo (png/svg), brand hex color, license number as displayed.
+
+**Step 4 — Review & terms.** Price shown ($100 if first, else $65). Required checkboxes:
+
+- [ ] I am authorized to share this claim and property information.
+- [ ] I understand this package is prepared for my review and adoption, and I am responsible for reviewing it before submitting it to any carrier.
+- [ ] I have read and accept the Trial Package Terms and Privacy Policy.
+
+**Status flow:**
+```
+draft → paid → in_review → approved → building → ready → delivered
+                    ↓
+                 rejected (auto-refund)
+```
+
+### 4.5 Admin queue
+
+`/admin/trial-queue` — table sorted by age: company, state/county, sequence #, submitted, status.
+
+Detail view: all intake fields, photo gallery, documents, account history, AHJ coverage status.
+
+**Screening checklist, rendered on the detail page, confirmed before approve:**
+- [ ] Legitimate contractor, license verifiable
+- [ ] Not a public adjuster or PA firm
+- [ ] Not in an excluded service area
+- [ ] Real claim data, not fabricated
+- [ ] AHJ coverage confirmed
+- [ ] Photo set sufficient for assessment
+
+**Nothing generates without manual approval.**
+
+**Throughput cap:** configurable weekly intake limit (default 15). At cap, landing CTA switches to waitlist: `We're at capacity this week. Join the list and we'll open your spot next week.`
+
+### 4.6 Email sequence
+
+| Trigger | Content |
+|---|---|
+| Payment succeeded | Receipt, what happens next, expected date |
+| Approved | "We're building your package" |
+| Rejected | Reason + refund confirmation |
+| **Ready** | **Booking link only — no package attached** |
+| Post-call | Deliverable link, signed URL, 30-day expiry |
+| Day 30 / 60 | Check-in + credit balance reminder |
+| Day 83 | "Your $X credit expires in 7 days" |
+
+**The `ready` email must not attach the package.** Delivery happens on the call. This is a deliberate conversion mechanic — do not "simplify" it.
+
+Business-day math excludes weekends and US federal holidays.
+
+### 4.7 Data retention
+
+**Nightly purge job.** For submissions where `delivered_at + 30 days <= now()` and `purged_at is null`:
+
+1. Delete all upload objects from storage
+2. Null: `property_address`, `property_city`, `property_zip`, `carrier_name`, `claim_number_ref`, `scope_notes`, `date_of_loss`
+3. **Retain:** `property_state`, `county`, `ahj_jurisdiction`, `peril_type`, `roof_system`, `stories`, timestamps, payment records
+4. Set `purged_at`, log to audit table
+
+Rejected submissions purge at 7 days.
+
+**Retained separately and permanently:** the AHJ jurisdiction packet, in the AHJ library keyed to state + county. Contains no claim data, no homeowner data, no property address.
+
+State this distinction plainly in the privacy policy. It is the difference between "we keep your claim data" (we don't) and "we keep the code research we did for your county" (we do).
+
+---
+
+## PART V — DATA MODEL
+
+```
+-- PRICING
+pricing_bands
+  id, band_from, band_to, rate_cents, sort_order
+  -- seed: (1,500,5000) (501,1500,4500) (1501,3000,4000) (3001,null,3500)
+
+plans
+  id, plan_key, display_name, committed_claims,
+  annual_cents, setup_annual_cents, setup_installment_cents,
+  active, sort_order
+
+billing_terms
+  id, term_key, multiplier, installments
+  -- seed: annual 1.00/1, quarterly 1.10/4, monthly 1.25/12
+
+feature_tiers
+  id, tier_key, display_name, monthly_cents
+  -- seed: standard 0, professional 24900, enterprise 99900
+
+subscriptions
+  id, tenant_id, plan_id, billing_term, feature_tier_id,
+  committed_claims, claims_consumed, claims_banked,
+  term_start, term_end, setup_fee_cents, setup_paid_at,
+  credit_applied_cents, overage_rate_cents
+
+claim_ledger
+  id, tenant_id, claim_id, package_id, consumed_at,
+  source enum('commitment','bank','overage'), rate_cents
+
+-- TRIAL
+trial_accounts
+  id, company_name, contact_name, email, phone,
+  license_number, license_state,
+  company_size_band, monthly_claim_band, current_crm,
+  packages_purchased, credit_balance_cents, credit_expires_at,
+  converted_tenant_id, created_at
+
+trial_submissions
+  id, account_id, sequence_num, status,
+  amount_paid_cents, stripe_payment_id,
+  property_address, property_city, property_state, property_zip,
+  county, ahj_jurisdiction, date_of_loss, peril_type,
+  carrier_name, claim_number_ref, roof_system, stories, scope_notes,
+  logo_file_key, brand_color_hex, license_display,
+  submitted_at, approved_at, delivered_at,
+  purge_after, purged_at, admin_notes
+
+trial_uploads
+  id, submission_id, file_key, file_type, size_bytes, uploaded_at
+
+ahj_coverage
+  id, state, county, status enum('covered','in_progress','none'),
+  code_cycle, updated_at
+
+waitlist_entries
+  id, company_name, email, phone, license_number, state, county, created_at
+
+credit_ledger
+  id, account_id, delta_cents, reason, created_at
+```
+
+**All pricing values must be table-driven. No hardcoded rate constants anywhere.**
+
+### 5.1 Configuration
+
+```
+TRIAL_PRICE_FIRST_CENTS=10000
+TRIAL_PRICE_SUBSEQUENT_CENTS=6500
+TRIAL_MAX_PACKAGES=3
+TRIAL_CREDIT_WINDOW_DAYS=90
+TRIAL_CREDIT_MIN_PLAN=crew
+TRIAL_WEEKLY_INTAKE_CAP=15
+TRIAL_TURNAROUND_BUSINESS_DAYS=2
+TRIAL_PURGE_AFTER_DAYS=30
+TRIAL_EXCLUDED_ZIPS=[]
+BANKED_CLAIM_EXPIRY_MONTHS=24
+OVERAGE_PREMIUM_CENTS=1000
+```
+
+`TRIAL_EXCLUDED_ZIPS` — build the mechanism, leave empty. Service-area exclusion is an unresolved founder decision.
+
+### 5.2 Infrastructure
+
+**Media lifecycle tiering — implement from day one.** Photos and drone media stay in hot storage for 12 months, then transition to cold/archive tier. Storage compounds and never shrinks; without tiering it grows to ~18% of revenue over five years, with tiering it flattens near 6%. No customer-visible impact.
+
+---
+
+## PART VI — COPY RULES & COMPLIANCE
+
+### 6.1 Prohibited claims — hard constraint
+
+**Never claim, guarantee, or imply influence over coverage determinations, carrier payment amounts, or claim approval.**
+
+| Prohibited | Permitted |
+|---|---|
+| Approval rates | Documentation quality, completeness, consistency |
+| Recovery or settlement amounts | Code citation accuracy |
+| "We get claims paid" | Speed and turnaround |
+| Testimonials phrased as payment outcomes | Rep-level capability |
+| Any implied carrier influence | Close rate on inspected leads *(their sales metric — safe)* |
+| Specific throughput % before beta data | "Built to increase file throughput" |
+
+Every deliverable is produced for the contractor's review and adoption, submitted under their own license. State this in the FAQ and terms.
+
+This is not conservatism — the entire product architecture depends on contractor-lane discipline, and marketing that implies claim influence creates regulatory exposure in states with stricter public-adjusting statutes than Virginia's.
+
+### 6.2 Required disclosures
+
+- Trial credit: **both conditions always shown together** — "annual plans, Crew and above, within 90 days of your first trial submission." A contractor who buys three packages assuming credit applies to Solo and learns otherwise at checkout has a legitimate grievance.
+- Setup fee: shown on every quote, never presented as waivable.
+- Data retention: purge policy stated plainly in privacy policy and trial terms.
+- Three-package lifetime cap: stated at first purchase, not discovered at the fourth attempt.
+
+### 6.3 Tone
+
+Direct, operational, unembellished. The audience runs crews and argues with adjusters; they detect marketing language instantly and discount it. Short sentences. Concrete numbers. No superlatives.
+
+Write like an operator explaining a system to another operator.
+
+### 6.4 FAQ copy
+
+**Why per claim instead of per seat?**
+Because seats aren't the work — claims are. Hire ten canvassers or a hundred; we don't charge you for growing. You pay for the files you build.
+
+**What does a claim cost?**
+$50, coming down with volume. About what you already pay for a measurement report.
+
+**What if I don't use my claims?**
+They bank across your whole term. Storm season isn't twelve months long and we don't pretend it is.
+
+**Do revisions cost extra?**
+No. Regenerate, revise, and add supplement documents on a claim as many times as you need. You're charged once, when the package is delivered.
+
+**Why is there a setup fee?**
+We migrate your CRM, load your price book, build the code library for every jurisdiction you work in, and train your team. That's real work, and it's why you're productive in two weeks instead of six months.
+
+**Is RoofTrax owned by a roofing company?**
+No. RoofTrax is an independent software company. Its founder has twenty years in insurance restoration, and the platform was built and validated with a restoration contractor as design partner. Every customer is an isolated tenant — no customer can see another's data, and we don't use it.
+
+**What happens to my claim data on a trial?**
+Photos, addresses, and claim details are deleted 30 days after delivery. We keep the jurisdiction code research, which contains nothing about your claim or your customer.
+
+**Can I submit the package to the carrier?**
+It's your document, branded to your company, under your license. Review it, adopt it, and submit it exactly as you would anything your own team produced.
+
+**Do you work with public adjusters?**
+No. RoofTrax is built for contractors.
+
+---
+
+## PART VII — ACCEPTANCE CRITERIA
+
+### Pricing
+- [ ] No seat count appears in any pricing surface
+- [ ] Band function matches all §3.4 fixtures exactly
+- [ ] Graduated bands verified — no volume where total price decreases as claims increase
+- [ ] **Regeneration, revisions, and supplements never consume a claim**
+- [ ] Consumption order: commitment → bank → overage
+- [ ] Banked claims expire at 24 months; redemption blocked without active subscription
+- [ ] Overage = current band rate + $10
+- [ ] 80% and 100% notifications fire; upgrade CTA at 80%
+- [ ] Setup fee on every quote; no code path waives it
+- [ ] True-up upward only; never reduces below commitment mid-term
+- [ ] All rates read from tables, not constants
+
+### Quote calculator
+- [ ] Pod estimator is the default input mode
+- [ ] Direct claim entry available via toggle
+- [ ] Subscription, feature tier, and setup shown as separate lines
+- [ ] Measurement-report comparison line renders with every quote
+- [ ] Term toggle shows the delta explicitly
+
+### Trial
+- [ ] Free-domain email rejected at signup
+- [ ] Out-of-coverage county routes to waitlist, never to checkout
+- [ ] Fourth package attempt blocked with upgrade CTA
+- [ ] Nothing generates without admin approval
+- [ ] Rejection triggers automatic Stripe refund
+- [ ] `ready` email contains booking link and no attachment
+- [ ] Credit rejected on Solo, rejected on non-annual, rejected past 90 days
+- [ ] Credit never reduces the setup fee line
+- [ ] Purge job nulls claim fields and deletes uploads at day 30, retains AHJ record
+- [ ] Weekly cap flips landing CTA to waitlist mode
+- [ ] Business-day math excludes weekends and federal holidays
+
+### Site
+- [ ] No NuHome branding, letterhead, or license numbers anywhere
+- [ ] Entity-independence answer present in FAQ
+- [ ] No prohibited outcome language in any page copy or email template
+- [ ] Mobile-responsive; trial upload flow works from a phone
+- [ ] Media lifecycle tiering configured
+
+---
+
+## APPENDIX A — INTERNAL PROJECTIONS
+
+*Not site content. Context for sizing decisions.*
+
+**ARR at 350 customers:**
+
+| Scenario | Mix (Solo/Crew/Team/Fleet/Regional) | ARR | Avg ACV |
+|---|---|---|---|
+| Conservative | 40/35/18/6/1 % | $8.75M | $24,997 |
+| Base | 30/35/23/10/2 % | $10.97M | $31,350 |
+| Optimistic | 20/34/28/14/4 % | $13.84M | $39,540 |
+
+Gross margin 98.4% across all scenarios. Package COGS ($0.75) is immaterial; storage and support are the real cost drivers.
+
+**Versus prior models:** original per-package $2.36M; seat-based $2.52M. The increase is not a price rise in the customer's eyes — it corrects a meter that was measuring the wrong thing.
+
+**Implication:** conservative mix reaches $3M ARR at roughly **120 customers**, not 350. The acquisition target drops sharply, CAC ceiling rises with ACV, and onboarding capacity becomes the binding constraint — each lost customer now costs $25K in ACV rather than $7K.
+
+---
+
+## APPENDIX B — OPEN ITEMS
+
+| # | Item | Severity | Notes |
+|---|---|---|---|
+| 1 | Throughput lift unmeasured | **High** | The 20→26 claims/month premise justifies $50/claim. Baseline claims-per-admin-FTE and cycle time at beta week 1; re-measure day 90. Six accounts at a consistent 25–30% lift is the most valuable asset to exit beta with. **Do not publish a specific % until measured.** |
+| 2 | Multi-state UPPA counsel review | **High** | Outstanding. Required before out-of-state packages. |
+| 3 | Third-party AI-document liability framework | **High** | Counsel-drafted allocation + E&O review for producing deliverables to non-customers. |
+| 4 | Customer mix unvalidated | **High** | Largest variance driver in Appendix A. |
+| 5 | Issue #249 — IICRC content in prompts | **High** | Merge before external use; gate at tenant level. |
+| 6 | $22K average RCV assumption | Medium | Drives all %-of-revenue math. Verify across markets. |
+| 7 | IP assignment RoofTrax ↔ NuHome | **High** | Codebase, AHJ library, price book logic, document templates. Cheap now, expensive under diligence. |
+| 8 | Service-area exclusion decision | Medium | Mechanism built, list empty. |
+| 9 | Storage cost model | Medium | Lifecycle tiering per §5.2. |
+
+---
+
+*End of document.*

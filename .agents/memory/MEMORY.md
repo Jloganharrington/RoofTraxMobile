@@ -83,3 +83,5 @@
 - [Steps 4 and 5 schema](steps4-5-schema.md) — manager_user_id on user_profiles (migration 045) + user_permission_overrides (migration 046); requirePermission now checks overrides before registry default; 4 new admin.ts routes.
 - [Terminate User feature](terminate-user-feature.md) — migrations 047/048; deactivated_at on users; pins.user_id RESTRICT; GET inventory + POST terminate (atomic tx + session purge) + DELETE hard-delete guard; team.delete → super_admin.
 - [Permission override hardening](perm-override-hardening.md) — migration 051 audit table; floor/selfOnly → 422; manager-assignment gate; must-hold extends to revoke; clearing-revoke = grant check.
+- [Trial Proof Package](trial-proof-package.md) — separate trial auth track; real Stripe checkout via recordSuccessfulPayment seam; 30-day download = tokenized route (GCS signing caps at 7d); root /api fetch in rooftrax-web.
+- [Pricing & Stripe billing](pricing-and-stripe-billing.md) — table-driven tiers; lookup-key catalog verified vs DB; credit reserved under row lock at checkout; webhook = authoritative fulfillment; stripe-replit-sync name-collision gotcha.

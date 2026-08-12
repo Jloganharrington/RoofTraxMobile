@@ -30,6 +30,61 @@ was written and applied manually.
 
 ---
 
+## Provisioning a fresh database
+
+`000_baseline.sql` is a complete `pg_dump --schema-only` snapshot of the live
+database taken on 2026-08-11. It includes all 73 tables with correct column
+types and defaults, all indexes (non-partial and partial, with predicates), all
+foreign keys, the `pin_profitability` view, and the `_parse_legacy_money_cents`
+function.
+
+**Migrations 001–040 are embedded in the baseline.** Do not run them against a
+database provisioned from this file — they predate the snapshot and their DDL
+is already reflected in it.
+
+**Apply these migrations on top of the baseline, in order:**
+
+```bash
+psql "$DATABASE_URL" -f data-migrations/000_baseline.sql
+
+psql "$DATABASE_URL" -f data-migrations/041_approved_carrier_estimate.sql
+psql "$DATABASE_URL" -f data-migrations/042_completion_certificates.sql
+psql "$DATABASE_URL" -f data-migrations/043_user_profile_title.sql
+psql "$DATABASE_URL" -f data-migrations/044_pin_financial_changes.sql
+psql "$DATABASE_URL" -f data-migrations/045_manager_user_id.sql
+psql "$DATABASE_URL" -f data-migrations/046_user_permission_overrides.sql
+psql "$DATABASE_URL" -f data-migrations/047_deactivated_at.sql
+psql "$DATABASE_URL" -f data-migrations/048_pins_user_restrict.sql
+psql "$DATABASE_URL" -f data-migrations/049_pii_purged_at.sql
+psql "$DATABASE_URL" -f data-migrations/050_deactivation_sweep_log.sql
+psql "$DATABASE_URL" -f data-migrations/051_permission_override_changes.sql
+psql "$DATABASE_URL" -f data-migrations/052_stage_transitions.sql
+```
+
+All migrations 041–052 use `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` /
+`CREATE OR REPLACE` throughout, so they are safe to run against a database
+provisioned from the baseline (all become no-ops for objects already captured
+in the snapshot). Each new numbered migration added after 052 should also be
+applied in sequence.
+
+**Round-trip verification (2026-08-11):**
+A scratch database was provisioned from `000_baseline.sql` plus migrations
+041–052 in the order above, then its `pg_dump --schema-only` was diffed against
+the live database. The only diff lines were:
+
+- `\restrict` / `\unrestrict` — Replit mTLS session tokens injected by the
+  database proxy; they change every connection and carry no schema information.
+- `user_profiles_theme_check` — PostgreSQL serializes the same
+  `ANY(ARRAY[...::character varying])` expression in two equivalent textual
+  forms on a pg_dump round-trip (`ARRAY['x'::varchar]` vs
+  `ARRAY[('x'::varchar)::text]`). `pg_get_constraintdef()` on both databases
+  confirms the stored logic is identical. This is a known Postgres
+  serialization artifact, not a real schema difference.
+
+Zero structural differences.
+
+---
+
 ## Applying schema changes (drizzle-kit push)
 
 Schema changes live in `lib/db/src/schema/` and are applied manually via

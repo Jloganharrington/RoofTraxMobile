@@ -62,5 +62,8 @@ channel = "stable-25_05"
 [userenv.shared]
 BRAIN_BASE_URL = "https://rooftrax-brain.replit.app"
 
+[userenv.development]
+TRIAL_DEV_FAKE_PAYMENTS = "1"
+
 [objectStorage]
 defaultBucketID = "replit-objstore-da678013-94d4-4901-910c-233f65607348"

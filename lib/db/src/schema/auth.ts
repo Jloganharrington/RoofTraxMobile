@@ -59,7 +59,7 @@ export const companiesTable = pgTable('companies', {
   betaBugReporting: boolean('beta_bug_reporting').notNull().default(true),
   // Company logo uploaded by a manager/admin. Stored as a full
   // authenticated URL (/api/storage/objects/...) — displayed in the FIPSA
-  // letterhead instead of the hardcoded NuHome logo.
+  // letterhead instead of the hardcoded default logo.
   logoUrl: varchar('logo_url'),
   // Company-level AI settings: custom system prompt for the Summary step.
   // Null means the default prompt is used.

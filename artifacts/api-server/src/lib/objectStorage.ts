@@ -265,10 +265,13 @@ export class ObjectStorageService {
         method: 'DELETE',
         ttlSec: 60,
       });
-      await fetch(signedUrl, {
+      const resp = await fetch(signedUrl, {
         method: 'DELETE',
         signal: AbortSignal.timeout(15_000),
       });
+      if (!resp.ok && resp.status !== 404) {
+        throw new Error(`Object delete failed with status ${resp.status} for ${objectPath}`);
+      }
     } catch (err) {
       if (err instanceof ObjectNotFoundError) return; // already gone — not an error
       throw err;

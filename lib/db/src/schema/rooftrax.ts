@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   doublePrecision,
   integer,
@@ -1223,6 +1224,181 @@ export type InsertPinFinancialChange = typeof pinFinancialChangesTable.$inferIns
 //   blocked      — purge attempted but failed; blockedReason carries the error
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Beta applications — incoming marketing funnel (no company FK)
+// ---------------------------------------------------------------------------
+export const betaApplications = pgTable('beta_applications', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  firstName:      varchar('first_name', { length: 100 }).notNull(),
+  lastName:       varchar('last_name',  { length: 100 }).notNull(),
+  email:          varchar('email',      { length: 255 }).notNull(),
+  phone:          varchar('phone',      { length: 50  }).notNull(),
+  company:        varchar('company',    { length: 255 }).notNull(),
+  state:          varchar('state',      { length: 100 }).notNull(),
+  repCount:       varchar('rep_count',  { length: 50  }).notNull(),
+  claimVolume:    varchar('claim_volume', { length: 50  }).notNull(),
+  revenueRange:   varchar('revenue_range', { length: 100 }).notNull(),
+  currentStack:   varchar('current_stack', { length: 255 }).notNull(),
+  challenge:      text('challenge').notNull().default(''),
+  referralSource: varchar('referral_source', { length: 500 }).notNull().default(''),
+  status:         varchar('status', { length: 50 }).notNull().default('pending'),
+  notes:          text('notes'),
+  reviewedAt:     timestamp('reviewed_at', { withTimezone: true }),
+  createdAt:      timestamp('created_at',  { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type BetaApplication = typeof betaApplications.$inferSelect;
+export type InsertBetaApplication = typeof betaApplications.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Trial Proof Package (migration 054) — paid trial intake on the marketing
+// site. Non-customer contractors buy up to 3 proof packages. No company FK:
+// trial accounts are pre-tenant. Enum-like columns are varchar + zod-validated
+// at the API layer (avoids the pg enum → generated-file cascade).
+// ---------------------------------------------------------------------------
+
+export const TRIAL_COMPANY_SIZE_BANDS = ['1-3', '4-10', '11-25', '26-50', '50+'] as const;
+export const TRIAL_CLAIM_BANDS = ['1-5', '6-15', '16-40', '40+'] as const;
+export const TRIAL_PERIL_TYPES = ['hail', 'wind', 'wind_hail', 'tree_impact', 'other'] as const;
+export const TRIAL_UPLOAD_TYPES = ['photo', 'measurement_report', 'carrier_estimate', 'logo', 'deliverable', 'other'] as const;
+export const TRIAL_SUBMISSION_STATUSES = [
+  'draft', 'paid', 'in_review', 'approved', 'building', 'ready', 'delivered', 'rejected',
+] as const;
+export const AHJ_COVERAGE_STATUSES = ['covered', 'in_progress', 'none'] as const;
+export type TrialSubmissionStatus = (typeof TRIAL_SUBMISSION_STATUSES)[number];
+
+export const trialAccounts = pgTable('trial_accounts', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyName:      varchar('company_name', { length: 255 }).notNull(),
+  contactName:      varchar('contact_name', { length: 255 }).notNull(),
+  email:            varchar('email', { length: 255 }).notNull().unique(), // business domain required (API-enforced)
+  phone:            varchar('phone', { length: 50 }).notNull(),
+  licenseNumber:    varchar('license_number', { length: 100 }).notNull(),
+  licenseState:     varchar('license_state', { length: 2 }).notNull(),
+  companySizeBand:  varchar('company_size_band', { length: 10 }).notNull(),
+  monthlyClaimBand: varchar('monthly_claim_band', { length: 10 }).notNull(),
+  currentCrm:       varchar('current_crm', { length: 255 }),
+  emailVerifiedAt:  timestamp('email_verified_at', { withTimezone: true }),
+  verifyToken:      varchar('verify_token', { length: 64 }),
+  packagesPurchased: integer('packages_purchased').notNull().default(0), // hard cap TRIAL_MAX_PACKAGES (3)
+  creditBalanceCents: integer('credit_balance_cents').notNull().default(0),
+  creditExpiresAt:  timestamp('credit_expires_at', { withTimezone: true }), // first purchase + 90d
+  convertedTenantId: varchar('converted_tenant_id'), // set on subscription
+  createdAt:        timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrialAccount = typeof trialAccounts.$inferSelect;
+export type InsertTrialAccount = typeof trialAccounts.$inferInsert;
+
+// Lightweight session for trial accounts (separate from tenant user sessions).
+export const trialSessions = pgTable('trial_sessions', {
+  token: varchar('token', { length: 64 }).primaryKey(),
+  accountId: varchar('account_id').notNull().references(() => trialAccounts.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrialSession = typeof trialSessions.$inferSelect;
+
+export const trialSubmissions = pgTable('trial_submissions', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  accountId:   varchar('account_id').notNull().references(() => trialAccounts.id),
+  sequenceNum: integer('sequence_num').notNull(), // 1, 2, or 3
+  status:      varchar('status', { length: 20 }).notNull().default('draft'),
+  amountPaidCents: integer('amount_paid_cents'),
+  stripePaymentId: varchar('stripe_payment_id', { length: 255 }),
+
+  // claim intake (PURGED 30 days after delivery; rejected purge at 7 days)
+  propertyAddress: text('property_address'),
+  propertyCity:    varchar('property_city', { length: 255 }),
+  propertyState:   varchar('property_state', { length: 2 }),
+  propertyZip:     varchar('property_zip', { length: 10 }),
+  county:          varchar('county', { length: 255 }),
+  ahjJurisdiction: varchar('ahj_jurisdiction', { length: 255 }),
+  dateOfLoss:      timestamp('date_of_loss', { withTimezone: true }),
+  perilType:       varchar('peril_type', { length: 20 }),
+  carrierName:     varchar('carrier_name', { length: 255 }),
+  claimNumberRef:  varchar('claim_number_ref', { length: 100 }), // contractor's internal ref
+  roofSystem:      varchar('roof_system', { length: 255 }),
+  stories:         integer('stories'),
+  scopeNotes:      text('scope_notes'), // 2000 char (API-enforced)
+
+  // branding (retained)
+  logoFileKey:    varchar('logo_file_key', { length: 500 }),
+  brandColorHex:  varchar('brand_color_hex', { length: 9 }),
+  licenseDisplay: varchar('license_display', { length: 255 }),
+
+  // delivery
+  deliverableFileKey: varchar('deliverable_file_key', { length: 500 }),
+  deliverableToken:   varchar('deliverable_token', { length: 64 }), // emailed access link; valid 30d post-delivery
+  rejectReason:       text('reject_reason'),
+  refundIssuedAt:     timestamp('refund_issued_at', { withTimezone: true }),
+
+  submittedAt: timestamp('submitted_at', { withTimezone: true }),
+  approvedAt:  timestamp('approved_at', { withTimezone: true }),
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  purgeAfter:  timestamp('purge_after', { withTimezone: true }), // delivered_at + 30d (or rejected + 7d)
+  purgedAt:    timestamp('purged_at', { withTimezone: true }),
+  adminNotes:  text('admin_notes'),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+export type TrialSubmission = typeof trialSubmissions.$inferSelect;
+export type InsertTrialSubmission = typeof trialSubmissions.$inferInsert;
+
+export const trialUploads = pgTable('trial_uploads', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  submissionId: varchar('submission_id').notNull().references(() => trialSubmissions.id, { onDelete: 'cascade' }),
+  fileKey:   varchar('file_key', { length: 500 }).notNull(),
+  fileType:  varchar('file_type', { length: 30 }).notNull(),
+  fileName:  varchar('file_name', { length: 255 }).notNull().default(''),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrialUpload = typeof trialUploads.$inferSelect;
+
+// Jurisdiction coverage — permanent AHJ work product index (no claim data).
+export const ahjCoverage = pgTable('ahj_coverage', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  state:  varchar('state', { length: 2 }).notNull(),
+  county: varchar('county', { length: 255 }).notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('none'), // covered | in_progress | none
+  codeCycle: varchar('code_cycle', { length: 100 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+export type AhjCoverage = typeof ahjCoverage.$inferSelect;
+
+export const waitlistEntries = pgTable('waitlist_entries', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  companyName:   varchar('company_name', { length: 255 }).notNull(),
+  email:         varchar('email', { length: 255 }).notNull(),
+  phone:         varchar('phone', { length: 50 }).notNull(),
+  licenseNumber: varchar('license_number', { length: 100 }).notNull().default(''),
+  state:  varchar('state', { length: 2 }).notNull(),
+  county: varchar('county', { length: 255 }).notNull().default(''),
+  reason: varchar('reason', { length: 50 }).notNull().default('coverage'), // coverage | capacity
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
+
+export const trialCreditLedger = pgTable('trial_credit_ledger', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  accountId: varchar('account_id').notNull().references(() => trialAccounts.id),
+  deltaCents: integer('delta_cents').notNull(),
+  reason: varchar('reason', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrialCreditLedgerEntry = typeof trialCreditLedger.$inferSelect;
+
+// Purge job audit log (spec §8).
+export const trialPurgeAudit = pgTable('trial_purge_audit', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  submissionId: varchar('submission_id').notNull(),
+  uploadsDeleted: integer('uploads_deleted').notNull().default(0),
+  fieldsNulled: text('fields_nulled').notNull().default(''),
+  detail: text('detail'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type TrialPurgeAuditRow = typeof trialPurgeAudit.$inferSelect;
+
 export const SWEEP_ACTIONS = [
   'alert_7d',
   'alert_14d',
@@ -1254,3 +1430,102 @@ export const deactivationSweepLogTable = pgTable('deactivation_sweep_log', {
 
 export type DeactivationSweepLog = typeof deactivationSweepLogTable.$inferSelect;
 export type InsertDeactivationSweepLog = typeof deactivationSweepLogTable.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Per-claim pricing model (Master Build Document v1.0, migration 056)
+// Seats are unlimited and free. Customers pay per claim delivered.
+// All pricing values are table-driven — never hardcode amounts or rates.
+// ---------------------------------------------------------------------------
+
+export const BILLING_TERMS = ['annual', 'quarterly', 'monthly'] as const;
+export type BillingTerm = (typeof BILLING_TERMS)[number];
+export const SUBSCRIPTION_STATUSES = ['pending', 'active', 'canceled', 'past_due'] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+export const CLAIM_LEDGER_SOURCES = ['commitment', 'bank', 'overage'] as const;
+export type ClaimLedgerSource = (typeof CLAIM_LEDGER_SOURCES)[number];
+
+/** Graduated pricing band (§2.1). bandTo null = open-ended last band. */
+export const pricingBands = pgTable('pricing_bands', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  bandFrom: integer('band_from').notNull(),
+  bandTo: integer('band_to'),
+  rateCents: integer('rate_cents').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+});
+export type PricingBand = typeof pricingBands.$inferSelect;
+
+/** Named plan at a committed claim volume (§2.3). */
+export const plans = pgTable('plans', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  planKey: varchar('plan_key', { length: 30 }).notNull().unique(),
+  displayName: varchar('display_name', { length: 60 }).notNull(),
+  committedClaims: integer('committed_claims').notNull(),
+  /** Base annual price at 1.0× multiplier. Billing-term multiplier applied at quote time. */
+  annualCents: integer('annual_cents').notNull(),
+  setupAnnualCents: integer('setup_annual_cents').notNull(),
+  /** Setup for quarterly or monthly billing (always ≥ setupAnnualCents). */
+  setupInstallmentCents: integer('setup_installment_cents').notNull(),
+  active: boolean('active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+});
+export type Plan = typeof plans.$inferSelect;
+
+/** Billing term with annual-price multiplier and installment count (§2.4). */
+export const billingTerms = pgTable('billing_terms', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  termKey: varchar('term_key', { length: 20 }).notNull().unique(),
+  displayName: varchar('display_name', { length: 40 }).notNull(),
+  multiplier: numeric('multiplier', { precision: 4, scale: 2 }).notNull(),
+  installments: integer('installments').notNull(),
+});
+export type BillingTermRow = typeof billingTerms.$inferSelect;
+
+/** Feature-tier add-on, independent of volume plan (§2.6). */
+export const featureTiers = pgTable('feature_tiers', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  tierKey: varchar('tier_key', { length: 20 }).notNull().unique(),
+  displayName: varchar('display_name', { length: 60 }).notNull(),
+  monthlyCents: integer('monthly_cents').notNull().default(0),
+  sortOrder: integer('sort_order').notNull().default(0),
+});
+export type FeatureTier = typeof featureTiers.$inferSelect;
+
+/** Customer subscription — prospect fields null until tenant onboarded. */
+export const subscriptions = pgTable('subscriptions', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar('email', { length: 255 }),
+  companyName: varchar('company_name', { length: 255 }),
+  tenantId: varchar('tenant_id', { length: 100 }),
+  trialAccountId: varchar('trial_account_id').references(() => trialAccounts.id),
+  planId: varchar('plan_id').notNull().references(() => plans.id),
+  billingTerm: varchar('billing_term', { length: 20 }).notNull(),
+  featureTierId: varchar('feature_tier_id').references(() => featureTiers.id),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  committedClaims: integer('committed_claims').notNull(),
+  claimsConsumed: integer('claims_consumed').notNull().default(0),
+  claimsBanked: integer('claims_banked').notNull().default(0),
+  termStart: timestamp('term_start', { withTimezone: true }),
+  termEnd: timestamp('term_end', { withTimezone: true }),
+  setupFeeCents: integer('setup_fee_cents').notNull(),
+  setupPaidAt: timestamp('setup_paid_at', { withTimezone: true }),
+  creditAppliedCents: integer('credit_applied_cents').notNull().default(0),
+  overageRateCents: integer('overage_rate_cents').notNull().default(0),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  stripeCheckoutSessionId: text('stripe_checkout_session_id').unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export type Subscription = typeof subscriptions.$inferSelect;
+
+/** Claim consumption audit trail. */
+export const claimLedger = pgTable('claim_ledger', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  subscriptionId: varchar('subscription_id').notNull().references(() => subscriptions.id),
+  claimId: varchar('claim_id', { length: 100 }),
+  packageId: varchar('package_id', { length: 100 }),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }).notNull().defaultNow(),
+  source: varchar('source', { length: 20 }).notNull(),
+  rateCents: integer('rate_cents').notNull(),
+});
+export type ClaimLedgerRow = typeof claimLedger.$inferSelect;

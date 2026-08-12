@@ -6,10 +6,10 @@ const baseData: ProofPackageData = {
   reportId: 'ABC12345',
   generatedAt: '2026-07-29T12:00:00Z',
   company: {
-    legalName: 'NuHome Exteriors LLC',
-    brand: 'NuHome',
+    legalName: 'Apex Restoration LLC',
+    brand: 'Apex',
     licenses: [{ state: 'VA', number: '2705-064938A', classification: 'VA Class A Contractor' }],
-    qualificationsText: 'NuHome has documented over 1,000 storm-damage inspections.',
+    qualificationsText: 'Apex has documented over 1,000 storm-damage inspections.',
     pricingBasisStatement: 'Pricing reflects the contractor\u2019s fixed agreed price.',
   },
   statePack: {
@@ -157,7 +157,7 @@ describe('buildProofPackageHtml', () => {
       expect(html).toContain(title);
     }
     // Token substitution.
-    expect(html).toContain('Prepared by NuHome Exteriors LLC (VA Class A Contractor License #2705-064938A).');
+    expect(html).toContain('Prepared by Apex Restoration LLC (VA Class A Contractor License #2705-064938A).');
     expect(html).not.toContain('{{contractor}}');
     // Supplemental sections and portal.
     expect(html).toContain('Repair Attempt Protocol');
