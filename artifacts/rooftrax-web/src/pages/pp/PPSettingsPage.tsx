@@ -2,25 +2,59 @@
  * /pp/settings — Account Settings
  *
  * Lets the company admin update company name, primary contact name, billing
- * email, and logo. Shows the company's short ID for rep onboarding.
- * Includes a read-only "Upgrade to Full CRM" call-to-action.
+ * email, work type, trade types, and logo. Shows the company's short ID for
+ * rep onboarding. Includes a read-only "Upgrade to Full CRM" call-to-action.
  */
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Copy, Loader2, Upload } from 'lucide-react';
 import type { PPUser, PPCompany } from '@/components/layout/PPProtectedRoute';
+
+type MarketType = 'retail' | 'insurance' | 'retail_insurance';
+
+const MARKET_OPTIONS: { value: MarketType; label: string; description: string }[] = [
+  {
+    value: 'retail',
+    label: 'Retail',
+    description: 'Homeowner-pay projects — storm damage, aging systems, upgrades',
+  },
+  {
+    value: 'insurance',
+    label: 'Insurance',
+    description: 'Insurance-carrier claims — supplements, line-item negotiations',
+  },
+  {
+    value: 'retail_insurance',
+    label: 'Retail & Insurance',
+    description: 'Both retail and insurance work',
+  },
+];
+
+const TRADE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'roofing', label: 'Roofing' },
+  { value: 'siding', label: 'Siding' },
+];
 
 interface FormState {
   companyName: string;
   firstName: string;
   lastName: string;
   billingEmail: string;
+  workType: MarketType | null;
+  tradeTypes: string[];
 }
 
 export default function PPSettingsPage() {
   const [user, setUser] = useState<PPUser | null>(null);
   const [company, setCompany] = useState<PPCompany | null>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState<FormState>({ companyName: '', firstName: '', lastName: '', billingEmail: '' });
+  const [form, setForm] = useState<FormState>({
+    companyName: '',
+    firstName: '',
+    lastName: '',
+    billingEmail: '',
+    workType: null,
+    tradeTypes: [],
+  });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -44,6 +78,8 @@ export default function PPSettingsPage() {
           firstName: body.user.firstName ?? '',
           lastName: body.user.lastName ?? '',
           billingEmail: body.user.email ?? '',
+          workType: (body.company.workType as MarketType | null) ?? null,
+          tradeTypes: body.company.tradeTypes ?? [],
         });
       })
       .finally(() => setLoading(false));
@@ -66,6 +102,8 @@ export default function PPSettingsPage() {
           firstName: form.firstName.trim() || undefined,
           lastName: form.lastName.trim() || undefined,
           billingEmail: form.billingEmail.trim() || undefined,
+          workType: form.workType ?? undefined,
+          tradeTypes: form.tradeTypes.length > 0 ? form.tradeTypes : undefined,
         }),
       });
       const body = await res.json() as { error?: string };
@@ -128,6 +166,15 @@ export default function PPSettingsPage() {
       });
     }
   };
+
+  function toggleTrade(trade: string) {
+    setForm((f) => ({
+      ...f,
+      tradeTypes: f.tradeTypes.includes(trade)
+        ? f.tradeTypes.filter((t) => t !== trade)
+        : [...f.tradeTypes, trade],
+    }));
+  }
 
   if (loading) {
     return (
@@ -236,6 +283,57 @@ export default function PPSettingsPage() {
             placeholder="billing@yourcompany.com"
           />
           <p className="text-[11px] text-zinc-600">This is also your login email.</p>
+        </div>
+
+        {/* Work Type */}
+        <div className="border-t border-zinc-800 pt-5 space-y-4">
+          <p className="text-sm font-semibold text-zinc-200">Work Type</p>
+
+          {/* Market type single-select */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-zinc-400">Market</label>
+            <div className="space-y-2">
+              {MARKET_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, workType: opt.value }))}
+                  className={`w-full text-left rounded-lg border px-4 py-3 transition-colors
+                    ${form.workType === opt.value
+                      ? 'border-orange-500 bg-orange-500/10 text-white'
+                      : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'}`}
+                >
+                  <p className="text-sm font-semibold">{opt.label}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{opt.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Trade type multi-select */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-zinc-400">
+              Trade(s) <span className="text-zinc-600">(select all that apply)</span>
+            </label>
+            <div className="flex gap-2">
+              {TRADE_OPTIONS.map((opt) => {
+                const selected = form.tradeTypes.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => toggleTrade(opt.value)}
+                    className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors
+                      ${selected
+                        ? 'border-orange-500 bg-orange-500/10 text-white'
+                        : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'}`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <button

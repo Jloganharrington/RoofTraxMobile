@@ -20,7 +20,9 @@
 import { randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import {
+  ahjCoverage,
   ahjPacksTable,
+  ahjRequestsTable,
   attestationsTable,
   billingTerms,
   claimSectionsTable,
@@ -107,6 +109,9 @@ async function provisionPPAccount(opts: {
   // unauthenticated checkout cannot be ownership-verified (the user doesn't
   // exist yet), so we always provision with no logo and let the subscriber
   // upload one post-auth via GET /pp/upload-url + PUT /pp/company/logo.
+  workType?: string | null;
+  tradeTypes?: string[] | null;
+  ahjCoverageId?: string | null;
 }) {
   const companyId = await generateUniqueCompanyId();
 
@@ -118,6 +123,9 @@ async function provisionPPAccount(opts: {
         name: opts.companyName,
         ppTier: 'pp_only',
         logoUrl: null, // set post-auth via authenticated upload
+        workType: opts.workType ?? null,
+        tradeTypes: opts.tradeTypes ?? null,
+        ahjCoverageId: opts.ahjCoverageId ?? null,
       })
       .returning();
 
@@ -146,6 +154,33 @@ async function provisionPPAccount(opts: {
   });
 }
 
+// ── AHJ coverage list ─────────────────────────────────────────────────────────
+
+/**
+ * GET /pp/ahj-coverage
+ * Public (no auth). Returns all AHJ coverage rows where status is 'covered'
+ * or 'in_progress', ordered by state then county.  Used by the registration
+ * wizard's AHJ step and (aliased) by authenticated CRM users.
+ */
+async function getAhjCoverageRows() {
+  return db
+    .select({
+      id: ahjCoverage.id,
+      state: ahjCoverage.state,
+      county: ahjCoverage.county,
+      status: ahjCoverage.status,
+      codeCycle: ahjCoverage.codeCycle,
+    })
+    .from(ahjCoverage)
+    .where(sql`${ahjCoverage.status} IN ('covered', 'in_progress')`)
+    .orderBy(asc(ahjCoverage.state), asc(ahjCoverage.county));
+}
+
+router.get('/pp/ahj-coverage', async (_req: Request, res: Response) => {
+  const rows = await getAhjCoverageRows();
+  res.json(rows);
+});
+
 // ── PP checkout ──────────────────────────────────────────────────────────────
 
 const CheckoutBody = z.object({
@@ -153,6 +188,30 @@ const CheckoutBody = z.object({
   email: z.string().email().max(255),
   password: z.string().min(8).max(128),
   logoObjectPath: z.string().max(500).nullable().optional(),
+  // Work type fields — required for PP registration.
+  workType: z.enum(['retail', 'insurance', 'retail_insurance']),
+  tradeTypes: z.array(z.string().max(50)).min(1).max(10),
+  // AHJ: exactly one of coverageId or requestJurisdiction must be non-empty.
+  // Both may be absent only for legacy / dev requests; validated below.
+  ahjCoverageId: z.string().max(100).optional().nullable(),
+  ahjRequestJurisdiction: z.string().max(500).optional().nullable(),
+}).superRefine((data, ctx) => {
+  const hasCoverage = !!data.ahjCoverageId?.trim();
+  const hasRequest = !!data.ahjRequestJurisdiction?.trim();
+  if (!hasCoverage && !hasRequest) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['ahjCoverageId'],
+      message: 'Select a jurisdiction or provide a request text.',
+    });
+  }
+  if (hasCoverage && hasRequest) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['ahjRequestJurisdiction'],
+      message: 'Provide either a coverage selection or a request text, not both.',
+    });
+  }
 });
 
 /**
@@ -167,7 +226,8 @@ router.post('/pp/checkout', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Missing or invalid fields', detail: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { companyName, email: rawEmail, password, logoObjectPath } = parsed.data;
+  const { companyName, email: rawEmail, password, logoObjectPath,
+    workType, tradeTypes, ahjCoverageId, ahjRequestJurisdiction } = parsed.data;
   const email = rawEmail.toLowerCase().trim();
 
   // Check email uniqueness across users AND pending registrations.
@@ -177,6 +237,18 @@ router.post('/pp/checkout', async (req: Request, res: Response) => {
     return;
   }
 
+  // Validate the supplied coverage ID exists and is publicly selectable.
+  if (ahjCoverageId) {
+    const [coverageRow] = await db
+      .select({ id: ahjCoverage.id, status: ahjCoverage.status })
+      .from(ahjCoverage)
+      .where(eq(ahjCoverage.id, ahjCoverageId));
+    if (!coverageRow || !['covered', 'in_progress'].includes(coverageRow.status)) {
+      res.status(400).json({ error: 'The selected jurisdiction is not available. Please choose from the list.' });
+      return;
+    }
+  }
+
   const pwHash = await hashPassword(password);
 
   // Upsert pending registration (idempotent — same email re-uses same row).
@@ -184,13 +256,26 @@ router.post('/pp/checkout', async (req: Request, res: Response) => {
   try {
     const [row] = await db
       .insert(ppPendingRegistrationsTable)
-      .values({ companyName, email, passwordHash: pwHash, logoObjectPath: logoObjectPath ?? null })
+      .values({
+        companyName,
+        email,
+        passwordHash: pwHash,
+        logoObjectPath: logoObjectPath ?? null,
+        workType: workType ?? null,
+        tradeTypes: tradeTypes ?? null,
+        ahjCoverageId: ahjCoverageId ?? null,
+        ahjRequestJurisdiction: ahjRequestJurisdiction ?? null,
+      })
       .onConflictDoUpdate({
         target: ppPendingRegistrationsTable.email,
         set: {
           companyName,
           passwordHash: pwHash,
           logoObjectPath: logoObjectPath ?? null,
+          workType: workType ?? null,
+          tradeTypes: tradeTypes ?? null,
+          ahjCoverageId: ahjCoverageId ?? null,
+          ahjRequestJurisdiction: ahjRequestJurisdiction ?? null,
           stripeSessionId: null, // cleared so a new checkout session is linked
           // Renew expiry so re-attempting registration after 24 h doesn't
           // create a charged-but-unprovisioned account on confirm.
@@ -359,6 +444,9 @@ router.get('/pp/register/confirm', async (req: Request, res: Response) => {
         passwordHash: pending.passwordHash,
         // logoObjectPath intentionally not passed — unauthenticated paths cannot
         // be ownership-verified; subscribers upload logo post-auth.
+        workType: pending.workType ?? null,
+        tradeTypes: (pending.tradeTypes as string[] | null) ?? null,
+        ahjCoverageId: pending.ahjCoverageId ?? null,
       });
       user = result.user;
       company = result.company;
@@ -366,6 +454,15 @@ router.get('/pp/register/confirm', async (req: Request, res: Response) => {
       logger.error({ err }, 'pp register confirm: account provisioning failed');
       res.status(500).json({ error: 'Account creation failed. Please contact support.' });
       return;
+    }
+
+    // If the subscriber requested a new AHJ, record it for admin review.
+    if (pending.ahjRequestJurisdiction) {
+      await db.insert(ahjRequestsTable).values({
+        companyId: company.id,
+        pendingRegistrationId: pending.id,
+        jurisdictionText: pending.ahjRequestJurisdiction,
+      });
     }
 
     // Queue verification email — token expires in 24 hours.
@@ -500,7 +597,15 @@ router.get('/pp/me', async (req: Request, res: Response) => {
   }
 
   const [company] = await db
-    .select({ id: companiesTable.id, name: companiesTable.name, ppTier: companiesTable.ppTier, logoUrl: companiesTable.logoUrl })
+    .select({
+      id: companiesTable.id,
+      name: companiesTable.name,
+      ppTier: companiesTable.ppTier,
+      logoUrl: companiesTable.logoUrl,
+      workType: companiesTable.workType,
+      tradeTypes: companiesTable.tradeTypes,
+      ahjCoverageId: companiesTable.ahjCoverageId,
+    })
     .from(companiesTable)
     .where(eq(companiesTable.id, user.companyId));
 
@@ -879,6 +984,8 @@ const PatchCompanyBody = z.object({
   firstName: z.string().max(100).optional(),
   lastName: z.string().max(100).optional(),
   billingEmail: z.string().email().max(255).optional(),
+  workType: z.enum(['retail', 'insurance', 'retail_insurance']).optional().nullable(),
+  tradeTypes: z.array(z.string().max(50)).max(10).optional().nullable(),
 });
 
 /**
@@ -895,13 +1002,22 @@ router.patch('/pp/company', async (req: Request, res: Response) => {
     return;
   }
 
-  const { companyName, firstName, lastName, billingEmail } = parsed.data;
+  const { companyName, firstName, lastName, billingEmail, workType, tradeTypes } = parsed.data;
 
-  // Update company name if provided
-  if (companyName !== undefined) {
+  // Update company fields
+  const companyUpdates: {
+    name?: string;
+    workType?: string | null;
+    tradeTypes?: string[] | null;
+  } = {};
+  if (companyName !== undefined) companyUpdates.name = companyName;
+  if (workType !== undefined) companyUpdates.workType = workType;
+  if (tradeTypes !== undefined) companyUpdates.tradeTypes = tradeTypes;
+
+  if (Object.keys(companyUpdates).length > 0) {
     await db
       .update(companiesTable)
-      .set({ name: companyName })
+      .set(companyUpdates)
       .where(eq(companiesTable.id, ppCtx.company.id));
   }
 

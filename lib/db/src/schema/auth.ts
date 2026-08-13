@@ -101,6 +101,15 @@ export const companiesTable = pgTable('companies', {
     .$type<string[] | null>()
     .default(null),
 
+  // ── Work type — captured during PP self-serve registration ───────────────
+  // Market type: 'retail' | 'insurance' | 'retail_insurance'
+  workType: varchar('work_type'),
+  // Trade types: e.g. ['roofing', 'siding']
+  tradeTypes: jsonb('trade_types').$type<string[] | null>().default(null),
+  // Selected AHJ coverage row (nullable — populated when a covered jurisdiction
+  // is selected during registration; null when a free-text request was submitted).
+  ahjCoverageId: varchar('ahj_coverage_id'),
+
   // ── Proof Package (report) settings — super admin curated ────────────────
   // Contractor licenses printed in Exhibit B (Statement of Qualifications).
   contractorLicenses: jsonb('contractor_licenses')
@@ -214,6 +223,12 @@ export const ppPendingRegistrationsTable = pgTable('pp_pending_registrations', {
   passwordHash: varchar('password_hash').notNull(),
   logoObjectPath: varchar('logo_object_path'),
   stripeSessionId: varchar('stripe_session_id').unique(),
+  // Work type fields — captured in the wizard before Stripe checkout.
+  workType: varchar('work_type'), // 'retail' | 'insurance' | 'retail_insurance'
+  tradeTypes: jsonb('trade_types').$type<string[] | null>(),
+  // AHJ selection: either a covered coverage ID or a free-text request.
+  ahjCoverageId: varchar('ahj_coverage_id'), // FK enforced at DB level via migration
+  ahjRequestJurisdiction: varchar('ahj_request_jurisdiction'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true })
     .notNull()
@@ -277,6 +292,24 @@ export const ppPendingCheckoutsTable = pgTable(
   ],
 );
 
+/**
+ * ahj_requests — free-text AHJ coverage requests from PP subscribers whose
+ * jurisdiction is not yet in the covered list.  Populated at confirm time:
+ * company_id is set after the company row exists; pending_registration_id
+ * is set at insert (nullable once the pending row is deleted post-confirm).
+ */
+export const ahjRequestsTable = pgTable('ahj_requests', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()::text`),
+  companyId: varchar('company_id').references(() => companiesTable.id, { onDelete: 'set null' }),
+  pendingRegistrationId: varchar('pending_registration_id').references(
+    () => ppPendingRegistrationsTable.id,
+    { onDelete: 'set null' },
+  ),
+  jurisdictionText: varchar('jurisdiction_text').notNull(),
+  state: varchar('state', { length: 2 }),
+  county: varchar('county', { length: 255 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 export type CompanyJurisdictionPack = typeof companyJurisdictionPacksTable.$inferSelect;
 export type Company = typeof companiesTable.$inferSelect;
 export type UpsertUser = typeof usersTable.$inferInsert;
@@ -285,3 +318,5 @@ export type User = typeof usersTable.$inferSelect;
 export type PpPendingRegistration = typeof ppPendingRegistrationsTable.$inferSelect;
 export type PpPackageCredit = typeof ppPackageCreditsTable.$inferSelect;
 export type PpPendingCheckout = typeof ppPendingCheckoutsTable.$inferSelect;
+
+export type AhjRequest = typeof ahjRequestsTable.$inferSelect;
