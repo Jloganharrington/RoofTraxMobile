@@ -519,10 +519,23 @@ router.post('/pp/login', async (req: Request, res: Response) => {
   const { email: rawEmail, password } = parsed.data;
   const email = rawEmail.toLowerCase().trim();
 
+  // Join with companies to get ppTier in one query so the login response can
+  // tell the client which product area to route the subscriber into.
   const [user] = await db
-    .select()
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      profileImageUrl: usersTable.profileImageUrl,
+      companyId: usersTable.companyId,
+      passwordHash: usersTable.passwordHash,
+      deactivatedAt: usersTable.deactivatedAt,
+      ppTier: companiesTable.ppTier,
+    })
     .from(usersTable)
-    .where(and(eq(usersTable.email, email)));
+    .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
+    .where(eq(usersTable.email, email));
 
   // Verify password — always call verifyPassword even when user not found to
   // prevent timing-based email enumeration.
@@ -559,7 +572,9 @@ router.post('/pp/login', async (req: Request, res: Response) => {
   // Return the session ID as `token` so mobile clients can store it and send
   // it as `Authorization: Bearer <token>` (matching how OIDC mobile sessions
   // work). Cookie-based clients (web) use the Set-Cookie header instead.
-  res.json({ ok: true, companyId: user.companyId, token });
+  // ppTier lets the web client decide which product area to route into.
+  const ppTier = user.ppTier ?? 'pp_only';
+  res.json({ ok: true, companyId: user.companyId, token, ppTier });
 });
 
 // ── PP logout ────────────────────────────────────────────────────────────────

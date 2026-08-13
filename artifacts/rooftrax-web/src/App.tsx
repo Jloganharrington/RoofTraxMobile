@@ -55,6 +55,7 @@ import DemoPage from '@/pages/marketing/DemoPage';
 import ResourcesPage from '@/pages/marketing/ResourcesPage';
 import AccuLynxPage from '@/pages/marketing/switch/AccuLynxPage';
 import JobNimbusPage from '@/pages/marketing/switch/JobNimbusPage';
+import PPLandingPage from '@/pages/pp/PPLandingPage';
 import PPRegisterPage, { PPRegisterConfirmPage } from '@/pages/pp/PPRegisterPage';
 import PPLoginPage, { PPResetPasswordPage } from '@/pages/pp/PPLoginPage';
 import PPPortalPlaceholder from '@/pages/pp/PPPortalPlaceholder';
@@ -116,6 +117,8 @@ function Router() {
       <Route path="/pricing" component={PricingPage} />
       <Route path="/pricing/success" component={PricingSuccessPage} />
 
+      {/* PP Subscriber Portal entry point — public landing page */}
+      <Route path="/pp" component={PPLandingPage} />
       {/* PP Subscriber self-serve registration and auth — public routes */}
       <Route path="/pp/register" component={PPRegisterPage} />
       <Route path="/pp/register/confirm" component={PPRegisterConfirmPage} />

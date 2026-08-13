@@ -47,8 +47,16 @@ export default function PPLoginPage() {
         return;
       }
       const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo') ?? '/pp/inspections';
-      navigate(returnTo);
+      const returnTo = params.get('returnTo');
+      if (returnTo) {
+        navigate(returnTo);
+      } else if (body.ppTier === 'crm') {
+        // Upgraded subscriber — send to the CRM dashboard.
+        window.location.href = '/rooftrax-web/';
+      } else {
+        // PP-only subscriber — send to the per-package portal.
+        navigate('/pp/inspections');
+      }
     } catch {
       setError('Network error. Please try again.');
     } finally {
