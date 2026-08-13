@@ -58,4 +58,14 @@ export interface Profile {
   /** @nullable */
   phone?: string | null;
   theme?: ProfileThemeProperty;
+  /**
+     * Product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM.
+     * @nullable
+     */
+  companyPpTier?: string | null;
+  /**
+     * Active CRM subscription tier. Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'.
+     * @nullable
+     */
+  companySubscriptionLevel?: string | null;
 }

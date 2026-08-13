@@ -40,7 +40,7 @@ function crmUpgradeEmail(companyName: string, dashboardUrl: string) {
  */
 export async function fulfillCRMUpgrade(
   companyId: string,
-  opts: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null } = {},
+  opts: { stripeCustomerId?: string | null; stripeSubscriptionId?: string | null; planKey?: string | null } = {},
 ): Promise<'upgraded' | 'already_crm' | 'not_found'> {
   const [company] = await db
     .select()
@@ -50,10 +50,13 @@ export async function fulfillCRMUpgrade(
   if (!company) return 'not_found';
   if (company.ppTier === 'crm') return 'already_crm';
 
-  // Atomically set pp_tier = 'crm'
+  // Atomically promote to CRM: set pp_tier = 'crm' and subscription_level to
+  // the purchased plan key. Fall back to 'regional' only if no plan key is
+  // provided (e.g. dev-bypass path) so the company always passes the gate.
+  const subscriptionLevel = opts.planKey ?? 'regional';
   await db
     .update(companiesTable)
-    .set({ ppTier: 'crm' })
+    .set({ ppTier: 'crm', subscriptionLevel })
     .where(eq(companiesTable.id, companyId));
 
   logger.info(

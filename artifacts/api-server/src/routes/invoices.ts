@@ -51,7 +51,7 @@ import {
   pool,
   userProfilesTable,
 } from '@workspace/db';
-import { loadActorCtx, resolveWithOverrides } from '../middlewares/requirePermission';
+import { loadActorCtx, resolveWithOverrides, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -171,8 +171,8 @@ router.get('/pins/:pinId/invoices', async (req: Request, res: Response) => {
   const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
   if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
 
-  const { allowed } = await resolveWithOverrides(req, 'invoice.read', actorCtx, pin.userId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.read', actorCtx, pin.userId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   const invoices = await db
     .select()
@@ -199,8 +199,8 @@ router.post('/pins/:pinId/invoices', async (req: Request, res: Response) => {
   const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
   if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
 
-  const { allowed } = await resolveWithOverrides(req, 'invoice.create', actorCtx, pin.userId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.create', actorCtx, pin.userId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   const parsed = CreateCustomerInvoiceBody.safeParse(req.body);
   if (!parsed.success) {
@@ -266,8 +266,8 @@ router.get('/invoices/:invoiceId', async (req: Request, res: Response) => {
   if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
 
   const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
-  const { allowed } = await resolveWithOverrides(req, 'invoice.read', actorCtx, ownerId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.read', actorCtx, ownerId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   res.json({ invoice });
 });
@@ -285,8 +285,8 @@ router.patch('/invoices/:invoiceId', async (req: Request, res: Response) => {
   if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
 
   const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
-  const { allowed } = await resolveWithOverrides(req, 'invoice.update', actorCtx, ownerId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.update', actorCtx, ownerId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   const parsed = UpdateCustomerInvoiceBody.safeParse(req.body);
   if (!parsed.success) {
@@ -321,8 +321,8 @@ router.delete('/invoices/:invoiceId', async (req: Request, res: Response) => {
   if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
 
   const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
-  const { allowed } = await resolveWithOverrides(req, 'invoice.delete', actorCtx, ownerId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.delete', actorCtx, ownerId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   if (invoice.status === 'sent' || invoice.status === 'paid') {
     res.status(400).json({ error: `Cannot delete a ${invoice.status} invoice` });
@@ -345,8 +345,8 @@ router.post('/invoices/:invoiceId/send', async (req: Request, res: Response) => 
   if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
 
   const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
-  const { allowed } = await resolveWithOverrides(req, 'invoice.send', actorCtx, ownerId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.send', actorCtx, ownerId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   if (invoice.status === 'paid' || invoice.status === 'void') {
     res.status(400).json({ error: `Cannot send a ${invoice.status} invoice` });
@@ -376,8 +376,8 @@ router.post('/invoices/:invoiceId/mark-paid', async (req: Request, res: Response
   if (!precheck) { res.status(404).json({ error: 'Invoice not found' }); return; }
 
   const ownerId = await getPinOwnerIdForInvoice(precheck.pinId);
-  const { allowed } = await resolveWithOverrides(req, 'invoice.send', actorCtx, ownerId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.send', actorCtx, ownerId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   const parsedBody = MarkInvoicePaidBody.safeParse(req.body ?? {});
   const extra = parsedBody.success ? parsedBody.data : {};
@@ -484,8 +484,8 @@ router.post('/invoices/:invoiceId/void', async (req: Request, res: Response) => 
   if (!invoice) { res.status(404).json({ error: 'Invoice not found' }); return; }
 
   const ownerId = await getPinOwnerIdForInvoice(invoice.pinId);
-  const { allowed } = await resolveWithOverrides(req, 'invoice.void', actorCtx, ownerId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'invoice.void', actorCtx, ownerId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   if (invoice.status === 'void') {
     // Already void — idempotent.

@@ -35,8 +35,7 @@ import {
   pinsTable,
   vendorExpensesTable,
 } from '@workspace/db';
-import { resolve } from '@workspace/authz';
-import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
+import { loadActorCtx, requirePermission, resolveOwnerAware, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 
 // TypeScript struggles to narrow string | null | undefined through a ternary
 // when it comes from a Zod-nullable field. Use an explicit helper instead.
@@ -120,8 +119,8 @@ router.get('/pins/:pinId/expenses', async (req: Request, res: Response) => {
   const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
   if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
 
-  const result = resolve('expense.view', { ...actorCtx, ownerId: pin.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('expense.view', actorCtx, pin.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
 
   const expenses = await db
     .select()
@@ -148,8 +147,8 @@ router.post('/pins/:pinId/expenses', async (req: Request, res: Response) => {
   const pin = await resolvePin(req.params.pinId as string, actorCtx.companyId);
   if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
 
-  const result = resolve('expense.create', { ...actorCtx, ownerId: pin.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('expense.create', actorCtx, pin.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
   const parsed = CreateVendorExpenseBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', detail: parsed.error.issues });
@@ -188,8 +187,8 @@ router.patch('/expenses/:expenseId', async (req: Request, res: Response) => {
 
   // ownerOrRole gate: load pin to get pin owner.
   const pin = await resolvePin(expense.pinId, actorCtx.companyId);
-  const result = resolve('expense.update', { ...actorCtx, ownerId: pin?.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('expense.update', actorCtx, pin?.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
   const parsed = UpdateVendorExpenseBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', detail: parsed.error.issues });
@@ -227,8 +226,8 @@ router.delete('/expenses/:expenseId', async (req: Request, res: Response) => {
 
   // ownerOrRole gate: load pin to get pin owner.
   const pin = await resolvePin(expense.pinId, actorCtx.companyId);
-  const result = resolve('expense.delete', { ...actorCtx, ownerId: pin?.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('expense.delete', actorCtx, pin?.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
 
   await db.delete(vendorExpensesTable).where(eq(vendorExpensesTable.id, expense.id));
   res.status(204).send();

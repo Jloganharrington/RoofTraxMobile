@@ -17,7 +17,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { Router, type Request, type Response } from 'express';
 import { db, pinsTable } from '@workspace/db';
-import { loadActorCtx, resolveWithOverrides } from '../middlewares/requirePermission';
+import { loadActorCtx, resolveWithOverrides, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -48,8 +48,8 @@ router.get('/pins/:pinId/profitability', async (req: Request, res: Response) => 
   }
 
   // ownerOrRole gate: field_rep pin owners are permitted; manager+ always permitted.
-  const { allowed } = await resolveWithOverrides(req, 'profitability.view', actorCtx, pin.userId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'profitability.view', actorCtx, pin.userId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   // Query the view directly with a raw SQL query (the view is not in the
   // Drizzle schema — it is a read-only aggregation layer, not a table).

@@ -1528,7 +1528,11 @@ router.post('/pp/upgrade/reconcile', async (req: Request, res: Response) => {
       typeof session.subscription === 'string'
         ? session.subscription
         : (session.subscription as { id?: string } | null)?.id ?? null;
-    await fulfillCRMUpgrade(company.id, { stripeCustomerId: customerId, stripeSubscriptionId: stripeSubId });
+    await fulfillCRMUpgrade(company.id, {
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: stripeSubId,
+      planKey: session.metadata?.planKey ?? null,
+    });
 
     res.json({ ok: true, upgraded: true });
   } catch (err) {
@@ -1684,6 +1688,16 @@ router.post('/pp/upgrade/checkout', async (req: Request, res: Response) => {
         companyId: company.id,
         planKey: plan.planKey,
         billingTerm: term.termKey,
+      },
+      // Propagate companyId and planKey to the Stripe subscription object so
+      // customer.subscription.deleted / updated events can revoke entitlement
+      // without needing to look up the checkout session.
+      subscription_data: {
+        metadata: {
+          kind: 'pp_crm_upgrade',
+          companyId: company.id,
+          planKey: plan.planKey,
+        },
       },
       success_url: `${base}/rooftrax-web/pp/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/rooftrax-web/pp/upgrade`,

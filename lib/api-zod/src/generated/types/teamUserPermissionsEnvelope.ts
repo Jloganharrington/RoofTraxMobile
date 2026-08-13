@@ -9,5 +9,7 @@ import type { TeamUserPermissionsEnvelopePermissionsItem } from './teamUserPermi
 
 export interface TeamUserPermissionsEnvelope {
   userId: string;
+  /** True when the requesting actor has authority to grant, revoke, or reset overrides for this user. Mirrors the POST endpoint's authority check (rank gate + manager-assignment gate) so the UI can render controls correctly without speculative writes. */
+  actorCanOverride: boolean;
   permissions: TeamUserPermissionsEnvelopePermissionsItem[];
 }

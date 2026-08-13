@@ -85,3 +85,4 @@
 - [Permission override hardening](perm-override-hardening.md) — migration 051 audit table; floor/selfOnly → 422; manager-assignment gate; must-hold extends to revoke; clearing-revoke = grant check.
 - [Trial Proof Package](trial-proof-package.md) — separate trial auth track; real Stripe checkout via recordSuccessfulPayment seam; 30-day download = tokenized route (GCS signing caps at 7d); root /api fetch in rooftrax-web.
 - [Pricing & Stripe billing](pricing-and-stripe-billing.md) — table-driven tiers; lookup-key catalog verified vs DB; credit reserved under row lock at checkout; webhook = authoritative fulfillment; stripe-replit-sync name-collision gotcha.
+- [api-client-react project references](api-client-react-project-refs.md) — mobile typecheck reads dist/ .d.ts via project refs; must run `cd lib/api-client-react && npx tsc --build` after every orval codegen or mobile tsc errors persist.

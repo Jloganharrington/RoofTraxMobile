@@ -21,7 +21,7 @@ import {
   vendorExpensesTable,
 } from '@workspace/db';
 // profitability.export_csv — ownerOrRole: manager (Section 8 ruling — FINDING 3-C reversed).
-import { loadActorCtx, resolveWithOverrides } from '../middlewares/requirePermission';
+import { loadActorCtx, resolveWithOverrides, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 
 const router = Router();
 
@@ -106,8 +106,8 @@ router.get('/pins/:pinId/financials/export', async (req: Request, res: Response)
   }
 
   // ownerOrRole gate: field_rep pin owners are permitted; manager+ always permitted.
-  const { allowed } = await resolveWithOverrides(req, 'profitability.export_csv', actorCtx, pin.userId);
-  if (!allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const { allowed, reason } = await resolveWithOverrides(req, 'profitability.export_csv', actorCtx, pin.userId);
+  if (!allowed) { sendOwnerAwareDenial(res, { allowed, reason }, 'Forbidden'); return; }
 
   // ── Fetch all financial data in parallel ──────────────────────────────────
   const [payments, invoices, expenses, profResult] = await Promise.all([

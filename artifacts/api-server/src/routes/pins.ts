@@ -21,8 +21,8 @@ import { z } from 'zod';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { reverseGeocode } from '../lib/geocode';
-import { isManagerOrAdmin, resolve } from '@workspace/authz';
-import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
+import { isManagerOrAdmin } from '@workspace/authz';
+import { loadActorCtx, requirePermission, resolveOwnerAware, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 
 /**
  * getRole — retained for calendar.ts, completionCertificates.ts, inspections.ts which
@@ -177,9 +177,9 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
     return;
   }
 
-  const result = resolve('lead.update', { ...actorCtx, ownerId: pin.userId });
+  const result = resolveOwnerAware('lead.update', actorCtx, pin.userId);
   if (!result.allowed) {
-    res.status(403).json({ error: 'Not permitted to edit this pin' });
+    sendOwnerAwareDenial(res, result, 'Not permitted to edit this pin');
     return;
   }
 
@@ -340,9 +340,9 @@ router.patch('/pins/:pinId/profile', async (req: Request, res: Response) => {
     return;
   }
 
-  const result = resolve('lead.update', { ...actorCtx, ownerId: pin.userId });
+  const result = resolveOwnerAware('lead.update', actorCtx, pin.userId);
   if (!result.allowed) {
-    res.status(403).json({ error: 'Not permitted to edit this pin' });
+    sendOwnerAwareDenial(res, result, 'Not permitted to edit this pin');
     return;
   }
 
@@ -521,9 +521,9 @@ router.patch('/pins/:pinId/appointment', async (req: Request, res: Response) => 
     return;
   }
 
-  const result = resolve('lead.set_appointment', { ...actorCtx, ownerId: pin.userId });
+  const result = resolveOwnerAware('lead.set_appointment', actorCtx, pin.userId);
   if (!result.allowed) {
-    res.status(403).json({ error: 'Not permitted to edit this pin' });
+    sendOwnerAwareDenial(res, result, 'Not permitted to edit this pin');
     return;
   }
 

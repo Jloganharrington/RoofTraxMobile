@@ -8193,6 +8193,9 @@ components:
         ppTier:
           type: string
           description: "Product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM."
+        subscriptionLevel:
+          type: string
+          description: "Active CRM subscription tier. Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'."
     CreateCompanyRequest:
       type: object
       required: [name]
@@ -8673,6 +8676,14 @@ components:
         theme:
           type: string
           enum: [light, dark, system]
+        # Company product tier and subscription level — surfaced on the profile
+        # so clients need no separate company fetch.
+        companyPpTier:
+          type: [string, "null"]
+          description: "Product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM."
+        companySubscriptionLevel:
+          type: [string, "null"]
+          description: "Active CRM subscription tier. Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'."
     InspectorCertification:
       type: object
       required: [name]

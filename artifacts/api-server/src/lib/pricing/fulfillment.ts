@@ -9,7 +9,7 @@
  */
 import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
-import { db, subscriptions, trialAccounts, trialCreditLedger } from '@workspace/db';
+import { companiesTable, db, plans, subscriptions, trialAccounts, trialCreditLedger } from '@workspace/db';
 import { logger } from '../logger';
 
 /** Idempotently mark a pending subscription active from a paid Stripe session. */
@@ -47,6 +47,22 @@ export async function activatePlanFromSession(
       termEnd: new Date(now.getTime() + termDays * 86_400_000),
       updatedAt: now,
     }).where(eq(subscriptions.id, subId));
+
+    // Promote the tenant company's subscription_level to the activated plan key.
+    // tenantId is set post-provisioning; skip if still null (pre-onboarding purchase).
+    if (locked.tenantId) {
+      const [planRow] = await tx
+        .select({ planKey: plans.planKey })
+        .from(plans)
+        .where(eq(plans.id, locked.planId));
+      if (planRow?.planKey) {
+        await tx
+          .update(companiesTable)
+          .set({ subscriptionLevel: planRow.planKey })
+          .where(eq(companiesTable.id, locked.tenantId));
+      }
+    }
+
     outcome.value = 'activated';
   });
 
@@ -102,6 +118,75 @@ export async function handleStripeBusinessEvent(event: {
   data?: { object?: Record<string, unknown> };
 }): Promise<void> {
   const type = event?.type;
+
+  // ── Subscription lifecycle revocation ─────────────────────────────────────
+  // customer.subscription.deleted  → subscription ended; revoke entitlement.
+  // customer.subscription.updated  → subscription status changed; revoke when
+  //   the new status is canceled, unpaid, or past_due.
+  if (type === 'customer.subscription.deleted' || type === 'customer.subscription.updated') {
+    const sub = event.data?.object as unknown as Stripe.Subscription | undefined;
+    if (!sub) return;
+    const shouldRevoke =
+      type === 'customer.subscription.deleted' ||
+      ['canceled', 'unpaid', 'past_due'].includes(sub.status);
+    // Reinstate when a past_due/unpaid subscription recovers to active.
+    const shouldReinstate = !shouldRevoke && sub.status === 'active';
+    if (!shouldRevoke && !shouldReinstate) return;
+
+    // Find the company via subscription metadata (set at checkout time for
+    // pp_crm_upgrade sessions via subscription_data.metadata).
+    const companyId = sub.metadata?.companyId as string | undefined;
+    if (companyId) {
+      if (shouldReinstate) {
+        const planKey = (sub.metadata?.planKey as string | undefined) ?? 'regional';
+        await db.update(companiesTable)
+          .set({ subscriptionLevel: planKey })
+          .where(eq(companiesTable.id, companyId));
+        logger.info({ companyId, subId: sub.id, planKey }, 'company subscription_level reinstated');
+      } else {
+        await db.update(companiesTable)
+          .set({ subscriptionLevel: 'none' })
+          .where(eq(companiesTable.id, companyId));
+        logger.info({ companyId, subId: sub.id, status: sub.status }, 'company subscription_level revoked');
+      }
+      return;
+    }
+
+    // Fallback: look up via subscriptions.tenantId.  The plan_subscription
+    // checkout flow is pre-provisioning (no company exists yet, no companyId in
+    // metadata) so tenantId will typically be null and this branch is a no-op.
+    // It activates only if the admin provisioning step sets tenantId after
+    // onboarding, making revoke/reinstate work for that company going forward.
+    const stripeSubId = sub.id;
+    const [subRow] = await db
+      .select({ tenantId: subscriptions.tenantId })
+      .from(subscriptions)
+      .where(eq(subscriptions.stripeSubscriptionId, stripeSubId));
+    if (subRow?.tenantId) {
+      let newLevel = 'none';
+      if (shouldReinstate) {
+        // Resolve the actual plan key from the subscriptions → plans join so
+        // Solo/Crew/Team/Fleet subscribers are not incorrectly reinstated as Regional.
+        const [planRow] = await db
+          .select({ planKey: plans.planKey })
+          .from(subscriptions)
+          .innerJoin(plans, eq(subscriptions.planId, plans.id))
+          .where(eq(subscriptions.stripeSubscriptionId, stripeSubId));
+        newLevel = planRow?.planKey ?? 'regional';
+      }
+      await db
+        .update(companiesTable)
+        .set({ subscriptionLevel: newLevel })
+        .where(eq(companiesTable.id, subRow.tenantId));
+      logger.info(
+        { tenantId: subRow.tenantId, stripeSubId, newLevel, action: shouldReinstate ? 'reinstated' : 'revoked' },
+        'company subscription_level updated via tenantId',
+      );
+    }
+    return;
+  }
+
+  // ── Checkout session events ────────────────────────────────────────────────
   if (type !== 'checkout.session.completed' && type !== 'checkout.session.expired') return;
   const session = event.data?.object as unknown as Stripe.Checkout.Session | undefined;
   if (!session) return;
@@ -130,9 +215,11 @@ export async function handleStripeBusinessEvent(event: {
           typeof session.subscription === 'string'
             ? session.subscription
             : (session.subscription as { id?: string } | null)?.id ?? null;
+        const planKey = session.metadata?.planKey ?? null;
         await fulfillCRMUpgrade(companyId, {
           stripeCustomerId: customerId,
           stripeSubscriptionId: stripeSubId,
+          planKey,
         });
       }
     }

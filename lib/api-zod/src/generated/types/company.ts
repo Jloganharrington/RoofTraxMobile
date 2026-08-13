@@ -9,4 +9,8 @@
 export interface Company {
   id: string;
   name: string;
+  /** Product tier: 'pp_only' for PP-only subscribers, 'crm' for full CRM. */
+  ppTier?: string;
+  /** Active CRM subscription tier. Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'. */
+  subscriptionLevel?: string;
 }

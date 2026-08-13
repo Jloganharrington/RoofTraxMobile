@@ -90,7 +90,9 @@ export const CreateCompanyBody = zod.object({
 export const CreateCompanyResponse = zod.object({
   "company": zod.object({
   "id": zod.string(),
-  "name": zod.string()
+  "name": zod.string(),
+  "ppTier": zod.string().optional().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "subscriptionLevel": zod.string().optional().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -107,7 +109,8 @@ export const GetCompanyResponse = zod.object({
   "company": zod.object({
   "id": zod.string(),
   "name": zod.string(),
-  "ppTier": zod.string().optional()
+  "ppTier": zod.string().optional().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "subscriptionLevel": zod.string().optional().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -871,7 +874,8 @@ export const GetMyProfileResponse = zod.object({
   "profileImageUrl": zod.string().nullish(),
   "phone": zod.string().nullish(),
   "theme": zod.enum(['light', 'dark', 'system']).optional(),
-  "companyPpTier": zod.string().optional()
+  "companyPpTier": zod.string().nullish().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "companySubscriptionLevel": zod.string().nullish().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -929,7 +933,9 @@ export const UpdateProfileMeResponse = zod.object({
   "email": zod.string().nullish(),
   "profileImageUrl": zod.string().nullish(),
   "phone": zod.string().nullish(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
+  "theme": zod.enum(['light', 'dark', 'system']).optional(),
+  "companyPpTier": zod.string().nullish().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "companySubscriptionLevel": zod.string().nullish().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -987,7 +993,9 @@ export const UpdateProfileCredentialsResponse = zod.object({
   "email": zod.string().nullish(),
   "profileImageUrl": zod.string().nullish(),
   "phone": zod.string().nullish(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
+  "theme": zod.enum(['light', 'dark', 'system']).optional(),
+  "companyPpTier": zod.string().nullish().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "companySubscriptionLevel": zod.string().nullish().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -1041,7 +1049,9 @@ export const UpdateProfileSignatureResponse = zod.object({
   "email": zod.string().nullish(),
   "profileImageUrl": zod.string().nullish(),
   "phone": zod.string().nullish(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
+  "theme": zod.enum(['light', 'dark', 'system']).optional(),
+  "companyPpTier": zod.string().nullish().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "companySubscriptionLevel": zod.string().nullish().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -1112,7 +1122,9 @@ export const UpdateProfileSmtpResponse = zod.object({
   "email": zod.string().nullish(),
   "profileImageUrl": zod.string().nullish(),
   "phone": zod.string().nullish(),
-  "theme": zod.enum(['light', 'dark', 'system']).optional()
+  "theme": zod.enum(['light', 'dark', 'system']).optional(),
+  "companyPpTier": zod.string().nullish().describe('Product tier: \'pp_only\' for PP-only subscribers, \'crm\' for full CRM.'),
+  "companySubscriptionLevel": zod.string().nullish().describe('Active CRM subscription tier. Values: \'none\' | \'solo\' | \'crew\' | \'team\' | \'fleet\' | \'regional\'.')
 })
 })
 
@@ -1504,6 +1516,7 @@ export const GetTeamUserPermissionsParams = zod.object({
 
 export const GetTeamUserPermissionsResponse = zod.object({
   "userId": zod.string(),
+  "actorCanOverride": zod.boolean().describe('True when the requesting actor has authority to grant, revoke, or reset overrides for this user. Mirrors the POST endpoint\'s authority check (rank gate + manager-assignment gate) so the UI can render controls correctly without speculative writes.'),
   "permissions": zod.array(zod.object({
   "key": zod.string(),
   "domain": zod.string(),

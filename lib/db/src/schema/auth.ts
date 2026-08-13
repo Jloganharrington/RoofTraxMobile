@@ -56,6 +56,12 @@ export const companiesTable = pgTable('companies', {
   // 'pp_only' for companies provisioned through the PP self-serve registration
   // track. PP-only companies have no CRM enabled.
   ppTier: varchar('pp_tier').notNull().default('crm'),
+  // CRM subscription tier — set by Stripe fulfillment when a plan activates.
+  // 'none' = no active subscription (default for new companies). CRM routes
+  // require a non-'none' value for pp_tier = 'crm' companies. PP-only
+  // companies stay at 'none' since they are blocked by the pp_tier check.
+  // Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'
+  subscriptionLevel: varchar('subscription_level').notNull().default('regional'),
   founderUserId: varchar('founder_user_id'),
   // Beta instrument gate: shows/hides the in-app bug-report button. Defaults
   // ON for the beta cohort; end of beta = flip the flag (no code change, no

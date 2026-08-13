@@ -45,6 +45,12 @@ export interface ActorCtx extends Omit<ResolveContext, 'role'> {
    */
   ppTier: string;
   /**
+   * Active CRM subscription tier. 'none' means no active subscription.
+   * CRM companies with 'none' are blocked from CRM routes with a 402.
+   * Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'
+   */
+  subscriptionLevel: string;
+  /**
    * @deprecated Backward-compat alias for `actorId`. Kept so inspection handler
    * bodies using `actor.userId` continue to work during the write-route migration
    * without requiring a mass rename. Remove once the migration is complete.
@@ -85,7 +91,7 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
       .where(eq(userProfilesTable.userId, actorId))
       .then(rows => rows[0]),
     db
-      .select({ ppTier: companiesTable.ppTier })
+      .select({ ppTier: companiesTable.ppTier, subscriptionLevel: companiesTable.subscriptionLevel })
       .from(companiesTable)
       .where(eq(companiesTable.id, companyId))
       .then(rows => rows[0]),
@@ -97,6 +103,7 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
     department:         (profileRow?.department ?? null) as ActorCtx['department'],
     workflowAssignment: null,
     ppTier:             companyRow?.ppTier ?? 'crm',
+    subscriptionLevel:  companyRow?.subscriptionLevel ?? 'none',
     // ownerId is intentionally absent here — handlers supply it when checking
     // ownerOrRole permissions against a fetched resource.
     userId: actorId, // @deprecated alias — remove after write-route migration is complete
@@ -179,6 +186,12 @@ export async function resolveWithOverrides(
     }
   }
 
+  // Subscription gate — mirrors the check in requirePermission(). CRM companies
+  // with no active subscription cannot access any permission-gated route.
+  if (ctx.ppTier === 'crm' && ctx.subscriptionLevel === 'none') {
+    return { allowed: false, reason: 'no_subscription' };
+  }
+
   const overrides = await loadPermissionOverrides(req, ctx.actorId, ctx.companyId);
   const override = overrides.get(permission);
   if (override !== undefined) {
@@ -192,6 +205,54 @@ export async function resolveWithOverrides(
     return { allowed: true };
   }
   // Registry default — pass ownerId so ownerOrRole entries can short-circuit.
+  return resolve(permission, { ...ctx, ownerId });
+}
+
+// ── Sync owner-aware resolver with subscription gate ──────────────────────────
+
+/**
+ * Synchronous counterpart to resolveWithOverrides for routes that call the raw
+ * resolve() from @workspace/authz directly (no per-user override layer needed).
+ *
+ * Applies the same PP-only and subscription gates as requirePermission() and
+ * resolveWithOverrides() before delegating to the registry resolve().
+ *
+ * Use wherever resolve() is called directly after loadActorCtx(), e.g. routes
+ * that fetch the resource first to determine ownerId before checking permission.
+ */
+/**
+ * Send the appropriate HTTP error for a failed resolveOwnerAware() check.
+ * Returns 402 with the no_subscription payload when the subscription gate
+ * fired; falls back to 403 with a caller-supplied message otherwise.
+ */
+export function sendOwnerAwareDenial(
+  res: Response,
+  result: { allowed: boolean; reason?: string },
+  fallbackMessage: string,
+): void {
+  if (result.reason === 'no_subscription') {
+    res.status(402).json({ code: 'no_subscription', upgradeUrl: '/pricing' });
+  } else {
+    res.status(403).json({ error: result.reason ?? fallbackMessage });
+  }
+}
+
+export function resolveOwnerAware(
+  permission: Permission,
+  ctx: ActorCtx,
+  ownerId: string | undefined,
+): { allowed: boolean; reason?: string } {
+  // Subscription gate — CRM companies with no active subscription are blocked.
+  if (ctx.ppTier === 'crm' && ctx.subscriptionLevel === 'none') {
+    return { allowed: false, reason: 'no_subscription' };
+  }
+  // PP-only gate — mirrors the check in requirePermission() and resolveWithOverrides().
+  if (ctx.ppTier === 'pp_only') {
+    const domain = (permission as string).split('.')[0];
+    if (['crm', 'lead', 'canvassing', 'pipeline'].includes(domain)) {
+      return { allowed: false, reason: `The '${domain}' feature is not available on the Proof Package plan.` };
+    }
+  }
   return resolve(permission, { ...ctx, ownerId });
 }
 
@@ -236,6 +297,15 @@ export function requirePermission(permission: Permission): RequestHandler {
         res.status(403).json({ error: `The '${domain}' feature is not available on the Proof Package plan.` });
         return;
       }
+    }
+
+    // ── Subscription gate ────────────────────────────────────────────────────
+    // CRM-tier companies must have an active subscription (subscription_level
+    // != 'none') to access the CRM. This gate fires after the pp_only check so
+    // pp_only companies are never erroneously shown a payment prompt.
+    if (ctx.ppTier === 'crm' && ctx.subscriptionLevel === 'none') {
+      res.status(402).json({ code: 'no_subscription', upgradeUrl: '/pricing' });
+      return;
     }
 
     // ── Step 5: per-user override check ─────────────────────────────────────

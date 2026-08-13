@@ -26,8 +26,7 @@ import { z } from 'zod';
 import { Router, type Request, type Response } from 'express';
 import { and, eq } from 'drizzle-orm';
 import { db, pinsTable, claimStatusHistoryTable } from '@workspace/db';
-import { resolve } from '@workspace/authz';
-import { loadActorCtx, requirePermission } from '../middlewares/requirePermission';
+import { loadActorCtx, requirePermission, resolveOwnerAware, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 import { notify } from '../lib/notify';
 
 const router = Router();
@@ -143,9 +142,9 @@ router.patch('/pins/:pinId/insurance', async (req: Request, res: Response) => {
   }
 
   // lead.update ownerOrRole: pin owner (field_rep) or manager+.
-  const result = resolve('lead.update', { ...actorCtx, ownerId: pin.userId });
+  const result = resolveOwnerAware('lead.update', actorCtx, pin.userId);
   if (!result.allowed) {
-    res.status(403).json({ error: 'Forbidden — lead owner or manager required' });
+    sendOwnerAwareDenial(res, result, 'Forbidden — lead owner or manager required');
     return;
   }
 

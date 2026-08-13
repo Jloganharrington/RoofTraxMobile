@@ -34,8 +34,7 @@ import {
   paymentsTable,
   pinsTable,
 } from '@workspace/db';
-import { resolve } from '@workspace/authz';
-import { loadActorCtx } from '../middlewares/requirePermission';
+import { loadActorCtx, resolveOwnerAware, sendOwnerAwareDenial } from '../middlewares/requirePermission';
 import { notify } from '../lib/notify';
 import { emitPipelineEvent } from './pipelineEvents';
 
@@ -97,8 +96,8 @@ router.get('/pins/:pinId/payments', async (req: Request, res: Response) => {
   const pin = await resolvePin(pinId, actorCtx.companyId);
   if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
 
-  const result = resolve('payment.view', { ...actorCtx, ownerId: pin.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('payment.view', actorCtx, pin.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
 
   const payments = await db
     .select()
@@ -127,8 +126,8 @@ router.post('/pins/:pinId/payments', async (req: Request, res: Response) => {
   const pin = await resolvePin(pinId, actorCtx.companyId);
   if (!pin) { res.status(404).json({ error: 'Pin not found' }); return; }
 
-  const result = resolve('payment.create', { ...actorCtx, ownerId: pin.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('payment.create', actorCtx, pin.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
 
   const parsed = CreatePaymentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -200,8 +199,8 @@ router.patch('/payments/:paymentId', async (req: Request, res: Response) => {
 
   // ownerOrRole gate: load pin to get pin owner.
   const pin = await resolvePin(existing.pinId, actorCtx.companyId);
-  const result = resolve('payment.update', { ...actorCtx, ownerId: pin?.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('payment.update', actorCtx, pin?.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
 
   const parsed = UpdatePaymentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -251,8 +250,8 @@ router.delete('/payments/:paymentId', async (req: Request, res: Response) => {
 
   // ownerOrRole gate: load pin to get pin owner.
   const pin = await resolvePin(existing.pinId, actorCtx.companyId);
-  const result = resolve('payment.delete', { ...actorCtx, ownerId: pin?.userId });
-  if (!result.allowed) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const result = resolveOwnerAware('payment.delete', actorCtx, pin?.userId);
+  if (!result.allowed) { sendOwnerAwareDenial(res, result, 'Forbidden'); return; }
 
   await db.delete(paymentsTable).where(eq(paymentsTable.id, paymentId));
   res.status(204).send();
