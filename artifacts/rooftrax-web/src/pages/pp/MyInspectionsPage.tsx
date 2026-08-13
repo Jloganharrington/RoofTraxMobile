@@ -6,7 +6,7 @@
  * button on ready inspections.
  */
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Clock, Camera, User, MapPin, AlertCircle, Loader2, PackagePlus } from 'lucide-react';
+import { CheckCircle2, Clock, Camera, User, MapPin, AlertCircle, Loader2, PackagePlus, Plus } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 interface PPInspection {
@@ -29,6 +29,7 @@ export default function MyInspectionsPage() {
 
   const params = new URLSearchParams(window.location.search);
   const verified = params.get('verified') === '1';
+  const ready = params.get('ready') === '1';
 
   useEffect(() => {
     fetch('/api/pp/inspections', { credentials: 'include' })
@@ -70,17 +71,34 @@ export default function MyInspectionsPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">My Inspections</h1>
-        <p className="text-sm text-zinc-400 mt-1">
-          All inspections captured by your team. Generate a Proof Package from any ready inspection.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">My Inspections</h1>
+          <p className="text-sm text-zinc-400 mt-1">
+            All inspections captured by your team. Generate a Proof Package from any ready inspection.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/pp/new')}
+          className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors flex-shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+          <span className="hidden sm:inline">Create New Package</span>
+          <span className="sm:hidden">New Package</span>
+        </button>
       </div>
 
       {verified && (
         <div className="flex items-center gap-2 bg-green-900/20 border border-green-700 text-green-400 rounded-lg px-4 py-3 text-sm">
           <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
           Email verified successfully — your account is ready.
+        </div>
+      )}
+
+      {ready && (
+        <div className="flex items-center gap-2 bg-orange-900/20 border border-orange-700 text-orange-400 rounded-lg px-4 py-3 text-sm">
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+          You're ready — pick an inspection below and click <strong className="font-semibold">Generate Package</strong> to start building.
         </div>
       )}
 

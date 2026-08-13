@@ -66,6 +66,7 @@ import PPSettingsPage from '@/pages/pp/PPSettingsPage';
 import PPUpgradePage from '@/pages/pp/PPUpgradePage';
 import PPUpgradeSuccessPage from '@/pages/pp/PPUpgradeSuccessPage';
 import PPWizardPage from '@/pages/pp/PPWizardPage';
+import NewPackagePage from '@/pages/pp/NewPackagePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -137,6 +138,12 @@ function Router() {
       <Route path="/pp/settings">
         <PPProtectedRoute>
           <PPShell><PPSettingsPage /></PPShell>
+        </PPProtectedRoute>
+      </Route>
+      {/* PP New Package pre-flight flow */}
+      <Route path="/pp/new">
+        <PPProtectedRoute>
+          <PPShell><NewPackagePage /></PPShell>
         </PPProtectedRoute>
       </Route>
       {/* PP Package Generation Wizard — full wizard is a downstream task */}
