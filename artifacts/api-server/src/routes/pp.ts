@@ -18,19 +18,31 @@
  * Companies provisioned here get pp_tier = 'pp_only' and no CRM permission set.
  */
 import { randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, gt, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import {
+  ahjPacksTable,
+  attestationsTable,
   billingTerms,
+  claimSectionsTable,
   companiesTable,
+  companyJurisdictionPacksTable,
+  damageInstancesTable,
   db,
   inspectionPhotosTable,
+  inspectionProductsTable,
+  inspectionSlopesTable,
   inspectionsTable,
   objectOwnershipTable,
   plans,
+  ppPackageCreditsTable,
+  ppPendingCheckoutsTable,
   ppPendingRegistrationsTable,
+  standardsEntriesTable,
+  testSquaresTable,
   userProfilesTable,
   usersTable,
 } from '@workspace/db';
+import { computeReadiness } from '../lib/readiness';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { getPPLogoSignedUrl } from '../lib/ppLogoAccess';
@@ -127,7 +139,7 @@ async function provisionPPAccount(opts: {
 
     await tx
       .insert(userProfilesTable)
-      .values({ userId: user.id, role: 'admin' })
+      .values({ userId: user.id, role: 'admin', department: 'inspector_canvasser' })
       .onConflictDoNothing();
 
     return { company, user };
@@ -927,6 +939,457 @@ router.patch('/pp/company', async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ── PP per-package payment checkout ─────────────────────────────────────────
+
+const PackageCheckoutBody = z.object({
+  inspectionId: z.string().min(1).max(100),
+});
+
+/**
+ * POST /pp/packages/checkout
+ * Idempotent: reuses the pending Stripe Checkout Session for this
+ * (companyId, inspectionId) if one is still open.  Only creates a new session
+ * when none exists or the previous one has expired.  This prevents duplicate
+ * charges when a user retries checkout or navigates back before completing.
+ */
+router.post('/pp/packages/checkout', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { company, user } = ppCtx;
+
+  const parsed = PackageCheckoutBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'inspectionId is required.' });
+    return;
+  }
+  const { inspectionId } = parsed.data;
+
+  // Verify the inspection belongs to this company (tenant isolation).
+  const [inspection] = await db
+    .select({ id: inspectionsTable.id })
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  // Fast-path: if a credit already exists, no payment needed.
+  const [credit] = await db
+    .select({ id: ppPackageCreditsTable.id })
+    .from(ppPackageCreditsTable)
+    .where(
+      and(
+        eq(ppPackageCreditsTable.companyId, company.id),
+        eq(ppPackageCreditsTable.inspectionId, inspectionId),
+      ),
+    );
+  if (credit) {
+    res.json({ alreadyPaid: true });
+    return;
+  }
+
+  // Dev bypass: mint a credit directly without hitting Stripe.
+  if (process.env.PP_DEV_SKIP_PAYMENT === '1') {
+    await db
+      .insert(ppPackageCreditsTable)
+      .values({
+        companyId: company.id,
+        inspectionId,
+        stripePaymentIntentId: `dev_${Date.now()}`,
+      })
+      .onConflictDoNothing();
+    res.json({ checkoutUrl: null, alreadyPaid: true });
+    return;
+  }
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const now = new Date();
+
+    // ── Reuse an existing pending session if it is still open ───────────────
+    const [pending] = await db
+      .select({
+        stripeSessionId: ppPendingCheckoutsTable.stripeSessionId,
+        sessionUrl: ppPendingCheckoutsTable.sessionUrl,
+        expiresAt: ppPendingCheckoutsTable.expiresAt,
+      })
+      .from(ppPendingCheckoutsTable)
+      .where(
+        and(
+          eq(ppPendingCheckoutsTable.companyId, company.id),
+          eq(ppPendingCheckoutsTable.inspectionId, inspectionId),
+          // Only consider sessions that haven't expired locally.
+          gt(ppPendingCheckoutsTable.expiresAt, now),
+        ),
+      );
+
+    if (pending) {
+      // Verify Stripe still considers the session open.
+      try {
+        const stripeSession = await stripe.checkout.sessions.retrieve(pending.stripeSessionId);
+        if (stripeSession.status === 'open') {
+          res.json({ checkoutUrl: stripeSession.url ?? pending.sessionUrl, alreadyPaid: false });
+          return;
+        }
+      } catch {
+        // Session retrieval failed — fall through to create a fresh one.
+      }
+      // Session expired/completed on Stripe — remove the stale pending row.
+      await db
+        .delete(ppPendingCheckoutsTable)
+        .where(
+          and(
+            eq(ppPendingCheckoutsTable.companyId, company.id),
+            eq(ppPendingCheckoutsTable.inspectionId, inspectionId),
+          ),
+        );
+    }
+
+    // ── Create a new Stripe Checkout Session ─────────────────────────────────
+    const ppPriceCents = parseInt(process.env.PP_PACKAGE_PRICE_CENTS ?? '29900', 10);
+    const base = trustedOrigin();
+    const successUrl = `${base}/rooftrax-web/pp/wizard/${inspectionId}?checkout_session={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${base}/rooftrax-web/pp/inspections?checkout=canceled`;
+
+    type LineItem =
+      | { price: string; quantity: number }
+      | { price_data: { currency: string; product_data: { name: string }; unit_amount: number }; quantity: number };
+
+    let lineItem: LineItem;
+    try {
+      const prices = await stripe.prices.list({ lookup_keys: ['pp_package_per_package'], active: true, limit: 1 });
+      const namedPrice = prices.data[0];
+      if (namedPrice) {
+        lineItem = { price: namedPrice.id, quantity: 1 };
+      } else {
+        throw new Error('no named price');
+      }
+    } catch {
+      lineItem = {
+        price_data: {
+          currency: 'usd',
+          product_data: { name: 'RoofTrax Proof Package — Per-Package Fee' },
+          unit_amount: ppPriceCents,
+        },
+        quantity: 1,
+      };
+    }
+
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        customer_email: user.email ?? undefined,
+        line_items: [lineItem],
+        metadata: { kind: 'pp_package', companyId: company.id, inspectionId },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        // Stripe Checkout sessions expire after 24 hours.
+        expires_at: Math.floor(now.getTime() / 1000) + 23 * 3600,
+      },
+      // Idempotency key: one session per (company, inspection) per day.
+      {
+        idempotencyKey: `pp-checkout-${company.id}-${inspectionId}-${Math.floor(now.getTime() / 86400000)}`,
+      },
+    );
+
+    if (!session.url) throw new Error('Stripe returned no URL');
+
+    // Persist the pending session so retries can reuse it.
+    const sessionExpiresAt = new Date((session.expires_at ?? Math.floor(now.getTime() / 1000) + 23 * 3600) * 1000);
+    await db
+      .insert(ppPendingCheckoutsTable)
+      .values({
+        companyId: company.id,
+        inspectionId,
+        stripeSessionId: session.id,
+        sessionUrl: session.url,
+        expiresAt: sessionExpiresAt,
+      })
+      .onConflictDoUpdate({
+        target: [ppPendingCheckoutsTable.companyId, ppPendingCheckoutsTable.inspectionId],
+        set: {
+          stripeSessionId: session.id,
+          sessionUrl: session.url,
+          expiresAt: sessionExpiresAt,
+        },
+      });
+
+    res.json({ checkoutUrl: session.url, alreadyPaid: false });
+  } catch (err) {
+    logger.error({ err }, 'pp packages/checkout: Stripe session creation failed');
+    res.status(503).json({ error: 'Payment service unavailable. Please try again.' });
+  }
+});
+
+// ── PP checkout confirm (success redirect) ───────────────────────────────────
+
+const PackageCheckoutConfirmBody = z.object({
+  sessionId: z.string().min(1),
+  inspectionId: z.string().min(1),
+});
+
+/**
+ * POST /pp/packages/checkout/confirm
+ * Called after Stripe redirects back with a checkout_session param.
+ * Verifies the session with Stripe and upserts a pp_package_credits row.
+ */
+router.post('/pp/packages/checkout/confirm', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { company } = ppCtx;
+
+  const parsed = PackageCheckoutConfirmBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'sessionId and inspectionId are required.' });
+    return;
+  }
+  const { sessionId, inspectionId } = parsed.data;
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (stripeSession.payment_status !== 'paid') {
+      res.status(402).json({ error: 'Payment not completed.' });
+      return;
+    }
+
+    // Bind the session to this specific company + inspection to prevent replay.
+    if (
+      stripeSession.metadata?.kind !== 'pp_package' ||
+      stripeSession.metadata?.companyId !== company.id ||
+      stripeSession.metadata?.inspectionId !== inspectionId
+    ) {
+      res.status(400).json({ error: 'Checkout session does not match this request.' });
+      return;
+    }
+
+    const paymentIntentId =
+      typeof stripeSession.payment_intent === 'string'
+        ? stripeSession.payment_intent
+        : stripeSession.payment_intent?.id ?? stripeSession.id;
+
+    await db
+      .insert(ppPackageCreditsTable)
+      .values({
+        companyId: company.id,
+        inspectionId,
+        stripePaymentIntentId: paymentIntentId,
+      })
+      .onConflictDoNothing();
+
+    // Clean up the pending checkout now that payment is confirmed.
+    await db
+      .delete(ppPendingCheckoutsTable)
+      .where(
+        and(
+          eq(ppPendingCheckoutsTable.companyId, company.id),
+          eq(ppPendingCheckoutsTable.inspectionId, inspectionId),
+        ),
+      );
+
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, 'pp packages/checkout/confirm: verification failed');
+    res.status(502).json({ error: 'Could not verify payment. Please contact support.' });
+  }
+});
+
+// NOTE: POST /pp/webhook/stripe is registered in app.ts before express.json()
+// so Stripe signature verification receives the raw Buffer body.
+
+// ── PP credit status ─────────────────────────────────────────────────────────
+
+/**
+ * GET /pp/packages/credit-status/:inspectionId
+ * Returns { paid: boolean, paidAt: string | null } for the given inspection.
+ * Used by the wizard to check whether a payment step should be shown.
+ */
+router.get('/pp/packages/credit-status/:inspectionId', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+
+  const [credit] = await db
+    .select({ id: ppPackageCreditsTable.id, paidAt: ppPackageCreditsTable.paidAt })
+    .from(ppPackageCreditsTable)
+    .where(
+      and(
+        eq(ppPackageCreditsTable.companyId, ppCtx.company.id),
+        eq(ppPackageCreditsTable.inspectionId, inspectionId),
+      ),
+    );
+
+  res.json({ paid: !!credit, paidAt: credit?.paidAt?.toISOString() ?? null });
+});
+
+// ── PP inspection readiness ───────────────────────────────────────────────────
+
+/**
+ * GET /pp/inspections/:inspectionId/readiness
+ * PP-session-gated readiness endpoint for the wizard Step 3 checklist.
+ * Runs the same Stage-0 readiness computation as the compile route.
+ */
+router.get('/pp/inspections/:inspectionId/readiness', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const { company } = ppCtx;
+
+  const [inspection] = await db
+    .select()
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  const [
+    products,
+    attestations,
+    testSquares,
+    damageInstances,
+    slopes,
+    [companyRow],
+    ahjPacks,
+    legacyPacks,
+    claimSections,
+    standardsEntries,
+  ] = await Promise.all([
+    db
+      .select({
+        identificationMethod: inspectionProductsTable.identificationMethod,
+        discontinued: inspectionProductsTable.discontinued,
+        ordinaryAvailability: inspectionProductsTable.ordinaryAvailability,
+      })
+      .from(inspectionProductsTable)
+      .where(
+        and(
+          eq(inspectionProductsTable.inspectionId, inspectionId),
+          eq(inspectionProductsTable.companyId, company.id),
+        ),
+      ),
+    db
+      .select({ attestationType: attestationsTable.attestationType })
+      .from(attestationsTable)
+      .where(
+        and(
+          eq(attestationsTable.inspectionId, inspectionId),
+          eq(attestationsTable.companyId, company.id),
+        ),
+      ),
+    db
+      .select({ id: testSquaresTable.id })
+      .from(testSquaresTable)
+      .where(
+        and(
+          eq(testSquaresTable.inspectionId, inspectionId),
+          eq(testSquaresTable.companyId, company.id),
+        ),
+      ),
+    db
+      .select({ id: damageInstancesTable.id })
+      .from(damageInstancesTable)
+      .where(
+        and(
+          eq(damageInstancesTable.inspectionId, inspectionId),
+          eq(damageInstancesTable.companyId, company.id),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ materialType: inspectionSlopesTable.materialType })
+      .from(inspectionSlopesTable)
+      .where(
+        and(
+          eq(inspectionSlopesTable.inspectionId, inspectionId),
+          eq(inspectionSlopesTable.companyId, company.id),
+        ),
+      ),
+    db
+      .select({
+        contractorLicenses: companiesTable.contractorLicenses,
+        qualificationsText: companiesTable.qualificationsText,
+      })
+      .from(companiesTable)
+      .where(eq(companiesTable.id, company.id))
+      .limit(1),
+    db
+      .select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+      .from(ahjPacksTable)
+      .where(eq(ahjPacksTable.companyId, company.id)),
+    db
+      .select({ state: companyJurisdictionPacksTable.state })
+      .from(companyJurisdictionPacksTable)
+      .where(eq(companyJurisdictionPacksTable.companyId, company.id)),
+    db
+      .select({
+        sectionType: claimSectionsTable.sectionType,
+        libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot,
+      })
+      .from(claimSectionsTable)
+      .where(
+        and(
+          eq(claimSectionsTable.inspectionId, inspectionId),
+          isNull(claimSectionsTable.supplementId),
+        ),
+      ),
+    db
+      .select({
+        entryKey: standardsEntriesTable.entryKey,
+        verificationStatus: standardsEntriesTable.verificationStatus,
+      })
+      .from(standardsEntriesTable)
+      .where(eq(standardsEntriesTable.companyId, company.id)),
+  ]);
+
+  const result = computeReadiness({
+    inspectionId,
+    inspection: {
+      ...inspection,
+      rapGateReason: (inspection.rapGateReason as string | null | undefined) ?? null,
+      estimate: (inspection.estimate as { lines?: Array<{ description?: string; categoryCode?: string }> } | null),
+      temporaryRepairs: (inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null),
+      propertyProfile: (inspection.propertyProfile as { structureType?: string; garageAttached?: boolean } | null),
+      interiorDamageFound: inspection.interiorDamageFound,
+    },
+    products: products.map((p) => ({
+      identificationMethod: p.identificationMethod,
+      discontinued: p.discontinued ?? null,
+      ordinaryAvailability: p.ordinaryAvailability ?? null,
+    })),
+    slopes,
+    attestations: attestations.map((a) => ({ attestationType: a.attestationType ?? null })),
+    testSquaresCount: testSquares.length,
+    damageInstancesCount: damageInstances.length,
+    company: {
+      contractorLicenses: companyRow?.contractorLicenses ?? null,
+      qualificationsText: companyRow?.qualificationsText ?? null,
+    },
+    ahjPacks,
+    legacyJurisdictionStates: legacyPacks.map((p) => p.state),
+    claimSections: claimSections.map((s) => ({
+      sectionType: s.sectionType,
+      libraryVersionSnapshot:
+        (s.libraryVersionSnapshot as { standardsEntryKeys?: string[] } | null) ?? null,
+    })),
+    standardsEntries: standardsEntries.map((e) => ({
+      entryKey: e.entryKey,
+      verificationStatus: e.verificationStatus,
+    })),
+  });
+
+  res.json(result);
+});
+
 // ── PP logo upload URL ───────────────────────────────────────────────────────
 
 /**
@@ -996,6 +1459,82 @@ router.put('/pp/company/logo', async (req: Request, res: Response) => {
     .where(eq(companiesTable.id, ppCtx.company.id));
 
   res.json({ ok: true });
+});
+
+// ── PP upgrade — status check ────────────────────────────────────────────────
+
+/**
+ * GET /pp/upgrade/status
+ * Returns { upgraded: boolean } reflecting the company's current pp_tier.
+ * Used by the success page to confirm webhook fulfillment before declaring
+ * the upgrade complete rather than relying on a fixed timeout.
+ */
+router.get('/pp/upgrade/status', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+  res.json({ upgraded: ppCtx.company.ppTier === 'crm' });
+});
+
+// ── PP upgrade — reconciliation ───────────────────────────────────────────────
+
+const ReconcileBody = z.object({
+  sessionId: z.string().min(1),
+});
+
+/**
+ * POST /pp/upgrade/reconcile
+ * Called by the success page when polling times out — verifies the Stripe
+ * session is paid and re-runs fulfillCRMUpgrade (which is idempotent).
+ * This is the durable reconciliation path for transient webhook failures.
+ */
+router.post('/pp/upgrade/reconcile', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const { company } = ppCtx;
+
+  // Already upgraded — nothing to do.
+  if (company.ppTier === 'crm') {
+    res.json({ ok: true, upgraded: true });
+    return;
+  }
+
+  const parsed = ReconcileBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'sessionId is required.' });
+    return;
+  }
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const session = await stripe.checkout.sessions.retrieve(parsed.data.sessionId);
+
+    if (
+      session.metadata?.kind !== 'pp_crm_upgrade' ||
+      session.metadata?.companyId !== company.id
+    ) {
+      res.status(400).json({ error: 'Session does not match this account.' });
+      return;
+    }
+    if (session.payment_status !== 'paid') {
+      res.status(402).json({ error: 'Payment not completed.', upgraded: false });
+      return;
+    }
+
+    const { fulfillCRMUpgrade } = await import('../lib/pp/upgrade');
+    const customerId =
+      typeof session.customer === 'string' ? session.customer : (session.customer as { id?: string } | null)?.id ?? null;
+    const stripeSubId =
+      typeof session.subscription === 'string'
+        ? session.subscription
+        : (session.subscription as { id?: string } | null)?.id ?? null;
+    await fulfillCRMUpgrade(company.id, { stripeCustomerId: customerId, stripeSubscriptionId: stripeSubId });
+
+    res.json({ ok: true, upgraded: true });
+  } catch (err) {
+    logger.error({ err }, 'pp upgrade reconcile: fulfillment failed');
+    res.status(500).json({ error: 'Reconciliation failed. Please contact support if this persists.' });
+  }
 });
 
 // ── PP upgrade — credit inquiry ──────────────────────────────────────────────
@@ -1112,11 +1651,34 @@ router.post('/pp/upgrade/checkout', async (req: Request, res: Response) => {
       };
     }
 
+    // Compute any PP-spend credit to apply to the first invoice.
+    const ppPriceCents = parseInt(process.env.PP_PACKAGE_PRICE_CENTS ?? '29900', 10);
+    const CREDIT_WINDOW_DAYS = 90;
+    const elapsedDays = (Date.now() - new Date(company.createdAt).getTime()) / 86_400_000;
+    const eligibleDaysRemaining = Math.max(0, Math.floor(CREDIT_WINDOW_DAYS - elapsedDays));
+    const creditCents = eligibleDaysRemaining > 0 ? ppPriceCents : 0;
+
+    // Apply the credit as a one-time Stripe coupon so the first invoice is
+    // actually reduced by the displayed amount (not just shown as a label).
+    // If credit is eligible but coupon creation fails, we fail the request
+    // rather than charging the full price while the UI promised a discount.
+    const discounts: Array<{ coupon: string }> = [];
+    if (creditCents > 0) {
+      const coupon = await stripe.coupons.create({
+        amount_off: creditCents,
+        currency: 'usd',
+        duration: 'once',
+        name: 'PP package spend credit',
+      });
+      discounts.push({ coupon: coupon.id });
+    }
+
     const base = trustedOrigin();
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer_email: user.email ?? undefined,
       line_items: [lineItem],
+      ...(discounts.length > 0 ? { discounts } : {}),
       metadata: {
         kind: 'pp_crm_upgrade',
         companyId: company.id,

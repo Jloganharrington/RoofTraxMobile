@@ -106,6 +106,7 @@ import {
   SUPPLEMENT_REASONS,
   pinFinancialChangesTable,
   type PinFinancialChangeField,
+  ppPackageCreditsTable,
 } from '@workspace/db';
 import type {
   Role,
@@ -5096,6 +5097,29 @@ router.post('/inspections/:inspectionId/report/compile', requireWritableInspecti
   const inspection = req.inspection!;
 
   const inspectionId = req.params.inspectionId as string;
+
+  // ── PP credit gate ──────────────────────────────────────────────────────────
+  // PP-only companies must have a paid pp_package_credits row for this
+  // inspection before compile is allowed — prevents payment bypass via direct
+  // API calls.  Re-compile when a credit already exists is free.
+  if (actor.ppTier === 'pp_only') {
+    const [credit] = await db
+      .select({ id: ppPackageCreditsTable.id })
+      .from(ppPackageCreditsTable)
+      .where(
+        and(
+          eq(ppPackageCreditsTable.companyId, actor.companyId),
+          eq(ppPackageCreditsTable.inspectionId, inspectionId),
+        ),
+      );
+    if (!credit) {
+      res.status(402).json({
+        error: 'A paid credit is required to compile this package. Complete the payment step in the Generation Wizard.',
+        code: 'pp_credit_required',
+      });
+      return;
+    }
+  }
 
   // AI summary must exist — the Summary step must be completed first.
   const aiSummary = inspection.aiSummary as {

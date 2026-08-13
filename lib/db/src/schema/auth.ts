@@ -213,9 +213,69 @@ export const ppPendingRegistrationsTable = pgTable('pp_pending_registrations', {
     .notNull()
     .default(sql`now() + INTERVAL '24 hours'`),
 });
+
+/**
+ * Per-package payment credits for PP-only subscribers.
+ * A row here means the company has paid for a Proof Package for the given inspection.
+ * The compile route checks for a credit row before allowing generation.
+ * Recompilation is free once a credit row exists (idempotent).
+ */
+export const ppPackageCreditsTable = pgTable(
+  'pp_package_credits',
+  {
+    id: varchar('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()::text`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id, { onDelete: 'cascade' }),
+    inspectionId: varchar('inspection_id').notNull(),
+    stripePaymentIntentId: varchar('stripe_payment_intent_id').notNull(),
+    paidAt: timestamp('paid_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('pp_package_credits_company_inspection_idx').on(
+      table.companyId,
+      table.inspectionId,
+    ),
+  ],
+);
+
+/**
+ * pp_pending_checkouts — tracks an in-flight Stripe Checkout Session for a
+ * per-package payment.  Keyed (company_id, inspection_id) so repeat calls to
+ * POST /pp/packages/checkout reuse the same session instead of creating a new
+ * one (preventing double-charges).  Cleaned up when the credit row lands.
+ */
+export const ppPendingCheckoutsTable = pgTable(
+  'pp_pending_checkouts',
+  {
+    id: varchar('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()::text`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id, { onDelete: 'cascade' }),
+    inspectionId: varchar('inspection_id').notNull(),
+    stripeSessionId: varchar('stripe_session_id').notNull(),
+    sessionUrl: varchar('session_url', { length: 2048 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('pp_pending_checkouts_company_inspection_idx').on(
+      table.companyId,
+      table.inspectionId,
+    ),
+  ],
+);
+
 export type CompanyJurisdictionPack = typeof companyJurisdictionPacksTable.$inferSelect;
 export type Company = typeof companiesTable.$inferSelect;
 export type UpsertUser = typeof usersTable.$inferInsert;
 export type User = typeof usersTable.$inferSelect;
 
 export type PpPendingRegistration = typeof ppPendingRegistrationsTable.$inferSelect;
+export type PpPackageCredit = typeof ppPackageCreditsTable.$inferSelect;
+export type PpPendingCheckout = typeof ppPendingCheckoutsTable.$inferSelect;

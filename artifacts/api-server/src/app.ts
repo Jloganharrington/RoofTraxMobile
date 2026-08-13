@@ -8,6 +8,9 @@ import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { WebhookHandlers } from "./lib/stripe/webhookHandlers";
 import { handleStripeBusinessEvent } from "./lib/pricing/fulfillment";
+import { db, ppPackageCreditsTable, ppPendingCheckoutsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import { getUncachableStripeClient } from "./lib/stripe/stripeClient";
 
 const app: Express = express();
 
@@ -111,6 +114,88 @@ app.post(
       logger.error({ err: error }, 'Stripe webhook processing error');
       res.status(400).json({ error: 'Webhook processing error' });
     }
+  },
+);
+
+// ── PP per-package Stripe webhook ─────────────────────────────────────────────
+// Must be registered BEFORE express.json() so constructEvent() receives the
+// raw Buffer body — parsed JSON breaks HMAC signature verification.
+// Fails closed (501) when PP_STRIPE_WEBHOOK_SECRET is absent in production.
+app.post(
+  '/api/pp/webhook/stripe',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const webhookSecret = process.env.PP_STRIPE_WEBHOOK_SECRET;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let event: any;
+
+    if (webhookSecret) {
+      const sig = req.headers['stripe-signature'];
+      if (!sig) {
+        res.status(400).json({ error: 'Missing stripe-signature header.' });
+        return;
+      }
+      try {
+        const stripe = await getUncachableStripeClient();
+        event = stripe.webhooks.constructEvent(req.body as Buffer, sig as string, webhookSecret);
+      } catch (err) {
+        logger.warn({ err }, 'pp webhook: signature verification failed');
+        res.status(400).json({ error: 'Webhook signature invalid.' });
+        return;
+      }
+    } else if (process.env.NODE_ENV !== 'production') {
+      // Dev only: accept unsigned body with a loud warning.
+      logger.warn('pp webhook: PP_STRIPE_WEBHOOK_SECRET not set — accepting unsigned payload (dev only)');
+      try {
+        event = JSON.parse((req.body as Buffer).toString('utf8'));
+      } catch {
+        res.status(400).json({ error: 'Invalid JSON body.' });
+        return;
+      }
+    } else {
+      // Fail closed in production: never mint credits from unsigned payloads.
+      logger.error('pp webhook: PP_STRIPE_WEBHOOK_SECRET not configured — rejecting unsigned payload');
+      res.status(501).json({ error: 'Webhook not configured.' });
+      return;
+    }
+
+    if (event?.type === 'checkout.session.completed') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const session = event.data?.object as any;
+      if (session?.metadata?.kind === 'pp_package' && session?.payment_status === 'paid') {
+        const { companyId, inspectionId } = session.metadata as { companyId: string; inspectionId: string };
+        const paymentIntentId =
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : (session.payment_intent as { id?: string } | null)?.id ?? (session.id as string);
+
+        if (companyId && inspectionId) {
+          try {
+            await db
+              .insert(ppPackageCreditsTable)
+              .values({ companyId, inspectionId, stripePaymentIntentId: paymentIntentId })
+              .onConflictDoNothing();
+            // Clean up the pending checkout so future checkout calls don't try to
+            // reuse a session that's already completed.
+            await db
+              .delete(ppPendingCheckoutsTable)
+              .where(
+                and(
+                  eq(ppPendingCheckoutsTable.companyId, companyId),
+                  eq(ppPendingCheckoutsTable.inspectionId, inspectionId),
+                ),
+              );
+          } catch (err) {
+            logger.error({ err, companyId, inspectionId }, 'pp webhook: failed to insert credit');
+            // Return 5xx so Stripe redelivers — do not swallow DB errors with 200.
+            res.status(500).json({ error: 'Credit persistence failed; retry.' });
+            return;
+          }
+        }
+      }
+    }
+
+    res.json({ received: true });
   },
 );
 

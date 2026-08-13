@@ -62,9 +62,9 @@ import { PPShell } from '@/components/layout/PPShell';
 import MyInspectionsPage from '@/pages/pp/MyInspectionsPage';
 import MyPackagesPage from '@/pages/pp/MyPackagesPage';
 import PPSettingsPage from '@/pages/pp/PPSettingsPage';
-import PPWizardComingSoon from '@/pages/pp/PPWizardComingSoon';
 import PPUpgradePage from '@/pages/pp/PPUpgradePage';
 import PPUpgradeSuccessPage from '@/pages/pp/PPUpgradeSuccessPage';
+import PPWizardPage from '@/pages/pp/PPWizardPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -141,7 +141,7 @@ function Router() {
       {/* PP Package Generation Wizard — full wizard is a downstream task */}
       <Route path="/pp/wizard/:id">
         <PPProtectedRoute>
-          <PPShell><PPWizardComingSoon /></PPShell>
+          <PPShell><PPWizardPage /></PPShell>
         </PPProtectedRoute>
       </Route>
       {/* PP upgrade — accessible to unauthenticated visitors too */}
