@@ -4,7 +4,8 @@
  * review the routing plan → apply to the correct library destinations.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
+import type { PreloadedItem } from "@/lib/hardcodedLibraryItems";
 import { useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -343,27 +344,40 @@ function ReviewRow({
 // Main wizard component
 // ---------------------------------------------------------------------------
 
-export function ProofPackageWizard({ mode = 'dialog' }: { mode?: 'dialog' | 'standalone' } = {}) {
+export function ProofPackageWizard({
+  mode = 'dialog',
+  preloadedItems,
+}: {
+  mode?: 'dialog' | 'standalone';
+  /** When provided the wizard opens directly to the review step, seeded with these items. */
+  preloadedItems?: PreloadedItem[];
+} = {}) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  // Capture preloadedItems at mount time; changes after mount are intentionally ignored.
+  const preloadedRef = useRef(preloadedItems);
+  const hasPreloaded = Boolean(preloadedRef.current?.length);
+
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<WizardStep>("upload");
+  const [step, setStep] = useState<WizardStep>(() => (hasPreloaded ? "review" : "upload"));
   const [files, setFiles] = useState<File[]>([]);
   const [pastedText, setPastedText] = useState("");
-  const [items, setItems] = useState<RoutingItem[]>([]);
+  const [items, setItems] = useState<RoutingItem[]>(() =>
+    (preloadedRef.current ?? []).map((item) => ({ ...item, _id: uid(), selected: true })),
+  );
   const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
   const [applyErrors, setApplyErrors] = useState<string[]>([]);
 
   // ── Reset ─────────────────────────────────────────────────────────────
   const reset = useCallback(() => {
-    setStep("upload");
+    setStep(hasPreloaded ? "review" : "upload");
     setFiles([]);
     setPastedText("");
-    setItems([]);
+    setItems((preloadedRef.current ?? []).map((item) => ({ ...item, _id: uid(), selected: true })));
     setProgress({ done: 0, total: 0, errors: 0 });
     setApplyErrors([]);
-  }, []);
+  }, [hasPreloaded]);
 
   const handleOpenChange = (v: boolean) => {
     if (!v) reset();
@@ -808,8 +822,11 @@ export function ProofPackageWizard({ mode = 'dialog' }: { mode?: 'dialog' | 'sta
 
       {step === "review" && (
         <>
-          <Button variant="outline" onClick={() => setStep("upload")}>
-            Back
+          <Button
+            variant="outline"
+            onClick={() => (hasPreloaded ? reset() : setStep("upload"))}
+          >
+            {hasPreloaded ? "Reset" : "Back"}
           </Button>
           <Button onClick={() => void apply()} disabled={selectedCount === 0}>
             Apply {selectedCount} item{selectedCount !== 1 ? "s" : ""}
