@@ -343,7 +343,7 @@ function ReviewRow({
 // Main wizard component
 // ---------------------------------------------------------------------------
 
-export function ProofPackageWizard() {
+export function ProofPackageWizard({ mode = 'dialog' }: { mode?: 'dialog' | 'standalone' } = {}) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -550,7 +550,309 @@ export function ProofPackageWizard() {
     ahj_pack: items.filter((i) => i.destination === "ahj_pack" && i.selected).length,
   };
 
-  // ── Render ────────────────────────────────────────────────────────────
+  // ── Shared fragments ──────────────────────────────────────────────────
+  // Cancel / close behaviour differs: dialog closes the modal; standalone resets to upload.
+  const onCancel = mode === 'dialog' ? () => handleOpenChange(false) : reset;
+
+  const stepIndicator = (
+    <div className="flex items-center gap-1.5 pt-1">
+      {(["upload", "analyzing", "review", "applying", "done"] as WizardStep[]).map((s, i) => {
+        const steps: WizardStep[] = ["upload", "analyzing", "review", "applying", "done"];
+        const current = steps.indexOf(step);
+        const pos = steps.indexOf(s);
+        const isDone = pos < current;
+        const isActive = pos === current;
+        return (
+          <div key={s} className="flex items-center gap-1.5">
+            {i > 0 && <div className={`h-px w-6 ${isDone || isActive ? "bg-primary" : "bg-muted"}`} />}
+            <div className={`h-2 w-2 rounded-full transition-colors ${isDone ? "bg-primary" : isActive ? "bg-primary" : "bg-muted"}`} />
+          </div>
+        );
+      })}
+      <span className="ml-2 text-xs text-muted-foreground capitalize">
+        {step === "upload" && "Upload files"}
+        {step === "analyzing" && "Analyzing…"}
+        {step === "review" && `Review — ${items.length} item${items.length !== 1 ? "s" : ""} found`}
+        {step === "applying" && "Applying…"}
+        {step === "done" && "Complete"}
+      </span>
+    </div>
+  );
+
+  // ── Shared body and footer JSX (used by both dialog and standalone) ──
+
+  const bodyJsx = (
+    <>
+      {/* ── Step: Upload ─────────────────────────────────────── */}
+      {step === "upload" && (
+        <>
+          <DropZone files={files} onFiles={addFiles} onRemove={removeFile} />
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center" aria-hidden>
+              <div className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-background px-2 text-[11px] text-muted-foreground">or paste text</span>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <textarea
+              className="w-full min-h-[140px] rounded-md border bg-background px-3 py-2 text-xs font-mono resize-y placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+              placeholder={"Paste boilerplate, citation text, detriment entries, or AHJ code provisions here…"}
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+            />
+            {pastedText.trim().length > 0 && (
+              <p className="text-[10px] text-muted-foreground text-right">
+                {pastedText.trim().length.toLocaleString()} chars · will be analyzed as "pasted-content.txt"
+              </p>
+            )}
+          </div>
+
+          <FormatTips />
+        </>
+      )}
+
+      {/* ── Step: Analyzing ──────────────────────────────────── */}
+      {step === "analyzing" && (
+        <div className="flex flex-col items-center gap-4 py-12">
+          <div className="relative h-16 w-16">
+            <Loader2 className="h-16 w-16 animate-spin text-primary/20" />
+            <Wand2 className="absolute inset-0 m-auto h-6 w-6 text-primary" />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium">AI is reading your files…</p>
+            <p className="text-xs text-muted-foreground">
+              Identifying boilerplate sections, standards citations, detriment entries, and AHJ provisions.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step: Review ─────────────────────────────────────── */}
+      {step === "review" && (
+        <div className="space-y-4">
+          {/* Destination summary pills */}
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(DEST_LABELS).map(([dest, label]) => {
+              const group = byDest[dest] ?? [];
+              if (group.length === 0) return null;
+              const sel = group.filter((i) => i.selected).length;
+              return (
+                <span
+                  key={dest}
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${DEST_COLORS[dest]}`}
+                >
+                  {label}
+                  <span className="font-mono">
+                    {sel}/{group.length}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Select / deselect all */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Review each item and uncheck any you don't want to save.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => setItems((prev) => prev.map((i) => ({ ...i, selected: true })))}
+              >
+                Select all
+              </button>
+              <span className="text-xs text-muted-foreground">·</span>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:underline"
+                onClick={() => setItems((prev) => prev.map((i) => ({ ...i, selected: false })))}
+              >
+                Deselect all
+              </button>
+            </div>
+          </div>
+
+          {/* Items grouped by destination */}
+          {(["boilerplate", "standards", "detriment", "ahj_pack"] as const).map((dest) => {
+            const group = byDest[dest] ?? [];
+            if (group.length === 0) return null;
+            return (
+              <div key={dest}>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+                  {DEST_LABELS[dest]}
+                </p>
+                <div className="space-y-1.5">
+                  {group.map((item) => (
+                    <ReviewRow
+                      key={item._id}
+                      item={item}
+                      onToggle={() =>
+                        setItems((prev) =>
+                          prev.map((i) =>
+                            i._id === item._id ? { ...i, selected: !i.selected } : i,
+                          ),
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Step: Applying ───────────────────────────────────── */}
+      {step === "applying" && (
+        <div className="space-y-4 py-6">
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Saving items…</span>
+              <span>
+                {progress.done} / {progress.total}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-200"
+                style={{
+                  width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-center text-muted-foreground">
+            Writing to boilerplate, standards, detriment, and AHJ libraries…
+          </p>
+        </div>
+      )}
+
+      {/* ── Step: Done ───────────────────────────────────────── */}
+      {step === "done" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-lg border bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 p-4">
+            <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                {selectedCount - applyErrors.length} item{selectedCount - applyErrors.length !== 1 ? "s" : ""} saved to the library
+              </p>
+              <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                Changes create a new immutable version — previous versions are preserved.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {doneCounts.boilerplate > 0 && (
+              <StatCard label="Boilerplate sections" value={doneCounts.boilerplate} dest="boilerplate" />
+            )}
+            {doneCounts.standards > 0 && (
+              <StatCard label="Standards entries" value={doneCounts.standards} dest="standards" />
+            )}
+            {doneCounts.detriment > 0 && (
+              <StatCard label="Detriment entries" value={doneCounts.detriment} dest="detriment" />
+            )}
+            {doneCounts.ahj_pack > 0 && (
+              <StatCard label="AHJ packs" value={doneCounts.ahj_pack} dest="ahj_pack" />
+            )}
+          </div>
+
+          {applyErrors.length > 0 && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                <p className="text-xs font-medium text-destructive">{applyErrors.length} error{applyErrors.length !== 1 ? "s" : ""}</p>
+              </div>
+              {applyErrors.map((e, i) => (
+                <p key={i} className="text-[10px] text-muted-foreground pl-5 font-mono">{e}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const footerJsx = (
+    <>
+      {step === "upload" && (
+        <>
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={() => void analyze()} disabled={files.length === 0 && !pastedText.trim()}>
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            {files.length > 0 && pastedText.trim()
+              ? `Analyze ${files.length} file${files.length !== 1 ? "s" : ""} + paste`
+              : files.length > 0
+              ? `Analyze ${files.length} file${files.length !== 1 ? "s" : ""}`
+              : pastedText.trim()
+              ? "Analyze Pasted Text"
+              : "Analyze"}
+          </Button>
+        </>
+      )}
+
+      {step === "analyzing" && (
+        <Button disabled>
+          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          Analyzing…
+        </Button>
+      )}
+
+      {step === "review" && (
+        <>
+          <Button variant="outline" onClick={() => setStep("upload")}>
+            Back
+          </Button>
+          <Button onClick={() => void apply()} disabled={selectedCount === 0}>
+            Apply {selectedCount} item{selectedCount !== 1 ? "s" : ""}
+          </Button>
+        </>
+      )}
+
+      {step === "applying" && (
+        <Button disabled>
+          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          Applying…
+        </Button>
+      )}
+
+      {step === "done" && (
+        <Button variant="outline" onClick={onCancel}>
+          Close
+        </Button>
+      )}
+    </>
+  );
+
+  // ── Render: standalone (full page, no Dialog wrapper) ─────────────────
+  if (mode === 'standalone') {
+    return (
+      <div className="border rounded-lg overflow-hidden bg-card">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b">
+          <div className="flex items-center gap-2 text-base font-semibold">
+            <Wand2 className="h-4 w-4 text-primary" />
+            Proof Package Data Wizard
+          </div>
+          {stepIndicator}
+        </div>
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">{bodyJsx}</div>
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-6 py-4 border-t">{footerJsx}</div>
+      </div>
+    );
+  }
+
+  // ── Render: dialog (trigger button + modal) ───────────────────────────
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
@@ -566,285 +868,12 @@ export function ProofPackageWizard() {
               <Wand2 className="h-4 w-4 text-primary" />
               Proof Package Data Wizard
             </DialogTitle>
-            {/* Step indicator */}
-            <div className="flex items-center gap-1.5 pt-1">
-              {(["upload", "analyzing", "review", "applying", "done"] as WizardStep[]).map(
-                (s, i) => {
-                  const steps: WizardStep[] = ["upload", "analyzing", "review", "applying", "done"];
-                  const current = steps.indexOf(step);
-                  const pos = steps.indexOf(s);
-                  const done = pos < current;
-                  const active = pos === current;
-                  return (
-                    <div key={s} className="flex items-center gap-1.5">
-                      {i > 0 && <div className={`h-px w-6 ${done || active ? "bg-primary" : "bg-muted"}`} />}
-                      <div
-                        className={`h-2 w-2 rounded-full transition-colors ${
-                          done ? "bg-primary" : active ? "bg-primary" : "bg-muted"
-                        }`}
-                      />
-                    </div>
-                  );
-                },
-              )}
-              <span className="ml-2 text-xs text-muted-foreground capitalize">
-                {step === "upload" && "Upload files"}
-                {step === "analyzing" && "Analyzing…"}
-                {step === "review" && `Review — ${items.length} item${items.length !== 1 ? "s" : ""} found`}
-                {step === "applying" && "Applying…"}
-                {step === "done" && "Complete"}
-              </span>
-            </div>
+            {stepIndicator}
           </DialogHeader>
-
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">
-            {/* ── Step: Upload ─────────────────────────────────────── */}
-            {step === "upload" && (
-              <>
-                <DropZone files={files} onFiles={addFiles} onRemove={removeFile} />
-
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center" aria-hidden>
-                    <div className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-background px-2 text-[11px] text-muted-foreground">or paste text</span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <textarea
-                    className="w-full min-h-[140px] rounded-md border bg-background px-3 py-2 text-xs font-mono resize-y placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder={"Paste boilerplate, citation text, detriment entries, or AHJ code provisions here…"}
-                    value={pastedText}
-                    onChange={(e) => setPastedText(e.target.value)}
-                  />
-                  {pastedText.trim().length > 0 && (
-                    <p className="text-[10px] text-muted-foreground text-right">
-                      {pastedText.trim().length.toLocaleString()} chars · will be analyzed as "pasted-content.txt"
-                    </p>
-                  )}
-                </div>
-
-                <FormatTips />
-              </>
-            )}
-
-            {/* ── Step: Analyzing ──────────────────────────────────── */}
-            {step === "analyzing" && (
-              <div className="flex flex-col items-center gap-4 py-12">
-                <div className="relative h-16 w-16">
-                  <Loader2 className="h-16 w-16 animate-spin text-primary/20" />
-                  <Wand2 className="absolute inset-0 m-auto h-6 w-6 text-primary" />
-                </div>
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-medium">AI is reading your files…</p>
-                  <p className="text-xs text-muted-foreground">
-                    Identifying boilerplate sections, standards citations, detriment entries, and AHJ provisions.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* ── Step: Review ─────────────────────────────────────── */}
-            {step === "review" && (
-              <div className="space-y-4">
-                {/* Destination summary pills */}
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(DEST_LABELS).map(([dest, label]) => {
-                    const group = byDest[dest] ?? [];
-                    if (group.length === 0) return null;
-                    const sel = group.filter((i) => i.selected).length;
-                    return (
-                      <span
-                        key={dest}
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${DEST_COLORS[dest]}`}
-                      >
-                        {label}
-                        <span className="font-mono">
-                          {sel}/{group.length}
-                        </span>
-                      </span>
-                    );
-                  })}
-                </div>
-
-                {/* Select / deselect all */}
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Review each item and uncheck any you don't want to save.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline"
-                      onClick={() => setItems((prev) => prev.map((i) => ({ ...i, selected: true })))}
-                    >
-                      Select all
-                    </button>
-                    <span className="text-xs text-muted-foreground">·</span>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground hover:underline"
-                      onClick={() => setItems((prev) => prev.map((i) => ({ ...i, selected: false })))}
-                    >
-                      Deselect all
-                    </button>
-                  </div>
-                </div>
-
-                {/* Items grouped by destination */}
-                {(["boilerplate", "standards", "detriment", "ahj_pack"] as const).map((dest) => {
-                  const group = byDest[dest] ?? [];
-                  if (group.length === 0) return null;
-                  return (
-                    <div key={dest}>
-                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
-                        {DEST_LABELS[dest]}
-                      </p>
-                      <div className="space-y-1.5">
-                        {group.map((item) => (
-                          <ReviewRow
-                            key={item._id}
-                            item={item}
-                            onToggle={() =>
-                              setItems((prev) =>
-                                prev.map((i) =>
-                                  i._id === item._id ? { ...i, selected: !i.selected } : i,
-                                ),
-                              )
-                            }
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── Step: Applying ───────────────────────────────────── */}
-            {step === "applying" && (
-              <div className="space-y-4 py-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Saving items…</span>
-                    <span>
-                      {progress.done} / {progress.total}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-200"
-                      style={{
-                        width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-center text-muted-foreground">
-                  Writing to boilerplate, standards, detriment, and AHJ libraries…
-                </p>
-              </div>
-            )}
-
-            {/* ── Step: Done ───────────────────────────────────────── */}
-            {step === "done" && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 rounded-lg border bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 p-4">
-                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                      {selectedCount - applyErrors.length} item{selectedCount - applyErrors.length !== 1 ? "s" : ""} saved to the library
-                    </p>
-                    <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
-                      Changes create a new immutable version — previous versions are preserved.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {doneCounts.boilerplate > 0 && (
-                    <StatCard label="Boilerplate sections" value={doneCounts.boilerplate} dest="boilerplate" />
-                  )}
-                  {doneCounts.standards > 0 && (
-                    <StatCard label="Standards entries" value={doneCounts.standards} dest="standards" />
-                  )}
-                  {doneCounts.detriment > 0 && (
-                    <StatCard label="Detriment entries" value={doneCounts.detriment} dest="detriment" />
-                  )}
-                  {doneCounts.ahj_pack > 0 && (
-                    <StatCard label="AHJ packs" value={doneCounts.ahj_pack} dest="ahj_pack" />
-                  )}
-                </div>
-
-                {applyErrors.length > 0 && (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
-                      <p className="text-xs font-medium text-destructive">{applyErrors.length} error{applyErrors.length !== 1 ? "s" : ""}</p>
-                    </div>
-                    {applyErrors.map((e, i) => (
-                      <p key={i} className="text-[10px] text-muted-foreground pl-5 font-mono">{e}</p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">{bodyJsx}</div>
           {/* Footer */}
-          <DialogFooter className="px-6 py-4 border-t shrink-0">
-            {step === "upload" && (
-              <>
-                <Button variant="outline" onClick={() => handleOpenChange(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={() => void analyze()} disabled={files.length === 0 && !pastedText.trim()}>
-                  <Wand2 className="h-3.5 w-3.5 mr-1.5" />
-                  {files.length > 0 && pastedText.trim()
-                    ? `Analyze ${files.length} file${files.length !== 1 ? "s" : ""} + paste`
-                    : files.length > 0
-                    ? `Analyze ${files.length} file${files.length !== 1 ? "s" : ""}`
-                    : pastedText.trim()
-                    ? "Analyze Pasted Text"
-                    : "Analyze"}
-                </Button>
-              </>
-            )}
-
-            {step === "analyzing" && (
-              <Button disabled>
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Analyzing…
-              </Button>
-            )}
-
-            {step === "review" && (
-              <>
-                <Button variant="outline" onClick={() => setStep("upload")}>
-                  Back
-                </Button>
-                <Button onClick={() => void apply()} disabled={selectedCount === 0}>
-                  Apply {selectedCount} item{selectedCount !== 1 ? "s" : ""}
-                </Button>
-              </>
-            )}
-
-            {step === "applying" && (
-              <Button disabled>
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Applying…
-              </Button>
-            )}
-
-            {step === "done" && (
-              <Button variant="outline" onClick={() => handleOpenChange(false)}>
-                Close
-              </Button>
-            )}
-          </DialogFooter>
+          <DialogFooter className="px-6 py-4 border-t shrink-0">{footerJsx}</DialogFooter>
         </DialogContent>
       </Dialog>
     </>

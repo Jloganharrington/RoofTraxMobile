@@ -12,6 +12,7 @@ import Home from '@/pages/Home';
 import Dashboard from '@/pages/Dashboard';
 import LibraryPage from '@/pages/settings/LibraryPage';
 import AhjWizardPage from '@/pages/settings/AhjWizardPage';
+import TrialPage from '@/pages/settings/TrialPage';
 import InspectionList from '@/pages/inspections/InspectionList';
 import ClaimHub from '@/pages/ClaimHub';
 import Estimate from '@/pages/inspections/Estimate';
@@ -214,6 +215,9 @@ function Router() {
       </Route>
       <Route path="/price-book">
         <Redirect to="/settings" />
+      </Route>
+      <Route path="/trial">
+        <ProtectedRoute><TrialPage /></ProtectedRoute>
       </Route>
       <Route path="/settings/library">
         <ProtectedRoute><LibraryPage /></ProtectedRoute>
