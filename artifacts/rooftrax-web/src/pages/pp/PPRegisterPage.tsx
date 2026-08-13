@@ -320,12 +320,12 @@ export default function PPRegisterPage() {
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">Work email</label>
+                <label className="block text-sm font-medium text-zinc-300 mb-1">Email address</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
+                  placeholder="you@example.com"
                   autoComplete="email"
                   className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
