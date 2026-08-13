@@ -47,7 +47,7 @@ export default function PPLoginPage() {
         return;
       }
       const params = new URLSearchParams(window.location.search);
-      const returnTo = params.get('returnTo') ?? '/pp/portal';
+      const returnTo = params.get('returnTo') ?? '/pp/inspections';
       navigate(returnTo);
     } catch {
       setError('Network error. Please try again.');

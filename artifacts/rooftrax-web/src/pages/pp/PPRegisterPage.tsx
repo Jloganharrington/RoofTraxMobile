@@ -2,19 +2,16 @@
  * /pp/register — PP Subscriber self-serve registration.
  *
  * Multi-step form:
- *   Step 1 — Company info (name)
- *   Step 2 — Work Type (market type + trades)
- *   Step 3 — AHJ Selection (covered list or free-text request)
- *   Step 4 — Logo (deferred)
- *   Step 5 — Account credentials (email + password)
- *   Step 6 — Payment (redirect to Stripe checkout)
+ *   Step 1 — Credentials (email + password)
+ *   Step 2 — Company details (name, market type, trades, AHJ)
+ *   Step 3 — Payment (redirect to Stripe checkout)
  *
  * On Stripe success the browser lands on /pp/register/confirm (handled below).
  */
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
-  Loader2, Building2, Briefcase, MapPin, Image, Lock, CreditCard,
+  Loader2, Lock, Building2, CreditCard,
   ChevronRight, ChevronLeft, CheckCircle2, Search,
 } from 'lucide-react';
 
@@ -51,7 +48,7 @@ export function PPRegisterConfirmPage() {
             setStatus('error');
           } else {
             setStatus('ok');
-            setTimeout(() => navigate('/pp/portal'), 1500);
+            setTimeout(() => navigate('/pp/inspections'), 1500);
           }
         })
         .catch(() => {
@@ -109,11 +106,8 @@ interface AhjCoverageRow {
 }
 
 const STEPS = [
-  { label: 'Company', icon: Building2 },
-  { label: 'Work Type', icon: Briefcase },
-  { label: 'AHJ', icon: MapPin },
-  { label: 'Logo', icon: Image },
   { label: 'Credentials', icon: Lock },
+  { label: 'Company', icon: Building2 },
   { label: 'Payment', icon: CreditCard },
 ] as const;
 
@@ -149,14 +143,17 @@ export default function PPRegisterPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  // Step 1 — Company name
-  const [companyName, setCompanyName] = useState('');
+  // Step 1 — Credentials
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Step 2 — Work type
+  // Step 2 — Company details
+  const [companyName, setCompanyName] = useState('');
   const [marketType, setMarketType] = useState<MarketType | null>(null);
   const [tradeTypes, setTradeTypes] = useState<string[]>([]);
 
-  // Step 3 — AHJ
+  // Step 2 — AHJ
   const [ahjList, setAhjList] = useState<AhjCoverageRow[]>([]);
   const [ahjLoading, setAhjLoading] = useState(false);
   const [ahjSearch, setAhjSearch] = useState('');
@@ -164,18 +161,13 @@ export default function PPRegisterPage() {
   const [ahjRequestMode, setAhjRequestMode] = useState(false);
   const [ahjRequestText, setAhjRequestText] = useState('');
 
-  // Step 5 — Credentials
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
   function fe(field: string) {
     return fieldErrors[field]?.[0];
   }
 
-  // Fetch AHJ coverage list when entering step 2 (AHJ step)
+  // Fetch AHJ coverage list when entering step 1 (company step)
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 1) return;
     setAhjLoading(true);
     fetch(`${API}/api/pp/ahj-coverage`)
       .then((r) => r.json())
@@ -193,29 +185,7 @@ export default function PPRegisterPage() {
     : ahjList;
 
   // Validators
-  function validateStep1() {
-    if (!companyName.trim()) return { companyName: ['Company name is required.'] };
-    return null;
-  }
-
-  function validateStep2() {
-    const errs: FieldErrors = {};
-    if (!marketType) errs.marketType = ['Please select your market type.'];
-    if (tradeTypes.length === 0) errs.tradeTypes = ['Select at least one trade.'];
-    return Object.keys(errs).length ? errs : null;
-  }
-
-  function validateStep3(): FieldErrors | null {
-    if (!ahjRequestMode && !selectedAhjId) {
-      return { ahj: ["Select your jurisdiction or click \"My jurisdiction isn't listed\"."] };
-    }
-    if (ahjRequestMode && !ahjRequestText.trim()) {
-      return { ahjRequest: ['Please describe your local authority (city, county, or state).'] };
-    }
-    return null;
-  }
-
-  function validateStep5() {
+  function validateStep0() {
     const errs: FieldErrors = {};
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       errs.email = ['A valid email is required.'];
@@ -223,6 +193,18 @@ export default function PPRegisterPage() {
       errs.password = ['Password must be at least 8 characters.'];
     if (password !== confirmPassword)
       errs.confirmPassword = ['Passwords do not match.'];
+    return Object.keys(errs).length ? errs : null;
+  }
+
+  function validateStep1(): FieldErrors | null {
+    const errs: FieldErrors = {};
+    if (!companyName.trim()) errs.companyName = ['Company name is required.'];
+    if (!marketType) errs.marketType = ['Please select your market type.'];
+    if (tradeTypes.length === 0) errs.tradeTypes = ['Select at least one trade.'];
+    if (!ahjRequestMode && !selectedAhjId)
+      errs.ahj = ["Select your jurisdiction or click \"My jurisdiction isn't listed\"."];
+    if (ahjRequestMode && !ahjRequestText.trim())
+      errs.ahjRequest = ['Please describe your local authority (city, county, or state).'];
     return Object.keys(errs).length ? errs : null;
   }
 
@@ -262,29 +244,16 @@ export default function PPRegisterPage() {
   function handleNext() {
     setApiError(null);
     if (step === 0) {
-      const errs = validateStep1();
+      const errs = validateStep0();
       if (errs) { setFieldErrors(errs); return; }
       setFieldErrors({});
       setStep(1);
     } else if (step === 1) {
-      const errs = validateStep2();
+      const errs = validateStep1();
       if (errs) { setFieldErrors(errs); return; }
       setFieldErrors({});
       setStep(2);
     } else if (step === 2) {
-      const errs = validateStep3();
-      if (errs) { setFieldErrors(errs); return; }
-      setFieldErrors({});
-      setStep(3);
-    } else if (step === 3) {
-      // Logo step — always skippable, move to credentials
-      setStep(4);
-    } else if (step === 4) {
-      const errs = validateStep5();
-      if (errs) { setFieldErrors(errs); return; }
-      setFieldErrors({});
-      setStep(5);
-    } else if (step === 5) {
       void handlePayment();
     }
   }
@@ -298,8 +267,7 @@ export default function PPRegisterPage() {
   const isLastStep = step === STEPS.length - 1;
 
   const nextButtonLabel = (() => {
-    if (step === 2 && ahjRequestMode) return 'Save profile and request new AHJ';
-    if (step === 3) return 'Skip for now';
+    if (step === 1 && ahjRequestMode) return 'Save & request new AHJ';
     if (isLastStep) return 'Continue to payment';
     return 'Continue';
   })();
@@ -332,7 +300,7 @@ export default function PPRegisterPage() {
                   {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`h-px w-4 ${done ? 'bg-orange-500' : 'bg-zinc-700'}`} />
+                  <div className={`h-px w-8 ${done ? 'bg-orange-500' : 'bg-zinc-700'}`} />
                 )}
               </div>
             );
@@ -342,202 +310,15 @@ export default function PPRegisterPage() {
         {/* Card */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
 
-          {/* Step 1 — Company name */}
+          {/* Step 1 — Credentials */}
           {step === 0 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Company information</h2>
               <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1">Company name</label>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Acme Roofing LLC"
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-                {fe('companyName') && <p className="text-red-400 text-xs mt-1">{fe('companyName')}</p>}
-              </div>
-            </div>
-          )}
-
-          {/* Step 2 — Work Type */}
-          {step === 1 && (
-            <div className="space-y-5">
-              <h2 className="text-lg font-semibold text-white">Work type</h2>
-
-              {/* Market type single-select */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-zinc-300">
-                  What market do you serve?
-                </label>
-                <div className="space-y-2">
-                  {MARKET_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setMarketType(opt.value)}
-                      className={`w-full text-left rounded-lg border px-4 py-3 transition-colors
-                        ${marketType === opt.value
-                          ? 'border-orange-500 bg-orange-500/10 text-white'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'}`}
-                    >
-                      <p className="text-sm font-semibold">{opt.label}</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">{opt.description}</p>
-                    </button>
-                  ))}
-                </div>
-                {fe('marketType') && <p className="text-red-400 text-xs mt-1">{fe('marketType')}</p>}
-              </div>
-
-              {/* Trade type multi-select */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-zinc-300">
-                  What trade(s) do you work in? <span className="text-zinc-500">(select all that apply)</span>
-                </label>
-                <div className="flex gap-2">
-                  {TRADE_OPTIONS.map((opt) => {
-                    const selected = tradeTypes.includes(opt.value);
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => toggleTrade(opt.value)}
-                        className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors
-                          ${selected
-                            ? 'border-orange-500 bg-orange-500/10 text-white'
-                            : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'}`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {fe('tradeTypes') && <p className="text-red-400 text-xs mt-1">{fe('tradeTypes')}</p>}
-              </div>
-            </div>
-          )}
-
-          {/* Step 3 — AHJ Selection */}
-          {step === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Select your jurisdiction (AHJ)</h2>
-              <p className="text-zinc-400 text-sm">
-                Choose the authority having jurisdiction (AHJ) that governs your work.
-              </p>
-
-              {!ahjRequestMode && (
-                <>
-                  {/* Search input */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={ahjSearch}
-                      onChange={(e) => setAhjSearch(e.target.value)}
-                      placeholder="Search by county or state…"
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-
-                  {/* Scrollable jurisdiction list */}
-                  <div className="border border-zinc-700 rounded-lg overflow-hidden">
-                    {ahjLoading ? (
-                      <div className="flex items-center justify-center h-28 text-zinc-500 text-sm gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Loading jurisdictions…
-                      </div>
-                    ) : filteredAhj.length === 0 ? (
-                      <div className="flex items-center justify-center h-28 text-zinc-500 text-sm">
-                        {ahjList.length === 0
-                          ? 'No covered jurisdictions yet.'
-                          : 'No results match your search.'}
-                      </div>
-                    ) : (
-                      <div className="max-h-56 overflow-y-auto divide-y divide-zinc-800">
-                        {filteredAhj.map((row) => (
-                          <button
-                            key={row.id}
-                            type="button"
-                            onClick={() => setSelectedAhjId(row.id)}
-                            className={`w-full flex items-center justify-between px-4 py-3 text-sm text-left transition-colors
-                              ${selectedAhjId === row.id
-                                ? 'bg-orange-500/10 text-white'
-                                : 'text-zinc-300 hover:bg-zinc-800/60'}`}
-                          >
-                            <span className="font-medium">
-                              {row.county}, {row.state}
-                            </span>
-                            <span
-                              className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium
-                                ${row.status === 'covered'
-                                  ? 'bg-green-900/40 text-green-400'
-                                  : 'bg-yellow-900/40 text-yellow-400'}`}
-                            >
-                              {row.status === 'covered' ? 'Covered' : 'Coming soon'}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {fe('ahj') && <p className="text-red-400 text-xs">{fe('ahj')}</p>}
-                </>
-              )}
-
-              {/* Free-text request mode */}
-              {ahjRequestMode && (
-                <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
-                  <p className="text-sm font-medium text-zinc-300">Describe your local authority</p>
-                  <p className="text-xs text-zinc-500">
-                    Enter the city, county, or state that governs your work. We'll review it and
-                    add coverage — you'll still advance to payment now.
-                  </p>
-                  <input
-                    type="text"
-                    value={ahjRequestText}
-                    onChange={(e) => setAhjRequestText(e.target.value)}
-                    placeholder="e.g. Fairfax County, VA or City of Richmond"
-                    className="w-full bg-zinc-900 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  {fe('ahjRequest') && <p className="text-red-400 text-xs">{fe('ahjRequest')}</p>}
-                </div>
-              )}
-
-              {/* Toggle between list and request */}
-              <button
-                type="button"
-                onClick={() => {
-                  setAhjRequestMode((m) => !m);
-                  setSelectedAhjId(null);
-                  setFieldErrors({});
-                }}
-                className="text-xs text-orange-400 hover:text-orange-300 underline-offset-2 underline"
-              >
-                {ahjRequestMode
-                  ? '← Back to jurisdiction list'
-                  : "My jurisdiction isn't listed"}
-              </button>
-            </div>
-          )}
-
-          {/* Step 4 — Logo (deferred) */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Company logo</h2>
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-6 flex flex-col items-center gap-3 text-center">
-                <Image className="h-10 w-10 text-zinc-500" />
-                <p className="text-zinc-300 text-sm font-medium">Add your logo after sign-up</p>
-                <p className="text-zinc-500 text-xs">
-                  Your logo appears on every Proof Package. You can upload it from your account
-                  settings once your account is ready. Click Continue to proceed.
+                <h2 className="text-lg font-semibold text-white">Create your account</h2>
+                <p className="text-zinc-400 text-sm mt-0.5">
+                  Choose the email and password you'll use to sign in.
                 </p>
               </div>
-            </div>
-          )}
-
-          {/* Step 5 — Credentials */}
-          {step === 4 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Account credentials</h2>
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-1">Work email</label>
                 <input
@@ -579,12 +360,196 @@ export default function PPRegisterPage() {
             </div>
           )}
 
-          {/* Step 6 — Payment */}
-          {step === 5 && (
+          {/* Step 2 — Company details */}
+          {step === 1 && (
+            <div className="space-y-5">
+              <div>
+                <h2 className="text-lg font-semibold text-white">About your company</h2>
+                <p className="text-zinc-400 text-sm mt-0.5">
+                  Tell us how your business operates so we can configure your account.
+                </p>
+              </div>
+
+              {/* Company name */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-1">Company name</label>
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Acme Roofing LLC"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+                {fe('companyName') && <p className="text-red-400 text-xs mt-1">{fe('companyName')}</p>}
+              </div>
+
+              {/* Market type */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-zinc-300">
+                  What market do you serve?
+                </label>
+                <div className="space-y-2">
+                  {MARKET_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setMarketType(opt.value)}
+                      className={`w-full text-left rounded-lg border px-4 py-3 transition-colors
+                        ${marketType === opt.value
+                          ? 'border-orange-500 bg-orange-500/10 text-white'
+                          : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'}`}
+                    >
+                      <p className="text-sm font-semibold">{opt.label}</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">{opt.description}</p>
+                    </button>
+                  ))}
+                </div>
+                {fe('marketType') && <p className="text-red-400 text-xs mt-1">{fe('marketType')}</p>}
+              </div>
+
+              {/* Trade types */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-zinc-300">
+                  What trade(s) do you work in?{' '}
+                  <span className="text-zinc-500">(select all that apply)</span>
+                </label>
+                <div className="flex gap-2">
+                  {TRADE_OPTIONS.map((opt) => {
+                    const selected = tradeTypes.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => toggleTrade(opt.value)}
+                        className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors
+                          ${selected
+                            ? 'border-orange-500 bg-orange-500/10 text-white'
+                            : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {fe('tradeTypes') && <p className="text-red-400 text-xs mt-1">{fe('tradeTypes')}</p>}
+              </div>
+
+              {/* AHJ */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300">
+                    Select your jurisdiction (AHJ)
+                  </label>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    The authority having jurisdiction that governs your work.
+                  </p>
+                </div>
+
+                {!ahjRequestMode && (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={ahjSearch}
+                        onChange={(e) => setAhjSearch(e.target.value)}
+                        placeholder="Search by county or state…"
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div className="border border-zinc-700 rounded-lg overflow-hidden">
+                      {ahjLoading ? (
+                        <div className="flex items-center justify-center h-24 text-zinc-500 text-sm gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Loading jurisdictions…
+                        </div>
+                      ) : filteredAhj.length === 0 ? (
+                        <div className="flex items-center justify-center h-24 text-zinc-500 text-sm">
+                          {ahjList.length === 0
+                            ? 'No covered jurisdictions yet.'
+                            : 'No results match your search.'}
+                        </div>
+                      ) : (
+                        <div className="max-h-44 overflow-y-auto divide-y divide-zinc-800">
+                          {filteredAhj.map((row) => (
+                            <button
+                              key={row.id}
+                              type="button"
+                              onClick={() => setSelectedAhjId(row.id)}
+                              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left transition-colors
+                                ${selectedAhjId === row.id
+                                  ? 'bg-orange-500/10 text-white'
+                                  : 'text-zinc-300 hover:bg-zinc-800/60'}`}
+                            >
+                              <span className="font-medium">
+                                {row.county}, {row.state}
+                              </span>
+                              <span
+                                className={`flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium
+                                  ${row.status === 'covered'
+                                    ? 'bg-green-900/40 text-green-400'
+                                    : 'bg-yellow-900/40 text-yellow-400'}`}
+                              >
+                                {row.status === 'covered' ? 'Covered' : 'Coming soon'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {fe('ahj') && <p className="text-red-400 text-xs">{fe('ahj')}</p>}
+                  </>
+                )}
+
+                {ahjRequestMode && (
+                  <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
+                    <p className="text-sm font-medium text-zinc-300">Describe your local authority</p>
+                    <p className="text-xs text-zinc-500">
+                      Enter the city, county, or state that governs your work. We'll review it and
+                      add coverage — you'll still advance to payment now.
+                    </p>
+                    <input
+                      type="text"
+                      value={ahjRequestText}
+                      onChange={(e) => setAhjRequestText(e.target.value)}
+                      placeholder="e.g. Fairfax County, VA or City of Richmond"
+                      className="w-full bg-zinc-900 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    {fe('ahjRequest') && <p className="text-red-400 text-xs">{fe('ahjRequest')}</p>}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAhjRequestMode((m) => !m);
+                    setSelectedAhjId(null);
+                    setFieldErrors({});
+                  }}
+                  className="text-xs text-orange-400 hover:text-orange-300 underline-offset-2 underline"
+                >
+                  {ahjRequestMode
+                    ? '← Back to jurisdiction list'
+                    : "My jurisdiction isn't listed"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Payment */}
+          {step === 2 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Payment</h2>
+              <div>
+                <h2 className="text-lg font-semibold text-white">Review & payment</h2>
+                <p className="text-zinc-400 text-sm mt-0.5">
+                  Confirm your details before proceeding to checkout.
+                </p>
+              </div>
               <div className="bg-zinc-800 rounded-lg p-4 space-y-2 text-sm">
                 <div className="flex justify-between text-zinc-300">
+                  <span>Email</span>
+                  <span className="font-medium text-white">{email}</span>
+                </div>
+                <div className="border-t border-zinc-700/60 pt-2 flex justify-between text-zinc-300">
                   <span>Company</span>
                   <span className="font-medium text-white">{companyName}</span>
                 </div>
@@ -603,10 +568,6 @@ export default function PPRegisterPage() {
                   <span className="font-medium text-white capitalize">
                     {tradeTypes.join(', ')}
                   </span>
-                </div>
-                <div className="flex justify-between text-zinc-300">
-                  <span>Email</span>
-                  <span className="font-medium text-white">{email}</span>
                 </div>
                 <div className="border-t border-zinc-700 pt-2 flex justify-between">
                   <span className="text-zinc-300">Plan</span>
