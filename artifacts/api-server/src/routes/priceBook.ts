@@ -83,11 +83,7 @@ router.post('/price-book/analyze-price', requirePermission('catalog.price_book_e
       contents: [{ role: 'user', parts: [{ text: userMessage }] }],
     });
 
-    const raw = message.content
-      .filter((block) => block.type === 'text')
-      .map((block) => (block as { text: string }).text)
-      .join('')
-      .trim();
+    const raw = (response.text ?? '').trim();
     if (!raw) {
       res.status(502).json({ error: 'AI returned an empty response. Please try again.' });
       return;
@@ -137,11 +133,7 @@ router.post('/price-book/generate-description', requirePermission('catalog.price
         },
       ],
     });
-    const raw = message.content
-      .filter((block) => block.type === 'text')
-      .map((block) => (block as { text: string }).text)
-      .join('')
-      .trim();
+    const raw = (response.text ?? '').trim();
     if (!raw) {
       res.status(502).json({ error: 'AI returned an empty description. Please try again.' });
       return;
