@@ -392,6 +392,19 @@ export interface InspectionEstimate {
   updatedAt: string;
 }
 
+// A single scope-of-work line in the upload-path PP estimate builder.
+// Stored as ppEstimateLines inside PropertyProfile so no migration is needed.
+// unitPrice is in cents (integer). quantity is a decimal (e.g. 12.5 SQ).
+export interface PPEstimateLine {
+  id: string;                  // client-generated UUID
+  name: string;
+  description: string;
+  unit: string;
+  unitPrice: number;           // cents
+  quantity: number;
+  priceBookItemId?: string;    // source price book item if added from catalog
+}
+
 export interface PropertyProfile {
   propertyType?: string | null; // single_family / townhome / condo / multi_family / commercial
   stories?: string | null; // '1' / '1.5' / '2' / '2.5' / '3+'
@@ -407,6 +420,9 @@ export interface PropertyProfile {
   deckType?: string | null; // plywood / osb / plank / skip_sheathing / unknown
   framingConditionNotes?: string | null;
   recordedAtUtc: string;
+  // Upload-path PP estimate lines — written by Stage 5 of the package
+  // generation wizard. Null/absent = no estimate entered yet.
+  ppEstimateLines?: PPEstimateLine[] | null;
 }
 
 // REPORT_DATA v2 — Repairability Assessment. The crux of replace-vs-repair

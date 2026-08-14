@@ -68,6 +68,8 @@ import PPUpgradePage from '@/pages/pp/PPUpgradePage';
 import PPUpgradeSuccessPage from '@/pages/pp/PPUpgradeSuccessPage';
 import PPWizardPage from '@/pages/pp/PPWizardPage';
 import NewPackagePage from '@/pages/pp/NewPackagePage';
+import IntakePage from '@/pages/pp/IntakePage';
+import EstimatePage from '@/pages/pp/EstimatePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -147,6 +149,18 @@ function Router() {
       <Route path="/pp/new">
         <PPProtectedRoute>
           <PPShell><NewPackagePage /></PPShell>
+        </PPProtectedRoute>
+      </Route>
+      {/* Stage 3: Upload-path intake form — property & claim details */}
+      <Route path="/pp/new/intake">
+        <PPProtectedRoute>
+          <PPShell><IntakePage /></PPShell>
+        </PPProtectedRoute>
+      </Route>
+      {/* Stage 5: Upload-path estimate builder — scope lines from price book */}
+      <Route path="/pp/new/:id/estimate">
+        <PPProtectedRoute>
+          <PPShell><EstimatePage /></PPShell>
         </PPProtectedRoute>
       </Route>
       {/* PP Package Generation Wizard — full wizard is a downstream task */}

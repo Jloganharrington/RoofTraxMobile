@@ -116,9 +116,33 @@ export function useDeletePriceBookPackage() {
 export function useGenerateItemDescription() {
   return useMutation({
     mutationFn: (data: { name: string; unit?: string | null }) =>
-      customFetch<{ description: string }>(
+      customFetch<{ description: string; assumptions: string[]; recommendedSeparateItems: string[]; warnings: string[] }>(
         '/api/price-book/generate-description',
         { method: 'POST', body: JSON.stringify(data) },
       ),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AI price analysis
+// ---------------------------------------------------------------------------
+
+export interface PriceAnalysisResult {
+  targetPrice: number; // dollars
+  raw: string;         // full model response text
+}
+
+export function useAnalyzeItemPrice() {
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      description: string;
+      unitPrice: number; // cents
+      unit?: string | null;
+    }) =>
+      customFetch<PriceAnalysisResult>('/api/price-book/analyze-price', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   });
 }

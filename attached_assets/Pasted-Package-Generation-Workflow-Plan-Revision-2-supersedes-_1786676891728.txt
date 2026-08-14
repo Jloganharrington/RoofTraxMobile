@@ -1,0 +1,97 @@
+Package Generation — Workflow Plan
+Revision 2 · supersedes the prior plan
+
+Part 1 — Two capture paths, one evidence model
+Upload path. The contractor already has a job. They bring photos, a measurement report, and a carrier estimate. Fastest route to first value; produces a package missing the physical-act sections.
+
+Inspection path. The contractor runs the protocol in the mobile app. Slower to start; produces the complete package including repairability and the repair attempt protocol.
+
+Both terminate in the same generator. The difference is what's in the evidence base, and the package states that on its face.
+
+Part 2 — Stage by stage
+1 · Learn. Education module in the CRM: the inspection protocol, what each package section proves, what physical evidence each section requires, and why capture order matters. A contractor who works through this before their next inspection produces a materially better package — and may re-inspect a recent job to do it properly.
+
+2 · Pre-package checklist. Before intake, the contractor sees exactly what a complete package requires — including whether a repairability assessment was performed and whether test squares were opened. Its job is to send them back to the property before they start, not after.
+
+3 · Intake. Property address, carrier, policy number, claim number, date of loss, roof system, stories. Creates the inspection record; pinId stays null on the upload path, which the schema already permits.
+
+4 · Evidence upload. Photos, measurement report, carrier estimate. The measurement report carries the most weight — it supplies geometry photos cannot, and the contractor already bought it. analyze-measurements and apply-measurements already consume it.
+
+5 · Estimate builder. Scope lines drawn from the price book, producing Section 10 (Scope of Work & Pricing Basis) and feeding the Estimate Justifications narrative. Without it the package has no scope and no fixed incurred cost.
+
+6 · Readiness. The deficiency engine runs continuously, showing what's captured and what's missing in the contractor's language rather than the schema's. This is the primary UI of the entire flow.
+
+7 · Resolve or acknowledge. Fixable gaps get fixed. Unfixable ones — no test squares because nobody opened one — are acknowledged, and that acknowledgement determines how the package is labelled.
+
+8 · Generate. Sections render, narrative sections generate and lock, exhibits assemble, table of contents paginates.
+
+9 · Attest and deliver. Signature on file, certification page, delivery. Delivery is the metering event.
+
+10 · Share. PDF download plus the evidence portal link and access code — no account required for the carrier.
+
+Part 3 — One source of truth
+lib/protocol/src/rules.ts already computes deficiencies: a wide photo missing for an elevation, a facet marked damaged with no damage record, a damage record with no photo. The education module, the pre-package checklist, and the live readiness panel are that same rule set rendered at three moments.
+
+Authoring them separately guarantees drift, and drift here means teaching one standard while gating another. One engine, three presentations.
+
+Part 4 — Package variants
+An upload package cannot contain what nobody physically did. Missing: test squares, the Repairability Assessment, the Repair Attempt Protocol narrative, and facet-to-damage mapping.
+
+It must not render under the same cover as a full forensic package. Same engine, same branding, same quality of what it does contain — but the contents page reflects what was captured, and the readiness output becomes the upgrade prompt:
+
+This package documents damage and code requirements. A field inspection adds test squares, repairability assessment, and the repair attempt protocol — the sections carriers question most.
+
+The alternative is a contractor submitting the thinner document believing it is complete, and experiencing the carrier's pushback as your failure.
+
+Part 5 — Metering
+Consumption fires once, on delivery, keyed on package_id.
+
+First package	Free
+Subsequent, pp_only	$100
+CRM subscriber	$50, or stay pay-as-you-go at $100
+Regeneration, revision, supplements	Never re-consume
+At 150 claims a year the $50 saving is $7,500 — exactly the Solo annual price. The CRM pays for itself in package savings at the lowest plan's own volume.
+
+Part 6 — Provisioning dependency
+pp_only provisioning must seed the starter price book, or Stage 5 opens onto a blank page. Seed structure and scope text; leave unit prices null. The profile checklist gains an item: "Set your pricing — N items need unit prices before you can build an estimate."
+
+Prices are not seeded. The library's existing figures are NuHome's own numbers in the Northern Virginia market — publishing them exposes your pricing and hands contractors in other markets figures that are wrong for their labor cost.
+
+Starter Price Book — Seed Items
+Four-paragraph house format: scope and components, standard pricing conditions, exclusions, quantity definition.
+
+Standard Asphalt Shingle Roof System Replacement
+Unit: SQ
+
+Remove one existing layer of standard asphalt roofing material and furnish and install a complete standard asphalt roofing system. The standard system includes synthetic underlayment, ice-and-water shield at eaves, valleys, and penetrations, starter course, field shingles, hip and ridge cap, drip edge, and complete flashing systems including pipe boot, valley, step, counter, headwall, and sidewall flashing. Includes ordinary tear-off labor, loading, transportation, disposal, installation labor, routine material handling, standard jobsite cleanup, and handling of materials and debris within 30 feet of the designated staging or loading area.
+
+Standard pricing applies to roof slopes of 10:12 or less and buildings up to three stories where ordinary delivery, staging, roof access, and ground access are available.
+
+Roof-sheathing replacement, permit fees, permit-administration services, code- or assembly-driven work outside the defined standard roof system including extended ice-and-water coverage and ventilation upgrades, specialty flashing fabrication, chimney crickets, skylight replacement, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, structural repairs, hazardous-material handling, additional roofing layers, and other documented site-condition changes are additional and priced under the applicable Price Book item or written change order.
+
+One roofing square equals 100 square feet of measured roof surface. The quantity includes the documented waste factor required by roof geometry, material layout, and installation specifications.
+
+Standard Vinyl Siding System Replacement
+Unit: SF
+
+Remove one existing layer of standard siding material and furnish and install a complete standard-grade vinyl siding system. The standard system includes weather-resistive barrier, starter strip, horizontal field panels, inside and outside corner posts, J-channel, utility trim, finish trim, undersill trim, corrosion-resistant fasteners, and integration with existing serviceable flashing. Includes ordinary removal labor, loading, transportation, disposal, substrate inspection, installation labor, routine material handling, ordinary cutting and fitting around openings and penetrations, standard jobsite cleanup, and handling of materials and debris within 30 feet of the designated staging or loading area.
+
+Standard pricing applies to one- or two-story residential construction with a standard horizontal profile in a standard manufacturer color, over sound, installation-ready sheathing, at ordinary window and door density, where ordinary delivery, staging, and ground access are available.
+
+Sheathing, framing, or structural repair, continuous-insulation and insulation-board replacement, specialty profiles including insulated, vertical, board-and-batten, shake, and scallop, premium or special-order colors, soffit, fascia, and trim wrap, window and door trim capping, shutters, vents, and mounting blocks beyond ordinary, gutter removal and reset, permit fees, permit-administration services, code- or assembly-driven work outside the defined standard siding system, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, hazardous-material handling, additional siding layers, and other documented site-condition changes are additional and priced under the applicable Price Book item or written change order.
+
+Quantity is measured by net wall surface area. The quantity includes the documented waste factor required by wall geometry, panel layout, and installation specifications.
+
+Emergency Temporary Repair Services
+Unit: EA (per mobilization)
+
+Furnish and install temporary weather protection to arrest ongoing water intrusion until permanent repairs can be performed. Includes emergency mobilization, initial damage assessment, crew and vehicle, ordinary safety and fall-protection equipment, temporary covering material, fasteners, battens, and ballast as conditions require, temporary sealing of active penetrations, removal of loose debris presenting an immediate hazard, routine material handling, standard jobsite cleanup, and photographic documentation of the temporary repair before, during, and after installation.
+
+This is a temporary protective measure. It does not restore the assembly, is not a permanent repair, and is not warranted against continued intrusion under sustained or severe weather.
+
+Standard pricing applies to a single mobilization within the normal service radius during ordinary business hours, on roof slopes of 10:12 or less and buildings up to three stories where safe roof access, ordinary staging, and ground access are available.
+
+Additional mobilizations and return trips, covering beyond the included area, replacement of covering displaced by subsequent weather, after-hours and holiday response, structural stabilization and shoring, interior water extraction and drying, board-up of windows, doors, or wall openings, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, hazardous-material handling, extended monitoring and scheduled re-inspection, and any permanent repair are additional and priced under the applicable Price Book item or written change order.
+
+Standard pricing includes up to 300 square feet of temporary covering furnished and installed. Additional area is measured by covered surface and priced under the applicable Price Book item.
+

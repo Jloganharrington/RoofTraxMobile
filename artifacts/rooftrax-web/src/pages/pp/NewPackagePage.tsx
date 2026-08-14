@@ -470,7 +470,7 @@ export default function NewPackagePage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/pp/inspections?ready=1')}
+              onClick={() => navigate(`/pp/new/intake?types=${[...selectedTypes].join(',')}`)}
               disabled={!allChecked}
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-orange-500 hover:bg-orange-600 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
             >

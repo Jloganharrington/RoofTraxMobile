@@ -14,10 +14,12 @@ import {
   useUpdatePriceBookPackage,
   useDeletePriceBookPackage,
   useGenerateItemDescription,
+  useAnalyzeItemPrice,
   getPriceBookPackagesQueryKey,
   type PriceBookPackage,
   type PriceBookPackageItem,
   type InspectionCondition,
+  type PriceAnalysisResult,
 } from "@/lib/priceBookApi";
 import { Shell } from "@/components/layout/Shell";
 import {
@@ -47,7 +49,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Edit2, Trash2, Zap, Package } from "lucide-react";
+import { Loader2, Plus, Edit2, Trash2, Zap, Package, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // ---------------------------------------------------------------------------
@@ -115,7 +117,9 @@ function ItemDialog({
   const [description, setDescription] = useState(initial.description);
   const [unitPrice, setUnitPrice] = useState(initial.unitPrice);
   const [unit, setUnit] = useState(initial.unit);
+  const [analysisResult, setAnalysisResult] = useState<PriceAnalysisResult | null>(null);
   const generateDesc = useGenerateItemDescription();
+  const analyzePrice = useAnalyzeItemPrice();
 
   // Sync fields whenever the dialog opens or switches to a different item.
   // useState initializers only run on first mount, so without this the fields
@@ -126,6 +130,7 @@ function ItemDialog({
       setDescription(initial.description);
       setUnitPrice(initial.unitPrice);
       setUnit(initial.unit);
+      setAnalysisResult(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial.editingId]);
@@ -139,14 +144,42 @@ function ItemDialog({
         unit: unit.trim() || null,
       });
       setDescription(res.description);
+      setAnalysisResult(null); // reset stale analysis when description changes
     } catch {
       // toast is handled by caller pattern; silently ignore here
     }
   };
 
+  const canAnalyze =
+    name.trim().length > 0 &&
+    description.trim().length > 0 &&
+    parseDollarsToCents(unitPrice) !== null &&
+    (parseDollarsToCents(unitPrice) ?? 0) > 0;
+
+  const handleAnalyze = async () => {
+    const cents = parseDollarsToCents(unitPrice);
+    if (!canAnalyze || cents === null) return;
+    setAnalysisResult(null);
+    try {
+      const res = await analyzePrice.mutateAsync({
+        name: name.trim(),
+        description: description.trim(),
+        unitPrice: cents,
+        unit: unit.trim() || null,
+      });
+      setAnalysisResult(res);
+    } catch {
+      // silently ignore — the user will see the button available to retry
+    }
+  };
+
+  const currentPriceDollars = parseDollarsToCents(unitPrice) !== null
+    ? (parseDollarsToCents(unitPrice)! / 100)
+    : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
             {initial.editingId ? "Edit Line Item" : "Add Line Item"}
@@ -206,10 +239,84 @@ function ItemDialog({
             </div>
             <Textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                setAnalysisResult(null); // reset stale analysis on manual edit
+              }}
               placeholder="Optional notes about this line item"
               rows={4}
             />
+          </div>
+
+          {/* ── Analyze My Price ─────────────────────────────────────────── */}
+          <div className="grid gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={handleAnalyze}
+              disabled={analyzePrice.isPending || !canAnalyze}
+              className="w-full gap-2 border-blue-500/40 text-blue-600 hover:bg-blue-500/5 hover:text-blue-700 disabled:opacity-40"
+            >
+              {analyzePrice.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <TrendingUp className="h-4 w-4" />
+              )}
+              {analyzePrice.isPending ? "Analyzing market pricing…" : "Analyze My Price"}
+            </Button>
+
+            {/* Target price result */}
+            {analysisResult && (() => {
+              const target = analysisResult.targetPrice;
+              const diff = currentPriceDollars !== null ? currentPriceDollars - target : null;
+              const pct = diff !== null && target > 0 ? Math.abs(diff / target) * 100 : null;
+              const above = diff !== null && diff > 0.005;
+              const below = diff !== null && diff < -0.005;
+              return (
+                <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 grid gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-xs font-medium text-blue-600 uppercase tracking-wide">
+                      Market Target Price
+                    </span>
+                    {diff !== null && pct !== null && pct >= 0.5 && (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                        above
+                          ? 'bg-red-500/10 text-red-600 border-red-500/30'
+                          : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                      }`}>
+                        {above
+                          ? `$${diff.toFixed(2)} above target`
+                          : `$${Math.abs(diff).toFixed(2)} below target`}
+                      </span>
+                    )}
+                    {diff !== null && pct !== null && pct < 0.5 && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
+                        At target
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-bold text-foreground">
+                      ${target.toFixed(2)}
+                    </span>
+                    {unit.trim() && (
+                      <span className="text-sm text-muted-foreground">/ {unit.trim()}</span>
+                    )}
+                  </div>
+                  {below && (
+                    <p className="text-xs text-muted-foreground">
+                      Your current price is ${Math.abs(diff!).toFixed(2)} below the market target. Consider raising it to maximize revenue.
+                    </p>
+                  )}
+                  {above && (
+                    <p className="text-xs text-muted-foreground">
+                      Your current price is ${diff!.toFixed(2)} above the market target. You may risk losing bids at this rate.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

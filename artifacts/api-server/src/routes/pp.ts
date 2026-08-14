@@ -39,6 +39,7 @@ import {
   ppPackageCreditsTable,
   ppPendingCheckoutsTable,
   ppPendingRegistrationsTable,
+  priceBookItemsTable,
   standardsEntriesTable,
   testSquaresTable,
   userProfilesTable,
@@ -149,6 +150,37 @@ async function provisionPPAccount(opts: {
       .insert(userProfilesTable)
       .values({ userId: user.id, role: 'admin', department: 'inspector_canvasser' })
       .onConflictDoNothing();
+
+    // ── Starter price book seed (Part 6 of workflow plan) ──────────────────
+    // PP-only companies need a pre-populated price book or Stage 5 (estimate
+    // builder) opens onto a blank page. Unit prices are intentionally left at 0
+    // so contractors must set their own market rates.
+    await tx.insert(priceBookItemsTable).values([
+      {
+        companyId: company.id,
+        name: 'Standard Asphalt Shingle Roof System Replacement',
+        unit: 'SQ',
+        unitPrice: 0,
+        description:
+          'Remove one existing layer of standard asphalt roofing material and furnish and install a complete standard asphalt roofing system. The standard system includes synthetic underlayment, ice-and-water shield at eaves, valleys, and penetrations, starter course, field shingles, hip and ridge cap, drip edge, and complete flashing systems including pipe boot, valley, step, counter, headwall, and sidewall flashing. Includes ordinary tear-off labor, loading, transportation, disposal, installation labor, routine material handling, standard jobsite cleanup, and handling of materials and debris within 30 feet of the designated staging or loading area.\n\nStandard pricing applies to roof slopes of 10:12 or less and buildings up to three stories where ordinary delivery, staging, roof access, and ground access are available.\n\nRoof-sheathing replacement, permit fees, permit-administration services, code- or assembly-driven work outside the defined standard roof system including extended ice-and-water coverage and ventilation upgrades, specialty flashing fabrication, chimney crickets, skylight replacement, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, structural repairs, hazardous-material handling, additional roofing layers, and other documented site-condition changes are additional and priced under the applicable Price Book item or written change order.\n\nOne roofing square equals 100 square feet of measured roof surface. The quantity includes the documented waste factor required by roof geometry, material layout, and installation specifications.',
+      },
+      {
+        companyId: company.id,
+        name: 'Standard Vinyl Siding System Replacement',
+        unit: 'SF',
+        unitPrice: 0,
+        description:
+          'Remove one existing layer of standard siding material and furnish and install a complete standard-grade vinyl siding system. The standard system includes weather-resistive barrier, starter strip, horizontal field panels, inside and outside corner posts, J-channel, utility trim, finish trim, undersill trim, corrosion-resistant fasteners, and integration with existing serviceable flashing. Includes ordinary removal labor, loading, transportation, disposal, substrate inspection, installation labor, routine material handling, ordinary cutting and fitting around openings and penetrations, standard jobsite cleanup, and handling of materials and debris within 30 feet of the designated staging or loading area.\n\nStandard pricing applies to one- or two-story residential construction with a standard horizontal profile in a standard manufacturer color, over sound, installation-ready sheathing, at ordinary window and door density, where ordinary delivery, staging, and ground access are available.\n\nSheathing, framing, or structural repair, continuous-insulation and insulation-board replacement, specialty profiles including insulated, vertical, board-and-batten, shake, and scallop, premium or special-order colors, soffit, fascia, and trim wrap, window and door trim capping, shutters, vents, and mounting blocks beyond ordinary, gutter removal and reset, permit fees, permit-administration services, code- or assembly-driven work outside the defined standard siding system, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, hazardous-material handling, additional siding layers, and other documented site-condition changes are additional and priced under the applicable Price Book item or written change order.\n\nQuantity is measured by net wall surface area. The quantity includes the documented waste factor required by wall geometry, panel layout, and installation specifications.',
+      },
+      {
+        companyId: company.id,
+        name: 'Emergency Temporary Repair Services',
+        unit: 'EA',
+        unitPrice: 0,
+        description:
+          'Furnish and install temporary weather protection to arrest ongoing water intrusion until permanent repairs can be performed. Includes emergency mobilization, initial damage assessment, crew and vehicle, ordinary safety and fall-protection equipment, temporary covering material, fasteners, battens, and ballast as conditions require, temporary sealing of active penetrations, removal of loose debris presenting an immediate hazard, routine material handling, standard jobsite cleanup, and photographic documentation of the temporary repair before, during, and after installation.\n\nThis is a temporary protective measure. It does not restore the assembly, is not a permanent repair, and is not warranted against continued intrusion under sustained or severe weather.\n\nStandard pricing applies to a single mobilization within the normal service radius during ordinary business hours, on roof slopes of 10:12 or less and buildings up to three stories where safe roof access, ordinary staging, and ground access are available.\n\nAdditional mobilizations and return trips, covering beyond the included area, replacement of covering displaced by subsequent weather, after-hours and holiday response, structural stabilization and shoring, interior water extraction and drying, board-up of windows, doors, or wall openings, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, hazardous-material handling, extended monitoring and scheduled re-inspection, and any permanent repair are additional and priced under the applicable Price Book item or written change order. Standard pricing includes up to 300 square feet of temporary covering furnished and installed. Additional area is measured by covered surface and priced under the applicable Price Book item.',
+      },
+    ]);
 
     return { company, user };
   });
@@ -866,6 +898,182 @@ router.get('/pp/inspections', async (req: Request, res: Response) => {
   });
 
   res.json({ inspections: result });
+});
+
+// ── PP inspection create (upload path) ───────────────────────────────────────
+
+/**
+ * POST /pp/inspections
+ * Creates a new inspection record for the upload path (pinId = null).
+ * The upload path is for contractors who already have photos, a measurement
+ * report, and a carrier estimate — no prior mobile inspection is required.
+ */
+const CreatePPInspectionBody = z.object({
+  address:           z.string().trim().min(1).max(500),
+  insuredName:       z.string().trim().max(200).optional(),
+  carrierName:       z.string().trim().max(200).optional(),
+  policyNumber:      z.string().trim().max(100).optional(),
+  claimNumber:       z.string().trim().max(100).optional(),
+  dateOfLoss:        z.string().trim().max(50).optional(),
+  roofDamageFound:   z.boolean().optional(),
+  sidingDamageFound: z.boolean().optional(),
+  notes:             z.string().trim().max(2000).optional(),
+});
+
+router.post('/pp/inspections', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const parsed = CreatePPInspectionBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const [inspection] = await db
+    .insert(inspectionsTable)
+    .values({
+      companyId:         ppCtx.company.id,
+      inspectorUserId:   ppCtx.user.id,
+      pinId:             null, // upload path — no linked CRM pin
+      status:            'scheduled',
+      address:           parsed.data.address,
+      insuredName:       parsed.data.insuredName ?? null,
+      carrierName:       parsed.data.carrierName ?? null,
+      policyNumber:      parsed.data.policyNumber ?? null,
+      claimNumber:       parsed.data.claimNumber ?? null,
+      dateOfLoss:        parsed.data.dateOfLoss ?? null,
+      roofDamageFound:   parsed.data.roofDamageFound ?? false,
+      sidingDamageFound: parsed.data.sidingDamageFound ?? false,
+      notes:             parsed.data.notes ?? null,
+    })
+    .returning();
+
+  res.status(201).json({ inspectionId: inspection.id });
+});
+
+// ── PP price book (upload-path catalog) ──────────────────────────────────────
+
+/**
+ * GET /pp/price-book
+ * Returns the authenticated PP company's price book items.
+ * Used by the Stage 5 estimate builder — PP sessions do not have the CRM
+ * catalog.price_book_view permission so we expose a separate PP-gated route.
+ */
+router.get('/pp/price-book', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const items = await db
+    .select({
+      id:          priceBookItemsTable.id,
+      name:        priceBookItemsTable.name,
+      description: priceBookItemsTable.description,
+      unit:        priceBookItemsTable.unit,
+      unitPrice:   priceBookItemsTable.unitPrice,
+    })
+    .from(priceBookItemsTable)
+    .where(eq(priceBookItemsTable.companyId, ppCtx.company.id))
+    .orderBy(asc(priceBookItemsTable.name));
+
+  res.json({ items });
+});
+
+// ── PP estimate lines (per inspection) ───────────────────────────────────────
+
+const PPEstimateLineSchema = z.object({
+  id:               z.string().uuid(),
+  name:             z.string().trim().min(1).max(300),
+  description:      z.string().trim().max(2000).default(''),
+  unit:             z.string().trim().min(1).max(50),
+  unitPrice:        z.number().int().min(0),
+  quantity:         z.number().min(0),
+  priceBookItemId:  z.string().uuid().optional(),
+});
+
+const PutEstimateBody = z.object({
+  lines: z.array(PPEstimateLineSchema).max(100),
+});
+
+/**
+ * GET /pp/inspections/:inspectionId/estimate
+ * Returns the current estimate lines (from propertyProfile.ppEstimateLines).
+ */
+router.get('/pp/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+
+  const [row] = await db
+    .select({ propertyProfile: inspectionsTable.propertyProfile })
+    .from(inspectionsTable)
+    .where(
+      and(
+        eq(inspectionsTable.id, inspectionId),
+        eq(inspectionsTable.companyId, ppCtx.company.id),
+      ),
+    );
+
+  if (!row) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  const lines = (row.propertyProfile as Record<string, unknown> | null)?.ppEstimateLines ?? [];
+  res.json({ lines });
+});
+
+/**
+ * PUT /pp/inspections/:inspectionId/estimate
+ * Saves estimate lines into propertyProfile.ppEstimateLines.
+ */
+router.put('/pp/inspections/:inspectionId/estimate', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+
+  const parsed = PutEstimateBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid estimate payload', details: parsed.error.flatten() });
+    return;
+  }
+
+  const [row] = await db
+    .select({ propertyProfile: inspectionsTable.propertyProfile })
+    .from(inspectionsTable)
+    .where(
+      and(
+        eq(inspectionsTable.id, inspectionId),
+        eq(inspectionsTable.companyId, ppCtx.company.id),
+      ),
+    );
+
+  if (!row) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  const existingProfile = (row.propertyProfile ?? {}) as Record<string, unknown>;
+  // Spread first so explicit keys win; cast to `any` — the column is jsonb and
+  // the shape is enforced at the application layer via PPEstimateLineSchema.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updatedProfile: any = {
+    ...existingProfile,
+    recordedAtUtc:
+      typeof existingProfile.recordedAtUtc === 'string'
+        ? existingProfile.recordedAtUtc
+        : new Date().toISOString(),
+    ppEstimateLines: parsed.data.lines,
+  };
+
+  await db
+    .update(inspectionsTable)
+    .set({ propertyProfile: updatedProfile, updatedAt: new Date() })
+    .where(eq(inspectionsTable.id, inspectionId));
+
+  res.json({ ok: true });
 });
 
 // ── PP packages list ─────────────────────────────────────────────────────────
