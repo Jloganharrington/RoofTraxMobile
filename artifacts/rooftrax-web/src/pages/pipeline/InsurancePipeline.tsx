@@ -649,6 +649,12 @@ function InsuranceCard({
               config={{ label: 'Open Claim Hub', href: '/leads/:leadId?tab=claim' }}
               onSuccess={onSuccess}
             />
+            <a
+              href={`/rooftrax-web/proof-packages?leadId=${id}`}
+              className="block w-full text-center text-xs text-orange-400 hover:text-orange-300 underline underline-offset-2 py-0.5"
+            >
+              Open in Package Builder
+            </a>
           </div>
         );
       default:

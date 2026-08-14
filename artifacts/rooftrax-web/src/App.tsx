@@ -30,6 +30,7 @@ import { ComingSoon } from '@/pages/ComingSoon';
 import TeamCalendar from '@/pages/TeamCalendar';
 import { ReportsPage } from '@/pages/ReportsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
+import ProofPackageBuilderPage from '@/pages/builder/ProofPackageBuilderPage';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import UserAuthorizationPage from '@/pages/team/UserAuthorizationPage';
 import MapPage from '@/pages/MapPage';
@@ -243,6 +244,9 @@ function Router() {
       <Route path="/trial">
         <ProtectedRoute><TrialPage /></ProtectedRoute>
       </Route>
+      {/* Proof Package Builder — dual-auth (PP session or CRM JWT); page handles auth detection */}
+      <Route path="/proof-packages" component={ProofPackageBuilderPage} />
+
       <Route path="/settings/library">
         <ProtectedRoute><LibraryPage /></ProtectedRoute>
       </Route>

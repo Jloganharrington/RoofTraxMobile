@@ -72,7 +72,7 @@ const NAV_SECTIONS: NavSection[] = [
     heading: "Data & Tools",
     items: [
       { label: "Reports",            path: "/reports",           icon: BarChart2,   minRole: 'manager' },
-      { label: "Proof Package Data", path: "/settings/library",  icon: BookOpen },
+      { label: "Proof Package Builder", path: "/proof-packages", icon: BookOpen },
     ],
   },
   {

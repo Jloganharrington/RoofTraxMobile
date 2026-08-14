@@ -41,6 +41,7 @@ import trialRouter from "./trial";
 import pricingRouter from "./pricing";
 import trialAdminRouter from "./trialAdmin";
 import ppRouter from "./pp";
+import builderRouter from "./builder";
 
 const router: IRouter = Router();
 
@@ -86,5 +87,6 @@ router.use(trialRouter);
 router.use(pricingRouter);
 router.use(trialAdminRouter);
 router.use(ppRouter);
+router.use(builderRouter);
 
 export default router;
