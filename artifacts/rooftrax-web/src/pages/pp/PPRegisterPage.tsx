@@ -611,12 +611,12 @@ export default function PPRegisterPage() {
           </button>
         </div>
 
-        <p className="text-center text-zinc-500 text-xs">
-          Already have an account?{' '}
-          <a href="/rooftrax-web/pp/login" className="text-orange-400 hover:text-orange-300">
-            Log in
-          </a>
-        </p>
+        <a
+          href="/rooftrax-web/pp/login"
+          className="flex items-center justify-center w-full border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white rounded-lg px-4 py-2.5 font-semibold text-sm transition-colors"
+        >
+          Already Have An Account?
+        </a>
       </div>
     </div>
   );
