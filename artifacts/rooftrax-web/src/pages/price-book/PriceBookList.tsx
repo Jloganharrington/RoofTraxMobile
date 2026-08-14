@@ -120,6 +120,7 @@ function ItemDialog({
   const [analysisResult, setAnalysisResult] = useState<PriceAnalysisResult | null>(null);
   const generateDesc = useGenerateItemDescription();
   const analyzePrice = useAnalyzeItemPrice();
+  const { toast } = useToast();
 
   // Sync fields whenever the dialog opens or switches to a different item.
   // useState initializers only run on first mount, so without this the fields
@@ -169,7 +170,10 @@ function ItemDialog({
       });
       setAnalysisResult(res);
     } catch {
-      // silently ignore — the user will see the button available to retry
+      toast({
+        title: "Price analysis failed — please try again.",
+        variant: "destructive",
+      });
     }
   };
 
