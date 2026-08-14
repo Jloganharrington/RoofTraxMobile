@@ -1,0 +1,76 @@
+WORK ORDER — Database Consolidation
+Mode: Build, with a report-only first step. Baseline: workspace suite plus the 130-test negative suite.
+Hard constraint: zero writes to artifacts/mobile/.
+One step per commit. Steps run in order — this order deletes tables, and the sequence is what makes that safe.
+
+Context. Four overlapping models are live at once. Two identity models (trial_accounts versus companies.ppTier='pp_only') and two subscription models (055's seat-tier tables versus 056's per-claim tables), plus a third billing surface in 059/060. The decision is: pp_only is the identity model, 056 is the subscription model, the trial track and 055 are retired.
+
+STEP 1 — Inventory (report only, no changes)
+Before anything is dropped, establish what's actually there.
+
+For every table created by migrations 053 through 060, report: row count in the dev database, and every file in artifacts/ or lib/ that references it by table name or Drizzle export. Distinguish real usage from dead imports.
+
+Answer four questions specifically:
+
+trial_accounts — six files reference it. Which routes are reachable from the site today, and has any real submission ever been created?
+converted_tenant_id — confirm nothing writes it, so no trial account has ever become a tenant.
+055 tables (plan_pricing_tiers, plan_subscriptions, enterprise_bands, enterprise_config, enterprise_inquiries) — confirm zero code references, and report row counts.
+beta_applications (053) — is this live, superseded by the PP registration track, or unused?
+Also list every table that appears in 000_baseline.sql but is slated for removal here. The baseline was generated from the schema and will recreate anything dropped unless it's regenerated — that dependency is the thing most likely to be missed.
+
+▶ CHECKPOINT 1 — Paste the table, the four answers, and the baseline overlap list. Stop. I'll confirm the drop list before anything is destructive.
+
+STEP 2 — Drop the superseded pricing model
+Remove the 055 tables and their Drizzle schema definitions. These encode the seat-and-tier model your master document supersedes, and nothing reads them.
+
+Migration 061_drop_plan_tier_tables.sql. Guard each drop with IF EXISTS. Do not use CASCADE — if a foreign key blocks a drop, that's information, not an obstacle to bulldoze; report it and stop.
+
+▶ CHECKPOINT 2 — Migration, the schema diff, and confirmation that typecheck and both suites pass.
+
+STEP 3 — Retire the trial track
+The trial model assumed a concierge service performed for a prospect with no account. The two-stage model replaces it: a Stage 1 customer is a real tenant with ppTier='pp_only', and everything they build is already tenant data. There is nothing to convert.
+
+Keep and repoint, because these are jurisdiction and retention concerns rather than identity:
+
+ahj_coverage — feeds the coverage gate; it belongs with the AHJ master library, not the trial track
+waitlist_entries — out-of-coverage capture is still needed
+trial_purge_audit — retention logging; repoint at whatever replaces trial_submissions, or fold into the existing purge audit pattern
+Retire: trial_accounts, trial_sessions, trial_submissions, trial_uploads, trial_credit_ledger.
+
+Remove the code paths first, in their own commit, then the tables. A route that 500s because its table vanished is a worse failure mode than a route that no longer exists.
+
+Report before removing: what the PP generation flow does today that trial_submissions was going to do, and whether any capability is genuinely lost — the photo/document upload intake, in particular, since that is about to become the primary onboarding path.
+
+▶ CHECKPOINT 3 — Code-removal diff, the migration, the kept-table repointing, and a statement of any capability lost.
+
+STEP 4 — One metering implementation
+claim_ledger (056) and pp_package_credits (059) are two meters. Under the two-stage model they measure different things — Stage 1 pays per package, Stage 2 pays per claim against a commitment — but the rule from §2.7 has to hold identically in both:
+
+A claim is consumed when a proof package reaches delivered. Regeneration, revision, and supplement documents never re-consume.
+
+Right now that rule has no shared implementation. Extract one consumption function that both surfaces call, keyed on package_id so re-delivery of the same package is idempotent rather than depending on status transitions.
+
+Tests: deliver once consumes once; deliver the same package again consumes nothing; regenerate then re-deliver consumes nothing; a supplement on a delivered package consumes nothing; a genuinely new package on the same claim consumes once.
+
+▶ CHECKPOINT 4 — The shared function, both call sites, and the five test results with ledger row counts.
+
+STEP 5 — Regenerate and round-trip the baseline
+This was already outstanding and Steps 2 and 3 make it mandatory — the current 000_baseline.sql creates tables you just dropped.
+
+Regenerate from the post-consolidation schema, then append the objects Drizzle cannot express, taken from the live database rather than from the migration files:
+
+All seven partial indexes, including both report_attestations predicates
+The pin_profitability view
+_parse_legacy_money_cents
+Then run the round-trip that has never been run: provision a scratch database from 000_baseline.sql plus subsequent migrations, and diff it against dev — tables, columns, constraints, indexes with predicates, views, functions. Zero differences is the only pass. Paste the diff.
+
+Assert specifically that both report_attestations partial indexes exist with correct predicates in the scratch database and that no non-partial report_attestations_inspection_version_idx is present.
+
+▶ CHECKPOINT 5 — Regenerated baseline, the appended objects, the round-trip diff, and the index assertion.
+
+STEP 6 — Verification
+130-test negative suite with every verdict change explained; seed-acceptance-claim.ts; the workspace suite per package; pnpm -w tsc --build --force; and git status --porcelain artifacts/mobile/ empty.
+
+Update TESTREPORT.md with a Consolidation section: what was dropped, what was kept and why, and the round-trip result.
+
+▶ CHECKPOINT 6 — All five.
