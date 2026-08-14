@@ -1,0 +1,68 @@
+WORK ORDER — Proof Package Builder Page
+Mode: Build. Baseline: workspace suite plus the 130-test negative suite.
+Hard constraint: zero writes to artifacts/mobile/.
+Principle: one page, both audiences, gated by capability. Do not build a CRM-only builder beside the PP one.
+
+STEP 1 — Report before building
+What MyPackagesPage.tsx renders today — data source, grouping if any, per-row content, actions.
+What NewPackagePage, IntakePage, and PPWizardPage do, and which is the actual creation entry.
+How the insurance pipeline starts a package — the control in InsurancePipeline.tsx, what it calls, and what state it passes.
+Which API each calls — /pp/* or the shared routes. Name every endpoint.
+How a list page would get readiness for N packages. The readiness endpoint is per-inspection. Calling it once per row is N round-trips on page load. Report whether a list-level summary exists, and if not, what the cheapest shape would be.
+▶ CHECKPOINT 1 — All five. Stop. Item 5 decides whether Step 3 needs an API change first.
+
+STEP 2 — Navigation and routing
+Shell.tsx:75 changes from Proof Package Data → /settings/library to Proof Package Builder → /proof-packages.
+
+LibraryPage.tsx stays exactly where it is at /settings/library. It loses its nav entry and gains a Proof Package Library button in the Builder's header.
+
+Gate that button on report.settings_view, which the registry puts at super_admin. A field rep should not see it — genuinely absent, not present-and-403.
+
+STEP 3 — The list page
+Promote MyPackagesPage to /proof-packages as the single Builder page for both audiences. It keeps working for pp_only and becomes the CRM's entry point.
+
+Three groups, in this order, each with a count and a severity stripe:
+
+Needs attention — deficiencies remain
+Ready to generate — can_generate true
+Delivered — collapsed by default
+Per row: property address as the primary identifier, then carrier, claim number, and date of loss as secondary. A variant chip reading Upload or Forensic. A readiness chip — deficiency count, or Ready. Last-touched. One action, which changes per group: Resume, Generate, Open.
+
+Every chip derives from the readiness endpoint. variant for the variant chip, deficiencies.length for the count, can_generate for group placement. The page computes no state of its own — that is the entire reason the readiness engine was consolidated first.
+
+Supplements render as a chip on the parent row, not as separate entries.
+
+No search, no filters, no bulk selection in this pass. Search earns its place when Delivered gets large; it's noise at six packages.
+
+STEP 4 — New Package
+A chooser, not page-level buttons. Three options, each conditionally rendered:
+
+An existing lead — CRM capability only; pre-fills property, carrier, claim, date of loss
+A field inspection — only when an unpackaged inspection exists
+Scratch, upload what I have — always available
+For a first-time pp_only contractor this collapses to one option, so no decision is presented. Route each into whichever existing page Step 1 identifies as the real creation entry — do not write a fourth.
+
+STEP 5 — Empty state
+Not a placeholder. It's the first real view of the product for a pp_only contractor and it does three jobs: what a package contains, what to have ready, and what can't be added later.
+
+Include the package contents list, the pre-package checklist, the free-first-package callout if that's live, one primary action, and a link to a sample package. State plainly that test squares and the repairability assessment cannot be reconstructed from photos.
+
+STEP 6 — Pipeline entry
+InsurancePipeline.tsx links into the Builder with the lead pre-selected, landing in that lead's package rather than on the list. The Builder is the home; the pipeline is a shortcut into it.
+
+STEP 7 — Verification
+Case	Expected
+pp_only user opens /proof-packages	Loads; Library button absent; New Package shows one option
+Field rep, CRM tenant	Loads; Library button absent
+Super_admin	Library button present and reaches /settings/library
+Package with deficiencies	Needs attention group, count matches deficiencies.length
+Package with can_generate	Ready group, Generate action
+Upload-path package	Variant chip reads Upload
+Zero packages	Empty state, not an empty list
+Pipeline link	Lands on that lead's package
+Page load with 12 packages	Report the request count — one call, not twelve
+Then the negative suite with any verdict change explained, the workspace suite per package, and git status --porcelain artifacts/mobile/ empty.
+
+▶ CHECKPOINT 7 — The table, the request-count measurement, and both suite outputs.
+
+Two
