@@ -199,6 +199,7 @@ import {
   evaluateServerInspection,
   type HydratedInspectionChildren,
 } from '../lib/inspectionProtocolState';
+import { applicableSteps } from '@workspace/protocol';
 import { getCompanyCrmConfig } from '../lib/crm';
 import { computeLines, computeMeasuredBasis } from '../lib/estimate';
 import {
@@ -2850,6 +2851,10 @@ router.post('/inspections/:inspectionId/preflight', requireWritableInspection({ 
 
   const inspectionId = req.params.inspectionId as string;
 
+  // Thin wrapper for one release — log callers so we can see what still uses
+  // this endpoint before removing it. Migrate to GET /inspections/:id/readiness.
+  req.log.warn({ inspectionId }, 'preflight endpoint hit — migrate callers to GET /inspections/:inspectionId/readiness');
+
   const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
   const evaluation = evaluateServerInspection({
     ...children,
@@ -5133,87 +5138,82 @@ router.post('/inspections/:inspectionId/report/compile', requireWritableInspecti
   }
 
   // ── Stage 0 readiness re-validation ───────────────────────────────────────
-  // Server-side gate: recompute the full 9-item readiness checklist before
-  // accepting a compile request. Any hard 'fail' item blocks compile so the
-  // UI cannot be bypassed by a direct API call.
-  {
-    const [
-      compileProducts,
-      compileAttests,
-      compileTestSquares,
-      compileDamageInstances,
-      compileSlopes,
-      [compileCompany],
-      compileAhjPacks,
-      compileLegacyPacks,
-      compileClaimSections,
-      compileStandardsEntries,
-    ] = await Promise.all([
-      db.select({
-        identificationMethod: inspectionProductsTable.identificationMethod,
-        discontinued: inspectionProductsTable.discontinued,
-        ordinaryAvailability: inspectionProductsTable.ordinaryAvailability,
-      }).from(inspectionProductsTable)
-        .where(and(eq(inspectionProductsTable.inspectionId, inspectionId), eq(inspectionProductsTable.companyId, actor.companyId))),
-      db.select({ attestationType: attestationsTable.attestationType })
-        .from(attestationsTable)
-        .where(and(eq(attestationsTable.inspectionId, inspectionId), eq(attestationsTable.companyId, actor.companyId))),
-      db.select({ id: testSquaresTable.id })
-        .from(testSquaresTable)
-        .where(and(eq(testSquaresTable.inspectionId, inspectionId), eq(testSquaresTable.companyId, actor.companyId))),
-      db.select({ id: damageInstancesTable.id })
-        .from(damageInstancesTable)
-        .where(and(eq(damageInstancesTable.inspectionId, inspectionId), eq(damageInstancesTable.companyId, actor.companyId)))
-        .limit(1),
-      db.select({ materialType: inspectionSlopesTable.materialType })
-        .from(inspectionSlopesTable)
-        .where(and(eq(inspectionSlopesTable.inspectionId, inspectionId), eq(inspectionSlopesTable.companyId, actor.companyId))),
-      db.select({ contractorLicenses: companiesTable.contractorLicenses, qualificationsText: companiesTable.qualificationsText })
-        .from(companiesTable).where(eq(companiesTable.id, actor.companyId)).limit(1),
-      db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
-        .from(ahjPacksTable).where(eq(ahjPacksTable.companyId, actor.companyId)),
-      db.select({ state: companyJurisdictionPacksTable.state })
-        .from(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, actor.companyId)),
-      db.select({ sectionType: claimSectionsTable.sectionType, libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot })
-        .from(claimSectionsTable).where(and(eq(claimSectionsTable.inspectionId, inspectionId), isNull(claimSectionsTable.supplementId))),
-      db.select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus })
-        .from(standardsEntriesTable).where(eq(standardsEntriesTable.companyId, actor.companyId)),
-    ]);
+  // evaluateServerInspection() is the single authoritative path for field-
+  // evidence facts; computeReadiness() takes the EvaluationResult so it does
+  // not re-query the same rows. Children are fetched once here and reused by
+  // the compile body below (eliminates the duplicate hydrateInspectionChildren
+  // call that previously appeared after the gate).
+  const [
+    children,
+    [compileCompany],
+    compileAhjPacks,
+    compileLegacyPacks,
+    compileClaimSections,
+    compileStandardsEntries,
+  ] = await Promise.all([
+    hydrateInspectionChildren(inspectionId, actor.companyId),
+    db.select({ contractorLicenses: companiesTable.contractorLicenses, qualificationsText: companiesTable.qualificationsText })
+      .from(companiesTable).where(eq(companiesTable.id, actor.companyId)).limit(1),
+    db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+      .from(ahjPacksTable).where(eq(ahjPacksTable.companyId, actor.companyId)),
+    db.select({ state: companyJurisdictionPacksTable.state })
+      .from(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, actor.companyId)),
+    db.select({ sectionType: claimSectionsTable.sectionType, libraryVersionSnapshot: claimSectionsTable.libraryVersionSnapshot })
+      .from(claimSectionsTable).where(and(eq(claimSectionsTable.inspectionId, inspectionId), isNull(claimSectionsTable.supplementId))),
+    db.select({ entryKey: standardsEntriesTable.entryKey, verificationStatus: standardsEntriesTable.verificationStatus })
+      .from(standardsEntriesTable).where(eq(standardsEntriesTable.companyId, actor.companyId)),
+  ]);
 
-    const readinessResult = computeReadiness({
-      inspectionId,
-      inspection: {
-        ...inspection,
-        rapGateReason: (inspection.rapGateReason as string | null | undefined) ?? null,
-        estimate: (inspection.estimate as { lines?: Array<{ description?: string; categoryCode?: string }> } | null),
-        temporaryRepairs: (inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null),
-        propertyProfile: (inspection.propertyProfile as { structureType?: string; garageAttached?: boolean } | null),
-        interiorDamageFound: inspection.interiorDamageFound,
-      },
-      products: compileProducts.map(p => ({ identificationMethod: p.identificationMethod, discontinued: p.discontinued ?? null, ordinaryAvailability: p.ordinaryAvailability ?? null })),
-      slopes: compileSlopes,
-      attestations: compileAttests.map(a => ({ attestationType: a.attestationType ?? null })),
-      testSquaresCount: compileTestSquares.length,
-      damageInstancesCount: compileDamageInstances.length,
-      company: { contractorLicenses: compileCompany?.contractorLicenses ?? null, qualificationsText: compileCompany?.qualificationsText ?? null },
-      ahjPacks: compileAhjPacks,
-      legacyJurisdictionStates: compileLegacyPacks.map(p => p.state),
-      claimSections: compileClaimSections.map(s => ({ sectionType: s.sectionType, libraryVersionSnapshot: (s.libraryVersionSnapshot as { standardsEntryKeys?: string[] } | null) ?? null })),
-      standardsEntries: compileStandardsEntries.map(e => ({ entryKey: e.entryKey, verificationStatus: e.verificationStatus })),
+  const compileEvaluation = evaluateServerInspection({
+    ...children,
+    arrivalConditions: inspection.arrivalConditions ?? null,
+    damageFlags: {
+      roofDamageFound: inspection.roofDamageFound,
+      sidingDamageFound: inspection.sidingDamageFound,
+      collateralDamageFound: inspection.collateralDamageFound,
+      interiorDamageFound: inspection.interiorDamageFound,
+    },
+    sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
+    measurementsReportUrl: inspection.measurementsReportUrl ?? null,
+    propertyType: inspection.propertyProfile?.propertyType ?? null,
+  });
+
+  const readinessResult = computeReadiness({
+    inspectionId,
+    inspection: {
+      ...inspection,
+      rapGateReason: (inspection.rapGateReason as string | null | undefined) ?? null,
+      estimate: (inspection.estimate as { lines?: Array<{ description?: string; categoryCode?: string }> } | null),
+      temporaryRepairs: (inspection.temporaryRepairs as { performed?: boolean; openings?: boolean } | null),
+      propertyProfile: (inspection.propertyProfile as { structureType?: string; garageAttached?: boolean } | null),
+      interiorDamageFound: inspection.interiorDamageFound,
+    },
+    evaluationResult: compileEvaluation,
+    products: children.products.map(p => ({
+      identificationMethod: p.identificationMethod,
+      discontinued: p.discontinued ?? null,
+      ordinaryAvailability: p.ordinaryAvailability ?? null,
+    })),
+    slopes: children.slopes.map(s => ({ materialType: s.materialType })),
+    attestations: children.attestations.map(a => ({ attestationType: a.attestationType ?? null })),
+    damageInstancesCount: children.damageInstances.length,
+    company: { contractorLicenses: compileCompany?.contractorLicenses ?? null, qualificationsText: compileCompany?.qualificationsText ?? null },
+    ahjPacks: compileAhjPacks,
+    legacyJurisdictionStates: compileLegacyPacks.map(p => p.state),
+    claimSections: compileClaimSections.map(s => ({ sectionType: s.sectionType, libraryVersionSnapshot: (s.libraryVersionSnapshot as { standardsEntryKeys?: string[] } | null) ?? null })),
+    standardsEntries: compileStandardsEntries.map(e => ({ entryKey: e.entryKey, verificationStatus: e.verificationStatus })),
+  });
+
+  if (!readinessResult.overallPass) {
+    const failingItems = readinessResult.items.filter(i => i.state === 'fail');
+    res.status(400).json({
+      error: 'Claim is not ready to compile. Resolve the following readiness items first.',
+      failingItems: failingItems.map(i => ({ key: i.key, label: i.label, detail: i.detail })),
     });
-
-    if (!readinessResult.overallPass) {
-      const failingItems = readinessResult.items.filter(i => i.state === 'fail');
-      res.status(400).json({
-        error: 'Claim is not ready to compile. Resolve the following readiness items first.',
-        failingItems: failingItems.map(i => ({ key: i.key, label: i.label, detail: i.detail })),
-      });
-      return;
-    }
+    return;
   }
 
-  // Load children and inspector info in parallel.
-  const children = await hydrateInspectionChildren(inspectionId, actor.companyId);
+  // Inspector info — children already fetched above.
   const [[inspectorUser], [inspectorProfile]] = await Promise.all([
     db.select().from(usersTable).where(eq(usersTable.id, inspection.inspectorUserId)),
     db.select().from(userProfilesTable).where(eq(userProfilesTable.userId, inspection.inspectorUserId)),
@@ -8625,9 +8625,13 @@ router.get('/search', requirePermission('inspection.read'), async (req: Request,
 
 // ---------------------------------------------------------------------------
 // GET /inspections/:inspectionId/readiness
-// Stage 0 readiness checklist. Returns pass/fail/warning for each prerequisite.
-// Full validation engine lands in Task #121; this route implements reasonable
-// DB-backed checks using the data that already exists.
+// Unified readiness endpoint: protocol deficiencies (field-evidence layer) and
+// submission items (claim-readiness layer) in a single response, plus
+// applicable_steps, can_generate, and variant.
+//
+// The old route shape (ReadinessResult with a flat items array) is gone;
+// callers that relied on it see a richer object — the top-level overallPass
+// and can_generate fields cover the two most common gate checks.
 // ---------------------------------------------------------------------------
 // inspection.read
 router.get('/inspections/:inspectionId/readiness', requirePermission('inspection.read'), async (req: Request, res: Response) => {
@@ -8638,54 +8642,26 @@ router.get('/inspections/:inspectionId/readiness', requirePermission('inspection
   const inspection = await loadInspectionInCompany(inspectionId, actor.companyId);
   if (!inspection) return void res.status(404).json({ error: 'Inspection not found' });
 
-  // Fetch all data needed for the full 9-item readiness check in parallel.
+  const damageFlags = {
+    roofDamageFound: inspection.roofDamageFound,
+    sidingDamageFound: inspection.sidingDamageFound,
+    collateralDamageFound: inspection.collateralDamageFound,
+    interiorDamageFound: inspection.interiorDamageFound,
+  };
+
+  // Fetch field-evidence children (for evaluate) and submission-layer data in
+  // parallel. evaluateServerInspection() is the single authoritative path for
+  // all protocol facts; computeReadiness() takes the result so it does not
+  // re-query.
   const [
-    products,
-    attests,
-    testSquares,
-    damageInstances,
-    slopes,
+    readinessChildren,
     [company],
     ahjPacks,
     legacyJurisdictionPacks,
     claimSections,
     standardsEntries,
   ] = await Promise.all([
-    db.select({
-      identificationMethod: inspectionProductsTable.identificationMethod,
-      discontinued: inspectionProductsTable.discontinued,
-      ordinaryAvailability: inspectionProductsTable.ordinaryAvailability,
-    })
-      .from(inspectionProductsTable)
-      .where(and(
-        eq(inspectionProductsTable.inspectionId, inspectionId),
-        eq(inspectionProductsTable.companyId, actor.companyId),
-      )),
-    db.select({ attestationType: attestationsTable.attestationType })
-      .from(attestationsTable)
-      .where(and(
-        eq(attestationsTable.inspectionId, inspectionId),
-        eq(attestationsTable.companyId, actor.companyId),
-      )),
-    db.select({ id: testSquaresTable.id })
-      .from(testSquaresTable)
-      .where(and(
-        eq(testSquaresTable.inspectionId, inspectionId),
-        eq(testSquaresTable.companyId, actor.companyId),
-      )),
-    db.select({ id: damageInstancesTable.id })
-      .from(damageInstancesTable)
-      .where(and(
-        eq(damageInstancesTable.inspectionId, inspectionId),
-        eq(damageInstancesTable.companyId, actor.companyId),
-      ))
-      .limit(1),
-    db.select({ materialType: inspectionSlopesTable.materialType })
-      .from(inspectionSlopesTable)
-      .where(and(
-        eq(inspectionSlopesTable.inspectionId, inspectionId),
-        eq(inspectionSlopesTable.companyId, actor.companyId),
-      )),
+    hydrateInspectionChildren(inspectionId, actor.companyId),
     db.select({
       contractorLicenses: companiesTable.contractorLicenses,
       qualificationsText: companiesTable.qualificationsText,
@@ -8710,7 +8686,18 @@ router.get('/inspections/:inspectionId/readiness', requirePermission('inspection
       .where(eq(standardsEntriesTable.companyId, actor.companyId)),
   ]);
 
-  const result = computeReadiness({
+  // Field-evidence evaluation — single authoritative path for all protocol checks.
+  const evaluation = evaluateServerInspection({
+    ...readinessChildren,
+    arrivalConditions: inspection.arrivalConditions ?? null,
+    damageFlags,
+    sidingMeasurementReportRef: inspection.sidingMeasurementReportRef ?? null,
+    measurementsReportUrl: inspection.measurementsReportUrl ?? null,
+    propertyType: inspection.propertyProfile?.propertyType ?? null,
+  });
+
+  // Submission-layer checks. Readiness takes the protocol evaluation as input.
+  const submissionResult = computeReadiness({
     inspectionId,
     inspection: {
       ...inspection,
@@ -8720,15 +8707,15 @@ router.get('/inspections/:inspectionId/readiness', requirePermission('inspection
       propertyProfile: (inspection.propertyProfile as { structureType?: string; garageAttached?: boolean } | null),
       interiorDamageFound: inspection.interiorDamageFound,
     },
-    products: products.map(p => ({
+    evaluationResult: evaluation,
+    products: readinessChildren.products.map(p => ({
       identificationMethod: p.identificationMethod,
       discontinued: p.discontinued ?? null,
       ordinaryAvailability: p.ordinaryAvailability ?? null,
     })),
-    slopes,
-    attestations: attests.map(a => ({ attestationType: a.attestationType ?? null })),
-    testSquaresCount: testSquares.length,
-    damageInstancesCount: damageInstances.length,
+    slopes: readinessChildren.slopes.map(s => ({ materialType: s.materialType })),
+    attestations: readinessChildren.attestations.map(a => ({ attestationType: a.attestationType ?? null })),
+    damageInstancesCount: readinessChildren.damageInstances.length,
     company: {
       contractorLicenses: company?.contractorLicenses ?? null,
       qualificationsText: company?.qualificationsText ?? null,
@@ -8745,7 +8732,31 @@ router.get('/inspections/:inspectionId/readiness', requirePermission('inspection
     })),
   });
 
-  res.json(result);
+  // variant: whether this inspection has the physical-act field evidence.
+  // upload_path = capture_in_app deficiencies remain (no site-visit data).
+  // standard = all capture_in_app items are satisfied.
+  const variant = evaluation.deficiencies.some(d => d.resolution === 'capture_in_app')
+    ? 'upload_path'
+    : 'standard';
+
+  res.json({
+    inspectionId,
+    // overallPass: both layers clean — no protocol deficiencies AND submission passes.
+    overallPass: submissionResult.overallPass && evaluation.deficiencies.length === 0,
+    // can_generate: submission items all pass (protocol deficiencies are informational
+    // at this endpoint; the compile gate enforces them separately).
+    can_generate: submissionResult.overallPass,
+    variant,
+    protocol: {
+      deficiencies: evaluation.deficiencies,
+      softFlags: evaluation.softFlags,
+      applicable_steps: applicableSteps(damageFlags),
+    },
+    submission: {
+      overallPass: submissionResult.overallPass,
+      items: submissionResult.items,
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------

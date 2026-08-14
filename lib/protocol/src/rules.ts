@@ -8,8 +8,13 @@ import type {
   SoftFlag,
 } from './types';
 
-function deficiency(stage: Deficiency['stage'], code: string, message: string): Deficiency {
-  return { stage, code, message };
+function deficiency(
+  stage: Deficiency['stage'],
+  code: string,
+  message: string,
+  resolution: Deficiency['resolution'],
+): Deficiency {
+  return { stage, code, message, resolution };
 }
 
 function softFlag(stage: SoftFlag['stage'], code: string, message: string): SoftFlag {
@@ -26,24 +31,24 @@ function checkArrival(state: InspectionProtocolState): Deficiency[] {
   const out: Deficiency[] = [];
   const { arrival } = state;
   if (!arrival.skyLogged) {
-    out.push(deficiency('arrival', 'MISSING_ARRIVAL_SKY', 'Sky condition not logged.'));
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_SKY', 'Sky condition not logged.', 'capture_in_app'));
   }
   if (!arrival.windLogged) {
-    out.push(deficiency('arrival', 'MISSING_ARRIVAL_WIND', 'Wind condition not logged.'));
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_WIND', 'Wind condition not logged.', 'capture_in_app'));
   }
   if (!arrival.tempLogged) {
-    out.push(deficiency('arrival', 'MISSING_ARRIVAL_TEMP', 'Temperature not logged.'));
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_TEMP', 'Temperature not logged.', 'capture_in_app'));
   }
   if (!arrival.personnelRecorded) {
     out.push(
-      deficiency('arrival', 'MISSING_ARRIVAL_PERSONNEL', 'Personnel present not recorded.'),
+      deficiency('arrival', 'MISSING_ARRIVAL_PERSONNEL', 'Personnel present not recorded.', 'capture_in_app'),
     );
   }
   if (!arrival.gpsPresent) {
-    out.push(deficiency('arrival', 'MISSING_ARRIVAL_GPS', 'Arrival GPS position not captured.'));
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_GPS', 'Arrival GPS position not captured.', 'capture_in_app'));
   }
   if (!arrival.timePresent) {
-    out.push(deficiency('arrival', 'MISSING_ARRIVAL_TIME', 'Arrival time not captured.'));
+    out.push(deficiency('arrival', 'MISSING_ARRIVAL_TIME', 'Arrival time not captured.', 'capture_in_app'));
   }
   return out;
 }
@@ -65,6 +70,7 @@ function checkElevationAccess(state: InspectionProtocolState): Deficiency[] {
       'elevation_access',
       `MISSING_ELEVATION_PHOTO_${direction.toUpperCase()}`,
       `Wide photo missing for the ${direction} elevation.`,
+      'upload',
     ),
   );
 }
@@ -74,7 +80,7 @@ function checkElevationAccess(state: InspectionProtocolState): Deficiency[] {
 // linears recorded.
 function checkFacets(state: InspectionProtocolState): Deficiency[] {
   if (state.facets.length === 0) {
-    return [deficiency('facets', 'NO_FACETS_DOCUMENTED', 'No roof facets have been documented.')];
+    return [deficiency('facets', 'NO_FACETS_DOCUMENTED', 'No roof facets have been documented.', 'upload')];
   }
   const out: Deficiency[] = [];
   for (const facet of state.facets) {
@@ -84,6 +90,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
           'facets',
           `MISSING_FACET_AREA_${facet.id}`,
           `Facet ${facet.label} is missing its area (sqft).`,
+          'upload',
         ),
       );
     }
@@ -93,6 +100,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
           'facets',
           `MISSING_FACET_MATERIAL_${facet.id}`,
           `Facet ${facet.label} is missing its material.`,
+          'upload',
         ),
       );
     }
@@ -102,6 +110,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
           'facets',
           `MISSING_FACET_PITCH_${facet.id}`,
           `Facet ${facet.label} is missing its pitch.`,
+          'upload',
         ),
       );
     }
@@ -113,6 +122,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
             'facets',
             `MISSING_FACET_DAMAGE_RECORDS_${facet.id}`,
             `Facet ${facet.label} is marked damaged but has no damage records.`,
+            'upload',
           ),
         );
       }
@@ -131,6 +141,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
           'facets',
           `MISSING_DAMAGE_PHOTO_${instance.id}`,
           `Damage record ${instance.id} has no photo.`,
+          'upload',
         ),
       );
     }
@@ -141,6 +152,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
         'facets',
         'NO_WHOLE_ROOF_LINEARS',
         'No whole-roof linear measurements (ridge/hip/valley/eave/rake) recorded.',
+        'upload',
       ),
     );
   }
@@ -149,6 +161,7 @@ function checkFacets(state: InspectionProtocolState): Deficiency[] {
 
 // Step 4 — hail-gated: every facet whose damageType carries hail has a
 // test-square photo. Wind-only facets are not required.
+// resolution: capture_in_app — test squares require physical chalking on site.
 function checkTestSquares(state: InspectionProtocolState): Deficiency[] {
   return state.facets
     .filter((facet) => carriesHail(facet.damageType))
@@ -163,6 +176,7 @@ function checkTestSquares(state: InspectionProtocolState): Deficiency[] {
         'test_squares',
         `MISSING_TEST_SQUARE_${facet.id}`,
         `Facet ${facet.label} carries hail damage and needs a test-square photo.`,
+        'capture_in_app',
       ),
     );
 }
@@ -188,6 +202,7 @@ function checkComponents(state: InspectionProtocolState): Deficiency[] {
         'components',
         `MISSING_ZONE_PHOTO_${zone}`,
         `${ZONE_LABELS[zone]} components are documented but the zone has no photo.`,
+        'upload',
       ),
     );
 }
@@ -201,6 +216,7 @@ function checkPenetrations(state: InspectionProtocolState): Deficiency[] {
         'components',
         `MISSING_PENETRATION_PHOTO_${penetration.id}`,
         `Documented penetration ${penetration.id} has no photo.`,
+        'upload',
       ),
     );
 }
@@ -215,6 +231,7 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
         'siding',
         'NO_SIDING_FACETS_DOCUMENTED',
         'Siding damage was reported but no siding facets have been documented.',
+        'upload',
       ),
     ];
   }
@@ -226,6 +243,7 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
           'siding',
           `MISSING_SIDING_FACET_PHOTO_${facet.id}`,
           `Siding facet ${facet.label} has no facet photo.`,
+          'upload',
         ),
       );
     }
@@ -236,6 +254,7 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
             'siding',
             `MISSING_SIDING_DAMAGE_TYPE_${facet.id}`,
             `Siding facet ${facet.label} is marked damaged but has no damage type.`,
+            'upload',
           ),
         );
       }
@@ -245,6 +264,7 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
             'siding',
             `MISSING_SIDING_DAMAGE_PHOTO_${facet.id}`,
             `Siding facet ${facet.label} is marked damaged but has no damage photo.`,
+            'upload',
           ),
         );
       }
@@ -257,6 +277,7 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
             'siding',
             `MISSING_SIDING_COMPONENT_ACTION_${facet.id}_${component.index}`,
             `Siding component ${componentLabel} has no disposition (Detach & Reset / Remove & Replace).`,
+            'upload',
           ),
         );
       }
@@ -266,6 +287,7 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
             'siding',
             `MISSING_SIDING_COMPONENT_PHOTO_${facet.id}_${component.index}`,
             `Siding component ${componentLabel} has no photo.`,
+            'upload',
           ),
         );
       }
@@ -277,10 +299,12 @@ function checkSiding(state: InspectionProtocolState): Deficiency[] {
 // Step 7 (collateral) — no hard gate: optional evidence.
 
 // Step 6 — at least one product record.
+// resolution: capture_in_app — product identification requires reading the
+// shingle label or bagging a sample on site.
 function checkProduct(state: InspectionProtocolState): Deficiency[] {
   if (state.productIdentifications.length === 0) {
     return [
-      deficiency('product', 'NO_PRODUCT_RECORD', 'No roofing-product identification recorded.'),
+      deficiency('product', 'NO_PRODUCT_RECORD', 'No roofing-product identification recorded.', 'capture_in_app'),
     ];
   }
   return [];
@@ -289,6 +313,7 @@ function checkProduct(state: InspectionProtocolState): Deficiency[] {
 // Step 8 (interior) — conditional; soft-flagged only, never a hard block.
 
 // Step 10 — declaration attestation + signature present.
+// resolution: capture_in_app — the inspector must sign in the app on site.
 function checkDeclaration(state: InspectionProtocolState): Deficiency[] {
   if (!state.declarationSigned) {
     return [
@@ -296,6 +321,7 @@ function checkDeclaration(state: InspectionProtocolState): Deficiency[] {
         'declaration',
         'MISSING_DECLARATION',
         'Inspector declaration (attestation + signature) not recorded.',
+        'capture_in_app',
       ),
     ];
   }
@@ -335,6 +361,7 @@ function checkSubmit(
         'submit',
         'HARD_DEFICIENCIES_REMAIN',
         `${priorDeficiencies.length} blocking deficiencies remain across earlier steps.`,
+        'capture_in_app',
       ),
     );
   }
@@ -346,12 +373,13 @@ function checkSubmit(
         'submit',
         'NO_DAMAGE_SURFACE_SELECTED',
         'No damage surface was selected on the Elevation Walk — mark roof, siding, interior, or collateral damage before submitting.',
+        'capture_in_app',
       ),
     );
   }
   if (!state.finalReviewConfirmed) {
     out.push(
-      deficiency('submit', 'FINAL_REVIEW_NOT_CONFIRMED', 'Final review has not been confirmed.'),
+      deficiency('submit', 'FINAL_REVIEW_NOT_CONFIRMED', 'Final review has not been confirmed.', 'capture_in_app'),
     );
   }
   return out;

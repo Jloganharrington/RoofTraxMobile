@@ -11,6 +11,7 @@
 
 import { deriveClaimFlags, ClaimFlagValidationError } from './deriveClaimFlags';
 import type { DeriveClaimFlagsInput } from './deriveClaimFlags';
+import type { EvaluationResult } from '@workspace/protocol';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,8 +47,13 @@ export interface ReadinessInput {
   /** attestation rows for this inspection */
   attestations: Array<{ attestationType: string | null }>;
 
-  /** number of test squares (for RAP gate) */
-  testSquaresCount: number;
+  /**
+   * Result of evaluateServerInspection() — the single authoritative path for
+   * all field-evidence facts. Readiness reads deficiency codes from this rather
+   * than re-querying the same DB rows (eliminates Conflicts A and B from the
+   * Step-1 reconciliation: product existence and test-square existence).
+   */
+  evaluationResult: EvaluationResult;
 
   /** number of damage instances (for forensic findings gate) */
   damageInstancesCount: number;
@@ -106,7 +112,7 @@ export function computeReadiness(input: ReadinessInput): ReadinessResult {
     products,
     slopes,
     attestations,
-    testSquaresCount,
+    evaluationResult,
     damageInstancesCount,
     company,
     ahjPacks,
@@ -164,7 +170,9 @@ export function computeReadiness(input: ReadinessInput): ReadinessResult {
         'Product recorded as unidentifiable — confirm lab submission if applicable.',
       ),
     );
-  } else {
+  } else if (evaluationResult.deficiencies.some(d => d.code === 'NO_PRODUCT_RECORD')) {
+    // Protocol engine confirmed no product records exist — trust its evaluation
+    // rather than re-checking products.length (avoids Conflict A from Step-1).
     items.push(
       fail(
         'product_id',
@@ -172,12 +180,21 @@ export function computeReadiness(input: ReadinessInput): ReadinessResult {
         'No product identification on record.',
       ),
     );
+  } else {
+    // No products, but the protocol step is not in scope for this inspection
+    // (roof damage not selected) — pass.
+    items.push(pass('product_id', 'Product ID determination recorded'));
   }
 
   // ── 4. RAP record or gate reason present ──────────────────────────────────
   // Passes when: test squares exist, OR a gate reason is on record.
   // Special case: not_warranted_discontinued is only valid with product_id_class='identified'.
-  const hasTestSquares = testSquaresCount > 0;
+  // Protocol evaluation is the single authoritative source for test-square
+  // completeness (eliminates Conflict B from the Step-1 reconciliation). If
+  // evaluate() emitted no MISSING_TEST_SQUARE_* deficiencies, the gate is
+  // satisfied — either squares exist with photos, or the step does not apply
+  // for this inspection's damage flags.
+  const hasTestSquares = !evaluationResult.deficiencies.some(d => d.code.startsWith('MISSING_TEST_SQUARE_'));
   const gateReason = inspection.rapGateReason;
 
   // Also check legacy repairabilityAssessment.warranted for backward compat.

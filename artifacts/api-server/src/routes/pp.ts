@@ -46,6 +46,7 @@ import {
   usersTable,
 } from '@workspace/db';
 import { computeReadiness } from '../lib/readiness';
+import type { EvaluationResult } from '@workspace/protocol';
 import { Router, type IRouter, type Request, type Response } from 'express';
 import { ObjectStorageService } from '../lib/objectStorage';
 import { getPPLogoSignedUrl } from '../lib/ppLogoAccess';
@@ -1690,6 +1691,32 @@ router.get('/pp/inspections/:inspectionId/readiness', async (req: Request, res: 
       .where(eq(standardsEntriesTable.companyId, company.id)),
   ]);
 
+  // Build a synthetic EvaluationResult from the data pp.ts already fetches.
+  // This mirrors the two checks that computeReadiness() delegates to
+  // evaluationResult (product existence and test-square existence) without
+  // re-querying or pulling all the photos/elevations/components that the full
+  // evaluateServerInspection() requires. PP inspections are upload-path, so
+  // capture_in_app fields won't be populated — the gate-reason logic handles that.
+  const ppEvaluationResult: EvaluationResult = {
+    deficiencies: [
+      ...(products.length === 0 ? [{
+        stage: 'product' as const,
+        code: 'NO_PRODUCT_RECORD',
+        message: 'No roofing-product identification recorded.',
+        resolution: 'capture_in_app' as const,
+      }] : []),
+      // Synthesise a missing-square marker when no squares exist AND roof damage
+      // is flagged — matches the old testSquaresCount > 0 gate condition.
+      ...(testSquares.length === 0 && inspection.roofDamageFound ? [{
+        stage: 'test_squares' as const,
+        code: 'MISSING_TEST_SQUARE_pp',
+        message: 'No test squares found.',
+        resolution: 'capture_in_app' as const,
+      }] : []),
+    ],
+    softFlags: [],
+  };
+
   const result = computeReadiness({
     inspectionId,
     inspection: {
@@ -1707,7 +1734,7 @@ router.get('/pp/inspections/:inspectionId/readiness', async (req: Request, res: 
     })),
     slopes,
     attestations: attestations.map((a) => ({ attestationType: a.attestationType ?? null })),
-    testSquaresCount: testSquares.length,
+    evaluationResult: ppEvaluationResult,
     damageInstancesCount: damageInstances.length,
     company: {
       contractorLicenses: companyRow?.contractorLicenses ?? null,

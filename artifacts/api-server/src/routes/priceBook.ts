@@ -48,7 +48,7 @@ interface PriceAnalysisResult {
 
 router.post('/price-book/analyze-price', requirePermission('catalog.price_book_edit'), async (req: Request, res: Response) => {
 
-  const parsed = UpdatePackageBody.safeParse(req.body);
+  const parsed = AnalyzePriceBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
     return;
@@ -113,7 +113,7 @@ const GenerateDescriptionBody = z.object({
 
 router.post('/price-book/generate-description', requirePermission('catalog.price_book_add'), async (req: Request, res: Response) => {
 
-  const parsed = UpdatePackageBody.safeParse(req.body);
+  const parsed = GenerateDescriptionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
     return;
@@ -133,7 +133,11 @@ router.post('/price-book/generate-description', requirePermission('catalog.price
         },
       ],
     });
-    const raw = (response.text ?? '').trim();
+    const raw = message.content
+      .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+      .map((block) => block.text)
+      .join('')
+      .trim();
     if (!raw) {
       res.status(502).json({ error: 'AI returned an empty description. Please try again.' });
       return;
@@ -147,13 +151,13 @@ router.post('/price-book/generate-description', requirePermission('catalog.price
     try {
       // Strip optional markdown code fences if the model wrapped the JSON.
       const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  const parsed = UpdatePackageBody.safeParse(req.body);
-      description = (parsed.description ?? '').trim();
-      assumptions = Array.isArray(parsed.assumptions) ? parsed.assumptions : [];
-      recommendedSeparateItems = Array.isArray(parsed.recommended_separate_items)
-        ? parsed.recommended_separate_items
+      const aiJson = JSON.parse(jsonText);
+      description = (aiJson.description ?? '').trim();
+      assumptions = Array.isArray(aiJson.assumptions) ? aiJson.assumptions : [];
+      recommendedSeparateItems = Array.isArray(aiJson.recommended_separate_items)
+        ? aiJson.recommended_separate_items
         : [];
-      warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+      warnings = Array.isArray(aiJson.warnings) ? aiJson.warnings : [];
     } catch {
       // Fallback: model returned plain text instead of JSON — use it as-is.
       description = raw;
@@ -201,7 +205,7 @@ router.get('/price-book/items', requirePermission('catalog.price_book_view'), as
 
 router.post('/price-book/items', requirePermission('catalog.price_book_add'), async (req: Request, res: Response) => {
 
-  const parsed = UpdatePackageBody.safeParse(req.body);
+  const parsed = CreateItemBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
     return;
@@ -225,37 +229,37 @@ router.patch('/price-book/items/:itemId', requirePermission('catalog.price_book_
 
   const itemId = String(req.params.itemId);
 
-  const parsed = UpdatePackageBody.safeParse(req.body);
+  const parsed = UpdateItemBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
     return;
   }
 
   const [existing] = await db
-    .select({ id: priceBookPackagesTable.id })
-    .from(priceBookPackagesTable)
+    .select({ id: priceBookItemsTable.id })
+    .from(priceBookItemsTable)
     .where(
       and(
-        eq(priceBookPackagesTable.id, packageId),
-        eq(priceBookPackagesTable.companyId, req.actorCtx!.companyId),
+        eq(priceBookItemsTable.id, itemId),
+        eq(priceBookItemsTable.companyId, req.actorCtx!.companyId),
       ),
     );
 
   if (!existing) {
-    res.status(404).json({ error: 'Package not found' });
+    res.status(404).json({ error: 'Item not found' });
     return;
   }
 
   const [updated] = await db
-    .update(priceBookPackagesTable)
+    .update(priceBookItemsTable)
     .set({
       ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-      ...(parsed.data.inspectionCondition !== undefined
-        ? { inspectionCondition: parsed.data.inspectionCondition }
-        : {}),
+      ...(parsed.data.description !== undefined ? { description: parsed.data.description } : {}),
+      ...(parsed.data.unitPrice !== undefined ? { unitPrice: parsed.data.unitPrice } : {}),
+      ...(parsed.data.unit !== undefined ? { unit: parsed.data.unit } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(priceBookPackagesTable.id, packageId))
+    .where(eq(priceBookItemsTable.id, itemId))
     .returning();
 
   res.json({ item: updated });
@@ -266,12 +270,12 @@ router.delete('/price-book/items/:itemId', requirePermission('catalog.price_book
   const itemId = String(req.params.itemId);
 
   const [existing] = await db
-    .select({ id: priceBookPackagesTable.id })
-    .from(priceBookPackagesTable)
+    .select({ id: priceBookItemsTable.id })
+    .from(priceBookItemsTable)
     .where(
       and(
-        eq(priceBookPackagesTable.id, packageId),
-        eq(priceBookPackagesTable.companyId, req.actorCtx!.companyId),
+        eq(priceBookItemsTable.id, itemId),
+        eq(priceBookItemsTable.companyId, req.actorCtx!.companyId),
       ),
     );
 
@@ -349,7 +353,7 @@ router.get('/price-book/packages', requirePermission('catalog.price_book_view'),
 
 router.post('/price-book/packages', requirePermission('catalog.price_book_add'), async (req: Request, res: Response) => {
 
-  const parsed = UpdatePackageBody.safeParse(req.body);
+  const parsed = CreatePackageBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid payload', details: parsed.error.flatten() });
     return;

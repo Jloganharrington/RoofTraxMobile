@@ -1,0 +1,15 @@
+Revised Steps 2–5
+Step 2 — Contract between the layers. evaluateServerInspection() becomes the only path to field-evidence facts. Readiness takes its result as an input rather than re-querying. Remove the duplicate product and test-square-existence checks from readiness.ts. Nothing merges into rules.ts.
+
+Step 3 — Two additions to the protocol package, both small:
+
+Export applicableSteps usefully — the collector exists, it just needs to be reachable so the pre-package checklist and education module can ask "what applies to a roof-and-siding claim" without re-implementing the predicate.
+
+Add a resolution field to Deficiency: capture_in_app, upload, or unavailable. This is the important one and it's why the whole exercise matters. On the upload path a contractor has photos but no arrival data, no facets, no test squares — evaluate() will return a wall of deficiencies, all correct and all useless as presented. resolution is what separates "you can still fix this by uploading" from "only a site visit produces this," and it's what drives the variant determination.
+
+Step 4 — One endpoint, both layers. GET /inspections/:inspectionId/readiness returns protocol deficiencies and submission items as distinct groups, plus applicable_steps, can_generate, and variant. Preflight and the old readiness route become thin wrappers for one release, logged so you can see what still calls them. Lint stays where it is.
+
+Step 5 — Verification. Parity against the current combined behaviour, with every difference named as either a bug or a resolved conflict. An upload-path fixture — photos and a measurement report, no field capture — returning deficiencies correctly partitioned by resolution. Roof-only returning no siding deficiencies. Then seed-acceptance-claim.ts, the negative suite, the workspace suite, and mobile clean.
+
+One thing the report surfaced that's worth noting beyond this order: readiness item 8 is AHJ pack availability and item 9 is standards not flagged verify_before_ship. Both are submission gates that depend on the AHJ master library work — a pp_only contractor in an uncovered county will fail item 8 at generation time, which is the right behaviour but needs to be visible at Stage 7 of signup rather than discovered at Stage 8 of package generation.
+

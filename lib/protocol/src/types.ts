@@ -112,11 +112,26 @@ export interface InspectionProtocolState {
   observedIndicators: ObservedIndicator[];
 }
 
+// How a contractor resolves a deficiency:
+//   capture_in_app  — requires a physical site visit with the mobile app (arrival
+//                     conditions, test squares, product ID, declaration signature).
+//   upload          — can be satisfied from the office by uploading files or
+//                     entering data from existing documentation (photos, measurement
+//                     reports, facet records).
+//   unavailable     — contractor acknowledges the item cannot be obtained for this
+//                     inspection.
+//
+// This field drives both the UI call-to-action and the variant determination on the
+// unified readiness endpoint (upload_path inspections have capture_in_app deficiencies
+// remaining; standard inspections do not).
+export type DeficiencyResolution = 'capture_in_app' | 'upload' | 'unavailable';
+
 // A blocking issue: the inspection cannot move past `stage` until resolved.
 export interface Deficiency {
   stage: Stage;
   code: string;
   message: string;
+  resolution: DeficiencyResolution;
 }
 
 // A non-blocking issue worth surfacing to the inspector/reviewer, but that
