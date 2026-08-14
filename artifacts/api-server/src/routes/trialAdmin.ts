@@ -300,7 +300,19 @@ router.post('/admin/trial-queue/:id/send-deliverable', requireAdmin, async (req:
 // ---------------------------------------------------------------------------
 
 router.get('/admin/ahj-coverage', requireAdmin, async (_req: Request, res: Response) => {
-  const rows = await db.select().from(ahjCoverage).orderBy(asc(ahjCoverage.state), asc(ahjCoverage.county));
+  // Select all columns explicitly so masterPackId (added in migration 063) is always included.
+  const rows = await db
+    .select({
+      id: ahjCoverage.id,
+      state: ahjCoverage.state,
+      county: ahjCoverage.county,
+      status: ahjCoverage.status,
+      codeCycle: ahjCoverage.codeCycle,
+      masterPackId: ahjCoverage.masterPackId,
+      updatedAt: ahjCoverage.updatedAt,
+    })
+    .from(ahjCoverage)
+    .orderBy(asc(ahjCoverage.state), asc(ahjCoverage.county));
   res.json({ items: rows });
 });
 

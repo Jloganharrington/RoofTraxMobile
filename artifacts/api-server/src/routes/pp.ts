@@ -204,6 +204,7 @@ async function getAhjCoverageRows() {
       county: ahjCoverage.county,
       status: ahjCoverage.status,
       codeCycle: ahjCoverage.codeCycle,
+      masterPackId: ahjCoverage.masterPackId,
     })
     .from(ahjCoverage)
     .where(sql`${ahjCoverage.status} IN ('covered', 'in_progress')`)

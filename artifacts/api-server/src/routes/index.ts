@@ -42,6 +42,7 @@ import pricingRouter from "./pricing";
 import trialAdminRouter from "./trialAdmin";
 import ppRouter from "./pp";
 import builderRouter from "./builder";
+import ahjMasterRouter from "./ahjMaster";
 
 const router: IRouter = Router();
 
@@ -88,5 +89,6 @@ router.use(pricingRouter);
 router.use(trialAdminRouter);
 router.use(ppRouter);
 router.use(builderRouter);
+router.use(ahjMasterRouter);
 
 export default router;
