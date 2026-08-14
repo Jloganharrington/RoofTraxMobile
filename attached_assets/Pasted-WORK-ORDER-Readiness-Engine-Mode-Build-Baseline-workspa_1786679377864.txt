@@ -1,0 +1,51 @@
+WORK ORDER — Readiness Engine
+Mode: Build. Baseline: workspace suite plus the 130-test negative suite.
+Hard constraint: zero writes to artifacts/mobile/. The app consumes readiness; it doesn't compute it.
+One step per commit. Step 1 is report-only and I want to see it before anything changes.
+
+STEP 1 — Reconcile the four checks (report only)
+Produce a single table with one row per completeness rule and these columns: rule, where it's implemented (protocol/rules.ts, readiness endpoint, preflight, or lint), what it checks, what it returns, and whether any other implementation checks the same thing.
+
+Then answer four questions:
+
+What are the nine items in the readiness endpoint's check, and which of them does evaluate() already cover?
+What does preflight enforce that readiness does not, and vice versa?
+What does report/lint check, and is it completeness or content quality? Those are different concerns and may legitimately stay separate.
+applicableSteps(flags) has no callers — is the applicability model dead, or is the same logic reimplemented somewhere under another name?
+Where two implementations check the same rule and disagree, that's the finding. Report each conflict explicitly rather than folding it into the table.
+
+▶ CHECKPOINT 1 — Paste the table and the four answers. Stop. I want to see the overlap before we pick which implementation survives.
+
+STEP 2 — One engine
+lib/protocol becomes the sole authority. Every rule from readiness, preflight, and lint that is genuinely a completeness rule moves into rules.ts as a Deficiency or SoftFlag. Content-quality rules stay in lint if that's what Step 1 shows them to be.
+
+Two requirements on the rules themselves:
+
+Every deficiency needs a human sentence and a machine code. The shape already has both — { stage, code, message }. message is what a contractor reads; code is what the UI keys off. A message like "Wide photo missing for the north elevation" is the product teaching the methodology. "ELEVATION_PHOTO_MISSING" is not.
+
+Every deficiency needs a resolution path. Add a resolution field naming what the contractor does about it: capture it in the app, upload it, or acknowledge it as unavailable. That field is what makes the same engine work for both capture paths.
+
+Keep the package dependency-free — it's consumed by the API, the web app, and the mobile app, and it must stay portable.
+
+STEP 3 — Applicability
+Wire applicableSteps(flags) in. A roof-only claim should never be told its siding documentation is incomplete, and right now nothing consults the applicability model at all.
+
+Damage flags come from the inspection record. Report what sets them today and whether the upload path can set them from intake — the contractor selecting "roof and siding" at Stage 3 is the natural source.
+
+STEP 4 — One endpoint, three renderings
+Replace readiness, preflight, and the completeness half of lint with a single GET /inspections/:inspectionId/readiness returning:
+
+variant is what the package-labelling work will read later. Compute it here so there's one place that decides whether an inspection has the physical-act evidence.
+
+Keep the old routes as thin wrappers for one release so nothing breaks mid-flight, and log when they're hit so you can see what still calls them.
+
+STEP 5 — Verification
+Deficiency parity: for a set of fixture inspections, the new engine returns the same blocking set as the four old checks combined. Any difference is either a bug or a resolved conflict from Step 1 — name which for each.
+
+Applicability: a roof-only inspection returns no siding deficiencies; a roof-and-siding inspection returns both.
+
+Regression: seed-acceptance-claim.ts still runs green — it walks a complete inspection through submission and is the best end-to-end proof that the gate still gates.
+
+Then the 130-test negative suite, the workspace suite per package, and git status --porcelain artifacts/mobile/ empty.
+
+▶ CHECKPOINT 5 — Parity results, the applicability cases, and all four suite outputs.
