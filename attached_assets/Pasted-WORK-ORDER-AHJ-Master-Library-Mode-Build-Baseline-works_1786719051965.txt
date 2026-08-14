@@ -1,0 +1,69 @@
+WORK ORDER — AHJ Master Library
+Mode: Build. Baseline: workspace suite plus the 130-test negative suite.
+Hard constraint: zero writes to artifacts/mobile/.
+Migration numbering: start at 063. Two files are already both numbered 061 — do not add a third collision.
+One step per commit.
+
+Model. Tenants generate packs in-company exactly as they do today. A verified pack is promoted up to a master library keyed to jurisdiction. New tenants in that jurisdiction adopt from master, which is what makes their onboarding instant. Contribution up, distribution down.
+
+Unchanged. code_sources, corpus_chunks, wizard_runs, and ahj_candidate_items stay company-scoped. In-company generation is not being re-architected.
+
+STEP 1 — Report before building
+Jurisdiction format. jurisdiction is free text on every table. Report its actual format across the three existing ahj_packs rows and any company_jurisdiction_packs rows, and say whether it parses reliably into state and county or needs manual mapping. The coverage list is a lookup on structured fields — this decides whether promotion can normalize automatically.
+ahj_coverage. Created by migration 054 as part of the trial track. Report its current columns, row count, and every reader. This order claims it for the master library; flag it so the consolidation order doesn't drop it later.
+Pack item shape. What's actually inside ahj_packs.items jsonb, and does it carry verbatim code text or only citations, editions, and summaries? This determines whether promotion is safe as specified.
+Readiness item 8. It checks pack availability for state plus roof/siding scope. Confirm it reads company-scoped packs, so adoption keeps it working without change.
+▶ CHECKPOINT 1 — All four. Stop.
+
+STEP 2 — Master schema
+ahj_master_packs, no company_id:
+
+Unique on (state, county, pack_type, version). State and county are structured columns — the coverage list depends on them and parsing at read time defeats the purpose.
+
+ahj_master_adoptions: company_id, master_pack_id, adopted_pack_id, adopted_at. This is what lets a code-cycle update report who is behind.
+
+Reconcile ahj_coverage per Step 1 — either extend it as the coverage projection over master packs, or fold it in and keep the name.
+
+STEP 3 — Promotion
+POST /ahj-master/promote, super_admin only. Promotion is RoofTrax publishing verified research, not a tenant action.
+
+Copies items only. Never corpus_chunks, never code_sources, never verbatim code text. A tenant's licensed copy of a code book stays inside that tenant; what goes up is citation, edition, provision summary, classification, factual trigger, and scope connection — research output, not the source document.
+
+Write a test that fails if the promoted payload contains a corpus reference or verbatim source text. This is the licensing boundary and it should be enforced by a test rather than by care.
+
+Reject promotion when any item is unverified. Items are born unverified by design, and promotion propagates to every future tenant in that county — the review gate exists precisely for this moment.
+
+If a master pack already exists for (state, county, pack_type), create version N+1 and set superseded_by_id on the prior version. Never mutate a published version.
+
+STEP 4 — Coverage list and adoption
+GET /ahj-master/coverage — the browsable list for signup step 7. Returns state, county, label, code cycle, and status per jurisdiction. Unauthenticated and rate-limited, returning status only, never pack contents. It doubles as a marketing surface, so it should be safe to expose publicly.
+
+GET /ahj-master/coverage?state=&county= — single lookup, same shape.
+
+POST /companies/:companyId/ahj-packs/adopt — copies the current master version into a company-scoped ahj_packs row and records the adoption. This belongs inside the provisioning transaction so a new tenant lands with coverage already in place.
+
+STEP 5 — Requests
+POST /ahj-master/requests — the "Don't see your AHJ? Request it" path. Writes to waitlist_entries if that table fits, or its own table if not; Step 1's report decides.
+
+Admin view listing requested jurisdictions ranked by request count. That ranking is the demand map that tells you which county to build next.
+
+STEP 6 — Staleness
+GET /ahj-master/adoptions/stale — tenants on a superseded version, grouped by jurisdiction. Report-only; the refresh action is a later decision. This is what turns "AHJ packs refreshed on code-cycle adoption" from a checklist line into something the system surfaces.
+
+STEP 7 — Verification
+Case	Expected
+Promote a pack with an unverified item	Rejected, nothing written
+Promoted payload contains corpus text	Test fails
+Promote twice for one jurisdiction	v2 created, v1 superseded and unmutated
+Adopt into a new tenant	Company pack matches master exactly, adoption recorded
+Coverage for an unbuilt county	none
+Coverage after promotion	covered
+Coverage endpoint unauthenticated	200, status only, no items
+Company A reads Company B's ahj_packs	404
+Non-super_admin promotes	403, nothing written
+Readiness item 8 after adoption	Passes without code change
+Every case asserts status and queries the database to confirm no row changed where none should.
+
+Then seed-acceptance-claim.ts, the 130-test negative suite with any verdict change explained, the workspace suite per package, and git status --porcelain artifacts/mobile/ empty.
+
+▶ CHECKPOINT 7 — Migration, the full test table, and all four suite outputs.
