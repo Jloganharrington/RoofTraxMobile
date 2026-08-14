@@ -758,6 +758,10 @@ const AssembleBody = z.object({
   jurisdiction: z.string().min(2).max(200),
   packType: z.enum(AHJ_PACK_TYPES_TUPLE),
   runIds: z.array(z.string()).min(1),
+  /** Two-letter state code, e.g. "VA". Strongly recommended for readiness matching. */
+  state: z.string().length(2).toUpperCase().optional(),
+  /** County name, e.g. "Fairfax County". Empty string for state-wide packs. */
+  county: z.string().max(255).optional(),
 });
 
 router.post('/ahj-wizard/assemble', requirePermission('catalog.ahj_wizard'), async (req: Request, res: Response) => {
@@ -765,7 +769,7 @@ router.post('/ahj-wizard/assemble', requirePermission('catalog.ahj_wizard'), asy
   const body = AssembleBody.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.message });
 
-  const { jurisdiction, packType, runIds } = body.data;
+  const { jurisdiction, packType, runIds, state: packState, county: packCounty } = body.data;
 
   const ownedRuns = await db
     .select({ id: wizardRunsTable.id })
@@ -883,6 +887,8 @@ router.post('/ahj-wizard/assemble', requirePermission('catalog.ahj_wizard'), asy
       companyId: req.actorCtx!.companyId,
       packType: packType as typeof AHJ_PACK_TYPES[number],
       jurisdiction,
+      state: packState ?? null,
+      county: packCounty ?? null,
       items: packItems,
       version: nextVersion,
       createdBy: req.actorCtx!.actorId,

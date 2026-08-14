@@ -1356,12 +1356,16 @@ export const trialUploads = pgTable('trial_uploads', {
 export type TrialUpload = typeof trialUploads.$inferSelect;
 
 // Jurisdiction coverage — permanent AHJ work product index (no claim data).
+// master_pack_id links to the ahj_master_packs row that backs this entry;
+// null until a master pack is promoted for that jurisdiction.
 export const ahjCoverage = pgTable('ahj_coverage', {
   id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
   state:  varchar('state', { length: 2 }).notNull(),
   county: varchar('county', { length: 255 }).notNull(),
   status: varchar('status', { length: 20 }).notNull().default('none'), // covered | in_progress | none
   codeCycle: varchar('code_cycle', { length: 100 }),
+  /** FK to ahj_master_packs.id — set when a master pack is promoted. */
+  masterPackId: varchar('master_pack_id'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 export type AhjCoverage = typeof ahjCoverage.$inferSelect;

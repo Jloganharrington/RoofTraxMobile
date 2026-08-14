@@ -106,7 +106,7 @@ function baseReadinessInput(overrides: Partial<ReadinessInput> = {}): ReadinessI
       contractorLicenses: [{ state: 'TX', license: 'TX12345' }],
       qualificationsText: 'Licensed roofing contractor since 2005.',
     },
-    ahjPacks: [{ packType: 'ahj_roof', jurisdiction: 'TX – Dallas County' }],
+    ahjPacks: [{ packType: 'ahj_roof', jurisdiction: 'TX – Dallas County', state: 'TX' }],
     legacyJurisdictionStates: [],
     claimSections: [],
     standardsEntries: [],
@@ -173,7 +173,7 @@ describe('computeReadiness — product gate (evaluationResult parity)', () => {
           temporaryRepairs: null,
           propertyProfile: null,
         },
-        ahjPacks: [{ packType: 'ahj_siding', jurisdiction: 'TX – Dallas County' }],
+        ahjPacks: [{ packType: 'ahj_siding', jurisdiction: 'TX – Dallas County', state: 'TX' }],
       }),
     );
     const item = result.items.find(i => i.key === 'product_id')!;

@@ -5154,7 +5154,7 @@ router.post('/inspections/:inspectionId/report/compile', requireWritableInspecti
     hydrateInspectionChildren(inspectionId, actor.companyId),
     db.select({ contractorLicenses: companiesTable.contractorLicenses, qualificationsText: companiesTable.qualificationsText })
       .from(companiesTable).where(eq(companiesTable.id, actor.companyId)).limit(1),
-    db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+    db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction, state: ahjPacksTable.state })
       .from(ahjPacksTable).where(eq(ahjPacksTable.companyId, actor.companyId)),
     db.select({ state: companyJurisdictionPacksTable.state })
       .from(companyJurisdictionPacksTable).where(eq(companyJurisdictionPacksTable.companyId, actor.companyId)),
@@ -8669,7 +8669,7 @@ router.get('/inspections/:inspectionId/readiness', requirePermission('inspection
       .from(companiesTable)
       .where(eq(companiesTable.id, actor.companyId))
       .limit(1),
-    db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+    db.select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction, state: ahjPacksTable.state })
       .from(ahjPacksTable)
       .where(eq(ahjPacksTable.companyId, actor.companyId)),
     db.select({ state: companyJurisdictionPacksTable.state })

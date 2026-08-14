@@ -1665,6 +1665,12 @@ export const ahjPacksTable = pgTable('ahj_packs', {
     .references(() => companiesTable.id),
   packType: varchar('pack_type', { enum: AHJ_PACK_TYPES }).notNull(),
   jurisdiction: text('jurisdiction').notNull(),
+  /** Two-letter uppercase state code, e.g. "VA". Nullable for rows created
+   *  before migration 063; new rows should always supply it.
+   *  Readiness item 8 prefers this over substring-matching the jurisdiction. */
+  state: varchar('state', { length: 2 }),
+  /** County name, e.g. "Fairfax County". Empty string for state-wide packs. */
+  county: varchar('county', { length: 255 }),
   items: jsonb('items').notNull().default([]),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

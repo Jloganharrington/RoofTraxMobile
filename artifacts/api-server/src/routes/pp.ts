@@ -1663,7 +1663,7 @@ router.get('/pp/inspections/:inspectionId/readiness', async (req: Request, res: 
       .where(eq(companiesTable.id, company.id))
       .limit(1),
     db
-      .select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction })
+      .select({ packType: ahjPacksTable.packType, jurisdiction: ahjPacksTable.jurisdiction, state: ahjPacksTable.state })
       .from(ahjPacksTable)
       .where(eq(ahjPacksTable.companyId, company.id)),
     db

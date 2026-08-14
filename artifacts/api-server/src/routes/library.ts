@@ -347,6 +347,10 @@ router.get('/report-settings/ahj-packs', requirePermission('report.settings_view
 const AhjPackCreateBody = z.object({
   packType: z.enum(AHJ_PACK_TYPES),
   jurisdiction: z.string().min(2).max(120),
+  /** Two-letter state code, e.g. "VA". Strongly recommended for new packs. */
+  state: z.string().length(2).toUpperCase().optional(),
+  /** County name, e.g. "Fairfax County". Empty string for state-wide packs. */
+  county: z.string().max(255).optional(),
   items: z.array(
     z.object({
       key: z.string(),
@@ -369,6 +373,8 @@ router.post('/report-settings/ahj-packs', requirePermission('report.settings_edi
       companyId: req.actorCtx!.companyId,
       packType: body.data.packType,
       jurisdiction: body.data.jurisdiction,
+      state: body.data.state ?? null,
+      county: body.data.county ?? null,
       items: body.data.items,
       version: 1,
       createdBy: req.actorCtx!.actorId,

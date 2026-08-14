@@ -64,7 +64,7 @@ export interface ReadinessInput {
   };
 
   /** AHJ pack rows for this company (any jurisdiction) */
-  ahjPacks: Array<{ packType: string; jurisdiction: string }>;
+  ahjPacks: Array<{ packType: string; jurisdiction: string; state: string | null }>;
 
   /** Legacy jurisdiction pack state codes for this company (companyJurisdictionPacksTable) */
   legacyJurisdictionStates: string[];
@@ -312,8 +312,14 @@ export function computeReadiness(input: ReadinessInput): ReadinessResult {
   } else {
     const packsByType = new Map<string, boolean>();
     for (const pack of ahjPacks) {
-      // Match on state abbreviation within jurisdiction string.
-      if (pack.jurisdiction.toUpperCase().includes(propertyState)) {
+      // Prefer the structured state column (migration 063+); fall back to
+      // substring-matching the jurisdiction string for older rows where state
+      // is null. The substring fallback is kept so pre-migration rows still
+      // satisfy the check without a forced backfill.
+      const matches = pack.state != null
+        ? pack.state.toUpperCase() === propertyState
+        : pack.jurisdiction.toUpperCase().includes(propertyState);
+      if (matches) {
         packsByType.set(pack.packType, true);
       }
     }
