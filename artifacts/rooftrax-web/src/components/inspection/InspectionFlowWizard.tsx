@@ -12,7 +12,7 @@
  */
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Tabs,
   TabsContent,
@@ -779,6 +779,34 @@ export function InspectionFlowWizard({
 
   const inspection = (inspectionEnv as InspEnv | undefined)?.inspection;
   const compiledVersions = inspection?.compiledReportVersions ?? [];
+
+  // ── Jurisdiction pack check (compile gate pre-flight) ────────────────────
+  // Uses the inspection-scoped code-citations endpoint (requireWritableInspection)
+  // so this query is accessible to the rep who owns the inspection, not just
+  // admins. The server resolves the property state with the same regex as
+  // compile and returns matching packs, giving us a direct answer.
+  const { data: jurCitationsData } = useQuery<{
+    state: string | null;
+    packs: Array<{ state: string }>;
+  }>({
+    queryKey: ["code-citations-preflight", inspectionId],
+    queryFn: () =>
+      customFetch(
+        `/api/inspections/${inspectionId}/report/code-citations`,
+      ) as Promise<{ state: string | null; packs: Array<{ state: string }> }>,
+    enabled: !!inspectionId,
+    staleTime: 60_000,
+  });
+
+  // The server already resolved the property state — reuse it for the banner.
+  const propertyState = jurCitationsData?.state ?? null;
+
+  // Only show the banner when we have a definitive answer (packs loaded).
+  // While loading we stay silent — compile will surface the 422 if needed.
+  const jurPackMissing =
+    jurCitationsData !== undefined &&
+    !!propertyState &&
+    (jurCitationsData.packs?.length ?? 0) === 0;
   const sections = sectionsData?.sections ?? [];
   const curation = curationData;
   const events = eventsData?.events ?? [];
@@ -1195,6 +1223,28 @@ export function InspectionFlowWizard({
         isOpen={openStages.has(4)}
         onToggle={() => toggle(4)}
       >
+        {/* Jurisdiction pack warning — compile will 422 without one */}
+        {jurPackMissing && (
+          <div className="flex items-start gap-2.5 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
+            <div className="space-y-1 min-w-0">
+              <p className="text-xs font-medium text-destructive">
+                No Building Regulation pack for{" "}
+                <span className="font-mono">{propertyState}</span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Compile will fail until a matching jurisdiction pack exists.{" "}
+                <a
+                  href="/settings"
+                  className="underline text-primary hover:text-primary/80"
+                >
+                  Open Settings to add one →
+                </a>
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Unlocked sections list */}
         {hasRealSections && !allSectionsLocked && (
           <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 p-3 space-y-1">

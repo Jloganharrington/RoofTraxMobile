@@ -61,12 +61,28 @@ import {
   Moon,
   Monitor,
   Layers,
+  MapPin,
+  Zap,
+  ChevronDown,
 } from "lucide-react";
 import { applyTheme, type ThemeValue } from "@/lib/applyTheme";
 import { PriceBookPanel } from "@/pages/price-book/PriceBookList";
 import { TemplatesPanel } from "@/pages/TemplatesPage";
 import { SelectionsLibraryPanel } from "@/pages/settings/SelectionsLibraryPanel";
 import { NotificationsTab } from "@/pages/settings/NotificationsTab";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,6 +109,26 @@ interface ReportBranding {
 
 interface AiSettings {
   systemPrompt: string | null;
+}
+
+interface CodeCitation {
+  key: string;
+  element: string;
+  title: string;
+  cite: string;
+  body: string;
+}
+
+interface JurisdictionPack {
+  id: string;
+  jurisdiction: string;
+  state: string;
+  openingStatements: unknown[];
+  uppaLaw: string | null;
+  uppaStatement: string | null;
+  generalCodeCitations: CodeCitation[];
+  roofingCodeCitations: CodeCitation[];
+  sidingCodeCitations: CodeCitation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +776,9 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
         </CardContent>
       </Card>
 
+      {/* Jurisdiction Packs */}
+      <JurisdictionPacksSection companyId={companyId} />
+
       {/* Lead Sources */}
       <Card>
         <CardHeader className="pb-3">
@@ -837,6 +876,532 @@ function CompanyProfileTab({ companyId }: { companyId: string }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Jurisdiction Packs helpers
+// ---------------------------------------------------------------------------
+
+function blankCitation(): CodeCitation {
+  return { key: "", element: "", title: "", cite: "", body: "" };
+}
+
+function toCitationKey(s: string): string {
+  const k = s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60);
+  return k || `cit_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+type CitSection = "general" | "roofing" | "siding";
+
+function CitationsEditor({
+  label,
+  citations,
+  onChange,
+  onResearch,
+  researching,
+  packState,
+}: {
+  label: string;
+  citations: CodeCitation[];
+  onChange: (next: CodeCitation[]) => void;
+  onResearch: () => void;
+  researching: boolean;
+  packState: string;
+}) {
+  return (
+    <Collapsible defaultOpen={citations.length > 0}>
+      <div className="rounded-md border">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/40 transition-colors rounded-t-md"
+          >
+            <span>{label}</span>
+            <div className="flex items-center gap-2">
+              {citations.length > 0 && (
+                <span className="rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-2 py-0.5">
+                  {citations.length}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t px-3 pb-3 pt-2 space-y-3">
+            {citations.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No citations yet. Add manually or use AI research.
+              </p>
+            )}
+            {citations.map((cit, idx) => (
+              <div
+                key={idx}
+                className="rounded-md border p-2.5 space-y-2 bg-muted/20"
+              >
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">
+                      Title
+                    </Label>
+                    <Input
+                      className="h-7 text-xs"
+                      value={cit.title}
+                      onChange={(e) =>
+                        onChange(
+                          citations.map((c, i) =>
+                            i === idx ? { ...c, title: e.target.value } : c,
+                          ),
+                        )
+                      }
+                      placeholder="Drip Edge Requirement"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">
+                      Code Section
+                    </Label>
+                    <Input
+                      className="h-7 text-xs"
+                      value={cit.cite}
+                      onChange={(e) =>
+                        onChange(
+                          citations.map((c, i) =>
+                            i === idx ? { ...c, cite: e.target.value } : c,
+                          ),
+                        )
+                      }
+                      placeholder="2021 IRC R905.2.8.5"
+                    />
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() =>
+                      onChange(citations.filter((_, i) => i !== idx))
+                    }
+                    type="button"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">
+                    Provision Text
+                  </Label>
+                  <Textarea
+                    className="text-xs min-h-[60px] resize-none"
+                    value={cit.body}
+                    onChange={(e) =>
+                      onChange(
+                        citations.map((c, i) =>
+                          i === idx ? { ...c, body: e.target.value } : c,
+                        ),
+                      )
+                    }
+                    placeholder="Quoted code text and why it applies to storm claims…"
+                  />
+                </div>
+              </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                type="button"
+                onClick={() => onChange([...citations, blankCitation()])}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                type="button"
+                disabled={researching || !packState}
+                onClick={onResearch}
+                title={!packState ? "Enter the state code first" : undefined}
+              >
+                {researching ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Researching…
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-3 w-3 mr-1" />
+                    Research with AI
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+function JurisdictionPacksSection({ companyId }: { companyId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [packState, setPackState] = useState("");
+  const [jurisdiction, setJurisdiction] = useState("");
+  const [genCitations, setGenCitations] = useState<CodeCitation[]>([]);
+  const [roofCitations, setRoofCitations] = useState<CodeCitation[]>([]);
+  const [sidingCitations, setSidingCitations] = useState<CodeCitation[]>([]);
+  const [researchingSection, setResearchingSection] =
+    useState<CitSection | null>(null);
+
+  const JUR_KEY = ["jurisdiction-packs", companyId];
+
+  const { data: packsData } = useQuery<{ packs: JurisdictionPack[] }>({
+    queryKey: JUR_KEY,
+    queryFn: () =>
+      customFetch(
+        `/api/companies/${companyId}/jurisdiction-packs`,
+      ) as Promise<{ packs: JurisdictionPack[] }>,
+    enabled: !!companyId,
+  });
+  const packs = packsData?.packs ?? [];
+
+  const upsertMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      customFetch(`/api/companies/${companyId}/jurisdiction-packs/upsert`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack: body }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: JUR_KEY });
+      toast({ title: "Jurisdiction pack saved" });
+      setDialogOpen(false);
+    },
+    onError: (err) =>
+      toast({
+        title: "Save failed",
+        description: String(err),
+        variant: "destructive",
+      }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      customFetch(
+        `/api/companies/${companyId}/jurisdiction-packs/${id}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: JUR_KEY });
+      toast({ title: "Pack deleted" });
+    },
+    onError: (err) =>
+      toast({
+        title: "Delete failed",
+        description: String(err),
+        variant: "destructive",
+      }),
+  });
+
+  function openAdd() {
+    setEditingId(null);
+    setPackState("");
+    setJurisdiction("");
+    setGenCitations([]);
+    setRoofCitations([]);
+    setSidingCitations([]);
+    setDialogOpen(true);
+  }
+
+  function openEdit(pack: JurisdictionPack) {
+    setEditingId(pack.id);
+    setPackState(pack.state);
+    setJurisdiction(pack.jurisdiction);
+    setGenCitations(pack.generalCodeCitations ?? []);
+    setRoofCitations(pack.roofingCodeCitations ?? []);
+    setSidingCitations(pack.sidingCodeCitations ?? []);
+    setDialogOpen(true);
+  }
+
+  function normalizeCitations(cits: CodeCitation[]): CodeCitation[] {
+    return cits.map((c) => ({
+      key: c.key || toCitationKey(c.title),
+      element: c.element || c.title,
+      title: c.title,
+      cite: c.cite,
+      body: c.body,
+    }));
+  }
+
+  function handleSave() {
+    const st = packState.trim().toUpperCase();
+    const jur = jurisdiction.trim();
+    if (!st || !/^[A-Z]{2}$/.test(st)) {
+      toast({
+        title: "Enter a valid 2-letter state code",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!jur) {
+      toast({ title: "Jurisdiction label is required", variant: "destructive" });
+      return;
+    }
+    upsertMutation.mutate({
+      ...(editingId ? { id: editingId } : {}),
+      state: st,
+      jurisdiction: jur,
+      openingStatements: [],
+      uppaLaw: null,
+      uppaStatement: null,
+      generalCodeCitations: normalizeCitations(genCitations),
+      roofingCodeCitations: normalizeCitations(roofCitations),
+      sidingCodeCitations: normalizeCitations(sidingCitations),
+    });
+  }
+
+  async function handleResearch(section: CitSection) {
+    const st = packState.trim().toUpperCase();
+    if (!st) {
+      toast({ title: "Enter the state code first", variant: "destructive" });
+      return;
+    }
+    const current =
+      section === "general"
+        ? genCitations
+        : section === "roofing"
+          ? roofCitations
+          : sidingCitations;
+    // Send keys from all three sections — the server enforces uniqueness
+    // pack-wide (across general + roofing + siding), not just per-section.
+    const existingKeys = [...genCitations, ...roofCitations, ...sidingCitations]
+      .map((c) => c.key)
+      .filter(Boolean);
+    setResearchingSection(section);
+    try {
+      const result = (await customFetch(
+        `/api/companies/${companyId}/jurisdiction-packs/${st}/code-research`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: section, existingKeys }),
+        },
+      )) as { suggestions: CodeCitation[] };
+      const suggestions = result.suggestions ?? [];
+      if (!suggestions.length) {
+        toast({ title: "No suggestions returned" });
+        return;
+      }
+      if (section === "general") {
+        setGenCitations((prev) => [...prev, ...suggestions]);
+      } else if (section === "roofing") {
+        setRoofCitations((prev) => [...prev, ...suggestions]);
+      } else {
+        setSidingCitations((prev) => [...prev, ...suggestions]);
+      }
+      toast({
+        title: `Added ${suggestions.length} suggestion(s)`,
+        description: "Review each citation before saving.",
+      });
+    } catch (err) {
+      toast({
+        title: "Research failed",
+        description: String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setResearchingSection(null);
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+              <div>
+                <CardTitle className="text-base">
+                  Building Regulation Jurisdiction Packs
+                </CardTitle>
+                <CardDescription className="mt-0.5">
+                  Required for Proof Package compile. Add one pack per state
+                  your company operates in — the state code must match the
+                  2-letter abbreviation in the inspection address.
+                </CardDescription>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={openAdd} className="shrink-0">
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              Add Pack
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {packs.length === 0 ? (
+            <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950 p-3">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                  No jurisdiction packs configured
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Proof Package compile will fail for every inspection until at
+                  least one pack is added.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-md border divide-y divide-border/60">
+              {packs.map((pack) => {
+                const count =
+                  (pack.generalCodeCitations?.length ?? 0) +
+                  (pack.roofingCodeCitations?.length ?? 0) +
+                  (pack.sidingCodeCitations?.length ?? 0);
+                return (
+                  <div key={pack.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <span className="inline-flex items-center justify-center rounded font-mono text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 shrink-0 min-w-[40px] text-center">
+                      {pack.state}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {pack.jurisdiction}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {count} code citation{count !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => openEdit(pack)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        onClick={() => deleteMutation.mutate(pack.id)}
+                        disabled={deleteMutation.isPending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingId ? "Edit Jurisdiction Pack" : "Add Jurisdiction Pack"}
+            </DialogTitle>
+            <DialogDescription>
+              State and label are required for compile to succeed. Code
+              citations are included in the compiled report — use AI research
+              to populate them, then review before saving.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {/* State + Jurisdiction */}
+            <div className="grid grid-cols-[80px_1fr] gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">State *</Label>
+                <Input
+                  value={packState}
+                  onChange={(e) =>
+                    setPackState(e.target.value.toUpperCase().slice(0, 2))
+                  }
+                  placeholder="VA"
+                  maxLength={2}
+                  className="uppercase font-mono text-center tracking-widest"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Jurisdiction Label *</Label>
+                <Input
+                  value={jurisdiction}
+                  onChange={(e) => setJurisdiction(e.target.value)}
+                  placeholder="e.g. Virginia — USBC 2021 (IRC-based)"
+                  maxLength={120}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Citation sections */}
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Code Citations{" "}
+                <span className="font-normal">(optional — added to compiled report)</span>
+              </p>
+              <CitationsEditor
+                label="General Code Citations"
+                citations={genCitations}
+                onChange={setGenCitations}
+                onResearch={() => handleResearch("general")}
+                researching={researchingSection === "general"}
+                packState={packState}
+              />
+              <CitationsEditor
+                label="Roofing Code Citations"
+                citations={roofCitations}
+                onChange={setRoofCitations}
+                onResearch={() => handleResearch("roofing")}
+                researching={researchingSection === "roofing"}
+                packState={packState}
+              />
+              <CitationsEditor
+                label="Siding Code Citations"
+                citations={sidingCitations}
+                onChange={setSidingCitations}
+                onResearch={() => handleResearch("siding")}
+                researching={researchingSection === "siding"}
+                packState={packState}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={upsertMutation.isPending}>
+              {upsertMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save Pack"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
