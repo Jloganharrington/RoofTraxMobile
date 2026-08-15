@@ -21,6 +21,8 @@ import { randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import {
   ahjCoverage,
+  ahjMasterAdoptionsTable,
+  ahjMasterPacksTable,
   ahjPacksTable,
   ahjRequestsTable,
   attestationsTable,
@@ -183,6 +185,87 @@ async function provisionPPAccount(opts: {
           'Furnish and install temporary weather protection to arrest ongoing water intrusion until permanent repairs can be performed. Includes emergency mobilization, initial damage assessment, crew and vehicle, ordinary safety and fall-protection equipment, temporary covering material, fasteners, battens, and ballast as conditions require, temporary sealing of active penetrations, removal of loose debris presenting an immediate hazard, routine material handling, standard jobsite cleanup, and photographic documentation of the temporary repair before, during, and after installation.\n\nThis is a temporary protective measure. It does not restore the assembly, is not a permanent repair, and is not warranted against continued intrusion under sustained or severe weather.\n\nStandard pricing applies to a single mobilization within the normal service radius during ordinary business hours, on roof slopes of 10:12 or less and buildings up to three stories where safe roof access, ordinary staging, and ground access are available.\n\nAdditional mobilizations and return trips, covering beyond the included area, replacement of covering displaced by subsequent weather, after-hours and holiday response, structural stabilization and shoring, interior water extraction and drying, board-up of windows, doors, or wall openings, restricted-access labor, handling beyond 30 feet, specialized property protection, scaffolding, hazardous-material handling, extended monitoring and scheduled re-inspection, and any permanent repair are additional and priced under the applicable Price Book item or written change order. Standard pricing includes up to 300 square feet of temporary covering furnished and installed. Additional area is measured by covered surface and priced under the applicable Price Book item.',
       },
     ]);
+
+    // ── AHJ master pack adoption + jurisdiction pack seed ──────────────────
+    // Both steps run inside the same transaction so a failure rolls back the
+    // whole provision — no partial state is left behind.
+    if (opts.ahjCoverageId) {
+      const [coverage] = await tx
+        .select({ state: ahjCoverage.state, masterPackId: ahjCoverage.masterPackId })
+        .from(ahjCoverage)
+        .where(eq(ahjCoverage.id, opts.ahjCoverageId))
+        .limit(1);
+
+      if (coverage) {
+        // Step 1 — Adopt the master pack when one exists for this coverage.
+        // Idempotency is guaranteed by the unique constraint on
+        // (company_id, master_pack_id) in ahj_master_adoptions; we skip the
+        // insert entirely when an adoption already exists (safe on retry).
+        if (coverage.masterPackId) {
+          const [existingAdoption] = await tx
+            .select({ id: ahjMasterAdoptionsTable.id })
+            .from(ahjMasterAdoptionsTable)
+            .where(
+              and(
+                eq(ahjMasterAdoptionsTable.companyId, company.id),
+                eq(ahjMasterAdoptionsTable.masterPackId, coverage.masterPackId),
+              ),
+            )
+            .limit(1);
+
+          if (!existingAdoption) {
+            const [masterPack] = await tx
+              .select()
+              .from(ahjMasterPacksTable)
+              .where(eq(ahjMasterPacksTable.id, coverage.masterPackId))
+              .limit(1);
+
+            if (masterPack) {
+              const jurisdiction = masterPack.county
+                ? `${masterPack.county}, ${masterPack.state}`
+                : masterPack.state;
+
+              const [adoptedPack] = await tx
+                .insert(ahjPacksTable)
+                .values({
+                  companyId: company.id,
+                  packType: masterPack.packType as 'ahj_roof' | 'ahj_siding',
+                  jurisdiction,
+                  state: masterPack.state,
+                  county: masterPack.county,
+                  items: masterPack.items as object[],
+                  version: 1,
+                  createdBy: user.id,
+                })
+                .returning();
+
+              await tx.insert(ahjMasterAdoptionsTable).values({
+                companyId: company.id,
+                masterPackId: coverage.masterPackId,
+                adoptedPackId: adoptedPack.id,
+              });
+            }
+          }
+        }
+
+        // Step 2 — Seed an empty jurisdiction pack for the coverage's state.
+        // The unique constraint on (company_id, jurisdiction) means a duplicate
+        // confirm replay silently does nothing (idempotent).
+        const stateCode = coverage.state.toUpperCase();
+        await tx
+          .insert(companyJurisdictionPacksTable)
+          .values({
+            companyId: company.id,
+            jurisdiction: stateCode,
+            state: stateCode,
+            openingStatements: [],
+            generalCodeCitations: [],
+            roofingCodeCitations: [],
+            sidingCodeCitations: [],
+          })
+          .onConflictDoNothing();
+      }
+    }
 
     return { company, user };
   });
