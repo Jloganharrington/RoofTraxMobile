@@ -76,6 +76,17 @@ export default function InspectionPackageScreen() {
   });
   const inspection = inspectionQuery.data?.inspection;
 
+  // AI briefing presence — the compile endpoint returns HTTP 400 when aiSummary is null.
+  const hasSummary = (inspection?.aiSummary as object | null | undefined) != null;
+
+  // Web-app deep-link for steps that can only be completed there (estimate lines, sections).
+  const _domain = process.env.EXPO_PUBLIC_DOMAIN;
+  // ?tab=inspection_flow opens the Proof Package Builder tab directly.
+  const webWizardUrl =
+    _domain && (inspection?.pinId as string | undefined)
+      ? `https://${_domain}/rooftrax-web/leads/${inspection!.pinId as string}?tab=inspection_flow`
+      : null;
+
   // Agreement status — forensic inspections only.
   const isForensic = inspection?.phase === 'forensic';
   const agreementQuery = useGetAgreement(id);
@@ -106,6 +117,9 @@ export default function InspectionPackageScreen() {
   const [lintFindings, setLintFindings] = useState<LintFinding[]>([]);
   const [lintResolved, setLintResolved] = useState(false);
   const [resolving, setResolving] = useState(false);
+
+  // AI briefing generation (POST /inspections/:id/summary — required before compile)
+  const [generatingSummary, setGeneratingSummary] = useState(false);
 
   const refreshLint = useCallback(async () => {
     try {
@@ -216,6 +230,35 @@ export default function InspectionPackageScreen() {
     }
   }
 
+  async function handleGenerateSummary() {
+    if (generatingSummary) return;
+    setGeneratingSummary(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      // Reload the inspection so hasSummary updates without a manual refresh.
+      await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
+    } catch (err) {
+      Alert.alert(
+        'Briefing generation failed',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
+    } finally {
+      setGeneratingSummary(false);
+    }
+  }
+
   async function triggerCompileFlow() {
     if (compiling) return;
     try {
@@ -281,7 +324,25 @@ export default function InspectionPackageScreen() {
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+        if (res.status === 400) {
+          // Only surface the briefing message when the client knows the summary
+          // is absent. A 400 with a present briefing is a Stage-0 readiness
+          // failure or an invalid pack selection — show the server's own error.
+          if (!hasSummary) {
+            throw new Error('AI briefing missing — tap "Generate AI Briefing" above first.');
+          }
+          throw new Error(body.error ?? 'Inspection is not ready to compile. Check readiness in the web app.');
+        }
+        if (res.status === 402) {
+          throw new Error('A paid package credit is required. Complete payment in the web app to continue.');
+        }
+        if (res.status === 422) {
+          throw new Error(
+            (body.error ?? 'Report cannot be compiled yet.') +
+            ' Open the web app to fix the remaining issues.',
+          );
+        }
         throw new Error(body.error ?? `Server returned ${res.status}`);
       }
       const body = (await res.json().catch(() => ({}))) as {
@@ -736,15 +797,66 @@ export default function InspectionPackageScreen() {
             </View>
           ) : null}
 
+          {/* ── AI Briefing card — required before compile ──────────────── */}
+          {!hasSummary ? (
+            <View style={[styles.preflightCard, { backgroundColor: '#fff7ed', borderColor: '#fed7aa' }]}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#9a3412', marginBottom: 4 }}>
+                Step 1: Generate AI Briefing
+              </Text>
+              <Text style={{ fontSize: 12, color: '#7c2d12', lineHeight: 17, marginBottom: 8 }}>
+                The AI briefing feeds all seven report sections and is required
+                before compiling. This takes 10–30 seconds.
+              </Text>
+              {generatingSummary ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#9a3412" />
+                  <Text style={{ fontSize: 12, color: '#9a3412' }}>Generating briefing…</Text>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={handleGenerateSummary}
+                  style={{
+                    backgroundColor: '#ea580c',
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    alignSelf: 'flex-start',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                    Generate AI Briefing
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.preflightCard,
+                { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center', gap: 8 },
+              ]}
+            >
+              <Icon name="check" size={14} color="#166534" />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#166534', flex: 1 }}>
+                AI Briefing Ready
+              </Text>
+              <Pressable onPress={handleGenerateSummary} disabled={generatingSummary}>
+                <Text style={{ fontSize: 12, color: '#16a34a', opacity: generatingSummary ? 0.5 : 1 }}>
+                  {generatingSummary ? 'Regenerating…' : 'Regenerate'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
               onPress={triggerCompileFlow}
-              disabled={compiling || citationsQuery.isFetching}
+              disabled={compiling || citationsQuery.isFetching || !hasSummary}
               style={[
                 styles.reportBtn,
                 {
                   backgroundColor: colors.secondary,
-                  opacity: (compiling || citationsQuery.isFetching) ? 0.6 : 1,
+                  opacity: (compiling || citationsQuery.isFetching || !hasSummary) ? 0.5 : 1,
                   flex: inspection?.compiledReportReadyAt ? 1 : undefined,
                 },
               ]}
@@ -776,6 +888,28 @@ export default function InspectionPackageScreen() {
               </Pressable>
             ) : null}
           </View>
+
+          {/* Deep-link to web wizard for steps that can only be done there */}
+          {hasSummary && !inspection?.compiledReportReadyAt && webWizardUrl ? (
+            <Pressable
+              onPress={() => Linking.openURL(webWizardUrl)}
+              style={[
+                styles.preflightCard,
+                { borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10 },
+              ]}
+            >
+              <Icon name="arrow-right" size={16} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.foreground }}>
+                  Continue in web app
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.mutedForeground, lineHeight: 17, marginTop: 2 }}>
+                  Add estimate lines and generate the 7 AI report sections before compiling.
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
 
           {/* Download & email — only once a compiled package exists */}
           {inspection?.compiledReportReadyAt ? (
@@ -1287,5 +1421,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 8,
+  },
+  preflightCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
   },
 });

@@ -10,7 +10,7 @@
  * for insurance leads, a profile sub-status dropdown.
  */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, useLocation } from 'wouter';
+import { useParams, useLocation, useSearch } from 'wouter';
 import { Shell } from '@/components/layout/Shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -3441,7 +3441,14 @@ export default function LeadProfile() {
   const { data: sampleInfo } = useGetSamplePackageInfo();
   const isSample = !!id && !!sampleInfo?.pinId && id === sampleInfo.pinId;
 
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  // Allow deep-links to open a specific tab (e.g. ?tab=inspection_flow from mobile).
+  const search = useSearch();
+  const tabParam = new URLSearchParams(search).get('tab') as TabId | null;
+  const [activeTab, setActiveTab] = useState<TabId>(
+    tabParam && (['dashboard', 'inspection_flow', 'contract_builder', 'financials', 'communication', 'scope', 'files'] as string[]).includes(tabParam)
+      ? tabParam
+      : 'dashboard',
+  );
   const [form, setForm] = useState<FormState | null>(null);
   const [stageSaving, setStageSaving] = useState(false);
 
