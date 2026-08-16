@@ -843,7 +843,7 @@ export const GetMyProfileResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "companyId": zod.string(),
   "companyName": zod.string(),
@@ -903,7 +903,7 @@ export const UpdateProfileMeResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "companyId": zod.string(),
   "companyName": zod.string(),
@@ -963,7 +963,7 @@ export const UpdateProfileCredentialsResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "companyId": zod.string(),
   "companyName": zod.string(),
@@ -1019,7 +1019,7 @@ export const UpdateProfileSignatureResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "companyId": zod.string(),
   "companyName": zod.string(),
@@ -1092,7 +1092,7 @@ export const UpdateProfileSmtpResponse = zod.object({
   "profile": zod.object({
   "userId": zod.string(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "companyId": zod.string(),
   "companyName": zod.string(),
@@ -1453,7 +1453,7 @@ export const ListTeamUsersResponse = zod.object({
   "lastName": zod.string().nullable(),
   "profileImageUrl": zod.string().nullable(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "pinCount": zod.number(),
   "joinedAt": zod.coerce.date()
@@ -1473,7 +1473,7 @@ export const UpdateTeamUserParams = zod.object({
 
 export const UpdateTeamUserBody = zod.object({
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']).optional(),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']).optional(),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']).optional(),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']).optional()
 })
 
@@ -1485,7 +1485,7 @@ export const UpdateTeamUserResponse = zod.object({
   "lastName": zod.string().nullable(),
   "profileImageUrl": zod.string().nullable(),
   "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
-  "workflowAssignment": zod.enum(['retail', 'insurance_retail']),
+  "workflowAssignment": zod.enum(['retail', 'insurance', 'insurance_retail']),
   "department": zod.enum(['canvasser', 'inspector_canvasser', 'office']),
   "pinCount": zod.number(),
   "joinedAt": zod.coerce.date()

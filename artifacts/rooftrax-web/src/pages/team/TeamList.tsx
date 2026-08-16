@@ -47,6 +47,7 @@ const DEPT_LABELS: Record<Department, string> = {
 
 const WORKFLOW_LABELS: Record<WorkflowAssignment, string> = {
   retail: "Retail",
+  insurance: "Insurance",
   insurance_retail: "Ins + Retail",
 };
 

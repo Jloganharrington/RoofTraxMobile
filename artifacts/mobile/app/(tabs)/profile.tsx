@@ -57,6 +57,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const WORKFLOW_LABELS: Record<string, string> = {
   retail: 'Retail',
+  insurance: 'Insurance',
   insurance_retail: 'Insurance + Retail',
 };
 

@@ -279,7 +279,7 @@ function ProfileTab() {
     admin: 'Admin', super_admin: 'Super Admin',
   };
   const WORKFLOW_LABELS: Record<string, string> = {
-    retail: 'Retail', insurance_retail: 'Insurance / Retail',
+    retail: 'Retail', insurance: 'Insurance', insurance_retail: 'Insurance / Retail',
   };
   const DEPT_LABELS: Record<string, string> = {
     canvasser: 'Canvasser', inspector_canvasser: 'Inspector / Canvasser',

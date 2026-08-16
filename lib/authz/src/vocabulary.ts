@@ -2,10 +2,11 @@
 // comparisons within the same company — there is no separate "reporting tree".
 export const ROLES = ['field_rep', 'manager', 'admin', 'super_admin'] as const;
 
-// Which line(s) of business a user works. `insurance_retail` replaces the
-// former separate `insurance` and `both` values — every insurance-capable
-// rep can also see retail pins, so there is no longer a pure-insurance mode.
-export const WORKFLOW_ASSIGNMENTS = ['retail', 'insurance_retail'] as const;
+// Which line(s) of business a user works.
+//   retail           — retail door-knock canvassing only
+//   insurance        — insurance-damage canvassing only
+//   insurance_retail — both lines of business (can do retail OR insurance pins)
+export const WORKFLOW_ASSIGNMENTS = ['retail', 'insurance', 'insurance_retail'] as const;
 
 // Which dashboard/module a user operates in.
 //   canvasser          — door-knocking field flow

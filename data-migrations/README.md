@@ -159,6 +159,11 @@ psql "$DATABASE_URL" -f data-migrations/001_backfill_object_ownership.sql
   estimate_provided, followup_required, contract_sent) to their equivalent new
   keys (appt_needed, appt_complete, proposal_provided, follow_up,
   contract_pending) so they reappear on the Retail Pipeline board.
+- **066_workflow_assignment_insurance.sql** — adds `'insurance'` to the
+  `user_profiles.workflow_assignment` check constraint, enabling a
+  Canvasser – Insurance persona (insurance-only canvassers). Existing
+  `'retail'` and `'insurance_retail'` rows are untouched; the default
+  remains `'insurance_retail'`.
 - **052_stage_transitions.sql** — creates the `stage_transitions` table and
   adds four staging columns to `pins` (`stage_entered_at`, `loop_next_action_at`,
   `loss_reason`, `source_pipeline`). These were defined in the Drizzle schema

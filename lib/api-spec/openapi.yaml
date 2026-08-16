@@ -8563,7 +8563,7 @@ components:
       enum: [field_rep, manager, admin, super_admin]
     WorkflowAssignment:
       type: string
-      enum: [retail, insurance_retail]
+      enum: [retail, insurance, insurance_retail]
     Department:
       type: string
       enum: [canvasser, inspector_canvasser, office]

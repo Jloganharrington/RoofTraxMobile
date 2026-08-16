@@ -69,6 +69,7 @@ function getDepartmentLabel(dept: Department): string {
 function getWorkflowLabel(wf: WorkflowAssignment): string {
   const labels: Record<WorkflowAssignment, string> = {
     retail: "Retail Only",
+    insurance: "Insurance Only",
     insurance_retail: "Insurance & Retail",
   };
   return labels[wf] ?? wf;

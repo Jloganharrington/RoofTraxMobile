@@ -72,6 +72,8 @@ async function main() {
     // Alpha users
     { handle: 'A-CANV-1', companyId: ALPHA_ID, email: 'a-canv-1@zztest.local',    firstName: 'Alpha', lastName: 'Canv1',  role: 'field_rep',   dept: 'canvasser',             workflowAssignment: 'retail' },
     { handle: 'A-CANV-2', companyId: ALPHA_ID, email: 'a-canv-2@zztest.local',    firstName: 'Alpha', lastName: 'Canv2',  role: 'field_rep',   dept: 'canvasser',             workflowAssignment: 'retail' },
+    { handle: 'A-CANV-INS',  companyId: ALPHA_ID, email: 'a-canv-ins@zztest.local',  firstName: 'Alpha', lastName: 'CanvIns',  role: 'field_rep', dept: 'canvasser',           workflowAssignment: 'insurance' },
+    { handle: 'A-CANV-BOTH', companyId: ALPHA_ID, email: 'a-canv-both@zztest.local', firstName: 'Alpha', lastName: 'CanvBoth', role: 'field_rep', dept: 'canvasser',           workflowAssignment: 'insurance_retail' },
     { handle: 'A-INSP-1', companyId: ALPHA_ID, email: 'a-insp-1@zztest.local',    firstName: 'Alpha', lastName: 'Insp1',  role: 'field_rep',   dept: 'inspector_canvasser',   workflowAssignment: 'insurance_retail' },
     { handle: 'A-OFF-1',  companyId: ALPHA_ID, email: 'a-off-1@zztest.local',     firstName: 'Alpha', lastName: 'Off1',   role: 'field_rep',   dept: 'office',                workflowAssignment: 'retail' },
     { handle: 'A-MGR-F',  companyId: ALPHA_ID, email: 'a-mgr-f@zztest.local',     firstName: 'Alpha', lastName: 'MgrF',   role: 'manager',     dept: 'inspector_canvasser',   workflowAssignment: 'insurance_retail' },

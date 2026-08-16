@@ -15,11 +15,14 @@ import { useAuth, type LoginError } from '@/lib/auth';
 
 type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'pp-forgot';
 
-const DEV_ROLES = [
-  { key: 'field_rep', label: 'Field Rep' },
-  { key: 'manager', label: 'Manager' },
-  { key: 'admin', label: 'Admin' },
-  { key: 'super_admin', label: 'Super Admin' },
+const DEV_PERSONAS = [
+  { key: 'canvasser-retail',    label: 'Canvasser – Retail' },
+  { key: 'canvasser-insurance', label: 'Canvasser – Insurance' },
+  { key: 'canvasser-both',      label: 'Canvasser – Both' },
+  { key: 'field-rep',           label: 'Field Rep' },
+  { key: 'manager',             label: 'Manager' },
+  { key: 'admin',               label: 'Admin' },
+  { key: 'super-admin',         label: 'Super Admin' },
 ] as const;
 
 function errorMessage(error: LoginError | null): string | null {
@@ -135,18 +138,18 @@ export function CompanyGateScreen() {
     }
   };
 
-  const handleDevLogin = async (role: string) => {
-    setDevBusy(role);
+  const handleDevLogin = async (persona: string) => {
+    setDevBusy(persona);
     setDevError(null);
     try {
       const res = await fetch(`${getApiBaseUrl()}/dev/login-as`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ persona }),
       });
       const data = (await res.json().catch(() => null)) as { token?: string; error?: string } | null;
       if (!res.ok || !data?.token) {
-        setDevError(data?.error ?? `No ${role} user found. Seed one first.`);
+        setDevError(data?.error ?? `No "${persona}" user found. Seed one first.`);
         return;
       }
       await loginWithToken(data.token);
@@ -214,9 +217,9 @@ export function CompanyGateScreen() {
                 <Text style={styles.devLabel}>DEV TOOLS</Text>
                 <View style={[styles.devDividerLine, { backgroundColor: '#f59e0b' }]} />
               </View>
-              <Text style={styles.devHint}>Sign in instantly as any role</Text>
+              <Text style={styles.devHint}>Sign in instantly as any persona</Text>
               <View style={styles.devGrid}>
-                {DEV_ROLES.map(({ key, label }) => (
+                {DEV_PERSONAS.map(({ key, label }) => (
                   <Pressable
                     key={key}
                     onPress={() => handleDevLogin(key)}
