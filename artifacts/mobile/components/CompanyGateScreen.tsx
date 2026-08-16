@@ -15,6 +15,13 @@ import { useAuth, type LoginError } from '@/lib/auth';
 
 type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'pp-forgot';
 
+const DEV_ROLES = [
+  { key: 'field_rep', label: 'Field Rep' },
+  { key: 'manager', label: 'Manager' },
+  { key: 'admin', label: 'Admin' },
+  { key: 'super_admin', label: 'Super Admin' },
+] as const;
+
 function errorMessage(error: LoginError | null): string | null {
   switch (error) {
     case 'missing_company':
@@ -33,7 +40,7 @@ function errorMessage(error: LoginError | null): string | null {
 // at signup and untouched here.
 export function CompanyGateScreen() {
   const colors = useColors();
-  const { login, loginPP, ppLoginError, isLoading, loginError } = useAuth();
+  const { login, loginPP, loginWithToken, ppLoginError, isLoading, loginError } = useAuth();
   const [mode, setMode] = useState<Mode>('choose');
   const [companyCode, setCompanyCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -51,6 +58,10 @@ export function CompanyGateScreen() {
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+
+  // Dev panel state (only active when __DEV__)
+  const [devBusy, setDevBusy] = useState<string | null>(null); // role key currently loading
+  const [devError, setDevError] = useState<string | null>(null);
 
   const handleLookup = async () => {
     const id = companyCode.trim().toUpperCase();
@@ -124,6 +135,28 @@ export function CompanyGateScreen() {
     }
   };
 
+  const handleDevLogin = async (role: string) => {
+    setDevBusy(role);
+    setDevError(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/dev/login-as`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      const data = (await res.json().catch(() => null)) as { token?: string; error?: string } | null;
+      if (!res.ok || !data?.token) {
+        setDevError(data?.error ?? `No ${role} user found. Seed one first.`);
+        return;
+      }
+      await loginWithToken(data.token);
+    } catch {
+      setDevError('Could not reach the dev endpoint. Is the API server running?');
+    } finally {
+      setDevBusy(null);
+    }
+  };
+
   const message = formError ?? ppLoginError ?? errorMessage(loginError);
 
   return (
@@ -172,6 +205,35 @@ export function CompanyGateScreen() {
           <Text style={[styles.hint, { color: colors.mutedForeground }]}>
             Need to create a company? Visit rooftrax.com to sign up.
           </Text>
+
+          {/* ── Dev Tools (Expo only) ───────────────────────────────────── */}
+          {__DEV__ && (
+            <View style={styles.devPanel}>
+              <View style={styles.devDivider}>
+                <View style={[styles.devDividerLine, { backgroundColor: '#f59e0b' }]} />
+                <Text style={styles.devLabel}>DEV TOOLS</Text>
+                <View style={[styles.devDividerLine, { backgroundColor: '#f59e0b' }]} />
+              </View>
+              <Text style={styles.devHint}>Sign in instantly as any role</Text>
+              <View style={styles.devGrid}>
+                {DEV_ROLES.map(({ key, label }) => (
+                  <Pressable
+                    key={key}
+                    onPress={() => handleDevLogin(key)}
+                    disabled={devBusy !== null}
+                    style={styles.devButton}
+                  >
+                    {devBusy === key ? (
+                      <ActivityIndicator size="small" color="#f59e0b" />
+                    ) : (
+                      <Text style={styles.devButtonText}>{label}</Text>
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+              {devError && <Text style={styles.devError}>{devError}</Text>}
+            </View>
+          )}
         </>
       )}
 
@@ -482,5 +544,57 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
+  },
+  // ── Dev panel ──────────────────────────────────────────────────────────
+  devPanel: {
+    width: '100%',
+    marginTop: 8,
+    gap: 10,
+  },
+  devDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  devDividerLine: {
+    flex: 1,
+    height: 1,
+    opacity: 0.5,
+  },
+  devLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: '#f59e0b',
+  },
+  devHint: {
+    fontSize: 12,
+    textAlign: 'center',
+    color: '#92400e',
+  },
+  devGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  devButton: {
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#1c1917',
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  devButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f59e0b',
+  },
+  devError: {
+    fontSize: 12,
+    textAlign: 'center',
+    color: '#ef4444',
   },
 });

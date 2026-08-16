@@ -44,6 +44,7 @@ import ppRouter from "./pp";
 import ppAdminRouter from "./ppAdmin";
 import builderRouter from "./builder";
 import ahjMasterRouter from "./ahjMaster";
+import devRouter from "./dev";
 
 const router: IRouter = Router();
 
@@ -92,5 +93,6 @@ router.use(ppRouter);
 router.use(ppAdminRouter);
 router.use(builderRouter);
 router.use(ahjMasterRouter);
+router.use(devRouter);
 
 export default router;

@@ -43,6 +43,9 @@ interface AuthContextValue {
   loginPP: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   ppLoginError: string | null;
   logout: () => Promise<void>;
+  // Dev-only: store a pre-minted bearer token and hydrate the user. Used by
+  // the __DEV__ role picker; never called in production builds.
+  loginWithToken: (token: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -54,6 +57,7 @@ const AuthContext = createContext<AuthContextValue>({
   loginPP: async () => ({ ok: false }),
   ppLoginError: null,
   logout: async () => {},
+  loginWithToken: async () => {},
 });
 
 function getApiBaseUrl(): string {
@@ -318,6 +322,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchUser]);
 
+  const loginWithToken = useCallback(async (token: string) => {
+    await setToken(AUTH_TOKEN_KEY, token);
+    setIsLoading(true);
+    await fetchUser();
+  }, [fetchUser]);
+
   const logout = useCallback(async () => {
     try {
       const token = await getToken(AUTH_TOKEN_KEY);
@@ -353,6 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loginPP,
         ppLoginError,
         logout,
+        loginWithToken,
       }}
     >
       {children}
