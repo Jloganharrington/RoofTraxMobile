@@ -61,6 +61,7 @@ export default function DashboardScreen() {
   const { role, companyName, department } = useProfile();
   const queryClient = useQueryClient();
   const isManager = role === 'manager' || role === 'admin' || role === 'super_admin';
+  const isCanvasser = department === 'canvasser';
   // Warm the price book cache on mount (= after login) and keep it fresh
   // whenever the device regains connectivity. Runs silently in the background.
   usePriceBookSync();
@@ -198,8 +199,8 @@ export default function DashboardScreen() {
         </Pressable>
       ) : null}
 
-      {/* My Pin Updates */}
-      {!isManager && (
+      {/* My Pin Updates — CRM pipeline stage changes; not shown for canvassers */}
+      {!isManager && !isCanvasser && (
         <PinUpdatesCard updates={pinUpdates.data?.updates ?? []} loading={pinUpdates.isLoading} colors={colors} />
       )}
 
@@ -307,8 +308,8 @@ export default function DashboardScreen() {
         </>
       ) : null}
 
-      {/* Competitive panel — trailing 30 days */}
-      {competitive ? (
+      {/* Competitive panel — trailing 30 days; not shown for canvassers */}
+      {competitive && !isCanvasser ? (
         <>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Last 30 days</Text>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
