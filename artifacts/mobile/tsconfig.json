@@ -16,6 +16,9 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ],
+  "exclude": [
+    "app.config.ts"
+  ],
   "references": [
     {
       "path": "../../lib/api-client-react"
