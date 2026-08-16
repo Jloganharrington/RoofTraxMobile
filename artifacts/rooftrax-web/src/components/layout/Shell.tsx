@@ -80,6 +80,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Team Management",    path: "/team",               icon: Users,       minRole: 'manager' },
       { label: "User Authorization", path: "/user-authorization", icon: ShieldCheck, minRole: 'manager' },
+      { label: "PP Tenants",         path: "/admin/pp-tenants",   icon: BookOpen,    minRole: 'admin' },
       { label: "Settings",           path: "/settings",           icon: Settings },
       { label: "Integrations",       path: "/integrations",       icon: Plug,        minRole: 'manager' },
     ],

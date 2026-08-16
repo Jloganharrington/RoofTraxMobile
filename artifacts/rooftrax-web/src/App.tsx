@@ -43,6 +43,7 @@ import TrialStatus from '@/pages/trial/TrialStatus';
 import TrialWaitlist from '@/pages/trial/TrialWaitlist';
 import TrialQueue from '@/pages/admin/TrialQueue';
 import TrialQueueDetail from '@/pages/admin/TrialQueueDetail';
+import PPTenantsPage from '@/pages/admin/PPTenantsPage';
 import PricingPage from '@/pages/pricing/PricingPage';
 import PricingSuccessPage from '@/pages/pricing/PricingSuccessPage';
 import ProductOverview from '@/pages/marketing/product/ProductOverview';
@@ -187,6 +188,11 @@ function Router() {
       </Route>
       <Route path="/admin/trial-queue/:id">
         <ProtectedRoute minRole="admin"><TrialQueueDetail /></ProtectedRoute>
+      </Route>
+
+      {/* PP Tenants admin — server enforces admin (team.view_stats) */}
+      <Route path="/admin/pp-tenants">
+        <ProtectedRoute minRole="admin"><PPTenantsPage /></ProtectedRoute>
       </Route>
 
       {/* /dashboard redirects to "/" — sidebar nav already targets "/" */}

@@ -41,6 +41,7 @@ import trialRouter from "./trial";
 import pricingRouter from "./pricing";
 import trialAdminRouter from "./trialAdmin";
 import ppRouter from "./pp";
+import ppAdminRouter from "./ppAdmin";
 import builderRouter from "./builder";
 import ahjMasterRouter from "./ahjMaster";
 
@@ -88,6 +89,7 @@ router.use(trialRouter);
 router.use(pricingRouter);
 router.use(trialAdminRouter);
 router.use(ppRouter);
+router.use(ppAdminRouter);
 router.use(builderRouter);
 router.use(ahjMasterRouter);
 
