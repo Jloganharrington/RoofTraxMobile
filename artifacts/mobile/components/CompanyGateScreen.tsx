@@ -74,9 +74,9 @@ export function CompanyGateScreen() {
   const [devAuthError, setDevAuthError] = useState<string | null>(null);
 
   function handleDevAuth() {
-    const expectedUser = process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '';
-    const expectedPass = process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '';
-    if (devCredUser === expectedUser && devCredPass === expectedPass && expectedUser) {
+    const expectedUser = (process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '').trim();
+    const expectedPass = (process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '').trim();
+    if (devCredUser.trim() === expectedUser && devCredPass.trim() === expectedPass && expectedUser) {
       setDevAuthenticated(true);
       setDevLoginOpen(false);
       setDevCredUser('');
