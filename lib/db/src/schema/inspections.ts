@@ -1081,6 +1081,12 @@ export const inspectionPhotosTable = pgTable('inspection_photos', {
   // evidence but omitted from Proof Package generation (report body, AI
   // grouping brief, and evidence manifest). Defaults to included.
   includeInProofPackage: boolean('include_in_proof_package').notNull().default(true),
+  // MIME type for PP portal uploads ('image/jpeg', 'image/png', 'application/pdf').
+  // NULL for mobile-captured photos where content type is implicit.
+  mimeType: varchar('mime_type'),
+  // Original filename provided by the browser at upload time, stored so the
+  // compiled Proof Package can display a user-friendly attachment name.
+  originalFileName: varchar('original_file_name', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

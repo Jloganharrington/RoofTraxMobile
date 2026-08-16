@@ -1552,7 +1552,7 @@ router.post('/pp/inspections/:inspectionId/photos', async (req: Request, res: Re
     return;
   }
 
-  const { objectPath, sha256, contentType } = parsed.data;
+  const { objectPath, sha256, contentType, fileName } = parsed.data;
 
   // Tenant boundary: verify objectPath was issued to this company.
   const [ownership] = await db
@@ -1582,6 +1582,7 @@ router.post('/pp/inspections/:inspectionId/photos', async (req: Request, res: Re
   }
 
   // PDFs are stored but excluded from the curation grid (no thumbnail available).
+  // Images are included in the package; PDFs appear as named attachments.
   const includeInProofPackage = contentType !== 'application/pdf';
 
   const [photo] = await db
@@ -1593,6 +1594,10 @@ router.post('/pp/inspections/:inspectionId/photos', async (req: Request, res: Re
       url:                   objectPath,
       sha256,
       includeInProofPackage,
+      // Store content type and filename so the compiled Proof Package can
+      // list PDFs as named downloadable attachments.
+      mimeType:              contentType,
+      originalFileName:      fileName?.trim() || null,
     })
     .returning();
 

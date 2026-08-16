@@ -5866,7 +5866,7 @@ ${JSON.stringify(photoBrief)}
   // ── Section assembly & generationSnapshot ──────────────────────────────
   // Read locked sections and build the section assembly HTML (TOC + body).
   // Also gather standards entries for standardsCited snapshot.
-  const [lockedSectionRows, allStandardsRows, finalizedBadgeSelections] = await Promise.all([
+  const [lockedSectionRows, allStandardsRows, finalizedBadgeSelections, uploadedDocuments] = await Promise.all([
     db
       .select({
         sectionType: claimSectionsTable.sectionType,
@@ -5900,6 +5900,25 @@ ${JSON.stringify(photoBrief)}
           eq(exhibitSelectionsTable.inspectionId, inspectionId),
           eq(exhibitSelectionsTable.companyId, actor.companyId),
           isNotNull(exhibitSelectionsTable.finalizedAt),
+        ),
+      ),
+    // Uploaded PDF documents for this inspection.  These are portal-uploaded
+    // files that were excluded from the evidence manifest (includeInProofPackage=false)
+    // because they are documents, not photos.  Baked into the blob as named
+    // attachments so renderers can sign download URLs at view time.
+    db
+      .select({
+        id:               inspectionPhotosTable.id,
+        objectPath:       inspectionPhotosTable.url,
+        originalFileName: inspectionPhotosTable.originalFileName,
+        mimeType:         inspectionPhotosTable.mimeType,
+      })
+      .from(inspectionPhotosTable)
+      .where(
+        and(
+          eq(inspectionPhotosTable.inspectionId, inspectionId),
+          eq(inspectionPhotosTable.companyId, actor.companyId),
+          eq(inspectionPhotosTable.mimeType, 'application/pdf'),
         ),
       ),
   ]);
@@ -6016,6 +6035,13 @@ ${JSON.stringify(photoBrief)}
     // are generated, approved, and locked.
     sectionAssemblyHtml,
     generationSnapshot,
+    // Uploaded PDF documents (stable object paths, signed at view time).
+    // Only present for upload-path inspections where portal users attach PDFs.
+    uploadedDocuments: uploadedDocuments.map((d) => ({
+      id: d.id,
+      objectPath: d.objectPath,
+      originalFileName: d.originalFileName ?? null,
+    })),
     // Frozen exhibit badge map (class-prefixed scheme). Null until badges
     // are finalized via the curation route and a compile runs.
     exhibitBadgeMap: badgeMap,
@@ -7969,8 +7995,10 @@ router.post('/:inspectionId/sections/captions/generate', requirePermission('insp
 
   if (allCaptions.length === 0) { res.status(422).json({ error: 'No caption slots found — finalize badge assignments first.' }); return; }
 
-  // Only regenerate unlocked captions — locked captions are permanently immutable.
-  const captions = allCaptions.filter((c) => c.state !== 'locked');
+  // Only regenerate unlocked, non-approved captions.
+  // Locked captions are permanently immutable; approved captions have been
+  // explicitly reviewed by a human — regeneration must never overwrite them.
+  const captions = allCaptions.filter((c) => c.state !== 'locked' && c.state !== 'approved');
 
   // Fetch comparison pairs and their set caption slots.
   const [allPairs, allSetCaptions] = await Promise.all([
@@ -8101,7 +8129,9 @@ Return a JSON array exactly: [{ "exhibitCaptionId": "...", "caption": "Photo —
         .where(and(
           eq(exhibitCaptionsTable.id, g.exhibitCaptionId),
           eq(exhibitCaptionsTable.inspectionId, inspection.id),
-          sql`${exhibitCaptionsTable.state} != 'locked'`,
+          // Defense-in-depth: never overwrite locked or approved captions even
+          // if an approved id somehow appears in the AI response.
+          sql`${exhibitCaptionsTable.state} NOT IN ('locked', 'approved')`,
         ));
     }
     singleGeneratedCount = validGenerated.length;
@@ -8130,8 +8160,8 @@ Return a JSON array exactly: [{ "exhibitCaptionId": "...", "caption": "Photo —
 
   const comparisonBriefs: ComparisonBrief[] = [];
   for (const pair of allPairs) {
-    const setCap = allSetCaptions.find((sc) => sc.comparisonPairId === pair.id && sc.state !== 'locked');
-    if (!setCap) continue; // skip locked or missing
+    const setCap = allSetCaptions.find((sc) => sc.comparisonPairId === pair.id && sc.state !== 'locked' && sc.state !== 'approved');
+    if (!setCap) continue; // skip locked, approved, or missing
 
     const beforeSel = selections.find((s) => s.photoId === pair.beforePhotoId);
     const afterSel = selections.find((s) => s.photoId === pair.afterPhotoId);
@@ -8263,10 +8293,10 @@ Return a JSON array exactly:
         .where(and(
           eq(comparisonSetCaptionsTable.id, g.setCaptionId),
           eq(comparisonSetCaptionsTable.inspectionId, inspection.id),
-          sql`${comparisonSetCaptionsTable.state} != 'locked'`,
+          sql`${comparisonSetCaptionsTable.state} NOT IN ('locked', 'approved')`,
         ));
 
-      // Save the before (top) per-photo caption if provided and not locked
+      // Save the before (top) per-photo caption if provided and not locked/approved
       if (g.beforeCaptionId && validCaptionIds.has(g.beforeCaptionId) && typeof g.beforeCaption === 'string' && g.beforeCaption.length > 0) {
         const sanitizedBefore = sanitizeHtml(g.beforeCaption, { allowedTags: [], allowedAttributes: {} });
         await db.update(exhibitCaptionsTable)
@@ -8274,11 +8304,11 @@ Return a JSON array exactly:
           .where(and(
             eq(exhibitCaptionsTable.id, g.beforeCaptionId),
             eq(exhibitCaptionsTable.inspectionId, inspection.id),
-            sql`${exhibitCaptionsTable.state} != 'locked'`,
+            sql`${exhibitCaptionsTable.state} NOT IN ('locked', 'approved')`,
           ));
       }
 
-      // Save the after (bottom) per-photo caption if provided and not locked
+      // Save the after (bottom) per-photo caption if provided and not locked/approved
       if (g.afterCaptionId && validCaptionIds.has(g.afterCaptionId) && typeof g.afterCaption === 'string' && g.afterCaption.length > 0) {
         const sanitizedAfter = sanitizeHtml(g.afterCaption, { allowedTags: [], allowedAttributes: {} });
         await db.update(exhibitCaptionsTable)
@@ -8286,7 +8316,7 @@ Return a JSON array exactly:
           .where(and(
             eq(exhibitCaptionsTable.id, g.afterCaptionId),
             eq(exhibitCaptionsTable.inspectionId, inspection.id),
-            sql`${exhibitCaptionsTable.state} != 'locked'`,
+            sql`${exhibitCaptionsTable.state} NOT IN ('locked', 'approved')`,
           ));
       }
 
