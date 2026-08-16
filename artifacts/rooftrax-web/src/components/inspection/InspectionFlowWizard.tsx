@@ -66,6 +66,8 @@ import {
   Clock,
   FileText,
   Zap,
+  Bot,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -78,6 +80,7 @@ import {
   useDeliverPackage,
   useGetEvents,
   useRecordClaimEvent,
+  useGenerateInspectionSummary,
   getSectionsQueryKey,
   type ReadinessItem,
   type SectionType,
@@ -131,6 +134,14 @@ type InspEnv = {
       verdict?: string | null;
       overallRating?: string | null;
       [k: string]: unknown;
+    } | null;
+    aiSummary?: {
+      forensicSummary: string;
+      repairabilityText: string;
+      confidence?: string;
+      missingOrUnverifiedItems?: string[];
+      qualityFlags?: string[];
+      generatedAt?: string;
     } | null;
     [key: string]: unknown;
   };
@@ -807,6 +818,19 @@ export function InspectionFlowWizard({
     jurCitationsData !== undefined &&
     !!propertyState &&
     (jurCitationsData.packs?.length ?? 0) === 0;
+
+  // ── AI Briefing (compile gate pre-flight) ────────────────────────────────
+  // Compile returns HTTP 400 when aiSummary is null. Show a visible card in
+  // step 4 so reps know to generate it before reaching compile.
+  const hasSummary = inspection?.aiSummary != null;
+  const aiSummaryData = inspection?.aiSummary as {
+    forensicSummary: string;
+    repairabilityText: string;
+    confidence?: string;
+    missingOrUnverifiedItems?: string[];
+    generatedAt?: string;
+  } | null | undefined;
+
   const sections = sectionsData?.sections ?? [];
   const curation = curationData;
   const events = eventsData?.events ?? [];
@@ -815,6 +839,7 @@ export function InspectionFlowWizard({
   const attestReport = useAttestReport(inspectionId);
   const deliverPackage = useDeliverPackage(inspectionId);
   const recordEvent = useRecordClaimEvent(inspectionId);
+  const generateSummary = useGenerateInspectionSummary(inspectionId);
 
   // ── Generate All Ready ───────────────────────────────────────────────────
   const [generatingAll, setGeneratingAll] = useState(false);
@@ -911,7 +936,9 @@ export function InspectionFlowWizard({
   const allSectionsLocked =
     sections.length > 0 && sections.every((s) => s.state === "locked");
   const canCompile =
-    !compileReport.isPending && (!hasRealSections || allSectionsLocked);
+    !compileReport.isPending &&
+    hasSummary &&
+    (!hasRealSections || allSectionsLocked);
 
   // Independent sections not yet started — eligible for "Generate All Ready"
   const notStartedIndependent = INDEPENDENT_SECTION_TYPES.filter((t) => {
@@ -919,7 +946,9 @@ export function InspectionFlowWizard({
     return !s || s.state === "not_started";
   });
   const showGenerateAllReady =
-    !!readiness?.overallPass && notStartedIndependent.length > 0;
+    hasSummary &&
+    !!readiness?.overallPass &&
+    notStartedIndependent.length > 0;
 
   const handleGenerateAll = async () => {
     setGeneratingAll(true);
@@ -1138,6 +1167,109 @@ export function InspectionFlowWizard({
         isOpen={openStages.has(3)}
         onToggle={() => toggle(3)}
       >
+        {/* ── AI Briefing card ─────────────────────────────────────────── */}
+        <div
+          className={cn(
+            "rounded-md border p-3 space-y-2",
+            hasSummary
+              ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30"
+              : "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950",
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {hasSummary ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : (
+                <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              )}
+              <p className="text-xs font-semibold truncate">
+                {hasSummary ? "AI Briefing Ready" : "AI Briefing Required"}
+              </p>
+            </div>
+            {hasSummary ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[10px] shrink-0 text-muted-foreground"
+                disabled={generateSummary.isPending}
+                onClick={() =>
+                  generateSummary.mutate(
+                    {},
+                    {
+                      onSuccess: () => toast({ title: "Briefing regenerated" }),
+                      onError: (err) =>
+                        toast({
+                          title: "Regeneration failed",
+                          description:
+                            err instanceof Error ? err.message : "Please try again.",
+                          variant: "destructive",
+                        }),
+                    },
+                  )
+                }
+              >
+                {generateSummary.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                {generateSummary.isPending ? "…" : "Regenerate"}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-7 text-xs shrink-0"
+                disabled={generateSummary.isPending || !readiness?.overallPass}
+                onClick={() =>
+                  generateSummary.mutate(
+                    {},
+                    {
+                      onSuccess: () =>
+                        toast({
+                          title: "AI briefing generated",
+                          description: "You can now generate report sections.",
+                        }),
+                      onError: (err) =>
+                        toast({
+                          title: "Briefing generation failed",
+                          description:
+                            err instanceof Error ? err.message : "Please try again.",
+                          variant: "destructive",
+                        }),
+                    },
+                  )
+                }
+              >
+                {generateSummary.isPending ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Bot className="h-3 w-3 mr-1.5" />
+                    Generate Briefing
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+          {hasSummary && aiSummaryData?.forensicSummary && (
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+              {aiSummaryData.forensicSummary.slice(0, 220)}
+              {aiSummaryData.forensicSummary.length > 220 ? "…" : ""}
+            </p>
+          )}
+          {!hasSummary && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              The AI briefing feeds all seven report sections and is required
+              before compiling. Generate it first, then use "Generate All
+              Ready."
+            </p>
+          )}
+        </div>
+
         {/* Progress bar */}
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -1205,6 +1337,7 @@ export function InspectionFlowWizard({
                   section={section}
                   allSections={sections}
                   inspectionId={inspectionId}
+                  briefingReady={hasSummary}
                 />
               );
             })}
@@ -1304,7 +1437,9 @@ export function InspectionFlowWizard({
               </TooltipTrigger>
               {!canCompile && (
                 <TooltipContent className="text-xs">
-                  Lock all sections before compiling.
+                  {!hasSummary
+                    ? "Generate the AI briefing in step 4 before compiling."
+                    : "Lock all sections before compiling."}
                 </TooltipContent>
               )}
             </Tooltip>

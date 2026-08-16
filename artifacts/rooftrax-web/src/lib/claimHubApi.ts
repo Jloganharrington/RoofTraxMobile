@@ -229,6 +229,42 @@ export function useFillIicrcCitations(inspectionId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// AI Summary
+// ---------------------------------------------------------------------------
+
+export interface AiSummary {
+  forensicSummary: string;
+  repairabilityText: string;
+  confidence?: string;
+  missingOrUnverifiedItems?: string[];
+  qualityFlags?: string[];
+  generatedAt: string;
+}
+
+/** POST /inspections/:id/summary — generates (or regenerates) the aiSummary
+ *  field on the inspection. Required before sections can be generated and
+ *  before compile. Invalidates the inspection query on success so the wizard
+ *  reflects the new hasSummary state without a manual refresh. */
+export function useGenerateInspectionSummary(inspectionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (opts?: { userPrompt?: string }) =>
+      customFetch<{ summary: AiSummary }>(
+        `/api/inspections/${inspectionId}/summary`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userPrompt: opts?.userPrompt ?? '' }),
+        },
+      ),
+    onSuccess: () => {
+      // Reload the inspection so inspection.aiSummary reflects the new value.
+      qc.invalidateQueries({ queryKey: getGetInspectionQueryKey(inspectionId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
 

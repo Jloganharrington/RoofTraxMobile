@@ -215,10 +215,14 @@ export function SectionCard({
   section,
   allSections,
   inspectionId,
+  briefingReady = true,
 }: {
   section: ClaimSection;
   allSections: ClaimSection[];
   inspectionId: string;
+  /** When false, the generate button is disabled — the AI briefing must be
+   *  produced first because it feeds every section's generation prompt. */
+  briefingReady?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [causationConfirmed, setCausationConfirmed] = useState(false);
@@ -427,7 +431,12 @@ export function SectionCard({
                       size="sm"
                       variant="outline"
                       className="h-7 px-2.5 text-xs"
-                      disabled={generateSection.isPending || !upstreamReady}
+                      disabled={generateSection.isPending || !upstreamReady || !briefingReady}
+                      title={
+                        !briefingReady
+                          ? "Generate the AI briefing above before generating sections."
+                          : undefined
+                      }
                       onClick={handleGenerate}
                     >
                       {generateSection.isPending ? (
