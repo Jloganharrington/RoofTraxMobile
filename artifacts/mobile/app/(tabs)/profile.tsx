@@ -112,6 +112,11 @@ export default function ProfileScreen() {
     isLoading: profileLoading,
   } = useProfile();
 
+  // Canvassers (dept=canvasser, all workflow variants) only use: clock-in, add
+  // pins, My Pins & Activity, and Notifications. They do not set up a signature,
+  // credentials, or SMTP — those belong to the inspection/report workflow.
+  const isCanvasser = department === 'canvasser';
+
   // ── Company logo ────────────────────────────────────────────────────────────
   const canManageLogo = role === 'manager' || role === 'admin' || role === 'super_admin';
   const [logoUploading, setLogoUploading] = React.useState(false);
@@ -482,7 +487,8 @@ export default function ProfileScreen() {
         )}
       </AccordionSection>
 
-      {/* ── 2. My Profile ───────────────────────────────────────────────────── */}
+      {/* ── 2. My Profile (hidden for canvassers — no signature/credentials needed) */}
+      {!isCanvasser && (
       <AccordionSection
         title="My Profile"
         iconName="edit-3"
@@ -522,6 +528,7 @@ export default function ProfileScreen() {
         {/* Credentials */}
         <CredentialsCard colors={colors} profile={profile} />
       </AccordionSection>
+      )}
 
       {/* ── 3. Company (role-gated) ──────────────────────────────────────────── */}
       {showCompanySection && (
@@ -596,7 +603,8 @@ export default function ProfileScreen() {
         </AccordionSection>
       )}
 
-      {/* ── 4. Email Sending ─────────────────────────────────────────────────── */}
+      {/* ── 4. Email Sending (hidden for canvassers — no outbound reports) ─────── */}
+      {!isCanvasser && (
       <AccordionSection
         title="Email Sending"
         iconName="mail"
@@ -650,6 +658,7 @@ export default function ProfileScreen() {
           </View>
         </View>
       </AccordionSection>
+      )}
 
       {/* ── 5. Notifications ─────────────────────────────────────────────────── */}
       <AccordionSection

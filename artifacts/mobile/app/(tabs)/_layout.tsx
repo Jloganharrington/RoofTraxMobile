@@ -12,12 +12,17 @@ export default function TabLayout() {
   const isDark = colorScheme === 'dark';
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
-  const { role, department, companyPpTier } = useProfile();
-  // inspector_canvasser is the department built for the forensic inspection
-  // module; super_admin can always reach it too. PP-only reps always get access
-  // since inspections are their primary capture workflow.
-  const isPpOnly = companyPpTier === 'pp_only';
-  const canSeeInspections = department === 'inspector_canvasser' || role === 'super_admin' || isPpOnly;
+  const { role, department } = useProfile();
+  // Inspections & Documents: inspector_canvasser field reps plus admin/super_admin.
+  // Managers are explicitly excluded — they oversee CRM/change-orders, not the
+  // forensic inspection module. Canvassers (all workflow variants) are excluded too.
+  const canSeeInspections =
+    (role === 'field_rep' && department === 'inspector_canvasser') ||
+    role === 'admin' ||
+    role === 'super_admin';
+  // Change Orders: available to inspector field reps, managers, admin, super_admin.
+  // Canvassers (dept=canvasser) only drop/edit pins — they never touch change orders.
+  const canSeeChangeOrders = department !== 'canvasser';
 
   return (
     <Tabs
@@ -69,6 +74,7 @@ export default function TabLayout() {
         name="change-orders"
         options={{
           title: 'Change Orders',
+          href: canSeeChangeOrders ? undefined : null,
           tabBarIcon: ({ color }) => (
             <Icon name="file-text" size={22} color={color} />
           ),
