@@ -142,9 +142,17 @@ export function CompanyGateScreen() {
     setDevBusy(persona);
     setDevError(null);
     try {
+      // Credentials are stored as EXPO_PUBLIC_ vars so they are baked into
+      // the dev bundle only — this panel is __DEV__-gated so they never ship.
+      const devUser = process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '';
+      const devPass = process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '';
+      const basicAuth = btoa(`${devUser}:${devPass}`);
       const res = await fetch(`${getApiBaseUrl()}/dev/login-as`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${basicAuth}`,
+        },
         body: JSON.stringify({ persona }),
       });
       const data = (await res.json().catch(() => null)) as { token?: string; error?: string } | null;

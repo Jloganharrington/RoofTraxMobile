@@ -1,10 +1,15 @@
 /**
- * Dev-only routes — unavailable outside NODE_ENV=development (returns 404).
+ * Developer-tools routes — protected by HTTP Basic Auth using the
+ * DEV_TOOL_USERNAME / DEV_TOOL_PASSWORD environment secrets.
+ *
+ * These routes are intentionally available in all environments (including
+ * production) so the developer can exercise persona switching without a
+ * separate build. The Basic Auth wall ensures only the developer can use them.
  *
  * POST /dev/login-as   Mint a real session for the first active user matching
- *                      the requested persona (role + workflowAssignment combo).
- *                      Lets testers exercise every distinct mobile experience
- *                      without maintaining separate OIDC accounts.
+ *                      the requested persona (role + department + workflow).
+ *                      Lets the developer exercise every distinct mobile
+ *                      experience without maintaining separate OIDC accounts.
  */
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { db, userProfilesTable, usersTable } from '@workspace/db';
@@ -45,13 +50,57 @@ const PERSONA_MAP: Record<string, PersonaSpec> = {
   'super-admin':         { role: 'super_admin', department: 'office',              workflowAssignment: 'insurance_retail' },
 };
 
+/**
+ * Constant-time string comparison — prevents timing-based credential guessing.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * Verify the incoming Authorization: Basic <b64> header against the
+ * DEV_TOOL_USERNAME / DEV_TOOL_PASSWORD secrets.
+ * Returns true if valid, false otherwise (or if secrets are not configured).
+ */
+function checkBasicAuth(req: Request, res: Response): boolean {
+  const expectedUser = process.env.DEV_TOOL_USERNAME;
+  const expectedPass = process.env.DEV_TOOL_PASSWORD;
+
+  if (!expectedUser || !expectedPass) {
+    res.status(503).json({ error: 'Dev tools are not configured (missing DEV_TOOL_USERNAME / DEV_TOOL_PASSWORD).' });
+    return false;
+  }
+
+  const authHeader = req.headers.authorization ?? '';
+  if (!authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Developer Tools"');
+    res.status(401).json({ error: 'Developer authentication required.' });
+    return false;
+  }
+
+  const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+  const colonIdx = decoded.indexOf(':');
+  const providedUser = colonIdx >= 0 ? decoded.slice(0, colonIdx) : decoded;
+  const providedPass = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : '';
+
+  if (!timingSafeEqual(providedUser, expectedUser) || !timingSafeEqual(providedPass, expectedPass)) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Developer Tools"');
+    res.status(401).json({ error: 'Invalid developer credentials.' });
+    return false;
+  }
+
+  return true;
+}
+
 const router = Router();
 
 router.post('/dev/login-as', async (req: Request, res: Response) => {
-  if (process.env.NODE_ENV !== 'development') {
-    res.status(404).json({ error: 'Not found' });
-    return;
-  }
+  if (!checkBasicAuth(req, res)) return;
 
   const { persona, companyId } = req.body as { persona?: string; companyId?: string };
 

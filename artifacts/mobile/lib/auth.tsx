@@ -332,17 +332,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const token = await getToken(AUTH_TOKEN_KEY);
       if (token) {
-        // Deregister push token BEFORE deleting the auth token — it needs the
-        // Bearer token to authenticate the DELETE request to the server.
-        // Run alongside the logout API call; both fire while the token is live.
         const apiBase = getApiBaseUrl();
-        await Promise.allSettled([
-          deregisterPushToken(),
-          fetch(`${apiBase}/api/mobile-auth/logout`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
+        // Fire push-token deregistration without awaiting — fetching the Expo
+        // push token requires a network round-trip to Expo's servers which can
+        // take several seconds. Best-effort cleanup: stale tokens simply fail to
+        // deliver and are pruned on the next successful login.
+        void deregisterPushToken();
+        // Only await the fast session deletion (single DB row delete).
+        await fetch(`${apiBase}/api/mobile-auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
       }
     } catch {
     } finally {
