@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -63,8 +64,28 @@ export function CompanyGateScreen() {
   const [resetError, setResetError] = useState<string | null>(null);
 
   // Dev panel state (only active when __DEV__)
-  const [devBusy, setDevBusy] = useState<string | null>(null); // role key currently loading
+  const [devBusy, setDevBusy] = useState<string | null>(null);
   const [devError, setDevError] = useState<string | null>(null);
+  // Developer login gate — credentials must be entered before the panel appears
+  const [devAuthenticated, setDevAuthenticated] = useState(false);
+  const [devLoginOpen, setDevLoginOpen] = useState(false);
+  const [devCredUser, setDevCredUser] = useState('');
+  const [devCredPass, setDevCredPass] = useState('');
+  const [devAuthError, setDevAuthError] = useState<string | null>(null);
+
+  function handleDevAuth() {
+    const expectedUser = process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '';
+    const expectedPass = process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '';
+    if (devCredUser === expectedUser && devCredPass === expectedPass && expectedUser) {
+      setDevAuthenticated(true);
+      setDevLoginOpen(false);
+      setDevCredUser('');
+      setDevCredPass('');
+      setDevAuthError(null);
+    } else {
+      setDevAuthError('Invalid credentials.');
+    }
+  }
 
   const handleLookup = async () => {
     const id = companyCode.trim().toUpperCase();
@@ -172,6 +193,75 @@ export function CompanyGateScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* ── Developer Login link — top left, __DEV__ only ─────────────────── */}
+      {__DEV__ && (
+        <Pressable
+          style={styles.devLoginLink}
+          onPress={() => {
+            if (devAuthenticated) {
+              // Already in — toggle the panel off (log out of dev mode)
+              setDevAuthenticated(false);
+            } else {
+              setDevLoginOpen(true);
+            }
+          }}
+        >
+          <Text style={styles.devLoginLinkText}>
+            {devAuthenticated ? '⚙ Dev' : 'Developer Login'}
+          </Text>
+        </Pressable>
+      )}
+
+      {/* ── Developer credentials modal ────────────────────────────────────── */}
+      {__DEV__ && (
+        <Modal
+          visible={devLoginOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDevLoginOpen(false)}
+        >
+          <View style={styles.devModalOverlay}>
+            <View style={[styles.devModalCard, { backgroundColor: colors.card, borderColor: '#f59e0b' }]}>
+              <View style={styles.devModalHeader}>
+                <Text style={styles.devLabel}>DEVELOPER LOGIN</Text>
+                <Pressable onPress={() => { setDevLoginOpen(false); setDevAuthError(null); }}>
+                  <Text style={[styles.devLoginLinkText, { fontSize: 18 }]}>✕</Text>
+                </Pressable>
+              </View>
+              {devAuthError && (
+                <Text style={styles.devError}>{devAuthError}</Text>
+              )}
+              <TextInput
+                value={devCredUser}
+                onChangeText={setDevCredUser}
+                placeholder="Username"
+                placeholderTextColor="#92400e"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.devCredInput, { borderColor: '#f59e0b', color: colors.foreground }]}
+              />
+              <TextInput
+                value={devCredPass}
+                onChangeText={setDevCredPass}
+                placeholder="Password"
+                placeholderTextColor="#92400e"
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={handleDevAuth}
+                style={[styles.devCredInput, { borderColor: '#f59e0b', color: colors.foreground }]}
+              />
+              <Pressable
+                onPress={handleDevAuth}
+                style={[styles.devButton, { width: '100%', minWidth: undefined }]}
+              >
+                <Text style={styles.devButtonText}>Authenticate</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       <Image
         source={require('@/assets/images/brand/full-logo-trimmed.png')}
         style={styles.logo}
@@ -217,8 +307,8 @@ export function CompanyGateScreen() {
             Need to create a company? Visit rooftrax.com to sign up.
           </Text>
 
-          {/* ── Dev Tools (Expo only) ───────────────────────────────────── */}
-          {__DEV__ && (
+          {/* ── Dev Tools — visible only after developer authentication ──── */}
+          {__DEV__ && devAuthenticated && (
             <View style={styles.devPanel}>
               <View style={styles.devDivider}>
                 <View style={[styles.devDividerLine, { backgroundColor: '#f59e0b' }]} />
@@ -555,6 +645,46 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
+  },
+  // ── Developer login link (top-left corner) ─────────────────────────────
+  devLoginLink: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    zIndex: 10,
+    padding: 4,
+  },
+  devLoginLinkText: {
+    fontSize: 11,
+    color: '#f59e0b',
+    opacity: 0.6,
+  },
+  // ── Developer credentials modal ─────────────────────────────────────────
+  devModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  devModalCard: {
+    width: '100%',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    gap: 12,
+  },
+  devModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  devCredInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
   },
   // ── Dev panel ──────────────────────────────────────────────────────────
   devPanel: {
