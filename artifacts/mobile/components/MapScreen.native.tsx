@@ -43,7 +43,7 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const { coords, permissionDenied, isLoading: locLoading } =
     useCurrentLocation();
-  const { role } = useProfile();
+  const { role, department } = useProfile();
   const { user } = useAuth();
   const isManagerOrAdmin = role === 'manager' || role === 'admin';
 
@@ -142,12 +142,12 @@ export default function MapScreen() {
     setPendingPin(null);
   }
 
-  // Field reps see every pin for team awareness, but pins dropped by other
-  // reps render as neutral grey markers — only their own pins are colored by
-  // workflow. Managers/admins always see the workflow coloring, since they
-  // manage the whole team's data.
+  // Canvassers see every pin for team awareness, but pins dropped by other
+  // reps render as neutral grey — only their own pins are colored by workflow.
+  // Inspector field reps, managers, and admins always see workflow coloring
+  // since they coordinate across the full team.
   function pinColorFor(pin: (typeof pins)[number]) {
-    if (role === 'field_rep' && pin.userId !== user?.id) {
+    if (department === 'canvasser' && pin.userId !== user?.id) {
       return colors.mutedForeground;
     }
     return pin.workflow === 'retail' ? colors.retail : colors.insurance;

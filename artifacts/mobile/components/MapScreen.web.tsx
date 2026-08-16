@@ -19,7 +19,7 @@ import { canEditPin } from '@/lib/permissions';
 // instead of a live map. Native (iOS/Android/Expo Go) uses MapScreen.native.
 export default function MapScreenWeb() {
   const colors = useColors();
-  const { role } = useProfile();
+  const { role, department } = useProfile();
   const { user } = useAuth();
   const isManagerOrAdmin = role === 'manager' || role === 'admin';
 
@@ -44,10 +44,11 @@ export default function MapScreenWeb() {
       })()
     : 'All reps';
 
-  // Field reps see every pin for team awareness, but other reps' pins show
+  // Canvassers see every pin for team awareness, but other reps' pins show
   // as neutral grey — only their own pins are colored by workflow.
+  // Inspector field reps, managers, and admins always see workflow coloring.
   function dotColorFor(pin: (typeof pins)[number]) {
-    if (role === 'field_rep' && pin.userId !== user?.id) {
+    if (department === 'canvasser' && pin.userId !== user?.id) {
       return colors.mutedForeground;
     }
     return pin.workflow === 'retail' ? colors.retail : colors.insurance;
