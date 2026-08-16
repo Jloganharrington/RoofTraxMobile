@@ -76,15 +76,23 @@ export function CompanyGateScreen() {
   function handleDevAuth() {
     const expectedUser = (process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '').trim();
     const expectedPass = (process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '').trim();
-    if (devCredUser.trim() === expectedUser && devCredPass.trim() === expectedPass && expectedUser) {
-      setDevAuthenticated(true);
-      setDevLoginOpen(false);
-      setDevCredUser('');
-      setDevCredPass('');
-      setDevAuthError(null);
-    } else {
-      setDevAuthError('Invalid credentials.');
+    if (!expectedUser) {
+      setDevAuthError('Dev credentials are not configured on this build.');
+      return;
     }
+    if (devCredUser.trim() !== expectedUser) {
+      setDevAuthError('Username not found.');
+      return;
+    }
+    if (devCredPass.trim() !== expectedPass) {
+      setDevAuthError('Password is incorrect.');
+      return;
+    }
+    setDevAuthenticated(true);
+    setDevLoginOpen(false);
+    setDevCredUser('');
+    setDevCredPass('');
+    setDevAuthError(null);
   }
 
   const handleLookup = async () => {

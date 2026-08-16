@@ -655,14 +655,18 @@ router.post('/pp/login', async (req: Request, res: Response) => {
     .leftJoin(companiesTable, eq(usersTable.companyId, companiesTable.id))
     .where(eq(usersTable.email, email));
 
-  // Verify password — always call verifyPassword even when user not found to
-  // prevent timing-based email enumeration.
+  // Always call verifyPassword even when user not found to prevent
+  // timing-based email enumeration, then give distinct messages per failure.
   const fakeHash = 'ff:ff'; // deterministically invalid; verifyPassword returns false
   const storedHash = user?.passwordHash ?? fakeHash;
   const match = await verifyPassword(password, storedHash);
 
-  if (!user || !match) {
-    res.status(401).json({ error: 'Incorrect email or password.' });
+  if (!user) {
+    res.status(401).json({ error: 'Username not found.' });
+    return;
+  }
+  if (!match) {
+    res.status(401).json({ error: 'Password is incorrect.' });
     return;
   }
   if (!user.passwordHash) {
