@@ -1791,6 +1791,80 @@ router.get('/pp/inspections/:inspectionId/report/:versionIndex', async (req: Req
   res.send(rendered.html);
 });
 
+/**
+ * GET /pp/inspections/:inspectionId/report/:versionIndex/pdf
+ * Renders the compiled report to PDF and streams it as a binary download.
+ * Photo URLs are freshly signed at render time (not baked into the blob).
+ * Timeout: 60 seconds.
+ */
+router.get('/pp/inspections/:inspectionId/report/:versionIndex/pdf', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const versionIndex = parseInt(req.params.versionIndex as string, 10);
+
+  if (!inspectionId || isNaN(versionIndex) || versionIndex < 0) {
+    res.status(400).json({ error: 'Invalid inspection ID or version index.' });
+    return;
+  }
+
+  // Load inspection — scoped to the PP company (tenant isolation)
+  const [inspection] = await db
+    .select()
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, ppCtx.company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  type VersionEntry = { path: string; generatedAt: string };
+  const versions = (
+    Array.isArray(inspection.compiledReportVersions) ? inspection.compiledReportVersions : []
+  ) as VersionEntry[];
+
+  const version = versions[versionIndex];
+  if (!version?.path) {
+    res.status(404).json({ error: 'Report version not found.' });
+    return;
+  }
+
+  // Render HTML — this signs photo URLs fresh via getSignedDownloadUrl (Rule 6).
+  const rendered = await renderCompiledReportHtml({
+    inspection,
+    reportPath: version.path,
+    companyId: ppCtx.company.id,
+    allowBlocked: false,
+  });
+
+  if (!rendered.ok) {
+    res.status(409).json({ error: rendered.error });
+    return;
+  }
+
+  try {
+    const { renderHtmlToPdf } = await import('../lib/pdfRenderer');
+    const pdfBuffer = await renderHtmlToPdf(rendered.html, 60_000);
+
+    const safeAddress = (inspection.address ?? 'proof-package')
+      .replace(/[^a-z0-9]+/gi, '-')
+      .toLowerCase()
+      .slice(0, 60);
+    const filename = `proof-package-${safeAddress}-v${versionIndex + 1}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(pdfBuffer);
+  } catch (err) {
+    logger.error({ err, inspectionId, versionIndex }, 'pp pdf: render failed');
+    res.status(500).json({ error: 'PDF generation failed. Please try again.' });
+  }
+});
+
 // ── PP company settings ──────────────────────────────────────────────────────
 
 const PatchCompanyBody = z.object({

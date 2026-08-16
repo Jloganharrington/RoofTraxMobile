@@ -1221,6 +1221,7 @@ function Step4Compile({ inspectionId }: { inspectionId: string }) {
   }
 
   const reportUrl = `/api/pp/inspections/${inspectionId}/report/${versionIndex ?? 0}`;
+  const pdfUrl = `/api/pp/inspections/${inspectionId}/report/${versionIndex ?? 0}/pdf`;
 
   return (
     <div className="flex flex-col items-center gap-6 py-8 text-center">
@@ -1292,10 +1293,18 @@ function Step4Compile({ inspectionId }: { inspectionId: string }) {
 
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <a
+              href={pdfUrl}
+              download
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </a>
+            <a
               href={reportUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-zinc-100 rounded-lg transition-colors"
             >
               <ExternalLink className="h-4 w-4" />
               View Report

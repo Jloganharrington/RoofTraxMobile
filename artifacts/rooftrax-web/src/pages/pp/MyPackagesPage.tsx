@@ -6,7 +6,7 @@
  * which renders the JSON blob as text/html (with blocked-content policy applied).
  */
 import { useEffect, useState } from 'react';
-import { Package, MapPin, Clock, AlertCircle, Loader2, ExternalLink, Eye } from 'lucide-react';
+import { Package, MapPin, Clock, AlertCircle, Loader2, ExternalLink, Eye, Download } from 'lucide-react';
 
 interface PPPackageVersion {
   index: number;
@@ -26,6 +26,10 @@ interface PPPackage {
 
 function reportUrl(inspectionId: string, versionIndex: number): string {
   return `/api/pp/inspections/${inspectionId}/report/${versionIndex}`;
+}
+
+function pdfUrl(inspectionId: string, versionIndex: number): string {
+  return `/api/pp/inspections/${inspectionId}/report/${versionIndex}/pdf`;
 }
 
 export default function MyPackagesPage() {
@@ -138,17 +142,27 @@ export default function MyPackagesPage() {
                     </span>
 
                     <div className="flex gap-2">
-                      {/* View latest version */}
+                      {/* Download PDF and view latest version */}
                       {latestVersion ? (
-                        <a
-                          href={reportUrl(pkg.inspectionId, latestVersion.index)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          View Report
-                        </a>
+                        <>
+                          <a
+                            href={pdfUrl(pkg.inspectionId, latestVersion.index)}
+                            download
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download PDF
+                          </a>
+                          <a
+                            href={reportUrl(pkg.inspectionId, latestVersion.index)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded transition-colors"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            View Report
+                          </a>
+                        </>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-zinc-800 text-zinc-500 rounded">
                           Unavailable
@@ -187,14 +201,23 @@ export default function MyPackagesPage() {
                               hour: 'numeric', minute: '2-digit',
                             })}
                           </span>
-                          <a
-                            href={reportUrl(pkg.inspectionId, ver.index)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-orange-400 hover:text-orange-300"
-                          >
-                            <ExternalLink className="h-3 w-3" /> View
-                          </a>
+                          <div className="flex items-center gap-3">
+                            <a
+                              href={pdfUrl(pkg.inspectionId, ver.index)}
+                              download
+                              className="inline-flex items-center gap-1 text-orange-400 hover:text-orange-300"
+                            >
+                              <Download className="h-3 w-3" /> PDF
+                            </a>
+                            <a
+                              href={reportUrl(pkg.inspectionId, ver.index)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+                            >
+                              <ExternalLink className="h-3 w-3" /> View
+                            </a>
+                          </div>
                         </div>
                       ))}
                     </div>
