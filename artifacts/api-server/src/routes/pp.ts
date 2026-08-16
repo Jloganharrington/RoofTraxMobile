@@ -1400,6 +1400,273 @@ router.put('/pp/inspections/:inspectionId/estimate', async (req: Request, res: R
   res.json({ ok: true });
 });
 
+// ── PP inspection photos (upload-path evidence) ──────────────────────────────
+
+/**
+ * GET /pp/inspections/:inspectionId/photos
+ * Returns all photos for this inspection plus a flag indicating whether
+ * uploads are allowed (upload-path = pinId IS NULL).
+ */
+router.get('/pp/inspections/:inspectionId/photos', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const { company } = ppCtx;
+
+  const [inspection] = await db
+    .select({ id: inspectionsTable.id, pinId: inspectionsTable.pinId })
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  const photos = await db
+    .select({
+      id: inspectionPhotosTable.id,
+      url: inspectionPhotosTable.url,
+      subjectType: inspectionPhotosTable.subjectType,
+      createdAt: inspectionPhotosTable.createdAt,
+    })
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, company.id),
+      ),
+    )
+    .orderBy(asc(inspectionPhotosTable.createdAt));
+
+  res.json({
+    photos: photos.map((p) => ({
+      id: p.id,
+      url: p.url,
+      subjectType: p.subjectType,
+      createdAt: p.createdAt?.toISOString() ?? null,
+    })),
+    isUploadPath: inspection.pinId === null,
+    count: photos.length,
+  });
+});
+
+/**
+ * GET /pp/inspections/:inspectionId/photos/upload-url
+ * Returns a presigned PUT URL for uploading an evidence photo or document.
+ * Restricted to upload-path inspections (pinId IS NULL).
+ * Validates that uploading would not exceed 50 files per inspection.
+ */
+router.get('/pp/inspections/:inspectionId/photos/upload-url', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const { company } = ppCtx;
+
+  const [inspection] = await db
+    .select({ id: inspectionsTable.id, pinId: inspectionsTable.pinId })
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  if (inspection.pinId !== null) {
+    res.status(400).json({ error: 'Photo uploads are only available for upload-path inspections.' });
+    return;
+  }
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, company.id),
+      ),
+    );
+
+  if (count >= 50) {
+    res.status(400).json({ error: 'Maximum of 50 files per inspection reached.' });
+    return;
+  }
+
+  try {
+    const uploadURL = await objectStorage.getObjectEntityUploadURL();
+    const objectPath = objectStorage.normalizeObjectEntityPath(uploadURL);
+
+    await db
+      .insert(objectOwnershipTable)
+      .values({ objectPath, userId: ppCtx.user.id, companyId: company.id })
+      .onConflictDoNothing();
+
+    res.json({ uploadURL, objectPath });
+  } catch (err) {
+    logger.error({ err }, 'pp photos upload-url: failed to generate signed URL');
+    res.status(503).json({ error: 'Could not generate upload URL. Please try again.' });
+  }
+});
+
+const RegisterPhotoBody = z.object({
+  objectPath:    z.string().min(1).max(500),
+  sha256:        z.string().length(64).regex(/^[0-9a-f]+$/i),
+  contentType:   z.enum(['image/jpeg', 'image/png', 'application/pdf']),
+  fileName:      z.string().trim().max(255).optional(),
+  fileSizeBytes: z.number().int().min(1).max(20 * 1024 * 1024),
+});
+
+/**
+ * POST /pp/inspections/:inspectionId/photos
+ * Registers an evidence file (image or PDF) uploaded via the portal.
+ * Upload-path inspections only.
+ */
+router.post('/pp/inspections/:inspectionId/photos', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const { company } = ppCtx;
+
+  const parsed = RegisterPhotoBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  const [inspection] = await db
+    .select({ id: inspectionsTable.id, pinId: inspectionsTable.pinId })
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  if (inspection.pinId !== null) {
+    res.status(400).json({ error: 'Photo uploads are only available for upload-path inspections.' });
+    return;
+  }
+
+  const { objectPath, sha256, contentType } = parsed.data;
+
+  // Tenant boundary: verify objectPath was issued to this company.
+  const [ownership] = await db
+    .select({ companyId: objectOwnershipTable.companyId })
+    .from(objectOwnershipTable)
+    .where(eq(objectOwnershipTable.objectPath, objectPath));
+
+  if (!ownership || ownership.companyId !== company.id) {
+    res.status(403).json({ error: 'Object does not belong to your company.' });
+    return;
+  }
+
+  // Re-check count at registration time (race guard).
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, company.id),
+      ),
+    );
+
+  if (count >= 50) {
+    res.status(400).json({ error: 'Maximum of 50 files per inspection reached.' });
+    return;
+  }
+
+  // PDFs are stored but excluded from the curation grid (no thumbnail available).
+  const includeInProofPackage = contentType !== 'application/pdf';
+
+  const [photo] = await db
+    .insert(inspectionPhotosTable)
+    .values({
+      companyId:             company.id,
+      inspectionId,
+      subjectType:           'inspection',
+      url:                   objectPath,
+      sha256,
+      includeInProofPackage,
+    })
+    .returning();
+
+  res.status(201).json({
+    id: photo.id,
+    url: photo.url,
+    subjectType: photo.subjectType,
+    createdAt: photo.createdAt?.toISOString() ?? null,
+  });
+});
+
+/**
+ * DELETE /pp/inspections/:inspectionId/photos/:photoId
+ * Deletes an evidence file uploaded via the portal.
+ * Upload-path inspections only; only photos with subjectType='inspection'
+ * (i.e. portal-uploaded files, not mobile-captured photos) may be deleted.
+ */
+router.delete('/pp/inspections/:inspectionId/photos/:photoId', async (req: Request, res: Response) => {
+  const ppCtx = await requirePPSession(req, res);
+  if (!ppCtx) return;
+
+  const inspectionId = req.params.inspectionId as string;
+  const photoId = req.params.photoId as string;
+  const { company } = ppCtx;
+
+  const [inspection] = await db
+    .select({ id: inspectionsTable.id, pinId: inspectionsTable.pinId })
+    .from(inspectionsTable)
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, company.id)));
+
+  if (!inspection) {
+    res.status(404).json({ error: 'Inspection not found.' });
+    return;
+  }
+
+  if (inspection.pinId !== null) {
+    res.status(400).json({ error: 'Photo deletion is only available for upload-path inspections.' });
+    return;
+  }
+
+  const [photo] = await db
+    .select({ id: inspectionPhotosTable.id, subjectType: inspectionPhotosTable.subjectType })
+    .from(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.id, photoId),
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, company.id),
+      ),
+    );
+
+  if (!photo) {
+    res.status(404).json({ error: 'Photo not found.' });
+    return;
+  }
+
+  if (photo.subjectType !== 'inspection') {
+    res.status(400).json({ error: 'Only portal-uploaded files can be deleted here.' });
+    return;
+  }
+
+  await db
+    .delete(inspectionPhotosTable)
+    .where(
+      and(
+        eq(inspectionPhotosTable.id, photoId),
+        eq(inspectionPhotosTable.inspectionId, inspectionId),
+        eq(inspectionPhotosTable.companyId, company.id),
+      ),
+    );
+
+  res.json({ ok: true });
+});
+
 // ── PP packages list ─────────────────────────────────────────────────────────
 
 /**

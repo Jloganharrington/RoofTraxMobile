@@ -3794,6 +3794,8 @@ function buildInspectionBrief(
   if (inspection.address) lines.push(`ADDRESS: ${inspection.address}`);
   if (inspection.claimNumber) lines.push(`CLAIM #: ${inspection.claimNumber}`);
   if (inspection.dateOfLoss) lines.push(`DATE OF LOSS: ${inspection.dateOfLoss}`);
+  if (inspection.carrierName) lines.push(`CARRIER: ${inspection.carrierName}`);
+  if (inspection.policyNumber) lines.push(`POLICY #: ${inspection.policyNumber}`);
 
   const pp = inspection.propertyProfile as
     | {
@@ -3833,6 +3835,12 @@ function buildInspectionBrief(
   lines.push(`  Siding: ${inspection.sidingDamageFound ? 'YES' : 'no'}`);
   lines.push(`  Collateral: ${inspection.collateralDamageFound ? 'YES' : 'no'}`);
   lines.push(`  Interior: ${inspection.interiorDamageFound ? 'YES' : 'no'}`);
+
+  if (inspection.notes) {
+    lines.push('');
+    lines.push('INSPECTOR NOTES:');
+    lines.push(`  ${inspection.notes}`);
+  }
 
   const slopes = children.slopes ?? [];
   if (slopes.length > 0) {
@@ -3979,6 +3987,27 @@ function buildInspectionBrief(
   if (testSquares.length > 0) {
     lines.push('');
     lines.push(`TEST SQUARES: ${testSquares.length} square(s) documented`);
+  }
+
+  // Upload-path estimate scope — stored in propertyProfile.ppEstimateLines.
+  // Falls back to inspection.estimate.lines for CRM-linked inspections that
+  // have an estimate attached.
+  const ppProfile = inspection.propertyProfile as
+    | { ppEstimateLines?: Array<{ name?: string; description?: string; quantity?: number; unit?: string; unitPrice?: number }> | null }
+    | null
+    | undefined;
+  const estimateLines = ppProfile?.ppEstimateLines ?? null;
+  if (estimateLines && estimateLines.length > 0) {
+    lines.push('');
+    lines.push('ESTIMATE SCOPE:');
+    for (const line of estimateLines) {
+      const name = line.name ?? 'Item';
+      const qty = line.quantity != null ? `${line.quantity}` : null;
+      const unit = line.unit ?? null;
+      const price = line.unitPrice != null ? `$${(line.unitPrice / 100).toFixed(2)}/unit` : null;
+      const parts = [qty && unit ? `${qty} ${unit}` : qty ?? unit, price].filter(Boolean);
+      lines.push(`  - ${name}${parts.length > 0 ? ` (${parts.join(', ')})` : ''}${line.description ? `: ${line.description}` : ''}`);
+    }
   }
 
   return lines.join('\n');

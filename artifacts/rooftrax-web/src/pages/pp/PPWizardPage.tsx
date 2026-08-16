@@ -16,7 +16,7 @@ import {
   CreditCard, Camera, Sparkles, ClipboardCheck, Download,
   CheckCircle2, AlertCircle, XCircle, Loader2, ArrowLeft,
   ArrowRight, ExternalLink, RotateCcw, ChevronDown, ChevronUp,
-  Lock,
+  Lock, Upload, X, FileText,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +54,8 @@ type CurationState = {
 type ReadinessItem = { key: string; label: string; state: 'pass' | 'fail' | 'warning'; detail: string | null };
 type ReadinessResult = { inspectionId: string; overallPass: boolean; items: ReadinessItem[] };
 
+type UploadedPhoto = { id: string; url: string; subjectType: string; createdAt: string | null };
+
 type SlotPhoto = { id: string; url: string; subjectType: string; triadRole: string | null; stage: string | null };
 type ExhibitSlot = {
   slotKey: string; label: string; required: boolean; kind: 'single' | 'comparison';
@@ -67,6 +69,7 @@ type ExhibitSlotsResp = { inspectionId: string; slots: ExhibitSlot[]; allRequire
 
 const STEPS = [
   { title: 'Payment', icon: CreditCard },
+  { title: 'Evidence', icon: Upload },
   { title: 'Photos', icon: Camera },
   { title: 'Captions', icon: Sparkles },
   { title: 'Readiness', icon: ClipboardCheck },
@@ -193,7 +196,323 @@ function Step0Payment({
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Photo Curation
+// Step 1 — Evidence Upload
+// ---------------------------------------------------------------------------
+
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as const;
+type AcceptedType = (typeof ACCEPTED_TYPES)[number];
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
+const MAX_FILES = 50;
+
+function isPdf(url: string) {
+  // Object paths are UUIDs with no extension; we track type via content
+  // but for display we use a simple heuristic on the URL fragment stored
+  // when the client registered the photo. Since we don't persist the
+  // contentType column, fall back to showing an image thumbnail for all.
+  return url.endsWith('.pdf');
+}
+
+function StepUpload({
+  inspectionId, onContinue,
+}: { inspectionId: string; onContinue: () => void }) {
+  const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
+  const [isUploadPath, setIsUploadPath] = useState<boolean | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const data = await ppFetch<{ photos: UploadedPhoto[]; isUploadPath: boolean; count: number }>(
+        `/api/pp/inspections/${inspectionId}/photos`,
+      );
+      setPhotos(data.photos);
+      setIsUploadPath(data.isUploadPath);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Failed to load photos');
+    } finally {
+      setLoading(false);
+    }
+  }, [inspectionId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function computeSha256(file: File): Promise<string> {
+    const buf = await file.arrayBuffer();
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hashBuf))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  async function handleFiles(files: FileList) {
+    if (uploading) return;
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
+
+    // Client-side validation
+    for (const file of fileArr) {
+      if (!ACCEPTED_TYPES.includes(file.type as AcceptedType)) {
+        setErr(`"${file.name}" is not a JPEG, PNG, or PDF file.`);
+        return;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        setErr(`"${file.name}" exceeds the 20 MB limit.`);
+        return;
+      }
+    }
+
+    if (photos.length + fileArr.length > MAX_FILES) {
+      setErr(`Cannot upload ${fileArr.length} file(s) — would exceed the ${MAX_FILES}-file limit.`);
+      return;
+    }
+
+    setUploading(true);
+    setErr(null);
+
+    for (let i = 0; i < fileArr.length; i++) {
+      const file = fileArr[i];
+      setUploadProgress(`Uploading ${i + 1} of ${fileArr.length}: ${file.name}`);
+      try {
+        // 1. Get presigned URL
+        const { uploadURL, objectPath } = await ppFetch<{ uploadURL: string; objectPath: string }>(
+          `/api/pp/inspections/${inspectionId}/photos/upload-url`,
+        );
+
+        // 2. Compute SHA-256
+        const sha256 = await computeSha256(file);
+
+        // 3. PUT directly to GCS
+        const putRes = await fetch(uploadURL, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!putRes.ok) {
+          throw new Error(`Upload failed (HTTP ${putRes.status})`);
+        }
+
+        // 4. Register the photo record
+        await ppFetch(`/api/pp/inspections/${inspectionId}/photos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            objectPath,
+            sha256,
+            contentType: file.type,
+            fileName: file.name,
+            fileSizeBytes: file.size,
+          }),
+        });
+      } catch (e: unknown) {
+        setErr(`Failed to upload "${file.name}": ${e instanceof Error ? e.message : 'Unknown error'}`);
+        setUploading(false);
+        setUploadProgress(null);
+        await load();
+        return;
+      }
+    }
+
+    setUploading(false);
+    setUploadProgress(null);
+    // Reset file input so the same files can be re-selected if needed.
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    await load();
+  }
+
+  async function handleDelete(photoId: string) {
+    setDeletingId(photoId);
+    setErr(null);
+    try {
+      await ppFetch(`/api/pp/inspections/${inspectionId}/photos/${photoId}`, { method: 'DELETE' });
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><Loader2 className="h-7 w-7 animate-spin text-orange-500" /></div>;
+  }
+
+  // For field-inspection PP packages (pinId ≠ null), photos come from the
+  // mobile app — skip the upload UI and go straight to curation.
+  if (isUploadPath === false) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-zinc-400">
+          This inspection was captured via the mobile app. Your photos are already loaded
+          and ready to curate in the next step.
+        </p>
+        <p className="text-xs text-zinc-500">{photos.length} photo{photos.length !== 1 ? 's' : ''} available for curation.</p>
+        <div className="pt-2">
+          <button
+            onClick={onContinue}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
+          >
+            Continue to Photo Selection <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const imagePhotos = photos.filter((p) => !isPdf(p.url));
+  const pdfPhotos = photos.filter((p) => isPdf(p.url));
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-sm font-medium text-zinc-200">
+          Upload your evidence — carrier photos, adjuster reports, drone imagery.
+        </p>
+        <p className="text-xs text-zinc-500 mt-0.5">
+          JPEG, PNG, or PDF · max 20 MB each · up to {MAX_FILES} files total ·{' '}
+          <span className={photos.length >= MAX_FILES ? 'text-red-400' : 'text-zinc-400'}>
+            {photos.length} uploaded
+          </span>
+        </p>
+      </div>
+
+      {err && (
+        <div className="flex items-center gap-2 bg-red-900/20 border border-red-700 text-red-400 rounded-lg px-4 py-2.5 text-sm">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          {err}
+        </div>
+      )}
+
+      {uploadProgress && (
+        <div className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg px-4 py-2.5 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-orange-400 flex-shrink-0" />
+          {uploadProgress}
+        </div>
+      )}
+
+      {/* Drop / pick area */}
+      {photos.length < MAX_FILES && (
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,application/pdf"
+            className="hidden"
+            onChange={(e) => e.target.files && void handleFiles(e.target.files)}
+            disabled={uploading}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={[
+              'w-full flex flex-col items-center gap-3 py-8 border-2 border-dashed rounded-xl transition-colors',
+              uploading
+                ? 'border-zinc-700 opacity-60 cursor-not-allowed'
+                : 'border-zinc-700 hover:border-orange-500 hover:bg-orange-500/5 cursor-pointer',
+            ].join(' ')}
+          >
+            {uploading
+              ? <Loader2 className="h-8 w-8 text-orange-400 animate-spin" />
+              : <Upload className="h-8 w-8 text-zinc-600" />}
+            <div className="text-center">
+              <p className="text-sm font-medium text-zinc-300">
+                {uploading ? 'Uploading…' : 'Click to choose files'}
+              </p>
+              <p className="text-xs text-zinc-600 mt-0.5">JPEG · PNG · PDF</p>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Uploaded images grid */}
+      {imagePhotos.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Images ({imagePhotos.length})</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+            {imagePhotos.map((photo) => (
+              <div key={photo.id} className="relative group rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900">
+                <div className="aspect-[4/3]">
+                  <img
+                    src={`/api/storage/proxy?path=${encodeURIComponent(photo.url)}`}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+                <button
+                  onClick={() => void handleDelete(photo.id)}
+                  disabled={deletingId === photo.id}
+                  title="Remove"
+                  className="absolute top-1 right-1 bg-black/60 hover:bg-red-900/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {deletingId === photo.id
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <X className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Uploaded PDFs list */}
+      {pdfPhotos.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Documents ({pdfPhotos.length})</p>
+          <div className="space-y-1">
+            {pdfPhotos.map((photo) => (
+              <div key={photo.id} className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2">
+                <FileText className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                <span className="text-xs text-zinc-400 flex-1 truncate">{photo.url.split('/').pop()}</span>
+                <button
+                  onClick={() => void handleDelete(photo.id)}
+                  disabled={deletingId === photo.id}
+                  title="Remove"
+                  className="flex-shrink-0 text-zinc-600 hover:text-red-400 transition-colors"
+                >
+                  {deletingId === photo.id
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <X className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {photos.length === 0 && !uploading && (
+        <p className="text-xs text-zinc-600 text-center py-4">
+          No files uploaded yet — click the area above to add your evidence.
+        </p>
+      )}
+
+      {/* Bottom action row */}
+      <div className="pt-2 border-t border-zinc-800 flex items-center justify-between gap-3 flex-wrap">
+        <span className="text-xs text-zinc-500">
+          {photos.length > 0
+            ? `${photos.length} file${photos.length !== 1 ? 's' : ''} ready to curate.`
+            : 'You can also continue without uploading if photos were captured via another method.'}
+        </span>
+        <button
+          onClick={onContinue}
+          disabled={uploading}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-orange-500 hover:bg-orange-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg transition-colors"
+        >
+          Continue to Photo Selection <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Photo Curation
 // ---------------------------------------------------------------------------
 
 function Step1Curation({
@@ -1004,7 +1323,7 @@ export default function PPWizardPage() {
   const { id: inspectionId } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
 
-  const [step, setStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [step, setStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [creditChecking, setCreditChecking] = useState(true);
   const [creditErr, setCreditErr] = useState<string | null>(null);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
@@ -1061,8 +1380,8 @@ export default function PPWizardPage() {
               const allApproved =
                 captions.length > 0 &&
                 captions.every((c) => c.state === 'approved' || c.state === 'locked');
-              // Resume at Step 3 (readiness) if captions are approved, else Step 2.
-              setStep(allApproved ? 3 : 2);
+              // Resume at Step 4 (readiness) if captions are approved, else Step 3.
+              setStep(allApproved ? 4 : 3);
             } else {
               setStep(1);
             }
@@ -1179,24 +1498,30 @@ export default function PPWizardPage() {
           />
         )}
         {step === 1 && (
-          <Step1Curation
+          <StepUpload
             inspectionId={inspectionId}
-            onFinalized={() => setStep(2)}
+            onContinue={() => setStep(2)}
           />
         )}
         {step === 2 && (
-          <Step2Captions
+          <Step1Curation
             inspectionId={inspectionId}
-            onApproved={() => setStep(3)}
+            onFinalized={() => setStep(3)}
           />
         )}
         {step === 3 && (
-          <Step3Readiness
+          <Step2Captions
             inspectionId={inspectionId}
-            onReady={() => setStep(4)}
+            onApproved={() => setStep(4)}
           />
         )}
         {step === 4 && (
+          <Step3Readiness
+            inspectionId={inspectionId}
+            onReady={() => setStep(5)}
+          />
+        )}
+        {step === 5 && (
           <Step4Compile inspectionId={inspectionId} />
         )}
       </div>
