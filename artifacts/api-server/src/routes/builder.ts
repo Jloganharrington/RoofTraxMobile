@@ -29,11 +29,12 @@ import {
 import { computeReadiness } from '../lib/readiness';
 import type { EvaluationResult } from '@workspace/protocol';
 import { Router, type Request, type Response } from 'express';
+import { loadActorCtx } from '../middlewares/requirePermission';
 
 const router = Router();
 
 router.get('/builder/inspections', async (req: Request, res: Response) => {
-  const ctx = req.actorCtx;
+  const ctx = await loadActorCtx(req);
   if (!ctx) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
