@@ -118,3 +118,32 @@ export const markOutboxItemDone = (id: string) => setStatus(id, 'done', null, fa
 export const markOutboxItemFailed = (id: string, error: string) => setStatus(id, 'failed', error, true);
 /** Permanently rejected (4xx) — excluded from every future drain. */
 export const markOutboxItemDead = (id: string, error: string) => setStatus(id, 'dead', error, true);
+
+/**
+ * Returns true if a photo with the same sha256 is already pending/failed/syncing
+ * for this inspection. Prevents double-tap from creating two distinct photo records
+ * when the outbox has not yet drained the first item.
+ *
+ * This check is fast (SQLite, no network) and called on the capture hot path — keep
+ * it simple and non-throwing.
+ */
+export async function hasPendingPhotoInOutbox(inspectionId: string, sha256: string): Promise<boolean> {
+  try {
+    const db = await getOutboxDb();
+    const items = await db.getAllAsync<{ id: string; payload: string }>(
+      `SELECT id, payload FROM outbox_items
+       WHERE kind = 'inspection.photo' AND status IN ('pending', 'failed', 'syncing')`,
+    );
+    return items.some((item) => {
+      try {
+        const p = JSON.parse(item.payload) as { inspectionId?: string; sha256?: string };
+        return p.inspectionId === inspectionId && p.sha256 === sha256;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    // Non-fatal: if the DB is unavailable we just allow the enqueue.
+    return false;
+  }
+}

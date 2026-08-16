@@ -250,11 +250,14 @@ async function requireInspectionModuleAccess(req: Request, res: Response) {
   const ctx = req.actorCtx!;
   const role = ctx.role;
   const department = (ctx.department ?? 'canvasser') as Department;
-  if (!canAccessInspectionModule(role, department)) {
+  // PP-only companies use the inspection module as their core product — bypass
+  // the department gate that otherwise restricts access to inspector_canvasser
+  // department or manager/admin roles.
+  if (ctx.ppTier !== 'pp_only' && !canAccessInspectionModule(role, department)) {
     res.status(403).json({ error: 'Inspection module not enabled for this user' });
     return null;
   }
-  return { role, department, companyId: ctx.companyId, userId: ctx.actorId };
+  return { role, department, companyId: ctx.companyId, userId: ctx.actorId, ppTier: ctx.ppTier as string };
 }
 
 /** Minimal auth helper for non-inspection routes that only need the user's role. */
@@ -579,17 +582,21 @@ router.get('/inspections', requirePermission('inspection.read'), async (req: Req
   const actor = await requireInspectionModuleAccess(req, res);
   if (!actor) return;
 
-  // "My inspections": scoped to the acting inspector (within their company),
-  // matching the mobile list's semantics. Team-wide visibility is surfaced
-  // through the role-scoped dashboard stats, not this raw list.
+  // PP-only tier: all company inspections (shared-team model — no per-inspector
+  // ownership filter; every rep sees the company's full inspection list).
+  // CRM/forensic: "My inspections" scoped to the acting inspector, matching
+  // the mobile list's semantics. Team-wide visibility is surfaced through the
+  // role-scoped dashboard stats, not this raw list.
   const rows = await db
     .select()
     .from(inspectionsTable)
     .where(
-      and(
-        eq(inspectionsTable.companyId, actor.companyId),
-        eq(inspectionsTable.inspectorUserId, actor.userId),
-      ),
+      actor.ppTier === 'pp_only'
+        ? eq(inspectionsTable.companyId, actor.companyId)
+        : and(
+            eq(inspectionsTable.companyId, actor.companyId),
+            eq(inspectionsTable.inspectorUserId, actor.userId),
+          ),
     )
     .orderBy(desc(inspectionsTable.createdAt));
 

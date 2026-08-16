@@ -34,7 +34,7 @@ import {
   type TriadRole,
 } from '@/lib/inspectionPhoto';
 import { drainOutbox } from '@/lib/outbox/drain';
-import { enqueueOutboxItem } from '@/lib/outbox/queue';
+import { enqueueOutboxItem, hasPendingPhotoInOutbox } from '@/lib/outbox/queue';
 import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 
 // Evidence-photo capture module (Phase M-A / A6): walks a field inspector
@@ -216,6 +216,13 @@ export default function InspectionPhotoCaptureScreen() {
         setDamageId(subjectId);
       }
       const persisted = await persistCapturedPhotoForOutbox(shot);
+      // Duplicate guard: if the same photo (identified by sha256) is already
+      // waiting in the outbox for this inspection, skip creating a second
+      // record. Protects against double-taps when the drain hasn't cleared
+      // the first item yet. The finally block still runs to clear the spinner.
+      if (await hasPendingPhotoInOutbox(inspectionId, persisted.sha256)) {
+        return true; // Already queued — treat as success.
+      }
       // The causation selection (damage) or zone title (shared zone photo)
       // travels as the photo caption in the evidence output, alongside any
       // tap annotations.

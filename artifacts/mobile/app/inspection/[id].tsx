@@ -90,6 +90,7 @@ export default function InspectionDetailScreen() {
   const [uploadingReport, setUploadingReport] = useState(false);
   const [analyzingReport, setAnalyzingReport] = useState(false);
   const [analyzePending, setAnalyzePending] = useState(() => getPendingMeasurements() !== null);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
 
   // Keep analyze-pending badge in sync when returning from the confirm screen.
   useFocusEffect(useCallback(() => {
@@ -180,6 +181,34 @@ export default function InspectionDetailScreen() {
     }
   }
 
+  async function handleGenerateSummary() {
+    if (generatingSummary) return;
+    setGeneratingSummary(true);
+    try {
+      const token = await getToken('auth_session_token');
+      const res = await fetch(`${getApiBaseUrl()}/inspections/${id}/summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server returned ${res.status}`);
+      }
+      await queryClient.invalidateQueries({ queryKey: getGetInspectionQueryKey(id) });
+    } catch (err) {
+      Alert.alert(
+        'Briefing generation failed',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
+    } finally {
+      setGeneratingSummary(false);
+    }
+  }
+
   if (inspectionQuery.isLoading && !inspection) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -254,6 +283,7 @@ export default function InspectionDetailScreen() {
 
   const state = buildProtocolState(inspection);
   const gate = evaluateInspection(inspection);
+  const hasSummary = (inspection.aiSummary as object | null | undefined) != null;
   const submitted = inspection.status === 'submitted' || inspection.status === 'package_ready';
   const collateralCount = (inspection.photos ?? []).filter((p) => p.stage === 'collateral').length;
   const collateralWaived = isCollateralWaived(inspection);
@@ -705,6 +735,65 @@ export default function InspectionDetailScreen() {
           />
         );
       })}
+
+      {/* ── AI Briefing ─────────────────────────────────────────────────────── */}
+      <Text style={[styles.section, { color: colors.foreground }]}>AI Briefing</Text>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: hasSummary ? '#f0fdf4' : '#fff7ed',
+            borderColor: hasSummary ? '#bbf7d0' : '#fed7aa',
+          },
+        ]}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Icon
+            name={hasSummary ? 'check' : 'zap'}
+            size={16}
+            color={hasSummary ? '#166534' : '#9a3412'}
+          />
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: '700',
+              color: hasSummary ? '#166534' : '#9a3412',
+              flex: 1,
+            }}
+          >
+            {hasSummary ? 'AI Briefing Ready' : 'Briefing Not Generated'}
+          </Text>
+          <Pressable
+            onPress={() => void handleGenerateSummary()}
+            disabled={generatingSummary}
+            style={{ opacity: generatingSummary ? 0.5 : 1 }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: hasSummary ? '#16a34a' : '#ea580c',
+              }}
+            >
+              {generatingSummary
+                ? hasSummary ? 'Regenerating…' : 'Generating…'
+                : hasSummary ? 'Regenerate' : 'Generate'}
+            </Text>
+          </Pressable>
+        </View>
+        {generatingSummary ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <ActivityIndicator size="small" color={hasSummary ? '#16a34a' : '#9a3412'} />
+            <Text style={{ fontSize: 12, color: hasSummary ? '#166534' : '#9a3412' }}>
+              Running AI analysis on inspection data…
+            </Text>
+          </View>
+        ) : !hasSummary ? (
+          <Text style={{ fontSize: 12, color: '#7c2d12', lineHeight: 17, marginTop: 2 }}>
+            Required before compiling the forensic report. Generates from all captured evidence.
+          </Text>
+        ) : null}
+      </View>
 
       <View style={{ height: 40 }} />
     </ScrollView>

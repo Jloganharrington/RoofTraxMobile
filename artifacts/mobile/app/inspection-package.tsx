@@ -78,6 +78,12 @@ export default function InspectionPackageScreen() {
 
   // AI briefing presence — the compile endpoint returns HTTP 400 when aiSummary is null.
   const hasSummary = (inspection?.aiSummary as object | null | undefined) != null;
+  const _aiSummaryRaw = inspection?.aiSummary as
+    | { confidence?: string; notes?: string | null }
+    | null
+    | undefined;
+  const aiConfidence = (_aiSummaryRaw?.confidence ?? null) as 'high' | 'medium' | 'low' | null;
+  const aiNotes = _aiSummaryRaw?.notes ?? null;
 
   // Web-app deep-link for steps that can only be completed there (estimate lines, sections).
   const _domain = process.env.EXPO_PUBLIC_DOMAIN;
@@ -833,18 +839,55 @@ export default function InspectionPackageScreen() {
             <View
               style={[
                 styles.preflightCard,
-                { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center', gap: 8 },
+                { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
               ]}
             >
-              <Icon name="check" size={14} color="#166534" />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#166534', flex: 1 }}>
-                AI Briefing Ready
-              </Text>
-              <Pressable onPress={handleGenerateSummary} disabled={generatingSummary}>
-                <Text style={{ fontSize: 12, color: '#16a34a', opacity: generatingSummary ? 0.5 : 1 }}>
-                  {generatingSummary ? 'Regenerating…' : 'Regenerate'}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Icon name="check" size={14} color="#166534" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#166534', flex: 1 }}>
+                  AI Briefing Ready
                 </Text>
-              </Pressable>
+                {aiConfidence ? (
+                  <View
+                    style={{
+                      paddingHorizontal: 7,
+                      paddingVertical: 2,
+                      borderRadius: 99,
+                      backgroundColor:
+                        aiConfidence === 'high'
+                          ? '#dcfce7'
+                          : aiConfidence === 'medium'
+                            ? '#fef9c3'
+                            : '#fee2e2',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        fontWeight: '700',
+                        color:
+                          aiConfidence === 'high'
+                            ? '#166534'
+                            : aiConfidence === 'medium'
+                              ? '#854d0e'
+                              : '#991b1b',
+                      }}
+                    >
+                      {aiConfidence.toUpperCase()} CONFIDENCE
+                    </Text>
+                  </View>
+                ) : null}
+                <Pressable onPress={handleGenerateSummary} disabled={generatingSummary}>
+                  <Text style={{ fontSize: 12, color: '#16a34a', opacity: generatingSummary ? 0.5 : 1 }}>
+                    {generatingSummary ? 'Regenerating…' : 'Regenerate'}
+                  </Text>
+                </Pressable>
+              </View>
+              {aiNotes ? (
+                <Text style={{ fontSize: 12, color: '#166534', lineHeight: 17, marginTop: 6 }}>
+                  ⚠ {aiNotes}
+                </Text>
+              ) : null}
             </View>
           )}
 

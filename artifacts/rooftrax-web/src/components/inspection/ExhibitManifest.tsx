@@ -79,7 +79,7 @@ function PhotoThumb({
       )}
     >
       <img
-        src={`/api/storage/objects/${photo.url}`}
+        src={`/api/storage/proxy?path=${encodeURIComponent(photo.url)}`}
         alt=""
         className="w-full h-full object-cover"
         onError={(e) => {

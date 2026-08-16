@@ -9,10 +9,11 @@ import {
   View,
 } from 'react-native';
 import { createCompany, getCompany } from '@workspace/api-client-react';
+import { getApiBaseUrl } from '@/lib/api';
 import { useColors } from '@/hooks/useColors';
 import { useAuth, type LoginError } from '@/lib/auth';
 
-type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'create';
+type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'pp-forgot' | 'create';
 
 function errorMessage(error: LoginError | null): string | null {
   switch (error) {
@@ -48,6 +49,10 @@ export function CompanyGateScreen() {
   // PP login form state
   const [ppEmail, setPpEmail] = useState('');
   const [ppPassword, setPpPassword] = useState('');
+  // PP password-reset state
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const handleLookup = async () => {
     const id = companyCode.trim().toUpperCase();
@@ -89,6 +94,35 @@ export function CompanyGateScreen() {
     const result = await loginPP(email, password);
     if (!result.ok) {
       setFormError(result.error ?? 'Incorrect email or password.');
+    }
+  };
+
+  const handlePPPasswordReset = async () => {
+    const email = ppEmail.trim();
+    if (!email) {
+      setResetError('Enter your email address.');
+      return;
+    }
+    setResetLoading(true);
+    setResetError(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/pp/password-reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      // Treat 404 (email not found) as success to prevent email enumeration.
+      if (!res.ok && res.status !== 404) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Server error ${res.status}`);
+      }
+      setResetSent(true);
+    } catch (err) {
+      setResetError(
+        err instanceof Error ? err.message : 'Could not send reset email. Try again.',
+      );
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -303,6 +337,19 @@ export function CompanyGateScreen() {
           </Pressable>
           <Pressable
             onPress={() => {
+              setFormError(null);
+              setResetSent(false);
+              setResetError(null);
+              setMode('pp-forgot');
+            }}
+            style={styles.linkButton}
+          >
+            <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
+              Forgot your password?
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
               setResolvedCompany(null);
               setFormError(null);
               setPpEmail('');
@@ -315,6 +362,83 @@ export function CompanyGateScreen() {
               Back — re-enter company ID
             </Text>
           </Pressable>
+        </>
+      )}
+
+      {/* PP password reset — email + send link, then success state */}
+      {mode === 'pp-forgot' && (
+        <>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            {resetSent ? 'Check your email' : 'Reset your Proof Package password'}
+          </Text>
+          {resetSent ? (
+            <>
+              <Text
+                style={[
+                  styles.subtitle,
+                  { color: colors.mutedForeground, marginTop: 0, fontSize: 14 },
+                ]}
+              >
+                A password reset link was sent to {ppEmail.trim()}. Follow the link in
+                the email to choose a new password, then sign in here.
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setResetSent(false);
+                  setMode('pp-login');
+                }}
+                style={[styles.button, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+                  Back to sign in
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {resetError && (
+                <Text style={[styles.error, { color: colors.destructive }]}>{resetError}</Text>
+              )}
+              <TextInput
+                value={ppEmail}
+                onChangeText={setPpEmail}
+                placeholder="Email address"
+                placeholderTextColor={colors.mutedForeground}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                textContentType="emailAddress"
+                style={[
+                  styles.input,
+                  { borderColor: colors.border, color: colors.foreground },
+                ]}
+              />
+              <Pressable
+                onPress={handlePPPasswordReset}
+                disabled={resetLoading}
+                style={[styles.button, { backgroundColor: colors.primary }]}
+              >
+                {resetLoading ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+                    Send reset link
+                  </Text>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setResetError(null);
+                  setMode('pp-login');
+                }}
+                style={styles.linkButton}
+              >
+                <Text style={[styles.linkText, { color: colors.mutedForeground }]}>
+                  Back to sign in
+                </Text>
+              </Pressable>
+            </>
+          )}
         </>
       )}
 
