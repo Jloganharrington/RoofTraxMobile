@@ -99,6 +99,38 @@ function checkBasicAuth(req: Request, res: Response): boolean {
 
 const router = Router();
 
+/**
+ * POST /dev/verify
+ * Checks username + password against server-side secrets and returns a
+ * specific error for each failure case so the mobile gate can show the right
+ * message without ever baking credentials into the bundle.
+ */
+router.post('/dev/verify', (req: Request, res: Response) => {
+  const { username, password } = req.body as { username?: string; password?: string };
+  const expectedUser = (process.env.DEV_TOOL_USERNAME ?? '').trim();
+  const expectedPass = (process.env.DEV_TOOL_PASSWORD ?? '').trim();
+
+  if (!expectedUser || !expectedPass) {
+    res.status(503).json({ error: 'Dev tools are not configured on this server.' });
+    return;
+  }
+
+  // Run both comparisons before branching to avoid timing leaks.
+  const userOk = timingSafeEqual((username ?? '').trim(), expectedUser);
+  const passOk = timingSafeEqual((password ?? '').trim(), expectedPass);
+
+  if (!userOk) {
+    res.status(401).json({ error: 'Username not found.' });
+    return;
+  }
+  if (!passOk) {
+    res.status(401).json({ error: 'Password is incorrect.' });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
 router.post('/dev/login-as', async (req: Request, res: Response) => {
   if (!checkBasicAuth(req, res)) return;
 

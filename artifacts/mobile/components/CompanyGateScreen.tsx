@@ -66,34 +66,42 @@ export function CompanyGateScreen() {
   // Dev panel state (only active when __DEV__)
   const [devBusy, setDevBusy] = useState<string | null>(null);
   const [devError, setDevError] = useState<string | null>(null);
-  // Developer login gate — credentials must be entered before the panel appears
+  // Developer login gate — credentials must be entered before the panel appears.
+  // Verified credentials are stored in state and reused for persona requests so
+  // no EXPO_PUBLIC_ vars are needed at all — only the server-side secrets matter.
   const [devAuthenticated, setDevAuthenticated] = useState(false);
   const [devLoginOpen, setDevLoginOpen] = useState(false);
   const [devCredUser, setDevCredUser] = useState('');
   const [devCredPass, setDevCredPass] = useState('');
   const [devAuthError, setDevAuthError] = useState<string | null>(null);
+  const [devAuthBusy, setDevAuthBusy] = useState(false);
+  const [devAuthCredentials, setDevAuthCredentials] = useState<{ user: string; pass: string } | null>(null);
 
-  function handleDevAuth() {
-    const expectedUser = (process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '').trim();
-    const expectedPass = (process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '').trim();
-    if (!expectedUser) {
-      setDevAuthError('Dev credentials are not configured on this build.');
-      return;
-    }
-    if (devCredUser.trim() !== expectedUser) {
-      setDevAuthError('Username not found.');
-      return;
-    }
-    if (devCredPass.trim() !== expectedPass) {
-      setDevAuthError('Password is incorrect.');
-      return;
-    }
-    setDevAuthenticated(true);
-    setDevLoginOpen(false);
-    setDevCredUser('');
-    setDevCredPass('');
+  const handleDevAuth = async () => {
+    setDevAuthBusy(true);
     setDevAuthError(null);
-  }
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/dev/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: devCredUser.trim(), password: devCredPass.trim() }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok) {
+        setDevAuthError(data?.error ?? 'Authentication failed.');
+        return;
+      }
+      setDevAuthCredentials({ user: devCredUser.trim(), pass: devCredPass.trim() });
+      setDevAuthenticated(true);
+      setDevLoginOpen(false);
+      setDevCredUser('');
+      setDevCredPass('');
+    } catch {
+      setDevAuthError('Could not reach the server. Is the API running?');
+    } finally {
+      setDevAuthBusy(false);
+    }
+  };
 
   const handleLookup = async () => {
     const id = companyCode.trim().toUpperCase();
@@ -168,14 +176,12 @@ export function CompanyGateScreen() {
   };
 
   const handleDevLogin = async (persona: string) => {
+    if (!devAuthCredentials) return;
     setDevBusy(persona);
     setDevError(null);
     try {
-      // Credentials are stored as EXPO_PUBLIC_ vars so they are baked into
-      // the dev bundle only — this panel is __DEV__-gated so they never ship.
-      const devUser = process.env.EXPO_PUBLIC_DEV_TOOL_USERNAME ?? '';
-      const devPass = process.env.EXPO_PUBLIC_DEV_TOOL_PASSWORD ?? '';
-      const basicAuth = btoa(`${devUser}:${devPass}`);
+      // Use the credentials verified during the dev-gate login — no env vars needed.
+      const basicAuth = btoa(`${devAuthCredentials.user}:${devAuthCredentials.pass}`);
       const res = await fetch(`${getApiBaseUrl()}/dev/login-as`, {
         method: 'POST',
         headers: {
@@ -261,9 +267,12 @@ export function CompanyGateScreen() {
               />
               <Pressable
                 onPress={handleDevAuth}
+                disabled={devAuthBusy}
                 style={[styles.devButton, { width: '100%', minWidth: undefined }]}
               >
-                <Text style={styles.devButtonText}>Authenticate</Text>
+                {devAuthBusy
+                  ? <ActivityIndicator size="small" color="#f59e0b" />
+                  : <Text style={styles.devButtonText}>Authenticate</Text>}
               </Pressable>
             </View>
           </View>
