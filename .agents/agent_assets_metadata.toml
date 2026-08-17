@@ -14,3 +14,10 @@ uri = "file://content-library.md"
 type = "text"
 title = "RoofTrax Content Library"
 description = "All price book items, boilerplate documents, standards, detriment library entries, and AHJ packs — latest version of each record."
+
+[[outputs]]
+id = "iDy3zcOaXgbslky5vOIs6"
+uri = "file://docs/mobile-testing-guide.md"
+type = "text"
+title = "RoofTrax Mobile — Testing Guide"
+description = "Step-by-step test cases for every persona, tab, and flow in the mobile app."
