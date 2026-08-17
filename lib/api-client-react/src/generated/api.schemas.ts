@@ -540,6 +540,7 @@ export const DoorKnockResult = {
   no_answer: 'no_answer',
   no_appointment: 'no_appointment',
   appointment: 'appointment',
+  do_not_knock: 'do_not_knock',
 } as const;
 
 export type ContactOutcome = typeof ContactOutcome[keyof typeof ContactOutcome];

@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Icon } from '@/components/Icon';
+import { CalendarPicker } from '@/components/CalendarPicker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useUpdatePin } from '@workspace/api-client-react';
+import { useUpdatePin, useSetPinAppointment } from '@workspace/api-client-react';
 import type {
   ContactOutcome,
   DamageType,
@@ -25,6 +26,33 @@ import type {
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { uploadFile } from '@/lib/upload';
+
+/** Strip non-digits and format as (XXX) XXX-XXXX */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+const APPT_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+const APPT_MINUTES = [0, 15, 30, 45];
+
+function formatHour(h: number): string {
+  if (h === 12) return '12 PM';
+  if (h > 12) return `${h - 12} PM`;
+  return `${h} AM`;
+}
+
+function apptSummary(date: Date, hour: number, min: number): string {
+  const d = new Date(date);
+  d.setHours(hour, min, 0, 0);
+  return (
+    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+    ' · ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  );
+}
 
 const DAMAGE_TYPES: { value: DamageType; label: string }[] = [
   { value: 'roof', label: 'Roof' },
@@ -36,6 +64,7 @@ const DOOR_KNOCK_RESULTS: { value: DoorKnockResult; label: string }[] = [
   { value: 'no_answer', label: 'No answer' },
   { value: 'no_appointment', label: 'No appointment' },
   { value: 'appointment', label: 'Appointment' },
+  { value: 'do_not_knock', label: 'Do Not Knock' },
 ];
 
 const CONTACT_OUTCOMES: { value: ContactOutcome; label: string }[] = [
@@ -58,6 +87,7 @@ function ChoiceRow<T extends string>({
     <View style={styles.choiceRow}>
       {options.map((opt) => {
         const active = opt.value === value;
+        const isDnk = opt.value === 'do_not_knock';
         return (
           <Pressable
             key={opt.value}
@@ -65,14 +95,14 @@ function ChoiceRow<T extends string>({
             style={[
               styles.choiceChip,
               {
-                backgroundColor: active ? colors.primary : colors.muted,
-                borderColor: colors.border,
+                backgroundColor: active ? (isDnk ? '#dc2626' : colors.primary) : colors.muted,
+                borderColor: isDnk ? '#dc2626' : colors.border,
               },
             ]}
           >
             <Text
               style={{
-                color: active ? colors.primaryForeground : colors.foreground,
+                color: active ? '#fff' : isDnk ? '#dc2626' : colors.foreground,
                 fontSize: 13,
                 fontWeight: '600',
               }}
@@ -90,6 +120,7 @@ export default function PinEditScreen() {
   const colors = useColors();
   const { pin: pinParam } = useLocalSearchParams<{ pin: string }>();
   const updatePin = useUpdatePin();
+  const setAppointment = useSetPinAppointment();
 
   const pin: Pin | null = (() => {
     try {
@@ -110,14 +141,18 @@ export default function PinEditScreen() {
     pin?.contactOutcome ?? null,
   );
   const [customerName, setCustomerName] = useState(pin?.customerName ?? '');
-  const [customerPhone, setCustomerPhone] = useState(pin?.customerPhone ?? '');
+  const [customerPhone, setCustomerPhone] = useState(
+    pin?.customerPhone ? formatPhone(pin.customerPhone) : '',
+  );
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(pin?.photoUrl ?? null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [ownerName1, setOwnerName1] = useState(pin?.retailData?.ownerName1 ?? '');
   const [ownerName2, setOwnerName2] = useState(pin?.retailData?.ownerName2 ?? '');
-  const [phone, setPhone] = useState(pin?.retailData?.phone ?? '');
+  const [phone, setPhone] = useState(
+    pin?.retailData?.phone ? formatPhone(pin.retailData.phone) : '',
+  );
   const [email, setEmail] = useState(pin?.retailData?.email ?? '');
   const [interestedRoof, setInterestedRoof] = useState(pin?.retailData?.interestedRoof ?? false);
   const [interestedSiding, setInterestedSiding] = useState(
@@ -131,6 +166,19 @@ export default function PinEditScreen() {
   );
   const [interestNotes, setInterestNotes] = useState(pin?.retailData?.interestNotes ?? '');
   const [notes, setNotes] = useState(pin?.retailData?.notes ?? '');
+
+  // Appointment scheduling state. Initialized to tomorrow 10 AM.
+  // apptPickerUsed tracks whether the user interacted — we only POST to the
+  // appointment endpoint if they actually set/changed the date or time.
+  const [apptDate, setApptDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+    return d;
+  });
+  const [apptHour, setApptHour] = useState(10);
+  const [apptMin, setApptMin] = useState(0);
+  const [apptPickerUsed, setApptPickerUsed] = useState(false);
 
   if (!pin) {
     return (
@@ -210,7 +258,22 @@ export default function PinEditScreen() {
         },
       },
       {
-        onSuccess: () => router.back(),
+        onSuccess: () => {
+          // Only update the appointment endpoint if the user interacted with the picker.
+          if (isRetail && doorKnockResult === 'appointment' && apptPickerUsed) {
+            const apptDatetime = new Date(apptDate);
+            apptDatetime.setHours(apptHour, apptMin, 0, 0);
+            setAppointment.mutate(
+              {
+                pinId,
+                data: { appointmentAt: apptDatetime.toISOString(), appointmentStatus: 'scheduled' },
+              },
+              { onSettled: () => router.back() },
+            );
+          } else {
+            router.back();
+          }
+        },
         onError: () => Alert.alert('Error', 'Could not save changes to this pin.'),
       },
     );
@@ -259,7 +322,7 @@ export default function PinEditScreen() {
               <TextInput
                 placeholder="Customer phone"
                 value={customerPhone}
-                onChangeText={setCustomerPhone}
+                onChangeText={(v) => setCustomerPhone(formatPhone(v))}
                 keyboardType="phone-pad"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
                 placeholderTextColor={colors.mutedForeground}
@@ -275,6 +338,65 @@ export default function PinEditScreen() {
             value={doorKnockResult}
             onChange={setDoorKnockResult}
           />
+
+          {/* Appointment scheduler — expands when rep selects "Appointment" */}
+          {doorKnockResult === 'appointment' && (
+            <View style={[styles.apptCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.apptSummary, { color: colors.primary }]}>
+                📅 {apptSummary(apptDate, apptHour, apptMin)}
+              </Text>
+
+              <Text style={[styles.apptLabel, { color: colors.foreground }]}>Date</Text>
+              <CalendarPicker
+                selected={apptDate}
+                minDate={new Date()}
+                onSelect={(d) => { setApptDate(d); setApptPickerUsed(true); }}
+              />
+
+              <Text style={[styles.apptLabel, { color: colors.foreground }]}>Time</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {APPT_HOURS.map((h) => (
+                    <Pressable
+                      key={h}
+                      onPress={() => { setApptHour(h); setApptPickerUsed(true); }}
+                      style={[
+                        styles.choiceChip,
+                        {
+                          backgroundColor: apptHour === h ? colors.primary : colors.muted,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={{ color: apptHour === h ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                        {formatHour(h)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                {APPT_MINUTES.map((m) => (
+                  <Pressable
+                    key={m}
+                    onPress={() => { setApptMin(m); setApptPickerUsed(true); }}
+                    style={[
+                      styles.choiceChip,
+                      {
+                        backgroundColor: apptMin === m ? colors.primary : colors.muted,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: apptMin === m ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                      :{m.toString().padStart(2, '0')}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
 
           <Text style={[styles.label, { color: colors.foreground }]}>Homeowner</Text>
           <TextInput
@@ -294,7 +416,7 @@ export default function PinEditScreen() {
           <TextInput
             placeholder="Phone"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(v) => setPhone(formatPhone(v))}
             keyboardType="phone-pad"
             style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
             placeholderTextColor={colors.mutedForeground}
@@ -375,6 +497,7 @@ export default function PinEditScreen() {
           (!customerName.trim() || !customerPhone.trim());
         const saveDisabled =
           updatePin.isPending ||
+          setAppointment.isPending ||
           uploadingPhoto ||
           missingCustomerInfo ||
           (photoRequired && !photoUrl);
@@ -391,7 +514,7 @@ export default function PinEditScreen() {
               },
             ]}
           >
-            {updatePin.isPending ? (
+            {updatePin.isPending || setAppointment.isPending ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 16 }}>
@@ -451,5 +574,19 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 8,
+  },
+  apptCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  apptSummary: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  apptLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

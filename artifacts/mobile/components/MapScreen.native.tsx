@@ -146,7 +146,9 @@ export default function MapScreen() {
   // reps render as neutral grey — only their own pins are colored by workflow.
   // Inspector field reps, managers, and admins always see workflow coloring
   // since they coordinate across the full team.
+  // Do-Not-Knock pins are always red regardless of viewer or ownership.
   function pinColorFor(pin: (typeof pins)[number]) {
+    if (pin.doorKnockResult === 'do_not_knock') return '#dc2626';
     if (department === 'canvasser' && pin.userId !== user?.id) {
       return colors.mutedForeground;
     }

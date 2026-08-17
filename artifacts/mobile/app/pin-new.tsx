@@ -15,9 +15,11 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@/components/Icon';
+import { CalendarPicker } from '@/components/CalendarPicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   useCreatePin,
+  useSetPinAppointment,
   useReverseGeocodeCoordinates,
   getReverseGeocodeCoordinatesQueryKey,
   customFetch,
@@ -34,6 +36,33 @@ import { uploadFile } from '@/lib/upload';
 
 const DEFAULT_LEAD_SOURCES = ["Angi's", 'Yelp', 'Call-In', 'Website'];
 
+/** Strip non-digits and format as (XXX) XXX-XXXX */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+const APPT_HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+const APPT_MINUTES = [0, 15, 30, 45];
+
+function formatHour(h: number): string {
+  if (h === 12) return '12 PM';
+  if (h > 12) return `${h - 12} PM`;
+  return `${h} AM`;
+}
+
+function apptSummary(date: Date, hour: number, min: number): string {
+  const d = new Date(date);
+  d.setHours(hour, min, 0, 0);
+  return (
+    d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+    ' · ' +
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  );
+}
+
 const DAMAGE_TYPES: { value: DamageType; label: string }[] = [
   { value: 'roof', label: 'Roof' },
   { value: 'siding', label: 'Siding' },
@@ -44,6 +73,7 @@ const DOOR_KNOCK_RESULTS: { value: DoorKnockResult; label: string }[] = [
   { value: 'no_answer', label: 'No answer' },
   { value: 'no_appointment', label: 'No appointment' },
   { value: 'appointment', label: 'Appointment' },
+  { value: 'do_not_knock', label: 'Do Not Knock' },
 ];
 
 const CONTACT_OUTCOMES: { value: ContactOutcome; label: string }[] = [
@@ -66,6 +96,7 @@ function ChoiceRow<T extends string>({
     <View style={styles.choiceRow}>
       {options.map((opt) => {
         const active = opt.value === value;
+        const isDnk = opt.value === 'do_not_knock';
         return (
           <Pressable
             key={opt.value}
@@ -73,14 +104,14 @@ function ChoiceRow<T extends string>({
             style={[
               styles.choiceChip,
               {
-                backgroundColor: active ? colors.primary : colors.muted,
-                borderColor: colors.border,
+                backgroundColor: active ? (isDnk ? '#dc2626' : colors.primary) : colors.muted,
+                borderColor: isDnk ? '#dc2626' : colors.border,
               },
             ]}
           >
             <Text
               style={{
-                color: active ? colors.primaryForeground : colors.foreground,
+                color: active ? '#fff' : isDnk ? '#dc2626' : colors.foreground,
                 fontSize: 13,
                 fontWeight: '600',
               }}
@@ -100,8 +131,10 @@ export default function PinNewScreen() {
     latitude: string;
     longitude: string;
   }>();
-  const { role, workflowAssignment, companyId } = useProfile();
+  const { role, workflowAssignment, companyId, department } = useProfile();
   const createPin = useCreatePin();
+  const setAppointment = useSetPinAppointment();
+
   const geocodeParams = { latitude: Number(latitude), longitude: Number(longitude) };
   const geocode = useReverseGeocodeCoordinates(geocodeParams, {
     query: {
@@ -110,6 +143,8 @@ export default function PinNewScreen() {
     },
   });
   const address = geocode.data?.address ?? null;
+
+  const isCanvasser = department === 'canvasser';
 
   const [workflow, setWorkflow] = useState<PinWorkflow>(
     workflowAssignment === 'retail' ? 'retail' : 'insurance',
@@ -120,7 +155,7 @@ export default function PinNewScreen() {
     queryKey: ['lead-sources', companyId],
     queryFn: () =>
       customFetch<{ leadSources: string[] }>(`/api/companies/${companyId}/lead-sources`),
-    enabled: !!companyId,
+    enabled: !!companyId && !isCanvasser,
   });
   const leadSources: string[] = sourcesData?.leadSources ?? DEFAULT_LEAD_SOURCES;
 
@@ -144,10 +179,17 @@ export default function PinNewScreen() {
   const [interestNotes, setInterestNotes] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Appointment scheduling — shown when doorKnockResult === 'appointment'
+  const [apptDate, setApptDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+    return d;
+  });
+  const [apptHour, setApptHour] = useState(10);
+  const [apptMin, setApptMin] = useState(0);
+
   const isRetail = workflow === 'retail';
-  // Admins/super_admins can work either workflow regardless of their
-  // assigned default; everyone else only gets the picker when explicitly
-  // assigned insurance_retail (both lines of business).
   const canPickWorkflow =
     workflowAssignment === 'insurance_retail' || role === 'admin' || role === 'super_admin';
 
@@ -206,7 +248,8 @@ export default function PinNewScreen() {
             !isRetail && contactOutcome === 'call_to_schedule' ? customerName.trim() : undefined,
           customerPhone:
             !isRetail && contactOutcome === 'call_to_schedule' ? customerPhone.trim() : undefined,
-          externalLeadSource: leadSource ?? undefined,
+          // Canvassers always use null (Canvassing); other roles use their selection.
+          externalLeadSource: isCanvasser ? undefined : (leadSource ?? undefined),
           retailData: isRetail
             ? {
                 ownerName1,
@@ -224,7 +267,22 @@ export default function PinNewScreen() {
         },
       },
       {
-        onSuccess: () => router.back(),
+        onSuccess: (data) => {
+          // If an appointment was scheduled, post the datetime to the appointment endpoint.
+          if (isRetail && doorKnockResult === 'appointment') {
+            const apptDatetime = new Date(apptDate);
+            apptDatetime.setHours(apptHour, apptMin, 0, 0);
+            setAppointment.mutate(
+              {
+                pinId: data.pin.id,
+                data: { appointmentAt: apptDatetime.toISOString(), appointmentStatus: 'scheduled' },
+              },
+              { onSettled: () => router.back() },
+            );
+          } else {
+            router.back();
+          }
+        },
         onError: () => Alert.alert('Error', 'Could not save this pin.'),
       },
     );
@@ -272,42 +330,45 @@ export default function PinNewScreen() {
         </>
       )}
 
-      {/* Lead Source */}
-      <Text style={[styles.label, { color: colors.foreground }]}>Lead Source</Text>
-      <View style={styles.choiceRow}>
-        {/* "Canvassing" = null */}
-        <Pressable
-          onPress={() => setLeadSource(null)}
-          style={[
-            styles.choiceChip,
-            {
-              backgroundColor: leadSource === null ? colors.primary : colors.muted,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Text style={{ color: leadSource === null ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
-            Canvassing
-          </Text>
-        </Pressable>
-        {leadSources.map((src) => (
-          <Pressable
-            key={src}
-            onPress={() => setLeadSource(src)}
-            style={[
-              styles.choiceChip,
-              {
-                backgroundColor: leadSource === src ? colors.primary : colors.muted,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Text style={{ color: leadSource === src ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
-              {src}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Lead Source — canvassers are always Canvassing; other roles get the full picker */}
+      {!isCanvasser && (
+        <>
+          <Text style={[styles.label, { color: colors.foreground }]}>Lead Source</Text>
+          <View style={styles.choiceRow}>
+            <Pressable
+              onPress={() => setLeadSource(null)}
+              style={[
+                styles.choiceChip,
+                {
+                  backgroundColor: leadSource === null ? colors.primary : colors.muted,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={{ color: leadSource === null ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                Canvassing
+              </Text>
+            </Pressable>
+            {leadSources.map((src) => (
+              <Pressable
+                key={src}
+                onPress={() => setLeadSource(src)}
+                style={[
+                  styles.choiceChip,
+                  {
+                    backgroundColor: leadSource === src ? colors.primary : colors.muted,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text style={{ color: leadSource === src ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                  {src}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
 
       {!isRetail ? (
         <>
@@ -333,7 +394,7 @@ export default function PinNewScreen() {
               <TextInput
                 placeholder="Customer phone"
                 value={customerPhone}
-                onChangeText={setCustomerPhone}
+                onChangeText={(v) => setCustomerPhone(formatPhone(v))}
                 keyboardType="phone-pad"
                 style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
                 placeholderTextColor={colors.mutedForeground}
@@ -349,6 +410,65 @@ export default function PinNewScreen() {
             value={doorKnockResult}
             onChange={setDoorKnockResult}
           />
+
+          {/* Appointment scheduler — expands when rep selects "Appointment" */}
+          {doorKnockResult === 'appointment' && (
+            <View style={[styles.apptCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.apptSummary, { color: colors.primary }]}>
+                📅 {apptSummary(apptDate, apptHour, apptMin)}
+              </Text>
+
+              <Text style={[styles.apptLabel, { color: colors.foreground }]}>Date</Text>
+              <CalendarPicker
+                selected={apptDate}
+                minDate={new Date()}
+                onSelect={(d) => setApptDate(d)}
+              />
+
+              <Text style={[styles.apptLabel, { color: colors.foreground }]}>Time</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {APPT_HOURS.map((h) => (
+                    <Pressable
+                      key={h}
+                      onPress={() => setApptHour(h)}
+                      style={[
+                        styles.choiceChip,
+                        {
+                          backgroundColor: apptHour === h ? colors.primary : colors.muted,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Text style={{ color: apptHour === h ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                        {formatHour(h)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                {APPT_MINUTES.map((m) => (
+                  <Pressable
+                    key={m}
+                    onPress={() => setApptMin(m)}
+                    style={[
+                      styles.choiceChip,
+                      {
+                        backgroundColor: apptMin === m ? colors.primary : colors.muted,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: apptMin === m ? colors.primaryForeground : colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                      :{m.toString().padStart(2, '0')}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
 
           <Text style={[styles.label, { color: colors.foreground }]}>Homeowner</Text>
           <TextInput
@@ -368,7 +488,7 @@ export default function PinNewScreen() {
           <TextInput
             placeholder="Phone"
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(v) => setPhone(formatPhone(v))}
             keyboardType="phone-pad"
             style={[styles.input, { borderColor: colors.border, color: colors.foreground }]}
             placeholderTextColor={colors.mutedForeground}
@@ -449,6 +569,7 @@ export default function PinNewScreen() {
           (!customerName.trim() || !customerPhone.trim());
         const saveDisabled =
           createPin.isPending ||
+          setAppointment.isPending ||
           uploadingPhoto ||
           missingCustomerInfo ||
           (photoRequired && !photoUrl);
@@ -465,7 +586,7 @@ export default function PinNewScreen() {
               },
             ]}
           >
-            {createPin.isPending ? (
+            {createPin.isPending || setAppointment.isPending ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
               <Text style={{ color: colors.primaryForeground, fontWeight: '700', fontSize: 16 }}>
@@ -526,5 +647,19 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 8,
+  },
+  apptCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  apptSummary: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  apptLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

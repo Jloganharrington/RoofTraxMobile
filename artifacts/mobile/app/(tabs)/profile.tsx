@@ -76,6 +76,7 @@ const DOOR_KNOCK_LABELS: Record<DoorKnockResult, string> = {
   no_answer: 'No answer',
   no_appointment: 'No appointment',
   appointment: 'Appointment',
+  do_not_knock: 'Do Not Knock',
 };
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {

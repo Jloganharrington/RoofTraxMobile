@@ -29,6 +29,7 @@ export const DOOR_KNOCK_RESULTS = [
   'no_answer',
   'no_appointment',
   'appointment',
+  'do_not_knock',
 ] as const;
 // Homeowner-contact outcome captured on insurance/damage pins. When
 // "call_to_schedule" is selected, the rep must also capture the

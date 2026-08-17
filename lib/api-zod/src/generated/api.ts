@@ -1150,7 +1150,7 @@ export const ListPinsResponse = zod.object({
   "workflow": zod.enum(['retail', 'insurance']),
   "damageType": zod.union([zod.enum(['roof', 'siding', 'roof_and_siding']),zod.null()]),
   "photoUrl": zod.string().nullable(),
-  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment']),zod.null()]),
+  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']),zod.null()]),
   "retailData": zod.union([zod.object({
   "ownerName1": zod.string().min(1),
   "ownerName2": zod.string().nullish(),
@@ -1193,7 +1193,7 @@ export const CreatePinBody = zod.object({
   "workflow": zod.enum(['retail', 'insurance']),
   "damageType": zod.enum(['roof', 'siding', 'roof_and_siding']).optional(),
   "photoUrl": zod.string().optional(),
-  "doorKnockResult": zod.enum(['no_answer', 'no_appointment', 'appointment']).optional(),
+  "doorKnockResult": zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']).optional(),
   "retailData": zod.object({
   "ownerName1": zod.string().min(1),
   "ownerName2": zod.string().nullish(),
@@ -1226,7 +1226,7 @@ export const CreatePinResponse = zod.object({
   "workflow": zod.enum(['retail', 'insurance']),
   "damageType": zod.union([zod.enum(['roof', 'siding', 'roof_and_siding']),zod.null()]),
   "photoUrl": zod.string().nullable(),
-  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment']),zod.null()]),
+  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']),zod.null()]),
   "retailData": zod.union([zod.object({
   "ownerName1": zod.string().min(1),
   "ownerName2": zod.string().nullish(),
@@ -1284,7 +1284,7 @@ export const BulkCreatePinsResponse = zod.object({
   "workflow": zod.enum(['retail', 'insurance']),
   "damageType": zod.union([zod.enum(['roof', 'siding', 'roof_and_siding']),zod.null()]),
   "photoUrl": zod.string().nullable(),
-  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment']),zod.null()]),
+  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']),zod.null()]),
   "retailData": zod.union([zod.object({
   "ownerName1": zod.string().min(1),
   "ownerName2": zod.string().nullish(),
@@ -1329,7 +1329,7 @@ export const UpdatePinBody = zod.object({
   "workflow": zod.enum(['retail', 'insurance']).optional(),
   "damageType": zod.enum(['roof', 'siding', 'roof_and_siding']).optional(),
   "photoUrl": zod.string().optional(),
-  "doorKnockResult": zod.enum(['no_answer', 'no_appointment', 'appointment']).optional(),
+  "doorKnockResult": zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']).optional(),
   "retailData": zod.object({
   "ownerName1": zod.string().min(1),
   "ownerName2": zod.string().nullish(),
@@ -1361,7 +1361,7 @@ export const UpdatePinResponse = zod.object({
   "workflow": zod.enum(['retail', 'insurance']),
   "damageType": zod.union([zod.enum(['roof', 'siding', 'roof_and_siding']),zod.null()]),
   "photoUrl": zod.string().nullable(),
-  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment']),zod.null()]),
+  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']),zod.null()]),
   "retailData": zod.union([zod.object({
   "ownerName1": zod.string().min(1),
   "ownerName2": zod.string().nullish(),
