@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Image,
@@ -15,6 +16,9 @@ import { useColors } from '@/hooks/useColors';
 import { useAuth, type LoginError } from '@/lib/auth';
 
 type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'pp-forgot';
+
+const DEV_AUTH_KEY = '@rooftrax/dev_auth';
+const DEV_AUTH_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const DEV_PERSONAS = [
   { key: 'canvasser-retail',    label: 'Canvasser – Retail' },
@@ -77,6 +81,25 @@ export function CompanyGateScreen() {
   const [devAuthBusy, setDevAuthBusy] = useState(false);
   const [devAuthCredentials, setDevAuthCredentials] = useState<{ user: string; pass: string } | null>(null);
 
+  // Restore a cached dev auth on mount (valid for 24 hours).
+  useEffect(() => {
+    if (!__DEV__) return;
+    AsyncStorage.getItem(DEV_AUTH_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        const stored = JSON.parse(raw) as { user: string; pass: string; expiresAt: number };
+        if (stored.expiresAt > Date.now()) {
+          setDevAuthCredentials({ user: stored.user, pass: stored.pass });
+          setDevAuthenticated(true);
+        } else {
+          void AsyncStorage.removeItem(DEV_AUTH_KEY);
+        }
+      } catch {
+        void AsyncStorage.removeItem(DEV_AUTH_KEY);
+      }
+    }).catch(() => {});
+  }, []);
+
   const handleDevAuth = async () => {
     setDevAuthBusy(true);
     setDevAuthError(null);
@@ -91,11 +114,17 @@ export function CompanyGateScreen() {
         setDevAuthError(data?.error ?? 'Authentication failed.');
         return;
       }
-      setDevAuthCredentials({ user: devCredUser.trim(), pass: devCredPass.trim() });
+      const creds = { user: devCredUser.trim(), pass: devCredPass.trim() };
+      setDevAuthCredentials(creds);
       setDevAuthenticated(true);
       setDevLoginOpen(false);
       setDevCredUser('');
       setDevCredPass('');
+      // Persist for 24 hours so re-opening the app skips the login modal.
+      void AsyncStorage.setItem(
+        DEV_AUTH_KEY,
+        JSON.stringify({ ...creds, expiresAt: Date.now() + DEV_AUTH_TTL_MS }),
+      );
     } catch {
       setDevAuthError('Could not reach the server. Is the API running?');
     } finally {
@@ -213,8 +242,10 @@ export function CompanyGateScreen() {
           style={styles.devLoginLink}
           onPress={() => {
             if (devAuthenticated) {
-              // Already in — toggle the panel off (log out of dev mode)
+              // Clear the cached session and hide the panel.
               setDevAuthenticated(false);
+              setDevAuthCredentials(null);
+              void AsyncStorage.removeItem(DEV_AUTH_KEY);
             } else {
               setDevLoginOpen(true);
             }
