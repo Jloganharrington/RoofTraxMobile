@@ -1,4 +1,4 @@
-# RoofTrax Inspection Flow — Current State (July 28, 2026)
+# AxiomRestore Inspection Flow — Current State (July 28, 2026)
 
 Compiled from the live code: the shared protocol step engine (`lib/protocol`), the
 gate rules, and the mobile screens (`artifacts/mobile/app`). Steps marked ⛔

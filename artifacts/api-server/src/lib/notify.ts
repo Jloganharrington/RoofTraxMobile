@@ -383,7 +383,7 @@ function buildEmailText(
     }
   }
 
-  lines.push('', 'Log in to RoofTrax to view the full details.');
+  lines.push('', 'Log in to AxiomRestore to view the full details.');
   return lines.join('\n');
 }
 

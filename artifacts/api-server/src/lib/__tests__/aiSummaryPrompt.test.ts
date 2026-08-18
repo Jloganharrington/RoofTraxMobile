@@ -17,10 +17,10 @@ describe('composeAiSystemPrompt', () => {
   });
 
   it('appends company additions after the full baseline, never replacing it', () => {
-    const composed = composeAiSystemPrompt('Always mention the company name RoofTrax.');
+    const composed = composeAiSystemPrompt('Always mention the company name AxiomRestore.');
     expect(composed.startsWith(BASELINE_AI_SYSTEM_PROMPT)).toBe(true);
     expect(composed).toContain('ADDITIONAL COMPANY INSTRUCTIONS');
-    expect(composed).toContain('Always mention the company name RoofTrax.');
+    expect(composed).toContain('Always mention the company name AxiomRestore.');
     expect(composed.indexOf('ADDITIONAL COMPANY INSTRUCTIONS')).toBeGreaterThan(
       BASELINE_AI_SYSTEM_PROMPT.length - 1,
     );

@@ -1,6 +1,6 @@
 # Pin Data → CRM Export Reference
 
-This document is the reference spec for sending RoofTrax pin data to an
+This document is the reference spec for sending AxiomRestore pin data to an
 external CRM. It captures every measured/documented field currently stored
 on a pin, and the recommended structure for exporting it.
 
@@ -62,7 +62,7 @@ polling:
    `POST /pins/bulk` (drone bulk-create), and `DELETE /pins/:pinId`.
 2. **Delivery**: `POST` a signed JSON payload to a CRM-configured webhook
    URL (HMAC signature header so the CRM can verify it's really from
-   RoofTrax). Retry with backoff on non-2xx; queue rather than blocking the
+   AxiomRestore). Retry with backoff on non-2xx; queue rather than blocking the
    mutation response.
 3. **Fallback/reconciliation**: keep `GET /pins` available for the CRM to do
    a periodic full/incremental pull in case a webhook is missed — this is

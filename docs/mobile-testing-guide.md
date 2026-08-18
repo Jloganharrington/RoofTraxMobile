@@ -1,4 +1,4 @@
-# RoofTrax Mobile App — Testing Guide
+# AxiomRestore Mobile App — Testing Guide
 
 > **How to use this guide**
 > Log in through the Developer Login panel (small amber link, top-left of the login screen) to switch between personas instantly. Each section notes which persona(s) to use. Work top-to-bottom or jump to the section you care about.

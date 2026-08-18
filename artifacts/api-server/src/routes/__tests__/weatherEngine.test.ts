@@ -12,7 +12,7 @@ import {
   type RawVisualCrossingResponse,
 } from '../../lib/weatherEngine';
 
-// Parity tests for the deterministic weather engine extracted from RoofTrax
+// Parity tests for the deterministic weather engine extracted from AxiomRestore
 // Pro. These lock the retrieval normalization + gating + severity math so a
 // known location/date behaves exactly as the Pro implementation did.
 

@@ -32,7 +32,7 @@
  *       DB direct — participates in insurance margin calculations.
  *   • data-migrations/030_change_order_line_items.sql:120,123
  *       DB direct — adds approved CO cents to legacy base.
- *   • artifacts/rooftrax-web/src/pages/leads/LeadProfile.tsx:269,326,355,
+ *   • artifacts/axiomrestore-web/src/pages/leads/LeadProfile.tsx:269,326,355,
  *       2540-2558,2571-2572,2612-2615,3052
  *       API response — display, state sync, string→cents parsing, arithmetic.
  *   • artifacts/api-server/src/routes/inspections.ts:9966,10111

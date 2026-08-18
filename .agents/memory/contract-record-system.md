@@ -29,7 +29,7 @@ description: Migration 036 tables, routes, signing portal, and key invariants fo
 - No vite proxy needed — Replit's path proxy routes `/portal/...` to API server (catch-all).
 
 ## UI wiring
-- `ContractBuilderTab` at `artifacts/rooftrax-web/src/components/contracts/ContractBuilderTab.tsx`.
+- `ContractBuilderTab` at `artifacts/axiomrestore-web/src/components/contracts/ContractBuilderTab.tsx`.
 - Imported into `LeadProfile.tsx`, rendered at `activeTab === 'contract_builder' && isInsurance` with props `pinId` and `isManager`.
 - Uses `customFetch` + React Query (hand-written hooks, not orval-generated).
 - Categories fetched from `/api/selections/categories` for the add-package dropdown.

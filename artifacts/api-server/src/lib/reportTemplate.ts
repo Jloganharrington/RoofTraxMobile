@@ -308,7 +308,7 @@ ${params.portalAccess ? `
 
 <div class="footer">
   Generated ${escHtml(new Date(params.generatedAt).toLocaleString())} · Inspection ${escHtml(inspection.id)} ·
-  This report is produced by RoofTrax and is intended for insurance claim documentation purposes only.
+  This report is produced by AxiomRestore and is intended for insurance claim documentation purposes only.
 </div>
 
 </body>

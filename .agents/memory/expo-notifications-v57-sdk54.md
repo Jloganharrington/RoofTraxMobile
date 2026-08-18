@@ -52,7 +52,7 @@ Notifications.setNotificationHandler({
 - `ios.bundleIdentifier` — must match the App ID in Apple Developer Portal where APNs is enabled.
 - `android.package` — must match the Firebase project's package name.
 
-Both set to `com.rooftrax.mobile` as placeholder; update when EAS project is initialised.
+Both set to `com.axiomrestore.mobile` as placeholder; update when EAS project is initialised.
 
 ## EAS credential steps (operational, not code)
 

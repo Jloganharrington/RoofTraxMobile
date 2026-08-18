@@ -9,7 +9,7 @@ Symptom: the `artifacts/mobile: expo` workflow logs `Unable to resolve "./genera
 
 Reality: this is a **web-only** metro resolution quirk. Workspace packages here declare `"type": "module"` + an `exports` map. With Expo SDK 54 metro's package-exports resolution, **extensionless relative re-exports** (`export * from "./generated/api"`) fail strict-ESM resolution when bundling `platform=web`. The **native bundle (`platform=ios` / `android`) resolves fine** — those extensionless re-exports work on the native resolver.
 
-**Why:** RoofTrax mobile is native-first (Expo Go / EAS dev builds, on-device field testing). The Replit web preview is a secondary surface and has other native-only walls anyway (see `react-native-maps-web.md`, expo-sqlite `.wasm`). The web bundle error is pre-existing, not introduced by feature work.
+**Why:** AxiomRestore mobile is native-first (Expo Go / EAS dev builds, on-device field testing). The Replit web preview is a secondary surface and has other native-only walls anyway (see `react-native-maps-web.md`, expo-sqlite `.wasm`). The web bundle error is pre-existing, not introduced by feature work.
 
 **How to apply:**
 - Do NOT chase this as a stale metro cache (clearing `/tmp/metro-*` + restarting does not fix it — I wasted a cycle on that).

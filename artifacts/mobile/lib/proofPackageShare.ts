@@ -63,7 +63,7 @@ export async function generateProofPackagePdf(
         .replace(/[^a-z0-9]+/gi, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40) || 'property';
-    const dest = new File(Paths.cache, `RoofTrax-Proof-Package-${slug}.pdf`) as unknown as UsableFile;
+    const dest = new File(Paths.cache, `AxiomRestore-Proof-Package-${slug}.pdf`) as unknown as UsableFile;
     if (dest.exists) dest.delete();
     (new File(uri) as unknown as UsableFile).copy(dest);
     return dest.uri;

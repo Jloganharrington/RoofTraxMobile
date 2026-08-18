@@ -153,9 +153,9 @@ export default function InspectionSidingScreen() {
       setWrbPhotoCaptured(true);
     } catch (err) {
       if (err instanceof CameraPermissionDeniedError) {
-        Alert.alert('Camera access needed', 'RoofTrax needs camera access. Enable it in Settings, then try again.');
+        Alert.alert('Camera access needed', 'AxiomRestore needs camera access. Enable it in Settings, then try again.');
       } else if (err instanceof MediaLibraryPermissionDeniedError) {
-        Alert.alert('Photo access needed', 'RoofTrax needs photo access. Enable it in Settings, then try again.');
+        Alert.alert('Photo access needed', 'AxiomRestore needs photo access. Enable it in Settings, then try again.');
       } else {
         Alert.alert('Capture failed', 'Could not save the photo. Try again.');
       }

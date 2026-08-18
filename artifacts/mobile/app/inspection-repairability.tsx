@@ -461,7 +461,7 @@ export default function InspectionRepairabilityScreen() {
       if (err instanceof CameraPermissionDeniedError) {
         Alert.alert(
           'Camera access needed',
-          'Enable camera access for RoofTrax in your device settings to take protocol photos.',
+          'Enable camera access for AxiomRestore in your device settings to take protocol photos.',
         );
       } else {
         Alert.alert('Photo failed', 'Could not capture the photo. Please try again.');

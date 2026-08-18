@@ -10,7 +10,7 @@ description: DB columns, API routes, and UI for the lead file-handler tracker (L
 - `pins.project_manager_name` varchar nullable — denormalized PM display name
 - `companies.lead_sources` jsonb nullable — array of company-configured source names; null means use built-in defaults
 
-**lib/db schema** — `lib/db/src/schema/rooftrax.ts` (pinsTable) and `auth.ts` (companiesTable) updated; rebuilt with `tsc --build --force`.
+**lib/db schema** — `lib/db/src/schema/axiomrestore.ts` (pinsTable) and `auth.ts` (companiesTable) updated; rebuilt with `tsc --build --force`.
 
 **API routes**:
 - `GET/PATCH /api/companies/:companyId/lead-sources` in `artifacts/api-server/src/routes/companies.ts`
@@ -26,13 +26,13 @@ description: DB columns, API routes, and UI for the lead file-handler tracker (L
 - `lib/api-client-react/src/generated/api.schemas.ts` — `CreatePinInput` TS interface
 - Both lib packages rebuilt with `tsc --build --force` after edits
 
-**Web — Lead Profile tracker** (`artifacts/rooftrax-web/src/pages/leads/LeadProfile.tsx`):
+**Web — Lead Profile tracker** (`artifacts/axiomrestore-web/src/pages/leads/LeadProfile.tsx`):
 - `FormState` + `initForm` + `TAB_FIELDS.dashboard` include `externalLeadSource` + `projectManagerName`
 - `DashboardTab` gains `isManager` prop + `useGetLeadSources(lead.companyId)` call
 - "File Handlers" section rendered inside the info panel (below Lead Type): Lead Source (dropdown for managers, readonly for reps), Sales Rep (read-only from `lead.repName`), Project Manager (text input for managers)
 - `isManager` derived from `userRole` in main LeadProfile component
 
-**Web — Settings** (`artifacts/rooftrax-web/src/pages/settings/SettingsPage.tsx`):
+**Web — Settings** (`artifacts/axiomrestore-web/src/pages/settings/SettingsPage.tsx`):
 - `Lead Sources` card added to `CompanyProfileTab`
 - Uses `useGetLeadSources` / `useUpdateLeadSources` from `claimHubApi.ts`
 - Add/remove/rename + Save Lead Sources button

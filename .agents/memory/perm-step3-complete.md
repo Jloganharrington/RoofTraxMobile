@@ -11,7 +11,7 @@ Final registry: **120 keys** across **31 domains**. Tests: **1010/1010** passing
 
 ## STEP 4 — Web capability gating
 
-- `artifacts/rooftrax-web/src/hooks/useCapabilities.ts` — wraps resolveCapabilities from @workspace/authz.
+- `artifacts/axiomrestore-web/src/hooks/useCapabilities.ts` — wraps resolveCapabilities from @workspace/authz.
   Returns `{ caps, can(key), loading }`. Profile comes from useGetMyProfile().
 - `UserAuthorizationPage.tsx` — now reads PERMISSION_REGISTRY live; grouped by domain with search;
   shows ✓/⚠/✗ per role based on DefaultResolution policy. Stays accurate when keys are added.

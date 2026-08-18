@@ -25,7 +25,7 @@ File: `artifacts/api-server/src/routes/profitability.ts`
 
 ## UI shape (after Step 3)
 
-File: `artifacts/rooftrax-web/src/pages/leads/LeadProfile.tsx`
+File: `artifacts/axiomrestore-web/src/pages/leads/LeadProfile.tsx`
 
 - `FinKpiCards`: "Net Profit" → "Net Project Margin" (shows `netProjectMarginCents` + `netProjectMarginPct`%); Contract Value card shows "+$X CO → $Y" subline when `approvedCoCents > 0`.
 - `CostBreakdownPanel` renamed → `ProjectFinancialsPanel` (accrual waterfall).
@@ -41,4 +41,4 @@ After orval regenerates `lib/api-client-react/src/generated/`, run:
 ```
 cd lib/api-client-react && npx tsc --build
 ```
-rooftrax-web's tsconfig uses project references (`"references": [{"path": "../../lib/api-client-react"}]`) so TypeScript reads declaration files from `dist/`, not the source — stale dist = stale types even though orval updated the `.ts` source.
+axiomrestore-web's tsconfig uses project references (`"references": [{"path": "../../lib/api-client-react"}]`) so TypeScript reads declaration files from `dist/`, not the source — stale dist = stale types even though orval updated the `.ts` source.

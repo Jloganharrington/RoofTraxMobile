@@ -17,7 +17,7 @@
 
 - [IICRC citation placeholder runtime](iicrc-citation-placeholder.md) — STD-WTR-01/02 flagged humanEnteredProvisionsOnly; generator injects directive + placeholder tokens; SectionCard blocks approve until filled.
 
-- [Pipeline stage vocabulary](pipeline-stage-vocabulary.md) — 30-stage map (10 retail/15 insurance/8 project); server-side copy in api-server/src/lib/pipelineStages.ts; UI copy in rooftrax-web/src/lib/pipelineStages.ts; kept in sync manually.
+- [Pipeline stage vocabulary](pipeline-stage-vocabulary.md) — 30-stage map (10 retail/15 insurance/8 project); server-side copy in api-server/src/lib/pipelineStages.ts; UI copy in axiomrestore-web/src/lib/pipelineStages.ts; kept in sync manually.
 - [Pipeline advance-stage endpoint](pipeline-advance-stage.md) — PATCH /leads/:leadId/advance-stage shares advancePinStage() helper with POST /events/pipeline; import both from pipelineEvents.ts.
 
 - [drizzle push blocks on new unique constraints](drizzle-push-unique-constraint.md) — non-interactive push has an unavoidable TTY prompt; apply the DDL via SQL matching the schema file.
@@ -84,7 +84,7 @@
 - [Steps 4 and 5 schema](steps4-5-schema.md) — manager_user_id on user_profiles (migration 045) + user_permission_overrides (migration 046); requirePermission now checks overrides before registry default; 4 new admin.ts routes.
 - [Terminate User feature](terminate-user-feature.md) — migrations 047/048; deactivated_at on users; pins.user_id RESTRICT; GET inventory + POST terminate (atomic tx + session purge) + DELETE hard-delete guard; team.delete → super_admin.
 - [Permission override hardening](perm-override-hardening.md) — migration 051 audit table; floor/selfOnly → 422; manager-assignment gate; must-hold extends to revoke; clearing-revoke = grant check.
-- [Trial Proof Package](trial-proof-package.md) — separate trial auth track; real Stripe checkout via recordSuccessfulPayment seam; 30-day download = tokenized route (GCS signing caps at 7d); root /api fetch in rooftrax-web.
+- [Trial Proof Package](trial-proof-package.md) — separate trial auth track; real Stripe checkout via recordSuccessfulPayment seam; 30-day download = tokenized route (GCS signing caps at 7d); root /api fetch in axiomrestore-web.
 - [Pricing & Stripe billing](pricing-and-stripe-billing.md) — table-driven tiers; lookup-key catalog verified vs DB; credit reserved under row lock at checkout; webhook = authoritative fulfillment; stripe-replit-sync name-collision gotcha.
 - [Readiness Engine Architecture](readiness-engine-architecture.md) — 3-layer contract: evaluate() → computeReadiness() → lint; evaluationResult replaces testSquaresCount; unified GET /readiness returns protocol+submission+variant; compile gate hoists hydrateInspectionChildren; pp.ts uses synthetic EvaluationResult.
 - [api-client-react project references](api-client-react-project-refs.md) — mobile typecheck reads dist/ .d.ts via project refs; must run `cd lib/api-client-react && npx tsc --build` after every orval codegen or mobile tsc errors persist.

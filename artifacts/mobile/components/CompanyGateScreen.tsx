@@ -17,7 +17,7 @@ import { useAuth, type LoginError } from '@/lib/auth';
 
 type Mode = 'choose' | 'join' | 'confirm' | 'pp-login' | 'pp-forgot';
 
-const DEV_AUTH_KEY = '@rooftrax/dev_auth';
+const DEV_AUTH_KEY = '@axiomrestore/dev_auth';
 const DEV_AUTH_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const DEV_PERSONAS = [

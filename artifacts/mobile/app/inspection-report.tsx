@@ -103,7 +103,7 @@ export default function InspectionReportScreen() {
           data: {
             recipient: recipientTrimmed,
             pdfBase64,
-            filename: `RoofTrax-Preliminary-Report.pdf`,
+            filename: `AxiomRestore-Preliminary-Report.pdf`,
           },
         });
         Alert.alert('Report sent', `The report was emailed to ${recipientTrimmed}.`);

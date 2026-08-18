@@ -14,8 +14,8 @@ import fs from 'fs';
 const OUT_DIR = '/tmp/phase4';
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-// rooftrax-web is proxied through localhost:80 at /rooftrax-web/
-const BASE_URL = process.env.WEB_BASE_URL ?? 'http://localhost:80/rooftrax-web';
+// axiomrestore-web is proxied through localhost:80 at /axiomrestore-web/
+const BASE_URL = process.env.WEB_BASE_URL ?? 'http://localhost:80/axiomrestore-web';
 
 const USERS = [
   { actor: 'A-CANV-1', id: '96180b99-792c-4b45-b0bd-304f36833b4f', email: 'a-canv-1@zztest.local', companyId: 'ZZTEST_ALPHA', role: 'field_rep/canvasser' },

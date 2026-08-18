@@ -7,7 +7,7 @@ description: manager_user_id column and user_permission_overrides table — migr
 
 ### Step 4 — `manager_user_id` on `user_profiles`
 - Column: `manager_user_id varchar REFERENCES users(id) ON DELETE SET NULL` (nullable)
-- Schema: `lib/db/src/schema/rooftrax.ts` → `userProfilesTable.managerUserId`
+- Schema: `lib/db/src/schema/axiomrestore.ts` → `userProfilesTable.managerUserId`
 - Migration: `data-migrations/045_manager_user_id.sql` (idempotent, ADD COLUMN IF NOT EXISTS)
 - Applied directly via psql (drizzle-kit push always TTY-prompts on column additions in this env)
 - Route: `PATCH /team/users/:userId/manager` in `artifacts/api-server/src/routes/admin.ts`

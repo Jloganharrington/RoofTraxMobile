@@ -26,7 +26,7 @@ const [actor] = await db
 **Why:** Selecting smtpHost from `usersTable` compiles silently in JS but throws TS2339 during typecheck — caught immediately.
 
 ## Web CO hooks
-`artifacts/rooftrax-web/src/lib/changeOrdersApi.ts` — hand-typed React Query hooks
+`artifacts/axiomrestore-web/src/lib/changeOrdersApi.ts` — hand-typed React Query hooks
 (useListPinChangeOrders, useApproveChangeOrder, useVoidChangeOrder) using customFetch.
 Query key: `['change-orders', pinId]`.
 Approve mutation also invalidates `['pinProfitability', pinId]` so waterfall updates.

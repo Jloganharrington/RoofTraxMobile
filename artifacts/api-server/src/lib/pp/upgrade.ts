@@ -10,13 +10,13 @@ import { companiesTable, db, userProfilesTable, usersTable } from '@workspace/db
 import { logger } from '../logger';
 import { sendPPEmail } from './mailer';
 
-const SIGNOFF = '\n\n— The RoofTrax Team';
+const SIGNOFF = '\n\n— The AxiomRestore Team';
 
 function crmUpgradeEmail(companyName: string, dashboardUrl: string) {
   return {
-    subject: 'Welcome to RoofTrax CRM — your account is ready',
+    subject: 'Welcome to AxiomRestore CRM — your account is ready',
     text: [
-      `Great news! ${companyName} has been upgraded to the full RoofTrax CRM.`,
+      `Great news! ${companyName} has been upgraded to the full AxiomRestore CRM.`,
       '',
       'You now have access to:',
       '  • Lead pipelines and insurance workflows',
@@ -76,7 +76,7 @@ export async function fulfillCRMUpgrade(
 
   if (founder?.email) {
     const origin = process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}/rooftrax-web`
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}/axiomrestore-web`
       : process.env.CANONICAL_ORIGIN ?? process.env.PRODUCTION_ORIGIN ?? '';
     const tmpl = crmUpgradeEmail(company.name, origin + '/');
     void sendPPEmail(founder.email, tmpl.subject, tmpl.text).catch(() => {});

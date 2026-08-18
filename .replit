@@ -55,25 +55,25 @@ PORT = "24332"
 BASE_PATH = "/signing-portal/"
 
 [[workflows.workflow]]
-name = "artifacts/rooftrax-web: web"
+name = "artifacts/axiomrestore-web: web"
 author = "agent"
 mode = "sequential"
 
 [workflows.workflow.metadata]
 outputType = "webview"
-artifactId = "artifacts/rooftrax-web"
+artifactId = "artifacts/axiomrestore-web"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/rooftrax-web run dev"
-cwd = "./artifacts/rooftrax-web"
+args = "pnpm --filter @workspace/axiomrestore-web run dev"
+cwd = "./artifacts/axiomrestore-web"
 waitForPort = 25654
 ensurePreviewReachable = "/"
 router = "path"
 
 [workflows.workflow.tasks.env]
 PORT = "25654"
-BASE_PATH = "/rooftrax-web/"
+BASE_PATH = "/axiomrestore-web/"
 
 [[workflows.workflow]]
 name = "artifacts/mockup-sandbox: Component Preview Server"

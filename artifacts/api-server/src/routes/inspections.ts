@@ -10472,7 +10472,7 @@ router.patch('/leads/:leadId/advance-stage', requirePermission('lead.advance_sta
 // leadId is the raw identifier — either a pin UUID or "ins-{inspectionId}".
 // Routes gate access by verifying the lead belongs to the actor's company.
 
-/** Categories that mirror LEAD_FILE_CATEGORIES in lib/db/src/schema/rooftrax.ts */
+/** Categories that mirror LEAD_FILE_CATEGORIES in lib/db/src/schema/axiomrestore.ts */
 const LEAD_FILE_CATEGORIES = [
   'site_photos', 'contracts', 'estimates', 'insurance_documents',
   'measurement_reports', 'permits', 'correspondence', 'general',

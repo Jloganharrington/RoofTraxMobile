@@ -1,4 +1,4 @@
-# ROOFTRAX — FULL DIAGNOSTIC AUDIT
+# AXIOMRESTORE — FULL DIAGNOSTIC AUDIT
 Generated: 2026-08-09  
 Auditor: automated seven-pass run per spec
 
@@ -59,7 +59,7 @@ None found. Every path key in `openapi.yaml` has a corresponding route handler.
 
 **CALIBRATION ITEM 1 CONFIRMED.**
 
-`rooftrax-web/src/lib/claimHubApi.ts` (911 lines) contains **~30 exported React Query hooks** all backed by `customFetch`. None of these endpoints are in the OpenAPI spec; consequently no generated hook or type exists for any of them. The file header (`:5-18`) explicitly acknowledges this and instructs future migration.
+`axiomrestore-web/src/lib/claimHubApi.ts` (911 lines) contains **~30 exported React Query hooks** all backed by `customFetch`. None of these endpoints are in the OpenAPI spec; consequently no generated hook or type exists for any of them. The file header (`:5-18`) explicitly acknowledges this and instructs future migration.
 
 Selected hooks and their endpoint status:
 
@@ -131,9 +131,9 @@ Searched `artifacts/signing-portal/src` and `artifacts/photo-portal/src` for imp
 
 | Table | company_id? | Tenancy mechanism | file:line |
 |-------|-------------|-------------------|-----------|
-| `user_profiles` | NO | Joined via `users` → `companies` FK; profile rows scoped by userId. No cross-tenant query guard at table level. | `rooftrax.ts:59` |
-| `price_book_package_items` | NO | Child of `price_book_packages` which has `company_id`. No direct route queries this table standalone — always accessed via parent. | `rooftrax.ts:428` |
-| `stage_transitions` | NO | Dashboard scopes via `pinsTable.companyId` join (`dashboard.ts:220-250`). | `rooftrax.ts:523` |
+| `user_profiles` | NO | Joined via `users` → `companies` FK; profile rows scoped by userId. No cross-tenant query guard at table level. | `axiomrestore.ts:59` |
+| `price_book_package_items` | NO | Child of `price_book_packages` which has `company_id`. No direct route queries this table standalone — always accessed via parent. | `axiomrestore.ts:428` |
+| `stage_transitions` | NO | Dashboard scopes via `pinsTable.companyId` join (`dashboard.ts:220-250`). | `axiomrestore.ts:523` |
 
 `user_profiles` is the only one that warrants attention: routes query it by `userId` and assume the authenticated user's ID implies tenancy. There is no explicit company-scope guard in the `user_profiles` query. This design is intentional (profile is 1:1 with user), but means any route that resolves a profile row by an arbitrary userId without verifying same-company membership could expose cross-tenant data. **Reviewed routes (`dashboard.ts:38,755`, `contracts.ts:54,515`, `inspections.ts:3364,3647`) all use the authenticated actor's own userId, not an arbitrary one — no observed cross-tenant leak. UNCERTAIN** for cases where userId is caller-supplied.
 
@@ -195,7 +195,7 @@ Server-side: corresponding routes use `isManagerOrAdmin` from `@workspace/authz`
 
 ### Chain C — Change order approved → revised_contract_cents
 
-- `changeOrders.ts:556-596`: `POST /change-orders/:id/approve` sets `status = 'approved'`, `approvedAt`. **No direct `change_orders_cents` write** — this column is derived as the sum of `change_order_line_items.total_cents` (schema comment at `rooftrax.ts:776-778`).
+- `changeOrders.ts:556-596`: `POST /change-orders/:id/approve` sets `status = 'approved'`, `approvedAt`. **No direct `change_orders_cents` write** — this column is derived as the sum of `change_order_line_items.total_cents` (schema comment at `axiomrestore.ts:776-778`).
 - Profitability view includes approved COs in `revised_contract_cents`. Confirmed via `profitability.test.ts:466-552` (pending excluded, approved included, void removes). **WIRED.**
 
 ### Chain D — Selections → extended delta → betterments_cents → contract total → PDF schedule
@@ -255,10 +255,10 @@ Server-side: corresponding routes use `isManagerOrAdmin` from `@workspace/authz`
 ### Calibration items (all eight confirmed independently)
 
 **1. Hand-written API layer — CONFIRMED**
-`rooftrax-web/src/lib/claimHubApi.ts` (911 lines): ~30 hooks via `customFetch` for unspecced routes. See Pass 2 for full inventory.
+`axiomrestore-web/src/lib/claimHubApi.ts` (911 lines): ~30 hooks via `customFetch` for unspecced routes. See Pass 2 for full inventory.
 
 **2. Legacy varchar money columns on pins — CONFIRMED**
-`lib/db/src/schema/rooftrax.ts:182-191`: `contract_amount`, `deposit_amount`, `deductible_amount`, `rcv_amount`, `acv_amount`, `supplement_amount`, `final_payment_amount` — all `varchar`, all nullable. Superseded by the payments ledger (`paymentsTable`, migration 023). Still read by: `LeadProfile.tsx:748-803` (display), `claimHubApi.ts:518-527` (typing). Legacy read confirmed by `src/routes/__tests__/legacy_money_read.test.ts`. **LEGACY — live readers exist.**
+`lib/db/src/schema/axiomrestore.ts:182-191`: `contract_amount`, `deposit_amount`, `deductible_amount`, `rcv_amount`, `acv_amount`, `supplement_amount`, `final_payment_amount` — all `varchar`, all nullable. Superseded by the payments ledger (`paymentsTable`, migration 023). Still read by: `LeadProfile.tsx:748-803` (display), `claimHubApi.ts:518-527` (typing). Legacy read confirmed by `src/routes/__tests__/legacy_money_read.test.ts`. **LEGACY — live readers exist.**
 
 **3. pins.retailData.appointmentDate superseded — CONFIRMED**
 `pins.appointment_at` (DB) / `appointmentAt` (Drizzle) added by migration 037. Still read: `LeadProfile.tsx:748-803`, `calendar.ts:143-175` (uses `appointmentAt` ✓ — does NOT read `retailData.appointmentDate`), `pins.ts:79,114,227`. `retailData` JSON blob still read in `inspections.ts:9600,10428,10498-10500` for legacy inspection context and `LeadProfile.tsx` display. **LEGACY — partial migration, legacy blob still consumed.**
@@ -283,13 +283,13 @@ Additional restrictive inline calls in `inspections.ts`: `:8002,:8165,:8176,:818
 The three substantive allowlists are intentionally different by surface (user templates are richest, LLM output is narrowest). The duplication of the `allowedStyles` regex map across #2 and #3 is a maintenance concern.
 
 **6. contracts.templateId orphaned — CONFIRMED**
-`lib/db/src/schema/rooftrax.ts:962`: `templateId: varchar('template_id')`, nullable, no Drizzle FK. Searched all of `artifacts/api-server/src` and `artifacts/rooftrax-web/src`:
+`lib/db/src/schema/axiomrestore.ts:962`: `templateId: varchar('template_id')`, nullable, no Drizzle FK. Searched all of `artifacts/api-server/src` and `artifacts/axiomrestore-web/src`:
 - No read of `contractsTable.templateId` found anywhere.
-- `TEMPLATE_USE_CASES` (`rooftrax.ts:554-563`) values: `forensic_report`, `proof_package`, `fipsa_agreement`, `estimate_proposal`, `homeowner_email`, `claim_supplement`, `change_order`, `other` — **no `'contract'` value**. The contract PDF is hardcoded in `contracts.ts`; `templateId` is never resolved to a template row.
+- `TEMPLATE_USE_CASES` (`axiomrestore.ts:554-563`) values: `forensic_report`, `proof_package`, `fipsa_agreement`, `estimate_proposal`, `homeowner_email`, `claim_supplement`, `change_order`, `other` — **no `'contract'` value**. The contract PDF is hardcoded in `contracts.ts`; `templateId` is never resolved to a template row.
 **ORPHANED** — column exists, nothing reads it, no FK enforced.
 
 **7. contract_selections.selected_by 'rep' path — CONFIRMED (calibration table name is incorrect)**
-The calibration item says "change_orders.selected_by". That column does **not exist** on `changeOrdersTable` (`rooftrax.ts:765-813`). It exists on `contractSelectionsTable` (`rooftrax.ts:1009`): `selectedBy: varchar('selected_by').notNull()` with comment `// 'customer' | 'rep'`.
+The calibration item says "change_orders.selected_by". That column does **not exist** on `changeOrdersTable` (`axiomrestore.ts:765-813`). It exists on `contractSelectionsTable` (`axiomrestore.ts:1009`): `selectedBy: varchar('selected_by').notNull()` with comment `// 'customer' | 'rep'`.
 
 Write path: `contractPortal.ts:354-356`:
 ```ts
@@ -299,7 +299,7 @@ const selectedBy   = isRepRequest ? 'rep' : 'customer';
 The portal router does not require authentication. `req.isAuthenticated()` returns `false` for unauthenticated portal customers. A logged-in rep navigating to the portal URL while authenticated could trigger `'rep'`, but this requires deliberately mixing session and portal contexts. In practice the 'rep' branch is never reached via normal product flows. **BROKEN** (dead write path — `'rep'` can never be written through any product UI surface, only via a race of auth+portal contexts that has no product affordance).
 
 **8. Deductible panel — CONFIRMED never built**
-Searched `rooftrax-web/src` for any component or file named `Deductible`, `DeductiblePanel`, `DeductibleTab`. None found. Deductible is handled **inline only** in `LeadProfile.tsx:1945+` (insurance financials tile) and via payment type `'deductible'` in the ledger. No dedicated panel was built. **ORPHANED spec item.**
+Searched `axiomrestore-web/src` for any component or file named `Deductible`, `DeductiblePanel`, `DeductibleTab`. None found. Deductible is handled **inline only** in `LeadProfile.tsx:1945+` (insurance financials tile) and via payment type `'deductible'` in the ledger. No dedicated panel was built. **ORPHANED spec item.**
 
 ### Additional findings
 
@@ -326,7 +326,7 @@ Searched `rooftrax-web/src` for any component or file named `Deductible`, `Deduc
 
 ### 6a — Drizzle schema vs migration columns
 
-No mismatches identified between schema definitions and migration DDL for tables reviewed. All tables in `rooftrax.ts` correspond to migrations in `data-migrations/`.
+No mismatches identified between schema definitions and migration DDL for tables reviewed. All tables in `axiomrestore.ts` correspond to migrations in `data-migrations/`.
 
 ### 6b — Migration numbering
 
@@ -392,12 +392,12 @@ None found. `rg --files -g '*.sql' -g '!data-migrations/**'` returned no results
 
 ### 6e — Values stored that are also derived elsewhere
 
-- `change_orders.amount_cents` — stored but labeled "DERIVED — always the sum of `change_order_line_items.total_cents`; recomputed on every line-item write" (`rooftrax.ts:776-778`). Two sources of truth if the recompute ever fails. **MEDIUM** drift risk.
+- `change_orders.amount_cents` — stored but labeled "DERIVED — always the sum of `change_order_line_items.total_cents`; recomputed on every line-item write" (`axiomrestore.ts:776-778`). Two sources of truth if the recompute ever fails. **MEDIUM** drift risk.
 - Legacy `pins` varchar money columns vs payments ledger — `pins.contract_amount` is also written by contract signing, and cleared by void. **Two sources of truth** for contract value (varchar pin field vs profitability view from ledger). **MEDIUM.**
 
 ### 6f — Nullable columns treated as guaranteed
 
-- `claim_status_history.to_status` is nullable (`rooftrax.ts:1031`: `varchar('to_status')` with comment `// null = status was cleared`). Application code that reads this column and assumes non-null would break. **UNCERTAIN** — would need to audit all readers.
+- `claim_status_history.to_status` is nullable (`axiomrestore.ts:1031`: `varchar('to_status')` with comment `// null = status was cleared`). Application code that reads this column and assumes non-null would break. **UNCERTAIN** — would need to audit all readers.
 - `claim_status_history.from_status` is nullable (`// null on first-ever set`). Same concern.
 - `contracts.document_sha256`, `customer_signature_path`, `rep_signature_path` — nullable; signing flow gates on these being present before completing. This is intentional but readers must null-check.
 
@@ -426,7 +426,7 @@ Duration: 26s
 
 **Typechecks — all client artifacts:**
 ```
-artifacts/rooftrax-web    npx tsc --noEmit   ✅ clean
+artifacts/axiomrestore-web    npx tsc --noEmit   ✅ clean
 artifacts/signing-portal  npx tsc --noEmit   ✅ clean
 artifacts/photo-portal    npx tsc --noEmit   ✅ clean
 artifacts/mobile          npx tsc --noEmit   ✅ clean
@@ -477,23 +477,23 @@ Whitelist items #1, #3, #5: no stale docstrings, unused imports (tsc is clean wi
 |----------|------|-----------|---------|----------|---------------|
 | ~~**CRITICAL**~~ **RESOLVED** | Migrations | `data-migrations/017a/b_*.sql`, `018a/b_*.sql` | ~~Duplicate migration prefix numbers~~ Fixed in Step 6: `017_` → `017a_`/`017b_`; `018_` → `018a_`/`018b_`. Dependency order: 017a → 018a (table→backfill); 017b must precede 021 (entry_key format). | `ls data-migrations/ \| sort` now shows clean sequence | Done |
 | **HIGH** | Business logic | `agreement.ts` (no pipeline call) / `pipelineEvents.ts:36-40` | **Chain H broken**: FIPSA signing never calls `advancePinStage`. After a FIPSA is signed, the pipeline stage does not automatically advance — reps must advance it manually. | `grep -n "advance\|pipeline\|stage" agreement.ts` returned 0 results for any `advancePinStage` call | Wire `await advancePinStage(…)` from the FIPSA `POST /agreements/:id/send` (or equivalent signing endpoint) after the signing transaction commits. |
-| **HIGH** | Business logic | `contractPortal.ts:354-356` / `rooftrax.ts:1009` | `contract_selections.selected_by = 'rep'` is a dead write path. The `isRepRequest` branch is never reached via any product UI surface; portal routes are accessed without a session. | `req.isAuthenticated()` returns `false` for all normal portal requests; no product UI directs an authenticated rep to trigger a selection via the portal endpoint | Either remove the `'rep'` branch and document that all portal selections are `'customer'`, or add a separate authenticated rep-selection endpoint and direct the rep-assisted flow there. (Calibration item 7 — table name in spec is `change_orders`, actual column is `contract_selections`.) |
-| **HIGH** | Data integrity | `rooftrax.ts:182-191`, `profitability_view.sql`, `contractPortal.ts:519-548`, `contracts.ts:637-642` | Two sources of truth for contract value: `pins.contract_amount` (varchar, written/cleared by contract sign/void) AND the profitability view which re-derives it. If the view SQL and the signing write-back ever diverge (e.g. the view formula changes but the varchar write-back does not), they report different values to different surfaces. | Calibration item 2 — legacy varchar still written on sign, view also computes contract value | Long-term: remove the signing write-back to `pins.contract_amount` and have all callers use the profitability view. Short-term: add a test asserting both values agree after sign and void. |
+| **HIGH** | Business logic | `contractPortal.ts:354-356` / `axiomrestore.ts:1009` | `contract_selections.selected_by = 'rep'` is a dead write path. The `isRepRequest` branch is never reached via any product UI surface; portal routes are accessed without a session. | `req.isAuthenticated()` returns `false` for all normal portal requests; no product UI directs an authenticated rep to trigger a selection via the portal endpoint | Either remove the `'rep'` branch and document that all portal selections are `'customer'`, or add a separate authenticated rep-selection endpoint and direct the rep-assisted flow there. (Calibration item 7 — table name in spec is `change_orders`, actual column is `contract_selections`.) |
+| **HIGH** | Data integrity | `axiomrestore.ts:182-191`, `profitability_view.sql`, `contractPortal.ts:519-548`, `contracts.ts:637-642` | Two sources of truth for contract value: `pins.contract_amount` (varchar, written/cleared by contract sign/void) AND the profitability view which re-derives it. If the view SQL and the signing write-back ever diverge (e.g. the view formula changes but the varchar write-back does not), they report different values to different surfaces. | Calibration item 2 — legacy varchar still written on sign, view also computes contract value | Long-term: remove the signing write-back to `pins.contract_amount` and have all callers use the profitability view. Short-term: add a test asserting both values agree after sign and void. |
 | **MEDIUM** | API spec drift | `claimHubApi.ts` (entire file, 911 lines) | ~30 endpoints are implemented on the server, consumed by the client, but absent from `openapi.yaml`. All typing is hand-maintained. Any schema change silently diverges. | Calibration item 1 — P2 inventory | Add the unspecced routes to `openapi.yaml` incrementally and regenerate; retire `claimHubApi.ts` hooks in favour of generated ones as each is specced. |
 | **MEDIUM** | API spec drift | `ahjWizard.ts`, `agreement.ts`, `companies.ts` sub-routes, `pins.ts` file/lead routes | ~20 additional route families not in `openapi.yaml` (see Pass 1 table) | Pass 1 inverse check | Spec them alongside `claimHubApi.ts` routes. |
-| **MEDIUM** | Schema | `rooftrax.ts:962`, `contracts.ts:103-144` | `contracts.templateId` is an orphaned column. Nothing reads it, `TEMPLATE_USE_CASES` has no `'contract'` value, the PDF is hardcoded. | Calibration item 6 — searched all of `api-server/src` and `rooftrax-web/src` | Either populate and use it (add `'contract'` to `TEMPLATE_USE_CASES`, wire the resolution in `contracts.ts`) or drop the column in a new migration. |
-| **MEDIUM** | Data integrity | `rooftrax.ts:776-778`, `changeOrders.ts` | `change_orders.amount_cents` is labeled "DERIVED — always the sum of line items; recomputed on every line-item write." If a line-item write fails after insert but before recompute, the stored total is stale. | Schema comment at `rooftrax.ts:776-778`; no idempotent recompute guard found in test suite | Add a test that verifies `amount_cents` stays correct if a recompute throws mid-write. Consider a DB trigger as a fallback. |
+| **MEDIUM** | Schema | `axiomrestore.ts:962`, `contracts.ts:103-144` | `contracts.templateId` is an orphaned column. Nothing reads it, `TEMPLATE_USE_CASES` has no `'contract'` value, the PDF is hardcoded. | Calibration item 6 — searched all of `api-server/src` and `axiomrestore-web/src` | Either populate and use it (add `'contract'` to `TEMPLATE_USE_CASES`, wire the resolution in `contracts.ts`) or drop the column in a new migration. |
+| **MEDIUM** | Data integrity | `axiomrestore.ts:776-778`, `changeOrders.ts` | `change_orders.amount_cents` is labeled "DERIVED — always the sum of line items; recomputed on every line-item write." If a line-item write fails after insert but before recompute, the stored total is stale. | Schema comment at `axiomrestore.ts:776-778`; no idempotent recompute guard found in test suite | Add a test that verifies `amount_cents` stays correct if a recompute throws mid-write. Consider a DB trigger as a fallback. |
 | **MEDIUM** | Auth/roles | `inspections.ts:787`, `selections.ts:20,30`, `bugReports.ts:35-36`, `companies.ts:69` etc. | Inline role comparisons use raw string arrays/literals instead of `roleRank` from `@workspace/authz`. A new role inserted into the hierarchy would not automatically be included. | Pass 3b — searched all route files | Replace inline arrays/comparisons with `isManagerOrAdmin`, `roleRank`, or the existing authz helpers. |
 | ~~**MEDIUM**~~ **RESOLVED** | Migration integrity | `data-migrations/` | ~~GAP: `021_` missing~~ Fixed in Step 6: gap filled by `021_remediation_plan_vocab.sql` (formerly `0009_remediation_plan_vocab.sql`). | `ls data-migrations/ \| sort` | Done |
 | ~~**MEDIUM**~~ **RESOLVED** | Migration integrity | `021_remediation_plan_vocab.sql` | ~~4-digit prefix `0009_` sorted before `001_`~~ Fixed in Step 6: renamed to `021_remediation_plan_vocab.sql`. | `ls \| sort` | Done |
-| **MEDIUM** | Missing feature | `rooftrax-web/src/` | Deductible panel was specified but never built. Deductible is only handled inline in `LeadProfile.tsx` and via the payment ledger type `'deductible'`. No `DeductiblePanel` component exists. | Calibration item 8 — grep found zero results for any deductible panel/component | Build the panel or formally descope and remove the spec item. |
+| **MEDIUM** | Missing feature | `axiomrestore-web/src/` | Deductible panel was specified but never built. Deductible is only handled inline in `LeadProfile.tsx` and via the payment ledger type `'deductible'`. No `DeductiblePanel` component exists. | Calibration item 8 — grep found zero results for any deductible panel/component | Build the panel or formally descope and remove the spec item. |
 | **MEDIUM** | Test coverage | Pass 4 chains | Chain D (PDF selections schedule), Chain H (FIPSA→pipeline, chain is broken), Chain K (mobile live activity) have no automated test coverage. | Pass 7d analysis | Add integration tests for Chain D PDF output; Chain H is moot until wired. |
-| **LOW** | Legacy | `rooftrax.ts:182-191` | Seven varchar money columns on `pins` are still written/read despite the payments ledger superseding them. `LeadProfile.tsx:748-803` and `claimHubApi.ts:518-527` are live readers. | Calibration items 2 and 3 | After all display surfaces are migrated to the ledger, add a migration to drop the varchar columns. `legacy_money_read.test.ts` can then be retired. |
+| **LOW** | Legacy | `axiomrestore.ts:182-191` | Seven varchar money columns on `pins` are still written/read despite the payments ledger superseding them. `LeadProfile.tsx:748-803` and `claimHubApi.ts:518-527` are live readers. | Calibration items 2 and 3 | After all display surfaces are migrated to the ledger, add a migration to drop the varchar columns. `legacy_money_read.test.ts` can then be retired. |
 | **LOW** | Legacy | `retailData.appointmentDate` | Still read in `LeadProfile.tsx:748-803` and `inspections.ts` for legacy context. `pins.appointment_at` is the canonical column. `calendar.ts` correctly uses `appointmentAt`. | Calibration item 3; Pass 5 | Migrate `LeadProfile` display to use `appointmentAt`; remove `retailData.appointmentDate` reads. |
 | **LOW** | Dead code | `inspections.ts:815,3633` | `// TODO: push to CRM…` — CRM push on inspection create/update is not implemented. | grep — two hits | Implement or formally remove the TODO. |
 | **LOW** | Dead code | `App.tsx:146`, `ReportsPage.tsx`, `SettingsPage.tsx:144-151`, `NotificationsTab.tsx:129,132` | ComingSoon stubs for Reports page, Integrations tab, and daily/weekly notification frequency. | grep ComingSoon; code review | Track as product backlog; add a code comment citing the task. |
 | **LOW** | Sanitizer duplication | `sectionGeneration.ts:191-205`, `inspections.ts:4973-4987` | The `allowedStyles` regex map is copy-pasted verbatim in two LLM-output sanitizers. A change to allowed styles must be made in both places. | Pass 5 calibration item 5 — direct comparison of the two blocks | Extract into `htmlSanitize.ts` as a shared `LLM_ALLOWED_STYLES` constant. |
-| **LOW** | Tenancy | `rooftrax.ts:59` | `user_profiles` has no `company_id`. Tenancy relies entirely on the authenticated actor using their own `userId`. Any future route that resolves a profile by a caller-supplied `userId` without a same-company check would leak cross-tenant profile data. | Pass 3a | Add a `company_id` FK to `user_profiles` and enforce it in queries, OR add a middleware helper that asserts same-company before resolving a third-party profile. |
+| **LOW** | Tenancy | `axiomrestore.ts:59` | `user_profiles` has no `company_id`. Tenancy relies entirely on the authenticated actor using their own `userId`. Any future route that resolves a profile by a caller-supplied `userId` without a same-company check would leak cross-tenant profile data. | Pass 3a | Add a `company_id` FK to `user_profiles` and enforce it in queries, OR add a middleware helper that asserts same-company before resolving a third-party profile. |
 
 ---
 
@@ -501,8 +501,8 @@ Whitelist items #1, #3, #5: no stale docstrings, unused imports (tsc is clean wi
 
 | Item | What it is | Why it can't be wired without a human decision |
 |------|-----------|-----------------------------------------------|
-| `contracts.templateId` (`rooftrax.ts:962`) | Nullable varchar column; FK exists in SQL migration but not in Drizzle schema; `TEMPLATE_USE_CASES` has no `'contract'` value. | Cannot determine from code whether the intent was (a) let reps attach a template to a contract for PDF generation, or (b) the feature was abandoned. A wrong wire would make contracts render from a template instead of the hardcoded layout. |
-| `contract_selections.selected_by = 'rep'` (`rooftrax.ts:1009`; `contractPortal.ts:354`) | The `'rep'` branch is reachable if a logged-in rep hits the portal selection endpoint directly. No product UI surface does this today. | Cannot determine if `'rep'` selections were intended for a rep-assisted contract-build flow that was planned but not built, or if the branch is genuinely vestigial. |
+| `contracts.templateId` (`axiomrestore.ts:962`) | Nullable varchar column; FK exists in SQL migration but not in Drizzle schema; `TEMPLATE_USE_CASES` has no `'contract'` value. | Cannot determine from code whether the intent was (a) let reps attach a template to a contract for PDF generation, or (b) the feature was abandoned. A wrong wire would make contracts render from a template instead of the hardcoded layout. |
+| `contract_selections.selected_by = 'rep'` (`axiomrestore.ts:1009`; `contractPortal.ts:354`) | The `'rep'` branch is reachable if a logged-in rep hits the portal selection endpoint directly. No product UI surface does this today. | Cannot determine if `'rep'` selections were intended for a rep-assisted contract-build flow that was planned but not built, or if the branch is genuinely vestigial. |
 | `inspections.ts:815,3633` `TODO: push to CRM` | Two identical TODOs on inspection create/update — CRM push is not implemented. | Cannot determine which CRM system was intended, what payload should be sent, or whether this is still a product requirement. |
 | Daily/weekly notification frequency (`NotificationsTab.tsx:129,132`; `notify.ts` dispatch) | The `frequency` column stores `immediate | daily | weekly | off`; the dispatch layer only acts on `immediate` and `off`. Frequency UI options are commented `// coming soon`. | Cannot determine the digest grouping logic, send schedule, or whether a background scheduler exists for this. Requires product + infrastructure decision. |
 

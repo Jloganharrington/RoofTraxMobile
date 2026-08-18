@@ -5,7 +5,7 @@ import { useColors } from '@/hooks/useColors';
 import { Icon } from '@/components/Icon';
 
 const UPGRADE_URL = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/rooftrax-web/pp/upgrade`
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/axiomrestore-web/pp/upgrade`
   : 'https://rooftrax.com/pp/upgrade';
 
 interface UpgradeRequiredScreenProps {
@@ -38,8 +38,8 @@ export function UpgradeRequiredScreen({ featureName }: UpgradeRequiredScreenProp
 
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
         {featureName
-          ? `${featureName} is part of the full RoofTrax CRM.`
-          : 'This feature is part of the full RoofTrax CRM.'}
+          ? `${featureName} is part of the full AxiomRestore CRM.`
+          : 'This feature is part of the full AxiomRestore CRM.'}
         {'\n\n'}
         Upgrade your plan to unlock pipeline management, lead tracking, team maps, commission
         reports, and more.

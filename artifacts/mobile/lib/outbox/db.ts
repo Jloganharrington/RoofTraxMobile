@@ -10,7 +10,7 @@ let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
  */
 export function getOutboxDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = SQLite.openDatabaseAsync('rooftrax-outbox.db').then(async (db) => {
+    dbPromise = SQLite.openDatabaseAsync('axiomrestore-outbox.db').then(async (db) => {
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS outbox_items (
           id TEXT PRIMARY KEY NOT NULL,

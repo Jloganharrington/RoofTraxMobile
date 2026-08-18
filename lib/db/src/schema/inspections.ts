@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { companiesTable, usersTable } from './auth';
-import { pinsTable } from './rooftrax';
+import { pinsTable } from './axiomrestore';
 
 // Forensic inspection lifecycle. Content for each stage ships in a later
 // phase — this phase only stores raw values and the lifecycle status.

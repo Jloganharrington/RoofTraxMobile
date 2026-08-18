@@ -1,10 +1,10 @@
 /**
  * Server-side pipeline stage vocabulary.
- * Mirrors the autoAdvance/isTerminal/isLoopStage data from rooftrax-web's
+ * Mirrors the autoAdvance/isTerminal/isLoopStage data from axiomrestore-web's
  * pipelineStages.ts but without any React/UI metadata.
  *
  * Keep stage keys in sync with the full definition in
- * artifacts/rooftrax-web/src/lib/pipelineStages.ts.
+ * artifacts/axiomrestore-web/src/lib/pipelineStages.ts.
  */
 
 export type PipelineId = 'retail' | 'insurance' | 'project';

@@ -139,7 +139,7 @@ async function main(): Promise<void> {
   // ── Plan subscription products & prices ──────────────────────────────────
   console.log('=== Plan subscription prices ===');
   for (const plan of PLANS) {
-    const productName = `RoofTrax ${plan.name}`;
+    const productName = `AxiomRestore ${plan.name}`;
     const productId = await upsertProduct(stripe, productName, { planKey: plan.key });
     for (const term of BILLING) {
       const amount = installmentCents(plan.annualCents, term.multiplier, term.installments);
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
   // ── Feature tier add-on prices (monthly recurring) ───────────────────────
   console.log('\n=== Feature tier prices ===');
   for (const ft of FEATURE_TIERS) {
-    const productName = `RoofTrax ${ft.name}`;
+    const productName = `AxiomRestore ${ft.name}`;
     const productId = await upsertProduct(stripe, productName, { featureTierKey: ft.key });
     await upsertRecurringPrice(stripe, {
       lookupKey: `feature_${ft.key}_monthly`,
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
 
   // ── Setup fee prices (one-time) ───────────────────────────────────────────
   console.log('\n=== Setup fee prices ===');
-  const setupProductId = await upsertProduct(stripe, 'RoofTrax Setup & Onboarding', { type: 'setup' });
+  const setupProductId = await upsertProduct(stripe, 'AxiomRestore Setup & Onboarding', { type: 'setup' });
   for (const plan of PLANS) {
     await upsertOneTimePrice(stripe, {
       lookupKey: `setup_${plan.key}_annual`,
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
 
   // ── Trial Proof Package prices ────────────────────────────────────────────
   console.log('\n=== Trial Proof Package prices ===');
-  const trialProductId = await upsertProduct(stripe, 'RoofTrax Trial Proof Package', { type: 'trial' });
+  const trialProductId = await upsertProduct(stripe, 'AxiomRestore Trial Proof Package', { type: 'trial' });
   await upsertOneTimePrice(stripe, {
     lookupKey: 'trial_package_first',
     productId: trialProductId,

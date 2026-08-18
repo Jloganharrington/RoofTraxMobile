@@ -5,7 +5,7 @@
  * the server's authoritative list. When the network is unavailable the same
  * data is served back so the change-order line-item picker keeps working.
  *
- * Kept in a dedicated database file (rooftrax-cache.db) so it stays
+ * Kept in a dedicated database file (axiomrestore-cache.db) so it stays
  * separate from the write outbox and is easy to wipe independently.
  */
 import * as SQLite from 'expo-sqlite';
@@ -24,7 +24,7 @@ let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 function getCacheDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = SQLite.openDatabaseAsync('rooftrax-cache.db').then(async (db) => {
+    dbPromise = SQLite.openDatabaseAsync('axiomrestore-cache.db').then(async (db) => {
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS price_book_items (
           id          TEXT    PRIMARY KEY NOT NULL,

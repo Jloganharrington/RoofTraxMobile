@@ -41,27 +41,27 @@ export async function sendPPEmail(to: string, subject: string, text: string): Pr
   }
 }
 
-const SIGNOFF = '\n\n— The RoofTrax Team';
+const SIGNOFF = '\n\n— The AxiomRestore Team';
 
 export const ppEmails = {
   verify(link: string) {
     return {
-      subject: 'Verify your email — RoofTrax Proof Package',
-      text: `Welcome to RoofTrax Proof Package!\n\nPlease confirm your email address to activate your account:\n\n${link}\n\nThis link expires in 24 hours. If you didn't create an account, you can ignore this email.${SIGNOFF}`,
+      subject: 'Verify your email — AxiomRestore Proof Package',
+      text: `Welcome to AxiomRestore Proof Package!\n\nPlease confirm your email address to activate your account:\n\n${link}\n\nThis link expires in 24 hours. If you didn't create an account, you can ignore this email.${SIGNOFF}`,
     };
   },
 
   welcome(companyName: string) {
     return {
-      subject: 'Your RoofTrax Proof Package account is ready',
+      subject: 'Your AxiomRestore Proof Package account is ready',
       text: `Hi,\n\nYour account for ${companyName} is set up and ready to use. Log in at any time to start compiling Proof Packages.\n\nIf you have questions, reply to this email.${SIGNOFF}`,
     };
   },
 
   passwordReset(link: string) {
     return {
-      subject: 'Reset your RoofTrax password',
-      text: `Someone requested a password reset for your RoofTrax Proof Package account.\n\nClick the link below to set a new password (expires in 1 hour):\n\n${link}\n\nIf you didn't request this, you can safely ignore this email.${SIGNOFF}`,
+      subject: 'Reset your AxiomRestore password',
+      text: `Someone requested a password reset for your AxiomRestore Proof Package account.\n\nClick the link below to set a new password (expires in 1 hour):\n\n${link}\n\nIf you didn't request this, you can safely ignore this email.${SIGNOFF}`,
     };
   },
 };

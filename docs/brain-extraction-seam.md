@@ -1,6 +1,6 @@
 # Brain extraction seam (M-F / F5)
 
-This document defines the contract between the RoofTrax **field app** (capture +
+This document defines the contract between the AxiomRestore **field app** (capture +
 intake) and the **Brain** — the standalone package-rendering/analysis service
 that does **not** exist yet. After Phase M-F the field app is feature-complete:
 it captures evidence, enforces the protocol, hardens submission ("Brain v0"),

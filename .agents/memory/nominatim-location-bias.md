@@ -11,7 +11,7 @@ in Spain/India/Vietnam before any local street. This is the default behavior and
 it looks broken to a US field rep.
 
 **The fix (in `lib/geocode.ts` searchAddress):**
-- Always set `countrycodes=us` (RoofTrax is US field ops).
+- Always set `countrycodes=us` (AxiomRestore is US field ops).
 - When the rep's current location is available, pass a `viewbox` (~0.35deg box
   around them) with `bounded=0` so nearby results are *boosted*, not hard-clipped
   — an exact out-of-area address still resolves.

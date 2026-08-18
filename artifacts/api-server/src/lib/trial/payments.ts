@@ -27,7 +27,7 @@ function marketingBase(): string {
   const host = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
     : process.env.PRODUCTION_ORIGIN ?? '';
-  return `${host}/rooftrax-web`;
+  return `${host}/axiomrestore-web`;
 }
 
 /** Resolve an active Stripe price by lookup key, verifying its amount. */

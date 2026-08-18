@@ -162,12 +162,12 @@ export default function PreliminaryPhotosScreen() {
       if (err instanceof CameraPermissionDeniedError) {
         Alert.alert(
           'Camera access needed',
-          'RoofTrax needs camera access to capture inspection photos. Enable it for RoofTrax in your device Settings, then try again.',
+          'AxiomRestore needs camera access to capture inspection photos. Enable it for AxiomRestore in your device Settings, then try again.',
         );
       } else if (err instanceof MediaLibraryPermissionDeniedError) {
         Alert.alert(
           'Photo access needed',
-          'RoofTrax needs access to your photos to upload an image. Enable it for RoofTrax in your device Settings, then try again.',
+          'AxiomRestore needs access to your photos to upload an image. Enable it for AxiomRestore in your device Settings, then try again.',
         );
       } else {
         console.warn('[preliminary-photos] photo failed', err);

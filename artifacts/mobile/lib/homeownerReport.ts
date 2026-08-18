@@ -464,7 +464,7 @@ function buildReportHtml(inspection: Inspection, photos: ResolvedPhoto[]): strin
 }
 
 // Copies the print output to a stable, human-readable filename so the shared
-// attachment and downloaded file read as "RoofTrax-Preliminary-Report-...pdf".
+// attachment and downloaded file read as "AxiomRestore-Preliminary-Report-...pdf".
 // Falls back to the raw print URI if the copy fails for any reason.
 function toFriendlyPdf(printUri: string, inspection: Inspection): string {
   try {
@@ -473,7 +473,7 @@ function toFriendlyPdf(printUri: string, inspection: Inspection): string {
         .replace(/[^a-z0-9]+/gi, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40) || 'property';
-    const dest = new File(Paths.cache, `RoofTrax-Preliminary-Report-${slug}.pdf`) as unknown as UsableFile;
+    const dest = new File(Paths.cache, `AxiomRestore-Preliminary-Report-${slug}.pdf`) as unknown as UsableFile;
     if (dest.exists) dest.delete();
     (new File(printUri) as unknown as UsableFile).copy(dest);
     return dest.uri;

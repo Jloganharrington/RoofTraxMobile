@@ -22,7 +22,7 @@ const router: IRouter = Router();
 // -----------------------------------------------------------------------------
 // B5 — Weather engine. The deterministic VisualCrossing retrieval, event
 // normalization, per-day aggregation, hard-gate eligibility, and severity
-// ranking live in ../lib/weatherEngine (extracted verbatim from RoofTrax Pro).
+// ranking live in ../lib/weatherEngine (extracted verbatim from AxiomRestore Pro).
 // The AI (Anthropic) hail-scoring seam is intentionally CUT — this endpoint
 // returns deterministic candidate storms only; the inspector confirms the
 // storm of record. No LLM, no ANTHROPIC_API_KEY. Gated by the inspection

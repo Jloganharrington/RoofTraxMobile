@@ -57,7 +57,7 @@ export async function reverseGeocode(
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'RoofTrax/1.0 (field-ops pin tracking)',
+        'User-Agent': 'AxiomRestore/1.0 (field-ops pin tracking)',
       },
     });
 
@@ -109,7 +109,7 @@ export async function searchAddress(
 
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'RoofTrax/1.0 (field-ops pin tracking)',
+        'User-Agent': 'AxiomRestore/1.0 (field-ops pin tracking)',
       },
     });
 

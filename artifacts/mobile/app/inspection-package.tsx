@@ -90,7 +90,7 @@ export default function InspectionPackageScreen() {
   // ?tab=inspection_flow opens the Proof Package Builder tab directly.
   const webWizardUrl =
     _domain && (inspection?.pinId as string | undefined)
-      ? `https://${_domain}/rooftrax-web/leads/${inspection!.pinId as string}?tab=inspection_flow`
+      ? `https://${_domain}/axiomrestore-web/leads/${inspection!.pinId as string}?tab=inspection_flow`
       : null;
 
   // Agreement status — forensic inspections only.
@@ -426,7 +426,7 @@ export default function InspectionPackageScreen() {
             data: {
               recipient: trimmed,
               pdfBase64,
-              filename: 'RoofTrax-Proof-Package.pdf',
+              filename: 'AxiomRestore-Proof-Package.pdf',
               subject: `Forensic Inspection Report & Proof Package — ${inspection?.address ?? 'your property'}`,
               body: 'Attached is the Forensic Inspection Report & Proof Package for your property.',
             },

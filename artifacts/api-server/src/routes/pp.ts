@@ -85,7 +85,7 @@ async function generateUniqueCompanyId(): Promise<string> {
  * headers (Host / X-Forwarded-Host) to prevent host-header injection attacks.
  * Order of precedence:
  *   1. REPLIT_DEV_DOMAIN — injected by the Replit platform in development
- *   2. CANONICAL_ORIGIN  — operator-set in production (e.g. "https://app.rooftrax.com")
+ *   2. CANONICAL_ORIGIN  — operator-set in production (e.g. "https://app.axiomrestore.com")
  *   3. PRODUCTION_ORIGIN — legacy alias, same semantics
  */
 function trustedOrigin(): string {
@@ -336,7 +336,7 @@ const CheckoutBody = z.object({
  * POST /pp/checkout
  * Validates the registration fields, stores a pending registration, and
  * returns a Stripe checkout URL. The browser redirects to Stripe; on success
- * Stripe redirects to /rooftrax-web/pp/register/confirm?session_id=...
+ * Stripe redirects to /axiomrestore-web/pp/register/confirm?session_id=...
  */
 router.post('/pp/checkout', async (req: Request, res: Response) => {
   const parsed = CheckoutBody.safeParse(req.body);
@@ -409,8 +409,8 @@ router.post('/pp/checkout', async (req: Request, res: Response) => {
   }
 
   const base = trustedOrigin();
-  const successUrl = `${base}/rooftrax-web/pp/register/confirm?session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = `${base}/rooftrax-web/pp/register?cancelled=1`;
+  const successUrl = `${base}/axiomrestore-web/pp/register/confirm?session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = `${base}/axiomrestore-web/pp/register?cancelled=1`;
 
   try {
     // Price in cents — configurable via PP_PACKAGE_PRICE_CENTS env var
@@ -436,7 +436,7 @@ router.post('/pp/checkout', async (req: Request, res: Response) => {
       lineItem = {
         price_data: {
           currency: 'usd',
-          product_data: { name: 'RoofTrax Proof Package — Per-Package Plan' },
+          product_data: { name: 'AxiomRestore Proof Package — Per-Package Plan' },
           unit_amount: ppPriceCents,
         },
         quantity: 1,
@@ -464,7 +464,7 @@ router.post('/pp/checkout', async (req: Request, res: Response) => {
   } catch (err) {
     // If Stripe is not configured, allow dev bypass.
     if (process.env.PP_DEV_SKIP_PAYMENT === '1') {
-      res.json({ checkoutUrl: `${base}/rooftrax-web/pp/register/confirm?dev_pending_id=${pending.id}` });
+      res.json({ checkoutUrl: `${base}/axiomrestore-web/pp/register/confirm?dev_pending_id=${pending.id}` });
       return;
     }
     logger.error({ err }, 'pp checkout: Stripe session creation failed');
@@ -799,7 +799,7 @@ router.get('/pp/verify', async (req: Request, res: Response) => {
     .where(eq(usersTable.id, user.id));
 
   const base = trustedOrigin();
-  res.redirect(`${base}/rooftrax-web/pp/portal?verified=1`);
+  res.redirect(`${base}/axiomrestore-web/pp/portal?verified=1`);
 });
 
 // ── Password reset ───────────────────────────────────────────────────────────
@@ -835,7 +835,7 @@ router.post('/pp/password-reset', async (req: Request, res: Response) => {
       .where(eq(usersTable.id, user.id));
 
     const base = trustedOrigin();
-    const link = `${base}/rooftrax-web/pp/reset-password?token=${resetToken}`;
+    const link = `${base}/axiomrestore-web/pp/reset-password?token=${resetToken}`;
     const tmpl = ppEmails.passwordReset(link);
     void sendPPEmail(email, tmpl.subject, tmpl.text).catch(() => {});
   }
@@ -2064,8 +2064,8 @@ router.post('/pp/packages/checkout', async (req: Request, res: Response) => {
     // ── Create a new Stripe Checkout Session ─────────────────────────────────
     const ppPriceCents = parseInt(process.env.PP_PACKAGE_PRICE_CENTS ?? '29900', 10);
     const base = trustedOrigin();
-    const successUrl = `${base}/rooftrax-web/pp/wizard/${inspectionId}?checkout_session={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${base}/rooftrax-web/pp/inspections?checkout=canceled`;
+    const successUrl = `${base}/axiomrestore-web/pp/wizard/${inspectionId}?checkout_session={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${base}/axiomrestore-web/pp/inspections?checkout=canceled`;
 
     type LineItem =
       | { price: string; quantity: number }
@@ -2084,7 +2084,7 @@ router.post('/pp/packages/checkout', async (req: Request, res: Response) => {
       lineItem = {
         price_data: {
           currency: 'usd',
-          product_data: { name: 'RoofTrax Proof Package — Per-Package Fee' },
+          product_data: { name: 'AxiomRestore Proof Package — Per-Package Fee' },
           unit_amount: ppPriceCents,
         },
         quantity: 1,
@@ -2688,7 +2688,7 @@ router.post('/pp/upgrade/checkout', async (req: Request, res: Response) => {
           currency: 'usd',
           unit_amount: unitAmount,
           recurring: { interval },
-          product_data: { name: `RoofTrax CRM — ${plan.displayName} (${term.termKey})` },
+          product_data: { name: `AxiomRestore CRM — ${plan.displayName} (${term.termKey})` },
         },
         quantity: 1,
       };
@@ -2738,8 +2738,8 @@ router.post('/pp/upgrade/checkout', async (req: Request, res: Response) => {
           planKey: plan.planKey,
         },
       },
-      success_url: `${base}/rooftrax-web/pp/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${base}/rooftrax-web/pp/upgrade`,
+      success_url: `${base}/axiomrestore-web/pp/upgrade/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${base}/axiomrestore-web/pp/upgrade`,
     });
 
     if (!session.url) throw new Error('Stripe returned no URL');
@@ -2751,7 +2751,7 @@ router.post('/pp/upgrade/checkout', async (req: Request, res: Response) => {
       const { fulfillCRMUpgrade } = await import('../lib/pp/upgrade');
       await fulfillCRMUpgrade(company.id);
       const base = trustedOrigin();
-      res.json({ checkoutUrl: `${base}/rooftrax-web/pp/upgrade/success?dev=1` });
+      res.json({ checkoutUrl: `${base}/axiomrestore-web/pp/upgrade/success?dev=1` });
       return;
     }
     logger.error({ err }, 'pp upgrade checkout: Stripe session creation failed');

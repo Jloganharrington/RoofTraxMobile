@@ -1,4 +1,4 @@
-// Deterministic weather engine (B5). Extracted verbatim from RoofTrax Pro's
+// Deterministic weather engine (B5). Extracted verbatim from AxiomRestore Pro's
 // weather route — retrieval normalization, per-day aggregation, hard-gate
 // eligibility, and severity ranking. The AI (Anthropic) hail-scoring seam is
 // intentionally NOT ported. These are pure functions with no I/O so they can

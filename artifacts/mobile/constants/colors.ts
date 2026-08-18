@@ -1,5 +1,5 @@
 /**
- * RoofTrax palette — sampled from the brand logo (navy roofline + orange
+ * AxiomRestore palette — sampled from the brand logo (navy roofline + orange
  * inspection lens). Deep navy surfaces for contrast, the logo's safety-
  * orange as the primary action color, and a clear amber vs. teal split for
  * insurance-workflow vs. retail-workflow pin accents so reps can tell the

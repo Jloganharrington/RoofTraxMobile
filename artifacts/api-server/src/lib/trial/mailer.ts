@@ -44,12 +44,12 @@ export async function sendTrialEmail(to: string, subject: string, text: string):
   }
 }
 
-const SIGNOFF = '\n\n— The RoofTrax Team';
+const SIGNOFF = '\n\n— The AxiomRestore Team';
 
 export const trialEmails = {
   verify(link: string) {
     return {
-      subject: 'Verify your email — RoofTrax Proof Package',
+      subject: 'Verify your email — AxiomRestore Proof Package',
       text: `Confirm your company email to continue your proof package submission:\n\n${link}\n\nIf you didn't request this, you can ignore this email.${SIGNOFF}`,
     };
   },
@@ -87,13 +87,13 @@ export const trialEmails = {
   checkIn(day: number, creditCents: number, creditExpires: string) {
     return {
       subject: 'How did the documentation hold up?',
-      text: `It's been ${day} days since we delivered your proof package. We'd love to hear how the documentation worked for your process.\n\nReminder: you have $${(creditCents / 100).toFixed(2)} in credit toward an annual RoofTrax plan (Crew and above), valid until ${creditExpires}.${SIGNOFF}`,
+      text: `It's been ${day} days since we delivered your proof package. We'd love to hear how the documentation worked for your process.\n\nReminder: you have $${(creditCents / 100).toFixed(2)} in credit toward an annual AxiomRestore plan (Crew and above), valid until ${creditExpires}.${SIGNOFF}`,
     };
   },
   creditExpiring(creditCents: number, daysLeft: number) {
     return {
       subject: `Your $${(creditCents / 100).toFixed(0)} credit expires in ${daysLeft} days`,
-      text: `Your proof package credit of $${(creditCents / 100).toFixed(2)} applies toward any annual RoofTrax plan (Crew and above), within 90 days of your first trial submission. It expires in ${daysLeft} days.\n\nReply to this email or visit the pricing page to put it to work.${SIGNOFF}`,
+      text: `Your proof package credit of $${(creditCents / 100).toFixed(2)} applies toward any annual AxiomRestore plan (Crew and above), within 90 days of your first trial submission. It expires in ${daysLeft} days.\n\nReply to this email or visit the pricing page to put it to work.${SIGNOFF}`,
     };
   },
 };

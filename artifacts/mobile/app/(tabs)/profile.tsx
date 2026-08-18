@@ -362,7 +362,7 @@ export default function ProfileScreen() {
         void registerPushToken();
         Alert.alert('Notifications enabled', 'You will receive push notifications for payments, contract signings, and claim updates.');
       } else {
-        Alert.alert('Permission denied', 'To enable notifications, open Settings and allow notifications for RoofTrax.');
+        Alert.alert('Permission denied', 'To enable notifications, open Settings and allow notifications for AxiomRestore.');
       }
     } finally {
       setPushRequesting(false);
@@ -692,7 +692,7 @@ export default function ProfileScreen() {
             {pushStatus === 'granted'
               ? 'You will receive push notifications for payments, contract signings, claim updates, and more.'
               : pushStatus === 'denied'
-              ? 'Notifications are blocked. To enable them, open Settings and allow notifications for RoofTrax.'
+              ? 'Notifications are blocked. To enable them, open Settings and allow notifications for AxiomRestore.'
               : 'Get notified on your device when payments are recorded, contracts are signed, or claim status changes.'}
           </Text>
           {pushStatus !== 'granted' && (
@@ -728,7 +728,7 @@ export default function ProfileScreen() {
           <Pressable
             onPress={() => {
               const upgradeUrl = process.env.EXPO_PUBLIC_DOMAIN
-                ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/rooftrax-web/pp/upgrade`
+                ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/axiomrestore-web/pp/upgrade`
                 : 'https://rooftrax.com/pp/upgrade';
               void WebBrowser.openBrowserAsync(upgradeUrl, {
                 presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,

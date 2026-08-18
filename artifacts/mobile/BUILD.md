@@ -1,4 +1,4 @@
-# RoofTrax Mobile — Build & Submit Guide
+# AxiomRestore Mobile — Build & Submit Guide
 
 This document covers the one-time setup required before the first EAS build
 and the commands used for day-to-day builds and submissions.

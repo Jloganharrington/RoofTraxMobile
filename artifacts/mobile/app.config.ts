@@ -64,13 +64,13 @@ const routerPlugin: NonNullable<ExpoConfig['plugins']>[number] = domain
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
 
-  name: 'RoofTrax',
+  name: 'AxiomRestore',
   slug: 'mobile',
   version: '1.0.0',
   orientation: 'portrait',
 
-  // "rooftrax" gives us rooftrax:// deep-links instead of the generic "mobile" slug.
-  scheme: 'rooftrax',
+  // "axiomrestore" gives us axiomrestore:// deep-links instead of the generic "mobile" slug.
+  scheme: 'axiomrestore',
 
   icon: './assets/images/icon.png',
   userInterfaceStyle: 'automatic',
@@ -84,11 +84,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
 
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'com.rooftrax.mobile',
+    bundleIdentifier: 'com.axiomrestore.mobile',
   },
 
   android: {
-    package: 'com.rooftrax.mobile',
+    package: 'com.axiomrestore.mobile',
   },
 
   web: {
@@ -102,17 +102,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-image-picker',
       {
-        cameraPermission: 'RoofTrax uses the camera to capture inspection and evidence photos.',
-        photosPermission: 'RoofTrax accesses your photo library to attach inspection images.',
+        cameraPermission: 'AxiomRestore uses the camera to capture inspection and evidence photos.',
+        photosPermission: 'AxiomRestore accesses your photo library to attach inspection images.',
       },
     ],
     [
       'expo-location',
       {
         locationWhenInUsePermission:
-          'RoofTrax uses your location to GPS-stamp inspection photos and dropped pins.',
+          'AxiomRestore uses your location to GPS-stamp inspection photos and dropped pins.',
         locationAlwaysAndWhenInUsePermission:
-          'RoofTrax uses your location to GPS-stamp inspection photos and dropped pins.',
+          'AxiomRestore uses your location to GPS-stamp inspection photos and dropped pins.',
       },
     ],
     'expo-mail-composer',

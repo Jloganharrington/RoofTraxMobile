@@ -400,8 +400,8 @@ router.post('/profile/smtp/test', requirePermission('profile.update'), async (re
     await transport.sendMail({
       from: profile.smtpFromEmail || profile.smtpUsername,
       to: recipient,
-      subject: 'RoofTrax test email',
-      text: 'Your email settings are working. Reports sent from RoofTrax will be delivered like this message.',
+      subject: 'AxiomRestore test email',
+      text: 'Your email settings are working. Reports sent from AxiomRestore will be delivered like this message.',
     });
   } catch (err) {
     req.log.warn({ err }, 'SMTP test email failed');

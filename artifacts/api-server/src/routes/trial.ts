@@ -212,7 +212,7 @@ router.get('/trial/verify', async (req: Request, res: Response) => {
   const sessionToken = await createTrialSession(account.id);
   // Land on the wizard with the session token in the fragment (not query —
   // fragments don't hit server logs).
-  res.redirect(`/rooftrax-web/proof-package/submit#trial_token=${sessionToken}`);
+  res.redirect(`/axiomrestore-web/proof-package/submit#trial_token=${sessionToken}`);
 });
 
 // Public deliverable download. The email link points here; it stays valid for
