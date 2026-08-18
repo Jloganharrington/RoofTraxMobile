@@ -7,7 +7,8 @@
  */
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
-import { ShieldCheck, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import logoDark from '@/assets/logo-dark.png';
 
 export default function PPLandingPage() {
   const [, navigate] = useLocation();
@@ -45,12 +46,7 @@ export default function PPLandingPage() {
 
         {/* Brand */}
         <div className="text-center space-y-3">
-          <div className="flex items-center justify-center gap-2.5">
-            <ShieldCheck className="h-8 w-8 text-orange-500" strokeWidth={2.5} />
-            <span className="text-2xl font-black tracking-widest uppercase text-white">
-              AXIOM<span className="text-orange-500">RESTORE</span>
-            </span>
-          </div>
+          <img src={logoDark} alt="AxiomRestore" className="h-10 object-contain mx-auto" />
           <div>
             <p className="text-zinc-300 font-semibold">Proof Package Portal</p>
             <p className="text-zinc-500 text-sm mt-1">

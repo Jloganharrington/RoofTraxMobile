@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  ShieldCheck, ArrowRight, Check, Smartphone, BarChart2,
+  ArrowRight, Check, Smartphone, BarChart2,
   Camera, FileSignature, Share2, Zap, Clock, FileCheck,
   ChevronRight, Star, BookOpen, Mic, Menu, X
 } from "lucide-react";
+import logoDark from "@/assets/logo-dark.png";
 
 // ─── Pricing tiers ────────────────────────────────────────────────────────────
 const TIERS = [
@@ -65,12 +66,7 @@ function MarketingNav() {
   return (
     <nav className="fixed inset-x-0 top-0 z-50 h-14 flex items-center justify-between px-6 md:px-10 bg-zinc-950/90 backdrop-blur border-b border-white/[0.08]">
       {/* Logo */}
-      <div className="flex items-center gap-2.5">
-        <ShieldCheck className="h-5 w-5 text-orange-500 flex-shrink-0" strokeWidth={2.5} />
-        <span className="text-lg font-black tracking-widest uppercase select-none">
-          <span className="text-white">AXIOM</span><span className="text-orange-500">RESTORE</span>
-        </span>
-      </div>
+      <img src={logoDark} alt="AxiomRestore" className="h-8 object-contain" />
 
       {/* Desktop links */}
       <div className="hidden md:flex items-center gap-8">
@@ -517,11 +513,8 @@ function FooterSection() {
     <footer className="border-t border-white/[0.08] px-6 md:px-20 py-12">
       <div className="max-w-5xl flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
         <div>
-          <div className="flex items-center gap-2.5 mb-3">
-            <ShieldCheck className="h-4 w-4 text-orange-500" strokeWidth={2.5} />
-            <span className="text-sm font-black tracking-widest uppercase">
-              <span className="text-white">ROOF</span><span className="text-orange-500">TRAX</span>
-            </span>
+          <div className="mb-3">
+            <img src={logoDark} alt="AxiomRestore" className="h-6 object-contain" />
           </div>
           <p className="text-xs text-zinc-600 max-w-xs leading-relaxed">
             B2B SaaS for storm restoration contractors. AxiomRestore is an independent software company.

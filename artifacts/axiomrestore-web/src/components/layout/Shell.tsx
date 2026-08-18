@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import logoLight from "@/assets/logo-light.png";
+import logoDark from "@/assets/logo-dark.png";
 import { useGetCurrentAuthUser, useGetMyProfile } from "@workspace/api-client-react";
 import { roleRank } from "@workspace/authz";
 import type { Role } from "@workspace/authz";
@@ -408,13 +409,8 @@ export function Shell({ children }: ShellProps) {
         <div className="hidden md:flex px-5 h-14 items-center border-b border-sidebar-border">
           {/* Light mode: image logo */}
           <img src={logoLight} alt="AxiomRestore" className="h-7 object-contain dark:hidden" />
-          {/* Dark mode: text logo (dark image pending) */}
-          <div className="hidden dark:flex items-center gap-2.5">
-            <ShieldCheck className="h-5 w-5 text-primary flex-shrink-0" strokeWidth={2.5} />
-            <span className="text-lg font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
-              <span className="text-foreground">AXIOM</span><span className="text-primary">RESTORE</span>
-            </span>
-          </div>
+          {/* Dark mode: image logo */}
+          <img src={logoDark} alt="AxiomRestore" className="h-7 object-contain hidden dark:block" />
         </div>
 
         {/* Mobile drawer header with close button */}
@@ -422,13 +418,8 @@ export function Shell({ children }: ShellProps) {
           <div className="flex items-center gap-2">
             {/* Light mode: image logo */}
             <img src={logoLight} alt="AxiomRestore" className="h-6 object-contain dark:hidden" />
-            {/* Dark mode: text logo */}
-            <div className="hidden dark:flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-primary" strokeWidth={2.5} />
-              <span className="text-base font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
-                <span className="text-foreground">AXIOM</span><span className="text-primary">RESTORE</span>
-              </span>
-            </div>
+            {/* Dark mode: image logo */}
+            <img src={logoDark} alt="AxiomRestore" className="h-6 object-contain hidden dark:block" />
           </div>
           <button
             onClick={() => setDrawerOpen(false)}

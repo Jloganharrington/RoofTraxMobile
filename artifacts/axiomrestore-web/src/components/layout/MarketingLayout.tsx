@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
-import { ShieldCheck, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import logoDark from "@/assets/logo-dark.png";
 
 export function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,11 +10,8 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-white selection:bg-orange-500/30 flex flex-col font-sans">
       <nav className="h-14 flex items-center justify-between px-6 md:px-10 border-b border-white/10 bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <ShieldCheck className="h-5 w-5 text-orange-500 group-hover:text-orange-400 transition-colors" strokeWidth={2.5} />
-          <span className="text-lg font-black tracking-widest uppercase">
-            <span className="text-white">AXIOM</span><span className="text-orange-500 group-hover:text-orange-400 transition-colors">RESTORE</span>
-          </span>
+        <Link href="/">
+          <img src={logoDark} alt="AxiomRestore" className="h-8 object-contain" />
         </Link>
         
         {/* Desktop Nav */}
@@ -78,11 +76,8 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
       <footer className="px-6 md:px-10 py-12 border-t border-white/10 bg-zinc-950 text-zinc-500">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start gap-8">
           <div className="max-w-md">
-            <div className="flex items-center gap-2.5 mb-4 group grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all">
-              <ShieldCheck className="h-5 w-5 text-orange-500" strokeWidth={2.5} />
-              <span className="text-lg font-black tracking-widest uppercase">
-                <span className="text-white">ROOF</span><span className="text-orange-500">TRAX</span>
-              </span>
+            <div className="mb-4 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all">
+              <img src={logoDark} alt="AxiomRestore" className="h-7 object-contain" />
             </div>
             <p className="text-xs leading-relaxed uppercase tracking-wide">
               AxiomRestore is an independent software company.
