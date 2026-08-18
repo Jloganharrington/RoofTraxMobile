@@ -66,7 +66,7 @@ function MarketingNav() {
   return (
     <nav className="fixed inset-x-0 top-0 z-50 h-14 flex items-center justify-between px-6 md:px-10 bg-zinc-950/90 backdrop-blur border-b border-white/[0.08]">
       {/* Logo */}
-      <img src={logoDark} alt="AxiomRestore" className="h-8 object-contain" />
+      <img src={logoDark} alt="AxiomRestore" className="h-8 w-auto" />
 
       {/* Desktop links */}
       <div className="hidden md:flex items-center gap-8">
@@ -514,7 +514,7 @@ function FooterSection() {
       <div className="max-w-5xl flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
         <div>
           <div className="mb-3">
-            <img src={logoDark} alt="AxiomRestore" className="h-6 object-contain" />
+            <img src={logoDark} alt="AxiomRestore" className="h-6 w-auto" />
           </div>
           <p className="text-xs text-zinc-600 max-w-xs leading-relaxed">
             B2B SaaS for storm restoration contractors. AxiomRestore is an independent software company.

@@ -408,18 +408,18 @@ export function Shell({ children }: ShellProps) {
         {/* Logo — desktop only; mobile top bar handles branding */}
         <div className="hidden md:flex px-5 h-14 items-center border-b border-sidebar-border">
           {/* Light mode: image logo */}
-          <img src={logoLight} alt="AxiomRestore" className="h-7 object-contain dark:hidden" />
+          <img src={logoLight} alt="AxiomRestore" className="h-7 w-auto dark:hidden" />
           {/* Dark mode: image logo */}
-          <img src={logoDark} alt="AxiomRestore" className="h-7 object-contain hidden dark:block" />
+          <img src={logoDark} alt="AxiomRestore" className="h-7 w-auto hidden dark:block" />
         </div>
 
         {/* Mobile drawer header with close button */}
         <div className="md:hidden flex items-center justify-between px-4 h-12 border-b border-sidebar-border flex-shrink-0">
           <div className="flex items-center gap-2">
             {/* Light mode: image logo */}
-            <img src={logoLight} alt="AxiomRestore" className="h-6 object-contain dark:hidden" />
+            <img src={logoLight} alt="AxiomRestore" className="h-6 w-auto dark:hidden" />
             {/* Dark mode: image logo */}
-            <img src={logoDark} alt="AxiomRestore" className="h-6 object-contain hidden dark:block" />
+            <img src={logoDark} alt="AxiomRestore" className="h-6 w-auto hidden dark:block" />
           </div>
           <button
             onClick={() => setDrawerOpen(false)}

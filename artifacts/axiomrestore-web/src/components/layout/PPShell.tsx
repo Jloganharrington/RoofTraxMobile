@@ -141,7 +141,7 @@ export function PPShell({ children }: PPShellProps) {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center">
-            <img src={logoDark} alt="AxiomRestore" className="h-5 object-contain" />
+            <img src={logoDark} alt="AxiomRestore" className="h-5 w-auto" />
           </div>
         </div>
       </header>
@@ -167,13 +167,13 @@ export function PPShell({ children }: PPShellProps) {
       >
         {/* Desktop logo */}
         <div className="hidden md:flex px-5 h-14 items-center border-b border-zinc-800">
-          <img src={logoDark} alt="AxiomRestore" className="h-7 object-contain" />
+          <img src={logoDark} alt="AxiomRestore" className="h-7 w-auto" />
         </div>
 
         {/* Mobile drawer header */}
         <div className="md:hidden flex items-center justify-between px-4 h-12 border-b border-zinc-800 flex-shrink-0">
           <div className="flex items-center">
-            <img src={logoDark} alt="AxiomRestore" className="h-6 object-contain" />
+            <img src={logoDark} alt="AxiomRestore" className="h-6 w-auto" />
           </div>
           <button
             onClick={() => setDrawerOpen(false)}

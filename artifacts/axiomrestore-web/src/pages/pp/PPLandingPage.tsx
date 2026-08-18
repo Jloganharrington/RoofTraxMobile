@@ -46,7 +46,7 @@ export default function PPLandingPage() {
 
         {/* Brand */}
         <div className="text-center space-y-3">
-          <img src={logoDark} alt="AxiomRestore" className="h-10 object-contain mx-auto" />
+          <img src={logoDark} alt="AxiomRestore" className="h-10 w-auto mx-auto" />
           <div>
             <p className="text-zinc-300 font-semibold">Proof Package Portal</p>
             <p className="text-zinc-500 text-sm mt-1">

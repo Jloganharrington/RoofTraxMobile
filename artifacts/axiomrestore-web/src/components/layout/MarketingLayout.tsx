@@ -11,7 +11,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-zinc-950 text-white selection:bg-orange-500/30 flex flex-col font-sans">
       <nav className="h-14 flex items-center justify-between px-6 md:px-10 border-b border-white/10 bg-zinc-950/80 backdrop-blur sticky top-0 z-50">
         <Link href="/">
-          <img src={logoDark} alt="AxiomRestore" className="h-8 object-contain" />
+          <img src={logoDark} alt="AxiomRestore" className="h-8 w-auto" />
         </Link>
         
         {/* Desktop Nav */}
@@ -77,7 +77,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-start gap-8">
           <div className="max-w-md">
             <div className="mb-4 grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all">
-              <img src={logoDark} alt="AxiomRestore" className="h-7 object-contain" />
+              <img src={logoDark} alt="AxiomRestore" className="h-7 w-auto" />
             </div>
             <p className="text-xs leading-relaxed uppercase tracking-wide">
               AxiomRestore is an independent software company.
