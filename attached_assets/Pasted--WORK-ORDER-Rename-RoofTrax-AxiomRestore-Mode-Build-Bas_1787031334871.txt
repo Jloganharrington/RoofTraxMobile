@@ -1,0 +1,169 @@
+# WORK ORDER — Rename RoofTrax → AxiomRestore
+
+**Mode:** Build. **Baseline:** workspace suite plus the 130-test negative suite.
+**Canonical form:** `AxiomRestore` — one word, capital A, capital R, everywhere. Never `Axiom Restore`, never `axiomRestore`, never `Axiomrestore`.
+**One step per commit.** Steps run in order; the sequence is what keeps the build alive.
+
+**Scale:** 183 occurrences across 104 source files, plus docs and memory. Concentrated in `artifacts/rooftrax-web` (30), `artifacts/api-server` (19), `artifacts/mobile` (15), `lib/db` (4).
+
+**Do not do a global find-and-replace.** The string `rooftrax-web` appears in import paths, workspace config, and launch config. A blind replace breaks the build in a way that's tedious to unpick.
+
+---
+
+## STEP 0 — Inventory (report only)
+
+Produce the complete list before changing anything:
+
+```bash
+grep -rn "RoofTrax\|rooftrax\|ROOFTRAX" . \
+  --include="*.ts" --include="*.tsx" --include="*.json" --include="*.html" \
+  --include="*.md" --include="*.yaml" --include="*.yml" --include="*.sql" \
+  --include="*.toml" --include="*.sh" --include="*.mjs" \
+  | grep -v node_modules
+```
+
+Also check the files that extension filter misses: `.replit`, `.gitignore`, `.env.example`, any dotfile, and `pnpm-lock.yaml`.
+
+Classify every hit into one of five buckets:
+
+| Bucket | Treatment |
+|---|---|
+| **Identity** | Bundle ID, app name, slug, scheme — Step 1 |
+| **Customer-facing** | Templates, emails, documents, marketing copy — Step 2 |
+| **Path** | Directory names, imports, workspace config — Step 3 |
+| **Source** | Variable names, comments, test descriptions — Step 4 |
+| **Historical** | Docs, memory, `attached_assets/`, audit findings — Step 5 or leave |
+
+▶ **CHECKPOINT 0** — Paste the classified inventory with a count per bucket. **Stop.**
+
+---
+
+## STEP 1 — Mobile identity and strings
+
+**The only irreversible change in this order.** A published app's bundle identifier cannot be changed; doing so later means a new listing, a lost URL, lost reviews, and a forced reinstall for every user.
+
+`artifacts/mobile/app.json`:
+
+```
+"name":             "RoofTrax"          → "AxiomRestore"
+"slug":             "mobile"            → leave, or "axiomrestore-mobile"
+"scheme":           "mobile"            → leave, or "axiomrestore"
+"ios.bundleIdentifier":  "com.rooftrax.mobile" → "com.axiomrestore.mobile"
+"android.package":       "com.rooftrax.mobile" → "com.axiomrestore.mobile"
+```
+
+Leave `extra.eas.projectId` as the placeholder — that's a separate outstanding item.
+
+Then the 15 other files in `artifacts/mobile` carrying the string.
+
+**Report before changing:** whether `slug` or `scheme` are referenced anywhere — deep links, OAuth redirect URIs, `expo-router` config, the OIDC callback. If either is wired into an auth redirect, changing it breaks login and it stays as-is.
+
+`artifacts/mobile` has already diverged from the build Logan tested, so this pass ends with a **full manual regression on the app**: login, inspection creation, field capture, photo upload, FIPSA generation, submission.
+
+▶ **CHECKPOINT 1** — Diff, the slug/scheme finding, and the regression result.
+
+## STEP 2 — Customer-facing documents
+
+These print under a contractor's licence and go to carriers. Highest consequence for a stale string.
+
+- `artifacts/mobile/lib/fipsaTemplate.ts`
+- `artifacts/api-server/templates/proof-package-phase2.html`
+- `artifacts/api-server/src/lib/proofPackageTemplate.ts`
+- `artifacts/api-server/src/lib/supplementTemplate.ts`
+- `artifacts/api-server/src/lib/contractPdf.ts`
+- Completion certificate rendering
+- Any email template or subject line
+
+**Do not confuse product branding with tenant branding.** Anywhere the code renders `companies.contractorLegalName`, `logoUrl`, or `contractorLicenses`, that's the tenant's identity and must not change. Only replace the RoofTrax product name where it appears as the platform's own mark.
+
+After: generate one proof package, one FIPSA, and one completion certificate, and confirm no old string renders.
+
+▶ **CHECKPOINT 2** — Diff, plus the three generated documents.
+
+## STEP 3 — Directory rename, isolated
+
+`artifacts/rooftrax-web` → `artifacts/axiomrestore-web`
+
+Use `git mv` so history follows. Then update every reference:
+
+- `pnpm-workspace.yaml`
+- root and per-package `package.json`
+- `.claude/launch.json`
+- `.replit`
+- any import, alias, or `tsconfig` path mapping
+- CI or deploy config referencing the path
+
+**This is the step that can break the build.** It gets its own commit, and it ends with `pnpm -w tsc --build --force` from the repo root — per-artifact checks pass against stale `dist` and will not catch a broken path.
+
+▶ **CHECKPOINT 3** — Diff, root typecheck output, and a successful dev-server start.
+
+## STEP 4 — Remaining source and site metadata
+
+`artifacts/api-server` (19 files), `lib/db` (4), `scripts/src`, and the web artifact's remaining strings.
+
+`artifacts/axiomrestore-web/index.html` carries six occurrences including the title and meta description. Rewrite both while you're in there — the current description describes the CRM dashboard rather than the product:
+
+```html
+<title>Insurance Restoration Documentation Software | AxiomRestore</title>
+<meta name="description" content="AxiomRestore builds a complete forensic proof
+      package from a phone inspection — code citations, damage assessment, and
+      exhibit manifest, branded to your company.">
+```
+
+Update `og:title`, `og:description`, `twitter:title`, `twitter:description` to match.
+
+Also in scope: `.replit` (6 occurrences), and `PRODUCTION_ORIGIN` plus the CORS allowlist in `app.ts` if the deployment domain changes to `axiomrestore.com`.
+
+▶ **CHECKPOINT 4** — Diff and the full workspace suite.
+
+## STEP 5 — Docs, memory, and repo
+
+`AUDIT.md` (24), `docs/`, `.agents/memory/`, `TESTREPORT.md`.
+
+**Leave alone:** `attached_assets/` — historical pasted documents, changing them rewrites the record. And any `TESTREPORT.md` finding that cites a commit SHA or quotes historical output; the audit trail is more useful accurate than consistent.
+
+Repo rename `RoofTraxMobile` → `AxiomRestoreMobile` is safe whenever — GitHub redirects the old URL. Update the local remote afterwards.
+
+▶ **CHECKPOINT 5** — Diff.
+
+---
+
+## STEP 6 — Verification sweep
+
+Re-run the Step 0 command. Then account for **every remaining hit** in a table: file, line, string, and why it survives.
+
+Legitimate survivors are only these:
+
+- `attached_assets/` historical documents
+- `TESTREPORT.md` and `AUDIT.md` historical findings citing SHAs or quoted output
+- `pnpm-lock.yaml` entries that regenerate on next install
+- Git history itself
+
+**Anything else is a miss.** Zero unexplained occurrences is the pass condition.
+
+Then check the variants a naive replace misses:
+
+```bash
+grep -rn "ROOFTRAX\|Rooftrax\|roofTrax\|roof-trax\|roof_trax\|RoofTraxMobile\|rooftrax-web" . | grep -v node_modules
+```
+
+And confirm no half-renamed artifacts: `AxiomRestoreTrax`, `axiomrestore-trax`, `com.axiomrestore.rooftrax`.
+
+**Full verification:**
+
+1. `pnpm -w tsc --build --force` — zero errors
+2. Workspace suite per package, with `lib/protocol` at its known state
+3. 130-test negative suite, every verdict change explained
+4. `seed-acceptance-claim.ts`
+5. Dev server starts; marketing site and CRM both render
+6. One proof package, one FIPSA, one completion certificate generated and inspected for stale strings
+7. Mobile regression from Step 1 re-confirmed
+8. `git log --oneline` for the whole sequence
+
+▶ **CHECKPOINT 6** — The survivor table with justification per line, the variant grep, and all eight verification results.
+
+---
+
+Two notes. The bundle identifier in Step 1 is the one thing here that cannot be undone after the app reaches a store, so if any part of this order gets deferred, it isn't that one.
+
+And Step 3's directory rename is the only step likely to fail loudly. If it does, the fix is almost always a path reference in `pnpm-workspace.yaml` or a `tsconfig` alias rather than anything in application code.
