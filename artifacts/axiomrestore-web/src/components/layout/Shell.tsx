@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import logoLight from "@/assets/logo-light.png";
 import { useGetCurrentAuthUser, useGetMyProfile } from "@workspace/api-client-react";
 import { roleRank } from "@workspace/authz";
 import type { Role } from "@workspace/authz";
@@ -405,10 +406,13 @@ export function Shell({ children }: ShellProps) {
       >
         {/* Logo — desktop only; mobile top bar handles branding */}
         <div className="hidden md:flex px-5 h-14 items-center border-b border-sidebar-border">
-          <div className="flex items-center gap-2.5">
+          {/* Light mode: image logo */}
+          <img src={logoLight} alt="AxiomRestore" className="h-7 object-contain dark:hidden" />
+          {/* Dark mode: text logo (dark image pending) */}
+          <div className="hidden dark:flex items-center gap-2.5">
             <ShieldCheck className="h-5 w-5 text-primary flex-shrink-0" strokeWidth={2.5} />
             <span className="text-lg font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
-              <span className="text-foreground">ROOF</span><span className="text-primary">TRAX</span>
+              <span className="text-foreground">AXIOM</span><span className="text-primary">RESTORE</span>
             </span>
           </div>
         </div>
@@ -416,10 +420,15 @@ export function Shell({ children }: ShellProps) {
         {/* Mobile drawer header with close button */}
         <div className="md:hidden flex items-center justify-between px-4 h-12 border-b border-sidebar-border flex-shrink-0">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-primary" strokeWidth={2.5} />
-            <span className="text-base font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
-              <span className="text-foreground">ROOF</span><span className="text-primary">TRAX</span>
-            </span>
+            {/* Light mode: image logo */}
+            <img src={logoLight} alt="AxiomRestore" className="h-6 object-contain dark:hidden" />
+            {/* Dark mode: text logo */}
+            <div className="hidden dark:flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-primary" strokeWidth={2.5} />
+              <span className="text-base font-black tracking-widest uppercase" style={{ fontFamily: "var(--app-font-condensed)" }}>
+                <span className="text-foreground">AXIOM</span><span className="text-primary">RESTORE</span>
+              </span>
+            </div>
           </div>
           <button
             onClick={() => setDrawerOpen(false)}

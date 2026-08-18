@@ -12,7 +12,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
         <Link href="/" className="flex items-center gap-2.5 group">
           <ShieldCheck className="h-5 w-5 text-orange-500 group-hover:text-orange-400 transition-colors" strokeWidth={2.5} />
           <span className="text-lg font-black tracking-widest uppercase">
-            <span className="text-white">ROOF</span><span className="text-orange-500 group-hover:text-orange-400 transition-colors">TRAX</span>
+            <span className="text-white">AXIOM</span><span className="text-orange-500 group-hover:text-orange-400 transition-colors">RESTORE</span>
           </span>
         </Link>
         

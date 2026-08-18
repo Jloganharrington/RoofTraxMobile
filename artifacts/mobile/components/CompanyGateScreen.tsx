@@ -311,7 +311,7 @@ export function CompanyGateScreen() {
       )}
 
       <Image
-        source={require('@/assets/images/brand/full-logo-trimmed.png')}
+        source={require('@/assets/images/brand/logo-light.png')}
         style={styles.logo}
         resizeMode="contain"
       />
@@ -352,7 +352,7 @@ export function CompanyGateScreen() {
             </Text>
           </Pressable>
           <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            Need to create a company? Visit rooftrax.com to sign up.
+            Need to create a company? Visit axiomrestore.com to sign up.
           </Text>
 
           {/* ── Dev Tools — visible only after developer authentication ──── */}

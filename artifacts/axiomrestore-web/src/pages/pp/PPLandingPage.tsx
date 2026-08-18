@@ -48,7 +48,7 @@ export default function PPLandingPage() {
           <div className="flex items-center justify-center gap-2.5">
             <ShieldCheck className="h-8 w-8 text-orange-500" strokeWidth={2.5} />
             <span className="text-2xl font-black tracking-widest uppercase text-white">
-              ROOF<span className="text-orange-500">TRAX</span>
+              AXIOM<span className="text-orange-500">RESTORE</span>
             </span>
           </div>
           <div>

@@ -172,9 +172,6 @@ channel = "stable-25_05"
 
 [userenv]
 
-[userenv.shared]
-BRAIN_BASE_URL = "https://rooftrax-brain.replit.app"
-
 [userenv.development]
 TRIAL_DEV_FAKE_PAYMENTS = "1"
 

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/axiomrestore-web/"
+title = "AxiomRestore"
+description = "The AxiomRestore company web platform — session-authenticated dashboards for company admins and managers. Hosts the AI Summary Flow (trigger + review + edit AI-generated forensic narratives), the Estimate Flow (build and price repair scopes with the company price book), company settings, user management, and onboarding. The mobile app handles all field data capture; this web platform handles analysis, review, and administration."
+version = "1.0.0"
+id = "artifacts/axiomrestore-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/axiomrestore-web/" ]
+localPort = 25654
+
+[services.development]
+run = "pnpm --filter @workspace/axiomrestore-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/axiomrestore-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/axiomrestore-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25654"
+BASE_PATH = "/axiomrestore-web/"

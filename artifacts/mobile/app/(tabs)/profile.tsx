@@ -729,7 +729,7 @@ export default function ProfileScreen() {
             onPress={() => {
               const upgradeUrl = process.env.EXPO_PUBLIC_DOMAIN
                 ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/axiomrestore-web/pp/upgrade`
-                : 'https://rooftrax.com/pp/upgrade';
+                : 'https://axiomrestore.com/pp/upgrade';
               void WebBrowser.openBrowserAsync(upgradeUrl, {
                 presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
               });

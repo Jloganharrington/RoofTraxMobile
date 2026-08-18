@@ -68,7 +68,7 @@ function MarketingNav() {
       <div className="flex items-center gap-2.5">
         <ShieldCheck className="h-5 w-5 text-orange-500 flex-shrink-0" strokeWidth={2.5} />
         <span className="text-lg font-black tracking-widest uppercase select-none">
-          <span className="text-white">ROOF</span><span className="text-orange-500">TRAX</span>
+          <span className="text-white">AXIOM</span><span className="text-orange-500">RESTORE</span>
         </span>
       </div>
 

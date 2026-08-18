@@ -6,7 +6,7 @@ import { Icon } from '@/components/Icon';
 
 const UPGRADE_URL = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/axiomrestore-web/pp/upgrade`
-  : 'https://rooftrax.com/pp/upgrade';
+  : 'https://axiomrestore.com/pp/upgrade';
 
 interface UpgradeRequiredScreenProps {
   /** Optional feature name displayed in the message, e.g. "the Pipeline Board". */

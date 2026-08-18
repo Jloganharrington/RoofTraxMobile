@@ -198,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : '';
     const popup = window.open(
       `${apiBase}/api/mobile-auth/web-login?origin=${encodeURIComponent(webOrigin)}${companyParam}`,
-      'roof-trax-login',
+      'axiomrestore-login',
       'width=500,height=650',
     );
 
