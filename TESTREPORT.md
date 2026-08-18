@@ -1439,7 +1439,7 @@ These are not defects — they are behaviors that exist intentionally or ambiguo
 
 ---
 
-## Phase 4 — UI-Layer Tests (artifacts/rooftrax-web)
+## Phase 4 — UI-Layer Tests (artifacts/axiomrestore-web)
 
 ### Method
 
@@ -2021,7 +2021,7 @@ Events that fired across Phases 2–4 and Phase 5:
 | `artifacts/api-server` | 48 | 671 | 671 | 0 | 29.0s |
 | `lib/authz` | 3 | 66 | 66 | 0 | 0.5s |
 | `lib/protocol` | 2 | 59 | 58 | **1** | 0.6s |
-| `artifacts/rooftrax-web` | 1 | 5 | 5 | 0 | 3.2s |
+| `artifacts/axiomrestore-web` | 1 | 5 | 5 | 0 | 3.2s |
 | **Total** | **54** | **801** | **800** | **1** | ~33s |
 
 **The 1 failure is pre-existing.** `lib/protocol/src/__tests__/rules.test.ts` — test: `"applicableSteps drops exactly the unselected surfaces"`.
@@ -2421,7 +2421,7 @@ The web UI would never navigate a user to another tenant's inspection. But an AP
 | `artifacts/api-server` | 48 | 671 | 671 | 0 |
 | `lib/authz` | 3 | 66 | 66 | 0 |
 | `lib/protocol` | 2 | 59 | 58 | **1** |
-| `artifacts/rooftrax-web` | 1 | 5 | 5 | 0 |
+| `artifacts/axiomrestore-web` | 1 | 5 | 5 | 0 |
 | **Total** | **54** | **801** | **800** | **1** |
 
 The 1 failure (`lib/protocol` — `applicableSteps drops exactly the unselected surfaces`) is pre-existing: `git diff HEAD -- lib/protocol/` = 0 lines. No file in `lib/protocol/` was touched by this audit. The test asserts step ordering; the implementation produces a different order. The step set is correct.
@@ -2642,7 +2642,7 @@ Evidence from `artifacts/api-server/src/lib/pipelineStages.ts`:
 },
 ```
 
-Evidence from `artifacts/rooftrax-web/src/lib/pipelineStages.ts`:
+Evidence from `artifacts/axiomrestore-web/src/lib/pipelineStages.ts`:
 ```ts
 'insurance:claim_approved': define({ key: 'claim_approved', phase: 'outcome', ... })
 ```
@@ -2735,7 +2735,7 @@ ALTER TABLE pins ADD COLUMN IF NOT EXISTS approved_estimate_object_path TEXT;
 ALTER TABLE pins ADD COLUMN IF NOT EXISTS approved_estimate_sha256       TEXT;
 ```
 
-Columns added to `pinsTable` in `lib/db/src/schema/rooftrax.ts` with comment block `(migration 041)`.
+Columns added to `pinsTable` in `lib/db/src/schema/axiomrestore.ts` with comment block `(migration 041)`.
 
 ### New endpoint
 
@@ -2953,7 +2953,7 @@ None of these affect amounts or functional correctness.
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS title TEXT;
 ```
 
-Column added to `userProfilesTable` in `lib/db/src/schema/rooftrax.ts` with comment block `(migration 043)`.
+Column added to `userProfilesTable` in `lib/db/src/schema/axiomrestore.ts` with comment block `(migration 043)`.
 
 ### New authz capability
 
@@ -3050,7 +3050,7 @@ The insurance COC (Phases A–C) certifies work completion against a carrier-app
 
 ### Current warranty-related fields in the schema
 
-A full search of `lib/db/src/schema/rooftrax.ts` and `artifacts/api-server/src/` found **zero dedicated warranty columns** in any financial or work-completion table. The word "warrant" appears only in:
+A full search of `lib/db/src/schema/axiomrestore.ts` and `artifacts/api-server/src/` found **zero dedicated warranty columns** in any financial or work-completion table. The word "warrant" appears only in:
 
 | Location | Context | Notes |
 |---|---|---|
@@ -3392,7 +3392,7 @@ Tests updated: `admin-delete-user.test.ts` (9 tests), `tenant-isolation.test.ts`
 |---|---|---|
 | `lib/authz` vitest | 66 | **66/66** ✓ |
 | `artifacts/api-server` vitest (stable) | 691 | **691/691** ✓ |
-| rooftrax-web `tsc --noEmit` | — | **0 errors** ✓ |
+| axiomrestore-web `tsc --noEmit` | — | **0 errors** ✓ |
 | api-server `tsc --noEmit` | — | **0 errors** ✓ |
 
 Note: 3 pre-existing flaky failures (AI-timeout in `supplements.test.ts`, `ObjectNotFoundError` in `storage-acl.test.ts`) are isolated by running the tests that failed and confirming they depend on external services (Gemini latency, object-storage availability), not on any changed code. All 691 tests pass in a clean, stable run.
@@ -3727,10 +3727,10 @@ cd artifacts/api-server && npx vitest run
 | `lib/protocol` | 2 | 59 | ✅ all pass |
 | `lib/authz` | 4 | 847 | ✅ all pass |
 | `artifacts/api-server` | 54 | 1088 | ✅ all pass |
-| `artifacts/rooftrax-web` | 1 | 5 | ✅ all pass |
+| `artifacts/axiomrestore-web` | 1 | 5 | ✅ all pass |
 | **Grand total** | **61** | **1999** | ✅ |
 
-_`artifacts/rooftrax-web` was omitted from the original Checkpoint 4 report; 5 tests in `src/__tests__/RootRoute.test.tsx` (RootRoute auth-split suite, vitest run). Added in post-merge correction._
+_`artifacts/axiomrestore-web` was omitted from the original Checkpoint 4 report; 5 tests in `src/__tests__/RootRoute.test.tsx` (RootRoute auth-split suite, vitest run). Added in post-merge correction._
 
 ---
 
@@ -3756,9 +3756,9 @@ Zero mobile files modified during this permission close-out. The mobile artifact
 | lib/protocol vitest run | ✅ 59 / 59 pass |
 | lib/authz vitest run | ✅ 847 / 847 pass |
 | artifacts/api-server vitest run | ✅ 1088 / 1088 pass |
-| artifacts/rooftrax-web vitest run | ✅ 5 / 5 pass _(added post-merge)_ |
+| artifacts/axiomrestore-web vitest run | ✅ 5 / 5 pass _(added post-merge)_ |
 | Mobile files modified | ✅ 0 (empty git status) |
 
 Permission system close-out complete. All five evidence items confirmed.
 
-_Post-merge correction (2026-08-11): `artifacts/rooftrax-web` suite (5 tests) was omitted from the original Checkpoint 4 report. Grand total corrected from 1994 → 1999 tests / 60 → 61 files._
+_Post-merge correction (2026-08-11): `artifacts/axiomrestore-web` suite (5 tests) was omitted from the original Checkpoint 4 report. Grand total corrected from 1994 → 1999 tests / 60 → 61 files._

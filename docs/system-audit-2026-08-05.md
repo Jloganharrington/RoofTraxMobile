@@ -1,6 +1,6 @@
-# RoofTrax Platform System Audit — 2026-08-05
+# AxiomRestore Platform System Audit — 2026-08-05
 
-**Scope:** rooftrax-web, api-server, lib/db schema, mobile field-app integration.
+**Scope:** axiomrestore-web, api-server, lib/db schema, mobile field-app integration.
 **Methodology:** Static analysis (grep, file reads), live DB queries (psql), subagent codebase exploration, browser log inspection. No fixes applied.
 **Classification legend:** BUILT-VERIFIED · BUILT-UNWIRED · PARTIAL · MISSING · DRIFT · STALE · UNVERIFIED
 
@@ -14,7 +14,7 @@
 
 | Check | Evidence | Classification |
 |---|---|---|
-| `pins` columns: pipeline_stage, stage_entered_at, loop_next_action_at, loss_reason, source_pipeline | Confirmed in `lib/db/src/schema/rooftrax.ts`; DB query returns rows → no-op diff | BUILT-VERIFIED |
+| `pins` columns: pipeline_stage, stage_entered_at, loop_next_action_at, loss_reason, source_pipeline | Confirmed in `lib/db/src/schema/axiomrestore.ts`; DB query returns rows → no-op diff | BUILT-VERIFIED |
 | `pins` columns: is_demo, needs_stage_review | Added in `0001_known_cyclops.sql`; DB returns both flags | BUILT-VERIFIED |
 | `stage_transitions` table | Defined in schema; DB responds to queries → exists | BUILT-VERIFIED |
 | `compiled_report_versions` | **jsonb column on `inspections`** (not a standalone table); `ERROR: relation "compiled_report_versions" does not exist` confirms no extra table | BUILT-VERIFIED |
@@ -393,7 +393,7 @@ All three match the rebuild spec. BUILT-VERIFIED.
 
 ### 6.6 Compliance String Audit
 
-Grep across `rooftrax-web/src/`, `api-server/src/`, `mobile/src/` for: "submit claim", "submit a claim", "file a claim", "claim settlement" → **ZERO HITS**. BUILT-VERIFIED.
+Grep across `axiomrestore-web/src/`, `api-server/src/`, `mobile/src/` for: "submit claim", "submit a claim", "file a claim", "claim settlement" → **ZERO HITS**. BUILT-VERIFIED.
 
 ### 6.7 Landing Behavior
 
