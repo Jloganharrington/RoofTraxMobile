@@ -72,12 +72,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // "axiomrestore" gives us axiomrestore:// deep-links instead of the generic "mobile" slug.
   scheme: 'axiomrestore',
 
-  icon: './assets/images/icon.png',
+  icon: './assets/images/icon-axiomrestore.png',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
 
   splash: {
-    image: './assets/images/splash.png',
+    image: './assets/images/splash-axiomrestore.png',
     resizeMode: 'contain',
     backgroundColor: '#ffffff',
   },
@@ -92,7 +92,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
 
   web: {
-    favicon: './assets/images/icon.png',
+    favicon: './assets/images/icon-axiomrestore.png',
   },
 
   plugins: [
@@ -119,7 +119,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       'expo-notifications',
       {
-        icon: './assets/images/icon.png',
+        icon: './assets/images/icon-axiomrestore.png',
         color: '#1e3a5f',
         defaultChannel: 'default',
       },
