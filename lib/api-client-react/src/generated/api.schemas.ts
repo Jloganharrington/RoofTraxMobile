@@ -100,6 +100,51 @@ export interface PermissionOverrideEnvelope {
   override: PermissionOverrideRow;
 }
 
+export type SetRolePermissionOverrideInputRole = typeof SetRolePermissionOverrideInputRole[keyof typeof SetRolePermissionOverrideInputRole];
+
+
+export const SetRolePermissionOverrideInputRole = {
+  field_rep: 'field_rep',
+  manager: 'manager',
+  admin: 'admin',
+  super_admin: 'super_admin',
+} as const;
+
+export interface SetRolePermissionOverrideInput {
+  role: SetRolePermissionOverrideInputRole;
+  /** A valid PERMISSION_KEYS entry. */
+  permission: string;
+  /** true = allow this permission for the role; false = deny it. */
+  granted: boolean;
+  /**
+     * Mandatory audit note explaining the company policy change.
+     * @minLength 1
+     */
+  note: string;
+}
+
+export interface RolePermissionOverrideRow {
+  id: string;
+  companyId: string;
+  role: string;
+  permission: string;
+  granted: boolean;
+  note: string;
+  updatedByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RolePermissionOverrideEnvelope {
+  override: RolePermissionOverrideRow;
+}
+
+export interface RolePermissionPolicyEnvelope {
+  overrides: RolePermissionOverrideRow[];
+  /** True only for a super admin, who may edit company-wide preset-role policies. */
+  actorCanEdit: boolean;
+}
+
 export interface ClearPermissionOverrideInput {
   /**
      * Mandatory human note explaining the clear action.

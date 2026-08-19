@@ -30,6 +30,8 @@ import {
   inspectionsTable,
   permissionOverrideChangesTable,
   pinsTable,
+  rolePermissionOverrideChangesTable,
+  rolePermissionOverridesTable,
   sessionsTable,
   userPermissionOverridesTable,
   userProfilesTable,
@@ -39,7 +41,7 @@ import { notify } from '../lib/notify';
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { Router, type IRouter, type Request, type Response } from 'express';
 
-import { PERMISSION_KEYS, PERMISSION_MAP, PERMISSION_REGISTRY, canSetRoleDeptSpec, canSetWorkflow, resolve, resolveResolution, type Permission } from '@workspace/authz';
+import { PERMISSION_KEYS, PERMISSION_MAP, PERMISSION_REGISTRY, ROLES, canSetRoleDeptSpec, canSetWorkflow, resolve, resolveResolution, type Permission } from '@workspace/authz';
 import {
   loadPermissionOverrides,
   requirePermission,
@@ -84,6 +86,163 @@ router.get('/admin/stats', requirePermission('team.view_stats'), async (req: Req
       },
     }),
   );
+});
+
+// ── Company preset-role permission policy ─────────────────────────────────────
+// The registry remains the global baseline. These tenant-scoped rows only store
+// deviations made by a company's super admin, and are applied to every member
+// of the selected role before the registry fallback.
+
+router.get('/team/role-permissions', requirePermission('team.view'), async (req: Request, res: Response) => {
+  const { companyId, role } = req.actorCtx!;
+  const overrides = await db
+    .select()
+    .from(rolePermissionOverridesTable)
+    .where(eq(rolePermissionOverridesTable.companyId, companyId));
+
+  res.json({
+    overrides,
+    actorCanEdit: role === 'super_admin',
+  });
+});
+
+router.post('/team/role-permissions', requirePermission('team.override_permissions'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole, actorId } = req.actorCtx!;
+  if (actorRole !== 'super_admin') {
+    res.status(403).json({ error: 'Only super admins can change company preset-role permissions.' });
+    return;
+  }
+
+  const { role, permission, granted, note } = req.body ?? {};
+  if (typeof role !== 'string' || !(ROLES as readonly string[]).includes(role)) {
+    res.status(400).json({ error: "'role' must be a preset role." });
+    return;
+  }
+  if (typeof permission !== 'string' || !(PERMISSION_KEYS as readonly string[]).includes(permission)) {
+    res.status(400).json({ error: "'permission' must be a valid permission key." });
+    return;
+  }
+  if (typeof granted !== 'boolean') {
+    res.status(400).json({ error: "'granted' must be a boolean." });
+    return;
+  }
+  if (typeof note !== 'string' || note.trim() === '') {
+    res.status(400).json({ error: "'note' is required and must be a non-empty string." });
+    return;
+  }
+
+  const entry = PERMISSION_MAP[permission as Permission];
+  if (entry.overridable === false) {
+    res.status(422).json({ error: `'${permission}' is non-overridable and cannot be changed for a preset role.` });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ granted: rolePermissionOverridesTable.granted })
+    .from(rolePermissionOverridesTable)
+    .where(and(
+      eq(rolePermissionOverridesTable.companyId, companyId),
+      eq(rolePermissionOverridesTable.role, role),
+      eq(rolePermissionOverridesTable.permission, permission),
+    ));
+  const previousState = existing === undefined ? null : (existing.granted ? 'granted' : 'revoked');
+  const newState = granted ? 'granted' : 'revoked';
+
+  const [override] = await db.transaction(async (tx) => {
+    const [saved] = await tx
+      .insert(rolePermissionOverridesTable)
+      .values({
+        companyId,
+        role,
+        permission,
+        granted,
+        note: note.trim(),
+        updatedByUserId: actorId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          rolePermissionOverridesTable.companyId,
+          rolePermissionOverridesTable.role,
+          rolePermissionOverridesTable.permission,
+        ],
+        set: {
+          granted,
+          note: note.trim(),
+          updatedByUserId: actorId,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    await tx.insert(rolePermissionOverrideChangesTable).values({
+      companyId,
+      role,
+      permission,
+      previousState,
+      newState,
+      note: note.trim(),
+      actorUserId: actorId,
+    });
+    return [saved];
+  });
+
+  res.status(201).json({ override });
+});
+
+router.delete('/team/role-permissions/:role/:permissionKey', requirePermission('team.override_permissions'), async (req: Request, res: Response) => {
+  const { companyId, role: actorRole, actorId } = req.actorCtx!;
+  if (actorRole !== 'super_admin') {
+    res.status(403).json({ error: 'Only super admins can change company preset-role permissions.' });
+    return;
+  }
+
+  const role = req.params.role as string;
+  const permission = req.params.permissionKey as string;
+  const { note } = req.body ?? {};
+  if (!(ROLES as readonly string[]).includes(role)) {
+    res.status(400).json({ error: `'${role}' is not a preset role.` });
+    return;
+  }
+  if (!(PERMISSION_KEYS as readonly string[]).includes(permission)) {
+    res.status(400).json({ error: `'${permission}' is not a valid permission key.` });
+    return;
+  }
+  if (typeof note !== 'string' || note.trim() === '') {
+    res.status(400).json({ error: "'note' is required and must be a non-empty string." });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ granted: rolePermissionOverridesTable.granted })
+    .from(rolePermissionOverridesTable)
+    .where(and(
+      eq(rolePermissionOverridesTable.companyId, companyId),
+      eq(rolePermissionOverridesTable.role, role),
+      eq(rolePermissionOverridesTable.permission, permission),
+    ));
+  if (!existing) {
+    res.json({ success: true, removed: false });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(rolePermissionOverridesTable).where(and(
+      eq(rolePermissionOverridesTable.companyId, companyId),
+      eq(rolePermissionOverridesTable.role, role),
+      eq(rolePermissionOverridesTable.permission, permission),
+    ));
+    await tx.insert(rolePermissionOverrideChangesTable).values({
+      companyId,
+      role,
+      permission,
+      previousState: existing.granted ? 'granted' : 'revoked',
+      newState: null,
+      note: note.trim(),
+      actorUserId: actorId,
+    });
+  });
+
+  res.json({ success: true, removed: true });
 });
 
 // ── GET /team/users — team.view (manager+) ────────────────────────────────────
@@ -441,6 +600,17 @@ router.get('/team/users/:userId/permissions', requirePermission('team.view'), as
     department:         profile?.department ?? null,
     workflowAssignment: profile?.workflowAssignment ?? null,
   };
+  const targetRolePolicies = await db
+    .select({
+      permission: rolePermissionOverridesTable.permission,
+      granted: rolePermissionOverridesTable.granted,
+    })
+    .from(rolePermissionOverridesTable)
+    .where(and(
+      eq(rolePermissionOverridesTable.companyId, companyId),
+      eq(rolePermissionOverridesTable.role, targetCtx.role as string),
+    ));
+  const targetRolePolicyMap = new Map(targetRolePolicies.map(policy => [policy.permission, policy.granted]));
 
   // Compute whether the requesting actor has authority to apply overrides.
   // Mirrors the POST /team/users/:userId/permissions authority checks so the
@@ -486,6 +656,11 @@ router.get('/team/users/:userId/permissions', requirePermission('team.view'), as
       reason = override.granted
         ? `explicit grant by ${override.grantedByUserId}`
         : `explicit revoke by ${override.grantedByUserId}`;
+    } else if (targetRolePolicyMap.has(entry.key)) {
+      effective = targetRolePolicyMap.get(entry.key)!;
+      reason = effective
+        ? `company preset-role policy grants '${entry.key}' to '${targetCtx.role}'`
+        : `company preset-role policy revokes '${entry.key}' from '${targetCtx.role}'`;
     } else {
       const result = resolve(entry.key, targetCtx);
       effective = result.allowed;
@@ -631,6 +806,8 @@ router.post('/team/users/:userId/permissions', requirePermission('team.override_
   let actorHolds: boolean;
   if (actorOverrideValue !== undefined) {
     actorHolds = actorOverrideValue;
+  } else if (req.actorCtx!.rolePermissionOverrides.has(permission)) {
+    actorHolds = req.actorCtx!.rolePermissionOverrides.get(permission)!;
   } else {
     const [actorProfile] = await db
       .select({
@@ -814,6 +991,8 @@ router.delete('/team/users/:userId/permissions/:permissionKey', requirePermissio
       let actorHolds: boolean;
       if (actorOverrideValue !== undefined) {
         actorHolds = actorOverrideValue;
+      } else if (req.actorCtx!.rolePermissionOverrides.has(permissionKey)) {
+        actorHolds = req.actorCtx!.rolePermissionOverrides.get(permissionKey)!;
       } else {
         const [actorProf] = await db
           .select({

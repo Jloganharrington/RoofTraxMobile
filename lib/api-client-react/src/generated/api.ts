@@ -188,6 +188,8 @@ import type {
   ResolveDnkVerificationInput,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
+  RolePermissionOverrideEnvelope,
+  RolePermissionPolicyEnvelope,
   ScheduledInspectionListEnvelope,
   SearchAddressParams,
   SelectionBrandEnvelope,
@@ -201,6 +203,7 @@ import type {
   SelectionProductOptionEnvelope,
   SelectionProductOptionListEnvelope,
   SetPermissionOverrideInput,
+  SetRolePermissionOverrideInput,
   SignChangeOrderInput,
   SubmitInspectionInput,
   TeamLocationListEnvelope,
@@ -3520,6 +3523,231 @@ export const useRemoveTeamUser = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getRemoveTeamUserMutationOptions(options));
+    }
+
+export const getGetTeamRolePermissionsUrl = () => {
+
+
+
+
+  return `/api/team/role-permissions`
+}
+
+/**
+ * Manager+ (team.view). Returns this company's role policy overrides; omitted keys use the shared permission registry default.
+ * @summary View tenant-specific preset-role permission policies
+ */
+export const getTeamRolePermissions = async ( options?: RequestInit): Promise<RolePermissionPolicyEnvelope> => {
+
+  return customFetch<RolePermissionPolicyEnvelope>(getGetTeamRolePermissionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeamRolePermissionsQueryKey = () => {
+    return [
+    `/api/team/role-permissions`
+    ] as const;
+    }
+
+
+export const getGetTeamRolePermissionsQueryOptions = <TData = Awaited<ReturnType<typeof getTeamRolePermissions>>, TError = ErrorType<ErrorEnvelope>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamRolePermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeamRolePermissionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeamRolePermissions>>> = ({ signal }) => getTeamRolePermissions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeamRolePermissions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeamRolePermissionsQueryResult = NonNullable<Awaited<ReturnType<typeof getTeamRolePermissions>>>
+export type GetTeamRolePermissionsQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary View tenant-specific preset-role permission policies
+ */
+
+export function useGetTeamRolePermissions<TData = Awaited<ReturnType<typeof getTeamRolePermissions>>, TError = ErrorType<ErrorEnvelope>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamRolePermissions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeamRolePermissionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetTeamRolePermissionUrl = () => {
+
+
+
+
+  return `/api/team/role-permissions`
+}
+
+/**
+ * Super-admin only. Applies an explicit allow or deny to every current and future user with the selected preset role in this company only. A non-empty audit note is required.
+ * @summary Set a tenant-specific preset-role permission policy
+ */
+export const setTeamRolePermission = async (setRolePermissionOverrideInput: SetRolePermissionOverrideInput, options?: RequestInit): Promise<RolePermissionOverrideEnvelope> => {
+
+  return customFetch<RolePermissionOverrideEnvelope>(getSetTeamRolePermissionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setRolePermissionOverrideInput)
+  }
+);}
+
+
+
+
+
+export const getSetTeamRolePermissionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTeamRolePermission>>, TError,{data: BodyType<SetRolePermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setTeamRolePermission>>, TError,{data: BodyType<SetRolePermissionOverrideInput>}, TContext> => {
+
+const mutationKey = ['setTeamRolePermission'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setTeamRolePermission>>, {data: BodyType<SetRolePermissionOverrideInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setTeamRolePermission(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetTeamRolePermissionMutationResult = NonNullable<Awaited<ReturnType<typeof setTeamRolePermission>>>
+    export type SetTeamRolePermissionMutationBody = BodyType<SetRolePermissionOverrideInput>
+    export type SetTeamRolePermissionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Set a tenant-specific preset-role permission policy
+ */
+export const useSetTeamRolePermission = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setTeamRolePermission>>, TError,{data: BodyType<SetRolePermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setTeamRolePermission>>,
+        TError,
+        {data: BodyType<SetRolePermissionOverrideInput>},
+        TContext
+      > => {
+      return useMutation(getSetTeamRolePermissionMutationOptions(options));
+    }
+
+export const getClearTeamRolePermissionUrl = (role: string,
+    permissionKey: string,) => {
+
+
+
+
+  return `/api/team/role-permissions/${role}/${permissionKey}`
+}
+
+/**
+ * Super-admin only. Restores the shared registry default for the selected role and permission. A non-empty audit note is required.
+ * @summary Clear a tenant-specific preset-role permission policy
+ */
+export const clearTeamRolePermission = async (role: string,
+    permissionKey: string,
+    clearPermissionOverrideInput: ClearPermissionOverrideInput, options?: RequestInit): Promise<ClearPermissionOverrideSuccess> => {
+
+  return customFetch<ClearPermissionOverrideSuccess>(getClearTeamRolePermissionUrl(role,permissionKey),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(clearPermissionOverrideInput)
+  }
+);}
+
+
+
+
+
+export const getClearTeamRolePermissionMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearTeamRolePermission>>, TError,{role: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearTeamRolePermission>>, TError,{role: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}, TContext> => {
+
+const mutationKey = ['clearTeamRolePermission'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearTeamRolePermission>>, {role: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}> = (props) => {
+          const {role,permissionKey,data} = props ?? {};
+
+          return  clearTeamRolePermission(role,permissionKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearTeamRolePermissionMutationResult = NonNullable<Awaited<ReturnType<typeof clearTeamRolePermission>>>
+    export type ClearTeamRolePermissionMutationBody = BodyType<ClearPermissionOverrideInput>
+    export type ClearTeamRolePermissionMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Clear a tenant-specific preset-role permission policy
+ */
+export const useClearTeamRolePermission = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearTeamRolePermission>>, TError,{role: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearTeamRolePermission>>,
+        TError,
+        {role: string;permissionKey: string;data: BodyType<ClearPermissionOverrideInput>},
+        TContext
+      > => {
+      return useMutation(getClearTeamRolePermissionMutationOptions(options));
     }
 
 export const getGetTeamUserPermissionsUrl = (userId: string,) => {

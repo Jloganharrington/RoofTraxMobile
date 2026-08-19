@@ -76,6 +76,74 @@ export const userPermissionOverridesTable = pgTable(
 export type UserPermissionOverride = typeof userPermissionOverridesTable.$inferSelect;
 export type InsertUserPermissionOverride = typeof userPermissionOverridesTable.$inferInsert;
 
+// ── Company role permission overrides ─────────────────────────────────────────
+//
+// A role override changes the default permission policy for every member with a
+// given preset role inside one company. It is intentionally tenant-scoped: the
+// registry in @workspace/authz remains the global fallback for every company.
+export const rolePermissionOverridesTable = pgTable(
+  'role_permission_overrides',
+  {
+    id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id),
+    role: varchar('role', { length: 32 }).notNull(),
+    permission: varchar('permission', { length: 100 }).notNull(),
+    granted: boolean('granted').notNull(),
+    note: text('note').notNull(),
+    updatedByUserId: varchar('updated_by_user_id')
+      .notNull()
+      .references(() => usersTable.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('role_permission_overrides_company_role_perm_idx').on(
+      table.companyId,
+      table.role,
+      table.permission,
+    ),
+    index('role_permission_overrides_company_role_idx').on(table.companyId, table.role),
+  ],
+);
+
+export type RolePermissionOverride = typeof rolePermissionOverridesTable.$inferSelect;
+export type InsertRolePermissionOverride = typeof rolePermissionOverridesTable.$inferInsert;
+
+// ── Company role permission override audit log ─────────────────────────────────
+export const rolePermissionOverrideChangesTable = pgTable(
+  'role_permission_override_changes',
+  {
+    id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+    companyId: varchar('company_id')
+      .notNull()
+      .references(() => companiesTable.id),
+    role: varchar('role', { length: 32 }).notNull(),
+    permission: varchar('permission', { length: 100 }).notNull(),
+    previousState: varchar('previous_state', { length: 10 }),
+    newState: varchar('new_state', { length: 10 }),
+    note: text('note').notNull(),
+    actorUserId: varchar('actor_user_id')
+      .notNull()
+      .references(() => usersTable.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('role_perm_override_changes_company_role_created_idx').on(
+      table.companyId,
+      table.role,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type RolePermissionOverrideChange = typeof rolePermissionOverrideChangesTable.$inferSelect;
+export type InsertRolePermissionOverrideChange = typeof rolePermissionOverrideChangesTable.$inferInsert;
+
 // ── Permission override change log ────────────────────────────────────────────
 /**
  * Append-only audit table for every grant, revoke, or clear of a per-user

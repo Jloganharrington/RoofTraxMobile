@@ -1567,6 +1567,77 @@ export const RemoveTeamUserResponse = zod.object({
 
 
 /**
+ * Manager+ (team.view). Returns this company's role policy overrides; omitted keys use the shared permission registry default.
+ * @summary View tenant-specific preset-role permission policies
+ */
+export const GetTeamRolePermissionsResponse = zod.object({
+  "overrides": zod.array(zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "role": zod.string(),
+  "permission": zod.string(),
+  "granted": zod.boolean(),
+  "note": zod.string(),
+  "updatedByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "actorCanEdit": zod.boolean().describe('True only for a super admin, who may edit company-wide preset-role policies.')
+})
+
+
+/**
+ * Super-admin only. Applies an explicit allow or deny to every current and future user with the selected preset role in this company only. A non-empty audit note is required.
+ * @summary Set a tenant-specific preset-role permission policy
+ */
+
+
+
+export const SetTeamRolePermissionBody = zod.object({
+  "role": zod.enum(['field_rep', 'manager', 'admin', 'super_admin']),
+  "permission": zod.string().describe('A valid PERMISSION_KEYS entry.'),
+  "granted": zod.boolean().describe('true = allow this permission for the role; false = deny it.'),
+  "note": zod.string().min(1).describe('Mandatory audit note explaining the company policy change.')
+})
+
+export const SetTeamRolePermissionResponse = zod.object({
+  "override": zod.object({
+  "id": zod.string(),
+  "companyId": zod.string(),
+  "role": zod.string(),
+  "permission": zod.string(),
+  "granted": zod.boolean(),
+  "note": zod.string(),
+  "updatedByUserId": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * Super-admin only. Restores the shared registry default for the selected role and permission. A non-empty audit note is required.
+ * @summary Clear a tenant-specific preset-role permission policy
+ */
+export const ClearTeamRolePermissionParams = zod.object({
+  "role": zod.coerce.string(),
+  "permissionKey": zod.coerce.string()
+})
+
+
+
+
+export const ClearTeamRolePermissionBody = zod.object({
+  "note": zod.string().min(1).describe('Mandatory human note explaining the clear action.')
+})
+
+export const ClearTeamRolePermissionResponse = zod.object({
+  "success": zod.boolean(),
+  "removed": zod.boolean().describe('true if an override existed and was removed; false if there was nothing to clear.')
+})
+
+
+/**
  * Manager+ (team.view). Returns each permission with its registry default, any per-user override, and the computed effective value.
  * @summary View effective permission set for a team member
  */

@@ -25,7 +25,13 @@
 
 import { resolve, type Permission, type ResolveContext } from '@workspace/authz';
 import type { Role } from '@workspace/authz';
-import { companiesTable, db, userPermissionOverridesTable, userProfilesTable } from '@workspace/db';
+import {
+  companiesTable,
+  db,
+  rolePermissionOverridesTable,
+  userPermissionOverridesTable,
+  userProfilesTable,
+} from '@workspace/db';
 import { and, eq } from 'drizzle-orm';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 
@@ -50,6 +56,11 @@ export interface ActorCtx extends Omit<ResolveContext, 'role'> {
    * Values: 'none' | 'solo' | 'crew' | 'team' | 'fleet' | 'regional'
    */
   subscriptionLevel: string;
+  /**
+   * Tenant-specific policy overrides for this actor's preset role. Loaded once
+   * with the actor context so all authorization paths see the same policy.
+   */
+  rolePermissionOverrides: Map<string, boolean>;
   /**
    * @deprecated Backward-compat alias for `actorId`. Kept so inspection handler
    * bodies using `actor.userId` continue to work during the write-route migration
@@ -100,14 +111,27 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
       .where(eq(companiesTable.id, companyId))
       .then(rows => rows[0]),
   ]);
+  const role = (profileRow?.role ?? 'field_rep') as Role;
+  const roleOverrideRows = await db
+    .select({
+      permission: rolePermissionOverridesTable.permission,
+      granted: rolePermissionOverridesTable.granted,
+    })
+    .from(rolePermissionOverridesTable)
+    .where(and(
+      eq(rolePermissionOverridesTable.companyId, companyId),
+      eq(rolePermissionOverridesTable.role, role),
+    ));
+
   const ctx: ActorCtx = {
     actorId,
     companyId,
-    role:               (profileRow?.role ?? 'field_rep') as Role,
+    role,
     department:         (profileRow?.department ?? null) as ActorCtx['department'],
     workflowAssignment: (profileRow?.workflowAssignment ?? null) as ActorCtx['workflowAssignment'],
     ppTier:             companyRow?.ppTier ?? 'crm',
     subscriptionLevel:  companyRow?.subscriptionLevel ?? 'none',
+    rolePermissionOverrides: new Map(roleOverrideRows.map(row => [row.permission, row.granted])),
     // ownerId is intentionally absent here — handlers supply it when checking
     // ownerOrRole permissions against a fetched resource.
     userId: actorId, // @deprecated alias — remove after write-route migration is complete
@@ -208,6 +232,15 @@ export async function resolveWithOverrides(
     // Explicit grant — bypass registry default (owner check irrelevant).
     return { allowed: true };
   }
+  const roleOverride = ctx.rolePermissionOverrides.get(permission);
+  if (roleOverride !== undefined) {
+    return roleOverride
+      ? { allowed: true }
+      : {
+          allowed: false,
+          reason: `Permission '${permission}' has been revoked for the '${ctx.role}' role at your company.`,
+        };
+  }
   // Registry default — pass ownerId so ownerOrRole entries can short-circuit.
   return resolve(permission, { ...ctx, ownerId });
 }
@@ -256,6 +289,15 @@ export function resolveOwnerAware(
     if (['crm', 'lead', 'canvassing', 'pipeline'].includes(domain)) {
       return { allowed: false, reason: `The '${domain}' feature is not available on the Proof Package plan.` };
     }
+  }
+  const roleOverride = ctx.rolePermissionOverrides.get(permission);
+  if (roleOverride !== undefined) {
+    return roleOverride
+      ? { allowed: true }
+      : {
+          allowed: false,
+          reason: `Permission '${permission}' has been revoked for the '${ctx.role}' role at your company.`,
+        };
   }
   return resolve(permission, { ...ctx, ownerId });
 }
@@ -323,6 +365,19 @@ export function requirePermission(permission: Permission): RequestHandler {
         return;
       }
       // Explicit grant — bypass registry default.
+      req.actorCtx = ctx;
+      next();
+      return;
+    }
+
+    const roleOverride = ctx.rolePermissionOverrides.get(permission);
+    if (roleOverride !== undefined) {
+      if (!roleOverride) {
+        res.status(403).json({
+          error: `Permission '${permission}' has been revoked for the '${ctx.role}' role at your company.`,
+        });
+        return;
+      }
       req.actorCtx = ctx;
       next();
       return;
