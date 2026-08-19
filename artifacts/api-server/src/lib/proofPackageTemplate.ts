@@ -184,6 +184,7 @@ export type ProofPackageData = {
     propertyDetailsHtml?: string | null;
     rapSectionHtml?: string | null;
     vapSectionHtml?: string | null;
+    aspSectionHtml?: string | null;
     evidenceScopeIndexHtml?: string | null;
     evidenceManifestHtml?: string | null;
     unlockLogHtml?: string | null;
@@ -649,6 +650,9 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
   }
   if (data.extras.vapSectionHtml) {
     supplemental.push({ title: 'Vinyl Siding Repairability Assessment', inner: data.extras.vapSectionHtml });
+  }
+  if (data.extras.aspSectionHtml) {
+    supplemental.push({ title: 'Aluminum Siding Forensic Inspection Protocol', inner: data.extras.aspSectionHtml });
   }
   if (data.extras.evidenceScopeIndexHtml) {
     supplemental.push({ title: 'Evidence-to-Scope Index', inner: data.extras.evidenceScopeIndexHtml });

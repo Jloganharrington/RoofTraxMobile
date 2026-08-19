@@ -24,6 +24,7 @@ import {
   computeVapScorecard,
   vapScorecardBriefLines,
 } from './vapScorecard';
+import { extractAsp, computeAspScorecard, aspScorecardBriefLines } from './aspScorecard';
 import type { StoredRepairabilityAssessment, ClaimSectionType } from '@workspace/db';
 import { DETERMINATION_LABELS, RAP_WARRANTED_LABELS } from './repairabilityRules';
 
@@ -451,27 +452,35 @@ ${brief}
 Return ONLY a valid HTML fragment (no wrapper tags, no markdown).`;
 }
 
-function buildRapNarrativePrompt(
+export function buildRepairabilityProtocolNarrativePrompt(
   brief: string,
   rapMode: string | null,
   rapBriefLines: string[],
+  protocols: { hasRap: boolean; hasVap: boolean; hasAsp: boolean },
 ): string {
-  const modeInstruction =
-    rapMode === 'fallback_slope'
-      ? `The RAP was performed using the FALLBACK-SLOPE variant (the target slope did not receive a simulated repair attempt; a representative fallback slope was used). Render the narrative reflecting the fallback-slope protocol.`
+  const modeInstruction = protocols.hasRap && protocols.hasAsp
+    ? `This record contains both a RAP and an ASP. Describe them under separate, clearly labeled paragraphs: the Repair Attempt Protocol record may describe only its documented roof work; the Aluminum Siding Forensic Inspection Protocol must be described only as documented non-destructive observations and compatibility assessment. Never transfer RAP manipulation language to ASP, and never state or imply panel removal, component manipulation, coating cuts, fastener tests, or interlock tests for ASP.`
+    : protocols.hasRap
+    ? rapMode === 'fallback_slope'
+      ? `The RAP was performed using the FALLBACK-SLOPE variant (the target slope did not receive a simulated repair attempt; a representative fallback slope was used). Render only the documented RAP record.`
       : rapMode === 'damaged_target'
-        ? `The RAP was performed using the DAMAGED-TARGET variant (the simulated repair was applied directly to the storm-damaged area). Render the narrative reflecting the damaged-target protocol.`
-        : `Describe the Repair Attempt Protocol record as documented.`;
+        ? `The RAP was performed using the DAMAGED-TARGET variant (the simulated repair was applied directly to the storm-damaged area). Render only the documented RAP record.`
+        : `Describe the documented RAP record only.`
+    : protocols.hasAsp
+      ? `This is an ASP-only record. Call it the Aluminum Siding Forensic Inspection Protocol and describe only the documented non-destructive observations and compatibility assessment. Do not name or describe a Repair Attempt Protocol.`
+      : protocols.hasVap
+        ? `This is a vinyl assessment record. Describe only the documented Vinyl Assessment Protocol record. Do not name or describe a Repair Attempt Protocol.`
+        : `Describe only the documented repairability protocol record.`;
 
-  return `You are writing the Repair Attempt Protocol Narrative section of a forensic roofing inspection report.
+  return `You are writing the Repairability Protocol Narrative section of a forensic inspection report.
 
 ${CONTRACTOR_LANE_POLICY}
 
 ${modeInstruction}
 
-Write professional prose describing the RAP as conducted — the method applied, the conditions, the result. Do not add conclusions beyond what the scorecard documents. Use <p> for paragraphs.
+Write professional prose describing only the protocol records documented below — their recorded conditions, observations, and results. Do not add conclusions beyond what the scorecard documents. If Aluminum Siding Forensic Inspection Protocol (ASP) data is present, describe it as non-destructive observation and compatibility work only; never state or imply panel removal, component manipulation, coating cuts, fastener tests, or interlock tests. Use <p> for paragraphs.
 
-RAP SCORECARD DATA:
+PROTOCOL SCORECARD DATA:
 ${rapBriefLines.join('\n')}
 
 FIELD RECORD CONTEXT:
@@ -526,7 +535,7 @@ function buildSummaryOfFindingsPrompt(
     ['findings', 'Damage Findings'],
     ['causation', 'Causation'],
     ['detriment_application', 'Detriment Application'],
-    ['rap_narrative', 'RAP Narrative'],
+    ['rap_narrative', 'Repairability Protocol Narrative'],
     ['estimate_justifications', 'Estimate Justifications'],
   ];
   for (const [key, label] of order) {
@@ -749,21 +758,37 @@ export async function generateSectionContent(
 
     case 'rap_narrative': {
       const rapBrief: string[] = [];
+      let hasRap = false;
+      let hasVap = false;
+      let hasAsp = false;
       if (ra) {
         const rapData = extractRap(ra);
         if (rapData) {
+          hasRap = true;
           for (const line of rapScorecardBriefLines(computeRapScorecard(rapData), rapData.selection)) {
             rapBrief.push(line);
           }
         }
         const vapData = extractVap(ra);
         if (vapData) {
+          hasVap = true;
           for (const line of vapScorecardBriefLines(computeVapScorecard(vapData))) {
             rapBrief.push(line);
           }
         }
+        const aspData = extractAsp(ra);
+        if (aspData) {
+          hasAsp = true;
+          for (const line of aspScorecardBriefLines(computeAspScorecard(aspData))) {
+            rapBrief.push(line);
+          }
+        }
       }
-      prompt = buildRapNarrativePrompt(brief, rapMode, rapBrief);
+      prompt = buildRepairabilityProtocolNarrativePrompt(brief, rapMode, rapBrief, {
+        hasRap,
+        hasVap,
+        hasAsp,
+      });
       break;
     }
 
@@ -890,7 +915,9 @@ const SECTION_LABELS: Record<string, string> = {
   findings: 'Damage Findings',
   causation: 'Causation Analysis',
   detriment_application: 'Detriment Application',
-  rap_narrative: 'Repair Attempt Protocol Narrative',
+  // The persisted key is retained for backwards compatibility, but this
+  // narrative can cover RAP, VAP, ASP, or a documented combination.
+  rap_narrative: 'Repairability Protocol Narrative',
   estimate_justifications: 'Estimate Justifications',
   summary_of_findings: 'Summary of Findings',
   closing_statement: 'Closing Statement',

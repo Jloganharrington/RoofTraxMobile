@@ -123,6 +123,7 @@ const BP_SECTION_LABELS: Record<string, string> = {
   inspection_method: "Inspection Method",
   caption_patterns: "Caption Patterns",
   rap_field_protocol: "RAP Field Protocol",
+  aluminum_siding_protocol: "Aluminum Siding Protocol",
   attestation_block_a: "Attestation Block A",
   attestation_block_b: "Attestation Block B",
   attestation_block_c: "Attestation Block C",

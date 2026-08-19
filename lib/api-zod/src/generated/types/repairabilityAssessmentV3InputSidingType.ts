@@ -7,7 +7,7 @@
  */
 
 /**
- * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+ * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.
  * @nullable
  */
 export type RepairabilityAssessmentV3InputSidingType = typeof RepairabilityAssessmentV3InputSidingType[keyof typeof RepairabilityAssessmentV3InputSidingType] | null;

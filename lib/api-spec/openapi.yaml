@@ -10571,6 +10571,154 @@ components:
               $ref: "#/components/schemas/VapDamageFinding"
             reseat:
               $ref: "#/components/schemas/VapDamageFinding"
+    AspElevationSurvey:
+      type: object
+      description: >-
+        One surveyed aluminum-siding elevation. This non-destructive protocol
+        records observed product/condition facts only; null gauge means not
+        measured and is never inferred from the profile.
+      required: [elevation, accessible]
+      properties:
+        elevation:
+          type: string
+          enum: [north, south, east, west, other]
+        label:
+          type: [string, "null"]
+        profile:
+          type: [string, "null"]
+          enum: [single_8, double_4, double_5, triple_3, vertical, other, null]
+        exposureInches:
+          type: [number, "null"]
+        gauge:
+          type: [string, "null"]
+        finishColor:
+          type: [string, "null"]
+        accessible:
+          type: boolean
+        inaccessibleReason:
+          type: [string, "null"]
+        widePhotoId:
+          type: [string, "null"]
+        rakingPhotoId:
+          description: Low-angle grazing-light frame for deformation visibility.
+          type: [string, "null"]
+    AspTestSquare:
+      type: object
+      description: A count for one aluminum siding test area, not the entire elevation/building.
+      required: [elevation, impactCount]
+      properties:
+        elevation:
+          type: string
+          enum: [north, south, east, west, other]
+        impactCount:
+          type: integer
+          minimum: 0
+        photoId:
+          type: [string, "null"]
+        note:
+          type: [string, "null"]
+    AspConditionFinding:
+      type: object
+      required: [answer, elevations]
+      properties:
+        answer:
+          type: string
+          enum: [yes, no]
+        elevations:
+          type: array
+          items:
+            type: string
+            enum: [north, south, east, west, other]
+        photoId:
+          type: [string, "null"]
+        note:
+          type: [string, "null"]
+    AluminumSidingProtocol:
+      type: object
+      description: >-
+        Aluminum Siding Forensic Inspection Protocol (ASP). It is
+        non-destructive and does not record or imply simulated panel,
+        fastener, interlock, or coating manipulation outcomes.
+      required: [elevations, testSquares, findings, compatibility]
+      properties:
+        assessmentConditions:
+          type: [object, "null"]
+          properties:
+            airTempF:
+              type: [number, "null"]
+            skyCondition:
+              type: [string, "null"]
+            lightingTechnique:
+              type: [string, "null"]
+              enum: [raking_natural, raking_supplemental, diffuse_only, null]
+            capturedAtUtc:
+              type: [string, "null"]
+        elevations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AspElevationSurvey"
+        referencePhotoId:
+          type: [string, "null"]
+        testSquares:
+          type: array
+          items:
+            $ref: "#/components/schemas/AspTestSquare"
+        findings:
+          type: object
+          properties:
+            impactDeformation:
+              $ref: "#/components/schemas/AspConditionFinding"
+            coatingBreach:
+              $ref: "#/components/schemas/AspConditionFinding"
+            substrateExposure:
+              $ref: "#/components/schemas/AspConditionFinding"
+            nailHemCondition:
+              $ref: "#/components/schemas/AspConditionFinding"
+            interlockDisplacement:
+              $ref: "#/components/schemas/AspConditionFinding"
+            chalking:
+              $ref: "#/components/schemas/AspConditionFinding"
+            finishVariance:
+              $ref: "#/components/schemas/AspConditionFinding"
+            priorRepair:
+              $ref: "#/components/schemas/AspConditionFinding"
+            coatingAdhesion:
+              $ref: "#/components/schemas/AspConditionFinding"
+            collateralSoftMetal:
+              $ref: "#/components/schemas/AspConditionFinding"
+        productRecordId:
+          type: [string, "null"]
+        compatibility:
+          type: object
+          properties:
+            profileExposure:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+            interlockEngagement:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+            gauge:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+            finishColorGloss:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+            embossedTexture:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+            panelLengthLayout:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+            fasteningMovement:
+              type: string
+              enum: [matched, not_matched, not_assessed]
+        compatibilityBasis:
+          type: [string, "null"]
+        conclusion:
+          type: [string, "null"]
+          enum: [repair_supported, repair_not_supported_product, repair_not_supported_condition, undetermined_lab_recommended, undetermined_access_limited, null]
+        conclusionBasis:
+          type: [string, "null"]
     RepairabilitySystemFlow:
       type: object
       description: >-
@@ -10708,8 +10856,8 @@ components:
         sidingType:
           description: >-
             Siding material — vinyl runs the Vinyl Assessment Protocol;
-            aluminum routes to the Product ID-supported non-repairability
-            determination (no simulated repair).
+            aluminum runs the non-destructive Aluminum Siding Forensic
+            Inspection Protocol.
           type: [string, "null"]
           enum: [vinyl, aluminum, null]
         rap:
@@ -10719,6 +10867,10 @@ components:
         vap:
           oneOf:
             - $ref: "#/components/schemas/VinylAssessmentProtocol"
+            - type: "null"
+        asp:
+          oneOf:
+            - $ref: "#/components/schemas/AluminumSidingProtocol"
             - type: "null"
         recordedAtUtc:
           type: string

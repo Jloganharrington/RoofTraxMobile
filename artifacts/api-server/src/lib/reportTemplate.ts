@@ -136,6 +136,8 @@ export function buildReportHtml(params: {
    * (never AI-generated). Omitted when no vinyl-siding protocol was run.
    */
   vapSectionHtml?: string | null;
+  /** Server-built Aluminum Siding Forensic Inspection Protocol section. */
+  aspSectionHtml?: string | null;
   theme?: ReportTheme;
   /**
    * Freshly-signed (or otherwise render-time-resolved) company logo URL.
@@ -263,10 +265,16 @@ ${params.vapSectionHtml ? `
   ${params.vapSectionHtml}
 </div>` : ''}
 
+${params.aspSectionHtml ? `
+<div class="section">
+  <div class="section-title">${4 + (params.rapSectionHtml ? 1 : 0) + (params.vapSectionHtml ? 1 : 0)} — Aluminum Siding Forensic Inspection Protocol</div>
+  ${params.aspSectionHtml}
+</div>` : ''}
+
 <!-- Repairability Summary (from Claude AI Summary) -->
 ${aiSummary.repairabilityText ? `
 <div class="section">
-  <div class="section-title">${4 + (params.rapSectionHtml ? 1 : 0) + (params.vapSectionHtml ? 1 : 0)} — Repairability Summary</div>
+  <div class="section-title">${4 + (params.rapSectionHtml ? 1 : 0) + (params.vapSectionHtml ? 1 : 0) + (params.aspSectionHtml ? 1 : 0)} — Repairability Summary</div>
   <div class="narrative">
     ${aiSummary.repairabilityText.split('\n').map(p => p.trim() ? `<p>${escHtml(p)}</p>` : '').join('')}
   </div>
@@ -274,7 +282,7 @@ ${aiSummary.repairabilityText ? `
 
 <!-- Inspector Attestation -->
 <div class="section">
-  <div class="section-title">${3 + (params.rapSectionHtml ? 1 : 0) + (params.vapSectionHtml ? 1 : 0) + (aiSummary.repairabilityText ? 1 : 0) + 1} — Inspector Attestation</div>
+  <div class="section-title">${3 + (params.rapSectionHtml ? 1 : 0) + (params.vapSectionHtml ? 1 : 0) + (params.aspSectionHtml ? 1 : 0) + (aiSummary.repairabilityText ? 1 : 0) + 1} — Inspector Attestation</div>
   <div class="attestation">${params.attestationHtml}</div>
 </div>
 

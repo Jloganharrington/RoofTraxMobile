@@ -1898,6 +1898,8 @@ export const ListTeamLocationsResponse = zod.object({
 
 
 
+export const listInspectionsResponseInspectionsItemRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin = 0;
+
 
 
 
@@ -2279,7 +2281,7 @@ export const ListInspectionsResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
-  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -2358,6 +2360,108 @@ export const ListInspectionsResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
 }).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "asp": zod.union([zod.object({
+  "assessmentConditions": zod.object({
+  "airTempF": zod.number().nullish(),
+  "skyCondition": zod.string().nullish(),
+  "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
+  "capturedAtUtc": zod.string().nullish()
+}).nullish(),
+  "elevations": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "label": zod.string().nullish(),
+  "profile": zod.union([zod.literal('single_8'),zod.literal('double_4'),zod.literal('double_5'),zod.literal('triple_3'),zod.literal('vertical'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "exposureInches": zod.number().nullish(),
+  "gauge": zod.string().nullish(),
+  "finishColor": zod.string().nullish(),
+  "accessible": zod.boolean(),
+  "inaccessibleReason": zod.string().nullish(),
+  "widePhotoId": zod.string().nullish(),
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+}).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
+  "referencePhotoId": zod.string().nullish(),
+  "testSquares": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "impactCount": zod.number().min(listInspectionsResponseInspectionsItemRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).describe('A count for one aluminum siding test area, not the entire elevation\/building.')),
+  "findings": zod.object({
+  "impactDeformation": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingBreach": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "substrateExposure": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "nailHemCondition": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "interlockDisplacement": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "chalking": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "finishVariance": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "priorRepair": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingAdhesion": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "collateralSoftMetal": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional()
+}),
+  "productRecordId": zod.string().nullish(),
+  "compatibility": zod.object({
+  "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "gauge": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "finishColorGloss": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "embossedTexture": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "panelLengthLayout": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "fasteningMovement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional()
+}),
+  "compatibilityBasis": zod.string().nullish(),
+  "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
+  "conclusionBasis": zod.string().nullish()
+}).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -2510,6 +2614,8 @@ export const CreateInspectionBody = zod.object({
 
 
 
+
+export const createInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin = 0;
 
 
 
@@ -2892,7 +2998,7 @@ export const CreateInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
-  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -2971,6 +3077,108 @@ export const CreateInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
 }).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "asp": zod.union([zod.object({
+  "assessmentConditions": zod.object({
+  "airTempF": zod.number().nullish(),
+  "skyCondition": zod.string().nullish(),
+  "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
+  "capturedAtUtc": zod.string().nullish()
+}).nullish(),
+  "elevations": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "label": zod.string().nullish(),
+  "profile": zod.union([zod.literal('single_8'),zod.literal('double_4'),zod.literal('double_5'),zod.literal('triple_3'),zod.literal('vertical'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "exposureInches": zod.number().nullish(),
+  "gauge": zod.string().nullish(),
+  "finishColor": zod.string().nullish(),
+  "accessible": zod.boolean(),
+  "inaccessibleReason": zod.string().nullish(),
+  "widePhotoId": zod.string().nullish(),
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+}).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
+  "referencePhotoId": zod.string().nullish(),
+  "testSquares": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "impactCount": zod.number().min(createInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).describe('A count for one aluminum siding test area, not the entire elevation\/building.')),
+  "findings": zod.object({
+  "impactDeformation": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingBreach": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "substrateExposure": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "nailHemCondition": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "interlockDisplacement": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "chalking": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "finishVariance": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "priorRepair": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingAdhesion": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "collateralSoftMetal": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional()
+}),
+  "productRecordId": zod.string().nullish(),
+  "compatibility": zod.object({
+  "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "gauge": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "finishColorGloss": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "embossedTexture": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "panelLengthLayout": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "fasteningMovement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional()
+}),
+  "compatibilityBasis": zod.string().nullish(),
+  "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
+  "conclusionBasis": zod.string().nullish()
+}).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -3105,6 +3313,8 @@ export const GetInspectionParams = zod.object({
 
 
 
+
+export const getInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin = 0;
 
 
 
@@ -3487,7 +3697,7 @@ export const GetInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
-  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -3566,6 +3776,108 @@ export const GetInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
 }).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "asp": zod.union([zod.object({
+  "assessmentConditions": zod.object({
+  "airTempF": zod.number().nullish(),
+  "skyCondition": zod.string().nullish(),
+  "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
+  "capturedAtUtc": zod.string().nullish()
+}).nullish(),
+  "elevations": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "label": zod.string().nullish(),
+  "profile": zod.union([zod.literal('single_8'),zod.literal('double_4'),zod.literal('double_5'),zod.literal('triple_3'),zod.literal('vertical'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "exposureInches": zod.number().nullish(),
+  "gauge": zod.string().nullish(),
+  "finishColor": zod.string().nullish(),
+  "accessible": zod.boolean(),
+  "inaccessibleReason": zod.string().nullish(),
+  "widePhotoId": zod.string().nullish(),
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+}).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
+  "referencePhotoId": zod.string().nullish(),
+  "testSquares": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "impactCount": zod.number().min(getInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).describe('A count for one aluminum siding test area, not the entire elevation\/building.')),
+  "findings": zod.object({
+  "impactDeformation": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingBreach": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "substrateExposure": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "nailHemCondition": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "interlockDisplacement": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "chalking": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "finishVariance": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "priorRepair": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingAdhesion": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "collateralSoftMetal": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional()
+}),
+  "productRecordId": zod.string().nullish(),
+  "compatibility": zod.object({
+  "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "gauge": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "finishColorGloss": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "embossedTexture": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "panelLengthLayout": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "fasteningMovement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional()
+}),
+  "compatibilityBasis": zod.string().nullish(),
+  "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
+  "conclusionBasis": zod.string().nullish()
+}).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -3710,6 +4022,8 @@ export const UpdateInspectionParams = zod.object({
 
 
 
+
+export const updateInspectionBodyRepairabilityAssessmentOneTwoAspOneTestSquaresItemImpactCountMin = 0;
 
 
 
@@ -3917,7 +4231,7 @@ export const UpdateInspectionBody = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
-  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -3996,6 +4310,108 @@ export const UpdateInspectionBody = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
 }).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "asp": zod.union([zod.object({
+  "assessmentConditions": zod.object({
+  "airTempF": zod.number().nullish(),
+  "skyCondition": zod.string().nullish(),
+  "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
+  "capturedAtUtc": zod.string().nullish()
+}).nullish(),
+  "elevations": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "label": zod.string().nullish(),
+  "profile": zod.union([zod.literal('single_8'),zod.literal('double_4'),zod.literal('double_5'),zod.literal('triple_3'),zod.literal('vertical'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "exposureInches": zod.number().nullish(),
+  "gauge": zod.string().nullish(),
+  "finishColor": zod.string().nullish(),
+  "accessible": zod.boolean(),
+  "inaccessibleReason": zod.string().nullish(),
+  "widePhotoId": zod.string().nullish(),
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+}).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
+  "referencePhotoId": zod.string().nullish(),
+  "testSquares": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "impactCount": zod.number().min(updateInspectionBodyRepairabilityAssessmentOneTwoAspOneTestSquaresItemImpactCountMin),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).describe('A count for one aluminum siding test area, not the entire elevation\/building.')),
+  "findings": zod.object({
+  "impactDeformation": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingBreach": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "substrateExposure": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "nailHemCondition": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "interlockDisplacement": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "chalking": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "finishVariance": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "priorRepair": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingAdhesion": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "collateralSoftMetal": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional()
+}),
+  "productRecordId": zod.string().nullish(),
+  "compatibility": zod.object({
+  "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "gauge": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "finishColorGloss": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "embossedTexture": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "panelLengthLayout": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "fasteningMovement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional()
+}),
+  "compatibilityBasis": zod.string().nullish(),
+  "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
+  "conclusionBasis": zod.string().nullish()
+}).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.')]),zod.null()]).optional(),
   "existingOrUnrelatedConditions": zod.union([zod.array(zod.object({
@@ -4027,6 +4443,8 @@ export const UpdateInspectionBody = zod.object({
 
 
 
+
+export const updateInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin = 0;
 
 
 
@@ -4409,7 +4827,7 @@ export const UpdateInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
-  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -4488,6 +4906,108 @@ export const UpdateInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
 }).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "asp": zod.union([zod.object({
+  "assessmentConditions": zod.object({
+  "airTempF": zod.number().nullish(),
+  "skyCondition": zod.string().nullish(),
+  "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
+  "capturedAtUtc": zod.string().nullish()
+}).nullish(),
+  "elevations": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "label": zod.string().nullish(),
+  "profile": zod.union([zod.literal('single_8'),zod.literal('double_4'),zod.literal('double_5'),zod.literal('triple_3'),zod.literal('vertical'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "exposureInches": zod.number().nullish(),
+  "gauge": zod.string().nullish(),
+  "finishColor": zod.string().nullish(),
+  "accessible": zod.boolean(),
+  "inaccessibleReason": zod.string().nullish(),
+  "widePhotoId": zod.string().nullish(),
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+}).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
+  "referencePhotoId": zod.string().nullish(),
+  "testSquares": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "impactCount": zod.number().min(updateInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).describe('A count for one aluminum siding test area, not the entire elevation\/building.')),
+  "findings": zod.object({
+  "impactDeformation": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingBreach": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "substrateExposure": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "nailHemCondition": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "interlockDisplacement": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "chalking": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "finishVariance": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "priorRepair": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingAdhesion": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "collateralSoftMetal": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional()
+}),
+  "productRecordId": zod.string().nullish(),
+  "compatibility": zod.object({
+  "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "gauge": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "finishColorGloss": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "embossedTexture": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "panelLengthLayout": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "fasteningMovement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional()
+}),
+  "compatibilityBasis": zod.string().nullish(),
+  "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
+  "conclusionBasis": zod.string().nullish()
+}).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),
@@ -5614,6 +6134,8 @@ export const SubmitInspectionBody = zod.object({
 
 
 
+export const submitInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin = 0;
+
 
 
 
@@ -5995,7 +6517,7 @@ export const SubmitInspectionResponse = zod.object({
   "warranted": zod.enum(['yes', 'not_warranted_discontinued', 'not_authorized']),
   "systems": zod.array(zod.enum(['roof', 'siding'])).describe('Systems the repairability assessment covers. Must be empty unless warranted is \"yes\".'),
   "roofType": zod.union([zod.literal('asphalt_shingle'),zod.literal(null)]).nullish(),
-  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).'),
+  "sidingType": zod.union([zod.literal('vinyl'),zod.literal('aluminum'),zod.literal(null)]).nullish().describe('Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.'),
   "rap": zod.union([zod.object({
   "manipulatedCount": zod.union([zod.union([zod.literal(6),zod.literal(7),zod.literal(8)]),zod.null()]).optional().describe('How many shingles required manipulation to complete the protocol (6, 7, or 8). Null while unanswered; legacy records without it render the historical fixed count.'),
   "rap1PhotoId": zod.string().nullish(),
@@ -6074,6 +6596,108 @@ export const SubmitInspectionResponse = zod.object({
 }).optional().describe('One collateral-damage question\'s finding in the Vinyl Assessment Protocol. `components` are the affected component labels (panels \"1\"-\"4\", trim \"T1\"-\"T4\"); `photoId` references the one example inspection_photos row for this category (never a URL).')
 }).describe('Collateral-damage findings keyed by category (crackSplit, lockingEdge, nailHem, trimInterface, reseat). Missing keys mean the question is unanswered.')
 }).describe('Vinyl Assessment Protocol (VAP) record — vinyl siding only. Panel \"X\" is removed and replaced, surrounding panels 1-4 and trim components T1+ are manipulated, and five collateral-damage questions cover the manipulated components. Photo fields reference inspection_photos row ids (client-generated for offline idempotency), never URLs.'),zod.null()]).optional(),
+  "asp": zod.union([zod.object({
+  "assessmentConditions": zod.object({
+  "airTempF": zod.number().nullish(),
+  "skyCondition": zod.string().nullish(),
+  "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
+  "capturedAtUtc": zod.string().nullish()
+}).nullish(),
+  "elevations": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "label": zod.string().nullish(),
+  "profile": zod.union([zod.literal('single_8'),zod.literal('double_4'),zod.literal('double_5'),zod.literal('triple_3'),zod.literal('vertical'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "exposureInches": zod.number().nullish(),
+  "gauge": zod.string().nullish(),
+  "finishColor": zod.string().nullish(),
+  "accessible": zod.boolean(),
+  "inaccessibleReason": zod.string().nullish(),
+  "widePhotoId": zod.string().nullish(),
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+}).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
+  "referencePhotoId": zod.string().nullish(),
+  "testSquares": zod.array(zod.object({
+  "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
+  "impactCount": zod.number().min(submitInspectionResponseInspectionRepairabilityAssessmentOneTwoOneAspOneTestSquaresItemImpactCountMin),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).describe('A count for one aluminum siding test area, not the entire elevation\/building.')),
+  "findings": zod.object({
+  "impactDeformation": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingBreach": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "substrateExposure": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "nailHemCondition": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "interlockDisplacement": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "chalking": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "finishVariance": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "priorRepair": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "coatingAdhesion": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional(),
+  "collateralSoftMetal": zod.object({
+  "answer": zod.enum(['yes', 'no']),
+  "elevations": zod.array(zod.enum(['north', 'south', 'east', 'west', 'other'])),
+  "photoId": zod.string().nullish(),
+  "note": zod.string().nullish()
+}).optional()
+}),
+  "productRecordId": zod.string().nullish(),
+  "compatibility": zod.object({
+  "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "gauge": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "finishColorGloss": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "embossedTexture": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "panelLengthLayout": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
+  "fasteningMovement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional()
+}),
+  "compatibilityBasis": zod.string().nullish(),
+  "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
+  "conclusionBasis": zod.string().nullish()
+}).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
   "assessorName": zod.string().nullish(),

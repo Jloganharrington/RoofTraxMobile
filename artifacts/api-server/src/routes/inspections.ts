@@ -191,6 +191,13 @@ import {
   vapScorecardBriefLines,
   type VapReportSection,
 } from '../lib/vapScorecard';
+import {
+  aspScorecardBriefLines,
+  buildAspReportSection,
+  computeAspScorecard,
+  extractAsp,
+  type AspReportSection,
+} from '../lib/aspScorecard';
 import { ObjectNotFoundError, ObjectStorageService } from '../lib/objectStorage';
 
 const objectStorageService = new ObjectStorageService();
@@ -1080,6 +1087,17 @@ router.patch('/inspections/:inspectionId', requireWritableInspection(), async (r
     for (const finding of Object.values(incomingV3.vap?.damage ?? {})) {
       if (finding?.photoId) photoIds.add(finding.photoId);
     }
+    if (incomingV3.asp?.referencePhotoId) photoIds.add(incomingV3.asp.referencePhotoId);
+    for (const elevation of incomingV3.asp?.elevations ?? []) {
+      if (elevation.widePhotoId) photoIds.add(elevation.widePhotoId);
+      if (elevation.rakingPhotoId) photoIds.add(elevation.rakingPhotoId);
+    }
+    for (const testSquare of incomingV3.asp?.testSquares ?? []) {
+      if (testSquare.photoId) photoIds.add(testSquare.photoId);
+    }
+    for (const finding of Object.values(incomingV3.asp?.findings ?? {})) {
+      if (finding?.photoId) photoIds.add(finding.photoId);
+    }
     if (photoIds.size > 0) {
       const rows = await db
         .select({ id: inspectionPhotosTable.id })
@@ -1097,8 +1115,26 @@ router.patch('/inspections/:inspectionId', requireWritableInspection(), async (r
         res.status(400).json({
           error: 'Repairability assessment failed validation',
           details: [
-            `Repair Attempt Protocol photo(s) not found on this inspection: ${missing.join(', ')}`,
+            `Repairability protocol photo(s) not found on this inspection: ${missing.join(', ')}`,
           ],
+        });
+        return;
+      }
+    }
+    if (incomingV3.asp?.productRecordId) {
+      const [product] = await db
+        .select({ id: discontinuedProductsTable.id })
+        .from(discontinuedProductsTable)
+        .where(
+          and(
+            eq(discontinuedProductsTable.id, incomingV3.asp.productRecordId),
+            eq(discontinuedProductsTable.companyId, actor.companyId),
+          ),
+        );
+      if (!product) {
+        res.status(400).json({
+          error: 'Repairability assessment failed validation',
+          details: ['ASP Known Product Catalog record was not found for this company.'],
         });
         return;
       }
@@ -3931,7 +3967,7 @@ function buildInspectionBrief(
         lines.push(`  Siding type: ${v3.sidingType}`);
         if (v3.sidingType === 'aluminum') {
           lines.push(
-            '  Aluminum siding: routed to the Product ID-supported non-repairability determination — no simulated repair performed.',
+            '  Aluminum siding: Aluminum Siding Forensic Inspection Protocol (ASP) recorded as a non-destructive observational and compatibility assessment.',
           );
         }
       }
@@ -3944,6 +3980,12 @@ function buildInspectionBrief(
       const vap = extractVap(ra);
       if (vap) {
         for (const line of vapScorecardBriefLines(computeVapScorecard(vap))) {
+          lines.push(`  ${line}`);
+        }
+      }
+      const asp = extractAsp(ra);
+      if (asp) {
+        for (const line of aspScorecardBriefLines(computeAspScorecard(asp))) {
           lines.push(`  ${line}`);
         }
       }
@@ -5378,6 +5420,8 @@ router.post('/inspections/:inspectionId/report/compile', requireWritableInspecti
   const rapSection = buildRapReportSection(inspection.repairabilityAssessment);
   // Server-built VAP scorecard section (vinyl siding; null when absent).
   const vapSection = buildVapReportSection(inspection.repairabilityAssessment);
+  // Server-built ASP observation/compatibility section (aluminum siding).
+  const aspSection = buildAspReportSection(inspection.repairabilityAssessment);
   const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
 
   const photoBrief = curatedPhotos.slice(0, 80).map((p) => ({
@@ -5543,6 +5587,7 @@ ${JSON.stringify(photoBrief)}
     // Server-computed counts + photo references — factual, carrier-facing.
     rapSection: 'construction_fact',
     vapSection: 'construction_fact',
+    aspSection: 'construction_fact',
   };
 
   // Contractor-lane lint over every AI-generated fragment before storage.
@@ -6025,6 +6070,9 @@ ${JSON.stringify(photoBrief)}
     // Server-built Vinyl Assessment Protocol scorecard + photo references.
     // Null when no vinyl-siding protocol was run.
     vapSection,
+    // Server-built Aluminum Siding Forensic Inspection Protocol observations.
+    // Null when no aluminum-siding protocol was run.
+    aspSection,
     // Present from schemaVersion 4 onward.
     contentClasses,
     lint,
@@ -6235,6 +6283,8 @@ export async function renderCompiledReportHtml(opts: {
     // Server-built VAP (vinyl siding) scorecard + photo references.
     // Absent/null on older blobs and non-vinyl assessments.
     vapSection?: VapReportSection | null;
+    // Server-built ASP (aluminum siding) observation + compatibility record.
+    aspSection?: AspReportSection | null;
     // Present from schemaVersion 4 onward.
     contentClasses?: Record<string, ContentClass>;
     lint?: { lintStatus: 'passed' | 'needs_review' | 'blocked'; findings: unknown[] };
@@ -6433,6 +6483,57 @@ export async function renderCompiledReportHtml(opts: {
 
     vapSectionHtml = `${scorecardHtml}${
       vapCards ? `<div class="photo-grid" style="margin-top:16px">${vapCards}</div>` : ''
+    }`;
+  }
+
+  // Aluminum Siding Forensic Inspection Protocol — server-rendered observation
+  // and product-compatibility record. This intentionally describes no
+  // destructive test, panel removal, fastener test, or coating cut.
+  let aspSectionHtml: string | null = null;
+  const aspSection = compiledData.aspSection;
+  if (aspSection && carrierVisible('aspSection')) {
+    const sc = aspSection.scorecard;
+    const scoreRows: Array<[string, string | number]> = [
+      ['Elevations surveyed', sc.surveyedElevations],
+      ['Accessible elevations', sc.accessibleElevations],
+      ['Test areas documented', sc.testSquares],
+      ['Documented impacts', sc.documentedImpacts],
+      ['Affirmative condition categories', sc.affirmativeConditions],
+      ['Compatibility criteria matched', sc.matchedCompatibilityCriteria],
+      ['Compatibility criteria not matched', sc.unmatchedCompatibilityCriteria],
+      ...sc.categories.filter((c) => c.count > 0).map((c): [string, number] => [c.label, c.count]),
+    ];
+    const scorecardHtml = `<table class="detail-table">
+      <tr><th>Observed item</th><th>Count</th></tr>
+      ${scoreRows.map(([label, count]) => `<tr><td>${escHtml(label)}</td><td>${escHtml(count)}</td></tr>`).join('\n      ')}
+    </table>`;
+    const aspPhotoCard = (photoId: string, caption: string): string => {
+      const entry = compiledData.photoIndex[photoId];
+      if (!entry) return '';
+      const signedUrl = freshSignedUrls.get(photoId);
+      const imgTag = signedUrl
+        ? `<img src="${escHtml(signedUrl)}" alt="${escHtml(caption)}" loading="lazy">`
+        : `<div style="height:160px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px">Photo unavailable</div>`;
+      return `<div class="photo-card">${imgTag}<div class="photo-caption">${escHtml(caption)}</div></div>`;
+    };
+    const aspCards = [
+      ...(aspSection.referencePhotoId
+        ? [aspPhotoCard(aspSection.referencePhotoId, 'ASP reference panel / product observation')]
+        : []),
+      ...aspSection.rakingPhotoIds.map((id) => aspPhotoCard(id, 'ASP grazing-light elevation observation')),
+      ...aspSection.testSquarePhotoIds.map((id) => aspPhotoCard(id, 'ASP documented test area')),
+      ...aspSection.examplePhotos.map((p) =>
+        aspPhotoCard(p.photoId, [p.label, p.note].filter(Boolean).join(' — ')),
+      ),
+    ].filter(Boolean).join('');
+    const conclusionHtml = aspSection.conclusion
+      ? `<p style="font-size:13px;margin-top:14px"><strong>Protocol conclusion:</strong> ${escHtml(aspSection.conclusion.replaceAll('_', ' '))}${aspSection.conclusionBasis ? ` — ${escHtml(aspSection.conclusionBasis)}` : ''}</p>`
+      : '';
+    const compatibilityHtml = aspSection.compatibilityBasis
+      ? `<p style="font-size:13px;margin-top:10px"><strong>Compatibility basis:</strong> ${escHtml(aspSection.compatibilityBasis)}</p>`
+      : '';
+    aspSectionHtml = `${scorecardHtml}${conclusionHtml}${compatibilityHtml}${
+      aspCards ? `<div class="photo-grid" style="margin-top:16px">${aspCards}</div>` : ''
     }`;
   }
 
@@ -6720,6 +6821,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
         propertyDetailsHtml: carrierVisible('propertyDetailsHtml') ? compiledData.propertyDetailsHtml : null,
         rapSectionHtml,
         vapSectionHtml,
+        aspSectionHtml,
         evidenceScopeIndexHtml,
         evidenceManifestHtml,
         unlockLogHtml,
@@ -6745,6 +6847,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
     generatedAt: compiledData.generatedAt,
     rapSectionHtml,
     vapSectionHtml,
+    aspSectionHtml,
     theme: resolveReportTheme(company?.reportBranding),
     logoUrl: logoSignedUrl,
     evidenceManifestHtml,

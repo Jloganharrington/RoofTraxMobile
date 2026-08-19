@@ -401,7 +401,11 @@ describe('validateRepairabilityAssessment — system isolation', () => {
 // must be savable so field answers are never lost.
 // ---------------------------------------------------------------------------
 
-import type { RepairabilityAssessmentV3, RepairAttemptProtocol } from '@workspace/db';
+import type {
+  RepairabilityAssessmentV3,
+  RepairAttemptProtocol,
+  AluminumSidingProtocol,
+} from '@workspace/db';
 import { validateRepairabilityAssessmentV3 } from '../repairabilityRules';
 
 const v3 = (overrides: Partial<RepairabilityAssessmentV3> = {}): RepairabilityAssessmentV3 => ({
@@ -536,5 +540,67 @@ describe('validateRepairabilityAssessmentV3', () => {
         v3({ rap: rapV3({ damage: { reseat: { answer: 'yes', shingles: [3, 3] } } }) }),
       ).join(' '),
     ).toContain('unique');
+  });
+
+  it('allows a partial non-destructive ASP only for aluminum siding', () => {
+    const asp: AluminumSidingProtocol = {
+      elevations: [{ elevation: 'north', accessible: true }],
+      testSquares: [],
+      findings: {},
+      compatibility: {},
+    };
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          systems: ['siding'],
+          roofType: null,
+          sidingType: 'aluminum',
+          rap: null,
+          asp,
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      validateRepairabilityAssessmentV3(
+        v3({
+          systems: ['siding'],
+          roofType: null,
+          sidingType: 'vinyl',
+          rap: null,
+          asp,
+        }),
+      ).join(' '),
+    ).toContain('only applies to aluminum siding');
+  });
+
+  it('rejects internally contradictory ASP data while allowing incomplete capture', () => {
+    const errors = validateRepairabilityAssessmentV3(
+      v3({
+        systems: ['siding'],
+        roofType: null,
+        sidingType: 'aluminum',
+        rap: null,
+        asp: {
+          elevations: [
+            { elevation: 'north', accessible: false },
+            { elevation: 'north', accessible: true },
+          ],
+          testSquares: [{ elevation: 'south', impactCount: 1.5 }],
+          findings: {
+            impactDeformation: { answer: 'yes', elevations: [] },
+            chalking: { answer: 'no', elevations: ['north'] },
+          },
+          compatibility: {},
+          conclusion: 'repair_supported',
+        },
+      }),
+    );
+    expect(errors.join(' ')).toContain('access reason');
+    expect(errors.join(' ')).toContain('Duplicate ASP elevation');
+    expect(errors.join(' ')).toContain('non-negative integers');
+    expect(errors.join(' ')).toContain('test square references an unsurveyed elevation');
+    expect(errors.join(' ')).toContain('at least one affected elevation');
+    expect(errors.join(' ')).toContain('cannot carry affected elevations when answered no');
+    expect(errors.join(' ')).toContain('conclusion basis');
   });
 });

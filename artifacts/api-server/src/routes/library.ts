@@ -512,6 +512,7 @@ DESTINATION TYPES AND THEIR SCHEMAS:
    • inspection_method — Methodology description for how inspections are performed
    • caption_patterns — Rules or patterns governing how photo captions are written
    • rap_field_protocol — Field protocol for the Rapid Assessment Protocol (RAP)
+   • aluminum_siding_protocol — Non-destructive Aluminum Siding Forensic Inspection Protocol (ASP)
    • attestation_block_a — Inspector attestation/certification language, block A
    • attestation_block_b — Inspector attestation/certification language, block B
    • attestation_block_c — Inspector attestation/certification language, block C

@@ -15,6 +15,8 @@ import type {
   RapDamageCategoryKey,
   VinylAssessmentProtocol,
   VapDamageCategoryKey,
+  AluminumSidingProtocol,
+  AspConditionKey,
 } from '@workspace/db';
 
 export type RepairabilitySystem = 'roof' | 'siding';
@@ -748,6 +750,9 @@ export function validateRepairabilityAssessmentV3(ra: RepairabilityAssessmentV3)
     if (ra.vap) {
       errors.push('A Vinyl Assessment Protocol record only applies when the assessment is warranted and authorized.');
     }
+    if (ra.asp) {
+      errors.push('An Aluminum Siding Forensic Inspection Protocol record only applies when the assessment is warranted and authorized.');
+    }
     return errors;
   }
 
@@ -771,6 +776,63 @@ export function validateRepairabilityAssessmentV3(ra: RepairabilityAssessmentV3)
       errors.push('The Vinyl Assessment Protocol only applies to vinyl siding assessments.');
     }
     errors.push(...validateVap(ra.vap));
+  }
+  if (ra.asp) {
+    if (!systems.includes('siding') || ra.sidingType !== 'aluminum') {
+      errors.push('The Aluminum Siding Forensic Inspection Protocol only applies to aluminum siding assessments.');
+    }
+    errors.push(...validateAsp(ra.asp));
+  }
+  return errors;
+}
+
+const ASP_CONDITION_KEYS: AspConditionKey[] = [
+  'impactDeformation', 'coatingBreach', 'substrateExposure', 'nailHemCondition',
+  'interlockDisplacement', 'chalking', 'finishVariance', 'priorRepair',
+  'coatingAdhesion', 'collateralSoftMetal',
+];
+
+/** Internal-consistency checks for an ASP record. The assessment remains
+ * saveable when incomplete; only contradictions and unsafe data are rejected. */
+export function validateAsp(asp: AluminumSidingProtocol): string[] {
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  for (const elevation of asp.elevations ?? []) {
+    const key = `${elevation.elevation}:${elevation.elevation === 'other' ? elevation.label?.trim() ?? '' : ''}`;
+    if (seen.has(key)) errors.push(`Duplicate ASP elevation: ${key}.`);
+    seen.add(key);
+    if (!elevation.accessible && !elevation.inaccessibleReason?.trim()) {
+      errors.push(`An inaccessible ${elevation.elevation} elevation requires an access reason.`);
+    }
+  }
+  const knownElevations = new Set((asp.elevations ?? []).map((e) => e.elevation));
+  for (const square of asp.testSquares ?? []) {
+    if (!Number.isInteger(square.impactCount) || square.impactCount < 0) {
+      errors.push('ASP test-square impact counts must be non-negative integers.');
+    }
+    if (!knownElevations.has(square.elevation)) {
+      errors.push(`ASP test square references an unsurveyed elevation: ${square.elevation}.`);
+    }
+  }
+  for (const key of ASP_CONDITION_KEYS) {
+    const finding = asp.findings?.[key];
+    if (!finding) continue;
+    if (!Array.isArray(finding.elevations)) {
+      errors.push(`ASP ${key} elevations must be an array.`);
+      continue;
+    }
+    if (finding.answer === 'yes' && finding.elevations.length === 0) {
+      errors.push(`ASP ${key} needs at least one affected elevation when answered yes.`);
+    }
+    if (finding.answer === 'no' && finding.elevations.length > 0) {
+      errors.push(`ASP ${key} cannot carry affected elevations when answered no.`);
+    }
+    for (const elevation of finding.elevations) {
+      if (!knownElevations.has(elevation)) errors.push(`ASP ${key} references an unsurveyed elevation: ${elevation}.`);
+    }
+  }
+  if (asp.conclusion && !asp.conclusionBasis?.trim()) {
+    errors.push('ASP conclusion basis is required when a conclusion is selected.');
   }
   return errors;
 }

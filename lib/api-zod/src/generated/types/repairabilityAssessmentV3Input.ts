@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AluminumSidingProtocol } from './aluminumSidingProtocol';
 import type { RepairabilityAssessmentV3InputRoofType } from './repairabilityAssessmentV3InputRoofType';
 import type { RepairabilityAssessmentV3InputSidingType } from './repairabilityAssessmentV3InputSidingType';
 import type { RepairabilityAssessmentV3InputSystemsItem } from './repairabilityAssessmentV3InputSystemsItem';
@@ -24,11 +25,12 @@ export interface RepairabilityAssessmentV3Input {
   /** @nullable */
   roofType?: RepairabilityAssessmentV3InputRoofType;
   /**
-     * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+     * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.
      * @nullable
      */
   sidingType?: RepairabilityAssessmentV3InputSidingType;
   rap?: RepairAttemptProtocol | null;
   vap?: VinylAssessmentProtocol | null;
+  asp?: AluminumSidingProtocol | null;
   recordedAtUtc: string;
 }

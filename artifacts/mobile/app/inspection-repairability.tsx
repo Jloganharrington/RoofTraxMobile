@@ -28,6 +28,10 @@ import { enqueueOutboxItem } from '@/lib/outbox/queue';
 import type { InspectionPhotoOutboxPayload } from '@/lib/outbox/types';
 import { useGetInspection, getGetInspectionQueryKey } from '@workspace/api-client-react';
 import { useNextSectionHeader } from '@/hooks/useNextSectionHeader';
+import {
+  useListDiscontinuedProducts,
+  type DiscontinuedProduct,
+} from '@/lib/discontinuedProductsApi';
 
 // ---------------------------------------------------------------------------
 // Repairability screen — Repair Attempt Protocol (v3 assessment).
@@ -231,6 +235,225 @@ const emptyRapSelection = (): RapSelection => ({
   representative: false,
 });
 
+// ── Aluminum Siding Protocol (ASP) ──────────────────────────────────────────
+// Non-destructive. Records observed product/condition facts only; no simulated
+// removal/reinstall. The protocol is warranted yes + siding + aluminum only.
+
+type AspElevationDir = 'north' | 'south' | 'east' | 'west' | 'other';
+const ASP_ELEVATION_DIRS: AspElevationDir[] = ['north', 'south', 'east', 'west', 'other'];
+
+type AspProfile = 'single_8' | 'double_4' | 'double_5' | 'triple_3' | 'vertical' | 'other';
+const ASP_PROFILES: AspProfile[] = ['single_8', 'double_4', 'double_5', 'triple_3', 'vertical', 'other'];
+const ASP_PROFILE_LABELS: Record<AspProfile, string> = {
+  single_8: 'Single 8"',
+  double_4: 'Double 4"',
+  double_5: 'Double 5"',
+  triple_3: 'Triple 3"',
+  vertical: 'Vertical',
+  other: 'Other',
+};
+
+type AspLightingTechnique = 'raking_natural' | 'raking_supplemental' | 'diffuse_only';
+const ASP_LIGHTING_TECHNIQUES: AspLightingTechnique[] = [
+  'raking_natural',
+  'raking_supplemental',
+  'diffuse_only',
+];
+const ASP_LIGHTING_LABELS: Record<AspLightingTechnique, string> = {
+  raking_natural: 'Raking — natural light',
+  raking_supplemental: 'Raking — supplemental',
+  diffuse_only: 'Diffuse only',
+};
+
+/** One surveyed elevation row in the ASP. */
+interface AspElevationRow {
+  id: string; // local-only row id for React key / dup detection
+  elevation: AspElevationDir;
+  label: string;
+  profile: AspProfile | null;
+  exposureInches: string; // free text → parsed as float on save
+  gauge: string;
+  finishColor: string;
+  accessible: boolean;
+  inaccessibleReason: string;
+  widePhoto: PhotoSlot;
+  rakingPhoto: PhotoSlot;
+}
+
+const emptyAspElevationRow = (): AspElevationRow => ({
+  id: Crypto.randomUUID(),
+  elevation: 'north',
+  label: '',
+  profile: null,
+  exposureInches: '',
+  gauge: '',
+  finishColor: '',
+  accessible: true,
+  inaccessibleReason: '',
+  widePhoto: emptyPhotoSlot(),
+  rakingPhoto: emptyPhotoSlot(),
+});
+
+/** One test-square row in the ASP. */
+interface AspTestSquareRow {
+  id: string; // local key
+  elevation: AspElevationDir;
+  impactCount: string; // free text → parsed as integer on save
+  photo: PhotoSlot;
+  note: string;
+}
+
+const emptyAspTestSquareRow = (): AspTestSquareRow => ({
+  id: Crypto.randomUUID(),
+  elevation: 'north',
+  impactCount: '',
+  photo: emptyPhotoSlot(),
+  note: '',
+});
+
+/** Assessment conditions for the ASP. */
+interface AspConditions {
+  airTempF: string;       // free text → number | null
+  skyCondition: string;
+  lightingTechnique: AspLightingTechnique | null;
+}
+
+const emptyAspConditions = (): AspConditions => ({
+  airTempF: '',
+  skyCondition: '',
+  lightingTechnique: null,
+});
+
+/** One yes/no condition finding for the ASP (ten categories). */
+interface AspFindingState {
+  answer: YesNo | null;
+  elevations: AspElevationDir[];
+  photo: PhotoSlot;
+  note: string;
+}
+
+const emptyAspFinding = (): AspFindingState => ({
+  answer: null,
+  elevations: [],
+  photo: emptyPhotoSlot(),
+  note: '',
+});
+
+interface AspConditionQuestionDef {
+  key: string;
+  label: string;
+  description: string;
+}
+
+const ASP_CONDITION_QUESTIONS: AspConditionQuestionDef[] = [
+  {
+    key: 'impactDeformation',
+    label: 'Impact Deformation',
+    description: 'Are there dents, dings, dimples, or other mechanical deformation consistent with impact?',
+  },
+  {
+    key: 'coatingBreach',
+    label: 'Coating Breach',
+    description: 'Is the factory finish coating cracked, chipped, or punctured?',
+  },
+  {
+    key: 'substrateExposure',
+    label: 'Substrate Exposure',
+    description: 'Is bare aluminum substrate exposed through the coating layer?',
+  },
+  {
+    key: 'nailHemCondition',
+    label: 'Nail-Hem Condition',
+    description: 'Is the nailing hem bent, torn, or deformed?',
+  },
+  {
+    key: 'interlockDisplacement',
+    label: 'Interlock Displacement',
+    description: 'Is any panel interlock displaced, separated, or unable to seat?',
+  },
+  {
+    key: 'chalking',
+    label: 'Chalking / Oxidation',
+    description: 'Is there visible oxidation or chalking of the coating surface?',
+  },
+  {
+    key: 'finishVariance',
+    label: 'Finish / Color Variance',
+    description: 'Is there visible color, gloss, or finish variance between panels or elevations?',
+  },
+  {
+    key: 'priorRepair',
+    label: 'Prior Repair Evidence',
+    description: 'Is there evidence of a prior panel repair, patch, or replacement?',
+  },
+  {
+    key: 'coatingAdhesion',
+    label: 'Coating Adhesion',
+    description: 'Is the coating peeling, lifting, or showing adhesion failure?',
+  },
+  {
+    key: 'collateralSoftMetal',
+    label: 'Collateral Soft-Metal Damage',
+    description: 'Are aluminum trim, soffit, fascia, gutters, or downspouts damaged consistent with the event?',
+  },
+];
+
+type AspCompatKey =
+  | 'profileExposure'
+  | 'interlockEngagement'
+  | 'gauge'
+  | 'finishColorGloss'
+  | 'embossedTexture'
+  | 'panelLengthLayout'
+  | 'fasteningMovement';
+
+type AspCompatValue = 'matched' | 'not_matched' | 'not_assessed';
+
+const ASP_COMPAT_OPTIONS: AspCompatValue[] = ['matched', 'not_matched', 'not_assessed'];
+const ASP_COMPAT_LABELS: Record<AspCompatValue, string> = {
+  matched: 'Matched',
+  not_matched: 'Not matched',
+  not_assessed: 'Not assessed',
+};
+
+interface AspCompatQuestionDef {
+  key: AspCompatKey;
+  label: string;
+}
+
+const ASP_COMPAT_QUESTIONS: AspCompatQuestionDef[] = [
+  { key: 'profileExposure', label: 'Profile / Exposure' },
+  { key: 'interlockEngagement', label: 'Interlock Engagement' },
+  { key: 'gauge', label: 'Gauge' },
+  { key: 'finishColorGloss', label: 'Finish / Color / Gloss' },
+  { key: 'embossedTexture', label: 'Embossed Texture' },
+  { key: 'panelLengthLayout', label: 'Panel Length / Layout' },
+  { key: 'fasteningMovement', label: 'Fastening / Movement' },
+];
+
+type AspConclusion =
+  | 'repair_supported'
+  | 'repair_not_supported_product'
+  | 'repair_not_supported_condition'
+  | 'undetermined_lab_recommended'
+  | 'undetermined_access_limited';
+
+const ASP_CONCLUSION_LABELS: Record<AspConclusion, string> = {
+  repair_supported: 'Repair supported by documented evidence',
+  repair_not_supported_product: 'Repair not supported — product unavailable / incompatible',
+  repair_not_supported_condition: 'Repair not supported — condition findings',
+  undetermined_lab_recommended: 'Undetermined — laboratory analysis recommended',
+  undetermined_access_limited: 'Undetermined — access limited',
+};
+
+const ASP_CONCLUSION_VALUES: AspConclusion[] = [
+  'repair_supported',
+  'repair_not_supported_product',
+  'repair_not_supported_condition',
+  'undetermined_lab_recommended',
+  'undetermined_access_limited',
+];
+
 export default function InspectionRepairabilityScreen() {
   const colors = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -275,9 +498,27 @@ export default function InspectionRepairabilityScreen() {
   const [vapDamage, setVapDamage] = React.useState<Record<string, VapDamageAnswer>>(() =>
     Object.fromEntries(VAP_QUESTIONS.map((q) => [q.key, emptyVapDamageAnswer()])),
   );
+
+  // ── Aluminum Siding Protocol (ASP) state ─────────────────────────────────
+  const [aspConditions, setAspConditions] = React.useState<AspConditions>(emptyAspConditions);
+  const [aspElevations, setAspElevations] = React.useState<AspElevationRow[]>([]);
+  const [aspReferencePhoto, setAspReferencePhoto] = React.useState<PhotoSlot>(emptyPhotoSlot());
+  const [aspTestSquares, setAspTestSquares] = React.useState<AspTestSquareRow[]>([]);
+  const [aspFindings, setAspFindings] = React.useState<Record<string, AspFindingState>>(() =>
+    Object.fromEntries(ASP_CONDITION_QUESTIONS.map((q) => [q.key, emptyAspFinding()])),
+  );
+  const [aspProductRecordId, setAspProductRecordId] = React.useState<string | null>(null);
+  const [aspCompat, setAspCompat] = React.useState<Partial<Record<AspCompatKey, AspCompatValue>>>({});
+  const [aspCompatibilityBasis, setAspCompatibilityBasis] = React.useState('');
+  const [aspConclusion, setAspConclusion] = React.useState<AspConclusion | null>(null);
+  const [aspConclusionBasis, setAspConclusionBasis] = React.useState('');
+
   const [capturing, setCapturing] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const queryClient = useQueryClient();
+
+  // Discontinued products for the ASP product picker.
+  const discontinuedProductsQuery = useListDiscontinuedProducts();
 
   // xA follow-ups only offer the shingles that were actually manipulated:
   // 3 through the answered manipulation count (e.g. 7 chosen → no 8).
@@ -340,6 +581,47 @@ export default function InspectionRepairabilityScreen() {
             string,
             { answer?: YesNo; shingles?: number[]; photoId?: string | null; note?: string | null }
           >;
+        } | null;
+        asp?: {
+          assessmentConditions?: {
+            airTempF?: number | null;
+            skyCondition?: string | null;
+            lightingTechnique?: string | null;
+            capturedAtUtc?: string | null;
+          } | null;
+          elevations?: Array<{
+            elevation?: string;
+            label?: string | null;
+            profile?: string | null;
+            exposureInches?: number | null;
+            gauge?: string | null;
+            finishColor?: string | null;
+            accessible?: boolean;
+            inaccessibleReason?: string | null;
+            widePhotoId?: string | null;
+            rakingPhotoId?: string | null;
+          }>;
+          referencePhotoId?: string | null;
+          testSquares?: Array<{
+            elevation?: string;
+            impactCount?: number;
+            photoId?: string | null;
+            note?: string | null;
+          }>;
+          findings?: Record<
+            string,
+            {
+              answer?: YesNo;
+              elevations?: string[];
+              photoId?: string | null;
+              note?: string | null;
+            }
+          >;
+          productRecordId?: string | null;
+          compatibility?: Record<string, string>;
+          compatibilityBasis?: string | null;
+          conclusion?: string | null;
+          conclusionBasis?: string | null;
         } | null;
       };
       if (ex.version === 3) {
@@ -415,6 +697,89 @@ export default function InspectionRepairabilityScreen() {
               }),
             ),
           );
+        }
+        // Hydrate ASP state.
+        const asp = ex.asp;
+        if (asp) {
+          const cond = asp.assessmentConditions;
+          if (cond) {
+            setAspConditions({
+              airTempF: cond.airTempF != null ? String(cond.airTempF) : '',
+              skyCondition: cond.skyCondition ?? '',
+              lightingTechnique: (ASP_LIGHTING_TECHNIQUES as string[]).includes(cond.lightingTechnique ?? '')
+                ? (cond.lightingTechnique as AspLightingTechnique)
+                : null,
+            });
+          }
+          setAspElevations(
+            (asp.elevations ?? []).map((e) => ({
+              id: Crypto.randomUUID(),
+              elevation: (ASP_ELEVATION_DIRS as string[]).includes(e.elevation ?? '')
+                ? (e.elevation as AspElevationDir)
+                : 'north',
+              label: e.label ?? '',
+              profile: (ASP_PROFILES as string[]).includes(e.profile ?? '')
+                ? (e.profile as AspProfile)
+                : null,
+              exposureInches: e.exposureInches != null ? String(e.exposureInches) : '',
+              gauge: e.gauge ?? '',
+              finishColor: e.finishColor ?? '',
+              accessible: e.accessible ?? true,
+              inaccessibleReason: e.inaccessibleReason ?? '',
+              widePhoto: { local: null, photoId: e.widePhotoId ?? null },
+              rakingPhoto: { local: null, photoId: e.rakingPhotoId ?? null },
+            })),
+          );
+          setAspReferencePhoto({ local: null, photoId: asp.referencePhotoId ?? null });
+          setAspTestSquares(
+            (asp.testSquares ?? []).map((ts) => ({
+              id: Crypto.randomUUID(),
+              elevation: (ASP_ELEVATION_DIRS as string[]).includes(ts.elevation ?? '')
+                ? (ts.elevation as AspElevationDir)
+                : 'north',
+              impactCount: ts.impactCount != null ? String(ts.impactCount) : '',
+              photo: { local: null, photoId: ts.photoId ?? null },
+              note: ts.note ?? '',
+            })),
+          );
+          setAspFindings(
+            Object.fromEntries(
+              ASP_CONDITION_QUESTIONS.map((q) => {
+                const f = asp.findings?.[q.key];
+                return [
+                  q.key,
+                  f
+                    ? {
+                        answer: f.answer ?? null,
+                        elevations: (f.elevations ?? []).filter((e): e is AspElevationDir =>
+                          (ASP_ELEVATION_DIRS as string[]).includes(e),
+                        ),
+                        photo: { local: null, photoId: f.photoId ?? null },
+                        note: f.note ?? '',
+                      }
+                    : emptyAspFinding(),
+                ];
+              }),
+            ),
+          );
+          setAspProductRecordId(asp.productRecordId ?? null);
+          const compat = asp.compatibility ?? {};
+          const hydCompat: Partial<Record<AspCompatKey, AspCompatValue>> = {};
+          for (const q of ASP_COMPAT_QUESTIONS) {
+            const v = compat[q.key];
+            if ((ASP_COMPAT_OPTIONS as string[]).includes(v)) {
+              hydCompat[q.key] = v as AspCompatValue;
+            }
+          }
+          setAspCompat(hydCompat);
+          setAspCompatibilityBasis(asp.compatibilityBasis ?? '');
+          const savedConclusion = asp.conclusion;
+          setAspConclusion(
+            (ASP_CONCLUSION_VALUES as string[]).includes(savedConclusion ?? '')
+              ? (savedConclusion as AspConclusion)
+              : null,
+          );
+          setAspConclusionBasis(asp.conclusionBasis ?? '');
         }
       } else if (ex.version === 2) {
         setSystems(ex.systems ?? []);
@@ -638,6 +1003,52 @@ export default function InspectionRepairabilityScreen() {
     try {
       const rapIncluded = showRap;
       const vapIncluded = showVap;
+      const aspIncluded = showAluminumRoute;
+
+      // Local validation for ASP: inaccessible reason, duplicate elevation,
+      // non-integer impact counts, conclusion requires basis.
+      if (aspIncluded) {
+        const seenElevations = new Set<string>();
+        for (const elev of aspElevations) {
+          if (!elev.accessible && !elev.inaccessibleReason.trim()) {
+            Alert.alert(
+              'Inaccessible reason required',
+              `Elevation "${elev.elevation}" is marked inaccessible — add a reason before saving.`,
+            );
+            setSaving(false);
+            return;
+          }
+          const key = `${elev.elevation}:${elev.label.trim()}`;
+          if (seenElevations.has(key)) {
+            Alert.alert(
+              'Duplicate elevation',
+              `Elevation "${elev.elevation}"${elev.label.trim() ? ` (${elev.label.trim()})` : ''} appears more than once. Use the label field to distinguish sides.`,
+            );
+            setSaving(false);
+            return;
+          }
+          seenElevations.add(key);
+        }
+        for (const ts of aspTestSquares) {
+          const raw = ts.impactCount.trim();
+          if (raw !== '' && (!/^\d+$/.test(raw) || !Number.isInteger(Number(raw)))) {
+            Alert.alert(
+              'Invalid impact count',
+              'Impact counts must be whole numbers. Correct the test-square entries before saving.',
+            );
+            setSaving(false);
+            return;
+          }
+        }
+        if (aspConclusion != null && !aspConclusionBasis.trim()) {
+          Alert.alert(
+            'Conclusion basis required',
+            'Add a conclusion basis before saving when a conclusion is selected.',
+          );
+          setSaving(false);
+          return;
+        }
+      }
 
       // 1) Queue any NEW local captures first — the outbox drains FIFO, so
       //    the photo rows exist before the assessment update replays and the
@@ -686,6 +1097,68 @@ export default function InspectionRepairabilityScreen() {
             }));
           } else {
             vapDamagePhotoIds[q.key] = a.photo.photoId;
+          }
+        }
+      }
+
+      // Queue ASP photos before the assessment save.
+      let aspRefPhotoId = aspReferencePhoto.photoId;
+      const aspElevationWideIds: string[] = [];
+      const aspElevationRakingIds: string[] = [];
+      const aspTestSquarePhotoIds: string[] = [];
+      const aspFindingPhotoIds: Record<string, string | null> = {};
+      if (aspIncluded) {
+        if (aspReferencePhoto.local) {
+          aspRefPhotoId = await queueProtocolPhoto(aspReferencePhoto.local);
+          setAspReferencePhoto({ local: null, photoId: aspRefPhotoId });
+        }
+        for (let i = 0; i < aspElevations.length; i++) {
+          const elev = aspElevations[i];
+          let wid = elev.widePhoto.photoId;
+          let rid = elev.rakingPhoto.photoId;
+          if (elev.widePhoto.local) {
+            wid = await queueProtocolPhoto(elev.widePhoto.local);
+          }
+          if (elev.rakingPhoto.local) {
+            rid = await queueProtocolPhoto(elev.rakingPhoto.local);
+          }
+          aspElevationWideIds.push(wid ?? '');
+          aspElevationRakingIds.push(rid ?? '');
+          if (elev.widePhoto.local || elev.rakingPhoto.local) {
+            const newWide = elev.widePhoto.local ? { local: null, photoId: wid } : elev.widePhoto;
+            const newRaking = elev.rakingPhoto.local ? { local: null, photoId: rid } : elev.rakingPhoto;
+            setAspElevations((prev) =>
+              prev.map((r, idx) =>
+                idx === i ? { ...r, widePhoto: newWide, rakingPhoto: newRaking } : r,
+              ),
+            );
+          }
+        }
+        // Map test-square photos before filtering blank rows.
+        for (let i = 0; i < aspTestSquares.length; i++) {
+          const ts = aspTestSquares[i];
+          let pid = ts.photo.photoId;
+          if (ts.photo.local) {
+            pid = await queueProtocolPhoto(ts.photo.local);
+            setAspTestSquares((prev) =>
+              prev.map((r, idx) =>
+                idx === i ? { ...r, photo: { local: null, photoId: pid } } : r,
+              ),
+            );
+          }
+          aspTestSquarePhotoIds.push(pid ?? '');
+        }
+        for (const q of ASP_CONDITION_QUESTIONS) {
+          const f = aspFindings[q.key];
+          if (f.answer === 'yes' && f.photo.local) {
+            const pid = await queueProtocolPhoto(f.photo.local);
+            aspFindingPhotoIds[q.key] = pid;
+            setAspFindings((prev) => ({
+              ...prev,
+              [q.key]: { ...prev[q.key], photo: { local: null, photoId: pid } },
+            }));
+          } else {
+            aspFindingPhotoIds[q.key] = f.photo.photoId;
           }
         }
       }
@@ -763,6 +1236,69 @@ export default function InspectionRepairabilityScreen() {
                     ),
                   }
                 : null,
+              asp: aspIncluded
+                ? (() => {
+                    const cond = aspConditions;
+                    const airTempRaw = cond.airTempF.trim();
+                    const airTempNum = airTempRaw !== '' && !isNaN(Number(airTempRaw)) ? Number(airTempRaw) : null;
+                    return {
+                      assessmentConditions: {
+                        airTempF: airTempNum,
+                        skyCondition: cond.skyCondition.trim() || null,
+                        lightingTechnique: cond.lightingTechnique ?? null,
+                        capturedAtUtc: new Date().toISOString(),
+                      },
+                      elevations: aspElevations.map((elev, i) => ({
+                        elevation: elev.elevation,
+                        label: elev.label.trim() || null,
+                        profile: elev.profile ?? null,
+                        exposureInches: elev.exposureInches.trim() !== '' && !isNaN(Number(elev.exposureInches))
+                          ? Number(elev.exposureInches)
+                          : null,
+                        gauge: elev.gauge.trim() || null,
+                        finishColor: elev.finishColor.trim() || null,
+                        accessible: elev.accessible,
+                        inaccessibleReason: !elev.accessible && elev.inaccessibleReason.trim()
+                          ? elev.inaccessibleReason.trim()
+                          : null,
+                        widePhotoId: aspElevationWideIds[i] || null,
+                        rakingPhotoId: aspElevationRakingIds[i] || null,
+                      })),
+                      referencePhotoId: aspRefPhotoId ?? null,
+                      // Map photos then filter blank rows (elevation and impactCount blank = skip).
+                      testSquares: aspTestSquares
+                        .map((ts, i) => ({
+                          elevation: ts.elevation,
+                          impactCount: ts.impactCount.trim() !== '' ? Number(ts.impactCount.trim()) : null,
+                          photoId: aspTestSquarePhotoIds[i] || null,
+                          note: ts.note.trim() || null,
+                        }))
+                        .filter((ts) => ts.impactCount !== null),
+                      findings: Object.fromEntries(
+                        ASP_CONDITION_QUESTIONS.filter((q) => aspFindings[q.key].answer != null).map((q) => {
+                          const f = aspFindings[q.key];
+                          const isYes = f.answer === 'yes';
+                          return [
+                            q.key,
+                            {
+                              answer: f.answer,
+                              elevations: isYes ? f.elevations : [],
+                              photoId: isYes ? aspFindingPhotoIds[q.key] ?? null : null,
+                              note: isYes && f.note.trim() ? f.note.trim() : null,
+                            },
+                          ];
+                        }),
+                      ),
+                      productRecordId: aspProductRecordId ?? null,
+                      compatibility: Object.fromEntries(
+                        ASP_COMPAT_QUESTIONS.filter((q) => aspCompat[q.key] != null).map((q) => [q.key, aspCompat[q.key]]),
+                      ),
+                      compatibilityBasis: aspCompatibilityBasis.trim() || null,
+                      conclusion: aspConclusion ?? null,
+                      conclusionBasis: aspConclusionBasis.trim() || null,
+                    };
+                  })()
+                : null,
               recordedAtUtc: new Date().toISOString(),
             }
           : {
@@ -773,6 +1309,7 @@ export default function InspectionRepairabilityScreen() {
               sidingType: null,
               rap: null,
               vap: null,
+              asp: null,
               recordedAtUtc: new Date().toISOString(),
             };
 
@@ -882,21 +1419,542 @@ export default function InspectionRepairabilityScreen() {
       ) : null}
 
       {showAluminumRoute ? (
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            Aluminum Siding — No Simulated Repair
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            Aluminum Siding Forensic Inspection Protocol (ASP)
           </Text>
-          <Text style={{ color: colors.foreground, fontSize: 14, lineHeight: 20 }}>
-            Aluminum siding routes to the Product ID–supported non-repairability document. Complete
-            the product identification against the Known Product Catalog; do not run a simulated
-            repair unless the Product ID determination specifically supports one.
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 18 }}>
-            If the product is confirmed discontinued, record the assessment as "Not Warranted -
-            Discontinued" with the catalog match — the report will carry the Product ID
-            determination instead of a protocol scorecard.
-          </Text>
-        </View>
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13, lineHeight: 18 }}>
+              Non-destructive. Records observed product and condition facts only — no simulated panel
+              removal, fastener manipulation, interlock testing, or coating breach.
+            </Text>
+          </View>
+
+          {/* ── Assessment Conditions ───────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Assessment Conditions</Text>
+            <Text style={[styles.qLabel, { color: colors.foreground }]}>Air Temperature (°F)</Text>
+            <TextInput
+              value={aspConditions.airTempF}
+              onChangeText={(t) => setAspConditions((c) => ({ ...c, airTempF: t }))}
+              placeholder="e.g. 72"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numeric"
+              style={[
+                styles.noteInput,
+                { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, minHeight: 40 },
+              ]}
+            />
+            <Text style={[styles.qLabel, { color: colors.foreground }]}>Sky Condition</Text>
+            <TextInput
+              value={aspConditions.skyCondition}
+              onChangeText={(t) => setAspConditions((c) => ({ ...c, skyCondition: t }))}
+              placeholder="e.g. Clear, partly cloudy…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[
+                styles.noteInput,
+                { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background, minHeight: 40 },
+              ]}
+            />
+            <Text style={[styles.qLabel, { color: colors.foreground }]}>Lighting Technique</Text>
+            <View style={styles.chipWrap}>
+              {ASP_LIGHTING_TECHNIQUES.map((lt) => {
+                const on = aspConditions.lightingTechnique === lt;
+                return (
+                  <Pressable
+                    key={lt}
+                    onPress={() => setAspConditions((c) => ({ ...c, lightingTechnique: on ? null : lt }))}
+                    style={chipStyle(on)}
+                  >
+                    <Text style={chipText(on)}>{ASP_LIGHTING_LABELS[lt]}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* ── Elevation Survey ─────────────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Elevation Survey</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Add one row per surveyed face. Mark inaccessible faces with a reason.
+            </Text>
+            {aspElevations.map((elev, idx) => {
+              const setElev = (patch: Partial<AspElevationRow>) =>
+                setAspElevations((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+              return (
+                <View
+                  key={elev.id}
+                  style={[
+                    styles.card,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      marginTop: 6,
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
+                      Elevation {idx + 1}
+                    </Text>
+                    <Pressable
+                      onPress={() => setAspElevations((prev) => prev.filter((_, i) => i !== idx))}
+                      hitSlop={8}
+                    >
+                      <Icon name="x" size={16} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Direction</Text>
+                  <View style={styles.chipWrap}>
+                    {ASP_ELEVATION_DIRS.map((d) => {
+                      const on = elev.elevation === d;
+                      return (
+                        <Pressable key={d} onPress={() => setElev({ elevation: d })} style={chipStyle(on)}>
+                          <Text style={chipText(on)}>{d.charAt(0).toUpperCase() + d.slice(1)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+                    Label (optional, e.g. "East — garage wall")
+                  </Text>
+                  <TextInput
+                    value={elev.label}
+                    onChangeText={(t) => setElev({ label: t })}
+                    placeholder="Optional label…"
+                    placeholderTextColor={colors.mutedForeground}
+                    style={[
+                      styles.noteInput,
+                      { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+                    ]}
+                  />
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>Profile</Text>
+                  <View style={styles.chipWrap}>
+                    {ASP_PROFILES.map((p) => {
+                      const on = elev.profile === p;
+                      return (
+                        <Pressable key={p} onPress={() => setElev({ profile: on ? null : p })} style={chipStyle(on)}>
+                          <Text style={chipText(on)}>{ASP_PROFILE_LABELS[p]}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Exposure (inches)</Text>
+                      <TextInput
+                        value={elev.exposureInches}
+                        onChangeText={(t) => setElev({ exposureInches: t })}
+                        placeholder="e.g. 4"
+                        placeholderTextColor={colors.mutedForeground}
+                        keyboardType="numeric"
+                        style={[
+                          styles.noteInput,
+                          { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+                        ]}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Gauge</Text>
+                      <TextInput
+                        value={elev.gauge}
+                        onChangeText={(t) => setElev({ gauge: t })}
+                        placeholder='e.g. .024"'
+                        placeholderTextColor={colors.mutedForeground}
+                        style={[
+                          styles.noteInput,
+                          { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>Finish / Color</Text>
+                  <TextInput
+                    value={elev.finishColor}
+                    onChangeText={(t) => setElev({ finishColor: t })}
+                    placeholder="e.g. White, almond…"
+                    placeholderTextColor={colors.mutedForeground}
+                    style={[
+                      styles.noteInput,
+                      { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+                    ]}
+                  />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <Pressable
+                      onPress={() => setElev({ accessible: !elev.accessible })}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                    >
+                      <View
+                        style={[
+                          styles.selectionCheckbox,
+                          {
+                            borderColor: elev.accessible ? colors.primary : colors.border,
+                            backgroundColor: elev.accessible ? colors.primary : 'transparent',
+                          },
+                        ]}
+                      >
+                        {elev.accessible ? (
+                          <Icon name="check" size={13} color={colors.primaryForeground} />
+                        ) : null}
+                      </View>
+                      <Text style={{ color: colors.foreground, fontSize: 13 }}>Accessible</Text>
+                    </Pressable>
+                  </View>
+                  {!elev.accessible ? (
+                    <TextInput
+                      value={elev.inaccessibleReason}
+                      onChangeText={(t) => setElev({ inaccessibleReason: t })}
+                      placeholder="Reason inaccessible (required)…"
+                      placeholderTextColor={colors.mutedForeground}
+                      multiline
+                      style={[
+                        styles.noteInput,
+                        { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card },
+                      ]}
+                    />
+                  ) : null}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Wide photo</Text>
+                      {renderPhotoButton(
+                        `asp-elev-wide-${elev.id}`,
+                        elev.widePhoto,
+                        (p) => setElev({ widePhoto: { ...elev.widePhoto, local: p } }),
+                        'Take Wide',
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Raking / grazing photo</Text>
+                      {renderPhotoButton(
+                        `asp-elev-raking-${elev.id}`,
+                        elev.rakingPhoto,
+                        (p) => setElev({ rakingPhoto: { ...elev.rakingPhoto, local: p } }),
+                        'Take Raking',
+                      )}
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+            <Pressable
+              onPress={() => setAspElevations((prev) => [...prev, emptyAspElevationRow()])}
+              style={[styles.photoBtn, { borderColor: colors.primary, backgroundColor: colors.card, marginTop: 8 }]}
+            >
+              <Icon name="plus" size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>Add Elevation</Text>
+            </Pressable>
+          </View>
+
+          {/* ── Reference Photo ──────────────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Reference Photo</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Representative overall view of the aluminum siding in best available lighting.
+            </Text>
+            {renderPhotoButton(
+              'asp-reference',
+              aspReferencePhoto,
+              (p) => setAspReferencePhoto((prev) => ({ ...prev, local: p })),
+              'Take Reference Photo',
+            )}
+          </View>
+
+          {/* ── Test Squares ─────────────────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Test Squares</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Add one row per counted test area. Blank rows are dropped on save.
+            </Text>
+            {aspTestSquares.map((ts, idx) => {
+              const setTs = (patch: Partial<AspTestSquareRow>) =>
+                setAspTestSquares((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+              return (
+                <View
+                  key={ts.id}
+                  style={[
+                    styles.card,
+                    { backgroundColor: colors.background, borderColor: colors.border, marginTop: 6 },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>
+                      Test Square {idx + 1}
+                    </Text>
+                    <Pressable
+                      onPress={() => setAspTestSquares((prev) => prev.filter((_, i) => i !== idx))}
+                      hitSlop={8}
+                    >
+                      <Icon name="x" size={16} color={colors.mutedForeground} />
+                    </Pressable>
+                  </View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Elevation</Text>
+                  <View style={styles.chipWrap}>
+                    {ASP_ELEVATION_DIRS.map((d) => {
+                      const on = ts.elevation === d;
+                      return (
+                        <Pressable key={d} onPress={() => setTs({ elevation: d })} style={chipStyle(on)}>
+                          <Text style={chipText(on)}>{d.charAt(0).toUpperCase() + d.slice(1)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Impact Count</Text>
+                      <TextInput
+                        value={ts.impactCount}
+                        onChangeText={(t) => setTs({ impactCount: t })}
+                        placeholder="0"
+                        placeholderTextColor={colors.mutedForeground}
+                        keyboardType="number-pad"
+                        style={[
+                          styles.noteInput,
+                          { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+                        ]}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Note</Text>
+                      <TextInput
+                        value={ts.note}
+                        onChangeText={(t) => setTs({ note: t })}
+                        placeholder="Optional…"
+                        placeholderTextColor={colors.mutedForeground}
+                        style={[
+                          styles.noteInput,
+                          { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                  {renderPhotoButton(
+                    `asp-ts-${ts.id}`,
+                    ts.photo,
+                    (p) => setTs({ photo: { ...ts.photo, local: p } }),
+                    'Take Photo',
+                  )}
+                </View>
+              );
+            })}
+            <Pressable
+              onPress={() => setAspTestSquares((prev) => [...prev, emptyAspTestSquareRow()])}
+              style={[styles.photoBtn, { borderColor: colors.primary, backgroundColor: colors.card, marginTop: 8 }]}
+            >
+              <Icon name="plus" size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>Add Test Square</Text>
+            </Pressable>
+          </View>
+
+          {/* ── Condition Findings (10 questions) ───────────────────────── */}
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Condition Findings</Text>
+          {ASP_CONDITION_QUESTIONS.map((q, qIdx) => {
+            const f = aspFindings[q.key];
+            const setF = (patch: Partial<AspFindingState>) =>
+              setAspFindings((prev) => ({ ...prev, [q.key]: { ...prev[q.key], ...patch } }));
+            return (
+              <View key={q.key} style={{ gap: 8 }}>
+                <Text style={[styles.qLabel, { color: colors.foreground }]}>
+                  {qIdx + 1}. {q.label}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{q.description}</Text>
+                <View style={styles.chipWrap}>
+                  {(['yes', 'no'] as const).map((v) => {
+                    const on = f.answer === v;
+                    return (
+                      <Pressable
+                        key={v}
+                        onPress={() => setF({ answer: on ? null : v })}
+                        style={chipStyle(on)}
+                      >
+                        <Text style={chipText(on)}>{v === 'yes' ? 'Yes' : 'No'}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {f.answer === 'yes' ? (
+                  <View
+                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
+                    <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                      Affected Elevations
+                    </Text>
+                    <View style={styles.chipWrap}>
+                      {ASP_ELEVATION_DIRS.map((d) => {
+                        const on = f.elevations.includes(d);
+                        return (
+                          <Pressable
+                            key={d}
+                            onPress={() =>
+                              setF({
+                                elevations: on
+                                  ? f.elevations.filter((x) => x !== d)
+                                  : [...f.elevations, d],
+                              })
+                            }
+                            style={chipStyle(on)}
+                          >
+                            <Text style={chipText(on)}>
+                              {d.charAt(0).toUpperCase() + d.slice(1)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                      Photograph one representative example.
+                    </Text>
+                    {renderPhotoButton(
+                      `asp-finding-${q.key}`,
+                      f.photo,
+                      (p) => setF({ photo: { ...f.photo, local: p } }),
+                      'Take Example Photo',
+                    )}
+                    <TextInput
+                      value={f.note}
+                      onChangeText={(t) => setF({ note: t })}
+                      placeholder="Observation note (panel location, what you see)…"
+                      placeholderTextColor={colors.mutedForeground}
+                      multiline
+                      style={[
+                        styles.noteInput,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
+                      ]}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+
+          {/* ── Product Picker ───────────────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Known Product — Catalog Match
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Select the probable product from the Known Product Catalog if identified.
+            </Text>
+            {discontinuedProductsQuery.isLoading ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <View style={styles.chipWrap}>
+                {(discontinuedProductsQuery.data?.products ?? []).map((prod: DiscontinuedProduct) => {
+                  const on = aspProductRecordId === prod.id;
+                  return (
+                    <Pressable
+                      key={prod.id}
+                      onPress={() => setAspProductRecordId(on ? null : prod.id)}
+                      style={chipStyle(on)}
+                    >
+                      <Text style={chipText(on)}>{prod.name}</Text>
+                    </Pressable>
+                  );
+                })}
+                {(discontinuedProductsQuery.data?.products ?? []).length === 0 ? (
+                  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                    No products in catalog. Add products via Profile → Known Product Catalog.
+                  </Text>
+                ) : null}
+              </View>
+            )}
+          </View>
+
+          {/* ── Compatibility Criteria ───────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Compatibility Criteria
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Rate each replacement-panel compatibility dimension.
+            </Text>
+            {ASP_COMPAT_QUESTIONS.map((q) => {
+              const val = aspCompat[q.key];
+              return (
+                <View key={q.key} style={{ gap: 4, marginTop: 6 }}>
+                  <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
+                    {q.label}
+                  </Text>
+                  <View style={styles.chipWrap}>
+                    {ASP_COMPAT_OPTIONS.map((opt) => {
+                      const on = val === opt;
+                      return (
+                        <Pressable
+                          key={opt}
+                          onPress={() =>
+                            setAspCompat((prev) => ({ ...prev, [q.key]: on ? undefined : opt }))
+                          }
+                          style={chipStyle(on)}
+                        >
+                          <Text style={chipText(on)}>{ASP_COMPAT_LABELS[opt]}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+            <Text style={[styles.qLabel, { color: colors.foreground, marginTop: 8 }]}>
+              Compatibility Basis
+            </Text>
+            <TextInput
+              value={aspCompatibilityBasis}
+              onChangeText={setAspCompatibilityBasis}
+              placeholder="Describe the basis for your compatibility ratings…"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              style={[
+                styles.noteInput,
+                {
+                  color: colors.foreground,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                },
+              ]}
+            />
+          </View>
+
+          {/* ── Conclusion ───────────────────────────────────────────────── */}
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Conclusion</Text>
+            <View style={styles.chipWrap}>
+              {ASP_CONCLUSION_VALUES.map((c) => {
+                const on = aspConclusion === c;
+                return (
+                  <Pressable
+                    key={c}
+                    onPress={() => setAspConclusion(on ? null : c)}
+                    style={chipStyle(on)}
+                  >
+                    <Text style={chipText(on)}>{ASP_CONCLUSION_LABELS[c]}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.qLabel, { color: colors.foreground, marginTop: 8 }]}>
+              Conclusion Basis {aspConclusion != null ? '(required)' : '(optional)'}
+            </Text>
+            <TextInput
+              value={aspConclusionBasis}
+              onChangeText={setAspConclusionBasis}
+              placeholder="Summarize the documented findings that support this conclusion…"
+              placeholderTextColor={colors.mutedForeground}
+              multiline
+              style={[
+                styles.noteInput,
+                {
+                  color: colors.foreground,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                },
+              ]}
+            />
+          </View>
+        </>
       ) : null}
 
       {showRap ? (

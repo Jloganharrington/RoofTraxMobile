@@ -2104,7 +2104,7 @@ export const RepairabilityAssessmentV3InputRoofType = {
 } as const;
 
 /**
- * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+ * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.
  * @nullable
  */
 export type RepairabilityAssessmentV3InputSidingType = typeof RepairabilityAssessmentV3InputSidingType[keyof typeof RepairabilityAssessmentV3InputSidingType] | null;
@@ -2194,6 +2194,259 @@ export interface VinylAssessmentProtocol {
 }
 
 /**
+ * @nullable
+ */
+export type AluminumSidingProtocolAssessmentConditionsLightingTechnique = typeof AluminumSidingProtocolAssessmentConditionsLightingTechnique[keyof typeof AluminumSidingProtocolAssessmentConditionsLightingTechnique] | null;
+
+
+export const AluminumSidingProtocolAssessmentConditionsLightingTechnique = {
+  raking_natural: 'raking_natural',
+  raking_supplemental: 'raking_supplemental',
+  diffuse_only: 'diffuse_only',
+} as const;
+
+export type AspElevationSurveyElevation = typeof AspElevationSurveyElevation[keyof typeof AspElevationSurveyElevation];
+
+
+export const AspElevationSurveyElevation = {
+  north: 'north',
+  south: 'south',
+  east: 'east',
+  west: 'west',
+  other: 'other',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AspElevationSurveyProfile = typeof AspElevationSurveyProfile[keyof typeof AspElevationSurveyProfile] | null;
+
+
+export const AspElevationSurveyProfile = {
+  single_8: 'single_8',
+  double_4: 'double_4',
+  double_5: 'double_5',
+  triple_3: 'triple_3',
+  vertical: 'vertical',
+  other: 'other',
+} as const;
+
+/**
+ * One surveyed aluminum-siding elevation. This non-destructive protocol records observed product/condition facts only; null gauge means not measured and is never inferred from the profile.
+ */
+export interface AspElevationSurvey {
+  elevation: AspElevationSurveyElevation;
+  /** @nullable */
+  label?: string | null;
+  /** @nullable */
+  profile?: AspElevationSurveyProfile;
+  /** @nullable */
+  exposureInches?: number | null;
+  /** @nullable */
+  gauge?: string | null;
+  /** @nullable */
+  finishColor?: string | null;
+  accessible: boolean;
+  /** @nullable */
+  inaccessibleReason?: string | null;
+  /** @nullable */
+  widePhotoId?: string | null;
+  /**
+     * Low-angle grazing-light frame for deformation visibility.
+     * @nullable
+     */
+  rakingPhotoId?: string | null;
+}
+
+export type AspTestSquareElevation = typeof AspTestSquareElevation[keyof typeof AspTestSquareElevation];
+
+
+export const AspTestSquareElevation = {
+  north: 'north',
+  south: 'south',
+  east: 'east',
+  west: 'west',
+  other: 'other',
+} as const;
+
+/**
+ * A count for one aluminum siding test area, not the entire elevation/building.
+ */
+export interface AspTestSquare {
+  elevation: AspTestSquareElevation;
+  /** @minimum 0 */
+  impactCount: number;
+  /** @nullable */
+  photoId?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+export type AspConditionFindingAnswer = typeof AspConditionFindingAnswer[keyof typeof AspConditionFindingAnswer];
+
+
+export const AspConditionFindingAnswer = {
+  yes: 'yes',
+  no: 'no',
+} as const;
+
+export type AspConditionFindingElevationsItem = typeof AspConditionFindingElevationsItem[keyof typeof AspConditionFindingElevationsItem];
+
+
+export const AspConditionFindingElevationsItem = {
+  north: 'north',
+  south: 'south',
+  east: 'east',
+  west: 'west',
+  other: 'other',
+} as const;
+
+export interface AspConditionFinding {
+  answer: AspConditionFindingAnswer;
+  elevations: AspConditionFindingElevationsItem[];
+  /** @nullable */
+  photoId?: string | null;
+  /** @nullable */
+  note?: string | null;
+}
+
+export type AluminumSidingProtocolCompatibilityProfileExposure = typeof AluminumSidingProtocolCompatibilityProfileExposure[keyof typeof AluminumSidingProtocolCompatibilityProfileExposure];
+
+
+export const AluminumSidingProtocolCompatibilityProfileExposure = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+export type AluminumSidingProtocolCompatibilityInterlockEngagement = typeof AluminumSidingProtocolCompatibilityInterlockEngagement[keyof typeof AluminumSidingProtocolCompatibilityInterlockEngagement];
+
+
+export const AluminumSidingProtocolCompatibilityInterlockEngagement = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+export type AluminumSidingProtocolCompatibilityGauge = typeof AluminumSidingProtocolCompatibilityGauge[keyof typeof AluminumSidingProtocolCompatibilityGauge];
+
+
+export const AluminumSidingProtocolCompatibilityGauge = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+export type AluminumSidingProtocolCompatibilityFinishColorGloss = typeof AluminumSidingProtocolCompatibilityFinishColorGloss[keyof typeof AluminumSidingProtocolCompatibilityFinishColorGloss];
+
+
+export const AluminumSidingProtocolCompatibilityFinishColorGloss = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+export type AluminumSidingProtocolCompatibilityEmbossedTexture = typeof AluminumSidingProtocolCompatibilityEmbossedTexture[keyof typeof AluminumSidingProtocolCompatibilityEmbossedTexture];
+
+
+export const AluminumSidingProtocolCompatibilityEmbossedTexture = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+export type AluminumSidingProtocolCompatibilityPanelLengthLayout = typeof AluminumSidingProtocolCompatibilityPanelLengthLayout[keyof typeof AluminumSidingProtocolCompatibilityPanelLengthLayout];
+
+
+export const AluminumSidingProtocolCompatibilityPanelLengthLayout = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+export type AluminumSidingProtocolCompatibilityFasteningMovement = typeof AluminumSidingProtocolCompatibilityFasteningMovement[keyof typeof AluminumSidingProtocolCompatibilityFasteningMovement];
+
+
+export const AluminumSidingProtocolCompatibilityFasteningMovement = {
+  matched: 'matched',
+  not_matched: 'not_matched',
+  not_assessed: 'not_assessed',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AluminumSidingProtocolConclusion = typeof AluminumSidingProtocolConclusion[keyof typeof AluminumSidingProtocolConclusion] | null;
+
+
+export const AluminumSidingProtocolConclusion = {
+  repair_supported: 'repair_supported',
+  repair_not_supported_product: 'repair_not_supported_product',
+  repair_not_supported_condition: 'repair_not_supported_condition',
+  undetermined_lab_recommended: 'undetermined_lab_recommended',
+  undetermined_access_limited: 'undetermined_access_limited',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AluminumSidingProtocolAssessmentConditions = {
+  /** @nullable */
+  airTempF?: number | null;
+  /** @nullable */
+  skyCondition?: string | null;
+  /** @nullable */
+  lightingTechnique?: AluminumSidingProtocolAssessmentConditionsLightingTechnique;
+  /** @nullable */
+  capturedAtUtc?: string | null;
+} | null;
+
+export type AluminumSidingProtocolFindings = {
+  impactDeformation?: AspConditionFinding;
+  coatingBreach?: AspConditionFinding;
+  substrateExposure?: AspConditionFinding;
+  nailHemCondition?: AspConditionFinding;
+  interlockDisplacement?: AspConditionFinding;
+  chalking?: AspConditionFinding;
+  finishVariance?: AspConditionFinding;
+  priorRepair?: AspConditionFinding;
+  coatingAdhesion?: AspConditionFinding;
+  collateralSoftMetal?: AspConditionFinding;
+};
+
+export type AluminumSidingProtocolCompatibility = {
+  profileExposure?: AluminumSidingProtocolCompatibilityProfileExposure;
+  interlockEngagement?: AluminumSidingProtocolCompatibilityInterlockEngagement;
+  gauge?: AluminumSidingProtocolCompatibilityGauge;
+  finishColorGloss?: AluminumSidingProtocolCompatibilityFinishColorGloss;
+  embossedTexture?: AluminumSidingProtocolCompatibilityEmbossedTexture;
+  panelLengthLayout?: AluminumSidingProtocolCompatibilityPanelLengthLayout;
+  fasteningMovement?: AluminumSidingProtocolCompatibilityFasteningMovement;
+};
+
+/**
+ * Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.
+ */
+export interface AluminumSidingProtocol {
+  /** @nullable */
+  assessmentConditions?: AluminumSidingProtocolAssessmentConditions;
+  elevations: AspElevationSurvey[];
+  /** @nullable */
+  referencePhotoId?: string | null;
+  testSquares: AspTestSquare[];
+  findings: AluminumSidingProtocolFindings;
+  /** @nullable */
+  productRecordId?: string | null;
+  compatibility: AluminumSidingProtocolCompatibility;
+  /** @nullable */
+  compatibilityBasis?: string | null;
+  /** @nullable */
+  conclusion?: AluminumSidingProtocolConclusion;
+  /** @nullable */
+  conclusionBasis?: string | null;
+}
+
+/**
  * Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName/assessorCredentials are IGNORED if sent — the server populates them from the inspector's profile.
  */
 export interface RepairabilityAssessmentV3Input {
@@ -2204,12 +2457,13 @@ export interface RepairabilityAssessmentV3Input {
   /** @nullable */
   roofType?: RepairabilityAssessmentV3InputRoofType;
   /**
-     * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum routes to the Product ID-supported non-repairability determination (no simulated repair).
+     * Siding material — vinyl runs the Vinyl Assessment Protocol; aluminum runs the non-destructive Aluminum Siding Forensic Inspection Protocol.
      * @nullable
      */
   sidingType?: RepairabilityAssessmentV3InputSidingType;
   rap?: RepairAttemptProtocol | null;
   vap?: VinylAssessmentProtocol | null;
+  asp?: AluminumSidingProtocol | null;
   recordedAtUtc: string;
 }
 

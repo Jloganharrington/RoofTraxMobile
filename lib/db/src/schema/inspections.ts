@@ -567,6 +567,100 @@ export interface VinylAssessmentProtocol {
   damage: Partial<Record<VapDamageCategoryKey, VapDamageFinding>>;
 }
 
+// Aluminum Siding Forensic Inspection Protocol (ASP) — aluminum siding only.
+// This protocol is expressly non-destructive: it records observed condition
+// and product compatibility without testing panel removal, fasteners, locks,
+// interlocks, or coating response through manipulation.
+export type AspElevation = 'north' | 'south' | 'east' | 'west' | 'other';
+export type AspPanelProfile = 'single_8' | 'double_4' | 'double_5' | 'triple_3' | 'vertical' | 'other';
+
+export interface AspElevationSurvey {
+  elevation: AspElevation;
+  label?: string | null;
+  profile?: AspPanelProfile | null;
+  exposureInches?: number | null;
+  /** Null means not measured; it is never inferred from the panel profile. */
+  gauge?: string | null;
+  finishColor?: string | null;
+  accessible: boolean;
+  inaccessibleReason?: string | null;
+  widePhotoId?: string | null;
+  /** Low-angle grazing-light frame. Required whenever this elevation carries
+   * a deformation finding because flat coated metal is legible in raking light. */
+  rakingPhotoId?: string | null;
+}
+
+export interface AspTestSquare {
+  elevation: AspElevation;
+  /** Characterizes this test area, not the whole elevation or building. */
+  impactCount: number;
+  photoId?: string | null;
+  note?: string | null;
+}
+
+/** Ordered — this is the report display order. */
+export type AspConditionKey =
+  | 'impactDeformation'
+  | 'coatingBreach'
+  | 'substrateExposure'
+  | 'nailHemCondition'
+  | 'interlockDisplacement'
+  | 'chalking'
+  | 'finishVariance'
+  | 'priorRepair'
+  | 'coatingAdhesion'
+  | 'collateralSoftMetal';
+
+export interface AspConditionFinding {
+  answer: RapYesNo;
+  elevations: AspElevation[];
+  photoId?: string | null;
+  note?: string | null;
+}
+
+export type AspLightingTechnique = 'raking_natural' | 'raking_supplemental' | 'diffuse_only';
+
+export interface AspAssessmentConditions {
+  airTempF?: number | null;
+  skyCondition?: string | null;
+  lightingTechnique?: AspLightingTechnique | null;
+  capturedAtUtc?: string | null;
+}
+
+/** Ordered — every criterion is a product/geometry compatibility observation,
+ * never a conclusion about a manipulated panel. */
+export type AspCompatibilityCriterionKey =
+  | 'profileExposure'
+  | 'interlockEngagement'
+  | 'gauge'
+  | 'finishColorGloss'
+  | 'embossedTexture'
+  | 'panelLengthLayout'
+  | 'fasteningMovement';
+
+export type AspCompatibilityVerdict = 'matched' | 'not_matched' | 'not_assessed';
+export type AspConclusion =
+  | 'repair_supported'
+  | 'repair_not_supported_product'
+  | 'repair_not_supported_condition'
+  | 'undetermined_lab_recommended'
+  | 'undetermined_access_limited';
+
+export interface AluminumSidingProtocol {
+  assessmentConditions?: AspAssessmentConditions | null;
+  elevations: AspElevationSurvey[];
+  referencePhotoId?: string | null;
+  testSquares: AspTestSquare[];
+  findings: Partial<Record<AspConditionKey, AspConditionFinding>>;
+  /** Link to the company's Known Product Catalog; the selected catalog row is
+   * tenant-scoped by the server before this reference is stored. */
+  productRecordId?: string | null;
+  compatibility: Partial<Record<AspCompatibilityCriterionKey, AspCompatibilityVerdict>>;
+  compatibilityBasis?: string | null;
+  conclusion?: AspConclusion | null;
+  conclusionBasis?: string | null;
+}
+
 export interface RepairabilitySystemFlow {
   // Roof flows only: which material's question flow was completed.
   roofMaterial?: RepairabilityRoofMaterial | null;
@@ -611,13 +705,14 @@ export interface RepairabilityAssessmentV3 {
   /** Empty unless warranted === 'yes'. */
   systems: Array<'roof' | 'siding'>;
   roofType?: 'asphalt_shingle' | null;
-  /** Siding material — vinyl runs the VAP; aluminum routes to the Product
-   * ID–supported non-repairability determination (no simulated repair). */
+  /** Siding material — vinyl runs VAP; aluminum runs the non-destructive ASP. */
   sidingType?: 'vinyl' | 'aluminum' | null;
   /** Present when the asphalt-shingle roof protocol was run. */
   rap?: RepairAttemptProtocol | null;
   /** Present when the vinyl-siding protocol was run. */
   vap?: VinylAssessmentProtocol | null;
+  /** Present when the aluminum-siding protocol was recorded. */
+  asp?: AluminumSidingProtocol | null;
   assessorName?: string | null; // server-populated
   assessorCredentials?: string | null; // server-populated
   recordedAtUtc: string;
@@ -1567,6 +1662,7 @@ export const BOILERPLATE_SECTION_KEYS = [
   'inspection_method',
   'caption_patterns',
   'rap_field_protocol',
+  'aluminum_siding_protocol',
   'attestation_block_a',
   'attestation_block_b',
   'attestation_block_c',
