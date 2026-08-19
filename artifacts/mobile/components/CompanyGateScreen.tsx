@@ -319,7 +319,7 @@ export function CompanyGateScreen() {
       {mode === 'choose' && (
         <>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Canvassing, Forensic Inspection and Project Management
+            Canvassing, Forensic Inspections and Team Management
           </Text>
           {message && (
             <Text style={[styles.error, { color: colors.destructive }]}>{message}</Text>
