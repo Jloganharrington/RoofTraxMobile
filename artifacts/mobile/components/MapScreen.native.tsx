@@ -30,6 +30,7 @@ import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { canEditPin, canResolveDnkVerification } from '@/lib/permissions';
+import { pinColorFor as resolvePinColor } from '@/lib/pinColor';
 
 const DEFAULT_REGION = {
   latitude: 39.8283,
@@ -142,20 +143,8 @@ export default function MapScreen() {
     setPendingPin(null);
   }
 
-  // Canvassers see every pin for team awareness, but pins dropped by other
-  // reps render as neutral grey — only their own pins are colored by workflow.
-  // Inspector field reps, managers, and admins always see workflow coloring
-  // since they coordinate across the full team.
-  // Do Not Knock pins show their insurance-verification outcome first.
   function pinColorFor(pin: (typeof pins)[number]) {
-    if (pin.dnkVerificationStatus === 'pending') return colors.dnkPending;
-    if (pin.dnkVerificationStatus === 'no_visible_damage') return colors.dnkNoVisibleDamage;
-    if (pin.dnkVerificationStatus === 'mailer_campaign') return colors.dnkMailerCampaign;
-    if (pin.doorKnockResult === 'do_not_knock') return colors.dnkNoVisibleDamage;
-    if (department === 'canvasser' && pin.userId !== user?.id) {
-      return colors.mutedForeground;
-    }
-    return pin.workflow === 'retail' ? colors.retail : colors.insurance;
+    return resolvePinColor(pin, user?.id, colors);
   }
 
   return (

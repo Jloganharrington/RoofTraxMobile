@@ -13,6 +13,7 @@ import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
 import { canEditPin, canResolveDnkVerification } from '@/lib/permissions';
+import { pinColorFor as resolvePinColor } from '@/lib/pinColor';
 
 // react-native-maps has no web renderer (its web entry is an
 // UnimplementedView stub), so the web build shows a plain list of pins
@@ -44,19 +45,8 @@ export default function MapScreenWeb() {
       })()
     : 'All reps';
 
-  // Canvassers see every pin for team awareness, but other reps' pins show
-  // as neutral grey — only their own pins are colored by workflow.
-  // Inspector field reps, managers, and admins always see workflow coloring.
-  // Do Not Knock pins show their insurance-verification outcome first.
   function dotColorFor(pin: (typeof pins)[number]) {
-    if (pin.dnkVerificationStatus === 'pending') return colors.dnkPending;
-    if (pin.dnkVerificationStatus === 'no_visible_damage') return colors.dnkNoVisibleDamage;
-    if (pin.dnkVerificationStatus === 'mailer_campaign') return colors.dnkMailerCampaign;
-    if (pin.doorKnockResult === 'do_not_knock') return colors.dnkNoVisibleDamage;
-    if (department === 'canvasser' && pin.userId !== user?.id) {
-      return colors.mutedForeground;
-    }
-    return pin.workflow === 'retail' ? colors.retail : colors.insurance;
+    return resolvePinColor(pin, user?.id, colors);
   }
 
   return (

@@ -39,6 +39,11 @@ const colors = {
     insurance: '#d97706',
     retail: '#0f766e',
     success: '#16a34a',
+    // Map pin ownership and retail outcome colors
+    pinOwner: '#2563eb',
+    pinOther: '#9ca3af',
+    pinNoContact: '#eab308',
+    pinCustomer: '#16a34a',
     // Retail Do Not Knock verification lifecycle
     dnkPending: '#7c3aed',
     dnkNoVisibleDamage: '#dc2626',
