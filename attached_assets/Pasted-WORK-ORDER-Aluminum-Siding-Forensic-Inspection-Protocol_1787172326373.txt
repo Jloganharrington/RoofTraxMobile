@@ -1,0 +1,189 @@
+WORK ORDER — Aluminum Siding Forensic Inspection Protocol (ASP)
+
+Repo: RoofTraxMobile · Base: origin/main @ 46d3e46 · Branch to create: aluminum-siding-protocol
+
+0. READ THIS FIRST — boundaries
+
+MOBILE IS UNFROZEN FOR THIS ORDER — one file only. The standing rule is never touch artifacts/mobile/. This order overrides that for exactly one file: artifacts/mobile/app/inspection-repairability.tsx. Everything else under artifacts/mobile/ stays frozen and FINAL proves it. Do not touch artifacts/mobile/lib/homeownerReport.ts — it has unrelated uncommitted work.
+
+Still binding:
+
+Never hand-edit generated client files. lib/api-zod/src/generated/** and lib/api-client-react/src/generated/** are outputs. Edit lib/api-spec/openapi.yaml and regenerate. This workspace keeps only linux-x64-glibc platform binaries, so on Replit both orval targets regenerate and vitest runs — use them.
+Server-side enforcement is authoritative. The mobile validation in Step 7 is a mirror for rep experience, never the gate.
+No DB migration. ASP lives inside the existing repairability_assessment jsonb, and boilerplate_sections.section_key is a Drizzle varchar with a TypeScript-only enum — not a pg enum. If you conclude a migration is needed, STOP and report.
+Legacy jsonb must keep parsing. That column holds v1, v2, and v3 shapes. Do not narrow any response schema.
+
+What this is. Aluminum siding currently dead-ends at a static "no simulated repair" card — no capture, no record, no report output. This adds the record end to end.
+
+The idea the whole thing rests on: the ASP is non-destructive. No panel removed, no fastener drawn, no coating cut, no simulated repair. Aluminum deforms plastically, so manipulation answers nothing a product analysis doesn't, and it would produce damage indistinguishable from what the assessment measures. The record therefore carries no manipulation outcomes and supports no finding about how a panel, nailing hem, or interlock would respond to manipulation. RAP (asphalt) and VAP (vinyl) are built entirely around that question; ASP is not. Any field, label, comment, or report sentence implying a manipulation outcome is a defect — flag it, don't write it.
+
+Docs are NOT in scope. Do not create anything under boiler-plate-docs/. Step 6 only adds the section key so the Library slot exists.
+
+FAST PATH — try before Step 1
+
+asp-source.patch (attached separately) is the exact source change, 14 files, no generated files. It was cut against 46d3e46 and verified to apply cleanly to a pristine checkout of it.
+
+git checkout -b aluminum-siding-protocol origin/main
+git apply --check asp-source.patch && git apply asp-source.patch && git status --short
+
+▶ CHECKPOINT FAST PATH — paste actual output of all three commands.
+
+Pass: skip to Step 2 (regenerate), then treat Steps 3–7 as verification only — confirm each change is present, don't re-implement. Then FINAL.
+Fail: say so, git checkout -- ., and work Steps 1→7 manually.
+STEP 1 — Record shape in lib/db · [LOCKED]
+
+File: lib/db/src/schema/inspections.ts. Add before export interface RepairabilitySystemFlow {:
+
+AspElevation = 'north' | 'south' | 'east' | 'west' | 'other'
+AspPanelProfile = 'single_8' | 'double_4' | 'double_5' | 'triple_3' | 'vertical' | 'other'
+AspElevationSurvey — elevation (req), label?, profile?, exposureInches?, gauge?, finishColor?, accessible (req boolean), inaccessibleReason?, widePhotoId?, rakingPhotoId?. Comment that null gauge means NOT MEASURED, never inferred from profile. Comment that rakingPhotoId is the low-angle grazing-light frame, required on any elevation carrying a deformation finding, because deformation in flat coated metal is legible only in raking light.
+AspTestSquare — elevation, impactCount, photoId?, note?. Comment that the count characterizes the test area, not the elevation or building.
+AspConditionKey — ordered, and this order is the report display order: impactDeformation, coatingBreach, substrateExposure, nailHemCondition, interlockDisplacement, chalking, finishVariance, priorRepair, coatingAdhesion, collateralSoftMetal
+AspConditionFinding — answer: RapYesNo, elevations: AspElevation[], photoId?, note?
+AspLightingTechnique = 'raking_natural' | 'raking_supplemental' | 'diffuse_only'
+AspAssessmentConditions — airTempF?, skyCondition?, lightingTechnique?, capturedAtUtc?
+AspCompatibilityCriterionKey — ordered: profileExposure, interlockEngagement, gauge, finishColorGloss, embossedTexture, panelLengthLayout, fasteningMovement
+AspCompatibilityVerdict = 'matched' | 'not_matched' | 'not_assessed'
+AspConclusion = 'repair_supported' | 'repair_not_supported_product' | 'repair_not_supported_condition' | 'undetermined_lab_recommended' | 'undetermined_access_limited'
+AluminumSidingProtocol — assessmentConditions?, elevations: AspElevationSurvey[], referencePhotoId?, testSquares: AspTestSquare[], findings: Partial<Record<AspConditionKey, AspConditionFinding>>, productRecordId?, compatibility: Partial<Record<AspCompatibilityCriterionKey, AspCompatibilityVerdict>>, compatibilityBasis?, conclusion?, conclusionBasis?
+
+Then on RepairabilityAssessmentV3, after vap, add asp?: AluminumSidingProtocol | null; and update the sidingType comment to say aluminum runs the ASP, which is non-destructive.
+
+productRecordId is a link, not a copy. Identification, discontinued status, and availability live on the inspection_products row. The ASP references it and never restates it.
+
+▶ CHECKPOINT 1 — paste output of npx tsc --build && echo LIBS OK and git diff --stat -- lib/db/.
+INTEGRATION: RepairabilityAssessmentV3 is read by the RAP/VAP paths and by legacy v1/v2 readers. Paste grep -n "version === 3\|version === 2" artifacts/api-server/src/lib/*.ts confirming the v1/v2 branches are untouched.
+
+STOP. Wait for confirmation.
+
+STEP 2 — OpenAPI + regenerate · [LOCKED]
+
+File: lib/api-spec/openapi.yaml. Add AspElevationSurvey, AspTestSquare, AspConditionFinding, AluminumSidingProtocol mirroring Step 1, before RepairabilitySystemFlow, in the existing VinylAssessmentProtocol/VapDamageFinding style. Required: AluminumSidingProtocol → [elevations, testSquares, findings, compatibility]; AspElevationSurvey → [elevation, accessible]; AspTestSquare → [elevation, impactCount] with minimum: 0; AspConditionFinding → [answer, elevations].
+
+Then on RepairabilityAssessmentV3Input, after vap:
+
+        asp:
+          oneOf:
+            - $ref: "#/components/schemas/AluminumSidingProtocol"
+            - type: "null"
+
+⚠️ This is the easy thing to miss. Adding the component schemas without adding asp to RepairabilityAssessmentV3Input produces types that exist but validators that silently drop the record. Then pnpm --filter @workspace/api-spec run codegen.
+
+▶ CHECKPOINT 2 — paste output of the codegen command, plus grep -c "impactDeformation" lib/api-zod/src/generated/api.ts and git status --short lib/api-zod/ lib/api-client-react/ | head -30. The grep must be > 0. If it's 0, asp didn't land on the input schema — fix before continuing.
+INTEGRATION: codegen rewrites the whole client. Paste git diff --stat --ignore-cr-at-eol lib/api-zod/src/generated/api.ts lib/api-client-react/src/generated/api.schemas.ts and confirm the only additions are ASP/aluminum types plus the sidingType comment. Any other endpoint changing shape means the spec drifted — STOP and report.
+
+STOP. Wait for confirmation.
+
+STEP 3 — Server validation and ownership checks · [LOCKED]
+
+This is where the security-relevant work is. Don't skip any part.
+
+3a. artifacts/api-server/src/lib/repairabilityRules.ts — add validateAsp(asp: AluminumSidingProtocol): string[] and wire into validateRepairabilityAssessmentV3:
+
+In the warranted !== 'yes' early-return branch, alongside the existing rap/vap/sidingType rejections: if ra.asp, push "An Aluminum Siding Protocol record only applies when the assessment is warranted and authorized."
+In the warranted branch, after the vap block: if ra.asp, require systems.includes('siding') && ra.sidingType === 'aluminum' (else "The Aluminum Siding Protocol only applies to aluminum siding assessments."), then errors.push(...validateAsp(ra.asp)).
+Mutual exclusion: if ra.vap && ra.asp, push "An assessment cannot carry both a Vinyl and an Aluminum Siding Protocol record."
+
+validateAsp — partial runs stay savable (unanswered is legal, same as RAP/VAP). Reject only: unknown elevation / profile; non-boolean accessible; accessible === false with no inaccessibleReason ("requires a reason"); accessible === true carrying one ("cannot carry an inaccessible reason"); exposureInches present and not positive; duplicate elevations keyed on label.trim() || elevation ("only be surveyed once"); test square with unknown elevation or impactCount not a non-negative integer; unknown condition key; answer==='yes' with zero elevations; answer==='no' with elevations; invalid or duplicate elevations in a finding; unknown compatibility criterion or verdict; unknown conclusion; conclusion set with no conclusionBasis ("requires its documented basis").
+
+3b. artifacts/api-server/src/routes/inspections.ts — the v3 PATCH branch builds a photoIds set from RAP and VAP ids and verifies each is a real inspection_photos row on this inspection and this company. ASP references far more photos and every one must go through that same check: asp.referencePhotoId, each elevation's widePhotoId and rakingPhotoId, each test square's photoId, each finding's photoId. Generalize the not-found message from "Repair Attempt Protocol photo(s)…" to "Protocol photo(s) not found on this inspection: …" — it now covers three protocols.
+
+3c. Same file — asp.productRecordId is a client-supplied id. Same ownership check: must be an inspection_products row matching this inspectionId and companyId, else 400. Identical trust problem as the photo ids; don't skip it.
+
+▶ CHECKPOINT 3 — paste output of cd artifacts/api-server && npx tsc --noEmit -p tsconfig.json && echo TSC OK and npx vitest run src/lib/__tests__/repairabilityRules.test.ts.
+INTEGRATION — name each and prove it: RAP on a non-asphalt roof still errors "asphalt-shingle"; VAP on non-vinyl siding still errors "only applies to vinyl siding"; systems/roofType/rap on a not-warranted assessment still error; a bogus rap1PhotoId still 400s. Paste the vitest output showing the pre-existing cases green, not just the new ones.
+
+STOP. Wait for confirmation.
+
+STEP 4 — aspSummary.ts + tests · [LOCKED]
+
+New: artifacts/api-server/src/lib/aspSummary.ts, modeled on vapScorecard.ts — pure functions over the stored jsonb, defensive against partial/legacy data.
+
+Exports: ASP_CONDITIONS (labels, display order), ASP_PHOTO_PRIORITY (impactDeformation first, then coatingBreach — report shows at most 2 examples), ASP_COMPATIBILITY_CRITERIA, ASP_CONCLUSION_LABELS, ASP_LIGHTING_LABELS, extractAsp, computeAspSummary, selectAspReportPhotos, buildAspReportSection, aspSummaryBriefLines.
+
+extractAsp returns null unless version === 3 and a findings object exists, matching extractVap's defensive shape.
+
+computeAspSummary produces: elevationsSurveyed, elevationsInaccessible, lightingTechnique, diffuseOnly, testSquares, totalTestSquareImpacts (tolerate NaN), conditions (display order, with affected elevations), affectedElevations (unique — an elevation counts once regardless of how many conditions it carries), compatibility (unreached criteria stay null), criteriaMatched/criteriaNotMatched/criteriaNotAssessed, conclusion/conclusionLabel/conclusionBasis, and deformationWithoutRakingPhoto — elevations with a deformation finding but no rakingPhotoId. That last is not a rejection: the finding stands and the gap is reported with it.
+
+aspSummaryBriefLines must always end with the non-destructive limit, and include the diffuse-light qualifier when diffuseOnly, the test-square scope limit when squares exist, and the missing-raking-frame line when applicable.
+
+No archive-only photo rule for ASP. Nothing is manipulated, so there's no post-repair archive shot to withhold. Do not add an exclusion predicate.
+
+New: artifacts/api-server/src/lib/__tests__/aspSummary.test.ts mirroring vapScorecard.test.ts — extract/null cases, unique-elevation counting, NaN tolerance, diffuseOnly, deformationWithoutRakingPhoto, verdict tallies, photo priority + de-duplication, brief-line qualifiers.
+
+▶ CHECKPOINT 4 — paste cd artifacts/api-server && npx vitest run src/lib/__tests__/aspSummary.test.ts.
+INTEGRATION: vapScorecard.ts is the template — prove you didn't disturb it. Paste npx vitest run src/lib/__tests__/vapScorecard.test.ts src/lib/__tests__/rapScorecard.test.ts fully green, and confirm isVapArchiveOnlyPhoto still excludes the VAP final archive photo from report output.
+
+STOP. Wait for confirmation.
+
+STEP 5 — Report + AI brief render · [LOCKED on content, REASONING OK on markup]
+
+routes/inspections.ts: const aspSection = buildAspReportSection(inspection.repairabilityAssessment); next to vapSection; aspSection: 'construction_fact' in the carrier-visibility map; aspSection into the compiled blob; aspSection?: AspReportSection | null on the compiledData type. Build aspSectionHtml guarded by carrierVisible('aspSection'): elevation-survey table, condition-determination table, compatibility table (assessed criteria only), conclusion + basis, then photos (per-elevation wide + raking, reference frame, up to 2 condition examples).
+
+In the repairability brief lines, replace the old static aluminum sentence: if an ASP record exists emit aspSummaryBriefLines; if sidingType === 'aluminum' with no ASP record emit "Aluminum Siding Protocol: not recorded. No condition survey or compatibility assessment was performed." It must never read as a completed non-repairability determination.
+
+The qualifiers are not optional. The rendered section always carries the non-destructive limit, plus the diffuse-light caveat, the test-square scope limit, and any missing-raking-frame note. These travel with the findings.
+
+reportTemplate.ts: add aspSectionHtml?: string | null, render as "Aluminum Siding Forensic Inspection", and fold it into the section numbering so Repairability Summary and Inspector Attestation still number correctly when present. proofPackageTemplate.ts: add aspSectionHtml to extras, push a supplemental section with the same title. sectionGeneration.ts: in the rap_narrative case, after the VAP brief lines, append ASP brief lines when a record exists.
+
+▶ CHECKPOINT 5 — paste cd artifacts/api-server && npx tsc --noEmit -p tsconfig.json && echo TSC OK and npx vitest run src/lib/__tests__/proofPackageTemplate.test.ts src/lib/__tests__/aiSummaryPrompt.test.ts.
+INTEGRATION — name each: a report with RAP only, and one with RAP+VAP, must number exactly as before (paste the assertion or rendered titles); the VAP section still renders for a vinyl claim; evidence manifest unaffected — paste npx vitest run src/lib/__tests__/evidenceChain.test.ts.
+
+STOP. Wait for confirmation.
+
+STEP 6 — BP library section key · [LOCKED]
+
+Add aluminum_siding_protocol in four places, immediately after rap_field_protocol in each:
+
+lib/db/src/schema/inspections.ts → BOILERPLATE_SECTION_KEYS
+artifacts/api-server/src/routes/library.ts → the PP wizard prompt's bullet list — "Non-destructive forensic inspection protocol for aluminum siding (no simulated repair)"
+artifacts/axiomrestore-web/src/pages/settings/LibraryPage.tsx → BP_SECTION_LABELS: "Aluminum Siding Protocol"
+artifacts/axiomrestore-web/src/lib/parseMdLibrary.ts → BP_LABEL_TO_KEY, both the spaced label and the snake_case key
+
+Do not create any file under boiler-plate-docs/.
+
+▶ CHECKPOINT 6 — paste cd artifacts/axiomrestore-web && npx tsc --noEmit -p tsconfig.json && echo WEB TSC OK and grep -rn "aluminum_siding_protocol" across those four paths (expect hits in all four).
+INTEGRATION: BP versioning must still create new rows, never mutate — confirm PUT /report-settings/bp-library/:sectionKey still computes MAX(version)+1. Paste the Library page with the new section visible and the existing 11 still listed.
+
+STOP. Wait for confirmation.
+
+STEP 7 — Mobile ASP capture screen · [LOCKED on data contract, REASONING OK on JSX]
+
+File: artifacts/mobile/app/inspection-repairability.tsx — this file only.
+
+Replace the showAluminumRoute static card with a real capture flow, following this file's existing VAP patterns (renderInstructionCard, renderPhotoButton, chipStyle/chipText, styles.card, note TextInputs). The UI is yours. Locked:
+
+Gating: const showAsp = warranted === 'yes' && systems.includes('siding') && sidingType === 'aluminum';
+
+Captured state: lighting technique + air temp + sky; elevation rows (add/remove, elevation, label when other, profile, exposure, gauge, finish color, accessible + reason, ASP1-W photo, ASP1-R photo); one reference photo; test-square rows (elevation, impact count, photo, note); the 10 condition determinations (yes/no → elevation multi-select + one example photo + note); product picker over inspection.products; the 7 compatibility criteria (matched / not matched / not assessed); conclusion + basis.
+
+Payload must match Step 1 exactly. Send asp: null on every non-aluminum save, including the not-warranted branch.
+
+Photo queueing: queue every new local capture through the existing queueProtocolPhoto before the assessment PATCH, exactly as RAP/VAP do — the outbox drains FIFO so rows exist when the assessment replays.
+
+⚠️ Known trap — map before you filter. Test-square photo ids are collected into an array indexed against the unfiltered rows. Filtering blank rows out before mapping gives every square after a blank one the wrong photo. Map first, filter second.
+
+Mirror the Step 3 gates locally so reps see the reason on the disabled save button instead of a 400: inaccessible-needs-reason, duplicate elevation, non-integer impact count, conclusion-needs-basis. Partial runs stay savable otherwise — never lose field work. Hydration: reopening restores every ASP answer, same as the VAP rehydration block.
+
+▶ CHECKPOINT 7 — paste cd artifacts/mobile && npx tsc --noEmit -p tsconfig.json && echo MOBILE TSC OK and git diff --stat -- artifacts/mobile/. The diff must list app/inspection-repairability.tsx and nothing else.
+INTEGRATION — prove in the running app: RAP flow — asphalt inspection, run RAP, save, reopen, scorecard and photos rehydrate; VAP flow — same for vinyl including the final archive photo; not-warranted gate still saves with no protocol record; new path — aluminum inspection, 2 elevations with wide+raking photos, one test square, one deformation finding with example photo, conclusion + basis, save, reopen, everything rehydrates. Paste the stored repairability_assessment jsonb for that inspection.
+
+STOP. Wait for confirmation.
+
+FINAL
+cd artifacts/api-server && npx vitest run
+cd ../.. && npx tsc --build && echo "LIBS OK"
+cd artifacts/api-server && npx tsc --noEmit -p tsconfig.json && echo "API OK"
+cd ../mobile && npx tsc --noEmit -p tsconfig.json && echo "MOBILE OK"
+cd ../axiomrestore-web && npx tsc --noEmit -p tsconfig.json && echo "WEB OK"
+cd ../.. && npx tsx artifacts/api-server/src/scripts/seed-acceptance-claim.ts
+git diff --stat -- artifacts/mobile/
+git diff --stat
+
+▶ FINAL CHECKPOINT — paste all of it, real output only. Required: full api-server vitest green, naming the pre-existing suites (rapScorecard, vapScorecard, repairabilityRules, readiness, proofPackageTemplate, evidenceChain, aiSummaryPrompt, contentPolicy) not just the new one; seed-acceptance-claim passing at its expected count; git diff --stat -- artifacts/mobile/ showing only app/inspection-repairability.tsx; no changes to homeownerReport.ts.
+
+Then report separately from the checkpoints: (1) anything you reasoned about rather than implemented as written; (2) anything in this order that looked wrong when you got to it; (3) anything you noticed but did not fix — per build-first-fix-later those go on the deferred list, do not fix them now.
+
+Acceptance
+
+An aluminum-siding inspection can capture a full ASP record on the phone; it survives save/reopen; the server rejects an ASP on a non-aluminum or not-warranted assessment, rejects foreign photo/product ids, and requires a basis for any recorded conclusion; the compiled report renders survey, determinations, compatibility, and conclusion with the non-destructive limit and every applicable qualifier attached; and RAP, VAP, and the legacy v1/v2 readers are provably untouched.
