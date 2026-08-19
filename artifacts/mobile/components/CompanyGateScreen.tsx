@@ -319,7 +319,7 @@ export function CompanyGateScreen() {
       {mode === 'choose' && (
         <>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Field pins, door knocks, and team tracking for storm restoration crews.
+            Canvassing, Forensic Inspection and Project Management
           </Text>
           {message && (
             <Text style={[styles.error, { color: colors.destructive }]}>{message}</Text>

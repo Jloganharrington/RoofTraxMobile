@@ -154,7 +154,7 @@ const FIPSA_TEMPLATE = `<!doctype html>
 <style>
   :root{
     --navy:#14263B;
-    --orange:#E8792B;
+    --orange:#D75308;
     --ink:#1a1a1a;
     --rule:#333;
   }

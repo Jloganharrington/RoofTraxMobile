@@ -1,15 +1,15 @@
 /**
  * AxiomRestore palette — sampled from the brand logo (navy roofline + orange
- * inspection lens). Deep navy surfaces for contrast, the logo's safety-
- * orange as the primary action color, and a clear amber vs. teal split for
- * insurance-workflow vs. retail-workflow pin accents so reps can tell the
- * two pin types apart at a glance.
+ * inspection lens). Deep navy surfaces for contrast, the logo's burnt-orange
+ * (#D75308, sampled from the "Restore" wordmark) as the primary action color,
+ * and a clear amber vs. teal split for insurance-workflow vs. retail-workflow
+ * pin accents so reps can tell the two pin types apart at a glance.
  */
 
 const colors = {
   light: {
     text: '#0f2244',
-    tint: '#f2801f',
+    tint: '#D75308',
 
     background: '#f5f7fa',
     foreground: '#0f2244',
@@ -17,7 +17,7 @@ const colors = {
     card: '#ffffff',
     cardForeground: '#0f2244',
 
-    primary: '#f2801f',
+    primary: '#D75308',
     primaryForeground: '#ffffff',
 
     secondary: '#132a4f',

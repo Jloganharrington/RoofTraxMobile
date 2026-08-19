@@ -102,7 +102,7 @@ const CO_TEMPLATE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Change Order</title>
 <style>
-  :root{ --navy:#14263B; --orange:#E8792B; --ink:#1a1a1a; --rule:#333; }
+  :root{ --navy:#14263B; --orange:#D75308; --ink:#1a1a1a; --rule:#333; }
   *{ box-sizing:border-box; }
   @page{ size:Letter; margin:0; }
   html,body{ margin:0; padding:0; }
