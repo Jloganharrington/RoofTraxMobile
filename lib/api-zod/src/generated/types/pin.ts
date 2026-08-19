@@ -7,6 +7,7 @@
  */
 import type { ContactOutcome } from './contactOutcome';
 import type { DamageType } from './damageType';
+import type { DnkVerificationStatus } from './dnkVerificationStatus';
 import type { DoorKnockResult } from './doorKnockResult';
 import type { PinWorkflow } from './pinWorkflow';
 import type { RetailData } from './retailData';
@@ -25,6 +26,7 @@ export interface Pin {
   doorKnockResult: DoorKnockResult | null;
   retailData: RetailData | null;
   contactOutcome: ContactOutcome | null;
+  dnkVerificationStatus: DnkVerificationStatus | null;
   /** @nullable */
   customerName: string | null;
   /** @nullable */

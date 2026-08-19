@@ -20,6 +20,7 @@
  *   lead_owner               pins.user_id
  *   managers                 every manager+ in the company
  *   lead_owner_and_managers  union, deduplicated
+ *   insurance_canvassers     canvassers assigned insurance or both workflows
  *
  * NEVER notify the actor about their own action.
  */
@@ -27,7 +28,7 @@
 import type { Role } from './vocabulary';
 
 export type NotificationGroup  = 'money' | 'claims' | 'my_work' | 'attention';
-export type RecipientRule      = 'assignee' | 'lead_owner' | 'managers' | 'lead_owner_and_managers' | 'direct_manager_or_admins';
+export type RecipientRule      = 'assignee' | 'lead_owner' | 'managers' | 'lead_owner_and_managers' | 'direct_manager_or_admins' | 'insurance_canvassers';
 export type NotificationFrequency = 'immediate' | 'daily' | 'weekly' | 'off';
 
 export const NOTIFICATION_FREQUENCIES: readonly NotificationFrequency[] = [
@@ -182,6 +183,16 @@ export const NOTIFICATION_CATALOG: readonly NotificationEntry[] = [
     group:          'my_work',
     minRole:        'field_rep',
     recipientRule:  'assignee',
+    defaultEmail:   false,
+    defaultPush:    true,
+    supportsDigest: false,
+  },
+  {
+    type:           'dnk_verification_requested',
+    label:          'Do Not Knock Needs Verification',
+    group:          'my_work',
+    minRole:        'field_rep',
+    recipientRule:  'insurance_canvassers',
     defaultEmail:   false,
     defaultPush:    true,
     supportsDigest: false,

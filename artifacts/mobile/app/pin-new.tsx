@@ -104,14 +104,14 @@ function ChoiceRow<T extends string>({
             style={[
               styles.choiceChip,
               {
-                backgroundColor: active ? (isDnk ? '#dc2626' : colors.primary) : colors.muted,
-                borderColor: isDnk ? '#dc2626' : colors.border,
+                  backgroundColor: active ? (isDnk ? colors.dnkPending : colors.primary) : colors.muted,
+                  borderColor: isDnk ? colors.dnkPending : colors.border,
               },
             ]}
           >
             <Text
               style={{
-                color: active ? '#fff' : isDnk ? '#dc2626' : colors.foreground,
+                color: active ? '#fff' : isDnk ? colors.dnkPending : colors.foreground,
                 fontSize: 13,
                 fontWeight: '600',
               }}
@@ -190,6 +190,7 @@ export default function PinNewScreen() {
   const [apptMin, setApptMin] = useState(0);
 
   const isRetail = workflow === 'retail';
+  const isDoNotKnock = isRetail && doorKnockResult === 'do_not_knock';
   const canPickWorkflow =
     workflowAssignment === 'insurance_retail' || role === 'admin' || role === 'super_admin';
 
@@ -242,7 +243,7 @@ export default function PinNewScreen() {
           workflow,
           damageType: !isRetail ? damageType ?? undefined : undefined,
           doorKnockResult: isRetail ? doorKnockResult ?? undefined : undefined,
-          photoUrl: photoUrl ?? undefined,
+          photoUrl: !isDoNotKnock ? photoUrl ?? undefined : undefined,
           contactOutcome: !isRetail ? contactOutcome ?? undefined : undefined,
           customerName:
             !isRetail && contactOutcome === 'call_to_schedule' ? customerName.trim() : undefined,
@@ -250,7 +251,7 @@ export default function PinNewScreen() {
             !isRetail && contactOutcome === 'call_to_schedule' ? customerPhone.trim() : undefined,
           // Canvassers always use null (Canvassing); other roles use their selection.
           externalLeadSource: isCanvasser ? undefined : (leadSource ?? undefined),
-          retailData: isRetail
+          retailData: isRetail && !isDoNotKnock
             ? {
                 ownerName1,
                 ownerName2: ownerName2 || undefined,
@@ -411,6 +412,18 @@ export default function PinNewScreen() {
             onChange={setDoorKnockResult}
           />
 
+          {isDoNotKnock ? (
+            <View style={[styles.dnkCard, { backgroundColor: `${colors.dnkPending}12`, borderColor: colors.dnkPending }]}>
+              <Icon name="shield" size={20} color={colors.dnkPending} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.dnkTitle, { color: colors.dnkPending }]}>Insurance verification needed</Text>
+                <Text style={[styles.dnkBody, { color: colors.mutedForeground }]}>
+                  No other details are needed. An insurance canvasser will verify whether damage is visible.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
           {/* Appointment scheduler — expands when rep selects "Appointment" */}
           {doorKnockResult === 'appointment' && (
             <View style={[styles.apptCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -533,6 +546,8 @@ export default function PinNewScreen() {
             ]}
             placeholderTextColor={colors.mutedForeground}
           />
+            </>
+          )}
         </>
       )}
 
@@ -541,7 +556,7 @@ export default function PinNewScreen() {
           Photo of front of home
         </Text>
       )}
-      <Pressable
+      {!isDoNotKnock && <Pressable
         onPress={handlePickPhoto}
         style={[
           styles.photoButton,
@@ -560,7 +575,7 @@ export default function PinNewScreen() {
             </Text>
           </>
         )}
-      </Pressable>
+      </Pressable>}
 
       {(() => {
         const missingCustomerInfo =
@@ -642,6 +657,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 12,
   },
+  dnkCard: {
+    flexDirection: 'row',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 4,
+  },
+  dnkTitle: { fontSize: 14, fontWeight: '700', marginBottom: 3 },
+  dnkBody: { fontSize: 13, lineHeight: 18 },
   saveButton: {
     borderRadius: 12,
     paddingVertical: 14,

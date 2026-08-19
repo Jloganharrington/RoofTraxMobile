@@ -72,8 +72,11 @@ function AuthenticatedStack() {
         data.changeOrderId
       ) {
         router.push('/(tabs)/change-orders');
+      } else if (data.pinId) {
+        // A Do Not Knock verification notification links to the map, where the
+        // insurance canvasser can open and resolve the pending pin.
+        router.push('/map');
       } else {
-        // pinId-only or any other type → home tab (pin list).
         router.push('/(tabs)');
       }
     });

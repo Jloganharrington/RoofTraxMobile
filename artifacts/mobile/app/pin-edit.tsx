@@ -16,7 +16,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { Icon } from '@/components/Icon';
 import { CalendarPicker } from '@/components/CalendarPicker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useUpdatePin, useSetPinAppointment } from '@workspace/api-client-react';
+import {
+  getListPinsQueryKey,
+  useResolveDnkVerification,
+  useSetPinAppointment,
+  useUpdatePin,
+} from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import type {
   ContactOutcome,
   DamageType,
@@ -25,7 +31,9 @@ import type {
   PinWorkflow,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { useProfile } from '@/hooks/useProfile';
 import { uploadFile } from '@/lib/upload';
+import { canResolveDnkVerification } from '@/lib/permissions';
 
 /** Strip non-digits and format as (XXX) XXX-XXXX */
 function formatPhone(raw: string): string {
@@ -95,14 +103,14 @@ function ChoiceRow<T extends string>({
             style={[
               styles.choiceChip,
               {
-                backgroundColor: active ? (isDnk ? '#dc2626' : colors.primary) : colors.muted,
-                borderColor: isDnk ? '#dc2626' : colors.border,
+                  backgroundColor: active ? (isDnk ? colors.dnkPending : colors.primary) : colors.muted,
+                  borderColor: isDnk ? colors.dnkPending : colors.border,
               },
             ]}
           >
             <Text
               style={{
-                color: active ? '#fff' : isDnk ? '#dc2626' : colors.foreground,
+                color: active ? '#fff' : isDnk ? colors.dnkPending : colors.foreground,
                 fontSize: 13,
                 fontWeight: '600',
               }}
@@ -118,9 +126,12 @@ function ChoiceRow<T extends string>({
 
 export default function PinEditScreen() {
   const colors = useColors();
+  const queryClient = useQueryClient();
+  const { role, department, workflowAssignment } = useProfile();
   const { pin: pinParam } = useLocalSearchParams<{ pin: string }>();
   const updatePin = useUpdatePin();
   const setAppointment = useSetPinAppointment();
+  const resolveDnkVerification = useResolveDnkVerification();
 
   const pin: Pin | null = (() => {
     try {
@@ -137,6 +148,7 @@ export default function PinEditScreen() {
   const [doorKnockResult, setDoorKnockResult] = useState<DoorKnockResult | null>(
     pin?.doorKnockResult ?? null,
   );
+  const isDoNotKnock = isRetail && doorKnockResult === 'do_not_knock';
   const [contactOutcome, setContactOutcome] = useState<ContactOutcome | null>(
     pin?.contactOutcome ?? null,
   );
@@ -189,6 +201,38 @@ export default function PinEditScreen() {
   }
 
   const pinId = pin.id;
+  const canResolvePendingDnk = canResolveDnkVerification(
+    role,
+    department,
+    workflowAssignment,
+    pin,
+  );
+  const dnkColor =
+    pin.dnkVerificationStatus === 'no_visible_damage'
+      ? colors.dnkNoVisibleDamage
+      : pin.dnkVerificationStatus === 'mailer_campaign'
+        ? colors.dnkMailerCampaign
+        : colors.dnkPending;
+  const dnkLabel =
+    pin.dnkVerificationStatus === 'no_visible_damage'
+      ? 'No Visible Damage'
+      : pin.dnkVerificationStatus === 'mailer_campaign'
+        ? 'Mailer Campaign'
+        : 'Insurance verification needed';
+
+  function handleResolveDnk(status: 'no_visible_damage' | 'mailer_campaign') {
+    resolveDnkVerification.mutate(
+      { pinId, data: { status } },
+      {
+        onSuccess: () => {
+          void queryClient.invalidateQueries({ queryKey: getListPinsQueryKey() });
+          router.back();
+        },
+        onError: () =>
+          Alert.alert('Could not update pin', 'Try again or check your network connection.'),
+      },
+    );
+  }
 
   async function handlePickPhoto() {
     const result = await ImagePicker.launchCameraAsync({
@@ -235,13 +279,13 @@ export default function PinEditScreen() {
         data: {
           damageType: !isRetail ? damageType ?? undefined : undefined,
           doorKnockResult: isRetail ? doorKnockResult ?? undefined : undefined,
-          photoUrl: photoUrl ?? undefined,
+          photoUrl: !isDoNotKnock ? photoUrl ?? undefined : undefined,
           contactOutcome: !isRetail ? contactOutcome ?? undefined : undefined,
           customerName:
             !isRetail && contactOutcome === 'call_to_schedule' ? customerName.trim() : undefined,
           customerPhone:
             !isRetail && contactOutcome === 'call_to_schedule' ? customerPhone.trim() : undefined,
-          retailData: isRetail
+          retailData: isRetail && !isDoNotKnock
             ? {
                 ownerName1,
                 ownerName2: ownerName2 || undefined,
@@ -332,15 +376,49 @@ export default function PinEditScreen() {
         </>
       ) : (
         <>
-          <Text style={[styles.label, { color: colors.foreground }]}>Door knock result</Text>
-          <ChoiceRow
-            options={DOOR_KNOCK_RESULTS}
-            value={doorKnockResult}
-            onChange={setDoorKnockResult}
-          />
+          {isDoNotKnock ? (
+            <View style={[styles.dnkCard, { backgroundColor: `${dnkColor}12`, borderColor: dnkColor }]}>
+              <Icon name="shield" size={20} color={dnkColor} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <View>
+                  <Text style={[styles.dnkTitle, { color: dnkColor }]}>{dnkLabel}</Text>
+                  <Text style={[styles.dnkBody, { color: colors.mutedForeground }]}>
+                    {pin.dnkVerificationStatus === 'pending'
+                      ? 'No other pin details are required. Verify whether damage is visible from the property.'
+                      : 'This Do Not Knock verification has been completed.'}
+                  </Text>
+                </View>
+                {canResolvePendingDnk && pin.dnkVerificationStatus === 'pending' && (
+                  <View style={styles.dnkActions}>
+                    <Pressable
+                      onPress={() => handleResolveDnk('no_visible_damage')}
+                      disabled={resolveDnkVerification.isPending}
+                      style={[styles.dnkAction, { backgroundColor: colors.dnkNoVisibleDamage }]}
+                    >
+                      <Text style={styles.dnkActionText}>No Visible Damage</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleResolveDnk('mailer_campaign')}
+                      disabled={resolveDnkVerification.isPending}
+                      style={[styles.dnkAction, { backgroundColor: colors.dnkMailerCampaign }]}
+                    >
+                      <Text style={[styles.dnkActionText, { color: colors.foreground }]}>Mailer Campaign</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={[styles.label, { color: colors.foreground }]}>Door knock result</Text>
+              <ChoiceRow
+                options={DOOR_KNOCK_RESULTS}
+                value={doorKnockResult}
+                onChange={setDoorKnockResult}
+              />
 
-          {/* Appointment scheduler — expands when rep selects "Appointment" */}
-          {doorKnockResult === 'appointment' && (
+              {/* Appointment scheduler — expands when rep selects "Appointment" */}
+              {doorKnockResult === 'appointment' && (
             <View style={[styles.apptCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.apptSummary, { color: colors.primary }]}>
                 📅 {apptSummary(apptDate, apptHour, apptMin)}
@@ -396,7 +474,7 @@ export default function PinEditScreen() {
                 ))}
               </View>
             </View>
-          )}
+              )}
 
           <Text style={[styles.label, { color: colors.foreground }]}>Homeowner</Text>
           <TextInput
@@ -461,6 +539,8 @@ export default function PinEditScreen() {
             ]}
             placeholderTextColor={colors.mutedForeground}
           />
+            </>
+          )}
         </>
       )}
 
@@ -469,7 +549,7 @@ export default function PinEditScreen() {
           Photo of front of home
         </Text>
       )}
-      <Pressable
+      {!isDoNotKnock && <Pressable
         onPress={handlePickPhoto}
         style={[
           styles.photoButton,
@@ -488,9 +568,9 @@ export default function PinEditScreen() {
             </Text>
           </>
         )}
-      </Pressable>
+      </Pressable>}
 
-      {(() => {
+      {(!isDoNotKnock || pin.doorKnockResult !== 'do_not_knock') && (() => {
         const missingCustomerInfo =
           !isRetail &&
           contactOutcome === 'call_to_schedule' &&
@@ -569,6 +649,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 12,
   },
+  dnkCard: {
+    flexDirection: 'row',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 4,
+  },
+  dnkTitle: { fontSize: 14, fontWeight: '700', marginBottom: 3 },
+  dnkBody: { fontSize: 13, lineHeight: 18 },
+  dnkActions: { gap: 8 },
+  dnkAction: { borderRadius: 9, paddingVertical: 11, paddingHorizontal: 12, alignItems: 'center' },
+  dnkActionText: { color: '#ffffff', fontWeight: '700', fontSize: 13 },
   saveButton: {
     borderRadius: 12,
     paddingVertical: 14,

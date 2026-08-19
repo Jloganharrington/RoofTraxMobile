@@ -162,6 +162,22 @@ async function resolveRecipients({
     for (const m of mgrs) ids.add(m.userId);
   }
 
+  if (recipientRule === 'insurance_canvassers') {
+    const canvassers = await db
+      .select({ userId: userProfilesTable.userId })
+      .from(userProfilesTable)
+      .innerJoin(usersTable, eq(usersTable.id, userProfilesTable.userId))
+      .where(
+        and(
+          eq(usersTable.companyId, companyId),
+          eq(userProfilesTable.department, 'canvasser'),
+          inArray(userProfilesTable.workflowAssignment, ['insurance', 'insurance_retail']),
+          isNull(usersTable.deactivatedAt),
+        ),
+      );
+    for (const canvasser of canvassers) ids.add(canvasser.userId);
+  }
+
   if (recipientRule === 'direct_manager_or_admins') {
     // Look up the terminated/target user's direct manager. If set and active,
     // notify only them. Otherwise fall back to all admins in the company.

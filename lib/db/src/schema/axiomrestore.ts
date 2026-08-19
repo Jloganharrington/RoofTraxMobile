@@ -39,11 +39,19 @@ export const CONTACT_OUTCOMES = [
   'priority_inspection',
   'call_to_schedule',
 ] as const;
+// A retail Do Not Knock is reviewed by an insurance canvasser before it is
+// finalized. Null means the pin is not part of the Do Not Knock workflow.
+export const DNK_VERIFICATION_STATUSES = [
+  'pending',
+  'no_visible_damage',
+  'mailer_campaign',
+] as const;
 
 export type PinWorkflow = (typeof PIN_WORKFLOWS)[number];
 export type DamageType = (typeof DAMAGE_TYPES)[number];
 export type DoorKnockResult = (typeof DOOR_KNOCK_RESULTS)[number];
 export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
+export type DnkVerificationStatus = (typeof DNK_VERIFICATION_STATUSES)[number];
 
 // REPORT_DATA v2 — an individual inspector certification (name, issuing
 // body, cert number, expiry ISO date). Stored on the profile, surfaced into
@@ -169,6 +177,11 @@ export const pinsTable = pgTable('pins', {
   doorKnockResult: varchar('door_knock_result', { enum: DOOR_KNOCK_RESULTS }),
   retailData: jsonb('retail_data').$type<RetailData>(),
   contactOutcome: varchar('contact_outcome', { enum: CONTACT_OUTCOMES }),
+  // Set to pending when a retail canvasser records Do Not Knock. Only an
+  // insurance-capable canvasser may resolve this through the dedicated route.
+  dnkVerificationStatus: varchar('dnk_verification_status', {
+    enum: DNK_VERIFICATION_STATUSES,
+  }),
   customerName: text('customer_name'),
   customerPhone: text('customer_phone'),
   status: varchar('status').notNull().default('active'),

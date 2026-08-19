@@ -552,6 +552,15 @@ export const ContactOutcome = {
   call_to_schedule: 'call_to_schedule',
 } as const;
 
+export type DnkVerificationStatus = typeof DnkVerificationStatus[keyof typeof DnkVerificationStatus];
+
+
+export const DnkVerificationStatus = {
+  pending: 'pending',
+  no_visible_damage: 'no_visible_damage',
+  mailer_campaign: 'mailer_campaign',
+} as const;
+
 export type ProfileThemeProperty = typeof ProfileThemeProperty[keyof typeof ProfileThemeProperty];
 
 
@@ -873,6 +882,7 @@ export interface Pin {
   doorKnockResult: DoorKnockResult | null;
   retailData: RetailData | null;
   contactOutcome: ContactOutcome | null;
+  dnkVerificationStatus: DnkVerificationStatus | null;
   /** @nullable */
   customerName: string | null;
   /** @nullable */
@@ -929,6 +939,18 @@ export interface UpdatePinInput {
   contactOutcome?: ContactOutcome;
   customerName?: string;
   customerPhone?: string;
+}
+
+export type ResolveDnkVerificationInputStatus = typeof ResolveDnkVerificationInputStatus[keyof typeof ResolveDnkVerificationInputStatus];
+
+
+export const ResolveDnkVerificationInputStatus = {
+  no_visible_damage: 'no_visible_damage',
+  mailer_campaign: 'mailer_campaign',
+} as const;
+
+export interface ResolveDnkVerificationInput {
+  status: ResolveDnkVerificationInputStatus;
 }
 
 export interface BulkPinInput {

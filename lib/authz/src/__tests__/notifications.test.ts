@@ -2,9 +2,9 @@
  * Notification catalog — unit tests.
  *
  * Verifies:
- *   - all 20 types are present in catalog order
- *   - catalogForRole('field_rep') returns the 10 eligible types
- *   - catalogForRole('manager')   returns all 20
+ *   - all 21 types are present in catalog order
+ *   - catalogForRole('field_rep') returns the 11 eligible types
+ *   - catalogForRole('manager')   returns all 21
  *   - manager-only types are absent from the field_rep list
  *   - findNotificationEntry works for known and unknown keys
  *   - supportsDigest=false for MY_WORK and ATTENTION groups
@@ -42,12 +42,13 @@ const FIELD_REP_ELIGIBLE_TYPES = [
   'inspection_assigned',
   'inspection_scheduled',
   'appointment_assigned',
+  'dnk_verification_requested',
   'completion_certificate_signed',
 ];
 
 describe('NOTIFICATION_CATALOG', () => {
-  it('contains exactly 20 entries', () => {
-    expect(NOTIFICATION_CATALOG).toHaveLength(20);
+  it('contains exactly 21 entries', () => {
+    expect(NOTIFICATION_CATALOG).toHaveLength(21);
   });
 
   it('covers the four expected groups', () => {
@@ -82,9 +83,9 @@ describe('NOTIFICATION_CATALOG', () => {
 });
 
 describe('catalogForRole', () => {
-  it('field_rep — returns exactly 10 types', () => {
+  it('field_rep — returns exactly 11 types', () => {
     const result = catalogForRole('field_rep');
-    expect(result).toHaveLength(10);
+    expect(result).toHaveLength(11);
   });
 
   it('field_rep — contains all expected assignee / lead_owner types', () => {
@@ -101,16 +102,16 @@ describe('catalogForRole', () => {
     }
   });
 
-  it('manager — returns all 20 types', () => {
-    expect(catalogForRole('manager')).toHaveLength(20);
+  it('manager — returns all 21 types', () => {
+    expect(catalogForRole('manager')).toHaveLength(21);
   });
 
-  it('admin — returns all 20 types', () => {
-    expect(catalogForRole('admin')).toHaveLength(20);
+  it('admin — returns all 21 types', () => {
+    expect(catalogForRole('admin')).toHaveLength(21);
   });
 
-  it('super_admin — returns all 20 types', () => {
-    expect(catalogForRole('super_admin')).toHaveLength(20);
+  it('super_admin — returns all 21 types', () => {
+    expect(catalogForRole('super_admin')).toHaveLength(21);
   });
 
   it('manager result includes all field_rep-eligible types', () => {

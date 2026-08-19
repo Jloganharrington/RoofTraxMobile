@@ -39,6 +39,10 @@ const colors = {
     insurance: '#d97706',
     retail: '#0f766e',
     success: '#16a34a',
+    // Retail Do Not Knock verification lifecycle
+    dnkPending: '#7c3aed',
+    dnkNoVisibleDamage: '#dc2626',
+    dnkMailerCampaign: '#eab308',
   },
 
   radius: 12,

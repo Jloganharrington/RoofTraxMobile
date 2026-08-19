@@ -29,7 +29,7 @@ import { useColors } from '@/hooks/useColors';
 import { useCurrentLocation } from '@/hooks/useCurrentLocation';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
-import { canEditPin } from '@/lib/permissions';
+import { canEditPin, canResolveDnkVerification } from '@/lib/permissions';
 
 const DEFAULT_REGION = {
   latitude: 39.8283,
@@ -43,7 +43,7 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const { coords, permissionDenied, isLoading: locLoading } =
     useCurrentLocation();
-  const { role, department } = useProfile();
+  const { role, department, workflowAssignment } = useProfile();
   const { user } = useAuth();
   const isManagerOrAdmin = role === 'manager' || role === 'admin';
 
@@ -146,9 +146,12 @@ export default function MapScreen() {
   // reps render as neutral grey — only their own pins are colored by workflow.
   // Inspector field reps, managers, and admins always see workflow coloring
   // since they coordinate across the full team.
-  // Do-Not-Knock pins are always red regardless of viewer or ownership.
+  // Do Not Knock pins show their insurance-verification outcome first.
   function pinColorFor(pin: (typeof pins)[number]) {
-    if (pin.doorKnockResult === 'do_not_knock') return '#dc2626';
+    if (pin.dnkVerificationStatus === 'pending') return colors.dnkPending;
+    if (pin.dnkVerificationStatus === 'no_visible_damage') return colors.dnkNoVisibleDamage;
+    if (pin.dnkVerificationStatus === 'mailer_campaign') return colors.dnkMailerCampaign;
+    if (pin.doorKnockResult === 'do_not_knock') return colors.dnkNoVisibleDamage;
     if (department === 'canvasser' && pin.userId !== user?.id) {
       return colors.mutedForeground;
     }
@@ -182,12 +185,21 @@ export default function MapScreen() {
             pinColor={pinColorFor(pin)}
             title={pin.address ?? `${pin.latitude.toFixed(4)}, ${pin.longitude.toFixed(4)}`}
             description={
-              pin.workflow === 'retail'
-                ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
-                : `Insurance · ${pin.damageType ?? 'unspecified'}`
+              pin.dnkVerificationStatus === 'pending'
+                ? 'Retail · Do Not Knock · Insurance verification needed'
+                : pin.dnkVerificationStatus === 'no_visible_damage'
+                  ? 'Retail · Do Not Knock · No Visible Damage'
+                  : pin.dnkVerificationStatus === 'mailer_campaign'
+                    ? 'Retail · Do Not Knock · Mailer Campaign'
+                    : pin.workflow === 'retail'
+                      ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
+                      : `Insurance · ${pin.damageType ?? 'unspecified'}`
             }
             onCalloutPress={() => {
-              if (!canEditPin(role, user?.id, pin.userId)) return;
+              if (
+                !canEditPin(role, user?.id, pin.userId) &&
+                !canResolveDnkVerification(role, department, workflowAssignment, pin)
+              ) return;
               router.push({ pathname: '/pin-edit', params: { pin: JSON.stringify(pin) } });
             }}
           />

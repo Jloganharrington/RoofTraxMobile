@@ -86,7 +86,11 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
   const { id: actorId, companyId } = req.user;
   const [profileRow, companyRow] = await Promise.all([
     db
-      .select({ role: userProfilesTable.role, department: userProfilesTable.department })
+      .select({
+        role: userProfilesTable.role,
+        department: userProfilesTable.department,
+        workflowAssignment: userProfilesTable.workflowAssignment,
+      })
       .from(userProfilesTable)
       .where(eq(userProfilesTable.userId, actorId))
       .then(rows => rows[0]),
@@ -101,7 +105,7 @@ export async function loadActorCtx(req: Request): Promise<ActorCtx | null> {
     companyId,
     role:               (profileRow?.role ?? 'field_rep') as Role,
     department:         (profileRow?.department ?? null) as ActorCtx['department'],
-    workflowAssignment: null,
+    workflowAssignment: (profileRow?.workflowAssignment ?? null) as ActorCtx['workflowAssignment'],
     ppTier:             companyRow?.ppTier ?? 'crm',
     subscriptionLevel:  companyRow?.subscriptionLevel ?? 'none',
     // ownerId is intentionally absent here — handlers supply it when checking

@@ -1340,6 +1340,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /pins/{pinId}/dnk-verification:
+    patch:
+      tags: [Pins]
+      operationId: resolveDnkVerification
+      summary: Resolve a retail Do Not Knock verification
+      description: >-
+        Insurance canvassers can resolve a pending retail Do Not Knock as
+        either No Visible Damage or Mailer Campaign. Managers and admins may
+        resolve it for operational coverage.
+      parameters:
+        - name: pinId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveDnkVerificationInput"
+      responses:
+        "200":
+          description: Do Not Knock verification resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinEnvelope"
+        "400":
+          description: Pin is not awaiting a Do Not Knock verification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Only insurance canvassers and managers may resolve this verification.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Pin not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /pins/{pinId}/appointment:
     patch:
       tags: [Pins]
@@ -8575,10 +8622,13 @@ components:
       enum: [roof, siding, roof_and_siding]
     DoorKnockResult:
       type: string
-      enum: [no_answer, no_appointment, appointment]
+      enum: [no_answer, no_appointment, appointment, do_not_knock]
     ContactOutcome:
       type: string
       enum: [no_soliciting, priority_inspection, call_to_schedule]
+    DnkVerificationStatus:
+      type: string
+      enum: [pending, no_visible_damage, mailer_campaign]
 
     Profile:
       type: object
@@ -8972,6 +9022,7 @@ components:
           doorKnockResult,
           retailData,
           contactOutcome,
+          dnkVerificationStatus,
           customerName,
           customerPhone,
           status,
@@ -9008,6 +9059,10 @@ components:
         contactOutcome:
           oneOf:
             - $ref: "#/components/schemas/ContactOutcome"
+            - type: "null"
+        dnkVerificationStatus:
+          oneOf:
+            - $ref: "#/components/schemas/DnkVerificationStatus"
             - type: "null"
         customerName:
           type: [string, "null"]
@@ -9103,6 +9158,13 @@ components:
           type: string
         customerPhone:
           type: string
+    ResolveDnkVerificationInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [no_visible_damage, mailer_campaign]
 
     BulkPinInput:
       type: object

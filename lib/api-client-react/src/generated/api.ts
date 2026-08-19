@@ -185,6 +185,7 @@ import type {
   RegisterPushTokenInput,
   ReportBrandingEnvelope,
   ResearchJurisdictionCodes200,
+  ResolveDnkVerificationInput,
   ReverseGeocodeCoordinatesParams,
   ReverseGeocodeResponse,
   ScheduledInspectionListEnvelope,
@@ -3070,6 +3071,79 @@ export const useDeletePin = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getDeletePinMutationOptions(options));
+    }
+
+export const getResolveDnkVerificationUrl = (pinId: string,) => {
+
+
+
+
+  return `/api/pins/${pinId}/dnk-verification`
+}
+
+/**
+ * Insurance canvassers can resolve a pending retail Do Not Knock as either No Visible Damage or Mailer Campaign. Managers and admins may resolve it for operational coverage.
+ * @summary Resolve a retail Do Not Knock verification
+ */
+export const resolveDnkVerification = async (pinId: string,
+    resolveDnkVerificationInput: ResolveDnkVerificationInput, options?: RequestInit): Promise<PinEnvelope> => {
+
+  return customFetch<PinEnvelope>(getResolveDnkVerificationUrl(pinId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resolveDnkVerificationInput)
+  }
+);}
+
+
+
+
+
+export const getResolveDnkVerificationMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveDnkVerification>>, TError,{pinId: string;data: BodyType<ResolveDnkVerificationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveDnkVerification>>, TError,{pinId: string;data: BodyType<ResolveDnkVerificationInput>}, TContext> => {
+
+const mutationKey = ['resolveDnkVerification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveDnkVerification>>, {pinId: string;data: BodyType<ResolveDnkVerificationInput>}> = (props) => {
+          const {pinId,data} = props ?? {};
+
+          return  resolveDnkVerification(pinId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveDnkVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof resolveDnkVerification>>>
+    export type ResolveDnkVerificationMutationBody = BodyType<ResolveDnkVerificationInput>
+    export type ResolveDnkVerificationMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Resolve a retail Do Not Knock verification
+ */
+export const useResolveDnkVerification = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveDnkVerification>>, TError,{pinId: string;data: BodyType<ResolveDnkVerificationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveDnkVerification>>,
+        TError,
+        {pinId: string;data: BodyType<ResolveDnkVerificationInput>},
+        TContext
+      > => {
+      return useMutation(getResolveDnkVerificationMutationOptions(options));
     }
 
 export const getSetPinAppointmentUrl = (pinId: string,) => {

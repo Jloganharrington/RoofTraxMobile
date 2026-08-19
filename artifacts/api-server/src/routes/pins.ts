@@ -39,6 +39,9 @@ export async function getRole(userId: string) {
 import { notify } from '../lib/notify';
 
 const router: IRouter = Router();
+const ResolveDnkVerificationBody = z.object({
+  status: z.enum(['no_visible_damage', 'mailer_campaign']),
+});
 
 // lead.read (field_rep+): any authenticated company member may list/view leads.
 router.get('/pins', requirePermission('lead.read'), async (req: Request, res: Response) => {
@@ -102,6 +105,10 @@ router.post('/pins', requirePermission('lead.create'), async (req: Request, res:
     });
     return;
   }
+  if (doorKnockResult === 'do_not_knock' && workflow !== 'retail') {
+    res.status(400).json({ error: 'Do Not Knock pins must use the retail workflow' });
+    return;
+  }
 
   const address = await reverseGeocode(latitude, longitude);
 
@@ -119,6 +126,8 @@ router.post('/pins', requirePermission('lead.create'), async (req: Request, res:
       doorKnockResult,
       retailData,
       contactOutcome,
+      dnkVerificationStatus:
+        workflow === 'retail' && doorKnockResult === 'do_not_knock' ? 'pending' : null,
       customerName,
       customerPhone,
       externalLeadSource: externalLeadSource ?? null,
@@ -129,6 +138,15 @@ router.post('/pins', requirePermission('lead.create'), async (req: Request, res:
     .returning();
 
   res.status(201).json(CreatePinResponse.parse({ pin }));
+
+  if (pin.dnkVerificationStatus === 'pending') {
+    void notify({
+      type: 'dnk_verification_requested',
+      companyId: req.actorCtx!.companyId,
+      pinId: pin.id,
+      actorUserId: req.actorCtx!.actorId,
+    });
+  }
 });
 
 // lead.bulk_create (field_rep+) — VERDICT CHANGE: was manager+, now any authenticated member.
@@ -190,6 +208,8 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
   }
 
   const nextContactOutcome = parsed.data.contactOutcome ?? pin.contactOutcome;
+  const nextWorkflow = parsed.data.workflow ?? pin.workflow;
+  const nextDoorKnockResult = parsed.data.doorKnockResult ?? pin.doorKnockResult;
   const nextCustomerName = parsed.data.customerName ?? pin.customerName;
   const nextCustomerPhone = parsed.data.customerPhone ?? pin.customerPhone;
   if (nextContactOutcome === 'call_to_schedule' && (!nextCustomerName || !nextCustomerPhone)) {
@@ -206,6 +226,14 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
     });
     return;
   }
+  if (nextDoorKnockResult === 'do_not_knock' && nextWorkflow !== 'retail') {
+    res.status(400).json({ error: 'Do Not Knock pins must use the retail workflow' });
+    return;
+  }
+  const startsDnkVerification =
+    nextDoorKnockResult === 'do_not_knock' && pin.doorKnockResult !== 'do_not_knock';
+  const clearsDnkVerification =
+    nextDoorKnockResult !== 'do_not_knock' && pin.doorKnockResult === 'do_not_knock';
 
   const [updated] = await db
     .update(pinsTable)
@@ -224,11 +252,75 @@ router.patch('/pins/:pinId', async (req: Request, res: Response) => {
       ...(parsed.data.contactOutcome !== undefined && {
         contactOutcome: parsed.data.contactOutcome,
       }),
+      ...(startsDnkVerification && { dnkVerificationStatus: 'pending' }),
+      ...(clearsDnkVerification && { dnkVerificationStatus: null }),
       ...(parsed.data.customerName !== undefined && { customerName: parsed.data.customerName }),
       ...(parsed.data.customerPhone !== undefined && {
         customerPhone: parsed.data.customerPhone,
       }),
     })
+    .where(eq(pinsTable.id, pinId))
+    .returning();
+
+  res.json(UpdatePinResponse.parse({ pin: updated }));
+
+  if (startsDnkVerification) {
+    void notify({
+      type: 'dnk_verification_requested',
+      companyId: actorCtx.companyId,
+      pinId: updated.id,
+      actorUserId: actorCtx.actorId,
+    });
+  }
+});
+
+// A Do Not Knock is created by a retail canvasser, then independently reviewed
+// by an insurance-capable canvasser. Keep the transition on a dedicated route
+// so a generic owner edit cannot forge its result.
+router.patch('/pins/:pinId/dnk-verification', async (req: Request, res: Response) => {
+  const actorCtx = await loadActorCtx(req);
+  if (!actorCtx) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = ResolveDnkVerificationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Select No Visible Damage or Mailer Campaign' });
+    return;
+  }
+
+  const pinId = req.params.pinId as string;
+  const [pin] = await db
+    .select()
+    .from(pinsTable)
+    .where(and(eq(pinsTable.id, pinId), eq(pinsTable.companyId, actorCtx.companyId)));
+  if (!pin) {
+    res.status(404).json({ error: 'Pin not found' });
+    return;
+  }
+  if (
+    pin.workflow !== 'retail' ||
+    pin.doorKnockResult !== 'do_not_knock' ||
+    pin.dnkVerificationStatus !== 'pending'
+  ) {
+    res.status(400).json({ error: 'This pin is not awaiting Do Not Knock verification' });
+    return;
+  }
+
+  const isManagerOrAdmin = ['manager', 'admin', 'super_admin'].includes(actorCtx.role);
+  const isInsuranceCanvasser =
+    actorCtx.department === 'canvasser' &&
+    (actorCtx.workflowAssignment === 'insurance' ||
+      actorCtx.workflowAssignment === 'insurance_retail');
+  if (!isManagerOrAdmin && !isInsuranceCanvasser) {
+    res.status(403).json({ error: 'Only insurance canvassers can resolve this verification' });
+    return;
+  }
+
+  const [updated] = await db
+    .update(pinsTable)
+    .set({ dnkVerificationStatus: parsed.data.status, updatedAt: new Date() })
     .where(eq(pinsTable.id, pinId))
     .returning();
 

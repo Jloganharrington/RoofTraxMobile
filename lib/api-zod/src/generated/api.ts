@@ -1165,6 +1165,7 @@ export const ListPinsResponse = zod.object({
   "notes": zod.string().nullish()
 }),zod.null()]),
   "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "dnkVerificationStatus": zod.union([zod.enum(['pending', 'no_visible_damage', 'mailer_campaign']),zod.null()]),
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
@@ -1241,6 +1242,7 @@ export const CreatePinResponse = zod.object({
   "notes": zod.string().nullish()
 }),zod.null()]),
   "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "dnkVerificationStatus": zod.union([zod.enum(['pending', 'no_visible_damage', 'mailer_campaign']),zod.null()]),
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
@@ -1299,6 +1301,7 @@ export const BulkCreatePinsResponse = zod.object({
   "notes": zod.string().nullish()
 }),zod.null()]),
   "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "dnkVerificationStatus": zod.union([zod.enum(['pending', 'no_visible_damage', 'mailer_campaign']),zod.null()]),
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
@@ -1376,6 +1379,7 @@ export const UpdatePinResponse = zod.object({
   "notes": zod.string().nullish()
 }),zod.null()]),
   "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "dnkVerificationStatus": zod.union([zod.enum(['pending', 'no_visible_damage', 'mailer_campaign']),zod.null()]),
   "customerName": zod.string().nullable(),
   "customerPhone": zod.string().nullable(),
   "status": zod.string(),
@@ -1401,6 +1405,62 @@ export const DeletePinParams = zod.object({
 
 export const DeletePinResponse = zod.object({
   "success": zod.boolean()
+})
+
+
+/**
+ * Insurance canvassers can resolve a pending retail Do Not Knock as either No Visible Damage or Mailer Campaign. Managers and admins may resolve it for operational coverage.
+ * @summary Resolve a retail Do Not Knock verification
+ */
+export const ResolveDnkVerificationParams = zod.object({
+  "pinId": zod.coerce.string()
+})
+
+export const ResolveDnkVerificationBody = zod.object({
+  "status": zod.enum(['no_visible_damage', 'mailer_campaign'])
+})
+
+
+
+
+export const ResolveDnkVerificationResponse = zod.object({
+  "pin": zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "address": zod.string().nullable(),
+  "workflow": zod.enum(['retail', 'insurance']),
+  "damageType": zod.union([zod.enum(['roof', 'siding', 'roof_and_siding']),zod.null()]),
+  "photoUrl": zod.string().nullable(),
+  "doorKnockResult": zod.union([zod.enum(['no_answer', 'no_appointment', 'appointment', 'do_not_knock']),zod.null()]),
+  "retailData": zod.union([zod.object({
+  "ownerName1": zod.string().min(1),
+  "ownerName2": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "interestedRoof": zod.boolean(),
+  "interestedSiding": zod.boolean(),
+  "interestedWindows": zod.boolean(),
+  "interestedDoors": zod.boolean(),
+  "interestNotes": zod.string().nullish(),
+  "appointmentDate": zod.string().nullish(),
+  "notes": zod.string().nullish()
+}),zod.null()]),
+  "contactOutcome": zod.union([zod.enum(['no_soliciting', 'priority_inspection', 'call_to_schedule']),zod.null()]),
+  "dnkVerificationStatus": zod.union([zod.enum(['pending', 'no_visible_damage', 'mailer_campaign']),zod.null()]),
+  "customerName": zod.string().nullable(),
+  "customerPhone": zod.string().nullable(),
+  "status": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "leadAcquisitionCostCents": zod.number().nullish(),
+  "referralFeeCents": zod.number().nullish(),
+  "salesCommissionCents": zod.number().nullish(),
+  "salesCommissionPaidDate": zod.coerce.date().nullish(),
+  "pmCommissionCents": zod.number().nullish(),
+  "pmCommissionPaidDate": zod.coerce.date().nullish()
+})
 })
 
 

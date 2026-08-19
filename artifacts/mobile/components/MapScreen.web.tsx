@@ -12,14 +12,14 @@ import type { GeocodeSearchResult } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/lib/auth';
-import { canEditPin } from '@/lib/permissions';
+import { canEditPin, canResolveDnkVerification } from '@/lib/permissions';
 
 // react-native-maps has no web renderer (its web entry is an
 // UnimplementedView stub), so the web build shows a plain list of pins
 // instead of a live map. Native (iOS/Android/Expo Go) uses MapScreen.native.
 export default function MapScreenWeb() {
   const colors = useColors();
-  const { role, department } = useProfile();
+  const { role, department, workflowAssignment } = useProfile();
   const { user } = useAuth();
   const isManagerOrAdmin = role === 'manager' || role === 'admin';
 
@@ -47,9 +47,12 @@ export default function MapScreenWeb() {
   // Canvassers see every pin for team awareness, but other reps' pins show
   // as neutral grey — only their own pins are colored by workflow.
   // Inspector field reps, managers, and admins always see workflow coloring.
-  // Do-Not-Knock pins are always red regardless of viewer or ownership.
+  // Do Not Knock pins show their insurance-verification outcome first.
   function dotColorFor(pin: (typeof pins)[number]) {
-    if (pin.doorKnockResult === 'do_not_knock') return '#dc2626';
+    if (pin.dnkVerificationStatus === 'pending') return colors.dnkPending;
+    if (pin.dnkVerificationStatus === 'no_visible_damage') return colors.dnkNoVisibleDamage;
+    if (pin.dnkVerificationStatus === 'mailer_campaign') return colors.dnkMailerCampaign;
+    if (pin.doorKnockResult === 'do_not_knock') return colors.dnkNoVisibleDamage;
     if (department === 'canvasser' && pin.userId !== user?.id) {
       return colors.mutedForeground;
     }
@@ -121,7 +124,9 @@ export default function MapScreenWeb() {
 
       <ScrollView contentContainerStyle={styles.list}>
         {pins.map((pin) => {
-          const editable = canEditPin(role, user?.id, pin.userId);
+          const editable =
+            canEditPin(role, user?.id, pin.userId) ||
+            canResolveDnkVerification(role, department, workflowAssignment, pin);
           return (
             <Pressable
               key={pin.id}
@@ -137,9 +142,15 @@ export default function MapScreenWeb() {
                   {pin.address ?? `${pin.latitude.toFixed(4)}, ${pin.longitude.toFixed(4)}`}
                 </Text>
                 <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                  {pin.workflow === 'retail'
-                    ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
-                    : `Insurance · ${pin.damageType ?? 'unspecified'}`}
+                  {pin.dnkVerificationStatus === 'pending'
+                    ? 'Retail · Do Not Knock · Insurance verification needed'
+                    : pin.dnkVerificationStatus === 'no_visible_damage'
+                      ? 'Retail · Do Not Knock · No Visible Damage'
+                      : pin.dnkVerificationStatus === 'mailer_campaign'
+                        ? 'Retail · Do Not Knock · Mailer Campaign'
+                        : pin.workflow === 'retail'
+                          ? `Retail · ${pin.doorKnockResult ?? 'no result'}`
+                          : `Insurance · ${pin.damageType ?? 'unspecified'}`}
                 </Text>
               </View>
               {editable && (
