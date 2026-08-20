@@ -603,4 +603,40 @@ describe('validateRepairabilityAssessmentV3', () => {
     expect(errors.join(' ')).toContain('cannot carry affected elevations when answered no');
     expect(errors.join(' ')).toContain('conclusion basis');
   });
+
+  it('requires a documented Rule 46 vintage and lock chain for product non-repairability', () => {
+    const base: AluminumSidingProtocol = {
+      elevations: [{ elevation: 'north', accessible: true }],
+      testSquares: [],
+      findings: {},
+      compatibility: {},
+      conclusion: 'repair_not_supported_product',
+      conclusionBasis: 'Product compatibility records reviewed.',
+    };
+    const validate = (asp: AluminumSidingProtocol) =>
+      validateRepairabilityAssessmentV3(v3({
+        systems: ['siding'],
+        roofType: null,
+        sidingType: 'aluminum',
+        rap: null,
+        asp,
+      }));
+
+    expect(validate(base).join(' ')).toContain('pre-1990 vintage');
+    expect(validate({
+      ...base,
+      vintage: { preNineteenNinety: 'yes', basis: '' },
+    }).join(' ')).toContain('vintage requires a documented basis');
+    expect(validate({
+      ...base,
+      vintage: { preNineteenNinety: 'yes', basis: 'Stamped installation record dated 1988.' },
+      lockBehaviorBasis: 'Observed documented lock condition at the north elevation.',
+    })).toEqual([]);
+    expect(validate({
+      elevations: [],
+      testSquares: [],
+      findings: {},
+      compatibility: {},
+    })).toEqual([]);
+  });
 });

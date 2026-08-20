@@ -2367,6 +2367,10 @@ export const ListInspectionsResponse = zod.object({
   "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
   "capturedAtUtc": zod.string().nullish()
 }).nullish(),
+  "vintage": zod.object({
+  "preNineteenNinety": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal('undetermined'),zod.literal(null)]).nullish(),
+  "basis": zod.string().nullish()
+}).nullish(),
   "elevations": zod.array(zod.object({
   "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
   "label": zod.string().nullish(),
@@ -2377,7 +2381,8 @@ export const ListInspectionsResponse = zod.object({
   "accessible": zod.boolean(),
   "inaccessibleReason": zod.string().nullish(),
   "widePhotoId": zod.string().nullish(),
-  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.'),
+  "wrb": zod.union([zod.literal('present'),zod.literal('absent'),zod.literal('undetermined'),zod.literal(null)]).nullish().describe('Rule 45 WRB observation for this elevation.')
 }).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
   "referencePhotoId": zod.string().nullish(),
   "testSquares": zod.array(zod.object({
@@ -2448,7 +2453,8 @@ export const ListInspectionsResponse = zod.object({
   "note": zod.string().nullish()
 }).optional()
 }),
-  "productRecordId": zod.string().nullish(),
+  "productRecordId": zod.string().nullish().describe('Inspection-specific product determination row (inspection_products).'),
+  "catalogProductId": zod.string().nullish().describe('Company Known Product Catalog row (discontinued_products).'),
   "compatibility": zod.object({
   "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
   "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
@@ -2460,7 +2466,8 @@ export const ListInspectionsResponse = zod.object({
 }),
   "compatibilityBasis": zod.string().nullish(),
   "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
-  "conclusionBasis": zod.string().nullish()
+  "conclusionBasis": zod.string().nullish(),
+  "lockBehaviorBasis": zod.string().nullish().describe('Basis for the documented lock-condition observation.')
 }).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
@@ -3084,6 +3091,10 @@ export const CreateInspectionResponse = zod.object({
   "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
   "capturedAtUtc": zod.string().nullish()
 }).nullish(),
+  "vintage": zod.object({
+  "preNineteenNinety": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal('undetermined'),zod.literal(null)]).nullish(),
+  "basis": zod.string().nullish()
+}).nullish(),
   "elevations": zod.array(zod.object({
   "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
   "label": zod.string().nullish(),
@@ -3094,7 +3105,8 @@ export const CreateInspectionResponse = zod.object({
   "accessible": zod.boolean(),
   "inaccessibleReason": zod.string().nullish(),
   "widePhotoId": zod.string().nullish(),
-  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.'),
+  "wrb": zod.union([zod.literal('present'),zod.literal('absent'),zod.literal('undetermined'),zod.literal(null)]).nullish().describe('Rule 45 WRB observation for this elevation.')
 }).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
   "referencePhotoId": zod.string().nullish(),
   "testSquares": zod.array(zod.object({
@@ -3165,7 +3177,8 @@ export const CreateInspectionResponse = zod.object({
   "note": zod.string().nullish()
 }).optional()
 }),
-  "productRecordId": zod.string().nullish(),
+  "productRecordId": zod.string().nullish().describe('Inspection-specific product determination row (inspection_products).'),
+  "catalogProductId": zod.string().nullish().describe('Company Known Product Catalog row (discontinued_products).'),
   "compatibility": zod.object({
   "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
   "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
@@ -3177,7 +3190,8 @@ export const CreateInspectionResponse = zod.object({
 }),
   "compatibilityBasis": zod.string().nullish(),
   "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
-  "conclusionBasis": zod.string().nullish()
+  "conclusionBasis": zod.string().nullish(),
+  "lockBehaviorBasis": zod.string().nullish().describe('Basis for the documented lock-condition observation.')
 }).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
@@ -3783,6 +3797,10 @@ export const GetInspectionResponse = zod.object({
   "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
   "capturedAtUtc": zod.string().nullish()
 }).nullish(),
+  "vintage": zod.object({
+  "preNineteenNinety": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal('undetermined'),zod.literal(null)]).nullish(),
+  "basis": zod.string().nullish()
+}).nullish(),
   "elevations": zod.array(zod.object({
   "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
   "label": zod.string().nullish(),
@@ -3793,7 +3811,8 @@ export const GetInspectionResponse = zod.object({
   "accessible": zod.boolean(),
   "inaccessibleReason": zod.string().nullish(),
   "widePhotoId": zod.string().nullish(),
-  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.'),
+  "wrb": zod.union([zod.literal('present'),zod.literal('absent'),zod.literal('undetermined'),zod.literal(null)]).nullish().describe('Rule 45 WRB observation for this elevation.')
 }).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
   "referencePhotoId": zod.string().nullish(),
   "testSquares": zod.array(zod.object({
@@ -3864,7 +3883,8 @@ export const GetInspectionResponse = zod.object({
   "note": zod.string().nullish()
 }).optional()
 }),
-  "productRecordId": zod.string().nullish(),
+  "productRecordId": zod.string().nullish().describe('Inspection-specific product determination row (inspection_products).'),
+  "catalogProductId": zod.string().nullish().describe('Company Known Product Catalog row (discontinued_products).'),
   "compatibility": zod.object({
   "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
   "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
@@ -3876,7 +3896,8 @@ export const GetInspectionResponse = zod.object({
 }),
   "compatibilityBasis": zod.string().nullish(),
   "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
-  "conclusionBasis": zod.string().nullish()
+  "conclusionBasis": zod.string().nullish(),
+  "lockBehaviorBasis": zod.string().nullish().describe('Basis for the documented lock-condition observation.')
 }).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
@@ -4317,6 +4338,10 @@ export const UpdateInspectionBody = zod.object({
   "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
   "capturedAtUtc": zod.string().nullish()
 }).nullish(),
+  "vintage": zod.object({
+  "preNineteenNinety": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal('undetermined'),zod.literal(null)]).nullish(),
+  "basis": zod.string().nullish()
+}).nullish(),
   "elevations": zod.array(zod.object({
   "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
   "label": zod.string().nullish(),
@@ -4327,7 +4352,8 @@ export const UpdateInspectionBody = zod.object({
   "accessible": zod.boolean(),
   "inaccessibleReason": zod.string().nullish(),
   "widePhotoId": zod.string().nullish(),
-  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.'),
+  "wrb": zod.union([zod.literal('present'),zod.literal('absent'),zod.literal('undetermined'),zod.literal(null)]).nullish().describe('Rule 45 WRB observation for this elevation.')
 }).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
   "referencePhotoId": zod.string().nullish(),
   "testSquares": zod.array(zod.object({
@@ -4398,7 +4424,8 @@ export const UpdateInspectionBody = zod.object({
   "note": zod.string().nullish()
 }).optional()
 }),
-  "productRecordId": zod.string().nullish(),
+  "productRecordId": zod.string().nullish().describe('Inspection-specific product determination row (inspection_products).'),
+  "catalogProductId": zod.string().nullish().describe('Company Known Product Catalog row (discontinued_products).'),
   "compatibility": zod.object({
   "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
   "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
@@ -4410,7 +4437,8 @@ export const UpdateInspectionBody = zod.object({
 }),
   "compatibilityBasis": zod.string().nullish(),
   "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
-  "conclusionBasis": zod.string().nullish()
+  "conclusionBasis": zod.string().nullish(),
+  "lockBehaviorBasis": zod.string().nullish().describe('Basis for the documented lock-condition observation.')
 }).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.')]),zod.null()]).optional(),
@@ -4913,6 +4941,10 @@ export const UpdateInspectionResponse = zod.object({
   "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
   "capturedAtUtc": zod.string().nullish()
 }).nullish(),
+  "vintage": zod.object({
+  "preNineteenNinety": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal('undetermined'),zod.literal(null)]).nullish(),
+  "basis": zod.string().nullish()
+}).nullish(),
   "elevations": zod.array(zod.object({
   "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
   "label": zod.string().nullish(),
@@ -4923,7 +4955,8 @@ export const UpdateInspectionResponse = zod.object({
   "accessible": zod.boolean(),
   "inaccessibleReason": zod.string().nullish(),
   "widePhotoId": zod.string().nullish(),
-  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.'),
+  "wrb": zod.union([zod.literal('present'),zod.literal('absent'),zod.literal('undetermined'),zod.literal(null)]).nullish().describe('Rule 45 WRB observation for this elevation.')
 }).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
   "referencePhotoId": zod.string().nullish(),
   "testSquares": zod.array(zod.object({
@@ -4994,7 +5027,8 @@ export const UpdateInspectionResponse = zod.object({
   "note": zod.string().nullish()
 }).optional()
 }),
-  "productRecordId": zod.string().nullish(),
+  "productRecordId": zod.string().nullish().describe('Inspection-specific product determination row (inspection_products).'),
+  "catalogProductId": zod.string().nullish().describe('Company Known Product Catalog row (discontinued_products).'),
   "compatibility": zod.object({
   "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
   "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
@@ -5006,7 +5040,8 @@ export const UpdateInspectionResponse = zod.object({
 }),
   "compatibilityBasis": zod.string().nullish(),
   "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
-  "conclusionBasis": zod.string().nullish()
+  "conclusionBasis": zod.string().nullish(),
+  "lockBehaviorBasis": zod.string().nullish().describe('Basis for the documented lock-condition observation.')
 }).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({
@@ -6603,6 +6638,10 @@ export const SubmitInspectionResponse = zod.object({
   "lightingTechnique": zod.union([zod.literal('raking_natural'),zod.literal('raking_supplemental'),zod.literal('diffuse_only'),zod.literal(null)]).nullish(),
   "capturedAtUtc": zod.string().nullish()
 }).nullish(),
+  "vintage": zod.object({
+  "preNineteenNinety": zod.union([zod.literal('yes'),zod.literal('no'),zod.literal('undetermined'),zod.literal(null)]).nullish(),
+  "basis": zod.string().nullish()
+}).nullish(),
   "elevations": zod.array(zod.object({
   "elevation": zod.enum(['north', 'south', 'east', 'west', 'other']),
   "label": zod.string().nullish(),
@@ -6613,7 +6652,8 @@ export const SubmitInspectionResponse = zod.object({
   "accessible": zod.boolean(),
   "inaccessibleReason": zod.string().nullish(),
   "widePhotoId": zod.string().nullish(),
-  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.')
+  "rakingPhotoId": zod.string().nullish().describe('Low-angle grazing-light frame for deformation visibility.'),
+  "wrb": zod.union([zod.literal('present'),zod.literal('absent'),zod.literal('undetermined'),zod.literal(null)]).nullish().describe('Rule 45 WRB observation for this elevation.')
 }).describe('One surveyed aluminum-siding elevation. This non-destructive protocol records observed product\/condition facts only; null gauge means not measured and is never inferred from the profile.')),
   "referencePhotoId": zod.string().nullish(),
   "testSquares": zod.array(zod.object({
@@ -6684,7 +6724,8 @@ export const SubmitInspectionResponse = zod.object({
   "note": zod.string().nullish()
 }).optional()
 }),
-  "productRecordId": zod.string().nullish(),
+  "productRecordId": zod.string().nullish().describe('Inspection-specific product determination row (inspection_products).'),
+  "catalogProductId": zod.string().nullish().describe('Company Known Product Catalog row (discontinued_products).'),
   "compatibility": zod.object({
   "profileExposure": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
   "interlockEngagement": zod.enum(['matched', 'not_matched', 'not_assessed']).optional(),
@@ -6696,7 +6737,8 @@ export const SubmitInspectionResponse = zod.object({
 }),
   "compatibilityBasis": zod.string().nullish(),
   "conclusion": zod.union([zod.literal('repair_supported'),zod.literal('repair_not_supported_product'),zod.literal('repair_not_supported_condition'),zod.literal('undetermined_lab_recommended'),zod.literal('undetermined_access_limited'),zod.literal(null)]).nullish(),
-  "conclusionBasis": zod.string().nullish()
+  "conclusionBasis": zod.string().nullish(),
+  "lockBehaviorBasis": zod.string().nullish().describe('Basis for the documented lock-condition observation.')
 }).describe('Aluminum Siding Forensic Inspection Protocol (ASP). It is non-destructive and does not record or imply simulated panel, fastener, interlock, or coating manipulation outcomes.'),zod.null()]).optional(),
   "recordedAtUtc": zod.string()
 }).describe('Client-sent repairability assessment (v3 — Repair Attempt Protocol flow, 2026-07-28 rebuilt screen). Gate question (warranted), assessed systems, roof type, and the RAP record. Partial protocol runs are savable — internal consistency is validated server-side, but unanswered questions are legal so field answers are never lost. assessorName\/assessorCredentials are IGNORED if sent — the server populates them from the inspector\'s profile.').and(zod.object({

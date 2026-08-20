@@ -7,6 +7,7 @@
  */
 import type { AspElevationSurveyElevation } from './aspElevationSurveyElevation';
 import type { AspElevationSurveyProfile } from './aspElevationSurveyProfile';
+import type { AspElevationSurveyWrb } from './aspElevationSurveyWrb';
 
 /**
  * One surveyed aluminum-siding elevation. This non-destructive protocol records observed product/condition facts only; null gauge means not measured and is never inferred from the profile.
@@ -33,4 +34,9 @@ export interface AspElevationSurvey {
      * @nullable
      */
   rakingPhotoId?: string | null;
+  /**
+     * Rule 45 WRB observation for this elevation.
+     * @nullable
+     */
+  wrb?: AspElevationSurveyWrb;
 }

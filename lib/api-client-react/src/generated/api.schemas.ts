@@ -2205,6 +2205,18 @@ export const AluminumSidingProtocolAssessmentConditionsLightingTechnique = {
   diffuse_only: 'diffuse_only',
 } as const;
 
+/**
+ * @nullable
+ */
+export type AluminumSidingProtocolVintagePreNineteenNinety = typeof AluminumSidingProtocolVintagePreNineteenNinety[keyof typeof AluminumSidingProtocolVintagePreNineteenNinety] | null;
+
+
+export const AluminumSidingProtocolVintagePreNineteenNinety = {
+  yes: 'yes',
+  no: 'no',
+  undetermined: 'undetermined',
+} as const;
+
 export type AspElevationSurveyElevation = typeof AspElevationSurveyElevation[keyof typeof AspElevationSurveyElevation];
 
 
@@ -2232,6 +2244,19 @@ export const AspElevationSurveyProfile = {
 } as const;
 
 /**
+ * Rule 45 WRB observation for this elevation.
+ * @nullable
+ */
+export type AspElevationSurveyWrb = typeof AspElevationSurveyWrb[keyof typeof AspElevationSurveyWrb] | null;
+
+
+export const AspElevationSurveyWrb = {
+  present: 'present',
+  absent: 'absent',
+  undetermined: 'undetermined',
+} as const;
+
+/**
  * One surveyed aluminum-siding elevation. This non-destructive protocol records observed product/condition facts only; null gauge means not measured and is never inferred from the profile.
  */
 export interface AspElevationSurvey {
@@ -2256,6 +2281,11 @@ export interface AspElevationSurvey {
      * @nullable
      */
   rakingPhotoId?: string | null;
+  /**
+     * Rule 45 WRB observation for this elevation.
+     * @nullable
+     */
+  wrb?: AspElevationSurveyWrb;
 }
 
 export type AspTestSquareElevation = typeof AspTestSquareElevation[keyof typeof AspTestSquareElevation];
@@ -2401,6 +2431,16 @@ export type AluminumSidingProtocolAssessmentConditions = {
   capturedAtUtc?: string | null;
 } | null;
 
+/**
+ * @nullable
+ */
+export type AluminumSidingProtocolVintage = {
+  /** @nullable */
+  preNineteenNinety?: AluminumSidingProtocolVintagePreNineteenNinety;
+  /** @nullable */
+  basis?: string | null;
+} | null;
+
 export type AluminumSidingProtocolFindings = {
   impactDeformation?: AspConditionFinding;
   coatingBreach?: AspConditionFinding;
@@ -2430,13 +2470,23 @@ export type AluminumSidingProtocolCompatibility = {
 export interface AluminumSidingProtocol {
   /** @nullable */
   assessmentConditions?: AluminumSidingProtocolAssessmentConditions;
+  /** @nullable */
+  vintage?: AluminumSidingProtocolVintage;
   elevations: AspElevationSurvey[];
   /** @nullable */
   referencePhotoId?: string | null;
   testSquares: AspTestSquare[];
   findings: AluminumSidingProtocolFindings;
-  /** @nullable */
+  /**
+     * Inspection-specific product determination row (inspection_products).
+     * @nullable
+     */
   productRecordId?: string | null;
+  /**
+     * Company Known Product Catalog row (discontinued_products).
+     * @nullable
+     */
+  catalogProductId?: string | null;
   compatibility: AluminumSidingProtocolCompatibility;
   /** @nullable */
   compatibilityBasis?: string | null;
@@ -2444,6 +2494,11 @@ export interface AluminumSidingProtocol {
   conclusion?: AluminumSidingProtocolConclusion;
   /** @nullable */
   conclusionBasis?: string | null;
+  /**
+     * Basis for the documented lock-condition observation.
+     * @nullable
+     */
+  lockBehaviorBasis?: string | null;
 }
 
 /**

@@ -81,6 +81,29 @@ describe('ASP scorecard', () => {
     ]);
     expect(aspScorecardBriefLines(section!.scorecard).join('\n')).toContain('non-destructive');
   });
+
+  it('preserves zero-count test squares and states every observation limit', () => {
+    const record = asp({
+      assessmentConditions: { lightingTechnique: 'diffuse_only' },
+      elevations: [{ elevation: 'north', accessible: true, wrb: 'absent' }],
+      testSquares: [{ elevation: 'north', impactCount: 0 }],
+      findings: {
+        impactDeformation: { answer: 'yes', elevations: ['north'], photoId: 'impact' },
+        coatingBreach: { answer: 'yes', elevations: ['north'], photoId: 'coating' },
+        chalking: { answer: 'yes', elevations: ['north'], photoId: 'chalking' },
+      },
+    });
+    const section = buildAspReportSection(assessment(record));
+    const lines = aspScorecardBriefLines(section!.scorecard).join('\n');
+    expect(section!.scorecard.documentedImpacts).toBe(0);
+    expect(section!.scorecard.diffuseOnly).toBe(true);
+    expect(section!.scorecard.deformationWithoutRakingPhoto).toEqual(['north']);
+    expect(section!.examplePhotos.map((photo) => photo.photoId)).toEqual(['impact', 'coating']);
+    expect(lines).toContain('Diffuse-light qualifier');
+    expect(lines).toContain('Test-square scope');
+    expect(lines).toContain('Missing raking-light frame');
+    expect(lines).toContain('no manipulation was performed');
+  });
 });
 
 describe('ASP narrative instruction', () => {

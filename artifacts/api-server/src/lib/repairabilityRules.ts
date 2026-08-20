@@ -834,6 +834,21 @@ export function validateAsp(asp: AluminumSidingProtocol): string[] {
   if (asp.conclusion && !asp.conclusionBasis?.trim()) {
     errors.push('ASP conclusion basis is required when a conclusion is selected.');
   }
+  if (asp.vintage?.preNineteenNinety === 'yes' && !asp.vintage.basis?.trim()) {
+    errors.push('ASP pre-1990 vintage requires a documented basis.');
+  }
+  if (asp.conclusion === 'repair_not_supported_product') {
+    if (asp.vintage?.preNineteenNinety !== 'yes' || !asp.vintage.basis?.trim()) {
+      errors.push(
+        'ASP product non-repairability requires a documented pre-1990 vintage observation and basis.',
+      );
+    }
+    if (!asp.lockBehaviorBasis?.trim() && asp.findings?.interlockDisplacement?.answer !== 'yes') {
+      errors.push(
+        'ASP product non-repairability requires a documented lock-condition basis or an affirmative interlock-displacement finding.',
+      );
+    }
+  }
   return errors;
 }
 

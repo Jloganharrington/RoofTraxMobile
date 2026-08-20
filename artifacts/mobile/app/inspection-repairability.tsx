@@ -276,6 +276,7 @@ interface AspElevationRow {
   finishColor: string;
   accessible: boolean;
   inaccessibleReason: string;
+  wrb: 'present' | 'absent' | 'undetermined' | null;
   widePhoto: PhotoSlot;
   rakingPhoto: PhotoSlot;
 }
@@ -290,6 +291,7 @@ const emptyAspElevationRow = (): AspElevationRow => ({
   finishColor: '',
   accessible: true,
   inaccessibleReason: '',
+  wrb: null,
   widePhoto: emptyPhotoSlot(),
   rakingPhoto: emptyPhotoSlot(),
 });
@@ -508,6 +510,10 @@ export default function InspectionRepairabilityScreen() {
     Object.fromEntries(ASP_CONDITION_QUESTIONS.map((q) => [q.key, emptyAspFinding()])),
   );
   const [aspProductRecordId, setAspProductRecordId] = React.useState<string | null>(null);
+  const [aspCatalogProductId, setAspCatalogProductId] = React.useState<string | null>(null);
+  const [aspVintage, setAspVintage] = React.useState<'yes' | 'no' | 'undetermined' | null>(null);
+  const [aspVintageBasis, setAspVintageBasis] = React.useState('');
+  const [aspLockBehaviorBasis, setAspLockBehaviorBasis] = React.useState('');
   const [aspCompat, setAspCompat] = React.useState<Partial<Record<AspCompatKey, AspCompatValue>>>({});
   const [aspCompatibilityBasis, setAspCompatibilityBasis] = React.useState('');
   const [aspConclusion, setAspConclusion] = React.useState<AspConclusion | null>(null);
@@ -600,6 +606,7 @@ export default function InspectionRepairabilityScreen() {
             inaccessibleReason?: string | null;
             widePhotoId?: string | null;
             rakingPhotoId?: string | null;
+            wrb?: 'present' | 'absent' | 'undetermined' | null;
           }>;
           referencePhotoId?: string | null;
           testSquares?: Array<{
@@ -618,6 +625,9 @@ export default function InspectionRepairabilityScreen() {
             }
           >;
           productRecordId?: string | null;
+          catalogProductId?: string | null;
+          vintage?: { preNineteenNinety?: 'yes' | 'no' | 'undetermined' | null; basis?: string | null } | null;
+          lockBehaviorBasis?: string | null;
           compatibility?: Record<string, string>;
           compatibilityBasis?: string | null;
           conclusion?: string | null;
@@ -726,6 +736,7 @@ export default function InspectionRepairabilityScreen() {
               finishColor: e.finishColor ?? '',
               accessible: e.accessible ?? true,
               inaccessibleReason: e.inaccessibleReason ?? '',
+              wrb: e.wrb ?? null,
               widePhoto: { local: null, photoId: e.widePhotoId ?? null },
               rakingPhoto: { local: null, photoId: e.rakingPhotoId ?? null },
             })),
@@ -763,6 +774,10 @@ export default function InspectionRepairabilityScreen() {
             ),
           );
           setAspProductRecordId(asp.productRecordId ?? null);
+          setAspCatalogProductId(asp.catalogProductId ?? null);
+          setAspVintage(asp.vintage?.preNineteenNinety ?? null);
+          setAspVintageBasis(asp.vintage?.basis ?? '');
+          setAspLockBehaviorBasis(asp.lockBehaviorBasis ?? '');
           const compat = asp.compatibility ?? {};
           const hydCompat: Partial<Record<AspCompatKey, AspCompatValue>> = {};
           for (const q of ASP_COMPAT_QUESTIONS) {
@@ -1261,6 +1276,7 @@ export default function InspectionRepairabilityScreen() {
                         inaccessibleReason: !elev.accessible && elev.inaccessibleReason.trim()
                           ? elev.inaccessibleReason.trim()
                           : null,
+                        wrb: elev.wrb ?? null,
                         widePhotoId: aspElevationWideIds[i] || null,
                         rakingPhotoId: aspElevationRakingIds[i] || null,
                       })),
@@ -1290,6 +1306,12 @@ export default function InspectionRepairabilityScreen() {
                         }),
                       ),
                       productRecordId: aspProductRecordId ?? null,
+                      catalogProductId: aspCatalogProductId ?? null,
+                      vintage: {
+                        preNineteenNinety: aspVintage ?? null,
+                        basis: aspVintageBasis.trim() || null,
+                      },
+                      lockBehaviorBasis: aspLockBehaviorBasis.trim() || null,
                       compatibility: Object.fromEntries(
                         ASP_COMPAT_QUESTIONS.filter((q) => aspCompat[q.key] != null).map((q) => [q.key, aspCompat[q.key]]),
                       ),
@@ -1614,6 +1636,19 @@ export default function InspectionRepairabilityScreen() {
                       ]}
                     />
                   ) : null}
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 6 }}>
+                    WRB behind cladding (Rule 45)
+                  </Text>
+                  <View style={styles.chipWrap}>
+                    {(['present', 'absent', 'undetermined'] as const).map((wrb) => {
+                      const on = elev.wrb === wrb;
+                      return (
+                        <Pressable key={wrb} onPress={() => setElev({ wrb: on ? null : wrb })} style={chipStyle(on)}>
+                          <Text style={chipText(on)}>{wrb.charAt(0).toUpperCase() + wrb.slice(1)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>Wide photo</Text>
@@ -1833,22 +1868,36 @@ export default function InspectionRepairabilityScreen() {
 
           {/* ── Product Picker ───────────────────────────────────────────── */}
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-              Known Product — Catalog Match
-            </Text>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Product Records</Text>
             <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              Select the probable product from the Known Product Catalog if identified.
+              Link the inspection-specific determination and, when applicable, the company catalog record.
             </Text>
+            <Text style={[styles.qLabel, { color: colors.foreground, marginTop: 8 }]}>Inspection product determination</Text>
+            <View style={styles.chipWrap}>
+              {(inspection?.products ?? []).map((prod) => {
+                const on = aspProductRecordId === prod.id;
+                const label = [prod.brand, prod.productLine].filter(Boolean).join(' — ') || 'Unlabeled inspection product';
+                return (
+                  <Pressable key={prod.id} onPress={() => setAspProductRecordId(on ? null : prod.id)} style={chipStyle(on)}>
+                    <Text style={chipText(on)}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+              {(inspection?.products ?? []).length === 0 ? (
+                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>No product determinations are recorded on this inspection yet.</Text>
+              ) : null}
+            </View>
+            <Text style={[styles.qLabel, { color: colors.foreground, marginTop: 8 }]}>Known Product Catalog match</Text>
             {discontinuedProductsQuery.isLoading ? (
               <ActivityIndicator color={colors.primary} />
             ) : (
               <View style={styles.chipWrap}>
                 {(discontinuedProductsQuery.data?.products ?? []).map((prod: DiscontinuedProduct) => {
-                  const on = aspProductRecordId === prod.id;
+                  const on = aspCatalogProductId === prod.id;
                   return (
                     <Pressable
                       key={prod.id}
-                      onPress={() => setAspProductRecordId(on ? null : prod.id)}
+                      onPress={() => setAspCatalogProductId(on ? null : prod.id)}
                       style={chipStyle(on)}
                     >
                       <Text style={chipText(on)}>{prod.name}</Text>
@@ -1935,6 +1984,37 @@ export default function InspectionRepairabilityScreen() {
                 );
               })}
             </View>
+            {aspConclusion === 'repair_not_supported_product' ? (
+              <>
+                <Text style={[styles.qLabel, { color: colors.foreground, marginTop: 8 }]}>Pre-1990 vintage documented?</Text>
+                <View style={styles.chipWrap}>
+                  {(['yes', 'no', 'undetermined'] as const).map((value) => {
+                    const on = aspVintage === value;
+                    return (
+                      <Pressable key={value} onPress={() => setAspVintage(on ? null : value)} style={chipStyle(on)}>
+                        <Text style={chipText(on)}>{value.charAt(0).toUpperCase() + value.slice(1)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  value={aspVintageBasis}
+                  onChangeText={setAspVintageBasis}
+                  placeholder="Vintage basis (required when pre-1990 is Yes)…"
+                  placeholderTextColor={colors.mutedForeground}
+                  multiline
+                  style={[styles.noteInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                />
+                <TextInput
+                  value={aspLockBehaviorBasis}
+                  onChangeText={setAspLockBehaviorBasis}
+                  placeholder="Lock-condition basis (required unless interlock displacement is Yes)…"
+                  placeholderTextColor={colors.mutedForeground}
+                  multiline
+                  style={[styles.noteInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                />
+              </>
+            ) : null}
             <Text style={[styles.qLabel, { color: colors.foreground, marginTop: 8 }]}>
               Conclusion Basis {aspConclusion != null ? '(required)' : '(optional)'}
             </Text>

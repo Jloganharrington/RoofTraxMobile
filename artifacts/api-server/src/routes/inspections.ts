@@ -1124,10 +1124,29 @@ router.patch('/inspections/:inspectionId', requireWritableInspection(), async (r
     if (incomingV3.asp?.productRecordId) {
       const [product] = await db
         .select({ id: discontinuedProductsTable.id })
+        .from(inspectionProductsTable)
+        .where(
+          and(
+            eq(inspectionProductsTable.id, incomingV3.asp.productRecordId),
+            eq(inspectionProductsTable.inspectionId, inspectionId),
+            eq(inspectionProductsTable.companyId, actor.companyId),
+          ),
+        );
+      if (!product) {
+        res.status(400).json({
+          error: 'Repairability assessment failed validation',
+          details: ['ASP inspection product determination record was not found for this inspection.'],
+        });
+        return;
+      }
+    }
+    if (incomingV3.asp?.catalogProductId) {
+      const [product] = await db
+        .select({ id: discontinuedProductsTable.id })
         .from(discontinuedProductsTable)
         .where(
           and(
-            eq(discontinuedProductsTable.id, incomingV3.asp.productRecordId),
+            eq(discontinuedProductsTable.id, incomingV3.asp.catalogProductId),
             eq(discontinuedProductsTable.companyId, actor.companyId),
           ),
         );
@@ -5422,6 +5441,17 @@ router.post('/inspections/:inspectionId/report/compile', requireWritableInspecti
   const vapSection = buildVapReportSection(inspection.repairabilityAssessment);
   // Server-built ASP observation/compatibility section (aluminum siding).
   const aspSection = buildAspReportSection(inspection.repairabilityAssessment);
+  if (aspSection?.productRecordId) {
+    const product = children.products.find((row) => row.id === aspSection.productRecordId);
+    if (product) {
+      aspSection.productDetermination = {
+        brand: product.brand ?? null,
+        productLine: product.productLine ?? null,
+        discontinued: product.discontinued ?? null,
+        ordinaryAvailability: product.ordinaryAvailability ?? null,
+      };
+    }
+  }
   const hf = inspection.homeownerFacts as { yearsOwned?: number; knownPriorRoofAge?: number } | null;
 
   const photoBrief = curatedPhotos.slice(0, 80).map((p) => ({
@@ -6383,7 +6413,6 @@ export async function renderCompiledReportHtml(opts: {
       <tr><th>Scorecard</th><th>Count</th></tr>
       ${scoreRows.map(([label, count]) => `<tr><td>${escHtml(label)}</td><td>${escHtml(count)}</td></tr>`).join('\n      ')}
     </table>`;
-
     const rapPhotoCard = (photoId: string, caption: string): string => {
       const entry = compiledData.photoIndex[photoId];
       if (!entry) return '';
@@ -6507,6 +6536,35 @@ export async function renderCompiledReportHtml(opts: {
       <tr><th>Observed item</th><th>Count</th></tr>
       ${scoreRows.map(([label, count]) => `<tr><td>${escHtml(label)}</td><td>${escHtml(count)}</td></tr>`).join('\n      ')}
     </table>`;
+    const qualifierLines = [
+      sc.lightingTechnique ? `Lighting technique: ${sc.lightingTechnique.replaceAll('_', ' ')}.` : null,
+      sc.diffuseOnly
+        ? 'Diffuse-light qualifier: a negative deformation finding under diffuse light only does not establish that deformation is absent.'
+        : null,
+      sc.testSquares > 0
+        ? 'Test-square scope: documented impact counts characterize only the counted 10 ft × 10 ft areas and are never extrapolated to the elevation or building.'
+        : null,
+      sc.deformationWithoutRakingPhoto.length > 0
+        ? `Missing raking-light frame: deformation was recorded on elevation(s) ${sc.deformationWithoutRakingPhoto.join(', ')} without a raking photo; the finding remains recorded, but the visibility gap is disclosed.`
+        : null,
+      'Protocol limit: no manipulation was performed, so no finding is made about how a panel, nailing hem, or interlock would respond to manipulation.',
+    ].filter((line): line is string => Boolean(line));
+    const qualifiersHtml = `<div style="margin-top:12px;font-size:13px;line-height:1.45"><strong>Conditions and limitations</strong><ul>${qualifierLines.map((line) => `<li>${escHtml(line)}</li>`).join('')}</ul></div>`;
+    const wrbRows = aspSection.elevations
+      .filter((elevation) => elevation.wrb)
+      .map((elevation) => {
+        const label = [elevation.elevation, elevation.label].filter(Boolean).join(' — ');
+        return `<tr><td>${escHtml(label)}</td><td>${escHtml(elevation.wrb!.replaceAll('_', ' '))}</td></tr>`;
+      })
+      .join('');
+    const absentWrbElevations = aspSection.elevations.filter((elevation) => elevation.wrb === 'absent');
+    const wrbHtml = wrbRows
+      ? `<div style="margin-top:12px"><strong>WRB by elevation</strong><table class="detail-table"><tr><th>Elevation</th><th>WRB observation</th></tr>${wrbRows}</table>${
+          absentWrbElevations.length > 0
+            ? `<p style="font-size:13px;margin-top:8px">Rule 45 consequence: a compliant replacement assembly requires a WRB behind the cladding. A WRB cannot be installed behind cladding in isolation, so correction requires cladding removal on the affected elevation(s): ${escHtml(absentWrbElevations.map((elevation) => elevation.elevation).join(', '))}.</p>`
+            : ''
+        }</div>`
+      : '';
     const aspPhotoCard = (photoId: string, caption: string): string => {
       const entry = compiledData.photoIndex[photoId];
       if (!entry) return '';
@@ -6532,7 +6590,18 @@ export async function renderCompiledReportHtml(opts: {
     const compatibilityHtml = aspSection.compatibilityBasis
       ? `<p style="font-size:13px;margin-top:10px"><strong>Compatibility basis:</strong> ${escHtml(aspSection.compatibilityBasis)}</p>`
       : '';
-    aspSectionHtml = `${scorecardHtml}${conclusionHtml}${compatibilityHtml}${
+    const vintageHtml = aspSection.vintage?.preNineteenNinety
+      ? `<p style="font-size:13px;margin-top:10px"><strong>Vintage observation:</strong> pre-1990 ${escHtml(aspSection.vintage.preNineteenNinety)}${aspSection.vintage.basis ? ` — ${escHtml(aspSection.vintage.basis)}` : ''}</p>`
+      : '';
+    const lockHtml = aspSection.lockBehaviorBasis
+      ? `<p style="font-size:13px;margin-top:10px"><strong>Lock-condition basis:</strong> ${escHtml(aspSection.lockBehaviorBasis)}</p>`
+      : '';
+    const productDeterminationHtml = aspSection.productDetermination
+      ? `<p style="font-size:13px;margin-top:10px"><strong>Inspection product determination:</strong> ${escHtml(
+          [aspSection.productDetermination.brand, aspSection.productDetermination.productLine].filter(Boolean).join(' — ') || 'Unlabeled inspection product',
+        )}; discontinued: ${escHtml(aspSection.productDetermination.discontinued ?? 'not verified')}; ordinary availability: ${escHtml(aspSection.productDetermination.ordinaryAvailability ?? 'not assessed')}.</p>`
+      : '';
+    aspSectionHtml = `${scorecardHtml}${qualifiersHtml}${wrbHtml}${conclusionHtml}${compatibilityHtml}${vintageHtml}${lockHtml}${productDeterminationHtml}${
       aspCards ? `<div class="photo-grid" style="margin-top:16px">${aspCards}</div>` : ''
     }`;
   }

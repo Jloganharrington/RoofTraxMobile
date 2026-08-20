@@ -46,6 +46,21 @@ export interface AspReportSection {
   conclusion: string | null;
   conclusionBasis: string | null;
   compatibilityBasis: string | null;
+  elevations: Array<{
+    elevation: AspElevation;
+    label: string | null;
+    wrb: 'present' | 'absent' | 'undetermined' | null;
+  }>;
+  vintage: AluminumSidingProtocol['vintage'];
+  lockBehaviorBasis: string | null;
+  productRecordId: string | null;
+  catalogProductId: string | null;
+  productDetermination?: {
+    brand: string | null;
+    productLine: string | null;
+    discontinued: string | null;
+    ordinaryAvailability: string | null;
+  } | null;
 }
 
 export function extractAsp(assessment: unknown): AluminumSidingProtocol | null {
@@ -125,6 +140,15 @@ export function buildAspReportSection(assessment: unknown): AspReportSection | n
     conclusion: asp.conclusion ?? null,
     conclusionBasis: asp.conclusionBasis ?? null,
     compatibilityBasis: asp.compatibilityBasis ?? null,
+    elevations: asp.elevations.map((elevation) => ({
+      elevation: elevation.elevation,
+      label: elevation.label?.trim() || null,
+      wrb: elevation.wrb ?? null,
+    })),
+    vintage: asp.vintage ?? null,
+    lockBehaviorBasis: asp.lockBehaviorBasis?.trim() || null,
+    productRecordId: asp.productRecordId ?? null,
+    catalogProductId: asp.catalogProductId ?? null,
   };
 }
 
