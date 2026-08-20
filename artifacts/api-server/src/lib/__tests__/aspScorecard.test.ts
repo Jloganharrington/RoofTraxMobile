@@ -8,7 +8,9 @@ import {
 } from '../aspScorecard';
 import {
   assembleSectionHtml,
+  buildFieldConditionSet,
   buildRepairabilityProtocolNarrativePrompt,
+  filterDetrimentEntries,
 } from '../sectionGeneration';
 
 const asp = (overrides: Partial<AluminumSidingProtocol> = {}): AluminumSidingProtocol => ({
@@ -141,5 +143,35 @@ describe('ASP narrative instruction', () => {
     }]);
     expect(html).toContain('Repairability Protocol Narrative');
     expect(html).not.toContain('Repair Attempt Protocol Narrative');
+  });
+});
+
+describe('canonical WRB condition codes', () => {
+  const conditionSet = (sidingFacets: Array<{ wrbPresent: boolean | null; damaged: boolean }>) =>
+    buildFieldConditionSet(
+      { sidingDamageFound: true },
+      { sidingFacets },
+    );
+
+  it('derives all-present, absent, and damaged-undetermined conditions from facets', () => {
+    expect(conditionSet([
+      { wrbPresent: true, damaged: true },
+      { wrbPresent: true, damaged: false },
+    ]).has('wrb_present')).toBe(true);
+    expect(conditionSet([
+      { wrbPresent: true, damaged: true },
+      { wrbPresent: false, damaged: true },
+    ]).has('wrb_absent')).toBe(true);
+    expect(conditionSet([
+      { wrbPresent: null, damaged: true },
+    ]).has('wrb_undetermined')).toBe(true);
+  });
+
+  it('includes a WRB-gated detriment only when the canonical facet condition is present', () => {
+    const entries = [
+      { entryKey: 'DET-VS-03', applicabilityConditions: ['wrb_absent'] },
+    ];
+    expect(filterDetrimentEntries(entries, conditionSet([{ wrbPresent: false, damaged: true }]))).toEqual(entries);
+    expect(filterDetrimentEntries(entries, conditionSet([{ wrbPresent: true, damaged: true }]))).toEqual([]);
   });
 });

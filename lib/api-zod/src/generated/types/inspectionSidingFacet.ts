@@ -17,7 +17,7 @@ export interface InspectionSidingFacet {
   damaged: boolean;
   damageType: SidingDamageType | null;
   /**
-     * Water-resistive barrier present? Null until answered.
+     * Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.
      * @nullable
      */
   wrbPresent: boolean | null;

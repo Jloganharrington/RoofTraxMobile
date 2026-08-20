@@ -543,6 +543,40 @@ async function hydrateInspectionChildren(
   };
 }
 
+/**
+ * The per-facet boolean is the canonical three-state WRB record:
+ * true = present, false = absent, null = undetermined. The inspection-level
+ * column remains for historical clients, but is always derived from facets.
+ */
+function deriveInspectionWrbPresent(
+  facets: Array<{ wrbPresent?: boolean | null }>,
+): boolean | null {
+  if (facets.some((facet) => facet.wrbPresent === false)) return false;
+  if (facets.length > 0 && facets.every((facet) => facet.wrbPresent === true)) return true;
+  return null;
+}
+
+async function syncDerivedInspectionWrb(
+  inspectionId: string,
+  companyId: string,
+): Promise<boolean | null> {
+  const facets = await db
+    .select({ wrbPresent: inspectionSidingFacetsTable.wrbPresent })
+    .from(inspectionSidingFacetsTable)
+    .where(
+      and(
+        eq(inspectionSidingFacetsTable.inspectionId, inspectionId),
+        eq(inspectionSidingFacetsTable.companyId, companyId),
+      ),
+    );
+  const sidingWrbPresent = deriveInspectionWrbPresent(facets);
+  await db
+    .update(inspectionsTable)
+    .set({ sidingWrbPresent, updatedAt: new Date() })
+    .where(and(eq(inspectionsTable.id, inspectionId), eq(inspectionsTable.companyId, companyId)));
+  return sidingWrbPresent;
+}
+
 // Stored repairabilityAssessment jsonb may predate the v2/v3 schemas. API
 // response schemas accept v2 and v3 only, so surface legacy rows as null
 // rather than failing the whole response parse; report compiles read the
@@ -897,6 +931,10 @@ router.get('/inspections/:inspectionId', requirePermission('inspection.read'), a
     GetInspectionResponse.parse({
       inspection: {
         ...inspection,
+        sidingWrbPresent:
+          children.sidingFacets.length > 0
+            ? deriveInspectionWrbPresent(children.sidingFacets)
+            : inspection.sidingWrbPresent,
         repairabilityAssessment: apiSafeRepairability(inspection.repairabilityAssessment),
         ...children,
         latestAgreement: latestAgreementRow,
@@ -1214,6 +1252,7 @@ router.patch('/inspections/:inspectionId', requireWritableInspection(), async (r
   const [updated] = await db
     .update(inspectionsTable)
     .set({
+      updatedAt: new Date(),
       // Append-only, atomically against the CURRENT stored value (not the
       // in-memory snapshot) so concurrent PATCHes can't drop each other's
       // audit entries.
@@ -1261,11 +1300,9 @@ router.patch('/inspections/:inspectionId', requireWritableInspection(), async (r
       ...(parsed.data.interiorDamageFound !== undefined && {
         interiorDamageFound: parsed.data.interiorDamageFound,
       }),
-      // v2.2 — inspection-level WRB answer (asked on the Siding Inspection
-      // step when at least one facet is damaged).
-      ...(parsed.data.sidingWrbPresent !== undefined && {
-        sidingWrbPresent: parsed.data.sidingWrbPresent,
-      }),
+      // The inspection-level WRB value is derived from the canonical
+      // per-facet record. Direct writes are ignored so stale offline clients
+      // cannot make the two representations disagree.
       ...(parsed.data.sidingMeasurementReportRef !== undefined && {
         sidingMeasurementReportRef: parsed.data.sidingMeasurementReportRef,
       }),
@@ -1546,6 +1583,7 @@ router.post('/inspections/:inspectionId/siding-facets', requireWritableInspectio
       .onConflictDoNothing({ target: inspectionSidingFacetsTable.id })
       .returning();
     if (inserted) {
+      await syncDerivedInspectionWrb(inspectionId, actor.companyId);
       res
         .status(201)
         .json(CreateInspectionSidingFacetResponse.parse({ sidingFacet: inserted }));
@@ -1565,6 +1603,7 @@ router.post('/inspections/:inspectionId/siding-facets', requireWritableInspectio
       res.status(409).json({ error: 'Siding facet id already exists' });
       return;
     }
+    await syncDerivedInspectionWrb(inspectionId, actor.companyId);
     res.status(200).json(CreateInspectionSidingFacetResponse.parse({ sidingFacet: existing }));
     return;
   }
@@ -1574,6 +1613,7 @@ router.post('/inspections/:inspectionId/siding-facets', requireWritableInspectio
     .values(values)
     .returning();
 
+  await syncDerivedInspectionWrb(inspectionId, actor.companyId);
   res.status(201).json(CreateInspectionSidingFacetResponse.parse({ sidingFacet }));
 });
 
@@ -1650,6 +1690,7 @@ router.patch(
           ),
         );
     }
+    await syncDerivedInspectionWrb(inspectionId, actor.companyId);
     res.json(UpdateInspectionSidingFacetResponse.parse({ sidingFacet: updated }));
   },
 );
@@ -1679,6 +1720,7 @@ router.delete(
       res.status(404).json({ error: 'Siding facet not found' });
       return;
     }
+    await syncDerivedInspectionWrb(inspectionId, actor.companyId);
     res.status(204).end();
   },
 );
@@ -5938,6 +5980,17 @@ ${JSON.stringify(photoBrief)}
     signaturePath,
   };
 
+  const wrbSection = {
+    facets: children.sidingFacets.map((facet) => ({
+      label: facet.label,
+      state: facet.wrbPresent === true ? 'present' : facet.wrbPresent === false ? 'absent' : 'undetermined',
+      damaged: facet.damaged === true,
+    })),
+    citation:
+      selectedSiding.find((citation) => /water.resistive|weather.resistive|\bwrb\b/i.test(citation.cite ?? ''))?.cite ??
+      null,
+  };
+
   // ── Section assembly & generationSnapshot ──────────────────────────────
   // Read locked sections and build the section assembly HTML (TOC + body).
   // Also gather standards entries for standardsCited snapshot.
@@ -6103,6 +6156,9 @@ ${JSON.stringify(photoBrief)}
     // Server-built Aluminum Siding Forensic Inspection Protocol observations.
     // Null when no aluminum-siding protocol was run.
     aspSection,
+    // Canonical per-facet WRB snapshot. The inspection-level value is
+    // derived compatibility data and is intentionally not stored here.
+    wrbSection,
     // Present from schemaVersion 4 onward.
     contentClasses,
     lint,
@@ -6315,6 +6371,10 @@ export async function renderCompiledReportHtml(opts: {
     vapSection?: VapReportSection | null;
     // Server-built ASP (aluminum siding) observation + compatibility record.
     aspSection?: AspReportSection | null;
+    wrbSection?: {
+      facets: Array<{ label: string; state: 'present' | 'absent' | 'undetermined'; damaged: boolean }>;
+      citation: string | null;
+    };
     // Present from schemaVersion 4 onward.
     contentClasses?: Record<string, ContentClass>;
     lint?: { lintStatus: 'passed' | 'needs_review' | 'blocked'; findings: unknown[] };
@@ -6606,6 +6666,30 @@ export async function renderCompiledReportHtml(opts: {
     }`;
   }
 
+  let wrbSectionHtml: string | null = null;
+  const wrbSection = compiledData.wrbSection;
+  if (wrbSection?.facets.length) {
+    const absent = wrbSection.facets.filter((facet) => facet.state === 'absent');
+    const undeterminedDamaged = wrbSection.facets.filter(
+      (facet) => facet.state === 'undetermined' && facet.damaged,
+    );
+    if (absent.length || undeterminedDamaged.length) {
+      const rows = wrbSection.facets
+        .map((facet) => `<tr><td>${escHtml(facet.label)}</td><td>${escHtml(facet.state)}</td><td>${facet.damaged ? 'Yes' : 'No'}</td></tr>`)
+        .join('');
+      const citation = wrbSection.citation
+        ? `<p style="font-size:13px;margin-top:8px"><strong>Code citation:</strong> ${escHtml(wrbSection.citation)}</p>`
+        : '<p style="font-size:13px;margin-top:8px"><strong>Code citation:</strong> [CODE CITATION NEEDED]</p>';
+      const absentChain = absent.length
+        ? `<p style="font-size:13px;margin-top:8px">Rule 45 consequence: a compliant replacement assembly requires a WRB behind the cladding. A WRB cannot be installed behind cladding in isolation; therefore correction requires removal of the cladding on the affected elevation(s): ${escHtml(absent.map((facet) => facet.label).join(', '))}.</p>${citation}`
+        : '';
+      const undeterminedNote = undeterminedDamaged.length
+        ? `<p style="font-size:13px;margin-top:8px">WRB is undetermined on siding-damage elevation(s): ${escHtml(undeterminedDamaged.map((facet) => facet.label).join(', '))}. This is recorded as undetermined and is not treated as present.</p>`
+        : '';
+      wrbSectionHtml = `<table class="detail-table"><tr><th>Elevation / facet</th><th>WRB observation</th><th>Siding damage claimed</th></tr>${rows}</table>${absentChain}${undeterminedNote}`;
+    }
+  }
+
   // Build the Evidence Manifest appendix — entirely server-side from the
   // stored manifest (schemaVersion >= 2). Provenance is never AI-generated.
   let evidenceManifestHtml: string | null = null;
@@ -6891,6 +6975,7 @@ is disclosed below; the package was re-verified and re-locked at re-submission.<
         rapSectionHtml,
         vapSectionHtml,
         aspSectionHtml,
+        wrbSectionHtml,
         evidenceScopeIndexHtml,
         evidenceManifestHtml,
         unlockLogHtml,

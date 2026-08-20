@@ -2645,7 +2645,7 @@ export interface InspectionSidingFacet {
   damaged: boolean;
   damageType: SidingDamageType | null;
   /**
-     * Water-resistive barrier present? Null until answered.
+     * Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.
      * @nullable
      */
   wrbPresent: boolean | null;
@@ -2775,7 +2775,7 @@ export interface Inspection {
   /** REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior/Attic step. */
   interiorDamageFound: boolean;
   /**
-     * v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.
+     * Derived compatibility field. It is false when any siding facet records WRB absent, true when every facet records present, and null when any facet is undetermined. The per-facet record is canonical.
      * @nullable
      */
   sidingWrbPresent?: boolean | null;

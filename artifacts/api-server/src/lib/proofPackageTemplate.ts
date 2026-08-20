@@ -185,6 +185,7 @@ export type ProofPackageData = {
     rapSectionHtml?: string | null;
     vapSectionHtml?: string | null;
     aspSectionHtml?: string | null;
+    wrbSectionHtml?: string | null;
     evidenceScopeIndexHtml?: string | null;
     evidenceManifestHtml?: string | null;
     unlockLogHtml?: string | null;
@@ -653,6 +654,9 @@ export function buildProofPackageHtml(data: ProofPackageData): string {
   }
   if (data.extras.aspSectionHtml) {
     supplemental.push({ title: 'Aluminum Siding Forensic Inspection Protocol', inner: data.extras.aspSectionHtml });
+  }
+  if (data.extras.wrbSectionHtml) {
+    supplemental.push({ title: 'Siding Water-Resistive Barrier Findings', inner: data.extras.wrbSectionHtml });
   }
   if (data.extras.evidenceScopeIndexHtml) {
     supplemental.push({ title: 'Evidence-to-Scope Index', inner: data.extras.evidenceScopeIndexHtml });

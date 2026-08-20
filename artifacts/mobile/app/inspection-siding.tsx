@@ -21,7 +21,7 @@ import {
   appendOptimisticPhotos,
   createSidingFacet,
   deleteSidingFacet,
-  patchInspection,
+  updateSidingFacet,
 } from '@/lib/inspectionSync';
 import {
   pickEvidencePhotoFromLibrary,
@@ -100,15 +100,13 @@ export default function InspectionSidingScreen() {
   const facets = inspection.sidingFacets ?? [];
   const facetById = new Map(state.sidingFacets.map((f) => [f.id, f]));
   const remaining = stageDeficiencies(inspection, 'siding').length;
-  // v2.2 — inspection-level WRB question, shown once any facet has damage.
-  const anyFacetDamaged = (inspection.sidingFacets ?? []).some((f) => Boolean(f.damaged));
-  const wrbPresent = (inspection.sidingWrbPresent as boolean | null) ?? null;
+  const hasAbsentWrbFacet = facets.some((facet) => facet.wrbPresent === false);
 
-  async function setWrbPresent(value: boolean) {
-    if (wrbPresent === value) return;
-    // Switching back to Yes/null clears the captured indicator.
-    if (value) setWrbPhotoCaptured(false);
-    await patchInspection(queryClient, id, { sidingWrbPresent: value });
+  async function setFacetWrb(facetId: string, value: boolean | null) {
+    const current = facets.find((facet) => facet.id === facetId)?.wrbPresent ?? null;
+    if (current === value) return;
+    if (value !== false) setWrbPhotoCaptured(false);
+    await updateSidingFacet(queryClient, id, facetId, { wrbPresent: value });
   }
 
   async function captureWrbPhoto(source: 'camera' | 'library') {
@@ -279,8 +277,8 @@ export default function InspectionSidingScreen() {
               if (info?.components.some((c) => !c.actionSelected))
                 missing.push('component disposition');
               return (
+                <React.Fragment key={facet.id}>
                 <Pressable
-                  key={facet.id}
                   onPress={() =>
                     router.push({
                       pathname: '/inspection-siding-facet',
@@ -304,86 +302,86 @@ export default function InspectionSidingScreen() {
                   </View>
                   <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
                 </Pressable>
+                <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, fontWeight: '700' }}>
+                    WRB behind this elevation
+                  </Text>
+                  <View style={styles.chipRow}>
+                    {([
+                      { value: true, label: 'Present' },
+                      { value: false, label: 'Absent' },
+                      { value: null, label: 'Undetermined' },
+                    ] as const).map(({ value, label }) => {
+                      const selected = facet.wrbPresent === value;
+                      return (
+                        <Pressable
+                          key={label}
+                          onPress={() => void setFacetWrb(facet.id, value)}
+                          style={[
+                            styles.wrbChip,
+                            {
+                              backgroundColor: selected ? colors.primary : colors.card,
+                              borderColor: selected ? colors.primary : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text style={{ color: selected ? colors.primaryForeground : colors.foreground, fontWeight: '700' }}>
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+                </React.Fragment>
               );
             })}
-            {/* v2.2 — Water-resistive barrier, asked ONCE per inspection.
-                Only shown when at least one facet is marked damaged. */}
-            {anyFacetDamaged && (
+            {hasAbsentWrbFacet && (
               <>
                 <Text style={[styles.section, { color: colors.foreground }]}>
-                  Does the home currently have water resistive barrier?
+                  No-WRB evidence
                 </Text>
-                <View style={styles.chipRow}>
-                  {([true, false] as const).map((v) => {
-                    const selected = wrbPresent === v;
-                    return (
-                      <Pressable
-                        key={String(v)}
-                        onPress={() => void setWrbPresent(v)}
-                        style={[
-                          styles.yesNo,
-                          {
-                            backgroundColor: selected ? colors.primary : colors.card,
-                            borderColor: selected ? colors.primary : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: selected ? colors.primaryForeground : colors.foreground,
-                            fontWeight: '700',
-                          }}
-                        >
-                          {v ? 'Yes' : 'No'}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                {wrbPresent === false && (
-                  <Pressable
-                    onPress={wrbPhotoCaptured ? undefined : promptWrbPhotoSource}
-                    disabled={capturingWrbPhoto}
+                <Pressable
+                  onPress={wrbPhotoCaptured ? undefined : promptWrbPhotoSource}
+                  disabled={capturingWrbPhoto}
+                  style={[
+                    styles.row,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: wrbPhotoCaptured ? colors.success : colors.border,
+                    },
+                  ]}
+                >
+                  <View
                     style={[
-                      styles.row,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: wrbPhotoCaptured ? colors.success : colors.border,
-                      },
+                      styles.badge,
+                      { backgroundColor: wrbPhotoCaptured ? colors.success : colors.accent },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.badge,
-                        { backgroundColor: wrbPhotoCaptured ? colors.success : colors.accent },
-                      ]}
-                    >
-                      {capturingWrbPhoto ? (
-                        <ActivityIndicator color={colors.secondary} />
-                      ) : (
-                        <Icon
-                          name={wrbPhotoCaptured ? 'check' : 'camera'}
-                          size={18}
-                          color={wrbPhotoCaptured ? '#fff' : colors.secondary}
-                        />
-                      )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                        {wrbPhotoCaptured ? 'No-WRB photo captured' : 'Capture photo showing no WRB'}
-                      </Text>
-                      <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                        {wrbPhotoCaptured
-                          ? 'Saved to evidence — tap to recapture'
-                          : 'Document that no barrier is present'}
-                      </Text>
-                    </View>
-                    {!wrbPhotoCaptured && (
-                      <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+                    {capturingWrbPhoto ? (
+                      <ActivityIndicator color={colors.secondary} />
+                    ) : (
+                      <Icon
+                        name={wrbPhotoCaptured ? 'check' : 'camera'}
+                        size={18}
+                        color={wrbPhotoCaptured ? '#fff' : colors.secondary}
+                      />
                     )}
-                  </Pressable>
-                )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                      {wrbPhotoCaptured ? 'No-WRB photo captured' : 'Capture photo showing no WRB'}
+                    </Text>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+                      {wrbPhotoCaptured
+                        ? 'Saved to evidence — tap to recapture'
+                        : 'Document that no barrier is present'}
+                    </Text>
+                  </View>
+                  {!wrbPhotoCaptured && (
+                    <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+                  )}
+                </Pressable>
               </>
             )}
             <Text style={{ color: remaining === 0 ? colors.success : colors.mutedForeground, fontSize: 13, marginTop: 4 }}>
@@ -412,5 +410,5 @@ const styles = StyleSheet.create({
   stepBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   stepCount: { fontSize: 17, fontWeight: '800', minWidth: 24, textAlign: 'center' },
   chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  yesNo: { borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 28 },
+  wrbChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 7, paddingHorizontal: 12 },
 });

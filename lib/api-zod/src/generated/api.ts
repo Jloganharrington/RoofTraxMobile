@@ -2138,7 +2138,7 @@ export const ListInspectionsResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
-  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('Derived compatibility field. It is false when any siding facet records WRB absent, true when every facet records present, and null when any facet is undetermined. The per-facet record is canonical.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
@@ -2511,7 +2511,7 @@ export const ListInspectionsResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
@@ -2862,7 +2862,7 @@ export const CreateInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
-  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('Derived compatibility field. It is false when any siding facet records WRB absent, true when every facet records present, and null when any facet is undetermined. The per-facet record is canonical.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
@@ -3235,7 +3235,7 @@ export const CreateInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
@@ -3568,7 +3568,7 @@ export const GetInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
-  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('Derived compatibility field. It is false when any siding facet records WRB absent, true when every facet records present, and null when any facet is undetermined. The per-facet record is canonical.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
@@ -3941,7 +3941,7 @@ export const GetInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
@@ -4712,7 +4712,7 @@ export const UpdateInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
-  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('Derived compatibility field. It is false when any siding facet records WRB absent, true when every facet records present, and null when any facet is undetermined. The per-facet record is canonical.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
@@ -5085,7 +5085,7 @@ export const UpdateInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
@@ -5522,7 +5522,7 @@ export const CreateInspectionSidingFacetResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
@@ -5570,7 +5570,7 @@ export const UpdateInspectionSidingFacetResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])
@@ -6409,7 +6409,7 @@ export const SubmitInspectionResponse = zod.object({
   "sidingDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — siding damage observed.'),
   "collateralDamageFound": zod.boolean().describe('v2.1 Elevation Walk flag — collateral damage observed.'),
   "interiorDamageFound": zod.boolean().describe('REPORT_DATA v2 — fourth damage-surface flag: interior is part of this claim. An explicit inspector decision, never derived from interior observations. Gates the Interior\/Attic step.'),
-  "sidingWrbPresent": zod.boolean().nullish().describe('v2.2 — Does the home currently have a water-resistive barrier? Asked once at the inspection level on the Siding Inspection step (shown when at least one siding facet has damage). Null until answered.'),
+  "sidingWrbPresent": zod.boolean().nullish().describe('Derived compatibility field. It is false when any siding facet records WRB absent, true when every facet records present, and null when any facet is undetermined. The per-facet record is canonical.'),
   "sidingMeasurementReportRef": zod.string().nullable().describe('v2.1 optional siding measurement report reference (client id of the uploaded report photo).'),
   "measurementsReportUrl": zod.string().nullish().describe('Optional measurements report PDF uploaded at arrival. Stored as an object-storage path (\/objects\/…) served through the storage proxy.'),
   "propertyProfile": zod.union([zod.object({
@@ -6782,7 +6782,7 @@ export const SubmitInspectionResponse = zod.object({
   "label": zod.string(),
   "damaged": zod.boolean(),
   "damageType": zod.union([zod.enum(['wind', 'hail', 'tree']).describe('v2.1 — per-siding-facet damage classification (distinct vocabulary from roof facets).'),zod.null()]),
-  "wrbPresent": zod.boolean().nullable().describe('Water-resistive barrier present? Null until answered.'),
+  "wrbPresent": zod.boolean().nullable().describe('Canonical per-facet WRB record: true is present, false is absent, and null is undetermined. Legacy boolean rows retain this mapping.'),
   "isolated": zod.boolean().nullish().describe('Is this an isolated siding facet? Null until answered.'),
   "components": zod.array(zod.object({
   "action": zod.union([zod.enum(['detach_reset', 'remove_replace']).describe('v2.1 — siding component disposition.'),zod.null()])

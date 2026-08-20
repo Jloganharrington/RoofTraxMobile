@@ -10018,10 +10018,9 @@ components:
         sidingWrbPresent:
           type: [boolean, "null"]
           description: >-
-            v2.2 — Does the home currently have a water-resistive barrier?
-            Asked once at the inspection level on the Siding Inspection step
-            (shown when at least one siding facet has damage). Null until
-            answered.
+            Derived compatibility field. It is false when any siding facet
+            records WRB absent, true when every facet records present, and null
+            when any facet is undetermined. The per-facet record is canonical.
         sidingMeasurementReportRef:
           type: [string, "null"]
           description: >-
@@ -11165,7 +11164,9 @@ components:
             - type: "null"
         wrbPresent:
           type: [boolean, "null"]
-          description: Water-resistive barrier present? Null until answered.
+          description: >-
+            Canonical per-facet WRB record: true is present, false is absent,
+            and null is undetermined. Legacy boolean rows retain this mapping.
         isolated:
           type: [boolean, "null"]
           description: Is this an isolated siding facet? Null until answered.
