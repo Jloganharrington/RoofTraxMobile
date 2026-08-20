@@ -1,0 +1,66 @@
+WORK ORDER — WRB: One Canonical Record, and Make It Do Something
+Repo: RoofTraxMobile · Base: origin/main @ dca6025 · Branch: wrb-canonical-record
+
+0. READ FIRST
+Baseline: on dca6025 the api-server suite is 52 passed / 7 failed files (59), 1106 passed / 62 failed tests. Those 7 are pre-existing and not yours. Your bar: failing files ≤ 7, failing tests ≤ 62.
+
+Mobile is unfrozen for two files this time: artifacts/mobile/app/inspection-siding.tsx and artifacts/mobile/app/inspection-repairability.tsx. Nothing else under artifacts/mobile/. Do not touch homeownerReport.ts.
+
+Standing: edit openapi.yaml and regenerate — never hand-edit generated clients. Server validation is authoritative.
+
+The problem. WRB lives in three places and is read by none:
+
+Field	State
+inspections.siding_wrb_present	Written by the Siding step, asked once per inspection. Read by nothing.
+siding_facets.wrb_present	Pre-existing per-facet column, deprecated in v2.2 — UI stopped asking, API still accepts it. Always null on new records.
+AluminumSidingProtocol.elevations[].wrb	Added last round for rule 45. Rendered in the ASP section only.
+Three fields that can disagree, on the record the rule set calls pivotal. And no generation path consults any of them — so the rule 45 consequence cannot appear in a report today.
+
+Rule 30 is already done — applied in the library documents. Do not touch protocol version strings.
+
+STEP 1 — Make the per-elevation record canonical · [LOCKED]
+Per-elevation is authoritative. siding_facets.wrb_present is the natural home — the column already exists, so no migration; you are restoring a question the UI stopped asking, not adding storage.
+
+Restore the per-facet WRB question in inspection-siding.tsx: present / absent / undetermined per facet. Note this is three-state, not the old boolean — map legacy true→present, false→absent, null→undetermined. [REASONING OK] on how you widen the column (a varchar enum alongside a retained boolean is fine); [LOCKED] that legacy rows keep reading correctly.
+inspections.siding_wrb_present becomes derived, never independently authored: absent if any facet is absent, else present if all answered present, else undetermined. Keep the column for historical rows and existing consumers; stop the UI writing it directly.
+The ASP elevations[].wrb stays as-is and must agree with the facet record for the same elevation.
+⚠️ Do not delete or repurpose either legacy column. Historical rows and offline outbox replay depend on both (see the v2.2 comment at lib/db/src/schema/inspections.ts:878).
+
+▶ CHECKPOINT 1 — paste: a legacy inspection with siding_wrb_present = false and null facet values still reading correctly; a new inspection with three facets (one absent) showing the derived inspection-level value as absent; npx tsc --noEmit for all packages.
+INTEGRATION: the existing "No WRB" evidence-photo capture in inspection-siding.tsx (triggered at wrbPresent === false) must still work — paste it firing off the new three-state answer.
+
+STOP. Wait for confirmation.
+
+STEP 2 — Make WRB reach generation · [LOCKED]
+This is the step that actually delivers rule 45. Add to buildFieldConditionSet in sectionGeneration.ts:
+
+wrb_absent — any surveyed elevation/facet recorded absent
+wrb_present — all answered present
+wrb_undetermined — any unanswered where siding damage is claimed
+These are condition codes, so detriment entries can gate on them — DET-VS-03 names WRB as its required-support field (rule 45), and it currently has no way to know.
+
+▶ CHECKPOINT 2 — paste the computed condition set for three claims: all-present, one-absent, one-undetermined. Then paste a detriment-filtering run showing an entry gated on wrb_absent correctly included and excluded.
+INTEGRATION: condition-set changes affect every detriment filter. Paste npx vitest run src/lib/__tests__/ in full and confirm the failing count is unchanged at 62.
+
+STOP. Wait for confirmation.
+
+STEP 3 — Render the rule 45 consequence · [LOCKED on content]
+Where any elevation is recorded absent, the siding section states the rule 45 chain: a compliant replacement assembly requires a WRB behind the cladding; a WRB cannot be installed behind cladding in isolation; therefore correction requires removal of the cladding on the affected elevation(s) — naming those elevations.
+
+Cite the WRB requirement from the Virginia AHJ Pack siding list. If the governing provision isn't in the pack, render the literal placeholder [CODE CITATION NEEDED] — rule 45 requires that marker, not a silent omission and not an invented citation.
+
+Where WRB is undetermined on a claim with siding damage, say so plainly. Undetermined is not "present."
+
+▶ CHECKPOINT 3 — paste rendered HTML for: one absent elevation (chain + named elevations + citation or placeholder), all present (no chain), and one undetermined (explicit statement).
+INTEGRATION: paste a rendered ASP section confirming elevations[].wrb and the facet record agree; and npx vitest run src/lib/__tests__/proofPackageTemplate.test.ts src/lib/__tests__/evidenceChain.test.ts.
+
+STOP. Wait for confirmation.
+
+FINAL
+▶ FINAL CHECKPOINT — paste all of it. Required: failing files ≤ 7, failing tests ≤ 62; named pre-existing suites still green (rapScorecard, vapScorecard, repairabilityRules, aspScorecard, readiness, proofPackageTemplate, evidenceChain, aiSummaryPrompt, contentPolicy); git diff --stat -- artifacts/mobile/ shows only inspection-siding.tsx and inspection-repairability.tsx; no change to homeownerReport.ts.
+
+Then report separately: (1) anything reasoned about rather than implemented as written; (2) anything here that looked wrong when you reached it — particularly if you found a fourth WRB consumer I missed; (3) anything noticed and deliberately not fixed.
+
+Acceptance
+WRB is answered once per elevation and every other representation derives from that answer, so the three fields cannot disagree. The record reaches generation as condition codes, so detriment entries can gate on it. A claim with an absent WRB renders the rule 45 consequence naming the affected elevations, with a pack citation or the explicit [CODE CITATION NEEDED] marker. An undetermined WRB is stated as undetermined, never treated as present. Legacy rows and offline replay still work.
+

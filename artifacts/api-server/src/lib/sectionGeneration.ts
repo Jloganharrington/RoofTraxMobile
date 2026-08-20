@@ -87,6 +87,7 @@ export function buildFieldConditionSet(
     testSquares?: { id?: string }[];
     damageInstances?: { id?: string; slopeId?: string | null; instanceType?: string | null }[];
     slopes?: { id?: string; damagePresent?: boolean | null; materialType?: string | null }[];
+    sidingFacets?: { wrbPresent?: boolean | null; damaged?: boolean | null }[];
   },
 ): Set<string> {
   const conditions = new Set<string>();
@@ -141,6 +142,15 @@ export function buildFieldConditionSet(
   if (hasDeck) conditions.add('deck_replacement_in_scope');
 
   if (inspection.interiorDamageFound) conditions.add('interior_scope_present');
+
+  const sidingFacets = children.sidingFacets ?? [];
+  if (sidingFacets.some((facet) => facet.wrbPresent === false)) {
+    conditions.add('wrb_absent');
+  } else if (sidingFacets.length > 0 && sidingFacets.every((facet) => facet.wrbPresent === true)) {
+    conditions.add('wrb_present');
+  } else if (sidingFacets.some((facet) => facet.damaged === true && facet.wrbPresent == null)) {
+    conditions.add('wrb_undetermined');
+  }
 
   const pp = inspection.propertyProfile as
     | { structureType?: string; garageAttached?: boolean }
@@ -225,7 +235,7 @@ function buildFieldBrief(
       pitchRise?: number | null;
       pitchRun?: number | null;
     }>;
-    sidingFacets?: Array<{ label?: string; damageType?: string | null }>;
+    sidingFacets?: Array<{ label?: string; damageType?: string | null; damaged?: boolean | null; wrbPresent?: boolean | null }>;
     damageInstances?: Array<{
       slopeId?: string | null;
       instanceType?: string | null;
@@ -287,7 +297,8 @@ function buildFieldBrief(
     lines.push('');
     lines.push('SIDING FACETS:');
     for (const sf of sidingFacets) {
-      lines.push(`  ${sf.label ?? 'Facet'} — damage: ${sf.damageType ?? 'none'}`);
+      const wrb = sf.wrbPresent === true ? 'present' : sf.wrbPresent === false ? 'absent' : 'undetermined';
+      lines.push(`  ${sf.label ?? 'Facet'} — damage: ${sf.damageType ?? 'none'} — WRB: ${wrb}`);
     }
   }
 
