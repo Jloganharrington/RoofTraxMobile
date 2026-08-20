@@ -1,0 +1,100 @@
+WORK ORDER — ASP Integrity Fixes + Production Rules Alignment
+Repo: RoofTraxMobile · Base: origin/main @ f64d0cc · Branch: asp-integrity-production-rules
+
+0. READ FIRST
+Baseline before you touch anything. On f64d0cc the api-server suite is 52 passed / 7 failed files (59), 1096 passed / 62 failed tests. Those 7 failures — profitability, storage-acl, supplements, templates and three others — are pre-existing on main and not yours to fix. Do not chase them. Your bar is: that number must not grow.
+
+Mobile is unfrozen for one file only: artifacts/mobile/app/inspection-repairability.tsx. Everything else under artifacts/mobile/ stays frozen; do not touch artifacts/mobile/lib/homeownerReport.ts (unrelated uncommitted work lives there).
+
+Standing: never hand-edit generated client files — edit openapi.yaml and regenerate. Server-side validation is authoritative; mobile mirrors are for rep experience only. No DB migration (ASP lives in the existing repairability_assessment jsonb; section_key is a Drizzle varchar, not a pg enum).
+
+Why this order exists. The ASP shipped structurally sound — validator wired, photo ownership enforced, no regressions. What got dropped is the layer that states what the assessment cannot conclude. That layer is the reason the protocol exists: it's non-destructive, so its credibility rests entirely on being explicit about its own limits. Separately, the new Production Rule Set (boiler-plate-docs/Production_Rules_BP.md, sectionKey production_rules) governs on conflict and adds three requirements the ASP record can't currently satisfy.
+
+STEP 1 — Restore the ASP integrity qualifiers · [LOCKED]
+File: artifacts/api-server/src/lib/aspScorecard.ts
+
+AspScorecard currently reports counts only. Add:
+
+lightingTechnique and diffuseOnly — read from asp.assessmentConditions.lightingTechnique. Mobile already captures this and the DB stores it; the server currently reads it zero times anywhere.
+deformationWithoutRakingPhoto: AspElevation[] — elevations carrying an impactDeformation === 'yes' finding with no rakingPhotoId. The finding still stands; the gap is reported beside it.
+Fix two defects in computeAspScorecard:
+
+documentedImpacts drops zero-count squares. square.impactCount > 0 skips a legitimately recorded zero. Zero is a real forensic result — a counted square with no impacts. Use >= 0 with the integer guard.
+documentedImpacts presents a building-level total with no scope limit. Keep the sum, but the brief and report must carry the §6 statement that it characterizes only the counted 10 ft × 10 ft areas and is never extrapolated.
+aspScorecardBriefLines must always end with, verbatim in substance: no manipulation was performed, so no finding is made about how a panel, nailing hem, or interlock would respond to manipulation. The adjective "non-destructive" in the header is not sufficient — that sentence is the protocol's central limit.
+
+Add conditionally: the diffuse-light qualifier when diffuseOnly (a negative deformation finding under diffuse light only is not a finding that deformation is absent), the test-square scope limit when squares exist, and the missing-raking-frame line when applicable.
+
+▶ CHECKPOINT 1 — paste cd artifacts/api-server && npx vitest run src/lib/__tests__/aspScorecard.test.ts and npx tsc --noEmit -p tsconfig.json && echo TSC OK.
+INTEGRATION: vapScorecard.ts is this file's template — paste npx vitest run src/lib/__tests__/vapScorecard.test.ts src/lib/__tests__/rapScorecard.test.ts green, and confirm isVapArchiveOnlyPhoto still withholds the VAP archive photo.
+
+STOP. Wait for confirmation.
+
+STEP 2 — Render the qualifiers · [LOCKED on content, REASONING OK on markup]
+Files: artifacts/api-server/src/routes/inspections.ts, lib/reportTemplate.ts, lib/proofPackageTemplate.ts, lib/sectionGeneration.ts
+
+Every qualifier from Step 1 renders with the findings, not in a footnote and not only in the AI brief. A reader must not be able to see "no deformation recorded" without also seeing the lighting condition it was recorded under.
+
+Also fix the example-photo selection: priority is impactDeformation first, then coatingBreach, capped at 2 — currently it's ASP_CONDITION_CATEGORIES display order with .slice(0, 3), so the strongest evidence isn't guaranteed to appear.
+
+▶ CHECKPOINT 2 — paste the rendered ASP section HTML for a claim with lightingTechnique: 'diffuse_only', one deformation finding on an elevation with no raking frame, and two test squares (one with zero impacts). All four qualifiers must be visible in that output. Paste the actual HTML, not a description.
+INTEGRATION: report section numbering — paste rendered section titles for (a) RAP only, (b) RAP + VAP, (c) RAP + ASP, proving Repairability Summary and Inspector Attestation still number correctly. Then npx vitest run src/lib/__tests__/proofPackageTemplate.test.ts src/lib/__tests__/evidenceChain.test.ts.
+
+STOP. Wait for confirmation.
+
+STEP 3 — productRecordId: carry both links · [LOCKED]
+You validated productRecordId against discontinuedProductsTable and updated the schema comment to match. That's coherent, but it breaks protocol §7/§8: Determinations 1–2 — identification classification, discontinued, and ordinary_availability — are per-inspection columns on inspection_products. A Known Product Catalog row cannot carry them, so §8 has no inspection-specific source to render, and Rule 46's per-claim chain can't be assembled.
+
+Carry both, because both are real:
+
+productRecordId → inspection_products, validated on id + inspectionId + companyId. This is the determinations link.
+catalogProductId → discontinued_products, validated on id + companyId. Keep your existing check under this name.
+Update the lib/db doc comment and the openapi.yaml description for both (the openapi productRecordId currently has no description at all). Mobile: the picker reads inspection.products for productRecordId; keep useListDiscontinuedProducts() for catalogProductId.
+
+▶ CHECKPOINT 3 — paste a 400 response for each: a foreign productRecordId and a foreign catalogProductId.
+INTEGRATION: the existing RAP/VAP photo-ownership checks must still fire — paste a 400 for a bogus rap1PhotoId.
+
+STOP. Wait for confirmation.
+
+STEP 4 — Rule 46: the aluminum non-repairability chain · [LOCKED]
+Production Rules rule 46 makes documented pre-1990 aluminum + documented lock condition = non-repairable, replacement scope — rendered from the per-claim chain, never as a pre-stated verdict. The record has no field for the age basis, so that chain cannot currently be assembled.
+
+Add to AluminumSidingProtocol:
+
+Validator gate in validateAsp: conclusion === 'repair_not_supported_product' on an aluminum assessment requires vintage.preNineteenNinety === 'yes' with a non-empty basis, and a non-empty lockBehaviorBasis or findings.interlockDisplacement.answer === 'yes'. Otherwise reject — that gate is what stops the standing position rendering as a pre-stated verdict.
+
+⚠️ Do not let the market-availability statement render as fact about this property. It is the company's standing position (rule 46), and it renders alongside the per-claim basis, never instead of it.
+
+▶ CHECKPOINT 4 — paste four validator results: conclusion set with no vintage (reject), vintage yes with empty basis (reject), vintage yes + basis + lock basis (accept), and a partial ASP with nothing set (accept — partial runs stay savable).
+
+STOP. Wait for confirmation.
+
+STEP 5 — Rule 45: WRB per elevation · [LOCKED, partial by design]
+Rule 45: WRB is the pivotal record on every siding claim, recorded per elevation. Today it's a single inspection-level boolean, inspections.siding_wrb_present.
+
+Scope for this order: add wrb?: 'present' | 'absent' | 'undetermined' | null to AspElevationSurvey, capture it per elevation in the mobile ASP survey, and render it per elevation in the ASP report section. Where any elevation is absent, the report states the rule 45 consequence — a compliant replacement assembly requires a WRB behind the cladding, a WRB cannot be installed behind cladding in isolation, so correction requires cladding removal on the affected elevation(s).
+
+This is deliberately partial. Rule 45 governs every siding claim including vinyl/VAP and the facet flow, where siding_wrb_present still rules. Leave the inspection-level field alone. Report the vinyl/facet side as a named follow-up in your final report — do not expand scope here.
+
+▶ CHECKPOINT 5 — paste the rendered ASP section for a claim with north absent, south present, east undetermined, showing the per-elevation values and the rule 45 consequence text.
+INTEGRATION: the existing WRB question in inspection-siding.tsx must be untouched and still work — paste git diff --stat -- artifacts/mobile/ showing only app/inspection-repairability.tsx.
+
+STOP. Wait for confirmation.
+
+STEP 6 — Rule 30 + the production_rules section key · [LOCKED]
+Rule 30 — the company Repairability Field Protocol is cited by name only, no version string. Find every place a protocol version renders into report output or citation locators and remove the version from the rendered citation. Keep version tracking in the library itself — this is about what prints, not what's stored.
+
+Add production_rules to the BP library in the same four places aluminum_siding_protocol went: BOILERPLATE_SECTION_KEYS in lib/db/src/schema/inspections.ts; the PP wizard prompt list in routes/library.ts (description: "Governing production rule set for proof package output — structure, pricing, captions, citations"); BP_SECTION_LABELS in LibraryPage.tsx ("Production Rules"); and both entries in parseMdLibrary.ts.
+
+▶ CHECKPOINT 6 — paste grep -rn "production_rules" across those four files (hits in all four) and cd artifacts/axiomrestore-web && npx tsc --noEmit -p tsconfig.json && echo WEB OK.
+INTEGRATION: BP versioning still creates new rows, never mutates — confirm PUT /report-settings/bp-library/:sectionKey still computes MAX(version)+1, and paste the Library page showing all 14 sections.
+
+STOP. Wait for confirmation.
+
+FINAL
+▶ FINAL CHECKPOINT — paste all of it. Required: failing files must be ≤ 7 and failing tests ≤ 62 (the pre-existing baseline); name the pre-existing suites you confirmed still green (rapScorecard, vapScorecard, repairabilityRules, aspScorecard, readiness, proofPackageTemplate, evidenceChain, aiSummaryPrompt, contentPolicy); git diff --stat -- artifacts/mobile/ shows only app/inspection-repairability.tsx; no change to homeownerReport.ts.
+
+Then report separately: (1) anything you reasoned about rather than implemented as written — last round the productRecordId retarget was a real judgment call that wasn't surfaced, so surface this round's equivalents; (2) anything in this order that looked wrong when you reached it; (3) the rule 45 vinyl/facet follow-up scope, plus anything else noticed and deliberately not fixed.
+
+Acceptance
+No ASP finding can render without the conditions it was observed under. A negative deformation finding under diffuse light carries its qualifier; a deformation finding without its raking frame carries that gap; test-square counts carry their scope limit; and every rendered ASP section states that no manipulation was performed and nothing is concluded about panel response to manipulation. Rule 46's non-repairability conclusion is reachable only through a documented age basis plus a documented lock basis. WRB is recorded per elevation on aluminum claims. production_rules is a live library section. RAP, VAP, and the legacy v1/v2 readers are provably untouched.

@@ -10602,6 +10602,10 @@ components:
         rakingPhotoId:
           description: Low-angle grazing-light frame for deformation visibility.
           type: [string, "null"]
+        wrb:
+          description: Rule 45 WRB observation for this elevation.
+          type: [string, "null"]
+          enum: [present, absent, undetermined, null]
     AspTestSquare:
       type: object
       description: A count for one aluminum siding test area, not the entire elevation/building.
@@ -10653,6 +10657,14 @@ components:
               enum: [raking_natural, raking_supplemental, diffuse_only, null]
             capturedAtUtc:
               type: [string, "null"]
+        vintage:
+          type: [object, "null"]
+          properties:
+            preNineteenNinety:
+              type: [string, "null"]
+              enum: [yes, no, undetermined, null]
+            basis:
+              type: [string, "null"]
         elevations:
           type: array
           items:
@@ -10687,6 +10699,10 @@ components:
             collateralSoftMetal:
               $ref: "#/components/schemas/AspConditionFinding"
         productRecordId:
+          description: Inspection-specific product determination row (inspection_products).
+          type: [string, "null"]
+        catalogProductId:
+          description: Company Known Product Catalog row (discontinued_products).
           type: [string, "null"]
         compatibility:
           type: object
@@ -10718,6 +10734,9 @@ components:
           type: [string, "null"]
           enum: [repair_supported, repair_not_supported_product, repair_not_supported_condition, undetermined_lab_recommended, undetermined_access_limited, null]
         conclusionBasis:
+          type: [string, "null"]
+        lockBehaviorBasis:
+          description: Basis for the documented lock-condition observation.
           type: [string, "null"]
     RepairabilitySystemFlow:
       type: object

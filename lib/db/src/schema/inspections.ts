@@ -584,6 +584,8 @@ export interface AspElevationSurvey {
   finishColor?: string | null;
   accessible: boolean;
   inaccessibleReason?: string | null;
+  /** Rule 45 WRB observation for this elevation. */
+  wrb?: 'present' | 'absent' | 'undetermined' | null;
   widePhotoId?: string | null;
   /** Low-angle grazing-light frame. Required whenever this elevation carries
    * a deformation finding because flat coated metal is legible in raking light. */
@@ -627,6 +629,11 @@ export interface AspAssessmentConditions {
   capturedAtUtc?: string | null;
 }
 
+export interface AspVintage {
+  preNineteenNinety?: 'yes' | 'no' | 'undetermined' | null;
+  basis?: string | null;
+}
+
 /** Ordered — every criterion is a product/geometry compatibility observation,
  * never a conclusion about a manipulated panel. */
 export type AspCompatibilityCriterionKey =
@@ -648,13 +655,17 @@ export type AspConclusion =
 
 export interface AluminumSidingProtocol {
   assessmentConditions?: AspAssessmentConditions | null;
+  vintage?: AspVintage | null;
   elevations: AspElevationSurvey[];
   referencePhotoId?: string | null;
   testSquares: AspTestSquare[];
   findings: Partial<Record<AspConditionKey, AspConditionFinding>>;
-  /** Link to the company's Known Product Catalog; the selected catalog row is
-   * tenant-scoped by the server before this reference is stored. */
+  /** Link to the inspection-specific product determination row. */
   productRecordId?: string | null;
+  /** Link to the company's Known Product Catalog row. */
+  catalogProductId?: string | null;
+  /** Basis for the per-elevation lock-condition observation under Rule 46. */
+  lockBehaviorBasis?: string | null;
   compatibility: Partial<Record<AspCompatibilityCriterionKey, AspCompatibilityVerdict>>;
   compatibilityBasis?: string | null;
   conclusion?: AspConclusion | null;
@@ -1663,6 +1674,7 @@ export const BOILERPLATE_SECTION_KEYS = [
   'caption_patterns',
   'rap_field_protocol',
   'aluminum_siding_protocol',
+  'production_rules',
   'attestation_block_a',
   'attestation_block_b',
   'attestation_block_c',

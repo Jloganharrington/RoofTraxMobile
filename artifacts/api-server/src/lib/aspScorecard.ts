@@ -28,6 +28,9 @@ export interface AspScorecard {
   accessibleElevations: number;
   testSquares: number;
   documentedImpacts: number;
+  lightingTechnique: string | null;
+  diffuseOnly: boolean;
+  deformationWithoutRakingPhoto: AspElevation[];
   affirmativeConditions: number;
   matchedCompatibilityCriteria: number;
   unmatchedCompatibilityCriteria: number;
@@ -67,11 +70,23 @@ const affirmativeElevationCount = (asp: AluminumSidingProtocol, key: AspConditio
 
 export function computeAspScorecard(asp: AluminumSidingProtocol): AspScorecard {
   const compatibility = Object.values(asp.compatibility ?? {});
+  const impactFinding = asp.findings?.impactDeformation;
+  const deformationWithoutRakingPhoto = (impactFinding?.answer === 'yes' ? asp.elevations : [])
+    .filter((elevation) =>
+      impactFinding?.elevations?.includes(elevation.elevation) && !elevation.rakingPhotoId,
+    )
+    .map((elevation) => elevation.elevation);
   return {
     surveyedElevations: asp.elevations.length,
     accessibleElevations: asp.elevations.filter((e) => e.accessible).length,
     testSquares: asp.testSquares.length,
-    documentedImpacts: asp.testSquares.reduce((sum, square) => sum + (Number.isInteger(square.impactCount) && square.impactCount > 0 ? square.impactCount : 0), 0),
+    documentedImpacts: asp.testSquares.reduce(
+      (sum, square) => sum + (Number.isInteger(square.impactCount) && square.impactCount >= 0 ? square.impactCount : 0),
+      0,
+    ),
+    lightingTechnique: asp.assessmentConditions?.lightingTechnique ?? null,
+    diffuseOnly: asp.assessmentConditions?.lightingTechnique === 'diffuse_only',
+    deformationWithoutRakingPhoto,
     affirmativeConditions: ASP_CONDITION_CATEGORIES.filter((c) => asp.findings?.[c.key]?.answer === 'yes').length,
     matchedCompatibilityCriteria: compatibility.filter((v) => v === 'matched').length,
     unmatchedCompatibilityCriteria: compatibility.filter((v) => v === 'not_matched').length,
@@ -91,15 +106,16 @@ export function buildAspReportSection(assessment: unknown): AspReportSection | n
   const referencePhotoId = add(asp.referencePhotoId);
   const rakingPhotoIds = asp.elevations.map((e) => add(e.rakingPhotoId)).filter((id): id is string => id !== null);
   const testSquarePhotoIds = asp.testSquares.map((s) => add(s.photoId)).filter((id): id is string => id !== null);
-  const examplePhotos = ASP_CONDITION_CATEGORIES
-    .map((c) => ({ category: c, finding: asp.findings?.[c.key] }))
+  const examplePhotos = ['impactDeformation', 'coatingBreach']
+    .map((key) => ASP_CONDITION_CATEGORIES.find((c) => c.key === key)!)
+    .map((category) => ({ category, finding: asp.findings?.[category.key] }))
     .filter(({ finding }) => finding?.answer === 'yes')
     .map(({ category, finding }) => {
       const photoId = add(finding?.photoId);
       return photoId ? { photoId, label: category.label, note: finding?.note ?? null } : null;
     })
     .filter((entry): entry is { photoId: string; label: string; note: string | null } => entry !== null)
-    .slice(0, 3);
+    .slice(0, 2);
   return {
     scorecard: computeAspScorecard(asp),
     referencePhotoId,
@@ -113,7 +129,7 @@ export function buildAspReportSection(assessment: unknown): AspReportSection | n
 }
 
 export function aspScorecardBriefLines(scorecard: AspScorecard): string[] {
-  return [
+  const lines = [
     'Aluminum Siding Forensic Inspection Protocol (non-destructive) scorecard:',
     `  Elevations surveyed: ${scorecard.surveyedElevations}; accessible: ${scorecard.accessibleElevations}`,
     `  Test areas: ${scorecard.testSquares}; documented impacts: ${scorecard.documentedImpacts}`,
@@ -121,4 +137,26 @@ export function aspScorecardBriefLines(scorecard: AspScorecard): string[] {
     `  Compatibility criteria: ${scorecard.matchedCompatibilityCriteria} matched; ${scorecard.unmatchedCompatibilityCriteria} not matched`,
     ...scorecard.categories.map((c) => `  ${c.label}: ${c.count} affected elevation(s)`),
   ];
+  if (scorecard.lightingTechnique) {
+    lines.push(`  Lighting technique: ${scorecard.lightingTechnique.replaceAll('_', ' ')}`);
+  }
+  if (scorecard.diffuseOnly) {
+    lines.push(
+      '  Diffuse-light qualifier: a negative deformation finding under diffuse light only does not establish that deformation is absent.',
+    );
+  }
+  if (scorecard.testSquares > 0) {
+    lines.push(
+      '  Test-square scope: documented impact counts characterize only the counted 10 ft × 10 ft areas and are never extrapolated to the elevation or building.',
+    );
+  }
+  if (scorecard.deformationWithoutRakingPhoto.length > 0) {
+    lines.push(
+      `  Missing raking-light frame: deformation was recorded on elevation(s) ${scorecard.deformationWithoutRakingPhoto.join(', ')} without a raking photo; the finding remains recorded, but the visibility gap must be disclosed.`,
+    );
+  }
+  lines.push(
+    '  Protocol limit: no manipulation was performed, so no finding is made about how a panel, nailing hem, or interlock would respond to manipulation.',
+  );
+  return lines;
 }
